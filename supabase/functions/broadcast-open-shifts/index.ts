@@ -2,7 +2,8 @@ import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendEmail, NOTIFICATION_FROM, APP_URL } from "../_shared/notificationHelpers.ts";
+import { sendEmailResult, sendPaced, NOTIFICATION_FROM, APP_URL } from "../_shared/notificationHelpers.ts";
+import { summarizeSends } from "../_shared/emailSendSummary.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 
@@ -166,6 +167,11 @@ serve(async (req) => {
     let pushFailCount = 0;
     let emailSentCount = 0;
     let emailFailCount = 0;
+    // Employees who actually have an address — a different, smaller denominator
+    // than `allEmployees.length`, which the response reports as total_employees.
+    let emailRecipientCount = 0;
+    let emailRateLimitedCount = 0;
+    let emailFailedReason: string | undefined;
 
     // Independent per-channel gating (email/push may be toggled separately).
     const ch = await resolveChannels(
@@ -197,10 +203,10 @@ serve(async (req) => {
       const emailEmployees = allEmployees.filter((emp) => emp.email);
       const appUrl = `${APP_URL}/employee/shifts`;
 
-      for (const employee of emailEmployees) {
-        try {
-          const subject = `${totalOpenSpots} Open Shift${totalOpenSpots === 1 ? "" : "s"} Available — ${dateRange}`;
-          const html = `
+      emailRecipientCount = emailEmployees.length;
+      const subject = `${totalOpenSpots} Open Shift${totalOpenSpots === 1 ? "" : "s"} Available — ${dateRange}`;
+
+      const buildHtml = (name: string) => `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
               ${generateHeader()}
 
@@ -209,7 +215,7 @@ serve(async (req) => {
                 <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">Shifts Available</h1>
 
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
-                  Hi <strong style="color: #1f2937;">${employee.name}</strong>,
+                  Hi <strong style="color: #1f2937;">${name}</strong>,
                 </p>
 
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
@@ -257,17 +263,24 @@ serve(async (req) => {
             </div>
           `;
 
-          const success = await sendEmail(RESEND_API_KEY, NOTIFICATION_FROM, employee.email!, subject, html);
-          if (success) {
-            emailSentCount++;
-          } else {
-            emailFailCount++;
-          }
-        } catch (err) {
-          emailFailCount++;
-          console.error(`Email failed for employee ${employee.id}:`, err);
-        }
-      }
+      // Paced rather than one send per iteration. Resend allows 2 requests a
+      // second and an unpaced loop issues roughly ten, so the larger rosters
+      // were collecting 429s that a bare boolean return hid completely.
+      const emailResults = await sendPaced(
+        emailEmployees,
+        (employee) =>
+          // `?? ""` because the `if (ch.email && RESEND_API_KEY)` narrowing does
+          // not survive into this callback — the same reason both merged
+          // callers write it (notify-schedule-published/index.ts:251).
+          sendEmailResult(RESEND_API_KEY ?? "", NOTIFICATION_FROM, employee.email!, subject, buildHtml(employee.name)),
+        { label: `open-shifts-broadcast ${publication_id}` }
+      );
+
+      const summary = summarizeSends(emailResults, "broadcast-open-shifts");
+      emailSentCount = summary.sent;
+      emailFailCount = summary.failed;
+      emailRateLimitedCount = summary.rateLimited;
+      emailFailedReason = summary.firstError;
     }
 
     // Stamp the publication with broadcast timestamp and user
@@ -284,7 +297,8 @@ serve(async (req) => {
     }
 
     console.log(
-      `Broadcast open shifts: ${pushSentCount} push, ${emailSentCount} email sent for publication ${publication_id}`
+      `Broadcast open shifts: ${pushSentCount} push, ${emailSentCount}/${emailRecipientCount} email sent for publication ${publication_id}` +
+        (emailFailCount > 0 ? ` — ${emailFailCount} failed, ${emailRateLimitedCount} rate-limited` : "")
     );
 
     return new Response(
@@ -293,8 +307,11 @@ serve(async (req) => {
         open_shifts: totalOpenSpots,
         push_sent: pushSentCount,
         push_failed: pushFailCount,
+        email_recipients: emailRecipientCount,
         email_sent: emailSentCount,
         email_failed: emailFailCount,
+        email_rate_limited: emailRateLimitedCount,
+        email_failed_reason: emailFailedReason,
         total_employees: allEmployees.length,
       }),
       {

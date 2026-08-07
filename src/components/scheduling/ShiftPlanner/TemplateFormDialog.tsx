@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -12,9 +14,13 @@ import { Label } from '@/components/ui/label';
 
 import { Clock } from 'lucide-react';
 
+import { useTemplateHoursLedger } from '@/hooks/useTemplateHoursLedger';
+
 import type { ShiftTemplate } from '@/types/scheduling';
 
 import { AreaCombobox } from '@/components/AreaCombobox';
+import { TemplateHoursImpact } from '@/components/scheduling/ShiftPlanner/TemplateHoursImpact';
+import { buildSaveButtonLabel } from '@/lib/scheduling/hoursChangeCopy';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
@@ -32,9 +38,16 @@ interface TemplateFormDialogProps {
     days: number[];
     break_duration: number;
     capacity: number;
-  }) => void | Promise<void>;
+    cascade: boolean;
+    driftedShiftIds: string[];
+    notify: boolean;
+    /** What the dialog promised on the save button, e.g. "Save & update 3 shifts". 0 when not cascading. */
+    promisedCount: number;
+  }) => Promise<void>;
   positions: string[];
   restaurantId: string | null;
+  /** Already resolved through safeTz by the planner — never the browser's. */
+  restaurantTimezone: string;
 }
 
 export function TemplateFormDialog({
@@ -44,6 +57,7 @@ export function TemplateFormDialog({
   onSubmit,
   positions,
   restaurantId,
+  restaurantTimezone,
 }: Readonly<TemplateFormDialogProps>) {
   const isEdit = !!template;
 
@@ -79,6 +93,8 @@ export function TemplateFormDialog({
       setArea('');
     }
     setIsSubmitting(false);
+    setSelectedDriftIds(new Set());
+    setNotify(true);
   }, [template, open]);
 
   const toggleDay = (day: number) => {
@@ -87,11 +103,55 @@ export function TemplateFormDialog({
     );
   };
 
-  const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0 && startTime !== endTime;
+  // A cleared <input type="time"> reads back as '', which is unequal to any
+  // other time and so used to sail past the start/end check and reach the RPC
+  // as an uncastable empty string.
+  const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0
+    && startTime.length > 0 && endTime.length > 0 && startTime !== endTime;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const [selectedDriftIds, setSelectedDriftIds] = useState<Set<string>>(new Set());
+  const [notify, setNotify] = useState(true);
+
+  const {
+    impact,
+    buckets,
+    ledger,
+    debouncedStart,
+    debouncedEnd,
+    affectedCount,
+    publishedCount,
+    hoursChanged,
+    showCascadeChoice,
+  } = useTemplateHoursLedger(restaurantId, template, startTime, endTime, restaurantTimezone, selectedDriftIds, open);
+
+  // The ledger (and so `affectedCount`, and so the button's label) is computed
+  // from the DEBOUNCED times, but `submitWith` sends the raw ones. Inside the
+  // 300 ms window those disagree, and a manager who retypes a time and clicks
+  // straight through gets a button promising "update 3 shifts" while the RPC
+  // applies hours the count was never computed for. Treat the unsettled window
+  // as still-loading rather than letting the label lie.
+  const debouncePending = startTime !== debouncedStart || endTime !== debouncedEnd;
+
+  const toggleDrift = useCallback((shiftId: string) => {
+    setSelectedDriftIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shiftId)) next.delete(shiftId); else next.add(shiftId);
+      return next;
+    });
+  }, []);
+
+  const submitWith = async (cascade: boolean) => {
     if (!isValid || isSubmitting) return;
+
+    // Filtered against the live drift bucket, not the raw checkbox set: a
+    // refetch can drop a row out of buckets.drifted (deleted, newly locked,
+    // crossed into the past) without pruning selectedDriftIds to match. The
+    // RPC re-validates every opted-in id server-side regardless — this is
+    // about the client not promising promisedCount for one set of ids while
+    // sending a different set.
+    const driftedShiftIds = cascade
+      ? [...selectedDriftIds].filter((id) => buckets?.drifted.some((d) => d.shiftId === id))
+      : [];
 
     setIsSubmitting(true);
     try {
@@ -104,13 +164,25 @@ export function TemplateFormDialog({
         days,
         break_duration: breakDuration,
         capacity,
+        cascade,
+        driftedShiftIds,
+        notify: cascade && notify,
+        promisedCount: cascade ? affectedCount : 0,
       });
       onOpenChange(false);
     } catch {
-      // Error handled by mutation's onError toast
+      // Error handled by the mutation's onError toast. The dialog stays open
+      // so the manager's input is not lost.
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Enter in a text field submits the form; the safe default is the
+    // cascading save when one is on offer, matching the primary button.
+    await submitWith(showCascadeChoice);
   };
 
   return (
@@ -125,14 +197,22 @@ export function TemplateFormDialog({
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 {isEdit ? 'Edit Shift Template' : 'Add Shift Template'}
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              {/* DialogDescription, not a plain <p> — Radix only wires
+                  aria-describedby off this component. */}
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 {isEdit ? 'Update template details' : 'Define a recurring shift pattern'}
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+        {/* The id is what makes Enter work. The footer is sticky and therefore
+            sits OUTSIDE this element, so the save button can only reach
+            handleSubmit through form="template-form" -- and a form holding
+            several text inputs and no submit control gets no implicit
+            submission at all, which is what the comment on handleSubmit used
+            to describe rather than what happened. */}
+        <form id="template-form" onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
           {/* Template Name */}
           <div className="space-y-1.5">
             <Label
@@ -183,6 +263,27 @@ export function TemplateFormDialog({
               />
             </div>
           </div>
+
+          {/* Adjacent to the control that causes it, so cause and effect are
+              visible together. Only on edit, and only once the hours actually
+              differ from what is stored. */}
+          {isEdit && hoursChanged && template && (
+            <TemplateHoursImpact
+              ledger={ledger}
+              drifted={buckets?.drifted ?? []}
+              selectedDriftIds={selectedDriftIds}
+              onToggleDrift={toggleDrift}
+              publishedCount={publishedCount}
+              notify={notify}
+              onNotifyChange={setNotify}
+              isLoading={impact.isLoading}
+              error={impact.error}
+              oldStart={template.start_time.substring(0, 5)}
+              oldEnd={template.end_time.substring(0, 5)}
+              newStart={debouncedStart}
+              newEnd={debouncedEnd}
+            />
+          )}
 
           {/* Position */}
           <div className="space-y-1.5">
@@ -291,26 +392,53 @@ export function TemplateFormDialog({
               How many employees are needed for this shift
             </p>
           </div>
+        </form>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-2 pt-2">
+        {/* Sticky, matching DeleteTemplateDialog:245. Without this, the ledger
+            plus seven form fields pushes Save off-screen inside a
+            max-h-[80vh] dialog on a 375x667 viewport. */}
+        <DialogFooter className="sticky bottom-0 bg-background border-t border-border/40 px-6 py-4 gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </Button>
+
+          {showCascadeChoice && (
             <Button
               type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
+              variant="outline"
               disabled={!isValid || isSubmitting}
-              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              onClick={() => { void submitWith(false); }}
+              className="h-9 px-4 rounded-lg text-[13px] font-medium"
             >
-              {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Template'}
+              Template only
             </Button>
-          </div>
-        </form>
+          )}
+
+          <Button
+            // Submits #template-form from outside it, so a click and an Enter
+            // keypress take the same path through handleSubmit. `disabled`
+            // then governs both: a browser skips a disabled submit button when
+            // deciding whether to submit implicitly, so the guards below hold
+            // for Enter too.
+            type="submit"
+            form="template-form"
+            // While the impact query resolves, the single button renders
+            // disabled rather than showing a label that is about to change
+            // under the pointer.
+            disabled={
+              !isValid || isSubmitting ||
+              (isEdit && hoursChanged && (impact.isLoading || debouncePending))
+            }
+            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+          >
+            {buildSaveButtonLabel({ isSubmitting, showCascadeChoice, affectedCount, isEdit })}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

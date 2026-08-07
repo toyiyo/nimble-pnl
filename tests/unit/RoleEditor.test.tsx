@@ -115,6 +115,11 @@ function mockUseRestaurants(partial: Partial<ReturnType<typeof useRestaurants>> 
   });
 }
 
+/** Resolves a row's control from its visible page label ("Invoices", "Statements", ...). */
+function rowFor(label: string): HTMLElement {
+  return screen.getByRole('radiogroup', { name: new RegExp(`^${label} access$`, 'i') });
+}
+
 describe('RoleEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -183,67 +188,88 @@ describe('RoleEditor', () => {
     expect(document.getElementById(describedBy!)).toHaveTextContent(/read-only/i);
   });
 
-  it('renders all ten area rows as RadioGroups with the "{Area} access" aria-label', () => {
+  it('renders one row per gateable page, grouped by sidebar group', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
-    for (const label of [
-      'Dashboard & Reports',
-      'Sales',
-      'Inventory & Purchasing',
-      'Recipes',
-      'Scheduling',
-      'Money & Books',
-      'Payroll',
-      'Employees',
-      'Team & Access',
-      'Settings & Integrations',
-    ]) {
-      expect(screen.getByRole('radiogroup', { name: new RegExp(`^${label} access$`, 'i') })).toBeInTheDocument();
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(33);
+    // A heading query, not getByText: 'Inventory' is both a group heading and
+    // a page row label (the Inventory page itself), so a plain text match is
+    // ambiguous.
+    for (const label of ['Main', 'Operations', 'Inventory', 'Accounting', 'Admin']) {
+      expect(screen.getByRole('heading', { name: label })).toBeInTheDocument();
     }
   });
 
-  it('caps Payroll at View: Manage is disabled with an aria-describedby reason mentioning owners and managers', () => {
+  it('grants a single page without its former bundle-mates', async () => {
+    const user = userEvent.setup();
+    const createRole = vi.fn().mockResolvedValue('new-role-id');
+    mockUseRoles({ createRole });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+
+    await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
+    await user.click(within(rowFor('Invoices')).getByRole('radio', { name: /manage/i }));
+    await user.click(screen.getByRole('button', { name: /^save role$/i }));
+
+    expect(createRole).toHaveBeenCalledTimes(1);
+    const draft = createRole.mock.calls[0][0];
+    expect(draft.areas).toEqual(
+      expect.arrayContaining([expect.objectContaining({ area_key: 'invoices', level: 'manage' })])
+    );
+    // Invoices and Banking used to be bundled under the retired "Money &
+    // Books" band — granting one must not drag the other along.
+    expect(draft.areas).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ area_key: 'banking' })])
+    );
+  });
+
+  it('locks Manage on a page with no edit capability', () => {
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    expect(within(rowFor('Statements')).getByRole('radio', { name: /manage/i })).toBeDisabled();
+  });
+
+  it('caps Payroll at View: Manage is disabled and described by a real lock reason', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     const payrollGroup = screen.getByRole('radiogroup', { name: /^payroll access$/i });
     const manage = within(payrollGroup).getByRole('radio', { name: /^manage$/i });
     expect(manage).toBeDisabled();
     expect(manage).toHaveAttribute('aria-disabled', 'true');
+    // aria-describedby points at a dedicated sr-only reason paragraph (not the
+    // row's page-level hint) — CodeRabbit flagged the row-hint version as
+    // inaccurate (the "reason" wasn't actually a reason), fixed in Phase 7c.
     const describedBy = manage.getAttribute('aria-describedby');
     expect(describedBy).toBeTruthy();
-    expect(document.getElementById(describedBy!)).toHaveTextContent(/owners and managers only/i);
+    expect(document.getElementById(describedBy!)).toHaveTextContent(
+      /manage is not available to a collaborator role for this page/i
+    );
 
     // View is not capped.
     expect(within(payrollGroup).getByRole('radio', { name: /^view$/i })).not.toBeDisabled();
   });
 
-  it('makes Team & Access fully ungrantable: both View and Manage disabled with the same reason', () => {
+  it('makes Team members and Collaborators fully ungrantable: both View and Manage disabled', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
-    const teamGroup = screen.getByRole('radiogroup', { name: /^team & access access$/i });
-    const view = within(teamGroup).getByRole('radio', { name: /^view$/i });
-    const manage = within(teamGroup).getByRole('radio', { name: /^manage$/i });
-
-    expect(view).toBeDisabled();
-    expect(manage).toBeDisabled();
-
-    const viewDescribedBy = view.getAttribute('aria-describedby');
-    const manageDescribedBy = manage.getAttribute('aria-describedby');
-    expect(viewDescribedBy).toBeTruthy();
-    expect(manageDescribedBy).toBeTruthy();
-    expect(document.getElementById(viewDescribedBy!)).toHaveTextContent(
-      /owners and managers only.*collaborator can never grant access/i
-    );
-    expect(document.getElementById(manageDescribedBy!)).toHaveTextContent(
-      /owners and managers only.*collaborator can never grant access/i
-    );
+    // Team members and Collaborators are two separate rows sharing the
+    // /team page (design doc §"collaborators is a second Admin row"), each
+    // with maxLevelForCollaborator: null — fully ungrantable at any level.
+    for (const label of ['Team members', 'Collaborators']) {
+      const group = rowFor(label);
+      const view = within(group).getByRole('radio', { name: /^view$/i });
+      const manage = within(group).getByRole('radio', { name: /^manage$/i });
+      expect(view).toBeDisabled();
+      expect(manage).toBeDisabled();
+    }
   });
 
-  it('does not cap Inventory & Purchasing or Scheduling at all', () => {
+  it('does not cap Inventory, Purchase Orders or Scheduling at all', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
-    const inventoryGroup = screen.getByRole('radiogroup', { name: /^inventory & purchasing access$/i });
+    const inventoryGroup = rowFor('Inventory');
     expect(within(inventoryGroup).getByRole('radio', { name: /^manage$/i })).not.toBeDisabled();
+
+    const purchasingGroup = rowFor('Purchase Orders');
+    expect(within(purchasingGroup).getByRole('radio', { name: /^manage$/i })).not.toBeDisabled();
 
     const schedulingGroup = screen.getByRole('radiogroup', { name: /^scheduling access$/i });
     expect(within(schedulingGroup).getByRole('radio', { name: /^manage$/i })).not.toBeDisabled();
@@ -256,7 +282,7 @@ describe('RoleEditor', () => {
     const counter = screen.getByText(/^\d+\s+granted$/i);
     expect(counter).toHaveTextContent(/^0 granted$/i);
 
-    const inventoryGroup = screen.getByRole('radiogroup', { name: /^inventory & purchasing access$/i });
+    const inventoryGroup = rowFor('Inventory');
     await user.click(within(inventoryGroup).getByRole('radio', { name: /^manage$/i }));
 
     expect(screen.getByText(/^\d+\s+granted$/i)).not.toHaveTextContent(/^0 granted$/i);
@@ -296,8 +322,8 @@ describe('RoleEditor', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
 
     await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
-    const inventoryGroup = screen.getByRole('radiogroup', { name: /^inventory & purchasing access$/i });
-    await user.click(within(inventoryGroup).getByRole('radio', { name: /^manage$/i }));
+    await user.click(within(rowFor('Inventory')).getByRole('radio', { name: /^manage$/i }));
+    await user.click(within(rowFor('Purchase Orders')).getByRole('radio', { name: /^manage$/i }));
 
     await user.click(screen.getByRole('button', { name: /^save role$/i }));
 
@@ -337,29 +363,28 @@ describe('RoleEditor', () => {
     expect(document.getElementById(describedBy!)).toHaveTextContent(/role name is required/i);
   });
 
-  it('shows a "Partial" marker instead of a control for a builtin row whose underlying areas split levels', () => {
+  // Task 3's re-cut made every `AREA_DEFINITIONS` row exactly one
+  // `area_key` — the old multi-key bundles (e.g. the retired "Money &
+  // Books" row spanning `books`+`chart_of_accounts`) that could disagree
+  // internally and render a "Partial" marker no longer exist, so that
+  // marker has nothing left to represent. A builtin row now always shows
+  // its one grant through the same fully-disabled control a custom role's
+  // row would use if it were read-only.
+  it('renders a fully-disabled control reflecting a builtin role\'s single-page grant', () => {
     const role = makeRole({
       builtin: true,
-      name: 'Operations Manager',
+      name: 'Accountant',
       role_areas: [{ area_key: 'settings', level: 'view' }],
     });
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
-    expect(screen.queryByRole('radiogroup', { name: /^settings & integrations access$/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/partial/i)).toBeInTheDocument();
-  });
-
-  it('renders a fully-disabled control (not a Partial marker) for a builtin row whose areas agree', () => {
-    const role = makeRole({
-      builtin: true,
-      name: 'Accountant',
-      role_areas: [{ area_key: 'books', level: 'manage' }, { area_key: 'chart_of_accounts', level: 'manage' }],
-    });
-    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
-
-    const booksGroup = screen.getByRole('radiogroup', { name: /^money & books access$/i });
-    expect(within(booksGroup).getByRole('radio', { name: /^manage$/i })).toBeDisabled();
-    expect(within(booksGroup).getByRole('radio', { name: /^no access$/i })).toBeDisabled();
+    const settingsGroup = rowFor('Settings');
+    const viewRadio = within(settingsGroup).getByRole('radio', { name: /^view$/i });
+    expect(viewRadio).toHaveAttribute('data-state', 'checked');
+    expect(viewRadio).toBeDisabled();
+    expect(within(settingsGroup).getByRole('radio', { name: /^manage$/i })).toBeDisabled();
+    expect(within(settingsGroup).getByRole('radio', { name: /^no access$/i })).toBeDisabled();
+    expect(screen.queryByText(/^partial$/i)).not.toBeInTheDocument();
   });
 
   it('shows the copy-to-restaurants listbox only for an existing, non-builtin role', () => {

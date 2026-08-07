@@ -16,13 +16,15 @@
  * hand-written lists at runtime; the calibration is what lets a custom role
  * assembled from the same areas reach the same pages and no more.
  *
- * Deliberately unmapped: `/budget`, `/labor`, `/stripe-account`,
- * `/ops-inbox`, `/weekly-brief`. No collaborator role reaches them today
- * (they surface P&L, labor cost, and financial-account controls), and
- * leaving them out of the map is what keeps that true for custom roles.
+ * `/budget`, `/labor`, `/stripe-account`, `/ops-inbox` and `/weekly-brief`
+ * are mapped but unheld: each has an area (they're catalog rows like any
+ * other), but no builtin role's seeded `role_areas` grants it, so no
+ * collaborator reaches them today. That stays true only until an owner
+ * grants one of these areas to a custom role — the map doesn't forbid it,
+ * the seed data just doesn't do it yet.
  */
 
-import { AREA_PRIORITY, AREA_LANDING_PATHS } from './areas';
+import { AREA_DEFINITIONS, AREA_PRIORITY, AREA_LANDING_PATHS } from './areas';
 import type { AreaKey, AreaLevel } from './areas';
 
 export interface AreaRoute {
@@ -34,51 +36,19 @@ export interface AreaRoute {
 }
 
 /**
- * Path -> (area, level). Ordered by `AREA_PRIORITY`, so the derived
- * allow-list reads in the same order as the editor's rows.
+ * Path -> (area, level), derived from the catalog. One row per page area,
+ * in sidebar order, plus the one path that has an area but no menu entry.
+ *
+ * Every route is `minLevel: 'view'` — the level a page needs to be *opened*.
+ * Before the per-page re-cut, /tips, /time-punches, /inventory-audit and
+ * /print-checks were gated at `manage` because they rode inside a coarser
+ * bundle; now each is its own area, so "can open it" is exactly "holds it".
  */
 export const AREA_ROUTES: readonly AreaRoute[] = [
-  // reports / sales
-  { path: '/', area: 'reports', minLevel: 'view' },
-  { path: '/reports', area: 'reports', minLevel: 'view' },
-  { path: '/pos-sales', area: 'sales', minLevel: 'view' },
-
-  // inventory / purchasing
-  { path: '/inventory', area: 'inventory', minLevel: 'view' },
-  { path: '/inventory-audit', area: 'inventory', minLevel: 'manage' },
-  { path: '/receipt-import', area: 'inventory', minLevel: 'manage' },
-  { path: '/purchase-orders', area: 'purchasing', minLevel: 'view' },
-
-  // recipes
-  { path: '/recipes', area: 'recipes', minLevel: 'view' },
-  { path: '/prep-recipes', area: 'recipes', minLevel: 'view' },
-
-  // scheduling
-  { path: '/scheduling', area: 'scheduling', minLevel: 'view' },
-  { path: '/time-punches', area: 'scheduling', minLevel: 'manage' },
-  { path: '/tips', area: 'scheduling', minLevel: 'manage' },
-
-  // books / chart of accounts
-  { path: '/transactions', area: 'books', minLevel: 'view' },
-  { path: '/banking', area: 'books', minLevel: 'view' },
-  { path: '/expenses', area: 'books', minLevel: 'view' },
-  { path: '/invoices', area: 'books', minLevel: 'view' },
-  { path: '/customers', area: 'books', minLevel: 'view' },
-  { path: '/financial-statements', area: 'books', minLevel: 'view' },
-  { path: '/financial-intelligence', area: 'books', minLevel: 'view' },
-  { path: '/assets', area: 'books', minLevel: 'view' },
-  // Writing a check moves money — the only books path gated at manage.
-  { path: '/print-checks', area: 'books', minLevel: 'manage' },
-  { path: '/chart-of-accounts', area: 'chart_of_accounts', minLevel: 'view' },
-
-  // payroll / people
-  { path: '/payroll', area: 'payroll', minLevel: 'view' },
-  { path: '/employees', area: 'employees', minLevel: 'view' },
-  { path: '/team', area: 'team', minLevel: 'view' },
-
-  // settings
-  { path: '/settings', area: 'settings', minLevel: 'view' },
-  { path: '/integrations', area: 'integrations', minLevel: 'view' },
+  ...AREA_DEFINITIONS.map((d) => ({ path: d.path, area: d.key, minLevel: 'view' as const })),
+  // Not a navigationGroups item — owners reach it from inside Inventory —
+  // so it has no catalog row and keeps its explicit mapping (spec §3.2).
+  { path: '/receipt-import', area: 'inventory' as const, minLevel: 'manage' as const },
 ];
 
 /** Reachable holding no areas at all, exactly as every collaborator nav has /help today. */

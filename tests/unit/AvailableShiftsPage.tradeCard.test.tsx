@@ -171,6 +171,7 @@ vi.mock('@/hooks/useOpenShiftClaims', () => ({
 
 vi.mock('@/hooks/useShifts', () => ({
   useShifts: vi.fn(() => ({ shifts: [] })),
+  useMyShifts: vi.fn(() => ({ shifts: [], loading: false })),
 }));
 
 vi.mock('@/hooks/useShiftTrades', () => ({

@@ -1,3 +1,5 @@
+import { lazy, Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -37,6 +39,11 @@ import { ReceiptImport } from "@/pages/ReceiptImport";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Unsubscribe from "./pages/Unsubscribe";
+// Lazy on purpose. The public review page pulls in two webfonts and the
+// Counter stylesheet that no authenticated user will ever render; every other
+// route here is a static import, so adding this one the same way would
+// silently defeat the isolation.
+const ReviewPage = lazy(() => import("./pages/ReviewPage"));
 import Transactions from "./pages/Transactions";
 import ChartOfAccounts from "./pages/ChartOfAccounts";
 import FinancialStatements from "./pages/FinancialStatements";
@@ -75,6 +82,7 @@ import HelpArticle from "./pages/Help/HelpArticle";
 import Assets from "./pages/Assets";
 import BudgetRunRate from "./pages/BudgetRunRate";
 import OpsInbox from "./pages/OpsInbox";
+import Reviews from "./pages/Reviews";
 import WeeklyBrief from "./pages/WeeklyBrief";
 import { queryClientConfig } from "@/lib/react-query-config";
 
@@ -164,6 +172,29 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
   );
 }
 
+// Shared prefix-match helper: true if `path` equals or is nested under any
+// entry in `prefixes`. Used by both the collaborator work-view gate and the
+// staff allow-list gate below so the matching rule can't drift between them.
+// Matches on a `/`-boundary so e.g. `/employee/pay` does not also match
+// `/employee/payroll-backup`.
+const matchesAnyPrefix = (path: string, prefixes: string[]) =>
+  prefixes.some(prefix => path === prefix || path.startsWith(`${prefix}/`));
+
+// Paths staff use for self-service (clock in/out, view their own schedule,
+// pay, tips, etc). Shared by the staff gate and the collaborator work-view
+// gate below — both grant access to the same nine /employee/* paths.
+const EMPLOYEE_SELF_SERVICE_PATHS = [
+  '/employee/clock',
+  '/employee/portal',
+  '/employee/timecard',
+  '/employee/pin',
+  '/employee/pay',
+  '/employee/schedule',
+  '/employee/shifts',
+  '/employee/tips',
+  '/employee/more',
+];
+
 // Collaborator route configurations
 // Each collaborator role has a landing page and list of allowed paths
 export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }> = {
@@ -234,7 +265,10 @@ export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: str
 };
 
 // Role Route Checker Component - handles staff, kiosk, and collaborator routing
-function StaffRoleChecker({
+// Exported (test-only surface, not a route target) so behaviour can be
+// asserted directly instead of via source-text regex — see
+// tests/unit/StaffRoleChecker.employeeRoutes.test.tsx.
+export function StaffRoleChecker({
   children,
   allowStaff,
   currentPath
@@ -244,6 +278,7 @@ function StaffRoleChecker({
   currentPath: string;
 }) {
   const { selectedRestaurant, loading } = useRestaurantContext();
+  const { canUseWorkView, isWorkViewResolved } = useViewMode();
 
   // Every check below reads `selectedRestaurant?.role`, which is undefined
   // while the membership rows are still in flight — so without this the gate
@@ -271,20 +306,32 @@ function StaffRoleChecker({
   // URL. Its allow-list is derived from its areas instead, and a collaborator
   // whose role record hasn't arrived derives an empty one, so this fails closed.
   if (isCollaborator && role) {
+    // A collaborator who is also an active employee ("work view") reaches the
+    // same /employee/* self-service paths staff use, once eligibility has
+    // resolved. Non-employee paths, and ineligible collaborators, fall
+    // through to the existing allow-list/redirect logic below unchanged.
+    const isEmployeeSelfServicePath = matchesAnyPrefix(currentPath, EMPLOYEE_SELF_SERVICE_PATHS);
+    if (isEmployeeSelfServicePath) {
+      if (!isWorkViewResolved) {
+        return <RouteLoadingScreen />;
+      }
+      if (canUseWorkView) {
+        return <>{children}</>;
+      }
+    }
+
     const config =
       COLLABORATOR_ROUTES[role] ??
       customCollaboratorRoutes(grantMap(selectedRestaurant?.roleRecord?.role_areas ?? []));
-    const isAllowedPath = config.allowed.some(path =>
-      currentPath === path || currentPath.startsWith(path + '/')
-    );
+    const isAllowedPath = matchesAnyPrefix(currentPath, config.allowed);
     if (!isAllowedPath) {
       return <Navigate to={config.landing} replace />;
     }
   }
 
   // Allowed paths for staff users (excludes kiosk - they have their own check above)
-  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pin', '/employee/pay', '/employee/schedule', '/employee/shifts', '/employee/tips', '/employee/more', '/settings'];
-  const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
+  const staffAllowedPaths = [...EMPLOYEE_SELF_SERVICE_PATHS, '/settings'];
+  const isStaffAllowedPath = matchesAnyPrefix(currentPath, staffAllowedPaths);
 
   // If user is staff and trying to access restricted route
   if (isStaff && !allowStaff && !isStaffAllowedPath) {
@@ -308,6 +355,27 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
+            <Route
+              path="/r/:slug"
+              element={
+                <Suspense
+                  fallback={
+                    // Same skeletons ReviewPage shows while it fetches, so the
+                    // chunk download and the data fetch look like one wait
+                    // instead of an empty card that snaps into a skeleton.
+                    <div className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
+                      <div className="w-full max-w-md rounded-lg border border-border bg-card px-6 py-8 shadow-sm">
+                        <Skeleton className="mx-auto h-14 w-14 rounded-full" />
+                        <Skeleton className="mx-auto mt-4 h-5 w-40" />
+                        <Skeleton className="mx-auto mt-6 h-10 w-56" />
+                      </div>
+                    </div>
+                  }
+                >
+                  <ReviewPage />
+                </Suspense>
+              }
+            />
             <Route path="/settings" element={<ProtectedRoute allowStaff={true}><RestaurantSettings /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
@@ -354,6 +422,7 @@ const App = () => (
             <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
             <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
+            <Route path="/reviews" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
             <Route path="/weekly-brief" element={<ProtectedRoute><WeeklyBrief /></ProtectedRoute>} />
             <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />

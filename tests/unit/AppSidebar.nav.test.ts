@@ -17,8 +17,9 @@ import {
   operationsManagerNav,
   staffNav,
 } from '@/components/AppSidebar.nav';
-import { allowedPathsForAreas } from '@/lib/permissions/routeAreas';
+import { allowedPathsForAreas, UNIVERSAL_PATHS } from '@/lib/permissions/routeAreas';
 import type { AreaKey, AreaLevel } from '@/lib/permissions/areas';
+import { COLLABORATOR_ROUTES } from '@/App';
 
 describe('AppSidebar.nav – operations_manager', () => {
   const nav = getNavigationForRole('operations_manager');
@@ -67,6 +68,16 @@ describe('AppSidebar.nav – operations_manager', () => {
   it('returns empty array for kiosk role', () => {
     const kioskNav = getNavigationForRole('kiosk');
     expect(kioskNav).toEqual([]);
+  });
+
+  it('does not offer the accountant a page it will bounce them off', () => {
+    const paths = collaboratorAccountantNav.flatMap((g) => g.items.map((i) => i.path));
+    const allowed = new Set(COLLABORATOR_ROUTES.collaborator_accountant.allowed);
+    const universal = new Set(UNIVERSAL_PATHS);
+
+    for (const path of paths) {
+      expect(allowed.has(path) || universal.has(path)).toBe(true);
+    }
   });
 });
 
@@ -138,7 +149,14 @@ describe('AppSidebar.nav – viewMode param', () => {
 
 describe('AppSidebar.nav – custom roles derive their nav from granted areas', () => {
   type Grants = Partial<Record<AreaKey, AreaLevel>>;
-  const INVENTORY_ROLE: Grants = { inventory: 'manage', purchasing: 'manage', settings: 'view' };
+  // Post menu-mirror re-cut, `inventory_audit` is its own AreaKey/row — no
+  // longer implied by granting `inventory` — so it needs its own grant here.
+  const INVENTORY_ROLE: Grants = {
+    inventory: 'manage',
+    inventory_audit: 'manage',
+    purchasing: 'manage',
+    settings: 'view',
+  };
 
   it('keeps every builtin role\'s nav byte-identical, even when grants are passed', () => {
     // The whole point of the branch: builtin arrays are retained, not
@@ -243,5 +261,37 @@ describe('AppSidebar.nav – custom roles derive their nav from granted areas', 
   it('shows nothing but Help for a role granted no areas', () => {
     const nav = getNavigationForAreas({});
     expect(nav.flatMap((group) => group.items.map((item) => item.path))).toEqual(['/help']);
+  });
+});
+
+describe('AppSidebar.nav.data — the leaf module', () => {
+  it('re-exports the same navigationGroups reference AppSidebar.nav uses', async () => {
+    // Guards against a copy that silently forks from the moved original:
+    // AppSidebar.nav.ts must re-export this exact array, not a duplicate.
+    const dataModule = await import('@/components/AppSidebar.nav.data');
+    expect(dataModule.navigationGroups).toBe(navigationGroups);
+  });
+
+  it('re-exports the same SUPPLEMENTAL_NAV_ITEMS reference AppSidebar.nav uses', async () => {
+    // Same guard as navigationGroups above, for the other data export the
+    // plan calls out by name (Task 1 Step 2).
+    const navModule = await import('@/components/AppSidebar.nav');
+    const dataModule = await import('@/components/AppSidebar.nav.data');
+    expect(navModule.SUPPLEMENTAL_NAV_ITEMS).toBe(dataModule.SUPPLEMENTAL_NAV_ITEMS);
+  });
+
+  it('imports nothing from @/lib/permissions, keeping it a leaf', async () => {
+    // areas.ts derives AREA_DEFINITIONS from navigationGroups while
+    // AppSidebar.nav.ts imports from routeAreas.ts (which imports areas.ts).
+    // If this data file ever imported from @/lib/permissions, that would be
+    // an import cycle with module-level const initialization on both ends —
+    // a temporal-dead-zone crash at import time, not a lint warning.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../../src/components/AppSidebar.nav.data.ts'),
+      'utf-8'
+    );
+    expect(source).not.toMatch(/from ['"]@\/lib\/permissions/);
   });
 });

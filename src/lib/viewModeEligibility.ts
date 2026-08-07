@@ -3,12 +3,13 @@ import type { Role } from '@/lib/permissions/types';
 /**
  * Eligibility rule for the Admin ↔ My Work view-mode switch.
  *
- * canUseWorkView = !!currentEmployee && role ∉ { staff, kiosk, collaborator_* }
+ * canUseWorkView = !!currentEmployee && role ∉ { staff, kiosk }
  *
  * `staff`/`kiosk` already live in the employee/kiosk experience — no switch
- * needed. `collaborator_*` are external scoped roles that must never see
- * employee self-service. See
- * docs/superpowers/specs/2026-07-24-admin-work-view-mode-design.md
+ * needed. Collaborators (`collaborator_*`) are scoped admin roles, not
+ * external users — a collaborator who is also linked to an employee record
+ * is eligible for work view like any other admin role. See
+ * docs/superpowers/specs/2026-08-02-collaborator-work-view-design.md
  */
 
 const INELIGIBLE_ROLES: ReadonlySet<Role> = new Set<Role>(['staff', 'kiosk']);
@@ -25,6 +26,5 @@ export function computeCanUseWorkView({
 }: ComputeCanUseWorkViewParams): boolean {
   if (!currentEmployee || !role) return false;
   if (INELIGIBLE_ROLES.has(role)) return false;
-  if (role.startsWith('collaborator_')) return false;
   return true;
 }

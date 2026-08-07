@@ -50,11 +50,12 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 import { ViewModeProvider, useViewMode } from '@/contexts/ViewModeContext';
 
 function Harness() {
-  const { viewMode, canUseWorkView, enterWorkMode, exitWorkMode } = useViewMode();
+  const { viewMode, canUseWorkView, isWorkViewResolved, enterWorkMode, exitWorkMode } = useViewMode();
   return (
     <div>
       <span data-testid="viewMode">{viewMode}</span>
       <span data-testid="canUseWorkView">{String(canUseWorkView)}</span>
+      <span data-testid="isWorkViewResolved">{String(isWorkViewResolved)}</span>
       <button onClick={() => enterWorkMode()}>Enter</button>
       <button onClick={() => exitWorkMode()}>Exit</button>
     </div>
@@ -291,5 +292,40 @@ describe('ViewModeProvider / useViewMode', () => {
     }
     expect(() => render(<Bare />)).toThrow(/ViewModeProvider/);
     ConsoleErrorSpy.mockRestore();
+  });
+
+  describe('isWorkViewResolved', () => {
+    it('is false when no restaurant is selected', () => {
+      mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: null });
+      // Disabled query (`enabled: !!restaurantId`) — never fetches, so
+      // React Query reports loading=false even though nothing has resolved.
+      mockUseCurrentEmployee.mockReturnValue({ currentEmployee: null, loading: false });
+
+      renderHarness();
+
+      expect(screen.getByTestId('isWorkViewResolved')).toHaveTextContent('false');
+    });
+
+    it('is false while employeeLoading, even with a restaurant selected', () => {
+      mockUseRestaurantContext.mockReturnValue({
+        selectedRestaurant: { restaurant_id: 'rest-1', role: 'owner' },
+      });
+      mockUseCurrentEmployee.mockReturnValue({ currentEmployee: null, loading: true });
+
+      renderHarness();
+
+      expect(screen.getByTestId('isWorkViewResolved')).toHaveTextContent('false');
+    });
+
+    it('is true once both a restaurant is selected and employee loading has settled', () => {
+      mockUseRestaurantContext.mockReturnValue({
+        selectedRestaurant: { restaurant_id: 'rest-1', role: 'owner' },
+      });
+      mockUseCurrentEmployee.mockReturnValue({ currentEmployee: eligibleEmployee, loading: false });
+
+      renderHarness();
+
+      expect(screen.getByTestId('isWorkViewResolved')).toHaveTextContent('true');
+    });
   });
 });

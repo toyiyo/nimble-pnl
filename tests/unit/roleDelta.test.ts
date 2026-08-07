@@ -78,11 +78,11 @@ describe('roleDelta', () => {
     expect(d.flagGains[0].label).toBe('Employee pay rates');
   });
 
-  // The 'inventory' UI row groups the `inventory` and `purchasing` area keys
-  // (areas.ts:168), and `rowLevel` returns the max of the two. Diffing that
-  // collapsed value would call these two roles identical even though the
-  // candidate can edit purchase orders and the current one cannot.
-  it('sees a change inside a grouped row when the row-level max is unmoved', () => {
+  // Post menu-mirror re-cut (areas.ts), every `AreaDefinition` row is exactly
+  // one `AreaKey` — `inventory` and `purchasing` are separate rows now, not
+  // two keys fanned out under one grouped row, so each moves independently
+  // and reports its own label.
+  it('reports two separate rows (formerly one grouped row) moving independently', () => {
     const d = roleDelta(
       set([
         { area_key: 'inventory', level: 'manage' },
@@ -94,11 +94,12 @@ describe('roleDelta', () => {
       ])
     );
     expect(d.isSame).toBe(false);
-    expect(d.gains.map((g) => g.label)).toContain('Inventory & Purchasing');
+    expect(d.gains.map((g) => g.label)).toContain('Purchase Orders');
+    expect(d.gains.map((g) => g.label)).not.toContain('Inventory');
     expect(d.loses).toHaveLength(0);
   });
 
-  it('reports a row whose keys move in both directions as both a gain and a loss', () => {
+  it('reports one row gaining and another losing when they move in opposite directions', () => {
     const d = roleDelta(
       set([
         { area_key: 'inventory', level: 'manage' },
@@ -110,8 +111,8 @@ describe('roleDelta', () => {
       ])
     );
     expect(d.isSame).toBe(false);
-    expect(d.gains.map((g) => g.label)).toContain('Inventory & Purchasing');
-    expect(d.loses.map((l) => l.label)).toContain('Inventory & Purchasing');
+    expect(d.gains.map((g) => g.label)).toContain('Purchase Orders');
+    expect(d.loses.map((l) => l.label)).toContain('Inventory');
   });
 
   it('still reports identical grant sets as the same', () => {

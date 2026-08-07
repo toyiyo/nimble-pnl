@@ -1,5 +1,6 @@
 import type { RestaurantMember } from '@/hooks/useRestaurantMembers';
 import type { RoleWithGrants } from '@/hooks/useRoles';
+import type { Role } from '@/lib/permissions/types';
 
 /**
  * Which role a membership belongs to, resolved the way the database resolves
@@ -81,4 +82,28 @@ export function groupMembersByRole(
     else grouped.set(roleId, [member]);
   }
   return grouped;
+}
+
+/**
+ * The roles that `user_is_internal_team` accepts
+ * (20260702170000_add_operations_manager_role.sql:27-43).
+ *
+ * A second copy of a database rule, which the header above warns against —
+ * but this one is unavoidable: RLS decides what `useRestaurantMembers`
+ * returns, and the UI has to distinguish "this employee has no account" from
+ * "you cannot see whether they do". Getting that backwards tells a
+ * collaborator_accountant that a fully-provisioned employee cannot sign in.
+ * `tests/unit/internalTeamMirror.test.ts` pins the two together.
+ */
+export const INTERNAL_TEAM_ROLES = [
+  'owner',
+  'manager',
+  'operations_manager',
+  'chef',
+  'staff',
+] as const satisfies readonly Role[];
+
+/** Whether this caller sees every `user_restaurants` row for the restaurant. */
+export function isInternalTeamRole(role: Role | null | undefined): boolean {
+  return !!role && (INTERNAL_TEAM_ROLES as readonly string[]).includes(role);
 }

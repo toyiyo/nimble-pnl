@@ -25,10 +25,14 @@ pages already resolve identity via `useCurrentEmployee` (`user_id` +
 
 ## Eligibility
 
-`canUseWorkView = !!currentEmployee && role ∉ { staff, kiosk, collaborator_* }`
+`canUseWorkView = !!currentEmployee && role ∉ { staff, kiosk }`
 
 - `staff`/`kiosk` already live in the employee/kiosk experience — no switch needed.
-- `collaborator_*` are external scoped roles that must never see employee self-service.
+- Collaborator roles are no longer blanket-excluded: eligibility for
+  `collaborator_*` roles is gated on a linked `employees` record, same as any
+  other role. See
+  [`2026-08-02-collaborator-work-view-design.md`](2026-08-02-collaborator-work-view-design.md)
+  for the corrected rule and rationale.
 - `currentEmployee` comes from `useCurrentEmployee(restaurantId)`. Note (lesson
   2026-07-xx, PR #641): a **duplicate** `employees` row for the same
   `(user_id, restaurant_id)` makes `.single()` return `PGRST116`, which the hook

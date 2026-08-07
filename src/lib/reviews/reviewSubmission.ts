@@ -2,8 +2,8 @@
  * The rule that decides when the guest follow-up form may be sent.
  *
  * The comment is optional. A guest may give an email and no comment, or a
- * comment and no email. A form that holds neither writes nothing, so the
- * Send control stays disabled.
+ * comment and no email. A form that holds neither writes nothing. The Send
+ * control stays disabled in that case.
  *
  * This whole module is a copy. `supabase/functions/_shared/reviewContact.ts`
  * holds the Deno original, which an edge function can import and this file

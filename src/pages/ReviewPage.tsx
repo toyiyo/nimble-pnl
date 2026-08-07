@@ -37,6 +37,20 @@ function initials(name: string): string {
     .join('');
 }
 
+/** The Google review hand-off. The promoter stage and the thanks stage both render it. */
+function GoogleReviewLink({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-6 flex h-11 w-full items-center justify-center rounded-lg bg-primary text-[15px] font-medium text-primary-foreground"
+    >
+      Leave a Google review
+    </a>
+  );
+}
+
 export default function ReviewPage() {
   const { slug = '' } = useParams<{ slug: string }>();
 
@@ -338,16 +352,7 @@ export default function ReviewPage() {
           <p className="mt-2 text-center text-[14px] text-muted-foreground">
             Would you share that on Google? It takes about a minute.
           </p>
-          {destinationUrl && (
-            <a
-              href={destinationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 flex h-11 w-full items-center justify-center rounded-lg bg-primary text-[15px] font-medium text-primary-foreground"
-            >
-              Leave a Google review
-            </a>
-          )}
+          {destinationUrl && <GoogleReviewLink href={destinationUrl} />}
           <button
             type="button"
             onClick={() => goToStage('feedback', 'Tell us more. This goes straight to the owner.')}
@@ -357,7 +362,7 @@ export default function ReviewPage() {
           </button>
           <button
             type="button"
-            onClick={() => setStage('thanks')}
+            onClick={() => goToStage('thanks', 'Thanks. You can also share this on Google.')}
             className="counter-micro mt-2 w-full text-center text-[12px] text-muted-foreground underline"
           >
             No thanks
@@ -497,16 +502,7 @@ export default function ReviewPage() {
             {destinationUrl ? 'You can also share this on Google.' : 'have a good one'}
           </p>
           {/* A comment must not cost the restaurant a Google review. */}
-          {destinationUrl && (
-            <a
-              href={destinationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 flex h-11 w-full items-center justify-center rounded-lg bg-primary text-[15px] font-medium text-primary-foreground"
-            >
-              Leave a Google review
-            </a>
-          )}
+          {destinationUrl && <GoogleReviewLink href={destinationUrl} />}
         </>
       )}
 

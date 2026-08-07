@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
-import { canSubmitFollowUp, isPlausibleEmail } from '@/lib/reviews/reviewSubmission';
+import {
+  canSubmitFollowUp,
+  isPlausibleEmail,
+  MAX_EMAIL_LENGTH,
+} from '@/lib/reviews/reviewSubmission';
 
 describe('isPlausibleEmail', () => {
   it('accepts an ordinary address', () => {
@@ -35,6 +39,20 @@ describe('isPlausibleEmail', () => {
     // The server slices at 320. A longer value would arrive truncated, so a
     // client that calls it valid enables a button the server then rejects.
     expect(isPlausibleEmail(`${'a'.repeat(320)}@example.com`)).toBe(false);
+  });
+
+  it('accepts an email exactly MAX_EMAIL_LENGTH characters long', () => {
+    const domain = '@example.com';
+    const email = `${'a'.repeat(MAX_EMAIL_LENGTH - domain.length)}${domain}`;
+    expect(email.length).toBe(MAX_EMAIL_LENGTH);
+    expect(isPlausibleEmail(email)).toBe(true);
+  });
+
+  it('rejects an email one character past MAX_EMAIL_LENGTH', () => {
+    const domain = '@example.com';
+    const email = `${'a'.repeat(MAX_EMAIL_LENGTH + 1 - domain.length)}${domain}`;
+    expect(email.length).toBe(MAX_EMAIL_LENGTH + 1);
+    expect(isPlausibleEmail(email)).toBe(false);
   });
 });
 

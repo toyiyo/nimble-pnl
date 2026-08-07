@@ -26,6 +26,20 @@ describe('isPlausibleEmail (server)', () => {
   it('rejects a value past MAX_EMAIL_LENGTH', () => {
     expect(isPlausibleEmail(`${'a'.repeat(MAX_EMAIL_LENGTH)}@example.com`)).toBe(false);
   });
+
+  it('accepts an email exactly MAX_EMAIL_LENGTH characters long', () => {
+    const domain = '@example.com';
+    const email = `${'a'.repeat(MAX_EMAIL_LENGTH - domain.length)}${domain}`;
+    expect(email.length).toBe(MAX_EMAIL_LENGTH);
+    expect(isPlausibleEmail(email)).toBe(true);
+  });
+
+  it('rejects an email one character past MAX_EMAIL_LENGTH', () => {
+    const domain = '@example.com';
+    const email = `${'a'.repeat(MAX_EMAIL_LENGTH + 1 - domain.length)}${domain}`;
+    expect(email.length).toBe(MAX_EMAIL_LENGTH + 1);
+    expect(isPlausibleEmail(email)).toBe(false);
+  });
 });
 
 describe('hasFollowUpPayload', () => {

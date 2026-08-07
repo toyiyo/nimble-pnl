@@ -24,13 +24,15 @@ import {
 } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useAvailableShifts, AvailableShiftItem } from '@/hooks/useAvailableShifts';
 import { useOpenShiftClaims, useClaimOpenShift } from '@/hooks/useOpenShiftClaims';
-import { useShifts } from '@/hooks/useShifts';
+import { useMyShifts } from '@/hooks/useShifts';
 import { useAcceptShiftTrade } from '@/hooks/useShiftTrades';
 import { useToast } from '@/hooks/use-toast';
 import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
+import { hasScheduleConflict } from '@/lib/openShiftHelpers';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -222,6 +224,7 @@ function claimStatusBadge(status: OpenShiftClaim['status']) {
 export default function AvailableShiftsPage() {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id ?? null;
+  const { tz } = useRestaurantClock();
   const { currentEmployee, loading: empLoading } = useCurrentEmployee(restaurantId);
   const { toast } = useToast();
 
@@ -244,11 +247,15 @@ export default function AvailableShiftsPage() {
   const { mutate: acceptTrade, isPending: isAcceptingTrade } = useAcceptShiftTrade();
 
   // Employee's existing shifts for conflict detection
-  const { shifts: myShifts } = useShifts(restaurantId, weekStart, weekEnd);
+  const { shifts: myShifts, loading: myShiftsLoading } = useMyShifts(
+    restaurantId,
+    currentEmployee?.id ?? null,
+    weekStart,
+    weekEnd,
+  );
   const employeeShifts = useMemo(() => {
-    if (!currentEmployee) return [];
-    return myShifts.filter((s) => s.employee_id === currentEmployee.id && s.status !== 'cancelled');
-  }, [myShifts, currentEmployee]);
+    return myShifts.filter((s) => s.status !== 'cancelled');
+  }, [myShifts]);
 
   // Conflict map: template_id-date -> boolean
   const conflictMap = useMemo(() => {
@@ -257,26 +264,14 @@ export default function AvailableShiftsPage() {
       if (item.type !== 'open_shift' || !item.openShift) continue;
       const os = item.openShift;
       const shiftDate = os.shift_date; // YYYY-MM-DD
-      const [startH, startM] = os.start_time.split(':').map(Number);
-      const [endH, endM] = os.end_time.split(':').map(Number);
 
-      const osStart = startH * 60 + startM;
-      const osEnd = endH * 60 + endM;
-
-      const hasConflict = employeeShifts.some((s) => {
-        const sDate = s.start_time.split('T')[0];
-        if (sDate !== shiftDate) return false;
-        const sStart = new Date(s.start_time);
-        const sEnd = new Date(s.end_time);
-        const sStartMin = sStart.getHours() * 60 + sStart.getMinutes();
-        const sEndMin = sEnd.getHours() * 60 + sEnd.getMinutes();
-        return sStartMin < osEnd && sEndMin > osStart;
-      });
-
-      map.set(item.key, hasConflict);
+      map.set(
+        item.key,
+        hasScheduleConflict(shiftDate, os.start_time, os.end_time, employeeShifts, tz),
+      );
     }
     return map;
-  }, [items, employeeShifts]);
+  }, [items, employeeShifts, tz]);
 
   // Claim dialog state (single dialog pattern)
   const [claimTarget, setClaimTarget] = useState<OpenShift | null>(null);
@@ -333,7 +328,7 @@ export default function AvailableShiftsPage() {
   if (empLoading) return <EmployeePageSkeleton />;
   if (!currentEmployee) return <EmployeeNotLinkedState />;
 
-  const loading = feedLoading;
+  const loading = feedLoading || myShiftsLoading;
 
   return (
     <div className="space-y-6">

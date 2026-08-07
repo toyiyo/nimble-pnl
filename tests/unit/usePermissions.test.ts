@@ -145,7 +145,9 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
     beforeEach(() => {
       // 'collaborator_custom' has no ROLE_CAPABILITIES entry at all — the
       // legacy lookup table cannot answer for it. Only the embedded
-      // role_areas grant can.
+      // role_areas grant can. Post menu-mirror re-cut, inventory_audit is
+      // its own AreaKey — no longer implied by granting inventory — so it
+      // needs its own grant here too.
       setupMockContext({
         role: 'collaborator_custom',
         loading: false,
@@ -154,7 +156,10 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
           name: 'Weekend Supervisor',
           flavor: 'collaborator',
           builtin: false,
-          role_areas: [{ area_key: 'inventory', level: 'manage' }],
+          role_areas: [
+            { area_key: 'inventory', level: 'manage' },
+            { area_key: 'inventory_audit', level: 'manage' },
+          ],
           role_flags: [],
         },
       });
@@ -199,9 +204,17 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
     beforeEach(() => {
       // Transcribed independently from ROLE_CAPABILITIES.chef (definitions.ts)
       // via the area model, the same way tests/unit/areas.test.ts's builtin
-      // reconstruction works — chef holds inventory + recipes at 'manage'
-      // and reports/sales/purchasing/scheduling/settings at 'view', with no
-      // sensitive flags.
+      // reconstruction works — chef holds inventory, inventory_audit,
+      // recipes, and prep_recipes at 'manage' and
+      // dashboard/reports/sales/purchasing/scheduling/settings/reviews at
+      // 'view', with no sensitive flags. Post menu-mirror re-cut,
+      // inventory_audit and prep_recipes are their own AreaKeys — no longer
+      // implied by inventory/recipes — matching the capability grants in
+      // 20260805120000_page_areas.sql's user_has_capability CASE. `reviews`
+      // was added by the review-funnel migration
+      // (20260804100000_reviews_area.sql), which grants chef 'view' on the
+      // new area — keep this fixture in lockstep with those seeds and with
+      // ROLE_CAPABILITIES.chef.
       setupMockContext({
         role: 'chef',
         loading: false,
@@ -211,13 +224,17 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
           flavor: 'platform',
           builtin: true,
           role_areas: [
+            { area_key: 'dashboard', level: 'view' },
             { area_key: 'reports', level: 'view' },
             { area_key: 'sales', level: 'view' },
             { area_key: 'inventory', level: 'manage' },
+            { area_key: 'inventory_audit', level: 'manage' },
             { area_key: 'purchasing', level: 'view' },
             { area_key: 'recipes', level: 'manage' },
+            { area_key: 'prep_recipes', level: 'manage' },
             { area_key: 'scheduling', level: 'view' },
             { area_key: 'settings', level: 'view' },
+            { area_key: 'reviews', level: 'view' },
           ],
           role_flags: [],
         },

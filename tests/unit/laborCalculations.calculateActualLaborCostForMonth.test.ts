@@ -31,12 +31,12 @@ function punch(employeeId: string, time: string, type: 'clock_in' | 'clock_out')
 
 describe('calculateActualLaborCostForMonth', () => {
   it('adds tipsOwed to actualLaborCents per employee', () => {
-    const monthStart = new Date('2026-04-01T00:00:00');
-    const monthEnd = new Date('2026-04-30T23:59:59');
+    const monthStart = new Date('2026-04-01T00:00:00Z');
+    const monthEnd = new Date('2026-04-30T23:59:59Z');
 
     const punches: TimePunch[] = [
-      punch('e1', '2026-04-15T09:00:00', 'clock_in'),
-      punch('e1', '2026-04-15T17:00:00', 'clock_out'),
+      punch('e1', '2026-04-15T09:00:00Z', 'clock_in'),
+      punch('e1', '2026-04-15T17:00:00Z', 'clock_out'),
     ]; // 8 hours @ $20 = $160 = 16,000 cents
 
     const tipsOwedByEmployee = new Map<string, number>([
@@ -49,6 +49,7 @@ describe('calculateActualLaborCostForMonth', () => {
       tipsOwedByEmployee,
       monthStart,
       monthEnd,
+      timezone: 'UTC',
     });
 
     expect(result.tipsOwedCents).toBe(5000);
@@ -73,20 +74,21 @@ describe('calculateActualLaborCostForMonth', () => {
     // May total: 12,286 + 24,570 = 36,856
     // Grand total: 86,000 ✓
     const punches: TimePunch[] = [
-      punch('e1', '2026-04-27T09:00:00', 'clock_in'), punch('e1', '2026-04-27T15:00:00', 'clock_out'),
-      punch('e1', '2026-04-28T09:00:00', 'clock_in'), punch('e1', '2026-04-28T15:00:00', 'clock_out'),
-      punch('e1', '2026-04-29T09:00:00', 'clock_in'), punch('e1', '2026-04-29T15:00:00', 'clock_out'),
-      punch('e1', '2026-04-30T09:00:00', 'clock_in'), punch('e1', '2026-04-30T15:00:00', 'clock_out'),
-      punch('e1', '2026-05-01T09:00:00', 'clock_in'), punch('e1', '2026-05-01T15:00:00', 'clock_out'),
-      punch('e1', '2026-05-02T09:00:00', 'clock_in'), punch('e1', '2026-05-02T21:00:00', 'clock_out'), // 12h
+      punch('e1', '2026-04-27T09:00:00Z', 'clock_in'), punch('e1', '2026-04-27T15:00:00Z', 'clock_out'),
+      punch('e1', '2026-04-28T09:00:00Z', 'clock_in'), punch('e1', '2026-04-28T15:00:00Z', 'clock_out'),
+      punch('e1', '2026-04-29T09:00:00Z', 'clock_in'), punch('e1', '2026-04-29T15:00:00Z', 'clock_out'),
+      punch('e1', '2026-04-30T09:00:00Z', 'clock_in'), punch('e1', '2026-04-30T15:00:00Z', 'clock_out'),
+      punch('e1', '2026-05-01T09:00:00Z', 'clock_in'), punch('e1', '2026-05-01T15:00:00Z', 'clock_out'),
+      punch('e1', '2026-05-02T09:00:00Z', 'clock_in'), punch('e1', '2026-05-02T21:00:00Z', 'clock_out'), // 12h
     ];
 
     const aprilResult = calculateActualLaborCostForMonth({
       employees: [baseEmployee],
       timePunches: punches,
       tipsOwedByEmployee: new Map(),
-      monthStart: new Date('2026-04-01T00:00:00'),
-      monthEnd: new Date('2026-04-30T23:59:59'),
+      monthStart: new Date('2026-04-01T00:00:00Z'),
+      monthEnd: new Date('2026-04-30T23:59:59Z'),
+      timezone: 'UTC',
     });
 
     expect(aprilResult.wagesCents).toBe(49_144);
@@ -95,8 +97,9 @@ describe('calculateActualLaborCostForMonth', () => {
       employees: [baseEmployee],
       timePunches: punches,
       tipsOwedByEmployee: new Map(),
-      monthStart: new Date('2026-05-01T00:00:00'),
-      monthEnd: new Date('2026-05-31T23:59:59'),
+      monthStart: new Date('2026-05-01T00:00:00Z'),
+      monthEnd: new Date('2026-05-31T23:59:59Z'),
+      timezone: 'UTC',
     });
 
     expect(mayResult.wagesCents).toBe(36_856);
@@ -122,8 +125,9 @@ describe('calculateActualLaborCostForMonth', () => {
       employees: [salaried],
       timePunches: [],
       tipsOwedByEmployee: new Map(),
-      monthStart: new Date('2026-04-01T00:00:00'),
-      monthEnd: new Date('2026-04-30T23:59:59'),
+      monthStart: new Date('2026-04-01T00:00:00Z'),
+      monthEnd: new Date('2026-04-30T23:59:59Z'),
+      timezone: 'UTC',
     });
 
     // 30 days × (100_000 / 7) = 428,571.4 → 428,571
@@ -137,8 +141,9 @@ describe('calculateActualLaborCostForMonth', () => {
       employees: [baseEmployee],
       timePunches: [],
       tipsOwedByEmployee: new Map(),
-      monthStart: new Date('2026-04-01T00:00:00'),
-      monthEnd: new Date('2026-04-30T23:59:59'),
+      monthStart: new Date('2026-04-01T00:00:00Z'),
+      monthEnd: new Date('2026-04-30T23:59:59Z'),
+      timezone: 'UTC',
     });
     expect(result.wagesCents).toBe(0);
     expect(result.tipsOwedCents).toBe(0);
@@ -150,36 +155,39 @@ describe('calculateActualLaborCostForMonth', () => {
     // Shift Sun 20:00 -> Mon 02:00 = 6h, entirely in July → 6h * $20 = 12,000c.
     // Before the fix the two punches bucketed into different weeks → shift dropped (0c).
     const punches = [
-      punch('e1', '2026-07-05T20:00:00', 'clock_in'),
-      punch('e1', '2026-07-06T02:00:00', 'clock_out'),
+      punch('e1', '2026-07-05T20:00:00Z', 'clock_in'),
+      punch('e1', '2026-07-06T02:00:00Z', 'clock_out'),
     ];
     const result = calculateActualLaborCostForMonth({
       employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
-      monthStart: new Date('2026-07-01T00:00:00'), monthEnd: new Date('2026-07-31T23:59:59'),
+      monthStart: new Date('2026-07-01T00:00:00Z'), monthEnd: new Date('2026-07-31T23:59:59Z'),
+      timezone: 'UTC',
     });
     expect(result.wagesCents).toBe(12_000);
   });
 
   it('CRITICAL: attributes the overnight shift to its clock-in day (June excludes it)', () => {
     const punches = [
-      punch('e1', '2026-07-05T20:00:00', 'clock_in'),
-      punch('e1', '2026-07-06T02:00:00', 'clock_out'),
+      punch('e1', '2026-07-05T20:00:00Z', 'clock_in'),
+      punch('e1', '2026-07-06T02:00:00Z', 'clock_out'),
     ];
     const june = calculateActualLaborCostForMonth({
       employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
-      monthStart: new Date('2026-06-01T00:00:00'), monthEnd: new Date('2026-06-30T23:59:59'),
+      monthStart: new Date('2026-06-01T00:00:00Z'), monthEnd: new Date('2026-06-30T23:59:59Z'),
+      timezone: 'UTC',
     });
     expect(june.wagesCents).toBe(0); // clock-in day (Jul 5) is outside June
   });
 
   it('is order-independent (handles out-of-order punch input)', () => {
     const punches = [
-      punch('e1', '2026-07-06T02:00:00', 'clock_out'), // deliberately out of order
-      punch('e1', '2026-07-05T20:00:00', 'clock_in'),
+      punch('e1', '2026-07-06T02:00:00Z', 'clock_out'), // deliberately out of order
+      punch('e1', '2026-07-05T20:00:00Z', 'clock_in'),
     ];
     const result = calculateActualLaborCostForMonth({
       employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
-      monthStart: new Date('2026-07-01T00:00:00'), monthEnd: new Date('2026-07-31T23:59:59'),
+      monthStart: new Date('2026-07-01T00:00:00Z'), monthEnd: new Date('2026-07-31T23:59:59Z'),
+      timezone: 'UTC',
     });
     expect(result.wagesCents).toBe(12_000);
   });

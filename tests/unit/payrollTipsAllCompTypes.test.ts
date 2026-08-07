@@ -84,6 +84,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         punches,
         tipsCents,
+        'UTC',
         periodStart,
         periodEnd,
         [],
@@ -108,6 +109,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         punches,
         tipsCents,
+        'UTC',
         periodStart,
         periodEnd,
         [],
@@ -135,6 +137,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         [], // Salary employees may have no punches
         tipsCents,
+        'UTC',
         periodStart,
         periodEnd,
         [],
@@ -160,6 +163,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         [],
         tipsCents,
+        'UTC',
         periodStart,
         periodEnd,
         [],
@@ -187,6 +191,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         punches,
         6000, // $60 total tips
+        'UTC',
         periodStart,
         periodEnd,
         [],
@@ -206,6 +211,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         punches,
         4000, // $40 total tips
+        'UTC',
         periodStart,
         periodEnd,
         [],
@@ -224,6 +230,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         [], // No punches at all
         8000, // $80 tips
+        'UTC',
         periodStart,
         periodEnd,
         [],
@@ -250,6 +257,7 @@ describe('calculateEmployeePay - Tips for All Compensation Types', () => {
         employee,
         punches,
         0, // No tips
+        'UTC',
         periodStart,
         periodEnd,
         [],

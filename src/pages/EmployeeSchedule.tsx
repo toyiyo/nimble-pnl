@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useShifts } from '@/hooks/useShifts';
+import { useMyShifts } from '@/hooks/useShifts';
 import { useWeekScheduleStatus, useWeekRetractionReason } from '@/hooks/useSchedulePublish';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
@@ -66,17 +66,11 @@ const EmployeeSchedule = () => {
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const {
-    shifts,
+    shifts: myShifts,
     loading: shiftsLoading,
     error: shiftsError,
     refetch: refetchShifts,
-  } = useShifts(restaurantId, currentWeekStart, weekEnd);
-
-  // Filter shifts to only show current employee's shifts
-  const myShifts = useMemo(() => {
-    if (!currentEmployee) return [];
-    return shifts.filter((shift) => shift.employee_id === currentEmployee.id);
-  }, [shifts, currentEmployee]);
+  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
 
   const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
 
@@ -89,9 +83,10 @@ const EmployeeSchedule = () => {
     publishedCount,
     draftCount,
     loading: statusLoading,
-    // `employeeLoading` too, not just `shiftsLoading`: myShifts is filtered by
-    // `currentEmployee`, so it is empty until that resolves regardless of
-    // whether the shifts themselves have landed.
+    // `employeeLoading` too, not just `shiftsLoading`: `useMyShifts` stays
+    // disabled until `employeeId` resolves, and a disabled query reports
+    // `isLoading: false` — so `shiftsLoading` alone would race ahead of
+    // `currentEmployee` instead of waiting for it.
   } = useWeekScheduleStatus(
     restaurantId,
     currentWeekStart,

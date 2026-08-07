@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useEmployees } from '@/hooks/useEmployees';
 import { FeatureGate } from '@/components/subscription';
 import { useShifts, useDeleteShift, useDeleteShiftSeries, useUpdateShiftSeries, useSeriesInfo } from '@/hooks/useShifts';
@@ -30,6 +31,7 @@ import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 import {
   buildActiveShiftEmployeeIds,
   filterEmployeesForScheduleView,
@@ -64,7 +66,6 @@ import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from 
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
-import { safeTz } from '@/lib/restaurantClock';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import { capacityFloor } from '@/lib/shiftCoverage';
 import { distinctAssignedCount } from '@/lib/shiftFill';
@@ -113,7 +114,8 @@ import {
   Volume2,
   CalendarOff,
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
+import { format, endOfWeek, addWeeks, subWeeks, eachDayOfInterval } from 'date-fns';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -228,6 +230,12 @@ const Scheduling = () => {
   // the exact drift this PR exists to remove. `safeTz` maps null, empty and
   // invalid zones to that same 'America/Chicago' default.
   const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+  // Restaurant's current business day, for "is this day today" decisions on the
+  // grid header/cells — never the viewer's `new Date()` (date-fns `isToday`),
+  // which highlights the wrong column for any operator outside the restaurant's
+  // zone. `today` is stable across re-renders and only changes at rollover, so
+  // this is safe to read on every render without extra memoization.
+  const { today: restaurantToday } = useRestaurantClock();
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
@@ -294,7 +302,7 @@ const Scheduling = () => {
 
   // stable 'yyyy-MM-dd' keys for the 7 visualized days
   const weekDayKeys = useMemo(
-    () => weekDays.map((d) => format(d, 'yyyy-MM-dd')),
+    () => weekDays.map((d) => toDateOnlyString(d)),
     [weekDays],
   );
   // per-employee approved-time-off context for the week
@@ -423,7 +431,7 @@ const Scheduling = () => {
     () => filteredEmployeesWithShifts.map((e) => e.id).join(','),
     [filteredEmployeesWithShifts],
   );
-  const weekStartKey = useMemo(() => format(currentWeekStart, 'yyyy-MM-dd'), [currentWeekStart]);
+  const weekStartKey = useMemo(() => toDateOnlyString(currentWeekStart), [currentWeekStart]);
 
   const effectiveAvailabilityByEmployee = useMemo(() => {
     const employeeIds = visibleEmployeeIdsKey ? visibleEmployeeIdsKey.split(',') : [];
@@ -502,9 +510,14 @@ const Scheduling = () => {
   }, [shifts, toggleShiftGroup]);
 
   const selectShiftsForDay = useCallback((dayStr: string) => {
-    const targetDay = parseISO(dayStr);
-    toggleShiftGroup(shifts.filter(s => isSameDay(parseISO(s.start_time), targetDay)).map(s => s.id));
-  }, [shifts, toggleShiftGroup]);
+    // dayStr is already a restaurant-local calendar-day token
+    // (toDateOnlyString(day)); bucket each shift's instant the same way, not
+    // by the viewer's local day, so this agrees with the `dayIsToday`
+    // highlight which now uses the restaurant's day too.
+    toggleShiftGroup(
+      shifts.filter(s => toBusinessDay(s.start_time, restaurantTimezone) === dayStr).map(s => s.id),
+    );
+  }, [shifts, toggleShiftGroup, restaurantTimezone]);
 
   const clearSelection = useCallback(() => {
     setSelectedShiftIds(new Set());
@@ -769,8 +782,10 @@ const Scheduling = () => {
   const scheduledEmployeeCount = scheduledEmployeeIds.size;
 
   const getShiftsForEmployee = (employeeId: string, day: Date) => {
+    const dayKey = toDateOnlyString(day);
     return shifts.filter(
-      shift => shift.employee_id === employeeId && isSameDay(parseISO(shift.start_time), day)
+      shift => shift.employee_id === employeeId &&
+        toBusinessDay(shift.start_time, restaurantTimezone) === dayKey
     );
   };
 
@@ -1194,7 +1209,7 @@ const Scheduling = () => {
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Team Member</span>
                     </th>
                     {weekDays.map((day) => {
-                      const dayIsToday = isToday(day);
+                      const dayIsToday = toDateOnlyString(day) === restaurantToday;
                       return (
                         <th
                           key={day.toISOString()}
@@ -1206,7 +1221,7 @@ const Scheduling = () => {
                           {selectionMode ? (
                             <button
                               type="button"
-                              onClick={() => selectShiftsForDay(format(day, 'yyyy-MM-dd'))}
+                              onClick={() => selectShiftsForDay(toDateOnlyString(day))}
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
                               aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
                             >
@@ -1374,8 +1389,8 @@ const Scheduling = () => {
                             </td>
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
-                              const dayIsToday = isToday(day);
-                              const dayKey = format(day, 'yyyy-MM-dd');
+                              const dayKey = toDateOnlyString(day);
+                              const dayIsToday = dayKey === restaurantToday;
                               const isOff = !!empOff?.offDayKeys.has(dayKey);
                               const hasShift = dayShifts.some(s => s.status !== 'cancelled');
                               return (

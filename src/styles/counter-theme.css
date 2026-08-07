@@ -1,0 +1,67 @@
+/* "Counter" — the check-presenter look, used only by the public review page.
+ *
+ * This is src/index.css's warm light palette, slightly deepened. Every value
+ * is the same HSL custom property the rest of the app uses, so components keep
+ * their semantic classes (bg-background, text-foreground, border-border) and
+ * no direct colour appears anywhere.
+ *
+ * The tokens are pinned absolutely rather than inheriting .dark: the guest is
+ * not logged in and has no theme preference of ours, and the page is paper in
+ * both. Custom properties declared on the element itself beat an ancestor's
+ * inherited value regardless of specificity, so no !important is needed.
+ *
+ * Contrast gate: --muted-foreground (30 12% 34%) on --background (38 34% 96%)
+ * computes to 8.1:1, comfortably past AA for body copy. If either value moves,
+ * recompute before committing — the micro-copy tone is the one most likely to
+ * fail, and a page read in daylight on a phone has no margin for a stylish grey.
+ */
+
+.theme-counter {
+  --background: 38 34% 96%;
+  --foreground: 28 18% 12%;
+
+  --card: 40 40% 99%;
+  --card-foreground: 28 18% 12%;
+
+  --popover: 40 40% 99%;
+  --popover-foreground: 28 18% 12%;
+
+  --primary: 16 62% 40%;
+  --primary-foreground: 40 40% 99%;
+
+  --secondary: 38 26% 91%;
+  --secondary-foreground: 28 18% 12%;
+
+  --muted: 38 22% 89%;
+  --muted-foreground: 30 12% 34%;
+
+  --accent: 85 22% 38%;
+  --accent-foreground: 40 40% 99%;
+
+  --destructive: 0 62% 38%;
+  --destructive-foreground: 40 40% 99%;
+
+  --border: 34 20% 80%;
+  --input: 34 20% 80%;
+  --ring: 16 62% 40%;
+
+  --radius: 0.5rem;
+
+  --font-display: 'Zilla Slab', Georgia, serif;
+  --font-mono-micro: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.theme-counter .counter-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.theme-counter .counter-micro {
+  font-family: var(--font-mono-micro);
+  letter-spacing: 0.02em;
+}
+
+/* Dashed hairline rules, top and bottom of the paper card. */
+.theme-counter .counter-rule {
+  border-top: 1px dashed hsl(var(--border));
+}

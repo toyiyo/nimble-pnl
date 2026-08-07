@@ -2,19 +2,19 @@ import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 import { parseSalesTrends, type SalesTrendsData } from '@/lib/salesTrends';
+import { safeTz } from '@/lib/restaurantClock';
 
 /**
  * React Query hook wrapping the `get_sales_trends` RPC.
  *
  * Design: docs/superpowers/specs/2026-07-20-pos-sales-trends-design.md §4.2
  *
- * `timeZone` follows the same default as `useHourlySalesPattern`
- * ('America/Chicago') when the caller omits it or passes an empty string —
- * callers are expected to pass `selectedRestaurant.timezone`, which can be
- * null/unset for older restaurants.
+ * `timeZone` is routed through `safeTz`, so an omitted, empty, or malformed
+ * zone becomes the restaurant default rather than reaching the RPC. Callers
+ * pass `selectedRestaurant.timezone`, which can be null/unset for older
+ * restaurants -- and the RPC buckets with `AT TIME ZONE`, which errors on a
+ * zone Postgres does not recognize.
  */
-
-const DEFAULT_TIME_ZONE = 'America/Chicago';
 
 export interface UseSalesTrendsOptions {
   startDate?: string;
@@ -30,7 +30,7 @@ export interface UseSalesTrendsOptions {
 
 export function useSalesTrends(restaurantId: string | null, options: UseSalesTrendsOptions = {}) {
   const { startDate, endDate, timeZone, enabled = true } = options;
-  const resolvedTimeZone = timeZone || DEFAULT_TIME_ZONE;
+  const resolvedTimeZone = safeTz(timeZone);
   // Blank strings (e.g. from a "Clear filters" control resetting date state
   // to "") must become undefined so PostgREST omits the RPC arg rather than
   // trying to coerce "" into a DATE, which fails instead of using the RPC's

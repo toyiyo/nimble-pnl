@@ -115,6 +115,10 @@ export type Capability =
   | 'view:collaborators'
   | 'manage:collaborators'
 
+  // Reviews (public review funnel: pages, QR codes, guest feedback)
+  | 'view:reviews'
+  | 'manage:reviews'
+
   // Sensitive-data flags (roles-and-areas design). Cross-cutting switches
   // that apply *inside* whatever areas a role already holds, resolved from
   // `role_flags` rather than from an area+level grant — see

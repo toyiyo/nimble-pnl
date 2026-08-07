@@ -38,6 +38,11 @@ vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: () => ({ selectedRestaurant: { restaurant: { id: 'r1', timezone: 'UTC' } } }),
 }));
 
+// EmployeeAppAccessRow (mounted by every EmployeeDialog render) calls useAuth,
+// which throws without an AuthProvider by design. Nothing here asserts on app
+// access — this just keeps the dialog mountable.
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'caller-1' } }) }));
+
 vi.mock('@/integrations/supabase/client', () => {
   // Recursive fluent-builder mock — must be `any` because the chain can call
   // any subset of methods in any order; a typed interface would require an

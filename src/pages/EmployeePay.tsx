@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { usePayroll } from '@/hooks/usePayroll';
+import { useMyPayroll } from '@/hooks/usePayroll';
 import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
 import { formatCurrency, formatHours } from '@/utils/payrollCalculations';
 import {
@@ -55,7 +55,12 @@ const EmployeePay = () => {
   } = usePeriodNavigation({ includeLast2Weeks: true });
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
-  const { payrollPeriod, loading: payrollLoading, error } = usePayroll(restaurantId, startDate, endDate);
+  const { payrollPeriod, loading: payrollLoading, error } = useMyPayroll(
+    restaurantId,
+    currentEmployee?.id ?? null,
+    startDate,
+    endDate,
+  );
 
   // Find current employee's payroll data
   const myPayroll = useMemo(() => {

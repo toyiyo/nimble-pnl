@@ -228,8 +228,8 @@ describe('LaborCalculationService', () => {
           id: 'shift-1',
           restaurant_id: 'rest-1',
           employee_id: 'hourly-1',
-          start_time: '2025-12-09T09:00:00',
-          end_time: '2025-12-09T17:00:00',
+          start_time: '2025-12-09T09:00:00Z',
+          end_time: '2025-12-09T17:00:00Z',
           break_duration: 0,
           notes: undefined,
           status: 'scheduled',
@@ -240,8 +240,8 @@ describe('LaborCalculationService', () => {
           id: 'shift-2',
           restaurant_id: 'rest-1',
           employee_id: 'hourly-1',
-          start_time: '2025-12-10T09:00:00',
-          end_time: '2025-12-10T17:00:00',
+          start_time: '2025-12-10T09:00:00Z',
+          end_time: '2025-12-10T17:00:00Z',
           break_duration: 0,
           notes: undefined,
           status: 'scheduled',
@@ -253,7 +253,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee],
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // 2 shifts × 8 hours × $15/hr = $240
@@ -269,8 +270,8 @@ describe('LaborCalculationService', () => {
           id: 'shift-1',
           restaurant_id: 'rest-1',
           employee_id: 'salary-monthly-1',
-          start_time: '2025-12-09T09:00:00',
-          end_time: '2025-12-09T17:00:00',
+          start_time: '2025-12-09T09:00:00Z',
+          end_time: '2025-12-09T17:00:00Z',
           break_duration: 0,
           notes: undefined,
           status: 'scheduled',
@@ -282,7 +283,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [salaryEmployeeMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // Salary employees get paid regardless of scheduled hours
@@ -297,7 +299,8 @@ describe('LaborCalculationService', () => {
         [], // No shifts
         [salaryEmployeeMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // 7 days × $164.26/day = $1,149.82 (allow 2 cent tolerance for rounding)
@@ -311,8 +314,8 @@ describe('LaborCalculationService', () => {
           id: 'shift-1',
           restaurant_id: 'rest-1',
           employee_id: 'hourly-1',
-          start_time: '2025-12-09T09:00:00',
-          end_time: '2025-12-09T17:00:00',
+          start_time: '2025-12-09T09:00:00Z',
+          end_time: '2025-12-09T17:00:00Z',
           break_duration: 0,
           notes: undefined,
           status: 'scheduled',
@@ -323,8 +326,8 @@ describe('LaborCalculationService', () => {
           id: 'shift-2',
           restaurant_id: 'rest-1',
           employee_id: 'salary-monthly-1',
-          start_time: '2025-12-09T09:00:00',
-          end_time: '2025-12-09T17:00:00',
+          start_time: '2025-12-09T09:00:00Z',
+          end_time: '2025-12-09T17:00:00Z',
           break_duration: 0,
           notes: undefined,
           status: 'scheduled',
@@ -335,8 +338,8 @@ describe('LaborCalculationService', () => {
           id: 'shift-3',
           restaurant_id: 'rest-1',
           employee_id: 'contractor-monthly-1',
-          start_time: '2025-12-09T09:00:00',
-          end_time: '2025-12-09T17:00:00',
+          start_time: '2025-12-09T09:00:00Z',
+          end_time: '2025-12-09T17:00:00Z',
           break_duration: 0,
           notes: undefined,
           status: 'scheduled',
@@ -348,7 +351,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee, salaryEmployeeMonthly, contractorMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // Hourly: 8hrs × $15 = $120
@@ -416,7 +420,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee],
         punches,
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // 16 hours × $15/hr = $240
@@ -438,7 +443,8 @@ describe('LaborCalculationService', () => {
         [salaryEmployeeMonthly],
         [], // No punches
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // 7 days × $164.24/day = $1149.68 (approx)
@@ -469,7 +475,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        'UTC'
       );
 
       // 8 hours × $15/hr = $120
@@ -509,7 +516,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee, salaryEmployeeMonthly, contractorMonthly],
         punches,
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // Hourly: 8hrs × $15 = $120
@@ -559,7 +567,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee],
         punches,
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // 8.5 hours elapsed - 0.5 hour break = 8.0 hours worked
@@ -612,7 +621,8 @@ describe('LaborCalculationService', () => {
         [], // No shifts
         [salaryEmployeeMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        'UTC'
       );
 
       // Period cost is in cents, scheduled is in dollars
@@ -655,7 +665,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee],
         testStart,
-        testEnd
+        testEnd,
+        'UTC'
       );
 
       // 7.5 hours × $15/hr = $112.50
@@ -670,8 +681,8 @@ describe('LaborCalculationService', () => {
           id: 'shift-1',
           restaurant_id: 'rest-1',
           employee_id: 'hourly-1',
-          start_time: '2025-12-09T22:00:00', // 10 PM
-          end_time: '2025-12-10T06:00:00', // 6 AM next day
+          start_time: '2025-12-09T22:00:00Z', // 10 PM
+          end_time: '2025-12-10T06:00:00Z', // 6 AM next day
           break_duration: 0,
           notes: undefined,
           status: 'scheduled',
@@ -683,7 +694,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee],
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        'UTC'
       );
 
       // 8 hours × $15/hr = $120

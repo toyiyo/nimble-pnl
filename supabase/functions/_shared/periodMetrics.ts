@@ -328,3 +328,55 @@ export function calculatePeriodMetrics(
     benchmarks,
   };
 }
+
+// ===== LABOR-COMPONENT REDACTION =====
+
+/**
+ * Result of redactLaborFields — costs/benchmarks narrowed to food-only, and
+ * profitability dropped entirely, when the caller lacks labor access.
+ */
+export interface RedactedLaborFields {
+  costs: CostBreakdown | Pick<CostBreakdown, 'food_cost' | 'food_cost_percentage'>;
+  profitability?: ProfitabilityMetrics;
+  benchmarks: BenchmarkStatus | Pick<BenchmarkStatus, 'food_cost_status' | 'target_food_cost'>;
+  laborOmittedReason?: string;
+}
+
+/**
+ * Strips labor-derived fields out of a PeriodMetricsResult for a caller who
+ * lacks view:scheduling/view:payroll access. Used by get_kpis
+ * (ai-execute-tool), which runs under the caller's forwarded JWT — without
+ * that capability, RLS truncates time_punches to own-row, so labor_cost
+ * (and everything downstream of it: prime_cost, profit_margin, the
+ * labor/prime benchmark statuses) would otherwise silently read as if it
+ * were a complete restaurant-wide figure instead of one person's punches.
+ *
+ * food_cost is unaffected by that truncation (it doesn't come from
+ * time_punches), so it — and only it — passes through when access is
+ * missing.
+ */
+export function redactLaborFields(
+  metrics: Pick<PeriodMetricsResult, 'costs' | 'profitability' | 'benchmarks'>,
+  hasLaborAccess: boolean
+): RedactedLaborFields {
+  if (hasLaborAccess) {
+    return {
+      costs: metrics.costs,
+      profitability: metrics.profitability,
+      benchmarks: metrics.benchmarks,
+    };
+  }
+
+  return {
+    costs: {
+      food_cost: metrics.costs.food_cost,
+      food_cost_percentage: metrics.costs.food_cost_percentage,
+    },
+    benchmarks: {
+      food_cost_status: metrics.benchmarks.food_cost_status,
+      target_food_cost: metrics.benchmarks.target_food_cost,
+    },
+    laborOmittedReason:
+      'Labor cost, prime cost, and profitability figures require view:scheduling or view:payroll access.',
+  };
+}

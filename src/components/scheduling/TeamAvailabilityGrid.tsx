@@ -2,12 +2,14 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Zap, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { RestaurantTzNotice } from '@/components/RestaurantTzNotice';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeEffectiveAvailability, EffectiveAvailability, availabilityColorClasses } from '@/lib/effectiveAvailability';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { safeTz } from '@/lib/restaurantClock';
 import { WEEKDAY_LABELS, type AvailabilityDeletionTarget } from './DeleteAvailabilityDialog';
 
 // ─── Day column definitions (Mon–Sun order) ───────────────────────────────────
@@ -37,7 +39,12 @@ function formatWeekRange(weekStart: Date): string {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
 
+  // weekStart/weekEnd are calendar-day Dates (from getMondayOfWeek, a local
+  // calendar computation); the month name of a calendar day is correctly read
+  // from local fields.
+  // eslint-disable-next-line no-restricted-syntax
   const startMonth = weekStart.toLocaleString('default', { month: 'short' });
+  // eslint-disable-next-line no-restricted-syntax
   const endMonth = weekEnd.toLocaleString('default', { month: 'short' });
   const endYear = weekEnd.getFullYear();
 
@@ -195,7 +202,10 @@ const AvailabilityCell = memo(function AvailabilityCell({
   const deleteAriaLabel = resolvedTarget
     ? `Delete ${employeeName}'s ${
         effective.type === 'exception'
-          ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          ? // date is a calendar day (this cell's day column), so local fields
+            // are the correct source for its display date.
+            // eslint-disable-next-line no-restricted-syntax
+            date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
           : WEEKDAY_LABELS[dow]
       } availability`
     : '';
@@ -369,7 +379,7 @@ export function TeamAvailabilityGrid({
   onRequestDelete,
 }: TeamAvailabilityGridProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const timezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const timezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const today = new Date();
   const [weekStart, setWeekStart] = useState<Date>(() => getMondayOfWeek(today));
 
@@ -468,6 +478,11 @@ export function TeamAvailabilityGrid({
           </Button>
         )}
       </div>
+
+      {/* Scoped to this grid rather than the Scheduling page header: the page
+          still renders shift times through un-migrated helpers, so a page-wide
+          notice would vouch for values that are still the viewer's. */}
+      <RestaurantTzNotice />
 
       {/* Content */}
       {isLoading ? (

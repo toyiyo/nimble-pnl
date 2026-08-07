@@ -14,6 +14,8 @@ const mockSupabase = vi.hoisted(() => ({
   rpc: vi.fn(),
 }));
 
+const mockUseRestaurantContext = vi.hoisted(() => vi.fn());
+
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
 }));
@@ -25,6 +27,16 @@ vi.mock('@/hooks/useOperatingCosts', () => ({
     error: null,
     refetch: vi.fn(),
   }),
+}));
+
+// useBreakEvenAnalysis derives "today" from the RESTAURANT's business day via
+// useRestaurantClock() -> useRestaurantContext(), not the viewer's local
+// clock. No timezone override needed here: an unset restaurant timezone
+// falls back to safeTz()'s DEFAULT_TIMEZONE (America/Chicago), which keeps
+// FAKE_NOW's noon-UTC instant on Jan 20 regardless of the host's own TZ --
+// exactly what these fixtures assume.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: mockUseRestaurantContext,
 }));
 
 vi.mock('@/hooks/use-toast', () => ({
@@ -88,6 +100,8 @@ function createWrapper() {
 describe('useBreakEvenAnalysis', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: null });
 
     // Default: bank_transactions query for auto utility costs returns empty
     const mockFromChain: Record<string, any> = {

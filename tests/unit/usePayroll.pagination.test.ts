@@ -52,6 +52,16 @@ vi.mock('@/hooks/useEmployees', () => ({
   useEmployees: () => ({ employees: [{ id: 'emp-1', status: 'active' }], loading: false }),
 }));
 
+// usePayroll now sources the restaurant timezone from useRestaurantClock
+// (via useRestaurantContext) to bucket punches by the restaurant's calendar
+// day. This test only asserts pagination behavior (`.range()` offsets), so
+// the specific timezone value is not load-bearing — just needs to be present.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { timezone: 'America/Chicago' } },
+  }),
+}));
+
 const createWrapper = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
@@ -171,7 +181,11 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
       { wrapper: createWrapper() },
     );
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    // This fixture's 20,000 punches (the page-cap stress case) now each go
+    // through timezone-aware bucketing (`toBusinessDay`/`Intl.DateTimeFormat`
+    // per punch instead of a plain local-field read), which is slower than
+    // `waitFor`'s 1000ms default — bump it rather than the global testTimeout.
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 });
 
     // Hitting the page cap is a safety signal, not a query error — the hook
     // must not surface it as `error`.

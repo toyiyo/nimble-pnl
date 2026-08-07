@@ -6,6 +6,8 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTimePunches } from '@/hooks/useTimePunches';
 import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { RestaurantTzNotice } from '@/components/RestaurantTzNotice';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -23,12 +25,9 @@ import {
   PlayCircle,
   FileText,
 } from 'lucide-react';
-import {
-  format,
-  eachDayOfInterval,
-  isSameDay,
-  parseISO,
-} from 'date-fns';
+import { format, eachDayOfInterval, isSameDay } from 'date-fns';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { businessDayRangeToInstants } from '@/lib/restaurantClock';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { hoursByClockInDay } from '@/utils/timecardHours';
 import { TimePunch } from '@/types/timeTracking';
@@ -69,13 +68,42 @@ const EmployeeTimecard = () => {
   } = usePeriodNavigation();
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
+  const clock = useRestaurantClock();
 
-  const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
+  // weekDays are calendar-day tokens (host-local Date objects), so local
+  // fields are the correct serialization for their keys -- do NOT route
+  // these through the clock. Memoized: eachDayOfInterval returns a fresh
+  // array each render, and this array is a dep of punchesByDay/dayHours
+  // below, so an unmemoized weekDays defeats those memos every render.
+  const weekDays = useMemo(
+    () => eachDayOfInterval({ start: startDate, end: endDate }),
+    [startDate, endDate]
+  );
+
+  // The set of restaurant business days this period covers, used below to
+  // filter punches by day membership instead of by comparing instants to
+  // startDate/endDate (which are viewer/host-local day boundaries, not the
+  // restaurant's).
+  const weekDayKeys = useMemo(
+    () => new Set(weekDays.map((day) => toDateOnlyString(day))),
+    [weekDays]
+  );
 
   // Fetch punches widened by ±18h so overnight shifts that straddle the
   // period boundary are paired whole. hoursByClockInDay then attributes
-  // each shift back to [startDate, endDate] by clock-in day.
-  const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+  // each shift back to [startDate, endDate] by clock-in day. The buffer is
+  // applied to the RESTAURANT's day bounds, not to startDate/endDate
+  // directly -- those are viewer/host-local instants, and buffering them
+  // as-is buffers the viewer's day boundary instead of the restaurant's.
+  const { fetchStart, fetchEnd } = useMemo(() => {
+    const { start: dayStart, end: dayEnd } = businessDayRangeToInstants(
+      toDateOnlyString(startDate),
+      toDateOnlyString(endDate),
+      clock.tz
+    );
+    return bufferPunchFetchRange(dayStart, dayEnd);
+  }, [startDate, endDate, clock.tz]);
+
   const { punches, loading: punchesLoading } = useTimePunches(
     restaurantId,
     currentEmployee?.id,
@@ -86,35 +114,47 @@ const EmployeeTimecard = () => {
   // Filter punches to the current period (display list only — visual
   // per-punch timeline). Hours are computed separately from the buffered
   // `punches` via `dayHours` below so overnight shifts aren't split.
+  //
+  // Membership is by RESTAURANT business-day key, matching how
+  // punchesByDay/dayHours bucket below -- comparing punch_time instants
+  // directly to startDate/endDate (viewer/host-local day boundaries) would
+  // disagree with that bucketing for a viewer outside the restaurant's zone.
+  // A restaurant-evening punch could fall outside the viewer's day window and
+  // drop out of this list (and so out of punchesByDay, which is derived from
+  // it) while `dayHours` -- computed from the unfiltered buffered `punches` --
+  // still counted its hours, so the visible punches and the day's total
+  // disagreed.
   const periodPunches = useMemo(() => {
-    return punches.filter((punch) => {
-      const punchDate = new Date(punch.punch_time);
-      return punchDate >= startDate && punchDate <= endDate;
-    });
-  }, [punches, startDate, endDate]);
+    return punches.filter((punch) => weekDayKeys.has(clock.toBusinessDay(punch.punch_time)));
+  }, [punches, weekDayKeys, clock]);
 
   // Group punches by day
   const punchesByDay = useMemo(() => {
     const grouped = new Map<string, TimePunch[]>();
     weekDays.forEach((day) => {
-      const dayKey = format(day, 'yyyy-MM-dd');
+      // weekDays are calendar-day tokens, so local fields are the correct
+      // serialization here -- do NOT route these through the clock.
+      const dayKey = toDateOnlyString(day);
       grouped.set(dayKey, []);
     });
 
     periodPunches.forEach((punch) => {
-      const punchDate = parseISO(punch.punch_time);
-      const dayKey = format(punchDate, 'yyyy-MM-dd');
+      // punch_time is an instant; bucket it by the restaurant's day.
+      const dayKey = clock.toBusinessDay(punch.punch_time);
       if (grouped.has(dayKey)) {
         grouped.get(dayKey)!.push(punch);
       }
     });
 
     return grouped;
-  }, [periodPunches, weekDays]);
+  }, [periodPunches, weekDays, clock]);
 
   // Hours attributed by clock-in day, computed from the BUFFERED punches so
   // overnight shifts pair whole before being bucketed to their clock-in day.
-  const dayHours = useMemo(() => hoursByClockInDay(punches, weekDays), [punches, weekDays]);
+  const dayHours = useMemo(
+    () => hoursByClockInDay(punches, weekDays, clock.tz),
+    [punches, weekDays, clock.tz]
+  );
 
   // Calculate weekly totals
   const weeklyTotals = useMemo(() => {
@@ -155,6 +195,7 @@ const EmployeeTimecard = () => {
         title="My Timecard"
         subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
       />
+      <RestaurantTzNotice />
 
       {/* Period Selector */}
       <PeriodSelector
@@ -244,7 +285,7 @@ const EmployeeTimecard = () => {
           ) : (
             <div className="space-y-4">
               {weekDays.map((day) => {
-                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayKey = toDateOnlyString(day);
                 const dayPunches = punchesByDay.get(dayKey) || [];
                 const dayStats = dayHours.get(dayKey) ?? { totalHours: 0, breakHours: 0, netHours: 0 };
                 const isToday = isSameDay(day, new Date());
@@ -292,7 +333,7 @@ const EmployeeTimecard = () => {
                             >
                               {getPunchIcon(punch.punch_type)}
                               <span>
-                                {format(parseISO(punch.punch_time), 'h:mm a')}
+                                {clock.formatInstant(punch.punch_time, 'h:mm a')}
                               </span>
                             </div>
                           ))}

@@ -4,6 +4,17 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { resolveLaborBasis } from '@/lib/combineCosts';
 
+// useMonthlyMetrics now sources the restaurant timezone from
+// useRestaurantClock (via useRestaurantContext) to bucket accrued labor by
+// the restaurant's calendar day, not the host's. Pin a fixed timezone so this
+// file's fixtures (mid-day UTC punches, well clear of any day boundary in
+// America/Chicago) stay deterministic.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { timezone: 'America/Chicago' } },
+  }),
+}));
+
 // Contract mirrored by useMonthlyMetrics' final labor_cost emission. Kept as
 // documentation of the intended contract, but note this does NOT exercise the
 // hook itself — it would stay green even if the hook's emission were reverted

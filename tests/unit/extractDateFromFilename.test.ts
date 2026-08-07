@@ -7,6 +7,21 @@ import { describe, it, expect } from 'vitest';
  */
 
 // Mirror the implementation for testing purposes
+//
+// y/m/d here are parsed out of a FILENAME, not a moment in time - they are a
+// calendar day (case a). Serialize with the Date's LOCAL fields, matching
+// toDateOnlyString() from @/lib/dateOnly (this file can't import it directly
+// since the real implementation lives in a Deno edge function and is mirrored
+// inline for testing purposes). Never `.toISOString()`, which reads UTC
+// fields and rolls the day back for any viewer east of UTC (e.g.
+// Pacific/Auckland).
+function toDateOnlyLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function extractDateFromFilename(filename: string | null): string | null {
   if (!filename) return null;
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
@@ -24,7 +39,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const m = parseInt(month, 10) - 1;
     const d = parseInt(day, 10);
     if (isValidParts(y, m, d)) {
-      return new Date(y, m, d).toISOString().split('T')[0];
+      return toDateOnlyLocal(new Date(y, m, d));
     }
   }
 
@@ -36,7 +51,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const m = parseInt(month, 10) - 1;
     const d = parseInt(day, 10);
     if (isValidParts(y, m, d)) {
-      return new Date(y, m, d).toISOString().split('T')[0];
+      return toDateOnlyLocal(new Date(y, m, d));
     }
   }
 

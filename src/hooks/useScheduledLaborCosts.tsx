@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useEmployees } from './useEmployees';
 import { Shift } from '@/types/scheduling';
 import { calculateScheduledLaborCost } from '@/services/laborCalculations';
+import { useRestaurantClock } from './useRestaurantClock';
 
 export interface ScheduledLaborCostData {
   date: string;
@@ -62,6 +63,7 @@ export function useScheduledLaborCosts(
   // Fetch ALL employees (including inactive) for historical labor cost accuracy
   // Shifts from inactive employees should still be counted in past periods
   const { employees } = useEmployees(restaurantId, { status: 'all' });
+  const { tz: timezone } = useRestaurantClock();
 
   const result = useMemo(() => {
     if (!restaurantId || employees.length === 0) {
@@ -80,7 +82,7 @@ export function useScheduledLaborCosts(
 
     // Use centralized labor calculation service
     const { breakdown: serviceBreakdown, dailyCosts: serviceDailyCosts } = 
-      calculateScheduledLaborCost(shifts, employees, dateFrom, dateTo);
+      calculateScheduledLaborCost(shifts, employees, dateFrom, dateTo, timezone);
 
     // Transform service output to match hook interface
     const dailyCosts: ScheduledLaborCostData[] = serviceDailyCosts.map(day => ({
@@ -116,7 +118,7 @@ export function useScheduledLaborCosts(
     const totalCost = serviceBreakdown.total;
 
     return { dailyCosts, totalCost, breakdown };
-  }, [shifts, dateFrom, dateTo, restaurantId, employees]);
+  }, [shifts, dateFrom, dateTo, restaurantId, employees, timezone]);
 
   return result;
 }

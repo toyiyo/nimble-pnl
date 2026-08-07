@@ -153,6 +153,11 @@ export const AppHeader = () => {
     address: '',
     phone: '',
     cuisine_type: '',
+    // Creation-time carve-out: this seeds the *new* restaurant's timezone
+    // field, which the operator can then change. The browser zone is the best
+    // available guess at that moment -- there is no restaurant zone to read
+    // yet. The ban exists for display and attribution, not for this.
+    // eslint-disable-next-line no-restricted-syntax
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
 
@@ -167,6 +172,8 @@ export const AppHeader = () => {
         address: formData.address || undefined,
         phone: formData.phone || undefined,
         cuisine_type: formData.cuisine_type || undefined,
+        // Creation-time carve-out, as above.
+        // eslint-disable-next-line no-restricted-syntax
         timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
 
@@ -175,8 +182,11 @@ export const AppHeader = () => {
           name: '', 
           address: '', 
           phone: '', 
-          cuisine_type: '', 
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone 
+          cuisine_type: '',
+          // Creation-time carve-out, as above -- resets the form for the next
+          // restaurant.
+          // eslint-disable-next-line no-restricted-syntax
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         });
         setShowCreateDialog(false);
       }

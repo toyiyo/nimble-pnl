@@ -16,10 +16,9 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    # ~7m45s on a warm runner now that the Sonar scan has its own job (the
-    # combined job measured ~9m30s, ~1m45s of it Sonar). The cap is a hang
-    # detector, not a performance budget — leave room for the suite
-    # (654 files, 8017 tests) to keep growing.
+    # ~7m45s on a warm runner now that the Sonar scan and the timezone matrix
+    # each have their own job. The cap is a hang detector, not a performance
+    # budget — leave room for the suite (665 files, 8197 tests) to keep growing.
     timeout-minutes: 15
 
     steps:
@@ -38,9 +37,6 @@ jobs:
       - name: Run unit tests with coverage
         run: npm run test:coverage
 
-      - name: Run timezone matrix tests
-        run: npm run test:tz
-
       # Also consumed by the `sonarcloud` job below.
       - name: Upload coverage report
         if: always()
@@ -49,6 +45,51 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+  # The whole suite, re-run under timezones far from the host default, so a
+  # date bug that only bites viewers outside the restaurant's zone fails here
+  # rather than in production. `npm run test:tz` chains all three sequentially
+  # for local use; in CI they fan out because chaining them behind the coverage
+  # run put four full suites (~28 min) inside one 15-minute job — that combined
+  # job was being cancelled at the cap on `main` too, not just on branches
+  # (runs 30621297885, 30640491290, 30652161807). One job per zone also names
+  # the failing zone in the check itself.
+  timezone-matrix:
+    name: Timezone Matrix (${{ matrix.tz }})
+    runs-on: ubuntu-latest
+    # ~7m per zone. Same hang-detector rationale as the `test` job above.
+    timeout-minutes: 15
+    strategy:
+      # Every zone reports independently: a Chicago-only failure must not
+      # hide whether Auckland and UTC are green.
+      fail-fast: false
+      matrix:
+        # Chicago is behind UTC, Auckland ahead of it, and UTC is the zone
+        # every naive `toISOString()` date bug silently passes under. Keep
+        # this list in sync with the `test:tz` script in package.json.
+        tz: [America/Chicago, Pacific/Auckland, UTC]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # This job never writes to git, and `npm ci` below runs third-party
+          # install scripts. Don't leave GITHUB_TOKEN in the git config for them.
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests under ${{ matrix.tz }}
+        run: npm run test
+        env:
+          TZ: ${{ matrix.tz }}
 
   # Kept out of the `test` job on purpose. When the two shared a job, a slow
   # or cancelled Sonar upload reported to PR authors as "Unit Tests: fail"

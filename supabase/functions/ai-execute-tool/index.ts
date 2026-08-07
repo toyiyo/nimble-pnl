@@ -285,8 +285,11 @@ async function executeGetKpis(
       endDate
     );
 
-    // Convert to format expected by calculatePeriodMetrics
-    // Labor total is in dollars, convert to cents for consistency
+    // Convert to format expected by calculatePeriodMetrics.
+    // laborBreakdown.total is already in dollars (calculateActualLaborCost divides its
+    // internal cent-based per-employee costs by 100 before summing) — this only rounds to
+    // the nearest cent, it does NOT convert units. calculatePeriodMetrics expects dollars
+    // here to match the dollar-denominated sales/food-cost figures it's combined with.
     laborCostData = [{ total_labor_cost: Math.round(laborBreakdown.total * 100) / 100 }];
   }
 

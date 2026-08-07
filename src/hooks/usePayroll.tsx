@@ -157,9 +157,11 @@ function usePayrollInternal(
   const queryClient = useQueryClient();
   const { tz: timezone } = useRestaurantClock();
 
-  // `isSelfScoped` (i.e. `employeeId !== undefined`) is admin mode; a plain
-  // `employeeId ?? null` fallback would map BOTH admin mode (undefined) and
-  // self-scoped-but-unresolved mode (null) to the same `null` key segment.
+  // `isSelfScoped` (i.e. `employeeId !== undefined`) is self-scoped mode
+  // (resolved or still-pending); `!isSelfScoped` (employeeId undefined) is
+  // admin mode. A plain `employeeId ?? null` fallback would map BOTH admin
+  // mode (undefined) and self-scoped-but-unresolved mode (null) to the same
+  // `null` key segment.
   // `enabled: false` only suppresses a new fetch, not a cache read, so a
   // disabled self-scoped query mounted while `employeeId` is still resolving
   // could otherwise read back an admin query's already-cached restaurant-wide

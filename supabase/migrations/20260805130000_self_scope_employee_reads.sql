@@ -11,12 +11,18 @@
 -- employees' offered/requested shift rows via an embedded join) keeps working.
 --
 -- `time_punches` and `employee_tips` already carry a legacy own-row policy and two
--- byte-identical legacy manager policies from the tips migration
--- (20260220000000_add_staff_tip_read_policies.sql). The legacy own-row policy is dropped in
--- favor of the uniform one (stacking both would double-evaluate an own-row subquery on the two
--- highest-volume tables in this change), and the two duplicate manager policies are collapsed
--- to one (A OR A ≡ A, so this is behaviour-preserving and removes a redundant per-row
--- user_restaurants subquery).
+-- byte-identical legacy manager policies: one created by
+-- 20251114100100_create_time_tracking_tables.sql ("Managers can view all time punches for
+-- their restaurants" / "Managers can view all employee tips for their restaurants") and a
+-- same-logic twin created under a different name by
+-- 20251115165031_3275bc7c-bc33-4b20-b42c-fd1a9c022d07.sql ("Managers can view restaurant
+-- time punches" / "Managers can view restaurant tips") — the latter migration's own
+-- `DROP POLICY IF EXISTS` only ever targeted its own name idempotently, so it never removed
+-- the older-named twin. The legacy own-row policy is dropped in favor of the uniform one
+-- (stacking both would double-evaluate an own-row subquery on the two highest-volume tables
+-- in this change), and BOTH duplicate manager policies (both names) are dropped so only the
+-- new capability-gated policy remains (A OR A ≡ A, so this is behaviour-preserving and
+-- removes a redundant per-row user_restaurants subquery).
 --
 -- See docs/superpowers/specs/2026-08-05-employee-self-scoped-data-design.md §4 for the full
 -- rationale; policy bodies below are transcribed from production pg_policies, not re-derived.
@@ -158,6 +164,13 @@ CREATE POLICY "Scheduling or payroll capability view daily labor allocations"
 DROP POLICY IF EXISTS "Users can view time punches for their restaurants" ON time_punches;
 DROP POLICY IF EXISTS "Employees can view own time punches" ON time_punches;
 DROP POLICY IF EXISTS "Managers can view restaurant time punches" ON time_punches;
+-- Byte-identical duplicate left behind by 20251114100100_create_time_tracking_tables.sql;
+-- 20251115165031 only ever dropped-and-recreated the "...restaurant time punches" name
+-- above under its own idempotent DROP IF EXISTS, so this older-named twin was never
+-- actually removed. Must be dropped here too or it stays ORed against the new
+-- capability-gated policy below, silently keeping restaurant-wide access for any
+-- owner/manager regardless of view:scheduling/view:payroll capability.
+DROP POLICY IF EXISTS "Managers can view all time punches for their restaurants" ON time_punches;
 
 CREATE POLICY "Employees can view own time punches"
   ON time_punches
@@ -187,6 +200,9 @@ CREATE POLICY "Scheduling or payroll capability view time punches"
 DROP POLICY IF EXISTS "Users can view tips for their restaurants" ON employee_tips;
 DROP POLICY IF EXISTS "Employees can view own tips" ON employee_tips;
 DROP POLICY IF EXISTS "Managers can view restaurant tips" ON employee_tips;
+-- Byte-identical duplicate left behind by the original tips migration, same
+-- as the time_punches twin above — never dropped by any later migration.
+DROP POLICY IF EXISTS "Managers can view all employee tips for their restaurants" ON employee_tips;
 
 CREATE POLICY "Employees can view own tips"
   ON employee_tips

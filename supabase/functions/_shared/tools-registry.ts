@@ -964,7 +964,7 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
  */
 export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview'] as const;
 
-interface CapabilityCheckClient {
+export interface CapabilityCheckClient {
   rpc: (
     fn: string,
     args: { p_restaurant_id: string; p_capability: string }
@@ -983,15 +983,24 @@ export async function hasSchedulingOrPayrollCapability(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
+  // `.catch()` on each call (rather than letting Promise.all reject) so a
+  // rejected RPC promise — e.g. a client that throws instead of resolving
+  // with an `error` field — still lands in the logged deny path below
+  // instead of escaping as an unhandled rejection that would bypass it.
+  const toResult = (err: unknown) => ({ data: null, error: err });
   const [scheduling, payroll] = await Promise.all([
-    supabase.rpc('user_has_capability', {
-      p_restaurant_id: restaurantId,
-      p_capability: 'view:scheduling',
-    }),
-    supabase.rpc('user_has_capability', {
-      p_restaurant_id: restaurantId,
-      p_capability: 'view:payroll',
-    }),
+    supabase
+      .rpc('user_has_capability', {
+        p_restaurant_id: restaurantId,
+        p_capability: 'view:scheduling',
+      })
+      .catch(toResult),
+    supabase
+      .rpc('user_has_capability', {
+        p_restaurant_id: restaurantId,
+        p_capability: 'view:payroll',
+      })
+      .catch(toResult),
   ]);
 
   // An RPC failure here must not disappear silently: without logging it, a

@@ -382,51 +382,52 @@ SELECT throws_ok(
 RESET row_security;
 
 -- ============================================================================
--- 14. area_catalog shape: fourteen areas collapsing onto the ten ui_groups of
---     the approved design. The four splits (purchasing, chart_of_accounts,
---     collaborators, integrations) exist so the builtin roles derive
---     byte-identically from ROLE_CAPABILITIES; see the migration's column
---     comment.
+-- 14. area_catalog shape: thirty-three areas (one per gateable sidebar page)
+--     collapsing onto the five ui_groups of the approved design.
 -- ============================================================================
 SELECT is(
   (SELECT count(*)::int FROM public.area_catalog),
-  14,
-  'area_catalog holds fourteen areas'
+  33,
+  'area_catalog holds thirty-three areas'
 );
 
 SELECT is(
   (SELECT count(DISTINCT ui_group)::int FROM public.area_catalog),
-  10,
-  'the fourteen areas collapse onto the ten ui_groups of the approved design'
+  5,
+  'the thirty-three areas collapse onto the five ui_groups of the approved design'
 );
 
--- The editor renders one level control per ui_group and writes every area_key
--- in that group. If two areas in a group disagreed on max_level_collaborator,
--- that single control would offer a level the cap trigger then rejects for
--- half the group — a write that half-applies. Keep the caps aligned.
+-- Under the bundle model the editor rendered ONE level control per ui_group,
+-- so every area in a group had to agree on max_level_collaborator or that
+-- single control would offer a level the cap trigger rejects for half the
+-- group. The per-page re-cut makes each area its own row with its own
+-- control, so mixed caps within a group are now correct by design (Admin
+-- holds both `team`, ungrantable, and `settings`, view-capped). What still
+-- has to hold is that the cap is a value the trigger understands: the group
+-- roll-up is derived from the per-page caps, and a cap outside
+-- {view, manage, NULL} would make that derivation undefined.
+SELECT is(
+  (SELECT count(*)::int FROM public.area_catalog
+   WHERE max_level_collaborator IS NOT NULL
+     AND max_level_collaborator NOT IN ('view', 'manage')),
+  0,
+  'every max_level_collaborator is view, manage, or NULL'
+);
+
+-- Positional invariant, restated for the per-page model. The group is no
+-- longer one row at one position — it is a header with N page rows beneath
+-- it — so sort_order is now unique WITHIN a ui_group rather than constant
+-- across it. Band still is constant: a group renders in exactly one band.
 SELECT is(
   (SELECT count(*)::int FROM (
      SELECT ui_group
      FROM public.area_catalog
      GROUP BY ui_group
-     HAVING count(DISTINCT max_level_collaborator) > 1
-        OR (count(*) FILTER (WHERE max_level_collaborator IS NULL) NOT IN (0, count(*)))
+     HAVING count(DISTINCT band) > 1
+        OR count(DISTINCT sort_order) <> count(*)
    ) AS mixed),
   0,
-  'every ui_group has one max_level_collaborator across all its areas'
-);
-
--- Same argument for band and sort_order: the group is one row in one band at
--- one position, so its members cannot disagree about where it renders.
-SELECT is(
-  (SELECT count(*)::int FROM (
-     SELECT ui_group
-     FROM public.area_catalog
-     GROUP BY ui_group
-     HAVING count(DISTINCT band) > 1 OR count(DISTINCT sort_order) > 1
-   ) AS mixed),
-  0,
-  'every ui_group renders in one band at one sort_order'
+  'every ui_group renders in one band, with one page per sort_order'
 );
 
 -- ============================================================================

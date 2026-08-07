@@ -885,6 +885,14 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     return false;
   }
 
+  // get_labor_costs / get_schedule_overview are NOT in basicTools: they read
+  // restaurant-wide labor/schedule data, gated on view:scheduling OR
+  // view:payroll (see CAPABILITY_GATED_TOOLS / canUseCapabilityGatedTool
+  // below). That capability set doesn't collapse to a static role list —
+  // e.g. chef holds view:scheduling but not manager/owner — so canUseTool
+  // always denies them here; the dispatcher must call
+  // canUseCapabilityGatedTool for these two instead.
+
   // Navigation and basic query tools available to all users
   const basicTools = [
     'navigate',
@@ -893,8 +901,6 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_recipe_analytics',
     'get_sales_summary',
     'get_inventory_transactions',
-    'get_labor_costs',           // Labor costs visible to all (aggregate data)
-    'get_schedule_overview',     // Schedule overview visible to all
     'get_proactive_insights',    // Proactive insights for all users
     'get_daily_sales_totals'     // Daily revenue totals visible to all
   ];
@@ -944,4 +950,103 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
   if (canUseTool(toolName, 'staff')) return 'staff';
   if (canUseTool(toolName, 'manager')) return 'manager';
   return 'owner';
+}
+
+/**
+ * Tools whose access is determined by the view:scheduling / view:payroll
+ * capability (resolved per-restaurant via the `user_has_capability` RPC)
+ * rather than by role. These read the same restaurant-wide labor/schedule
+ * data as the RLS-protected tables behind them (shifts, time_punches,
+ * employee_compensation_history, etc.) — see
+ * supabase/migrations/20260805130000_self_scope_employee_reads.sql — so the
+ * dispatcher gate must match that RLS predicate instead of a second,
+ * independently-maintained role list.
+ */
+export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview'] as const;
+
+export interface CapabilityCheckClient {
+  rpc: (
+    fn: string,
+    args: { p_restaurant_id: string; p_capability: string }
+  ) => Promise<{ data: boolean | null; error: unknown }>;
+}
+
+/**
+ * Resolves view:scheduling OR view:payroll for the calling user via the
+ * `user_has_capability` RPC — the same function the RLS policies behind
+ * shifts/time_punches/employee_compensation_history/etc. call. Shared by
+ * canUseCapabilityGatedTool and by get_kpis's labor-component gate (get_kpis
+ * itself stays a basic tool, but its labor/prime-cost fields must not be
+ * computed from an RLS-truncated data set for a caller who lacks this).
+ */
+export async function hasSchedulingOrPayrollCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  // `.catch()` on each call (rather than letting Promise.all reject) so a
+  // rejected RPC promise — e.g. a client that throws instead of resolving
+  // with an `error` field — still lands in the logged deny path below
+  // instead of escaping as an unhandled rejection that would bypass it.
+  const toResult = (err: unknown) => ({ data: null, error: err });
+  const [scheduling, payroll] = await Promise.all([
+    supabase
+      .rpc('user_has_capability', {
+        p_restaurant_id: restaurantId,
+        p_capability: 'view:scheduling',
+      })
+      .catch(toResult),
+    supabase
+      .rpc('user_has_capability', {
+        p_restaurant_id: restaurantId,
+        p_capability: 'view:payroll',
+      })
+      .catch(toResult),
+  ]);
+
+  // An RPC failure here must not disappear silently: without logging it, a
+  // genuine infra failure (e.g. the RPC unreachable) is indistinguishable
+  // from a legitimate denial once it coerces to `false` below, and the
+  // caller reports a plain permission-denied error with no trace of the
+  // real cause. Fail closed (deny) either way — this gates security-
+  // sensitive tools/RLS-adjacent reads, so an infra error must not fail open.
+  if (scheduling.error) {
+    console.error('hasSchedulingOrPayrollCapability: view:scheduling RPC failed', {
+      restaurantId,
+      error: scheduling.error,
+    });
+  }
+  if (payroll.error) {
+    console.error('hasSchedulingOrPayrollCapability: view:payroll RPC failed', {
+      restaurantId,
+      error: payroll.error,
+    });
+  }
+
+  return Boolean(scheduling.data) || Boolean(payroll.data);
+}
+
+/**
+ * Type guard for CAPABILITY_GATED_TOOLS membership. Shared by
+ * canUseCapabilityGatedTool and by the ai-execute-tool dispatcher, which
+ * needs the same check to decide whether to call canUseTool or this file's
+ * capability path at all — kept in one place so the two never drift.
+ */
+export function isCapabilityGatedTool(toolName: string): toolName is (typeof CAPABILITY_GATED_TOOLS)[number] {
+  return (CAPABILITY_GATED_TOOLS as readonly string[]).includes(toolName);
+}
+
+/**
+ * Resolves access for a CAPABILITY_GATED_TOOLS entry. Returns false
+ * immediately — with no RPC call — for any tool not in that list.
+ */
+export async function canUseCapabilityGatedTool(
+  toolName: string,
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  if (!isCapabilityGatedTool(toolName)) {
+    return false;
+  }
+
+  return hasSchedulingOrPayrollCapability(restaurantId, supabase);
 }

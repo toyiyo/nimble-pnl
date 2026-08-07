@@ -29,6 +29,21 @@ const DEFAULT_MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 1000;
 
 /**
+ * Overall wall-clock ceiling for one fan-out.
+ *
+ * Per-request timeouts alone do not bound the whole loop. An all-429 storm
+ * costs ~7s of backoff per recipient, and a roster of 25 then runs ~175s —
+ * past the edge request ceiling, and in exactly the conditions the pacing is
+ * meant to survive. At a healthy 2/s this budget covers 180 recipients, which
+ * is several times the largest roster in production today, so it truncates
+ * nothing that is currently working.
+ */
+const DEFAULT_BUDGET_MS = 90_000;
+
+/** Recorded as the error for recipients the budget never reached. */
+export const BUDGET_EXHAUSTED_ERROR = 'send budget exhausted';
+
+/**
  * Per-request ceiling on the Resend call.
  *
  * `fetch` has no timeout of its own, so a connection Resend accepts and then
@@ -58,6 +73,8 @@ export interface PacedOptions {
   intervalMs?: number;
   /** Retries after the initial attempt, for 429s only. */
   maxRetries?: number;
+  /** Wall-clock ceiling for the whole fan-out. Defaults to 90s. */
+  budgetMs?: number;
   /** Injectable for tests. */
   sleep?: (ms: number) => Promise<void>;
   /** Injectable for tests. */
@@ -141,12 +158,29 @@ export const sendPaced = async <T>(
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const sleep = options.sleep ?? realSleep;
   const now = options.now ?? (() => Date.now());
+  const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
 
   const startedAt = now();
   const results: PacedResult<T>[] = [];
   let nextSendAt = startedAt;
 
   for (const recipient of recipients) {
+    // Checked between recipients rather than mid-flight: aborting a send
+    // already in progress would lose the distinction between a 429 worth
+    // retrying and a request that never happened. The residual overshoot is
+    // therefore one in-flight request (capped by REQUEST_TIMEOUT_MS) plus at
+    // most one pacing interval — the retry chain is bounded separately below.
+    if (now() - startedAt >= budgetMs) {
+      results.push({
+        recipient,
+        attempts: 0,
+        ok: false,
+        status: 0,
+        error: BUDGET_EXHAUSTED_ERROR,
+      });
+      continue;
+    }
+
     let attempts = 0;
     // No initializer: the only way out of the loop below is the `break`, and
     // both paths into it assign. A placeholder here would be dead on every
@@ -171,6 +205,13 @@ export const sendPaced = async <T>(
 
       const retryable = outcome.status === 429 && attempts <= maxRetries;
       if (!retryable) break;
+
+      // Stop retrying once the budget is spent. The retry chain would otherwise
+      // run entirely inside the per-recipient guard above, so one unlucky
+      // recipient could add four request timeouts plus 7s of backoff on top of
+      // the deadline — the dominant overshoot term by far. The attempt already
+      // made keeps its real outcome; only further attempts are abandoned.
+      if (now() - startedAt >= budgetMs) break;
 
       // Exponential backoff on top of the normal pacing gap: 1s, 2s, 4s.
       await sleep(BASE_BACKOFF_MS * 2 ** (attempts - 1));

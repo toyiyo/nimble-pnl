@@ -1,0 +1,11 @@
+-- idx_unified_sales_rule_candidates (restaurant_id, sale_date DESC) with the
+-- partial predicate `is_split = false AND (is_categorized = false OR
+-- category_id IS NULL)` is a strict prefix of
+-- idx_unified_sales_rule_candidates_v2, which carries the same predicate plus
+-- rules_evaluated_at. Nothing can use the v1 index that cannot use v2; keeping
+-- both only costs write amplification on a hot table.
+--
+-- DROP INDEX CONCURRENTLY has the same no-transaction restriction as CREATE,
+-- so this file contains only this statement.
+-- Design: docs/superpowers/specs/2026-08-03-pos-sync-categorization-rescan-design.md §3.6
+DROP INDEX CONCURRENTLY IF EXISTS public.idx_unified_sales_rule_candidates;

@@ -32,6 +32,7 @@ import {
 interface ViewModeContextValue {
   viewMode: ViewMode;
   canUseWorkView: boolean;
+  isWorkViewResolved: boolean;
   enterWorkMode: () => void;
   exitWorkMode: () => void;
 }
@@ -76,7 +77,8 @@ export function ViewModeProvider({ children }: ViewModeProviderProps) {
   // with `!!selectedRestaurant` so the brief remount window — where
   // selectedRestaurant is null and the query is therefore disabled — is never
   // mistaken for a confirmed "not eligible" result.
-  const confirmedIneligible = !!selectedRestaurant && !employeeLoading && !canUseWorkView;
+  const isWorkViewResolved = !!selectedRestaurant && !employeeLoading;
+  const confirmedIneligible = isWorkViewResolved && !canUseWorkView;
 
   const viewMode: ViewMode =
     storeSaysWork && !confirmedWrongRestaurant && !confirmedIneligible ? 'work' : 'admin';
@@ -104,8 +106,8 @@ export function ViewModeProvider({ children }: ViewModeProviderProps) {
   }, [navigate, viewMode]);
 
   const value = useMemo<ViewModeContextValue>(
-    () => ({ viewMode, canUseWorkView, enterWorkMode, exitWorkMode }),
-    [viewMode, canUseWorkView, enterWorkMode, exitWorkMode]
+    () => ({ viewMode, canUseWorkView, isWorkViewResolved, enterWorkMode, exitWorkMode }),
+    [viewMode, canUseWorkView, isWorkViewResolved, enterWorkMode, exitWorkMode]
   );
 
   return <ViewModeContext.Provider value={value}>{children}</ViewModeContext.Provider>;

@@ -1,8 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   getTools,
   canUseTool,
   requiredRoleFor,
+  CAPABILITY_GATED_TOOLS,
+  canUseCapabilityGatedTool,
+  hasSchedulingOrPayrollCapability,
+  type CapabilityCheckClient,
 } from '../../supabase/functions/_shared/tools-registry';
 
 /**
@@ -131,10 +135,12 @@ describe('tools-registry: requiredRoleFor / canUseTool invariant', () => {
   // and false for the role one tier below it. This guards the dispatcher's
   // "what should I tell the user they need?" message against drifting from the
   // actual permission check.
+  // get_labor_costs / get_schedule_overview are excluded here: they are no
+  // longer role-gated (see the capability-gating describe block below), so
+  // the "required role" concept does not apply to them.
   const tools = [
     'get_kpis',
     'get_inventory_status',
-    'get_labor_costs',
     'get_time_punches',
     'get_payroll_summary',
     'get_financial_intelligence',
@@ -165,6 +171,132 @@ describe('tools-registry: requiredRoleFor / canUseTool invariant', () => {
     // Owner tools should not be usable by manager.
     if (required === 'owner') {
       expect(canUseTool(toolName, 'manager')).toBe(false);
+    }
+  });
+});
+
+describe('tools-registry: get_labor_costs / get_schedule_overview are capability-gated, not role-gated', () => {
+  // These two tools expose restaurant-wide labor/schedule data. The RLS
+  // behind the tables they read is `own-row OR view:scheduling OR
+  // view:payroll` (see the self-scoped-employee-data migration), so the
+  // dispatcher must gate the tools on the same capability rather than a
+  // second hard-coded role list that could drift from RLS.
+  it('lists exactly get_labor_costs and get_schedule_overview as capability-gated', () => {
+    expect([...CAPABILITY_GATED_TOOLS].sort()).toEqual(
+      ['get_labor_costs', 'get_schedule_overview'].sort(),
+    );
+  });
+
+  it.each(CAPABILITY_GATED_TOOLS)(
+    'canUseTool never grants %s by role alone (enforcement moved to canUseCapabilityGatedTool)',
+    (toolName) => {
+      for (const role of ALL_ROLES) {
+        expect(canUseTool(toolName, role)).toBe(false);
+      }
+    },
+  );
+
+  // Deliberately a minimal `{ rpc }` shape, not a full Supabase client — the
+  // functions under test only ever call `.rpc(...)`. Typed directly against
+  // `CapabilityCheckClient` (the real parameter type) so no cast is needed
+  // at any call site below.
+  function mockSupabase(responses: Record<string, boolean | null>): CapabilityCheckClient {
+    return {
+      rpc: vi.fn((_fn: string, args: { p_restaurant_id: string; p_capability: string }) =>
+        Promise.resolve({ data: responses[args.p_capability] ?? false, error: null }),
+      ),
+    };
+  }
+
+  it('grants access when the caller has view:scheduling', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': true, 'view:payroll': false });
+    const result = await canUseCapabilityGatedTool('get_labor_costs', 'rest-1', supabase);
+    expect(result).toBe(true);
+  });
+
+  it('grants access when the caller has view:payroll', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': false, 'view:payroll': true });
+    const result = await canUseCapabilityGatedTool('get_schedule_overview', 'rest-1', supabase);
+    expect(result).toBe(true);
+  });
+
+  it('denies access when the caller has neither capability', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': false, 'view:payroll': false });
+    const result = await canUseCapabilityGatedTool('get_labor_costs', 'rest-1', supabase);
+    expect(result).toBe(false);
+  });
+
+  it('denies access for a tool that is not capability-gated', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': true, 'view:payroll': true });
+    const result = await canUseCapabilityGatedTool('get_kpis', 'rest-1', supabase);
+    expect(result).toBe(false);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  // hasSchedulingOrPayrollCapability is the underlying OR-check, reused by
+  // get_kpis's labor-component gate (get_kpis itself stays a basic tool; it
+  // just must not compute prime cost from an RLS-truncated labor set).
+  it('hasSchedulingOrPayrollCapability: true when only scheduling is granted', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': true, 'view:payroll': false });
+    expect(await hasSchedulingOrPayrollCapability('rest-1', supabase)).toBe(true);
+  });
+
+  it('hasSchedulingOrPayrollCapability: false when neither is granted', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': false, 'view:payroll': false });
+    expect(await hasSchedulingOrPayrollCapability('rest-1', supabase)).toBe(false);
+  });
+
+  it('hasSchedulingOrPayrollCapability: fails closed AND logs when an RPC errors, instead of silently reporting a plain denial', async () => {
+    const rpcError = new Error('connection reset');
+    const supabase: CapabilityCheckClient = {
+      rpc: vi.fn((_fn: string, args: { p_restaurant_id: string; p_capability: string }) =>
+        args.p_capability === 'view:scheduling'
+          ? Promise.resolve({ data: null, error: rpcError })
+          : Promise.resolve({ data: false, error: null }),
+      ),
+    };
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const result = await hasSchedulingOrPayrollCapability('rest-1', supabase);
+
+      // Fail closed: an infra error must not grant access.
+      expect(result).toBe(false);
+      // But the real cause must be logged, not swallowed — otherwise an infra
+      // failure is indistinguishable from a legitimate permission denial.
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view:scheduling'),
+        expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('hasSchedulingOrPayrollCapability: fails closed AND logs when an RPC promise rejects (not just resolves with an error field)', async () => {
+    const rpcError = new Error('network unreachable');
+    const supabase: CapabilityCheckClient = {
+      rpc: vi.fn((_fn: string, args: { p_restaurant_id: string; p_capability: string }) =>
+        args.p_capability === 'view:scheduling'
+          ? Promise.reject(rpcError)
+          : Promise.resolve({ data: false, error: null }),
+      ),
+    };
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      // A rejected RPC promise must not escape as an unhandled rejection —
+      // it has to land in the same fail-closed/logged path as a resolved
+      // `{ data: null, error }` response.
+      const result = await hasSchedulingOrPayrollCapability('rest-1', supabase);
+
+      expect(result).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view:scheduling'),
+        expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
     }
   });
 });

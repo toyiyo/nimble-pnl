@@ -189,6 +189,20 @@ const STAGING_DISCIPLINE = [
   `- Before each commit, confirm the index holds only what you intended: git -C ${ctx.worktreePath} diff --cached --name-only`,
 ].join('\n')
 
+// Prose-style guard — see the WRITING_STANDARD comment in
+// dev-build-and-ship.js. Same reason applies here: this script owns the Verify,
+// Ship and Triage phases, which write the PR body and every reply to a reviewer.
+const WRITING_STANDARD = [
+  'WRITING STANDARD — ASD-STE100 Simplified Technical English (applies to every commit message, PR body, review reply, progress.md update, and code comment you write):',
+  '- One idea per sentence. Maximum 20 words for an instruction, 25 for a description.',
+  '- Active voice. Start an instruction with the verb ("Run the tests", not "The tests should be run").',
+  '- One word for one meaning: use fix (not repair/resolve/address/patch), change (not modify/tweak/alter), delete (not remove/drop/purge), show (not display/surface/render), check (not verify/validate/ensure).',
+  '- Simple tenses only. No -ing word as a noun ("The sync fails", not "Syncing is failing"). Keep the articles. Maximum 3 nouns in a cluster.',
+  '- No idioms, no metaphors, no hedges ("basically", "just", "simply", "I think", "it seems").',
+  '- Keep EXACT: code identifiers, file paths, tool output, error messages, log lines, and quotes from CodeRabbit/Codex/SonarCloud. Do not rewrite them.',
+  `- Full standard: ${ctx.worktreePath}/docs/STE100_STYLE.md`,
+].join('\n')
+
 function envelope(body, { skillRef = false } = {}) {
   return [
     'WORKING CONTEXT (you have fresh context — this block is all you start with):',
@@ -206,6 +220,9 @@ function envelope(body, { skillRef = false } = {}) {
     WAIT_DISCIPLINE,
     '',
     `PRIOR STATE: ${PRIOR_STATE}`,
+    WRITING_STANDARD,
+    '',
+    'PRIOR STATE: Phases 4-7 are COMPLETE. All reviewers ran (security/performance/maintainability: no findings; ocr-rules + sound-logic minors fixed in c0872b91). One Codex major — tier-2 route-shell boundary had no resetKey — was escalated and has since been resolved by hand in commit ff3776c1, which adds src/components/RouteShellBoundary.tsx, amends the design doc\'s "Reset semantics" section, and adds tests/unit/RouteShellBoundary.test.tsx. Do NOT re-litigate that decision or re-run the reviewers.',
     '',
     body,
   ].join('\n')

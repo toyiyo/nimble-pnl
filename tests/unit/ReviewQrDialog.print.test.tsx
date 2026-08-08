@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
@@ -136,5 +136,59 @@ describe('ReviewQrDialog print sheet', () => {
   it('caps the message input at 120 characters', async () => {
     render(<ReviewQrDialog {...PROPS} />);
     expect(await screen.findByLabelText(/message/i)).toHaveAttribute('maxlength', '120');
+  });
+
+  it('keeps a typed message when the saved headline changes underneath', async () => {
+    // useReviewPages refetches on window focus. A second manager can save a new
+    // headline while this one types a one-off message for the paper.
+    const { rerender } = render(<ReviewQrDialog {...PROPS} />);
+    const input = await screen.findByLabelText(/message/i);
+    fireEvent.change(input, { target: { value: 'Tell us how we did' } });
+
+    rerender(<ReviewQrDialog {...PROPS} defaultMessage="A brand new headline" />);
+
+    expect(await screen.findByLabelText(/message/i)).toHaveValue('Tell us how we did');
+  });
+
+  it('does not print when the dialog closes during the wait', async () => {
+    const { rerender } = render(<ReviewQrDialog {...PROPS} />);
+    const button = await screen.findByRole('button', { name: /^print$/i });
+    await waitFor(() => expect(button).toBeEnabled());
+
+    fireEvent.click(button);
+    // Close before waitForPrintReady resolves. The system print dialog would
+    // otherwise open over a screen the manager already dismissed.
+    rerender(<ReviewQrDialog {...PROPS} open={false} />);
+
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 50));
+    });
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it('holds the print class on body only while the dialog is open', async () => {
+    const { rerender } = render(<ReviewQrDialog {...PROPS} />);
+    await waitFor(() => expect(document.body).toHaveClass('review-print-active'));
+
+    // The print rule hides every other body child. Left behind, it makes every
+    // other page in the app print a blank sheet.
+    rerender(<ReviewQrDialog {...PROPS} open={false} />);
+    expect(document.body).not.toHaveClass('review-print-active');
+  });
+
+  it('names the preview for a screen reader', async () => {
+    render(<ReviewQrDialog {...PROPS} />);
+    // The sheet itself is aria-hidden. Without this wrapper the dialog gives a
+    // screen reader no restaurant name and no destination for the code.
+    const preview = await screen.findByRole('img', { name: /preview of the/i });
+    expect(preview).toHaveAccessibleName(/Blue Fin Sushi/);
+    expect(preview).toHaveAccessibleName(/https:\/\/app\.test\/r\/blue-fin/);
+  });
+
+  it('names the paper size radio group', async () => {
+    render(<ReviewQrDialog {...PROPS} />);
+    // `label htmlFor` names labelable elements only. RadioGroup renders a div,
+    // so the group needs aria-labelledby to announce with a name.
+    expect(await screen.findByRole('radiogroup', { name: /paper size/i })).toBeInTheDocument();
   });
 });

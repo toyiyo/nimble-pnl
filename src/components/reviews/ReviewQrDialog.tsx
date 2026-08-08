@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -18,12 +18,13 @@ import { Printer, QrCode } from 'lucide-react';
 
 import { ReviewTentSheet } from './ReviewTentSheet';
 
+import { useReviewQrSheet } from '@/hooks/useReviewQrSheet';
+
 import { logoPublicUrl } from '@/lib/reviews/reviewBranding';
 import {
   MAX_MESSAGE_LENGTH,
   SHEET_SIZES,
   SHEET_SIZE_KEYS,
-  waitForPrintReady,
   type SheetSizeKey,
 } from '@/lib/reviews/printSheet';
 
@@ -37,6 +38,9 @@ interface ReviewQrDialogProps {
   /** Seeds the message field. The page headline, so the paper matches the page. */
   defaultMessage: string;
 }
+
+/** The print CSS hides the app behind this class. See src/styles/print-sheet.css. */
+const PRINT_ACTIVE_CLASS = 'review-print-active';
 
 function download(filename: string, href: string) {
   const link = document.createElement('a');
@@ -56,65 +60,28 @@ export function ReviewQrDialog({
   logoPath,
   defaultMessage,
 }: ReviewQrDialogProps) {
-  const [svg, setSvg] = useState<string | null>(null);
-  const [png, setPng] = useState<string | null>(null);
-  // The sheet needs a four-module quiet zone, which the download codes do not
-  // have. Two SVGs, one encoder import.
-  const [sheetSvg, setSheetSvg] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const {
+    svg,
+    png,
+    sheetSvg,
+    failed,
+    size,
+    setSize,
+    message,
+    setMessage,
+    isPreparing,
+    printRootRef,
+    handlePrint,
+    status,
+  } = useReviewQrSheet({ open, publicUrl, defaultMessage });
 
-  const [size, setSize] = useState<SheetSizeKey>('tent');
-  const [message, setMessage] = useState(defaultMessage);
-  const [printAttempt, setPrintAttempt] = useState(0);
-  const [preparing, setPreparing] = useState(false);
-
-  const printRootRef = useRef<HTMLDivElement | null>(null);
-
-  // The message is a one-off. It never reaches the database, so every time the
-  // dialog opens it starts from the page headline again.
+  // The class tracks the print portal below. The print rule hides every other
+  // body child, so it must never outlive the sheet it makes room for.
   useEffect(() => {
     if (!open) return;
-    setMessage(defaultMessage);
-    setPrintAttempt(0);
-    setPreparing(false);
-  }, [open, defaultMessage]);
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setSvg(null);
-    setPng(null);
-    setSheetSvg(null);
-    setFailed(false);
-
-    (async () => {
-      try {
-        // Dynamic import: the QR encoder is ~50 KB and only a manager opening
-        // this dialog ever needs it. A static import would put it in the main
-        // chunk for every user on every page.
-        const QRCode = await import('qrcode');
-        const options = { margin: 1, width: 512, errorCorrectionLevel: 'M' as const };
-        const [svgString, dataUrl, sheetString] = await Promise.all([
-          QRCode.toString(publicUrl, { ...options, type: 'svg' }),
-          QRCode.toDataURL(publicUrl, options),
-          // The QR specification asks for a four-module quiet zone. `margin: 1`
-          // survives a screen, but a printed code with one module of white
-          // fails against a busy tablecloth or a dark counter.
-          QRCode.toString(publicUrl, { ...options, margin: 4, type: 'svg' }),
-        ]);
-        if (cancelled) return;
-        setSvg(svgString);
-        setPng(dataUrl);
-        setSheetSvg(sheetString);
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, publicUrl]);
+    document.body.classList.add(PRINT_ACTIVE_CLASS);
+    return () => document.body.classList.remove(PRINT_ACTIVE_CLASS);
+  }, [open]);
 
   const logoUrl = useMemo(() => logoPublicUrl(logoPath), [logoPath]);
 
@@ -129,26 +96,6 @@ export function ReviewQrDialog({
     qrSvg: sheetSvg,
     publicUrl,
   };
-
-  const handlePrint = useCallback(async () => {
-    const attempt = printAttempt + 1;
-    setPrintAttempt(attempt);
-    setPreparing(true);
-    // Never rejects, never hangs: a 4 s budget wins the race if a font stalls.
-    await waitForPrintReady(printRootRef.current);
-    setPreparing(false);
-    window.print();
-  }, [printAttempt]);
-
-  const status = failed
-    ? "The QR code didn't generate."
-    : preparing
-      ? `Preparing the sheet… (attempt ${printAttempt})`
-      : printAttempt > 0
-        ? `Sheet ready. The print dialog is open. (attempt ${printAttempt})`
-        : sheetSvg
-          ? 'QR code ready to print or download.'
-          : 'Generating the QR code…';
 
   const sheet = SHEET_SIZES[size];
 
@@ -175,10 +122,7 @@ export function ReviewQrDialog({
           {/* The encoder is a dynamic import, so on a slow connection this
               dialog can sit on a skeleton for seconds with every button
               disabled. Sighted users see the placeholder; without a live
-              region a screen reader user gets an opened dialog and silence.
-              Each print announcement carries its attempt number, because an
-              aria-live region reports a change: two identical strings in a row
-              announce nothing at all. */}
+              region a screen reader user gets an opened dialog and silence. */}
           <p aria-live="polite" className="sr-only">
             {status}
           </p>
@@ -194,14 +138,17 @@ export function ReviewQrDialog({
             <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-start">
               <div className="space-y-5">
                 <div className="space-y-2">
+                  {/* `aria-labelledby`, not `htmlFor`. RadioGroup renders a
+                      div, and `label for` names labelable elements only, so
+                      the group would announce with no name. */}
                   <Label
-                    htmlFor="review-qr-size"
+                    id="review-qr-size-label"
                     className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
                   >
                     Paper size
                   </Label>
                   <RadioGroup
-                    id="review-qr-size"
+                    aria-labelledby="review-qr-size-label"
                     value={size}
                     onValueChange={(value) => setSize(value as SheetSizeKey)}
                     className="grid gap-2"
@@ -253,12 +200,12 @@ export function ReviewQrDialog({
                 <div className="space-y-2">
                   <Button
                     type="button"
-                    disabled={!sheetSvg || preparing}
+                    disabled={!sheetSvg || isPreparing}
                     onClick={handlePrint}
                     className="h-9 w-full rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
                   >
                     <Printer className="mr-2 h-4 w-4" />
-                    {preparing ? 'Preparing…' : 'Print'}
+                    {isPreparing ? 'Preparing…' : 'Print'}
                   </Button>
                   <div className="flex gap-2">
                     <Button
@@ -292,7 +239,16 @@ export function ReviewQrDialog({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
+              {/* The sheet itself is `aria-hidden`: it is a picture of paper,
+                  and its inner text carries no role. This wrapper is what a
+                  screen reader reaches, so it names the restaurant and the
+                  link the code carries. `main` had that name on the plain QR
+                  preview, and the sheet must not lose it. */}
+              <div
+                role="img"
+                aria-label={`Preview of the ${sheet.label} sheet for ${restaurantName}. The QR code links to ${publicUrl}`}
+                className="rounded-xl border border-border/40 bg-muted/30 p-4"
+              >
                 {sheetSvg ? (
                   <div
                     className="mx-auto overflow-hidden"

@@ -101,4 +101,21 @@ test('an owner previews and prints the table tent', async ({ page }) => {
       timeout: 10000,
     })
     .toBe(1);
+
+  // Close the dialog, then print again.
+  //
+  // The hide rule is global CSS. It loads with the Reviews route and stays for
+  // the whole session. Scoped to `body >` alone it also hides the app on every
+  // other page: a manager who opens this dialog once then prints a payroll
+  // report gets a blank sheet. The rule must therefore need the print root to
+  // be mounted.
+  await page.keyboard.press('Escape');
+  await expect(printRoot).toHaveCount(0);
+
+  await page.emulateMedia({ media: 'print' });
+  const afterClose = await page.evaluate(
+    () => getComputedStyle(document.getElementById('root')!).display
+  );
+  expect(afterClose).not.toBe('none');
+  await page.emulateMedia({ media: 'screen' });
 });

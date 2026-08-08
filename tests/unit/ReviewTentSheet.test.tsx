@@ -34,8 +34,11 @@ describe('ReviewTentSheet', () => {
     const img = container.querySelector('img');
     expect(img).not.toBeNull();
     expect(img).toHaveAttribute('src', 'https://cdn.test/logo.png');
-    expect(img).toHaveAttribute('crossorigin', 'anonymous');
     expect(img).toHaveAttribute('alt', '');
+    // No `crossOrigin`. Nothing draws this logo to a canvas, so the attribute
+    // buys nothing and adds a CORS rule that can fail a logo the guest page
+    // loads. The sheet must load the logo the same way the guest page does.
+    expect(img).not.toHaveAttribute('crossorigin');
   });
 
   it('falls back to the initials when the logo fails to load', () => {
@@ -45,6 +48,20 @@ describe('ReviewTentSheet', () => {
     fireEvent.error(container.querySelector('img')!);
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByText('BF')).toBeInTheDocument();
+  });
+
+  it('turns every sticker tile to the initials when one logo fails', () => {
+    // Six tiles, one URL, one flag. Six local flags would let a slow request
+    // print five logos and one circle on the same physical sheet.
+    const { container } = render(
+      <ReviewTentSheet {...BASE} size="stickers" logoUrl="https://cdn.test/broken.png" />
+    );
+    expect(container.querySelectorAll('img')).toHaveLength(6);
+
+    fireEvent.error(container.querySelectorAll('img')[0]);
+
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    expect(screen.getAllByText('BF')).toHaveLength(6);
   });
 
   it('renders one tile for the tent and six for the sticker sheet', () => {

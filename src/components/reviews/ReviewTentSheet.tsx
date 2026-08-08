@@ -1,12 +1,12 @@
 import { useState } from 'react';
 
-import { initials } from '@/lib/reviews/reviewBranding';
+import { BrandMark } from './BrandMark';
+
 import { SHEET_SIZES, type SheetSizeKey } from '@/lib/reviews/printSheet';
 
 import '@fontsource/zilla-slab/400.css';
 import '@fontsource/zilla-slab/600.css';
 import '@fontsource/ibm-plex-mono/400.css';
-import '@fontsource/ibm-plex-mono/500.css';
 import '@/styles/counter-theme.css';
 import '@/styles/print-sheet.css';
 
@@ -26,7 +26,7 @@ interface ReviewTentSheetProps {
  */
 interface TypeScale {
   markIn: number;
-  nameePt: number;
+  namePt: number;
   messagePt: number;
   urlPt: number;
   padIn: number;
@@ -34,50 +34,21 @@ interface TypeScale {
 }
 
 const TYPE: Readonly<Record<SheetSizeKey, TypeScale>> = {
-  tent: { markIn: 0.62, nameePt: 8, messagePt: 17, urlPt: 7.5, padIn: 0.42, gapIn: 0.16 },
-  card: { markIn: 0.86, nameePt: 10, messagePt: 22, urlPt: 9, padIn: 0.6, gapIn: 0.22 },
-  stickers: { markIn: 0.3, nameePt: 5.5, messagePt: 8, urlPt: 5, padIn: 0.16, gapIn: 0.07 },
+  tent: { markIn: 0.62, namePt: 8, messagePt: 17, urlPt: 7.5, padIn: 0.42, gapIn: 0.16 },
+  card: { markIn: 0.86, namePt: 10, messagePt: 22, urlPt: 9, padIn: 0.6, gapIn: 0.22 },
+  stickers: { markIn: 0.3, namePt: 5.5, messagePt: 8, urlPt: 5, padIn: 0.16, gapIn: 0.07 },
 };
+
+/**
+ * Initials height against the circle diameter. One inch is 72 pt, so 34 pt per
+ * inch sets the cap height near half the circle. Two letters then fill the
+ * circle without a collision with the edge.
+ */
+const INITIALS_PT_PER_IN = 34;
 
 /** `https://app.example.com/r/slug` reads better on paper without the scheme. */
 function displayUrl(url: string): string {
   return url.replace(/^https?:\/\//, '');
-}
-
-function SheetMark({
-  logoUrl,
-  restaurantName,
-  sizeIn,
-}: {
-  logoUrl: string | null;
-  restaurantName: string;
-  sizeIn: number;
-}) {
-  const [broken, setBroken] = useState(false);
-
-  // A logo that fails to load must never block the print, and must never leave
-  // a blank box on the paper. Fall back to the same circle the guest page shows.
-  if (logoUrl && !broken) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        crossOrigin="anonymous"
-        onError={() => setBroken(true)}
-        className="print-ink rounded-full object-cover"
-        style={{ width: `${sizeIn}in`, height: `${sizeIn}in` }}
-      />
-    );
-  }
-
-  return (
-    <div
-      className="counter-display flex items-center justify-center rounded-full bg-muted font-semibold text-foreground"
-      style={{ width: `${sizeIn}in`, height: `${sizeIn}in`, fontSize: `${sizeIn * 34}pt` }}
-    >
-      {initials(restaurantName)}
-    </div>
-  );
 }
 
 function SheetTile({
@@ -87,7 +58,9 @@ function SheetTile({
   message,
   qrSvg,
   publicUrl,
-}: ReviewTentSheetProps) {
+  logoBroken,
+  onLogoBroken,
+}: ReviewTentSheetProps & { logoBroken: boolean; onLogoBroken: () => void }) {
   const sheet = SHEET_SIZES[size];
   const type = TYPE[size];
 
@@ -96,11 +69,25 @@ function SheetTile({
       className="print-tile flex h-full w-full flex-col items-center justify-center text-center"
       style={{ padding: `${type.padIn}in`, gap: `${type.gapIn}in` }}
     >
-      <SheetMark logoUrl={logoUrl} restaurantName={restaurantName} sizeIn={type.markIn} />
+      {/* `print-ink` on the mark, not only on the logo. A printer with
+          background graphics off drops the initials circle otherwise, and a
+          restaurant with no logo loses the one mark of identity on the page. */}
+      <BrandMark
+        logoUrl={logoUrl}
+        name={restaurantName}
+        broken={logoBroken}
+        onBroken={onLogoBroken}
+        className="print-ink"
+        style={{
+          width: `${type.markIn}in`,
+          height: `${type.markIn}in`,
+          fontSize: `${type.markIn * INITIALS_PT_PER_IN}pt`,
+        }}
+      />
 
       <p
         className="counter-micro uppercase text-muted-foreground"
-        style={{ fontSize: `${type.nameePt}pt`, letterSpacing: '0.09em' }}
+        style={{ fontSize: `${type.namePt}pt`, letterSpacing: '0.09em' }}
       >
         {restaurantName}
       </p>
@@ -120,8 +107,9 @@ function SheetTile({
           style={{ width: `${sheet.qrIn}in`, height: `${sheet.qrIn}in` }}
           // `qrSvg` is the `qrcode` package's own SVG output, not user HTML. It
           // encodes `publicUrl`, built from `slug`, which SLUG_PATTERN limits to
-          // [a-z0-9-] (see reviewSlug.ts). No attacker-controlled markup reaches
-          // innerHTML here. The same reasoning covers ReviewQrDialog.tsx:109-113.
+          // [a-z0-9-] (see reviewSlug.ts). The database holds the same pattern
+          // as a CHECK constraint. No attacker-controlled markup reaches
+          // innerHTML here.
           dangerouslySetInnerHTML={{ __html: qrSvg }}
         />
       )}
@@ -150,12 +138,15 @@ function SheetTile({
 export function ReviewTentSheet(props: ReviewTentSheetProps) {
   const sheet = SHEET_SIZES[props.size];
 
+  // One flag for the whole sheet. The sticker page draws six marks from one
+  // URL. Six local flags let one slow request print five logos and one circle.
+  const [logoBroken, setLogoBroken] = useState(false);
+
   return (
     <div
-      // The sheet is a picture of paper, not a control. Every value it shows
-      // already appears in a labelled control in the dialog, so the whole
-      // subtree leaves the accessibility tree. Nothing inside carries a role or
-      // a label: an aria-hidden ancestor makes that markup unreachable.
+      // The sheet is a picture of paper, not a control. The dialog carries the
+      // accessible name for this subtree — see the `role="img"` wrapper on the
+      // preview and the `aria-live` status line in ReviewQrDialog.
       aria-hidden="true"
       data-size={props.size}
       className="theme-counter bg-background text-foreground"
@@ -168,7 +159,12 @@ export function ReviewTentSheet(props: ReviewTentSheetProps) {
       }}
     >
       {Array.from({ length: sheet.tiles }, (_, index) => (
-        <SheetTile key={index} {...props} />
+        <SheetTile
+          key={index}
+          {...props}
+          logoBroken={logoBroken}
+          onLogoBroken={() => setLogoBroken(true)}
+        />
       ))}
     </div>
   );

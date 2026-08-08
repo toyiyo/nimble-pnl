@@ -78,6 +78,24 @@ export const MAX_MESSAGE_LENGTH = 120;
 const DEFAULT_PRINT_BUDGET_MS = 4000;
 
 /**
+ * Yields once, so React can commit a state change that a settled image caused.
+ *
+ * A logo that fails to load rejects `decode()` and fires `onerror`. The error
+ * handler sets state, and the initials circle replaces the broken image on the
+ * next render. Without this yield the print starts in the same task and puts
+ * the broken image on the paper.
+ */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
+}
+
+/**
  * Holds the print back until the sheet can render what it promises: the slab
  * serif rather than the Georgia fallback, and the logo rather than an empty
  * box.
@@ -112,4 +130,6 @@ export async function waitForPrintReady(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+
+  await nextFrame();
 }

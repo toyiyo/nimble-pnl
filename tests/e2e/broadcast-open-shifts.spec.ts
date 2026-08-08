@@ -39,7 +39,7 @@ test.describe('Broadcast Open Shifts', () => {
           compensation_type: 'hourly',
           hourly_rate: 1500,
         })
-        .select()
+        .select('id, name')
         .single();
       if (empError) throw new Error(`employees insert failed: ${empError.message}`);
 

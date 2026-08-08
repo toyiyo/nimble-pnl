@@ -85,7 +85,7 @@ async function createEmployee(page: Page, restaurantId: string, name: string) {
           compensation_type: 'hourly',
           hourly_rate: 1500,
         })
-        .select()
+        .select('id, name')
         .single();
       if (error) throw new Error(`employees insert failed: ${error.message}`);
       return data;

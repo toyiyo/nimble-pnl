@@ -85,7 +85,7 @@ export async function exposeSupabaseHelpers(page: Page) {
           ...emp,
           restaurant_id: restaurantId,
         })))
-        .select();
+        .select('id, name');
 
       if (error) {
         throw new Error(error.message);
@@ -987,7 +987,7 @@ export async function seedTemplateWithShifts(
             hourly_rate: 1500,
           }))
         )
-        .select();
+        .select('id, name');
       if (empError) throw new Error(`employees insert failed: ${empError.message}`);
 
       const employeeIdByName = new Map<string, string>((employees ?? []).map((e: any) => [e.name, e.id]));

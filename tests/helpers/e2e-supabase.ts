@@ -98,7 +98,9 @@ export async function exposeSupabaseHelpers(page: Page) {
         throw new Error(error.message);
       }
 
-      const ids = (inserted ?? []).map((row: any) => row.id);
+      // any: PostgREST's row shape here is untyped in this helper file, same
+      // as every other row map above.
+      const ids = (inserted ?? []).map((row: any) => row.id); // eslint-disable-line @typescript-eslint/no-explicit-any
       const { data, error: readError } = await supabase
         .from('employees_secure')
         .select('*')
@@ -110,7 +112,8 @@ export async function exposeSupabaseHelpers(page: Page) {
 
       // Keep the caller's insert order. `.in()` does not promise it, and specs
       // pair the returned rows with their own seed array by index.
-      const byId = new Map((data ?? []).map((row: any) => [row.id, row]));
+      // any: same untyped row shape as the map above.
+      const byId = new Map((data ?? []).map((row: any) => [row.id, row])); // eslint-disable-line @typescript-eslint/no-explicit-any
       return ids.map((id: string) => byId.get(id));
     };
 

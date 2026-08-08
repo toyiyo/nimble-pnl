@@ -9,6 +9,11 @@ const LOGO_BUCKET = 'review-page-logos';
  * The public page and the printed sheet must agree, so this lives here and not
  * inside either surface. A guest who scans the QR should see the same two
  * letters that the paper on the counter showed.
+ *
+ * Not `getInitials` from tipDistribution.ts: that one takes the first and
+ * last word ("Blue Fin Sushi" -> "BS"). A restaurant name reads better as
+ * its first two words ("Blue Fin Sushi" -> "BF"). Same reason for a plain
+ * empty string here, not tipDistribution's "?" fallback.
  */
 export function initials(name: string): string {
   return name

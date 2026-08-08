@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -83,7 +83,7 @@ export function ReviewQrDialog({
     return () => document.body.classList.remove(PRINT_ACTIVE_CLASS);
   }, [open]);
 
-  const logoUrl = useMemo(() => logoPublicUrl(logoPath), [logoPath]);
+  const logoUrl = logoPublicUrl(logoPath);
 
   // One props object, two mounts. React renders the same tree from the same
   // input, so the preview and the paper cannot drift — see memory/lessons.md,

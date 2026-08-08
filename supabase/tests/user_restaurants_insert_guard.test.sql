@@ -20,7 +20,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: two restaurants, four users. `d0000000-…` prefix so the ids do
@@ -180,6 +180,30 @@ SELECT is(
   0,
   'the old permissive self-insert policy no longer exists'
 );
+
+-- ============================================================================
+-- 11. Anon-role boundary. Runs as the real `anon` role (no `sub` claim), not
+--    as `authenticated` with a stub id. auth.uid() is NULL for anon, and
+--    is_restaurant_owner() returns false for a NULL owner id, so the new
+--    RESTRICTIVE policy denies anon with no special case — the claim the
+--    migration header and design doc make. This case pins that claim to a
+--    real test, so a future edit that narrows the policy's `TO public` to
+--    `TO authenticated`, or a change to is_restaurant_owner's NULL
+--    handling, fails here instead of shipping silently.
+-- ============================================================================
+SET LOCAL ROLE anon;
+SET LOCAL request.jwt.claims = '{"role":"anon"}';
+
+SELECT throws_ok(
+  $$ INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
+     VALUES ('d0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-0000000000a1', 'owner') $$,
+  '42501',
+  NULL,
+  'the anon role cannot insert into user_restaurants at all'
+);
+
+RESET ROLE;
+RESET request.jwt.claims;
 
 SELECT * FROM finish();
 ROLLBACK;

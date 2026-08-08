@@ -548,9 +548,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     e.preventDefault();
 
     // Build compensation data based on type
-    const hourlyRateInCents = compensationType === 'hourly' 
-      ? Math.round(Number.parseFloat(hourlyRate || '0') * 100)
-      : 0;
+    // An empty box is "unknown", not "zero". A fabricated 0 reaches
+    // hasCompensationChanged below, compares unequal to the real rate, and
+    // writes a permanent $0.00 row into the compensation history.
+    const hourlyRateInCents = compensationType === 'hourly' && hourlyRate.trim() !== ''
+      ? Math.round(Number.parseFloat(hourlyRate) * 100)
+      : undefined;
     
     const salaryAmountInCents = compensationType === 'salary' && salaryAmount
       ? Math.round(Number.parseFloat(salaryAmount) * 100)
@@ -900,7 +903,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                         <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[13px] text-amber-700 dark:text-amber-400">
-                          {/* eslint-disable-next-line no-restricted-syntax -- toLocaleString here formats a NUMBER (annualizedPay), not a date; the selector matches any toLocaleString member regardless of receiver type. */}
+                          { }
                           This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
                         </p>
                       </div>

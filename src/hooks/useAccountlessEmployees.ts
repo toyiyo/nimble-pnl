@@ -24,7 +24,7 @@ export function useAccountlessEmployees(restaurantId: string | undefined) {
     staleTime: 30000,
     queryFn: async (): Promise<AccountlessEmployee[]> => {
       const { data, error } = await supabase
-        .from('employees')
+        .from('employees_secure')
         .select('id, name, email')
         .eq('restaurant_id', restaurantId)
         .is('user_id', null)

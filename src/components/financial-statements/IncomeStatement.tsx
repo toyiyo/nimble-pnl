@@ -310,7 +310,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         // Uses calculateSalaryForPeriod/calculateContractorPayForPeriod which respect hire_date
         if (payrollFallback === 0) {
           const { data: employees, error: empErr } = await supabase
-            .from('employees')
+            .from('employees_secure')
             .select('id, restaurant_id, name, position, compensation_type, salary_amount, pay_period_type, contractor_payment_amount, contractor_payment_interval, allocate_daily, hire_date, termination_date, hourly_rate, is_active')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true);

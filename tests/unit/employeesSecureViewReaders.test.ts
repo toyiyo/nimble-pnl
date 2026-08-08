@@ -46,3 +46,37 @@ describe('direct employees readers use employees_secure', () => {
     expect(source).toContain("const { data, error } = await supabase\n        .from('employees_secure')");
   });
 });
+
+// A read that names a masked column on the base table does not return NULL.
+// It fails with "permission denied for table employees", because
+// 20260806110000 revokes SELECT on those eight columns from `authenticated`.
+// Each reader below names at least one of them, so each one breaks its page
+// for every user until it moves to the view.
+const MASKED_COLUMNS = [
+  'hourly_rate',
+  'salary_amount',
+  'contractor_payment_amount',
+  'daily_rate_amount',
+  'daily_rate_reference_weekly',
+  'email',
+  'phone',
+  'date_of_birth',
+];
+
+/** Every column list of a `.select(...)` that reads the base `employees` table. */
+const baseTableSelects = (source: string): string[] =>
+  [...source.matchAll(/\.from\('employees'\)\s*\n\s*\.select\(\s*'([^']*)'/g)].map((m) => m[1]);
+
+describe('no base-table read names a masked column', () => {
+  it.each([
+    ['src/components/financial-statements/IncomeStatement.tsx'],
+    ['src/hooks/useSlingEmployeeMapping.ts'],
+    ['src/hooks/useAccountlessEmployees.ts'],
+  ])('%s selects no masked column from employees', (path) => {
+    const selected = baseTableSelects(readSource(path)).join(',');
+    const named = MASKED_COLUMNS.filter((column) =>
+      new RegExp(`\\b${column}\\b`).test(selected)
+    );
+    expect(named).toEqual([]);
+  });
+});

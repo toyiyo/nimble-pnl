@@ -161,7 +161,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -177,7 +177,7 @@ describe('useSlingEmployeeMapping', () => {
 
       // Verify supabase from calls
       expect(mockSupabase.from).toHaveBeenCalledWith('sling_users');
-      expect(mockSupabase.from).toHaveBeenCalledWith('employees');
+      expect(mockSupabase.from).toHaveBeenCalledWith('employees_secure');
 
       // matchEmployees should be called with derived csv names + employees
       expect(mockMatchEmployees).toHaveBeenCalledWith(
@@ -210,7 +210,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -239,7 +239,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -277,7 +277,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -351,7 +351,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -515,7 +515,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -600,7 +600,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -647,7 +647,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -726,7 +726,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -806,7 +806,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 
@@ -854,7 +854,7 @@ describe('useSlingEmployeeMapping', () => {
 
       mockSupabase.from.mockImplementation((table: string) => {
         if (table === 'sling_users') return slingChain;
-        if (table === 'employees') return empChain;
+        if (table === 'employees_secure') return empChain;
         return mockFromChain;
       });
 

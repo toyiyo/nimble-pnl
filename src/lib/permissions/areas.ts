@@ -104,8 +104,8 @@ export const SENSITIVE_FLAGS: ReadonlyArray<{
   },
   {
     flag: 'view:employee_pii',
-    name: 'Contact details & tax IDs',
-    hint: 'Phone, address, last 4 of SSN',
+    name: 'Contact details',
+    hint: 'Email, phone, date of birth',
     requires: ['employees'],
   },
 ];

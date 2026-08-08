@@ -106,6 +106,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [area, setArea] = useState('');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('full_time');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  // The date the dialog opened with. Empty means either "no date on file" or
+  // "the caller lacks view:employee_pii and the box reads masked". The submit
+  // payload below needs to tell those two apart from an intentional clear.
+  const [initialDateOfBirth, setInitialDateOfBirth] = useState('');
   const [status, setStatus] = useState<EmployeeStatus>('active');
   const [hireDate, setHireDate] = useState('');
   const [terminationDate, setTerminationDate] = useState('');
@@ -241,6 +245,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       setArea(employee.area || '');
       setEmploymentType(employee.employment_type || 'full_time');
       setDateOfBirth(employee.date_of_birth || '');
+      setInitialDateOfBirth(employee.date_of_birth || '');
       setStatus(employee.status);
       setHireDate(employee.hire_date || '');
       setTerminationDate(employee.termination_date || '');
@@ -293,6 +298,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setArea('');
     setEmploymentType('full_time');
     setDateOfBirth('');
+    setInitialDateOfBirth('');
     setStatus('active');
     setHireDate('');
     setTerminationDate('');
@@ -327,11 +333,17 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       contractorInterval?: ContractorPaymentInterval;
     }
   ) => {
-    // An unknown (masked) rate is not a change. Without this guard, a
-    // caller without view:pay_rates would compare the real stored rate
+    // An unknown (masked) amount is not a change. Without this guard, a
+    // caller without view:pay_rates would compare the real stored amount
     // against `undefined`, always read as "changed", and open the
-    // effective-date modal for a rate the caller cannot even see.
+    // effective-date modal for an amount the caller cannot even see.
     if (payload.compensationType === 'hourly' && payload.hourlyRateInCents === undefined) {
+      return false;
+    }
+    if (payload.compensationType === 'salary' && payload.salaryAmountInCents === undefined) {
+      return false;
+    }
+    if (payload.compensationType === 'contractor' && payload.contractorAmountInCents === undefined) {
       return false;
     }
 
@@ -584,7 +596,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       ? Math.round(dailyRateWeeklyInCents / dailyRateDays)
       : undefined;
 
-    // Check for unusually high hourly rate
+    // Check for unusually high hourly rate. hourlyRateInCents is undefined
+    // for a masked or blank box, so this division reads NaN. NaN > threshold
+    // is false, so the check below skips the warning instead of throwing —
+    // the same intentional short-circuit as the guard in hasCompensationChanged.
     const hourlyRateInDollars = hourlyRateInCents / 100;
     if (compensationType === 'hourly' && hourlyRateInDollars > HIGH_RATE_THRESHOLD) {
       const suggestions = suggestRateCorrections(hourlyRateInDollars);
@@ -631,9 +646,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       position,
       area: area.trim() || null,
       employment_type: employmentType,
-      // undefined drops out of the JSON body. null would erase a stored date
-      // whenever the box is empty — which it always is under a masked read.
-      date_of_birth: dateOfBirth || undefined,
+      // undefined drops out of the JSON body; null writes a real erase.
+      // An empty box is ambiguous by itself: a masked read starts empty with
+      // nothing to erase, but a caller who can see the date can also clear
+      // it on purpose. `initialDateOfBirth` tells the two apart -- it only
+      // holds a real date when the box opened with one visible, so a clear
+      // against a masked-empty box still sends undefined, not null.
+      date_of_birth: dateOfBirth ? dateOfBirth : initialDateOfBirth ? null : undefined,
       status,
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 

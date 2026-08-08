@@ -91,14 +91,21 @@ const MASKED_EMPLOYEE = {
   updated_at: '2026-01-01T00:00:00Z',
 };
 
-function renderEdit() {
+// An unmasked row: the caller holds view:employee_pii, so the real date of
+// birth arrives and is visible in the box.
+const VISIBLE_DOB_EMPLOYEE = {
+  ...MASKED_EMPLOYEE,
+  date_of_birth: '2000-01-01',
+};
+
+function renderEdit(employee: typeof MASKED_EMPLOYEE = MASKED_EMPLOYEE) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false, staleTime: Infinity } },
   });
   return render(
     <QueryClientProvider client={qc}>
       {/* cast: test fixture omits optional Employee fields */}
-      <EmployeeDialog open onOpenChange={vi.fn()} restaurantId="r1" employee={MASKED_EMPLOYEE as any} /> {/* eslint-disable-line @typescript-eslint/no-explicit-any */}
+      <EmployeeDialog open onOpenChange={vi.fn()} restaurantId="r1" employee={employee as any} /> {/* eslint-disable-line @typescript-eslint/no-explicit-any */}
     </QueryClientProvider>,
   );
 }
@@ -122,5 +129,26 @@ describe('EmployeeDialog — masked date of birth is not erased', () => {
 
     await waitFor(() => expect(updateMock).toHaveBeenCalled());
     expect(updateMock.mock.calls[0][0].date_of_birth).not.toBe(null);
+  });
+
+  // Regression test for the companion bug Codex found in the fix above: a
+  // caller who CAN see the date of birth clears it on purpose. The box did
+  // not start empty this time, so the clear must send an explicit null, not
+  // silently keep the old value.
+  it('sends date_of_birth: null when a caller who can see the date clears it', async () => {
+    renderEdit(VISIBLE_DOB_EMPLOYEE);
+
+    const dobInput = screen.getByLabelText(/date of birth/i) as HTMLInputElement;
+    expect(dobInput.value).toBe('2000-01-01');
+
+    fireEvent.change(dobInput, { target: { value: '' } });
+    expect(dobInput.value).toBe('');
+
+    const form = document.body.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalled());
+    expect(updateMock.mock.calls[0][0].date_of_birth).toBe(null);
   });
 });

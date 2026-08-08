@@ -521,6 +521,20 @@ review*. Most issues should have been caught by 7a.
 **Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
 comments on the PR are handled separately in Phase 9d.
 
+**Command:** `coderabbit review --committed`
+
+Review loop (max 3 iterations):
+
+```
+Iteration 1: Run coderabbit review --committed
+  |-- No actionable findings --> Proceed to Phase 8
+  +-- Has findings --> Fix them, commit fixes
+       |
+       Iteration 2: Run coderabbit review --committed
+         |-- No actionable findings --> Proceed to Phase 8
+         +-- Has findings --> Fix them, commit fixes
+              |
+              Iteration 3: Run coderabbit review --committed
 **Command:** `coderabbit review --agent --committed --base origin/main`
 
 Review loop (max 3 iterations):
@@ -539,6 +553,11 @@ Iteration 1: Run coderabbit review --agent --committed --base origin/main
                 +-- Still has findings --> Report to user for manual decision
 ```
 
+Use `--committed` to review all committed changes on the branch. Plain text
+is the CLI's default review mode, so there is no flag to ask for it; `--agent`
+is the opt-in for structured findings.
+Parse the output for actionable suggestions vs informational notes. Only
+fix actionable items.
 `--committed` reviews all committed changes on the branch; `--base origin/main`
 pins the comparison to the *remote-tracking* trunk — exactly the base the
 Phase 7a reviewers use (`git diff origin/main...HEAD`) — instead of letting

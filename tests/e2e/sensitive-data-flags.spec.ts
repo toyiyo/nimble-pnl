@@ -96,15 +96,29 @@ test('a role without view:pay_rates receives no rate from PostgREST', async ({ p
   await page.getByRole('button', { name: /^sign in$/i }).click();
   await page.waitForURL((url) => !url.pathname.startsWith('/auth'), { timeout: 15000 });
 
+  // Some other query on the page (the caller's own self-scope employee
+  // lookup) also hits employees_secure, via `.single()`, and 406s here
+  // because this member has no linked employee record. That is a
+  // different request from the roster fetch this test cares about, so
+  // only keep responses whose body is a row array — the roster shape.
   const bodies: unknown[] = [];
   page.on('response', async (response) => {
     if (response.url().includes('/rest/v1/employees_secure')) {
-      bodies.push(await response.json().catch(() => null));
+      const json = await response.json().catch(() => null);
+      if (Array.isArray(json)) bodies.push(json);
     }
   });
 
+  // Wait for the roster fetch specifically — the row-array shape, not the
+  // caller's own `.single()` self-scope lookup on the same table.
+  const rosterResponse = page.waitForResponse(async (response) => {
+    if (!response.url().includes('/rest/v1/employees_secure')) return false;
+    const json = await response.json().catch(() => null);
+    return Array.isArray(json);
+  }, { timeout: 10000 });
   await page.goto('/scheduling');
   await expect(page.getByRole('heading', { name: /schedule/i })).toBeVisible({ timeout: 10000 });
+  await rosterResponse;
 
   const rows = bodies.flat().filter(Boolean) as Array<Record<string, unknown>>;
   expect(rows.length).toBeGreaterThan(0);

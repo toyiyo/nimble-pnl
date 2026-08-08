@@ -1,7 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 
@@ -111,7 +110,6 @@ describe('EmployeeDialog — masked hourly rate is not fabricated as zero', () =
   });
 
   it('never sends hourly_rate: 0 for a masked (blank) rate box on save', async () => {
-    const user = userEvent.setup();
     renderEdit();
 
     // Confirm the fixture actually masks the rate box, as the bug requires.
@@ -127,14 +125,12 @@ describe('EmployeeDialog — masked hourly rate is not fabricated as zero', () =
     expect(form).not.toBeNull();
     fireEvent.submit(form as HTMLFormElement);
 
-    // A changed hourly rate opens the effective-date confirmation modal
-    // before the update is sent.
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /apply new compensation rate/i })).toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole('button', { name: /save new rate/i }));
-
+    // An unknown (masked) rate is not a compensation change, so the dialog
+    // saves the row directly and never opens the effective-date modal.
     await waitFor(() => expect(updateMock).toHaveBeenCalled());
     expect(updateMock.mock.calls[0][0].hourly_rate).not.toBe(0);
+    expect(
+      screen.queryByRole('heading', { name: /apply new compensation rate/i }),
+    ).not.toBeInTheDocument();
   });
 });

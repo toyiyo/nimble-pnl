@@ -57,6 +57,46 @@ roles qualify: Owner, Manager, Operations Manager, Accountant, and Operations
 Manager (Collaborator). The last two also hold `view:payroll`. A three-role
 seed takes pay data away from the Accountant, who runs payroll today.
 
+### The seed alone is not enough — the legacy path also denies both flags
+
+The paragraph above says every production membership carries a non-null
+`role_id`. That is true today. It is not true of the next restaurant.
+
+`public.create_restaurant_with_owner` writes `(user_id, restaurant_id, role)`
+and leaves `user_restaurants.role_id` NULL. All four
+`INSERT INTO public.user_restaurants` sites do the same.
+`backfill_user_restaurants_role_id()` ran once, at migration time
+(`20260730120000_add_user_restaurants_role_id.sql:66`), so it filled the rows
+that existed then and nothing since.
+
+A NULL `role_id` sends `user_has_capability` down its legacy CASE. That CASE
+predates both flags and denies them through its `ELSE FALSE`. With the column
+gate in place, the owner of a new restaurant reads NULL for every pay and
+contact column — the same defect this design fixes, moved to new users.
+
+The local database proved it: 55 owner memberships from e2e signup, all with
+`role_id IS NULL`. Six e2e specs failed for exactly this reason.
+
+**Warning: seed the builtin roles AND answer the two flags on the legacy path.
+One without the other leaves a class of owners locked out.**
+
+`20260806140000_legacy_role_sensitive_flags.sql` adds the second half. It
+answers the two flags before the legacy CASE, for the five legacy role strings
+that hold `view:employees`:
+
+```sql
+IF v_role_id IS NULL AND p_capability IN ('view:pay_rates', 'view:employee_pii') THEN
+  RETURN v_role IN (
+    'owner', 'manager', 'operations_manager',
+    'collaborator_accountant', 'collaborator_operations_manager'
+  );
+END IF;
+```
+
+Those five match `ROLE_CAPABILITIES` in `src/lib/permissions/definitions.ts`,
+whose own legacy path already granted both flags. The client and the database
+disagreed. The client was right. `view:costs` stays denied on both paths.
+
 ## Architecture
 
 Postgres RLS filters rows. It cannot mask a column. A column `GRANT` is a
@@ -193,6 +233,9 @@ the membership resolves.
 the REVOKE/GRANT set, the `employees_secure` view, and the
 `employee_compensation_history` policy change.
 
+`supabase/migrations/<ts>_legacy_role_sensitive_flags.sql` — answers the two
+flags on a NULL `role_id` membership. See "The seed alone is not enough" above.
+
 The timestamp must not collide with any migration on `main`. Lesson
 [2026-08-05]: `tests/unit/migrationVersionUniqueness.test.ts` fails only on the
 `pull_request` event.
@@ -249,6 +292,8 @@ The seed must land before the gate, or every owner loses access.
 2. Strip masked keys in `useUpdateEmployee`, and fix the dialog's write path.
 3. Add the view, the REVOKE/GRANT set, and the policy change.
 4. Point every reader at `employees_secure`.
+5. Answer the two flags on the legacy `role_id IS NULL` path. Step 1 covers
+   only the memberships that carry a `role_id`.
 
 ## Non-goals
 

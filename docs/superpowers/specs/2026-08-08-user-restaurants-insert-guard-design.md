@@ -207,8 +207,10 @@ mistake. A bare `throws_ok` is not enough here — see the warning below.
 | 5 | Real owner inserts another user as `staff` | succeeds |
 | 6 | Real owner inserts another user as `owner` | succeeds |
 | 7 | `create_restaurant_with_owner` still creates the bootstrap owner row | succeeds |
-| 8 | Policy exists, is RESTRICTIVE, and is scoped to INSERT | passes |
-| 9 | The dropped policy is gone | passes |
+| 8 | Non-vacuity control: `is_restaurant_owner` returns `false` for the stranger on A | passes |
+| 9 | The new policy exists, is RESTRICTIVE, and is scoped to INSERT | passes |
+| 10 | The dropped policy is gone | passes |
+| 11 | `anon` cannot insert, even granted table-level INSERT (RLS denies it) | throws `42501` |
 
 **Cases 1-4 are the non-vacuous ones.** Each is a *self*-insert, so
 `user_id = auth.uid()` holds by construction and the permissive set admits the

@@ -163,7 +163,8 @@ SELECT is(
 -- ============================================================================
 SELECT is(
   (SELECT permissive FROM pg_policies
-    WHERE tablename = 'user_restaurants'
+    WHERE schemaname = 'public'
+      AND tablename = 'user_restaurants'
       AND policyname = 'Only owners can insert restaurant associations'
       AND cmd = 'INSERT'),
   'RESTRICTIVE',
@@ -175,7 +176,8 @@ SELECT is(
 -- ============================================================================
 SELECT is(
   (SELECT count(*)::int FROM pg_policies
-    WHERE tablename = 'user_restaurants'
+    WHERE schemaname = 'public'
+      AND tablename = 'user_restaurants'
       AND policyname = 'Users can insert their own restaurant associations'),
   0,
   'the old permissive self-insert policy no longer exists'
@@ -185,27 +187,32 @@ SELECT is(
 -- 11. Anon-role boundary. Runs as the real `anon` role (no `sub` claim), not
 --    as `authenticated` with a stub id.
 --
---    This case does NOT pin the new RESTRICTIVE policy or
---    is_restaurant_owner()'s NULL handling. By default `anon` has only
---    SELECT on public.user_restaurants (see
---    supabase/migrations/20260628000000_grant_user_restaurants_select.sql)
---    and Postgres checks table-level grants before RLS, so this INSERT is
---    denied at the grant-check stage — it never reaches the RESTRICTIVE
---    policy's WITH CHECK. Even granting anon INSERT for this test would not
---    reach the policy either: the pre-existing permissive "Owners can
---    manage restaurant associations" WITH CHECK
---    (user_id = auth.uid() OR is_restaurant_owner(...)) already denies any
---    anon insert on its own, since auth.uid() is NULL for anon and user_id
---    is never NULL.
+--    Whether `anon` holds a table-level INSERT grant on user_restaurants
+--    varies by environment: the local Supabase CLI runs migrations as
+--    `postgres`, whose default-privilege entry grants anon nothing beyond
+--    SELECT here, but CI (older CLI, as of 2.65.5) runs migrations as
+--    `supabase_admin`, whose default-privilege entry grants anon full CRUD
+--    on table creation — a grant that
+--    supabase/migrations/20260628000000_grant_user_restaurants_select.sql
+--    only ever adds SELECT to, never revokes. So relying on the ambient
+--    grant state makes this case pass locally and fail in CI (or the
+--    reverse), for a reason that has nothing to do with the guard this
+--    file exists to test.
 --
---    The weaker, true guarantee this case pins: the anon role cannot insert
---    into user_restaurants at all, today, for this exact reason (the
---    missing table grant). The error message is checked, not just the
---    SQLSTATE, so a future migration that grants anon INSERT — which would
---    change *why* anon is denied, even though anon would still end up
---    denied by the permissive policy above — fails here instead of shipping
---    a silently changed guarantee.
+--    GRANT INSERT explicitly here, inside this transaction, so both
+--    environments start from the same known state before the insert. The
+--    GRANT is undone by the ROLLBACK at the end of this file — it never
+--    touches the real table privileges.
+--
+--    With the grant in place, the insert reaches RLS evaluation. It is
+--    still denied: `auth.uid()` is NULL for anon, and every permissive
+--    INSERT policy plus the new RESTRICTIVE one requires
+--    `is_restaurant_owner(...)`, which is `false` — never NULL — for a NULL
+--    argument. This is the guarantee the design documents: anon is denied
+--    by the policy check itself, not by an accident of grant state.
 -- ============================================================================
+GRANT INSERT ON public.user_restaurants TO anon;
+
 SET LOCAL ROLE anon;
 SET LOCAL request.jwt.claims = '{"role":"anon"}';
 
@@ -213,8 +220,8 @@ SELECT throws_ok(
   $$ INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
      VALUES ('d0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-0000000000a1', 'owner') $$,
   '42501',
-  'permission denied for table user_restaurants',
-  'the anon role cannot insert into user_restaurants at all'
+  'new row violates row-level security policy for table "user_restaurants"',
+  'the anon role cannot insert into user_restaurants even with an INSERT grant'
 );
 
 RESET ROLE;

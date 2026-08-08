@@ -2455,3 +2455,53 @@
 - **Mistake:** An adversarial reviewer flagged a new `shifts` policy clause — `EXISTS (SELECT 1 FROM shift_trades st WHERE st.offered_shift_id = shifts.id OR st.requested_shift_id = shifts.id)` — as an unbounded grant, since it carries no `status` or participant filter, and recommended adding a status filter there. Read in isolation that's correct. Read in context it isn't: the subquery is itself evaluated under the caller's RLS on `shift_trades`, so the clause implements exactly *"you may see a shift iff you may see a trade referencing it."* The unbounded part was the **pre-existing** `shift_trades` policy, which admits any active employee to every `target_employee_id IS NULL` trade regardless of status, forever.
 - **Correction:** Left the clause alone and filed the fix against `shift_trades`. Filtering at the `shifts` layer would have *broken* the lockstep: 26 existing `approved` open-marketplace trades would still render in trade history while their embedded `offered_shift:shifts!offered_shift_id(...)` returned `null`. Quantified the residual first — 37 of 8,195 shifts (0.45%), 2 restaurants, every one a shift its owner deliberately broadcast — which is what turned "block and redesign" into "accept, document inline, file follow-up."
 - **Rule:** Never evaluate an RLS policy that subqueries another RLS-protected table without pulling that table's policies up beside it. The effective grant is the composition. When a finding says "this clause is too broad," locate *which* layer contributes the breadth — patching the downstream clause desynchronizes two policies that were consistent by construction, and usually shows up as null embeds in PostgREST joins rather than as an error. And before accepting **or** fixing a residual risk, measure it: a percentage and a row count change the decision far more reliably than the argument does.
+
+---
+
+## Category: UI Patterns (continued)
+
+### [2026-08-07] A print rule that hides the app is session-scoped, because a CSS import never unloads
+- **Mistake:** `print-sheet.css` carried `@media print { body > *:not(#review-print-root) { display: none } }`. The file is imported by `ReviewTentSheet.tsx`, which the Reviews route renders. An ES module CSS import is evaluated once and stays in the document for the life of the tab. The rule therefore applied on every page after a manager opened the Reviews page once. Ctrl+P on the P&L page printed a blank sheet, and nothing in the reviews feature looked wrong.
+- **Correction:** Scoped the rule to `body.review-print-active > *:not(#review-print-root)`. `ReviewQrDialog` adds the class in a `useEffect` keyed on `open` and removes it in the cleanup. A unit test asserts the class is absent after the dialog closes.
+- **Rule:** A CSS rule that hides or moves content outside its own component must be gated by a class that a component adds and removes. Component scope and stylesheet scope are not the same thing: the component unmounts, the stylesheet does not. Grep any new print stylesheet for a selector rooted at `body`, `html`, or `:root` — each one is a claim about every page in the app, not about the component that imported it.
+
+### [2026-08-07] A `broken`/`failed` boolean goes stale the moment its input can change
+- **Mistake:** `BrandMark` held `const [broken, setBroken] = useState(false)` and set it in the image `onError`. `logo_path` comes from a React Query read with `refetchOnWindowFocus`. A manager who uploaded a new logo while the dialog stayed open got the initials circle for the new URL too, because the flag remembered a failure that belonged to the old URL. `ReviewTentSheet` lifted the same flag to cover six sticker tiles and copied the same defect.
+- **Correction:** Key the flag by its input. `const [brokenUrl, setBrokenUrl] = useState<string | null>(null)` and `const isBroken = logoUrl !== null && brokenUrl === logoUrl`. A test renders one URL, fires `error`, rerenders with a second URL, and asserts the `img` comes back.
+- **Rule:** A `useState` flag that records the outcome of loading something must store *which* something, not a bare `true`. Ask what re-runs the load: a prop change, a refetch, a retry. Each one produces a new attempt that the old boolean silently answers for. The test that catches it is always the same shape — fail once, change the input, assert the failure did not carry over.
+
+### [2026-08-07] `window.print()` blocks the main thread, so an `aria-live` update must paint before it
+- **Mistake:** `handlePrint` set the status to "Sheet ready" and called `window.print()` in the same tick. `window.print()` blocks until the manager dismisses the system dialog, so React never painted the new status. A screen reader user heard "Preparing the sheet" and then silence for as long as the dialog stayed open.
+- **Correction:** `await nextFrame()` between the state update and the call. The test stubs `window.print` with a spy that reads the live region at call time and asserts it already says "Sheet ready".
+- **Rule:** Before any synchronous browser call that blocks the main thread — `print`, `alert`, `confirm`, `prompt` — yield one frame so React commits and paints the state you just set. Test it by reading the DOM *inside* the stub for the blocking call, not after it: an assertion after the call passes even when the paint never happened.
+
+---
+
+## Category: Sound Logic (continued)
+
+### [2026-08-07] A live `open` flag cannot cancel work that a previous dialog session started
+- **Mistake:** `handlePrint` awaited a font/image readiness wait, then checked `openRef.current` before it printed. The intent was "do not print if the manager closed the dialog." The check fails for close-then-reopen inside one slow wait: the flag returns to `true`, and the dead attempt prints into the new session. An unmount left the ref `true` as well, so a print could follow the manager to the next page.
+- **Correction:** A monotonic session counter. One `useEffect` keyed on `open` increments `sessionRef` when the dialog opens and increments it again in the cleanup, so a close, an unmount and a reopen all end the session. `handlePrint` captures the id before the wait and compares it after.
+- **Rule:** A boolean cannot identify *which* attempt is current — it only reports the present state, and the present state can return to the value the stale attempt saw. Any async work that must be cancelled by a lifecycle event needs an identity: a monotonic counter, an `AbortController`, or a captured token. The two-line test that separates them: close **and reopen** during the wait. A close-only test passes against both versions, which is why the defect survived a mutation check that used the close-only case.
+
+---
+
+## Category: Testing (continued)
+
+### [2026-08-07] Mutate the code back to the version you replaced, not to an arbitrary break
+- **Practice:** After each fix, I reverted the guard and confirmed exactly one named test failed. For the print-session fix the naive mutant is `if (false) return`, which kills both the new test and the older close-only test — that proves the tests notice *something*, not that the new test covers the new behaviour. The mutant that earns the claim reproduces the **old** semantics: open sessions carry an odd counter, so `if (sessionRef.current % 2 === 0) return` is exactly the old live-`open` check. Under it the close-only test still passed and only the new close-and-reopen test failed.
+- **Rule:** Write the mutant as the code you just deleted. A mutant that breaks everything proves coverage of the function; a mutant that restores the previous behaviour proves coverage of the *change*. If the old-behaviour mutant leaves every test green, the fix has no test and the reviewer's finding is still open.
+
+### [2026-08-07] Playwright's `toBeHidden()` passes when the locator matches nothing
+- **Mistake:** The e2e spec for the print rule asserted `await expect(page.locator('header')).toBeHidden()` under emulated print media. It passed before the print CSS existed, because a locator that matches zero elements satisfies `toBeHidden()`. Radix also marks the page background `aria-hidden` while a dialog is open, which hides the assertion a second way.
+- **Correction:** Read the computed style: `getComputedStyle(el).display === 'none'` on an element the spec first asserts exists.
+- **Rule:** A negative assertion is only meaningful over a non-empty set. Assert the element exists, then assert the property. `toBeHidden`, `not.toBeVisible` and `toHaveCount(0)` all report success for a typo in the selector. Mutation-check every negative assertion: delete the rule it guards and confirm the test turns red.
+
+---
+
+## Category: Data Validation (continued)
+
+### [2026-08-07] An input `maxLength` limits typing, not the value you seed the input with
+- **Mistake:** `ReviewQrDialog` seeded a one-off print message from `review_pages.headline` and set `maxLength={120}` on the input, with a "n/120" counter beside it. `headline` is `TEXT NOT NULL` with no length limit, and the headline editor sets no `maxLength` of its own. A 500-character headline seeded in full: the sheet printed text that pushed the QR code off the paper, under a counter that read "500/120".
+- **Correction:** Clamp at the seed — `setMessage(defaultMessage.slice(0, MAX_MESSAGE_LENGTH))` — using the same constant the input and the counter read.
+- **Rule:** `maxLength` is a keystroke rule. It never touches a value that arrives by props, by `setState`, or from the database. When a field advertises a limit, apply the limit at every entry point into its state, and take the number from one exported constant. Check the *source* column before you trust the limit: a `TEXT` column with no `CHECK` and an editor with no cap means any length can reach you. (Complements the 2026-08-06 rule "truncate after you validate" — that one is about slicing too early, this one is about not slicing at all.)

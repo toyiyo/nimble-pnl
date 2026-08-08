@@ -12,6 +12,7 @@ import { StarRating } from '@/components/reviews/StarRating';
 
 import { ChevronLeft } from 'lucide-react';
 
+import { initials } from '@/lib/reviews/reviewBranding';
 import { canSubmitFollowUp } from '@/lib/reviews/reviewSubmission';
 import {
   classifyReviewPageResponse,
@@ -27,15 +28,6 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@/styles/counter-theme.css';
 
 type Stage = 'land' | 'promoter' | 'feedback' | 'thanks';
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 /** The Google review hand-off. The promoter stage and the thanks stage both render it. */
 function GoogleReviewLink({ href }: { href: string }) {

@@ -631,7 +631,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       position,
       area: area.trim() || null,
       employment_type: employmentType,
-      date_of_birth: dateOfBirth || null,
+      // undefined drops out of the JSON body. null would erase a stored date
+      // whenever the box is empty — which it always is under a masked read.
+      date_of_birth: dateOfBirth || undefined,
       status,
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 

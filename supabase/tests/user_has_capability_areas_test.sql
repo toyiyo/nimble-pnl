@@ -47,6 +47,12 @@
 -- 2. user_restaurants.role_id IS NULL falls back to the legacy CASE
 --    (denied capability first, then a granted one).
 --
+-- 2b. The two sensitive flags answer BEFORE that fallback. The legacy CASE
+--    denies them through its ELSE FALSE, and create_restaurant_with_owner
+--    still leaves role_id NULL, so every new restaurant's owner would lose
+--    pay and contact data to the column gate. The branch grants both flags to
+--    the five legacy role strings that hold view:employees, and to no other.
+--
 -- 3. A custom role holding {inventory: manage} gets edit:inventory and not
 --    edit:recipes (denied first, then granted).
 --
@@ -81,7 +87,7 @@
 
 BEGIN;
 
-SELECT plan(31);
+SELECT plan(36);
 
 -- ----------------------------------------------------------------------------
 -- Fixture: legacy CASE, transcribed verbatim and parameterized on p_role.
@@ -404,6 +410,63 @@ SELECT is(
   public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:recipes'),
   TRUE,
   'role_id IS NULL fallback: legacy chef granted view:recipes (legacy CASE)'
+);
+
+-- ============================================================================
+-- 2b. The two sensitive flags on a legacy membership.
+--
+-- create_restaurant_with_owner still writes (user_id, restaurant_id, role)
+-- and leaves role_id NULL, so the owner of every restaurant created from now
+-- on lands on the legacy path. The legacy CASE predates both flags and denies
+-- them through its ELSE FALSE. Without the branch under test, the column gate
+-- in 20260806110000 hides pay and contact data from that owner.
+--
+-- The five role strings below are the legacy equivalents of the five builtin
+-- roles that 20260806100000 seeds, and they match view:employees exactly.
+-- view:costs stays denied on both paths: no code reads it yet.
+-- ============================================================================
+INSERT INTO auth.users (id, email)
+VALUES ('5a000000-0000-0000-0000-000000000202', 'task5-legacy-owner-flags@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id)
+VALUES ('5a000000-0000-0000-0000-000000000202', '5a000000-0000-0000-0000-000000000099', 'owner', NULL)
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner', role_id = NULL;
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000202","role":"authenticated"}', true);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pay_rates'),
+  TRUE,
+  'role_id IS NULL: legacy owner holds view:pay_rates'
+);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:employee_pii'),
+  TRUE,
+  'role_id IS NULL: legacy owner holds view:employee_pii'
+);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:costs'),
+  FALSE,
+  'role_id IS NULL: legacy owner denied view:costs (no code reads it yet)'
+);
+
+-- The legacy chef holds view:employees on neither path, so it holds neither
+-- flag. Same membership row as section 2.
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000201","role":"authenticated"}', true);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pay_rates'),
+  FALSE,
+  'role_id IS NULL: legacy chef denied view:pay_rates'
+);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:employee_pii'),
+  FALSE,
+  'role_id IS NULL: legacy chef denied view:employee_pii'
 );
 
 -- ============================================================================

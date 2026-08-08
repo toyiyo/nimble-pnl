@@ -123,7 +123,7 @@ function bankLaborRow(transaction_date: string, amountDollars: number): any {
 function mockSupabaseClient(opts: { timePunches: unknown[]; employees: unknown[]; bankLabor: unknown[] }) {
   const fromMock = vi.fn((table: string) => {
     if (table === 'time_punches') return makeTimePunchesChain(opts.timePunches);
-    if (table === 'employees') return makeChainable(opts.employees);
+    if (table === 'employees_secure') return makeChainable(opts.employees);
     if (table === 'bank_transactions') return makeChainable(opts.bankLabor);
     return makeChainable([]);
   });

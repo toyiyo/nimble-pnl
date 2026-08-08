@@ -404,7 +404,7 @@ export function useMonthlyMetrics(
       }
 
       const { data: employeesData, error: employeesError } = await supabase
-        .from('employees')
+        .from('employees_secure')
         .select('*')
         .eq('restaurant_id', restaurantId);
 

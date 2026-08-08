@@ -37,7 +37,7 @@ export const useEmployees = (
       if (!restaurantId) return [];
 
       let query = supabase
-        .from('employees')
+        .from('employees_secure')
         .select(`
           *,
           compensation_history:employee_compensation_history(*)

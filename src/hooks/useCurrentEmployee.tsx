@@ -18,7 +18,7 @@ export const useCurrentEmployee = (restaurantId: string | null) => {
 
       // Find employee record linked to this user
       const { data, error } = await supabase
-        .from('employees')
+        .from('employees_secure')
         .select('*')
         .eq('user_id', user.id)
         .eq('restaurant_id', restaurantId)

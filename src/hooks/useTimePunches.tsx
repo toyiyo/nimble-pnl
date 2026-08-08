@@ -595,7 +595,7 @@ export const useCurrentEmployee = (restaurantId: string | null) => {
       if (!user) return null;
 
       const { data, error } = await supabase
-        .from('employees')
+        .from('employees_secure')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('user_id', user.id)

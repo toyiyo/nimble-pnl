@@ -188,62 +188,108 @@ export function ReviewQrDialog({
               The code didn&apos;t generate. Close this and try again.
             </p>
           ) : (
-            <>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="review-qr-size"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Paper size
-                </Label>
-                <RadioGroup
-                  id="review-qr-size"
-                  value={size}
-                  onValueChange={(value) => setSize(value as SheetSizeKey)}
-                  className="grid gap-2 sm:grid-cols-3"
-                >
-                  {SHEET_SIZE_KEYS.map((key) => (
-                    <label
-                      key={key}
-                      htmlFor={`review-qr-size-${key}`}
-                      className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/40 bg-muted/30 p-3 transition-colors hover:border-border"
-                    >
-                      <RadioGroupItem
-                        value={key}
-                        id={`review-qr-size-${key}`}
-                        className="mt-0.5"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-medium text-foreground">
-                          {SHEET_SIZES[key].label}
+            // Two columns from `sm` up. In one column the preview is about
+            // 385 px tall and pushes the Print button — the point of the whole
+            // dialog — below the fold on a laptop.
+            <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-start">
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="review-qr-size"
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    Paper size
+                  </Label>
+                  <RadioGroup
+                    id="review-qr-size"
+                    value={size}
+                    onValueChange={(value) => setSize(value as SheetSizeKey)}
+                    className="grid gap-2"
+                  >
+                    {SHEET_SIZE_KEYS.map((key) => (
+                      <label
+                        key={key}
+                        htmlFor={`review-qr-size-${key}`}
+                        className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/40 bg-muted/30 p-3 transition-colors hover:border-border"
+                      >
+                        <RadioGroupItem
+                          value={key}
+                          id={`review-qr-size-${key}`}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-medium text-foreground">
+                            {SHEET_SIZES[key].label}
+                          </span>
+                          <span className="block text-[12px] text-muted-foreground">
+                            {SHEET_SIZES[key].hint}
+                          </span>
                         </span>
-                        <span className="block text-[12px] text-muted-foreground">
-                          {SHEET_SIZES[key].hint}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                </RadioGroup>
-              </div>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </div>
 
-              <div className="space-y-2">
-                <Label
-                  htmlFor="review-qr-message"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Message
-                </Label>
-                <Input
-                  id="review-qr-message"
-                  value={message}
-                  maxLength={MAX_MESSAGE_LENGTH}
-                  onChange={(event) => setMessage(event.target.value)}
-                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
-                />
-                <p className="text-[12px] text-muted-foreground">
-                  This sheet only. It does not change the page.{' '}
-                  {message.length}/{MAX_MESSAGE_LENGTH}
-                </p>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="review-qr-message"
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    Message
+                  </Label>
+                  <Input
+                    id="review-qr-message"
+                    value={message}
+                    maxLength={MAX_MESSAGE_LENGTH}
+                    onChange={(event) => setMessage(event.target.value)}
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                  />
+                  <p className="text-[12px] text-muted-foreground">
+                    This sheet only. It does not change the page. {message.length}/
+                    {MAX_MESSAGE_LENGTH}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    disabled={!sheetSvg || preparing}
+                    onClick={handlePrint}
+                    className="h-9 w-full rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    {preparing ? 'Preparing…' : 'Print'}
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!svg}
+                      aria-label="Download QR code as SVG"
+                      className="h-9 flex-1 rounded-lg text-[13px] font-medium"
+                      onClick={() =>
+                        svg &&
+                        download(
+                          `${slug}-qr.svg`,
+                          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+                        )
+                      }
+                    >
+                      Download SVG
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!png}
+                      aria-label="Download QR code as PNG"
+                      className="h-9 flex-1 rounded-lg text-[13px] font-medium"
+                      onClick={() => png && download(`${slug}-qr.png`, png)}
+                    >
+                      Download PNG
+                    </Button>
+                  </div>
+                  <p className="text-[12px] text-muted-foreground break-all">{publicUrl}</p>
+                </div>
               </div>
 
               <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
@@ -268,49 +314,7 @@ export function ReviewQrDialog({
                   <Skeleton className="mx-auto h-64 w-44 rounded-lg" />
                 )}
               </div>
-
-              <p className="text-[12px] text-muted-foreground text-center break-all">
-                {publicUrl}
-              </p>
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  disabled={!sheetSvg || preparing}
-                  onClick={handlePrint}
-                  className="h-9 flex-1 min-w-[120px] rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-                >
-                  <Printer className="mr-2 h-4 w-4" />
-                  {preparing ? 'Preparing…' : 'Print'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!svg}
-                  aria-label="Download QR code as SVG"
-                  className="h-9 flex-1 min-w-[120px] rounded-lg text-[13px] font-medium"
-                  onClick={() =>
-                    svg &&
-                    download(
-                      `${slug}-qr.svg`,
-                      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
-                    )
-                  }
-                >
-                  Download SVG
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!png}
-                  aria-label="Download QR code as PNG"
-                  className="h-9 flex-1 min-w-[120px] rounded-lg text-[13px] font-medium"
-                  onClick={() => png && download(`${slug}-qr.png`, png)}
-                >
-                  Download PNG
-                </Button>
-              </div>
-            </>
+            </div>
           )}
         </div>
       </DialogContent>

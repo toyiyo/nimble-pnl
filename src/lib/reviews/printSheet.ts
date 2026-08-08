@@ -29,7 +29,9 @@ export const SHEET_SIZES: Readonly<Record<SheetSizeKey, SheetSize>> = Object.fre
   tent: {
     key: 'tent',
     label: 'Table tent',
-    hint: '4 × 6 in — folds to stand on a table',
+    // Not "folds to stand": the sheet is one tile across the full 4 × 6, so a
+    // fold would put the crease through the QR code.
+    hint: '4 × 6 in — fits a countertop stand',
     widthIn: 4,
     heightIn: 6,
     pageSize: '4in 6in',

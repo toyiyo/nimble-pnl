@@ -166,6 +166,34 @@ describe('ReviewQrDialog print sheet', () => {
     expect(window.print).not.toHaveBeenCalled();
   });
 
+  it('does not print for a dialog session the manager already closed', async () => {
+    // Close and open again inside one slow wait. A live `open` flag goes back
+    // to true, and the dead attempt would then print into the new session —
+    // the manager gets a print dialog they did not ask for.
+    const { rerender } = render(<ReviewQrDialog {...PROPS} />);
+    const button = await screen.findByRole('button', { name: /^print$/i });
+    await waitFor(() => expect(button).toBeEnabled());
+
+    fireEvent.click(button);
+    rerender(<ReviewQrDialog {...PROPS} open={false} />);
+    rerender(<ReviewQrDialog {...PROPS} open={true} />);
+
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 50));
+    });
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it('clamps a long saved headline to the message limit', async () => {
+    // `review_pages.headline` is TEXT with no length limit, and the headline
+    // editor sets no maxLength. The input maxLength stops a manager from
+    // typing past 120. It does not trim a value that arrives past 120.
+    const long = 'x'.repeat(300);
+    render(<ReviewQrDialog {...PROPS} defaultMessage={long} />);
+    const input = await screen.findByLabelText(/message/i);
+    expect((input as HTMLInputElement).value).toHaveLength(120);
+  });
+
   it('announces the ready status before it opens the print dialog', async () => {
     // `window.print()` blocks the main thread until the manager dismisses the
     // system dialog. Without a frame yield React never paints the new status,

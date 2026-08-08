@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { nextFrame, waitForPrintReady, type SheetSizeKey } from '@/lib/reviews/printSheet';
+import {
+  MAX_MESSAGE_LENGTH,
+  nextFrame,
+  waitForPrintReady,
+  type SheetSizeKey,
+} from '@/lib/reviews/printSheet';
 
 interface UseReviewQrSheetOptions {
   open: boolean;
@@ -59,12 +64,21 @@ export function useReviewQrSheet({ open, publicUrl, defaultMessage }: UseReviewQ
 
   const printRootRef = useRef<HTMLDivElement | null>(null);
 
-  // `handlePrint` waits before it prints, and the dialog can close during that
-  // wait. A ref carries the live value: a plain `open` in the callback would
-  // hold whatever it captured when the callback was made.
-  const openRef = useRef(open);
+  // Every open is one print session, and every close ends it.
+  //
+  // `handlePrint` waits before it prints. It captures the session id and
+  // compares the id after the wait. A live `open` flag is not enough: the
+  // manager can close the dialog and open it again inside one slow wait, which
+  // sets the flag back to true and lets the dead attempt print into the new
+  // session. The cleanup also covers an unmount, so a print cannot follow the
+  // manager to the next page.
+  const sessionRef = useRef(0);
   useEffect(() => {
-    openRef.current = open;
+    if (!open) return;
+    sessionRef.current += 1;
+    return () => {
+      sessionRef.current += 1;
+    };
   }, [open]);
 
   // Seed the message on the open transition only.
@@ -75,7 +89,12 @@ export function useReviewQrSheet({ open, publicUrl, defaultMessage }: UseReviewQ
   const wasOpen = useRef(false);
   useEffect(() => {
     if (open && !wasOpen.current) {
-      setMessage(defaultMessage);
+      // Clamp the seed. `review_pages.headline` is TEXT with no length limit,
+      // and the headline editor sets no `maxLength`. The input `maxLength`
+      // stops a manager from typing past 120, but it does not trim a value
+      // that arrives past 120. An unclamped seed prints text that pushes the
+      // QR code off the paper, under a counter that reads "500/120".
+      setMessage(defaultMessage.slice(0, MAX_MESSAGE_LENGTH));
       setPrintAttempt(0);
       setIsPreparing(false);
     }
@@ -120,6 +139,7 @@ export function useReviewQrSheet({ open, publicUrl, defaultMessage }: UseReviewQ
   }, [open, publicUrl]);
 
   const handlePrint = useCallback(async () => {
+    const session = sessionRef.current;
     setPrintAttempt((attempt) => attempt + 1);
     setIsPreparing(true);
     // Never rejects, never hangs: a 4 s budget wins the race if a font stalls.
@@ -130,10 +150,11 @@ export function useReviewQrSheet({ open, publicUrl, defaultMessage }: UseReviewQ
     // status and the live region announces it. Without the yield a screen
     // reader user hears "Preparing" and then nothing.
     await nextFrame();
-    // The manager can close the dialog during that wait. Print only what they
-    // still ask for: the print root is gone, and the system print dialog would
-    // open over a screen they already dismissed.
-    if (!openRef.current) return;
+    // The manager can close the dialog during that wait, and open it again.
+    // Print only for the session that asked. The print root of a dead session
+    // is gone, and the system print dialog would open over a screen they
+    // already dismissed.
+    if (session !== sessionRef.current) return;
     window.print();
   }, []);
 

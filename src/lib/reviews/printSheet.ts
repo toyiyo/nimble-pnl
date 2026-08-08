@@ -85,7 +85,7 @@ const DEFAULT_PRINT_BUDGET_MS = 4000;
  * next render. Without this yield the print starts in the same task and puts
  * the broken image on the paper.
  */
-function nextFrame(): Promise<void> {
+export function nextFrame(): Promise<void> {
   return new Promise((resolve) => {
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => resolve());
@@ -117,7 +117,13 @@ export async function waitForPrintReady(
     document.fonts?.ready ?? Promise.resolve(),
     // A failed decode is the missing-logo path. The sheet already falls back to
     // the initials circle, so swallow it rather than block the print.
-    ...images.map((img) => img.decode().catch(() => undefined)),
+    //
+    // `decode` is absent in some engines and in a plain jsdom image. A bare
+    // call would throw out of this function and kill the print, which is a
+    // worse result than a logo that arrives one frame late.
+    ...images.map((img) =>
+      typeof img.decode === 'function' ? img.decode().catch(() => undefined) : Promise.resolve()
+    ),
   ]);
 
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -64,6 +64,21 @@ describe('ReviewTentSheet', () => {
     expect(screen.getAllByText('BF')).toHaveLength(6);
   });
 
+  it('tries the logo again when the URL changes', () => {
+    // `logo_path` comes from a React Query read with `refetchOnWindowFocus`. A
+    // manager can upload a new logo while this dialog stays open. A sticky
+    // boolean flag would then show the initials circle for the new URL too.
+    const { container, rerender } = render(
+      <ReviewTentSheet {...BASE} logoUrl="https://cdn.test/old.png" />
+    );
+    fireEvent.error(container.querySelector('img')!);
+    expect(container.querySelector('img')).toBeNull();
+
+    rerender(<ReviewTentSheet {...BASE} logoUrl="https://cdn.test/new.png" />);
+
+    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/new.png');
+  });
+
   it('renders one tile for the tent and six for the sticker sheet', () => {
     const { container: tent } = render(<ReviewTentSheet {...BASE} />);
     expect(tent.querySelectorAll('.print-tile')).toHaveLength(1);

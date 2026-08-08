@@ -140,7 +140,11 @@ export function ReviewTentSheet(props: ReviewTentSheetProps) {
 
   // One flag for the whole sheet. The sticker page draws six marks from one
   // URL. Six local flags let one slow request print five logos and one circle.
-  const [logoBroken, setLogoBroken] = useState(false);
+  //
+  // Keyed by URL, as BrandMark keys its own flag. A manager can upload a new
+  // logo while this dialog stays open, and a plain boolean would then hide it.
+  const [brokenLogoUrl, setBrokenLogoUrl] = useState<string | null>(null);
+  const logoBroken = props.logoUrl !== null && brokenLogoUrl === props.logoUrl;
 
   return (
     <div
@@ -163,7 +167,7 @@ export function ReviewTentSheet(props: ReviewTentSheetProps) {
           key={index}
           {...props}
           logoBroken={logoBroken}
-          onLogoBroken={() => setLogoBroken(true)}
+          onLogoBroken={() => setBrokenLogoUrl(props.logoUrl)}
         />
       ))}
     </div>

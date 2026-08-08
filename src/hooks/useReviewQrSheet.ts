@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { waitForPrintReady, type SheetSizeKey } from '@/lib/reviews/printSheet';
+import { nextFrame, waitForPrintReady, type SheetSizeKey } from '@/lib/reviews/printSheet';
 
 interface UseReviewQrSheetOptions {
   open: boolean;
@@ -125,6 +125,11 @@ export function useReviewQrSheet({ open, publicUrl, defaultMessage }: UseReviewQ
     // Never rejects, never hangs: a 4 s budget wins the race if a font stalls.
     await waitForPrintReady(printRootRef.current);
     setIsPreparing(false);
+    // `window.print()` blocks the main thread until the manager dismisses the
+    // system dialog. Yield one frame first, so React paints the "Sheet ready"
+    // status and the live region announces it. Without the yield a screen
+    // reader user hears "Preparing" and then nothing.
+    await nextFrame();
     // The manager can close the dialog during that wait. Print only what they
     // still ask for: the print root is gone, and the system print dialog would
     // open over a screen they already dismissed.

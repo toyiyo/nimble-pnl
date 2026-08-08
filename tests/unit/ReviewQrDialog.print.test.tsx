@@ -166,6 +166,27 @@ describe('ReviewQrDialog print sheet', () => {
     expect(window.print).not.toHaveBeenCalled();
   });
 
+  it('announces the ready status before it opens the print dialog', async () => {
+    // `window.print()` blocks the main thread until the manager dismisses the
+    // system dialog. Without a frame yield React never paints the new status,
+    // and a screen reader user hears "Preparing" and then nothing.
+    let statusAtPrint = '';
+    vi.stubGlobal(
+      'print',
+      vi.fn(() => {
+        statusAtPrint = liveText();
+      })
+    );
+
+    render(<ReviewQrDialog {...PROPS} />);
+    const button = await screen.findByRole('button', { name: /^print$/i });
+    await waitFor(() => expect(button).toBeEnabled());
+
+    fireEvent.click(button);
+    await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+    expect(statusAtPrint).toMatch(/sheet ready/i);
+  });
+
   it('holds the print class on body only while the dialog is open', async () => {
     const { rerender } = render(<ReviewQrDialog {...PROPS} />);
     await waitFor(() => expect(document.body).toHaveClass('review-print-active'));

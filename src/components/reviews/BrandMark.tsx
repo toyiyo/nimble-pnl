@@ -14,6 +14,9 @@ interface BrandMarkProps {
    * Lifts the broken flag to the parent. The sticker sheet draws six marks from
    * one URL, and one shared flag keeps all six the same on a single sheet.
    * Omit both props to keep the flag local.
+   *
+   * A parent that lifts the flag must key it by URL, as the local flag does.
+   * A plain boolean survives a logo change and hides the new logo.
    */
   broken?: boolean;
   onBroken?: () => void;
@@ -34,8 +37,11 @@ export function BrandMark({
   broken,
   onBroken,
 }: BrandMarkProps) {
-  const [localBroken, setLocalBroken] = useState(false);
-  const isBroken = broken ?? localBroken;
+  // Keyed by URL, not a plain boolean. `logo_path` comes from a React Query
+  // read with `refetchOnWindowFocus`. A manager who uploads a new logo gets a
+  // new URL, and a sticky boolean would show the initials circle forever.
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const isBroken = broken ?? (logoUrl !== null && brokenUrl === logoUrl);
 
   // A logo that fails to load must never leave a blank box, on screen or on
   // paper. Fall back to the initials circle.
@@ -45,7 +51,7 @@ export function BrandMark({
         src={logoUrl}
         alt=""
         onError={() => {
-          setLocalBroken(true);
+          setBrokenUrl(logoUrl);
           onBroken?.();
         }}
         className={cn('rounded-full object-cover', className)}

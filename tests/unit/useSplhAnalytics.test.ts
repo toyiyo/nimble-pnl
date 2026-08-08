@@ -115,7 +115,8 @@ describe('useSplhAnalytics', () => {
 
     renderHook(() => useSplhAnalytics('rest-1'), { wrapper: createWrapper() });
 
-    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'UTC', 12);
+    // safeTz falls back to the restaurant default (America/Chicago), not UTC.
+    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'America/Chicago', 12);
   });
 
   it('flags hasHourlyBreakdown false when no sale row has a sold_at timestamp (POS lacks per-sale time)', async () => {

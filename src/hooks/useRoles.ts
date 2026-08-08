@@ -35,6 +35,7 @@ export interface RoleWithGrants {
   description: string | null;
   flavor: 'platform' | 'collaborator';
   builtin: boolean;
+  legacy_role: string | null;
   created_at: string;
   role_areas: RoleAreaGrant[];
   role_flags: Array<{ flag: SensitiveFlag }>;
@@ -63,6 +64,7 @@ const ROLES_SELECT = `
   description,
   flavor,
   builtin,
+  legacy_role,
   created_at,
   role_areas(area_key, level),
   role_flags(flag)

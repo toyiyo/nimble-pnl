@@ -28,6 +28,46 @@ async function fetchEmployeeId(page: Page, name: string) {
   }, { employeeName: name });
 }
 
+async function fetchRestaurantTimezone(page: Page) {
+  return page.evaluate(async () => {
+    const { supabase } = await import('/src/integrations/supabase/client');
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('timezone')
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    // RLS scopes this to the freshly signed-up user, who owns exactly one
+    // restaurant, so `limit(1)` cannot pick the wrong row.
+    return (data?.timezone as string | undefined) ?? 'UTC';
+  });
+}
+
+/**
+ * The business day in the restaurant's timezone — what EmployeeDialog seeds
+ * `effective_date` with (`toBusinessDay(new Date(), restaurantTimezone)`).
+ *
+ * The UTC day is NOT the same thing: a US restaurant crosses into the next UTC
+ * day hours before its own midnight, so a CI runner on UTC at 00:26 is still on
+ * the previous business day in America/Chicago. `en-CA` formats as YYYY-MM-DD,
+ * matching the date-only column.
+ */
+function businessDay(timeZone: string, date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+/** Shift a YYYY-MM-DD business day by whole days, staying in date-only space. */
+function addDays(day: string, days: number): string {
+  const [year, month, date] = day.split('-').map(Number);
+  return businessDay('UTC', new Date(Date.UTC(year, month - 1, date + days)));
+}
+
 async function fetchCompHistory(page: Page, employeeId: string) {
   return page.evaluate(async ({ employeeId }) => {
     const { supabase } = await import('/src/integrations/supabase/client');
@@ -85,8 +125,9 @@ test.describe('Employee compensation history', () => {
     const employeeId = await fetchEmployeeId(page, employee.name);
     expect(employeeId).toBeTruthy();
 
-    // Use UTC date to match backend's default effective_date calculation
-    const today = new Date().toISOString().split('T')[0];
+    // The dialog seeds effective_date from the RESTAURANT's business day.
+    const timezone = await fetchRestaurantTimezone(page);
+    const today = businessDay(timezone);
     const initialHistory = await fetchCompHistory(page, employeeId!);
     expect(initialHistory).toHaveLength(1);
     expect(initialHistory[0]).toMatchObject({
@@ -107,13 +148,12 @@ test.describe('Employee compensation history', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     const effectiveDateInput = modal.getByLabel(/effective date/i);
-    // Input should default to today (UTC)
+    // Input should default to the restaurant's business day
     await expect(effectiveDateInput).toHaveValue(today);
 
-    // Use UTC to avoid timezone conflicts with database constraint
-    const future = new Date();
-    future.setUTCDate(future.getUTCDate() + 3);
-    const futureDate = future.toISOString().split('T')[0];
+    // Move off `today` so the new row cannot collide with the initial one on
+    // the (employee_id, effective_date) unique constraint.
+    const futureDate = addDays(today, 3);
     await effectiveDateInput.fill(futureDate);
     await modal.getByRole('button', { name: /save new rate|apply new rate/i }).click();
 
@@ -179,8 +219,9 @@ test.describe('Employee compensation history', () => {
     const employeeId = await fetchEmployeeId(page, employee.name);
     expect(employeeId).toBeTruthy();
 
-    // Use UTC date to match backend's default effective_date calculation
-    const today = new Date().toISOString().split('T')[0];
+    // The dialog seeds effective_date from the RESTAURANT's business day.
+    const timezone = await fetchRestaurantTimezone(page);
+    const today = businessDay(timezone);
     const initialHistory = await fetchCompHistory(page, employeeId!);
     expect(initialHistory).toHaveLength(1);
     expect(initialHistory[0]).toMatchObject({
@@ -204,10 +245,9 @@ test.describe('Employee compensation history', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     const effectiveDateInput = modal.getByLabel(/effective date/i);
-    // Use UTC to avoid timezone conflicts with database constraint
-    const tomorrow = new Date();
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    const futureDate = tomorrow.toISOString().split('T')[0];
+    // Move off `today` so the new row cannot collide with the initial one on
+    // the (employee_id, effective_date) unique constraint.
+    const futureDate = addDays(today, 1);
     await effectiveDateInput.fill(futureDate);
     await modal.getByRole('button', { name: /save new rate|apply new rate/i }).click();
 

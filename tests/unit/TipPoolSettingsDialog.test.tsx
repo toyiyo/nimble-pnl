@@ -44,12 +44,14 @@ describe('TipPoolSettingsDialog - Comprehensive Tests', () => {
     shareMethod: 'hours' as const,
     splitCadence: 'daily' as const,
     roleWeights: { Server: 1, Bartender: 1, Busser: 0.5 },
+    rolePercentages: {},
     selectedEmployees: new Set(['1', '2', '3']),
     eligibleEmployees: mockEmployees,
     onTipSourceChange: vi.fn(),
     onShareMethodChange: vi.fn(),
     onSplitCadenceChange: vi.fn(),
     onRoleWeightsChange: vi.fn(),
+    onRolePercentagesChange: vi.fn(),
     onSelectedEmployeesChange: vi.fn(),
   };
 
@@ -347,5 +349,15 @@ describe('TipPoolSettingsDialog - Comprehensive Tests', () => {
       expect(screen.queryByText('Role Weights')).not.toBeInTheDocument();
       expect(screen.getByText('2 of 3 employees selected')).toBeInTheDocument();
     });
+  });
+
+  it('renders role allocation for full pool regardless of share method', () => {
+    render(<TipPoolSettingsDialog {...defaultProps} shareMethod="hours" />);
+    expect(screen.getByText('Role Allocation')).toBeInTheDocument();
+  });
+
+  it('does not render role allocation for percentage contribution pools', () => {
+    render(<TipPoolSettingsDialog {...defaultProps} poolingModel="percentage_contribution" />);
+    expect(screen.queryByText('Role Allocation')).not.toBeInTheDocument();
   });
 });

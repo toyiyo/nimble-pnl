@@ -115,6 +115,7 @@ describe('week range serialization', () => {
 
   it('useUnpublishSchedule sends a Mon..Sun range, not Mon..Mon', async () => {
     mockSupabase.rpc.mockResolvedValue({ data: 3, error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: {}, error: null });
     const { weekStart, weekEnd } = makeWeek();
 
     const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
@@ -139,13 +140,17 @@ describe('week range serialization', () => {
     );
 
     const { weekStart, weekEnd } = makeWeek();
-    renderHook(() => useWeekPublicationStatus('r1', weekStart, weekEnd), { wrapper: createWrapper() });
+    renderHook(() => useWeekPublicationStatus('r1', weekStart, weekEnd, 'America/Chicago'), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(pubsBuilder.maybeSingle).toHaveBeenCalled());
 
-    // timestamptz column -> full instants, so no local wall-clock hours are lost.
-    expect(shiftsBuilder.gte).toHaveBeenCalledWith('start_time', weekStart.toISOString());
-    expect(shiftsBuilder.lte).toHaveBeenCalledWith('start_time', weekEnd.toISOString());
+    // timestamptz column -> full instants anchored in the RESTAURANT's zone, so
+    // the count covers exactly the shifts publish_schedule acted on. CDT is
+    // UTC-5 in July, hence 05:00Z Monday through 04:59:59.999Z the next Monday.
+    expect(shiftsBuilder.gte).toHaveBeenCalledWith('start_time', '2026-07-27T05:00:00.000Z');
+    expect(shiftsBuilder.lte).toHaveBeenCalledWith('start_time', '2026-08-03T04:59:59.999Z');
 
     // date columns -> local calendar days.
     expect(pubsBuilder.eq).toHaveBeenCalledWith('week_start_date', '2026-07-27');

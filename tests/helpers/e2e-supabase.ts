@@ -5,6 +5,29 @@
 
 import { expect, type Page } from '@playwright/test';
 
+// Node-side reuse of the app's own DST-safe wall-clock <-> instant conversion,
+// so seed data is constructed with the exact same reasoning the feature code
+// (and the SQL RPC's `AT TIME ZONE` reconstruction) uses — never the runner's
+// or the DB session's local timezone. Playwright's TS transform resolves the
+// `@/` alias here the same way it does inside spec files.
+import { wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
+
+/**
+ * Shape of `tip_pool_settings.role_percentages`, keyed by role name.
+ * Exported so specs and the `__getTipPoolSettings` helper cannot drift apart.
+ */
+export type RolePercentagesMap = Record<string, { mode: string; percentage: number }>;
+
+/**
+ * One approved payout, joined back to the employee it belongs to.
+ * `appliedRule` is the audit trail: which guarantee, if any, produced the amount.
+ */
+export type ApprovedSplitRow = {
+  name: string;
+  amountCents: number;
+  appliedRule: { mode: string; percentage: number } | null;
+};
+
 /**
  * Expose Supabase helper functions to browser context
  * This avoids dynamic imports from /src/ which Vite doesn't serve
@@ -104,6 +127,53 @@ export async function exposeSupabaseHelpers(page: Page) {
       }
 
       return (count || 0) > 0;
+    };
+
+    (window as any).__getTipPoolSettings = async (
+      restaurantId: string
+    ): Promise<RolePercentagesMap | null> => {
+      const { data, error } = await supabase
+        .from('tip_pool_settings')
+        .select('role_percentages')
+        .eq('restaurant_id', restaurantId)
+        .eq('active', true)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching tip_pool_settings', error);
+        return null;
+      }
+
+      return (data?.role_percentages as RolePercentagesMap) ?? null;
+    };
+
+    (window as any).__getApprovedSplitBreakdown = async (
+      restaurantId: string
+    ): Promise<ApprovedSplitRow[]> => {
+      const { data, error } = await supabase
+        .from('tip_split_items')
+        .select('amount, applied_rule, employees!inner(name), tip_splits!inner(restaurant_id, status)')
+        .eq('tip_splits.restaurant_id', restaurantId)
+        .eq('tip_splits.status', 'approved');
+
+      if (error) {
+        console.error('Error fetching approved split breakdown', error);
+        return [];
+      }
+
+      // The `!inner` joins defeat the generated row types, so name the shape we
+      // actually asked for rather than letting it decay to `any`.
+      type JoinedRow = {
+        amount: number;
+        applied_rule: ApprovedSplitRow['appliedRule'];
+        employees: { name: string } | null;
+      };
+
+      return ((data ?? []) as unknown as JoinedRow[]).map(row => ({
+        name: row.employees?.name ?? '',
+        amountCents: row.amount,
+        appliedRule: row.applied_rule ?? null,
+      }));
     };
 
     (window as any).__insertAvailability = async (rows: any[], restaurantId: string) => {
@@ -647,6 +717,436 @@ export async function exposeSupabaseHelpers(page: Page) {
   // Ensure helpers exist now and on future navigations
   await page.addInitScript(injectHelpers);
   await page.evaluate(injectHelpers);
+}
+
+export interface SeedTemplateWithShiftsOptions {
+  /** Template's current hours, 24h `HH:MM`. */
+  start_time: string;
+  /** Template's current hours, 24h `HH:MM`. */
+  end_time: string;
+  /** Number of "moving" shifts to seed at exactly the template's hours. */
+  shiftCount: number;
+  /**
+   * One further linked shift whose hours have already drifted from the
+   * template. Kept singular for backward compatibility with existing specs —
+   * equivalent to `driftedShifts: [driftedShift]`. If both are supplied,
+   * `driftedShift` is treated as the first entry of `driftedShifts`.
+   */
+  driftedShift?: {
+    start_time: string;
+    end_time: string;
+    employeeName: string;
+  };
+  /** Any number of further linked shifts whose hours have already drifted from the template, each under its own employee/date. */
+  driftedShifts?: {
+    start_time: string;
+    end_time: string;
+    employeeName: string;
+  }[];
+  /**
+   * One further linked shift dated yesterday (restaurant-local calendar day),
+   * at the TEMPLATE'S OWN hours — so the only reason it is excluded from the
+   * cascade is that it is in the past, not that its hours differ.
+   */
+  pastShift?: { employeeName: string };
+  /**
+   * One further linked shift, future and `locked = true`, at the TEMPLATE'S
+   * OWN hours — so the only reason it is excluded from the cascade is the
+   * lock, not that its hours differ.
+   */
+  lockedShift?: { employeeName: string };
+  /** IANA timezone the seeded dates/times are anchored in. Defaults to `America/Chicago`. */
+  timezone?: string;
+  templateName?: string;
+  position?: string;
+}
+
+export interface SeededTemplate {
+  id: string;
+  name: string;
+  /** Echoes the input, 24h `HH:MM`. */
+  start_time: string;
+  end_time: string;
+}
+
+export interface SeededDriftedShift {
+  shiftId: string;
+  employeeName: string;
+  /** Restaurant-local `YYYY-MM-DD` the drifted shift falls on — matches the
+   *  disclosure row's accessible label exactly, so a spec can build the same
+   *  regex the UI renders. */
+  localDate: string;
+  /** Exact `start_time`/`end_time` as stored, straight off the insert's
+   *  `.select()` — for asserting a shift was left byte-identical later. */
+  startTime: string;
+  endTime: string;
+}
+
+export interface SeededLinkedShift {
+  shiftId: string;
+  employeeName: string;
+  /** Exact `start_time`/`end_time` as stored, straight off the insert's
+   *  `.select()` — for asserting a shift was left byte-identical later. */
+  startTime: string;
+  endTime: string;
+}
+
+export interface SeedTemplateWithShiftsResult {
+  template: SeededTemplate;
+  /** First entry of `driftedShifts`, or null — kept for backward compatibility. */
+  drifted: SeededDriftedShift | null;
+  /** Every drifted shift seeded, in the order requested. */
+  driftedShifts: SeededDriftedShift[];
+  /** The "moving" shifts seeded via `shiftCount`, in insertion order. */
+  moving: SeededLinkedShift[];
+  past: SeededLinkedShift | null;
+  locked: SeededLinkedShift | null;
+}
+
+/**
+ * Seeds one `shift_templates` row plus `shiftCount` linked shifts at exactly
+ * the template's hours (so `bucketTemplateShifts` classifies them as
+ * `moving`, never `drifted` or `past`), anchored to the next Monday in
+ * `timezone`. Anchoring to a future weekday — computed on a pure Y/M/D
+ * calendar via `Date.UTC`, never the runner's local `Date` — keeps every
+ * seeded shift unambiguously in the future relative to "now" regardless of
+ * which machine or timezone runs the suite.
+ *
+ * Optional buckets, each under its own named employee so every seeded shift
+ * can be matched back unambiguously after insert:
+ *  - `driftedShift`/`driftedShifts` seed shifts at different hours, landing
+ *    in the `drifted` bucket.
+ *  - `pastShift` seeds a shift dated yesterday (restaurant-local calendar
+ *    day) at the TEMPLATE'S OWN hours, so it is excluded from the cascade
+ *    only because it is in the past.
+ *  - `lockedShift` seeds a future shift at the TEMPLATE'S OWN hours with
+ *    `locked = true`, so it is excluded from the cascade only because of the
+ *    lock.
+ *
+ * The actual inserts run through the browser's authenticated Supabase client
+ * (`window.__supabase`, wired up by `exposeSupabaseHelpers`) rather than a
+ * Node-side service-role client: RLS on `employees`/`shifts` is scoped to the
+ * signed-in manager, and a service-role bypass would seed data no real user
+ * could actually create — mirrors the shape of the existing `__insertShifts`
+ * / `__insertEmployees` helpers above.
+ */
+export async function seedTemplateWithShifts(
+  page: Page,
+  restaurantId: string,
+  opts: SeedTemplateWithShiftsOptions
+): Promise<SeedTemplateWithShiftsResult> {
+  const tz = opts.timezone ?? 'America/Chicago';
+  const position = opts.position ?? 'Server';
+  const templateName = opts.templateName ?? `Cascade Test ${crypto.randomUUID().slice(0, 8)}`;
+  const movingEmployeeName = 'Jordan Baker';
+
+  // "Next Monday" on a pure calendar (Date.UTC arithmetic) computed from the
+  // restaurant's own timezone's "today" — not the runner's local Date. A
+  // runner on the other side of midnight from `tz` would otherwise anchor to
+  // the wrong calendar day.
+  const todayParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const part = (type: string) => Number(todayParts.find((p) => p.type === type)?.value);
+  const todayUtcMs = Date.UTC(part('year'), part('month') - 1, part('day'));
+  const todayDow = new Date(todayUtcMs).getUTCDay(); // 0=Sun..6=Sat
+  let daysUntilMonday = (1 - todayDow + 7) % 7;
+  if (daysUntilMonday === 0) daysUntilMonday = 7; // today IS Monday — use next week's for a safety margin
+  const mondayUtcMs = todayUtcMs + daysUntilMonday * 86_400_000;
+
+  // Future dates anchor off next-Monday (see above); the past shift anchors
+  // off TODAY directly so it lands yesterday regardless of how many days
+  // away "next Monday" happens to be.
+  const dateStrAtOffset = (dayOffset: number): string => {
+    const d = new Date(mondayUtcMs + dayOffset * 86_400_000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  };
+  const dateStrFromToday = (dayOffset: number): string => {
+    const d = new Date(todayUtcMs + dayOffset * 86_400_000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  };
+
+  const movingShifts = Array.from({ length: opts.shiftCount }, (_, i) => ({
+    startIso: wallClockToInstant(dateStrAtOffset(i), opts.start_time, tz).toISOString(),
+    endIso: wallClockToInstant(dateStrAtOffset(i), opts.end_time, tz).toISOString(),
+  }));
+
+  // Every drifted shift gets its own date, right after the last moving
+  // shift's date, so none of them ever collides with a moving shift's date
+  // or each other's.
+  const driftedInputs = opts.driftedShifts ?? (opts.driftedShift ? [opts.driftedShift] : []);
+  const driftedList = driftedInputs.map((d, i) => {
+    const dateStr = dateStrAtOffset(opts.shiftCount + i);
+    return {
+      startIso: wallClockToInstant(dateStr, d.start_time, tz).toISOString(),
+      endIso: wallClockToInstant(dateStr, d.end_time, tz).toISOString(),
+      employeeName: d.employeeName,
+    };
+  });
+
+  // Yesterday, restaurant-local calendar day — the whole day is before "now"
+  // no matter what time within today "now" actually is.
+  const pastDate = dateStrFromToday(-1);
+  const past = opts.pastShift
+    ? {
+        startIso: wallClockToInstant(pastDate, opts.start_time, tz).toISOString(),
+        endIso: wallClockToInstant(pastDate, opts.end_time, tz).toISOString(),
+        employeeName: opts.pastShift.employeeName,
+      }
+    : null;
+
+  // Own date, after every moving/drifted date, so it never collides.
+  const lockedDate = dateStrAtOffset(opts.shiftCount + driftedList.length);
+  const locked = opts.lockedShift
+    ? {
+        startIso: wallClockToInstant(lockedDate, opts.start_time, tz).toISOString(),
+        endIso: wallClockToInstant(lockedDate, opts.end_time, tz).toISOString(),
+        employeeName: opts.lockedShift.employeeName,
+      }
+    : null;
+
+  // Fail loudly on an ambiguous name rather than let the Set in the
+  // page.evaluate below dedup it silently: `employeeIdByName`/`rows.find`
+  // resolve by name, so a drifted/past/locked employee sharing a name with
+  // the moving employee (or with each other) would produce a fixture other
+  // than the one the test intended, with no error to explain why.
+  const allSeedNames = [
+    movingEmployeeName,
+    ...driftedList.map((d) => d.employeeName),
+    ...(past ? [past.employeeName] : []),
+    ...(locked ? [locked.employeeName] : []),
+  ];
+  const seenNames = new Set<string>();
+  for (const name of allSeedNames) {
+    if (seenNames.has(name)) {
+      throw new Error(
+        `seedTemplateWithShifts: employee name "${name}" is used by more than one seeded shift — ` +
+        'each moving/drifted/past/locked employee must have a distinct name.'
+      );
+    }
+    seenNames.add(name);
+  }
+
+  const seeded = await page.evaluate(
+    async (args: {
+      restId: string;
+      templateName: string;
+      position: string;
+      startTime: string;
+      endTime: string;
+      movingEmployeeName: string;
+      movingShifts: { startIso: string; endIso: string }[];
+      driftedList: { startIso: string; endIso: string; employeeName: string }[];
+      past: { startIso: string; endIso: string; employeeName: string } | null;
+      locked: { startIso: string; endIso: string; employeeName: string } | null;
+    }) => {
+      const supabase = (window as any).__supabase;
+
+      const { data: template, error: templateError } = await supabase
+        .from('shift_templates')
+        .insert({
+          restaurant_id: args.restId,
+          name: args.templateName,
+          start_time: `${args.startTime}:00`,
+          end_time: `${args.endTime}:00`,
+          position: args.position,
+          days: [0, 1, 2, 3, 4, 5, 6], // every day — deterministic regardless of today's weekday
+          is_active: true,
+        })
+        .select()
+        .single();
+      if (templateError) throw new Error(`shift_templates insert failed: ${templateError.message}`);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.id) throw new Error('No authenticated user found');
+
+      const employeeNames = Array.from(
+        new Set([
+          args.movingEmployeeName,
+          ...args.driftedList.map((d) => d.employeeName),
+          ...(args.past ? [args.past.employeeName] : []),
+          ...(args.locked ? [args.locked.employeeName] : []),
+        ])
+      );
+      const { data: employees, error: empError } = await supabase
+        .from('employees')
+        .insert(
+          employeeNames.map((name: string) => ({
+            restaurant_id: args.restId,
+            user_id: user.id,
+            name,
+            position: args.position,
+            status: 'active',
+            is_active: true,
+            compensation_type: 'hourly',
+            hourly_rate: 1500,
+          }))
+        )
+        .select();
+      if (empError) throw new Error(`employees insert failed: ${empError.message}`);
+
+      const employeeIdByName = new Map<string, string>((employees ?? []).map((e: any) => [e.name, e.id]));
+      const movingEmployeeId = employeeIdByName.get(args.movingEmployeeName);
+      if (!movingEmployeeId) throw new Error('moving employee not found after insert');
+
+      const rowsToInsert = args.movingShifts.map((s) => ({
+        restaurant_id: args.restId,
+        shift_template_id: template.id,
+        employee_id: movingEmployeeId,
+        start_time: s.startIso,
+        end_time: s.endIso,
+        position: args.position,
+        status: 'scheduled',
+        is_published: false,
+        locked: false,
+      }));
+
+      for (const d of args.driftedList) {
+        const driftedEmployeeId = employeeIdByName.get(d.employeeName);
+        if (!driftedEmployeeId) throw new Error(`drifted employee "${d.employeeName}" not found after insert`);
+        rowsToInsert.push({
+          restaurant_id: args.restId,
+          shift_template_id: template.id,
+          employee_id: driftedEmployeeId,
+          start_time: d.startIso,
+          end_time: d.endIso,
+          position: args.position,
+          status: 'scheduled',
+          is_published: false,
+          locked: false,
+        });
+      }
+
+      if (args.past) {
+        const pastEmployeeId = employeeIdByName.get(args.past.employeeName);
+        if (!pastEmployeeId) throw new Error('past employee not found after insert');
+        rowsToInsert.push({
+          restaurant_id: args.restId,
+          shift_template_id: template.id,
+          employee_id: pastEmployeeId,
+          start_time: args.past.startIso,
+          end_time: args.past.endIso,
+          position: args.position,
+          status: 'scheduled',
+          is_published: false,
+          locked: false,
+        });
+      }
+
+      if (args.locked) {
+        const lockedEmployeeId = employeeIdByName.get(args.locked.employeeName);
+        if (!lockedEmployeeId) throw new Error('locked employee not found after insert');
+        rowsToInsert.push({
+          restaurant_id: args.restId,
+          shift_template_id: template.id,
+          employee_id: lockedEmployeeId,
+          start_time: args.locked.startIso,
+          end_time: args.locked.endIso,
+          position: args.position,
+          status: 'scheduled',
+          is_published: false,
+          locked: true,
+        });
+      }
+
+      const { data: insertedShifts, error: shiftsError } = await supabase
+        .from('shifts')
+        .insert(rowsToInsert)
+        .select();
+      if (shiftsError) throw new Error(`shifts insert failed: ${shiftsError.message}`);
+
+      const rows = (insertedShifts ?? []) as any[];
+
+      const movingRows = rows
+        .filter((r) => r.employee_id === movingEmployeeId)
+        .map((r) => ({ shiftId: r.id as string, startTime: r.start_time as string, endTime: r.end_time as string }));
+
+      // Match on employee_id alone: every non-moving bucket here gets its own
+      // uniquely-named employee, so this is a stable key across the batch.
+      // (Matching on start_time is unreliable — Postgres normalizes the
+      // returned timestamptz string and it need not equal the JS-side
+      // `toISOString()` we sent byte-for-byte.)
+      const driftedResults = args.driftedList.map((d) => {
+        const employeeId = employeeIdByName.get(d.employeeName);
+        const match = rows.find((r) => r.employee_id === employeeId);
+        if (!match) throw new Error(`drifted shift for "${d.employeeName}" not found among inserted rows`);
+        return {
+          shiftId: match.id as string,
+          employeeName: d.employeeName,
+          startTime: match.start_time as string,
+          endTime: match.end_time as string,
+        };
+      });
+
+      let pastResult: { shiftId: string; startTime: string; endTime: string } | null = null;
+      if (args.past) {
+        const employeeId = employeeIdByName.get(args.past.employeeName);
+        const match = rows.find((r) => r.employee_id === employeeId);
+        if (!match) throw new Error('past shift not found among inserted rows');
+        pastResult = { shiftId: match.id as string, startTime: match.start_time as string, endTime: match.end_time as string };
+      }
+
+      let lockedResult: { shiftId: string; startTime: string; endTime: string } | null = null;
+      if (args.locked) {
+        const employeeId = employeeIdByName.get(args.locked.employeeName);
+        const match = rows.find((r) => r.employee_id === employeeId);
+        if (!match) throw new Error('locked shift not found among inserted rows');
+        lockedResult = { shiftId: match.id as string, startTime: match.start_time as string, endTime: match.end_time as string };
+      }
+
+      return {
+        templateId: template.id as string,
+        templateName: template.name as string,
+        moving: movingRows,
+        drifted: driftedResults,
+        past: pastResult,
+        locked: lockedResult,
+      };
+    },
+    {
+      restId: restaurantId,
+      templateName,
+      position,
+      startTime: opts.start_time,
+      endTime: opts.end_time,
+      movingEmployeeName,
+      movingShifts,
+      driftedList,
+      past,
+      locked,
+    }
+  );
+
+  const driftedShifts: SeededDriftedShift[] = seeded.drifted.map((d, i) => ({
+    shiftId: d.shiftId,
+    employeeName: d.employeeName,
+    localDate: formatLocalDateInTz(new Date(driftedList[i].startIso), tz),
+    startTime: d.startTime,
+    endTime: d.endTime,
+  }));
+
+  return {
+    template: {
+      id: seeded.templateId,
+      name: seeded.templateName,
+      start_time: opts.start_time,
+      end_time: opts.end_time,
+    },
+    drifted: driftedShifts[0] ?? null,
+    driftedShifts,
+    moving: seeded.moving,
+    past: seeded.past && opts.pastShift
+      ? { shiftId: seeded.past.shiftId, employeeName: opts.pastShift.employeeName, startTime: seeded.past.startTime, endTime: seeded.past.endTime }
+      : null,
+    locked: seeded.locked && opts.lockedShift
+      ? { shiftId: seeded.locked.shiftId, employeeName: opts.lockedShift.employeeName, startTime: seeded.locked.startTime, endTime: seeded.locked.endTime }
+      : null,
+  };
 }
 
 /**

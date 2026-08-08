@@ -10,10 +10,12 @@ import type { TimePunch } from '@/types/timeTracking';
  * Tests for calculateHoursPerEmployee — the per-employee rollup that powers
  * the AI chat's get_labor_costs.employee_breakdown and get_time_punches tools.
  *
- * Date convention (lesson [2026-05-03]): punch_time uses ISO strings without
- * a trailing Z so new Date(...) is interpreted in the host TZ. Punches sit
- * inside the day (9am-5pm), so the bucket date matches the string's date on
- * both CI (UTC) and local dev (PT) without setting process.env.TZ.
+ * Date convention: punch_time and window boundaries use explicit UTC ('Z')
+ * ISO strings, and calculateHoursPerEmployee/calculateActualLaborCost are
+ * called with an explicit 'UTC' timezone. Day bucketing is restaurant-local
+ * (via toBusinessDay), not host-local, so fixtures must be host-TZ-independent
+ * to keep the string's calendar date matching the expected bucket regardless
+ * of process.env.TZ.
  */
 
 function punch(
@@ -82,16 +84,16 @@ describe('calculateHoursPerEmployee', () => {
   describe('hourly employee with breaks', () => {
     it('subtracts break time and credits hours to the work-period start day', () => {
       const punches: TimePunch[] = [
-        punch('emp-hourly', '2026-05-16T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-16T12:00:00', 'break_start'),
-        punch('emp-hourly', '2026-05-16T12:30:00', 'break_end'),
-        punch('emp-hourly', '2026-05-16T17:00:00', 'clock_out'),
+        punch('emp-hourly', '2026-05-16T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-16T12:00:00Z', 'break_start'),
+        punch('emp-hourly', '2026-05-16T12:30:00Z', 'break_end'),
+        punch('emp-hourly', '2026-05-16T17:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-16T00:00:00');
-      const end = new Date('2026-05-16T23:59:59');
+      const start = new Date('2026-05-16T00:00:00Z');
+      const end = new Date('2026-05-16T23:59:59Z');
 
-      const summaries = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const summaries = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, 'UTC');
 
       expect(summaries).toHaveLength(1);
       const row = summaries[0];
@@ -112,18 +114,18 @@ describe('calculateHoursPerEmployee', () => {
   describe('multi-day hourly', () => {
     it('sums hours and counts distinct days_worked', () => {
       const punches: TimePunch[] = [
-        punch('emp-hourly', '2026-05-14T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-14T13:00:00', 'clock_out'),
-        punch('emp-hourly', '2026-05-15T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-15T17:00:00', 'clock_out'),
-        punch('emp-hourly', '2026-05-16T10:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-16T16:00:00', 'clock_out'),
+        punch('emp-hourly', '2026-05-14T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-14T13:00:00Z', 'clock_out'),
+        punch('emp-hourly', '2026-05-15T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-15T17:00:00Z', 'clock_out'),
+        punch('emp-hourly', '2026-05-16T10:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-16T16:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-14T00:00:00');
-      const end = new Date('2026-05-16T23:59:59');
+      const start = new Date('2026-05-14T00:00:00Z');
+      const end = new Date('2026-05-16T23:59:59Z');
 
-      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, 'UTC');
 
       expect(row.total_hours).toBeCloseTo(4 + 8 + 6, 4);
       expect(row.days_worked).toBe(3);
@@ -141,10 +143,10 @@ describe('calculateHoursPerEmployee', () => {
 
   describe('employee with no punches', () => {
     it('returns a row with zero hours rather than omitting the employee', () => {
-      const start = new Date('2026-05-14T00:00:00');
-      const end = new Date('2026-05-16T23:59:59');
+      const start = new Date('2026-05-14T00:00:00Z');
+      const end = new Date('2026-05-16T23:59:59Z');
 
-      const summaries = calculateHoursPerEmployee([hourlyEmployee], [], start, end);
+      const summaries = calculateHoursPerEmployee([hourlyEmployee], [], start, end, 'UTC');
 
       expect(summaries).toHaveLength(1);
       const [row] = summaries;
@@ -161,23 +163,23 @@ describe('calculateHoursPerEmployee', () => {
     it('produces a row for each employee and aggregates costs that sum back to the breakdown', () => {
       const punches: TimePunch[] = [
         // Hourly: 6h on May 14, 4h on May 15
-        punch('emp-hourly', '2026-05-14T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-14T15:00:00', 'clock_out'),
-        punch('emp-hourly', '2026-05-15T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-15T13:00:00', 'clock_out'),
+        punch('emp-hourly', '2026-05-14T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-14T15:00:00Z', 'clock_out'),
+        punch('emp-hourly', '2026-05-15T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-15T13:00:00Z', 'clock_out'),
         // Salary: punches in but cost is period-allocated
-        punch('emp-salary', '2026-05-14T08:00:00', 'clock_in'),
-        punch('emp-salary', '2026-05-14T17:00:00', 'clock_out'),
+        punch('emp-salary', '2026-05-14T08:00:00Z', 'clock_in'),
+        punch('emp-salary', '2026-05-14T17:00:00Z', 'clock_out'),
         // Contractor: punches in but cost is period-allocated
-        punch('emp-contractor', '2026-05-16T10:00:00', 'clock_in'),
-        punch('emp-contractor', '2026-05-16T18:00:00', 'clock_out'),
+        punch('emp-contractor', '2026-05-16T10:00:00Z', 'clock_in'),
+        punch('emp-contractor', '2026-05-16T18:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-14T00:00:00');
-      const end = new Date('2026-05-20T23:59:59');
+      const start = new Date('2026-05-14T00:00:00Z');
+      const end = new Date('2026-05-20T23:59:59Z');
 
       const employees = [hourlyEmployee, salaryEmployee, contractorEmployee];
-      const summaries = calculateHoursPerEmployee(employees, punches, start, end);
+      const summaries = calculateHoursPerEmployee(employees, punches, start, end, 'UTC');
 
       expect(summaries).toHaveLength(3);
       const byId = new Map(summaries.map((s) => [s.employee_id, s]));
@@ -201,7 +203,7 @@ describe('calculateHoursPerEmployee', () => {
       expect(contractor.total_cost_cents).toBeLessThan(80000);
 
       // Invariant: per-employee totals sum back to the aggregate by comp type.
-      const { breakdown } = calculateActualLaborCost(employees, punches, start, end);
+      const { breakdown } = calculateActualLaborCost(employees, punches, start, end, 'UTC');
       const hourlyTotalCents = summaries
         .filter((s) => s.compensation_type === 'hourly')
         .reduce((sum, s) => sum + s.total_cost_cents, 0);
@@ -222,15 +224,15 @@ describe('calculateHoursPerEmployee', () => {
   describe('hours_per_day key alignment', () => {
     it('uses the same date-bucket format as calculateActualLaborCost.daily_costs', () => {
       const punches: TimePunch[] = [
-        punch('emp-hourly', '2026-05-15T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-15T17:00:00', 'clock_out'),
+        punch('emp-hourly', '2026-05-15T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-15T17:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-14T00:00:00');
-      const end = new Date('2026-05-16T23:59:59');
+      const start = new Date('2026-05-14T00:00:00Z');
+      const end = new Date('2026-05-16T23:59:59Z');
 
-      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
-      const { dailyCosts } = calculateActualLaborCost([hourlyEmployee], punches, start, end);
+      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, 'UTC');
+      const { dailyCosts } = calculateActualLaborCost([hourlyEmployee], punches, start, end, 'UTC');
 
       const summaryKeys = Object.keys(summary.hours_per_day);
       const dailyKeys = dailyCosts.map((d) => d.date);
@@ -248,16 +250,16 @@ describe('calculateHoursPerEmployee', () => {
   describe('work_periods passthrough', () => {
     it('returns parsed work periods for each employee with isBreak set correctly', () => {
       const punches: TimePunch[] = [
-        punch('emp-hourly', '2026-05-15T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-15T12:00:00', 'break_start'),
-        punch('emp-hourly', '2026-05-15T12:30:00', 'break_end'),
-        punch('emp-hourly', '2026-05-15T17:00:00', 'clock_out'),
+        punch('emp-hourly', '2026-05-15T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-15T12:00:00Z', 'break_start'),
+        punch('emp-hourly', '2026-05-15T12:30:00Z', 'break_end'),
+        punch('emp-hourly', '2026-05-15T17:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-15T00:00:00');
-      const end = new Date('2026-05-15T23:59:59');
+      const start = new Date('2026-05-15T00:00:00Z');
+      const end = new Date('2026-05-15T23:59:59Z');
 
-      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, 'UTC');
 
       expect(summary.work_periods.length).toBeGreaterThan(0);
       const breakPeriods = summary.work_periods.filter((p) => p.isBreak);
@@ -308,20 +310,20 @@ describe('calculateHoursPerEmployee', () => {
 
       const punches: TimePunch[] = [
         // May 16 (hourly): 8h
-        punch('emp-converted', '2026-05-16T09:00:00', 'clock_in'),
-        punch('emp-converted', '2026-05-16T17:00:00', 'clock_out'),
+        punch('emp-converted', '2026-05-16T09:00:00Z', 'clock_in'),
+        punch('emp-converted', '2026-05-16T17:00:00Z', 'clock_out'),
         // May 17 (hourly): 6h
-        punch('emp-converted', '2026-05-17T10:00:00', 'clock_in'),
-        punch('emp-converted', '2026-05-17T16:00:00', 'clock_out'),
+        punch('emp-converted', '2026-05-17T10:00:00Z', 'clock_in'),
+        punch('emp-converted', '2026-05-17T16:00:00Z', 'clock_out'),
         // May 18 (salary): clock-ins recorded but cost is period-allocated
-        punch('emp-converted', '2026-05-18T08:00:00', 'clock_in'),
-        punch('emp-converted', '2026-05-18T16:00:00', 'clock_out'),
+        punch('emp-converted', '2026-05-18T08:00:00Z', 'clock_in'),
+        punch('emp-converted', '2026-05-18T16:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-16T00:00:00');
-      const end = new Date('2026-05-22T23:59:59'); // 7-day window
+      const start = new Date('2026-05-16T00:00:00Z');
+      const end = new Date('2026-05-22T23:59:59Z'); // 7-day window
 
-      const [row] = calculateHoursPerEmployee([employee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([employee], punches, start, end, 'UTC');
 
       // Hourly portion: (8 + 6) h × $20/h = $280 = 28,000 cents
       const expectedHourlyCents = (8 + 6) * 2000;
@@ -345,17 +347,17 @@ describe('calculateHoursPerEmployee', () => {
       // with an end-of-window lookahead and relies on this filter.
       const punches: TimePunch[] = [
         // In window: 8h
-        punch('emp-hourly', '2026-05-16T09:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-16T17:00:00', 'clock_out'),
+        punch('emp-hourly', '2026-05-16T09:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-16T17:00:00Z', 'clock_out'),
         // After endDate (in lookahead zone): should be dropped
-        punch('emp-hourly', '2026-05-17T08:00:00', 'clock_in'),
-        punch('emp-hourly', '2026-05-17T14:00:00', 'clock_out'),
+        punch('emp-hourly', '2026-05-17T08:00:00Z', 'clock_in'),
+        punch('emp-hourly', '2026-05-17T14:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-16T00:00:00');
-      const end = new Date('2026-05-16T23:59:59');
+      const start = new Date('2026-05-16T00:00:00Z');
+      const end = new Date('2026-05-16T23:59:59Z');
 
-      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, 'UTC');
 
       expect(row.total_hours).toBeCloseTo(8, 4);
       expect(row.days_worked).toBe(1);
@@ -387,14 +389,14 @@ describe('calculateHoursPerEmployee', () => {
       } as Employee;
 
       const punches: TimePunch[] = [
-        punch('emp-daily', '2026-05-19T22:00:00', 'clock_in'),
-        punch('emp-daily', '2026-05-20T06:00:00', 'clock_out'),
+        punch('emp-daily', '2026-05-19T22:00:00Z', 'clock_in'),
+        punch('emp-daily', '2026-05-20T06:00:00Z', 'clock_out'),
       ];
 
-      const start = new Date('2026-05-19T00:00:00');
-      const end = new Date('2026-05-20T23:59:59');
+      const start = new Date('2026-05-19T00:00:00Z');
+      const end = new Date('2026-05-20T23:59:59Z');
 
-      const [row] = calculateHoursPerEmployee([dailyRateEmployee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([dailyRateEmployee], punches, start, end, 'UTC');
 
       // 2 calendar days touched → 2 × $150 = $300
       expect(row.total_cost_cents).toBe(2 * 15000);
@@ -409,6 +411,7 @@ describe('calculateHoursPerEmployee', () => {
         punches,
         start,
         end,
+        'UTC',
       );
       expect(row.total_cost_cents).toBe(Math.round(breakdown.daily_rate.cost * 100));
     });

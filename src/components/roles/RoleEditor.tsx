@@ -5,18 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RolePreviewPanel } from '@/components/roles/RolePreviewPanel';
+import { RoleRoster } from '@/components/roles/RoleRoster';
 import { useToast } from '@/hooks/use-toast';
 import { useRoles, type RoleWithGrants } from '@/hooks/useRoles';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import {
   AREA_DEFINITIONS,
   grantMap,
+  SENSITIVE_FLAGS,
   type AreaDefinition,
-  type AreaGroupKey,
   type AreaKey,
   type AreaLevel,
-  type Band,
   type SensitiveFlag,
 } from '@/lib/permissions/areas';
 import { membershipCapabilities } from '@/lib/permissions/membershipCapabilities';
@@ -56,18 +57,21 @@ function describeRoleWriteError(err: unknown): string {
 
 /**
  * RoleEditor — the full-page, two-column custom role editor (roles-and-areas
- * design, Phase 4 task 9d).
+ * design, Phase 4 task 9d; re-cut onto the per-page catalog by the
+ * permissions-menu-mirror work).
  *
  * **Corrected against the approved prototype** (docs/design-reference/
  * roles-and-areas.html, editor.png/editor-dark.png): a full page reached from
  * the roles list via a "← All roles" back link, not a dialog — an earlier
  * draft of the design doc described a `max-w-2xl` dialog, which the design
  * doc's own "The role editor" section calls out as an explicitly corrected
- * mistake. Left column: identity card, then the ten areas grouped into three
- * bands. Right column (sticky at `lg`): `RolePreviewPanel` (task 9e), which
- * renders `buildRolePreview`'s (preview.ts, task 9b) output — this file only
- * owns the `grants`/`flags`/`name` state and passes it down, it does not
- * render the preview column itself.
+ * mistake. Left column: identity card, then the 33 areas grouped into five
+ * sidebar groups (Main, Operations, Inventory, Accounting, Admin) — one row
+ * per `area_key`, 1:1 with a sidebar page. Right column (sticky at `lg`):
+ * `RolePreviewPanel` (task 9e), which renders `buildRolePreview`'s
+ * (preview.ts, task 9b) output — this file only owns the `grants`/`flags`/
+ * `name` state and passes it down, it does not render the preview column
+ * itself.
  *
  * The three-state area control is a real `RadioGroup` (Radix's
  * `react-radio-group` primitives, used directly rather than through
@@ -76,19 +80,18 @@ function describeRoleWriteError(err: unknown): string {
  * access / View / Manage" are mutually exclusive values of one setting, radio
  * semantics, not a `ToggleGroup`'s independent pressed buttons. Per-area caps
  * (`AreaDefinition.maxLevelForCollaborator`) drive which segments are
- * `disabled` + `aria-disabled`, with the reason text as their
- * `aria-describedby` target — transcribed from the design doc's per-area cap
- * table and the prototype's `AREAS` array, keyed by `AREA_DEFINITIONS`' row
- * keys (which match the prototype's own area keys 1:1).
+ * `disabled` + `aria-disabled` — transcribed from the design doc's per-area
+ * cap table, keyed by `AREA_DEFINITIONS`' row keys (which now match
+ * `area_catalog.area_key` 1:1, so there is no bundle-vs-row split left to
+ * reconcile).
  *
  * Builtin roles are read-only: no field or control here writes anything (the
  * database's `role_areas_enforce_collaborator_cap`/immutability triggers are
- * the actual guard, per the design doc — this is only the UI hint). A
- * builtin row whose underlying `area_key`s hold *different* levels (only
- * possible for a builtin, seeded directly in SQL — a custom role's own
- * segmented control always writes the same level to every `area_key` in a
- * row) cannot be represented by one three-state control, so it renders a
- * static "Partial" marker instead.
+ * the actual guard, per the design doc — this is only the UI hint). Every
+ * row is now exactly one `area_key`, so a builtin's level is just its one
+ * grant rendered through the same three-state control a custom role uses —
+ * the old multi-key-bundle "Partial" marker this paragraph used to describe
+ * no longer exists (see `LevelControl`'s own comment).
  *
  * "Copy role to other restaurants" (design doc, same section) has no
  * prototype precedent — confirmed by a full read of
@@ -101,68 +104,25 @@ function describeRoleWriteError(err: unknown): string {
  * without inventing bespoke listbox keyboard handling.
  */
 
+/** The two things a role has: what it can reach, and who holds it. */
+export type RoleEditorTab = 'areas' | 'people';
+
 export interface RoleEditorProps {
   restaurantId: string;
   /** `null` means a brand-new, unsaved draft. */
   role: RoleWithGrants | null;
   onBack: () => void;
+  /** The signed-in user's role in this restaurant — gates the People tab. */
+  callerRole: Role;
+  /**
+   * Controlled: a card's face pile opens straight to People, its name to
+   * Areas, so the caller that knows which door was used owns this.
+   */
+  activeTab: RoleEditorTab;
+  onTabChange: (tab: RoleEditorTab) => void;
 }
 
 type Grants = Partial<Record<AreaKey, AreaLevel>>;
-
-/** Per-row hint text, transcribed verbatim from the prototype's `AREAS[].hint`. */
-const AREA_HINT: Record<AreaGroupKey, string> = {
-  reports: 'Daily numbers, saved reports, AI assistant',
-  sales: 'Ticket-level sales from your POS',
-  inventory: 'Counts, audits, purchase orders, receipts',
-  recipes: 'Recipes, prep recipes, production batches',
-  scheduling: 'Schedules, time punches, tip pools',
-  books: 'Transactions, banking, expenses, invoices, statements',
-  payroll: 'Pay runs and payroll history',
-  employees: 'Roster, jobs, wage assignments',
-  team: 'Invite people, assign roles, edit these roles',
-  settings: 'Restaurant settings, POS and bank connections',
-};
-
-/**
- * Per-row cap reason, transcribed verbatim from the design doc's per-area cap
- * table and the prototype's `AREAS[].viewOnlyReason`/`manageOwnerOnly`/
- * `ownerOnly`. Only rows with a non-'manage' `maxLevelForCollaborator` need
- * one — every other row is uncapped.
- */
-const AREA_LOCK_REASON: Partial<Record<AreaGroupKey, string>> = {
-  reports: 'Nothing there is editable.',
-  sales: 'Sales come from your POS — nobody edits them here.',
-  payroll: 'Owners and Managers only.',
-  team: 'Owners and Managers only — a collaborator can never grant access.',
-  settings: 'Owners and Managers only.',
-};
-
-const SENSITIVE_FLAGS: ReadonlyArray<{
-  flag: SensitiveFlag;
-  name: string;
-  hint: string;
-  requires: readonly AreaKey[];
-}> = [
-  {
-    flag: 'view:costs',
-    name: 'Item costs & margins',
-    hint: 'Unit costs, recipe cost, plate margin',
-    requires: ['inventory', 'recipes', 'reports'],
-  },
-  {
-    flag: 'view:pay_rates',
-    name: 'Employee pay rates',
-    hint: 'Hourly and salary amounts on the roster and schedule',
-    requires: ['employees', 'scheduling'],
-  },
-  {
-    flag: 'view:employee_pii',
-    name: 'Contact details & tax IDs',
-    hint: 'Phone, address, last 4 of SSN',
-    requires: ['employees'],
-  },
-];
 
 /**
  * Whether a sensitive-data flag is meaningful for the current grants: at least
@@ -178,17 +138,17 @@ function flagAvailable(
   return builtinReadOnly || flag.requires.some((key) => !!grants[key]);
 }
 
-const BAND_ORDER: readonly Band[] = ['Operations', 'Money', 'People & admin'];
-
-/** A row is "partial" when its underlying area_keys disagree — only possible for a builtin. */
-function rowIsPartial(row: AreaDefinition, grants: Grants): boolean {
-  if (row.areaKeys.length < 2) return false;
-  const levels = row.areaKeys.map((key) => grants[key] ?? null);
-  return new Set(levels).size > 1;
-}
+/**
+ * `AREA_DEFINITIONS`' `uiGroup` values, deduped in first-seen order — already
+ * sidebar order (Main, Operations, Inventory, Accounting, Admin), so no
+ * hand-kept band list to drift from the catalog.
+ */
+const GROUP_ORDER: readonly string[] = Array.from(
+  new Set(AREA_DEFINITIONS.map((row) => row.uiGroup))
+);
 
 function areaKeyLabel(key: AreaKey): string {
-  return AREA_DEFINITIONS.find((row) => row.areaKeys.includes(key))?.label ?? key;
+  return AREA_DEFINITIONS.find((row) => row.key === key)?.label ?? key;
 }
 
 function memberNoticeText(count: number): string {
@@ -198,13 +158,27 @@ function memberNoticeText(count: number): string {
 }
 
 /**
- * A band's tinted full-bleed header strip, with the column legend on the right.
+ * The one amber banner under the name and description, or nothing.
  *
- * Full-bleed (no horizontal padding on the parent) is what separates one band
- * from the next in the approved design — the rows below it are the ones that
- * get the padding.
+ * Read-only wins over the member notice: if you cannot save, how many people
+ * would be affected by saving is not the thing to say.
  */
-function BandHeader({ label, legend, first }: { label: string; legend?: string; first?: boolean }) {
+function editorNoticeText(builtinReadOnly: boolean, role: RoleWithGrants | null): string | null {
+  if (builtinReadOnly) {
+    return 'Built-in role. Read-only — keeps getting new areas as we ship features. Duplicate it to make a version you control.';
+  }
+  if (role && role.memberCount > 0) return memberNoticeText(role.memberCount);
+  return null;
+}
+
+/**
+ * A group's tinted full-bleed header strip, with the column legend on the right.
+ *
+ * Full-bleed (no horizontal padding on the parent) is what separates one
+ * group from the next in the approved design — the rows below it are the
+ * ones that get the padding.
+ */
+function GroupHeader({ label, legend, first }: Readonly<{ label: string; legend?: string; first?: boolean }>) {
   return (
     <div
       className={cn(
@@ -362,6 +336,22 @@ function ReadOnlyLevelControl({ row, level }: { row: AreaDefinition; level: Area
   );
 }
 
+/**
+ * The sr-only prose behind a locked segment's `aria-describedby`. Only called
+ * for rows that are actually capped — `row.maxLevelForCollaborator !== 'manage'`
+ * — so every branch here describes a real lock, never a false "Manage isn't
+ * available" claim on a row that grants it freely.
+ */
+function describeCapReason(row: AreaDefinition): string {
+  if (row.maxLevelForCollaborator === null) {
+    return 'This page cannot be granted to a collaborator role.';
+  }
+  if (!row.hasManageTier) {
+    return 'This page has no manage tier.';
+  }
+  return 'Manage is not available to a collaborator role for this page.';
+}
+
 function AreaRow({
   row,
   grants,
@@ -373,15 +363,11 @@ function AreaRow({
   builtinReadOnly: boolean;
   onChange: (row: AreaDefinition, level: AreaLevel | null) => void;
 }) {
-  const partial = builtinReadOnly && rowIsPartial(row, grants);
-  const level = partial ? null : row.areaKeys.reduce<AreaLevel | null>((acc, key) => {
-    const granted = grants[key];
-    if (granted === 'manage') return 'manage';
-    if (granted === 'view' && acc !== 'manage') return 'view';
-    return acc;
-  }, null);
-  const reason = AREA_LOCK_REASON[row.key];
-  const showReason = !builtinReadOnly && row.maxLevelForCollaborator !== 'manage';
+  // Task 3's re-cut made every row exactly one `area_key` (the old
+  // multi-key bundles, and the "Partial" marker a split among their
+  // levels could produce, no longer exist), so a builtin row's level is
+  // just its one grant, same as a custom role's.
+  const level = grants[row.key] ?? null;
 
   return (
     // Stacked below `sm`, side-by-side above it — the prototype collapses this
@@ -390,16 +376,14 @@ function AreaRow({
     <div className="flex flex-col items-stretch gap-2.5 border-b border-border/40 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="min-w-0">
         <div className="text-[14px] font-medium text-foreground">{row.label}</div>
-        <p id={`${row.key}-cap-reason`} className="mt-0.5 text-[13px] text-muted-foreground">
-          {AREA_HINT[row.key]}
-          {showReason && reason && <span className="text-amber-600 dark:text-amber-500"> · {reason}</span>}
-        </p>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">{row.hint}</p>
+        {row.maxLevelForCollaborator !== 'manage' && (
+          <p id={`${row.key}-cap-reason`} className="sr-only">
+            {describeCapReason(row)}
+          </p>
+        )}
       </div>
-      {partial ? (
-        <span className="self-start sm:self-auto text-[11px] px-1.5 py-0.5 rounded-md border border-border/40 font-mono uppercase tracking-wider text-muted-foreground">
-          Partial
-        </span>
-      ) : builtinReadOnly ? (
+      {builtinReadOnly ? (
         <ReadOnlyLevelControl row={row} level={level} />
       ) : (
         <LevelControl row={row} level={level} onChange={(next) => onChange(row, next)} />
@@ -408,12 +392,20 @@ function AreaRow({
   );
 }
 
-export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
+export function RoleEditor({
+  restaurantId,
+  role,
+  onBack,
+  callerRole,
+  activeTab,
+  onTabChange,
+}: RoleEditorProps) {
   const { createRole, updateRole, copyRole, isMutating } = useRoles(restaurantId);
   const { restaurants } = useRestaurants();
 
   const isNewDraft = role === null;
   const builtinReadOnly = role?.builtin ?? false;
+  const editorNotice = editorNoticeText(builtinReadOnly, role);
   const { toast } = useToast();
 
   const [name, setName] = useState(role?.name ?? '');
@@ -445,12 +437,12 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
   );
   const effectiveFlagSet = useMemo(() => new Set(effectiveFlags), [effectiveFlags]);
 
-  const rowsByBand = useMemo(() => {
-    const groups = new Map<Band, AreaDefinition[]>();
+  const rowsByGroup = useMemo(() => {
+    const groups = new Map<string, AreaDefinition[]>();
     for (const row of AREA_DEFINITIONS) {
-      const list = groups.get(row.band) ?? [];
+      const list = groups.get(row.uiGroup) ?? [];
       list.push(row);
-      groups.set(row.band, list);
+      groups.set(row.uiGroup, list);
     }
     return groups;
   }, []);
@@ -478,10 +470,8 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
   function handleAreaChange(row: AreaDefinition, level: AreaLevel | null) {
     setGrants((prev) => {
       const next = { ...prev };
-      for (const key of row.areaKeys) {
-        if (level === null) delete next[key];
-        else next[key] = level;
-      }
+      if (level === null) delete next[row.key];
+      else next[row.key] = level;
       return next;
     });
   }
@@ -563,235 +553,260 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
         All roles
       </button>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-5 min-w-0">
-          {/* Identity card */}
-          <div className="rounded-xl border border-border/40 bg-card p-5 space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label
-                  htmlFor="role-name"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Role name
-                </Label>
-                <Input
-                  id="role-name"
-                  value={name}
-                  disabled={builtinReadOnly}
-                  onChange={(e) => setName(e.target.value)}
-                  className="mt-1.5 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
-                />
-              </div>
-              <div>
-                <Label
-                  htmlFor="role-description"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  What this person does
-                </Label>
-                <Input
-                  id="role-description"
-                  value={description}
-                  disabled={builtinReadOnly}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="mt-1.5 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
-                />
-              </div>
-            </div>
+      {/* A saved role has two things to look at; an unsaved draft has one, so
+          it gets the Areas body with no tablist above it — an unsaved role has
+          no id to build a roster from and nobody in it either way. */}
+      <Tabs
+        value={isNewDraft ? 'areas' : activeTab}
+        onValueChange={(value) => onTabChange(value as RoleEditorTab)}
+      >
+        {!isNewDraft && (
+          <TabsList className="h-auto p-0 mb-5 bg-transparent border-b border-border/40 rounded-none w-full justify-start gap-6">
+            <TabsTrigger
+              value="areas"
+              className="relative px-0 py-3 rounded-none bg-transparent shadow-none text-[14px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:after:absolute data-[state=active]:after:bottom-[-1px] data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-[2px] data-[state=active]:after:bg-foreground"
+            >
+              Areas
+            </TabsTrigger>
+            <TabsTrigger
+              value="people"
+              className="relative px-0 py-3 rounded-none bg-transparent shadow-none text-[14px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:after:absolute data-[state=active]:after:bottom-[-1px] data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-[2px] data-[state=active]:after:bg-foreground"
+            >
+              People
+            </TabsTrigger>
+          </TabsList>
+        )}
 
-            {/* Banner sits under the two fields, as in the approved design — the
-                name is what identifies the card, so it reads first. */}
-            {builtinReadOnly ? (
-              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
-                <p className="text-[13px] text-foreground">
-                  Built-in role. Read-only — keeps getting new areas as we ship features. Duplicate it to make a
-                  version you control.
-                </p>
-              </div>
-            ) : role && role.memberCount > 0 ? (
-              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
-                <p className="text-[13px] text-foreground">{memberNoticeText(role.memberCount)}</p>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Area bands */}
-          <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
-            {BAND_ORDER.map((band, bandIndex) => (
-              <div key={band}>
-                <BandHeader
-                  label={band}
-                  legend={bandIndex === 0 ? 'No access · View · Manage' : undefined}
-                  first={bandIndex === 0}
-                />
-                <div className="px-5">
-                  {(rowsByBand.get(band) ?? []).map((row) => (
-                    <AreaRow
-                      key={row.key}
-                      row={row}
-                      grants={grants}
-                      builtinReadOnly={builtinReadOnly}
-                      onChange={handleAreaChange}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* Sensitive data closes the same card, as its own band — the flags
-                are cross-cutting, but they are read as one more thing this role
-                either can or cannot see. */}
-            <BandHeader label="Sensitive data" legend="Off · On" />
-            <div className="p-5 pt-4 space-y-1">
-              {/* Say plainly what these switches do today. They are stored on
-                  the role and resolvable through user_has_capability(), but no
-                  screen and no RLS policy reads them yet, so leaving one off
-                  hides nothing. Advertising them as protection they don't yet
-                  provide is worse than admitting the gap (Phase 7a security
-                  review); the copy comes out when the fields are gated. */}
-              <p className="text-[12px] text-muted-foreground pb-2">
-                Recorded on the role, but not enforced yet — these fields still follow area access
-                everywhere in the app. Set them for the role you want; they take effect when
-                per-field gating ships.
-              </p>
-              {SENSITIVE_FLAGS.map((s) => {
-                const available = flagAvailable(s, grants, builtinReadOnly);
-                const checked = effectiveFlagSet.has(s.flag);
-                const requiredLabels = s.requires.map(areaKeyLabel).join(', ');
-                return (
-                  <div
-                    key={s.flag}
-                    data-testid={`flag-row-${s.flag}`}
-                    className={cn(
-                      'flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border/40',
-                      // The amber wash means "this role can see sensitive data",
-                      // so it appears only when the switch is actually on —
-                      // never merely because the flag is available.
-                      checked && 'bg-amber-500/10 border-amber-500/20',
-                      !available && 'bg-muted/40 opacity-70'
-                    )}
+        <TabsContent value="areas" className="mt-0">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-5 min-w-0">
+            {/* Identity card */}
+            <div className="rounded-xl border border-border/40 bg-card p-5 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label
+                    htmlFor="role-name"
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
                   >
-                    <div className="min-w-0">
-                      <Label htmlFor={`flag-${s.flag}`} className="text-[13px] font-medium text-foreground">
-                        {s.name}
-                      </Label>
-                      <p className="text-[12px] text-muted-foreground">
-                        {available ? s.hint : `Needs access to ${requiredLabels}`}
-                      </p>
-                    </div>
-                    <Switch
-                      id={`flag-${s.flag}`}
-                      aria-label={s.name}
-                      checked={checked}
-                      disabled={builtinReadOnly || !available}
-                      onCheckedChange={(v) => toggleFlag(s.flag, v)}
-                      // Amber when on, matching the row's caution wash — these
-                      // switches grant sensitive data, not an ordinary setting.
-                      className="data-[state=checked]:bg-amber-600 dark:data-[state=checked]:bg-amber-500"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Copy to other restaurants — only meaningful for an already-saved
-              custom role, and only when there is somewhere to copy it to: a
-              single-restaurant operator would otherwise get an empty picker. */}
-          {role && !role.builtin && otherRestaurants.length > 0 && (
-            <div className="rounded-xl border border-border/40 bg-card p-5 space-y-3">
-              <div>
-                <Label
-                  htmlFor="copy-targets"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Copy to other restaurants
-                </Label>
-                <p className="text-[13px] text-muted-foreground mt-0.5">
-                  Clone this role's areas and sensitive-data flags into other restaurants you manage.
-                </p>
+                    Role name
+                  </Label>
+                  <Input
+                    id="role-name"
+                    value={name}
+                    disabled={builtinReadOnly}
+                    onChange={(e) => setName(e.target.value)}
+                    className="mt-1.5 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                  />
+                </div>
+                <div>
+                  <Label
+                    htmlFor="role-description"
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    What this person does
+                  </Label>
+                  <Input
+                    id="role-description"
+                    value={description}
+                    disabled={builtinReadOnly}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="mt-1.5 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                  />
+                </div>
               </div>
-              <select
-                id="copy-targets"
-                multiple
-                value={copyTargetIds}
-                onChange={(e) =>
-                  setCopyTargetIds(Array.from(e.target.selectedOptions).map((option) => option.value))
-                }
-                className="w-full min-h-[92px] rounded-lg border border-border/40 bg-muted/30 text-[14px] p-2"
-              >
-                {otherRestaurants.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={copyTargetIds.length === 0 || isMutating}
-                onClick={handleCopy}
-                className="h-9 px-4 rounded-lg text-[13px] font-medium"
-              >
-                Copy role
-              </Button>
-              {copyReport && (
-                <div className="text-[12px] space-y-1">
-                  {copyReport.copied.length > 0 && (
-                    <p className="text-muted-foreground">
-                      Copied to {copyReport.copied.length} restaurant{copyReport.copied.length === 1 ? '' : 's'}.
-                    </p>
-                  )}
-                  {copyReport.nameCollisions.length > 0 && (
-                    <p className="text-destructive">
-                      A role named "{name}" already exists at {copyReport.nameCollisions.length} restaurant
-                      {copyReport.nameCollisions.length === 1 ? '' : 's'} — those copies were skipped.
-                    </p>
-                  )}
+
+              {/* Banner sits under the two fields, as in the approved design — the
+                  name is what identifies the card, so it reads first. */}
+              {editorNotice && (
+                <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
+                  <p className="text-[13px] text-foreground">{editorNotice}</p>
                 </div>
               )}
             </div>
-          )}
 
-          <div className="flex items-center justify-between pt-1">
-            <div>
-              {saveHint && (
-                <p id="save-hint" className="text-[12px] text-muted-foreground">
-                  {saveHint}
+            {/* Area bands */}
+            <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
+              {GROUP_ORDER.map((group, groupIndex) => (
+                <div key={group}>
+                  <GroupHeader
+                    label={group}
+                    legend={groupIndex === 0 ? 'No access · View · Manage' : undefined}
+                    first={groupIndex === 0}
+                  />
+                  <div className="px-5">
+                    {(rowsByGroup.get(group) ?? []).map((row) => (
+                      <AreaRow
+                        key={row.key}
+                        row={row}
+                        grants={grants}
+                        builtinReadOnly={builtinReadOnly}
+                        onChange={handleAreaChange}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Sensitive data closes the same card, as its own band — the flags
+                  are cross-cutting, but they are read as one more thing this role
+                  either can or cannot see. */}
+              <GroupHeader label="Sensitive data" legend="Off · On" />
+              <div className="p-5 pt-4 space-y-1">
+                {/* Say plainly what these switches do today. They are stored on
+                    the role and resolvable through user_has_capability(), but no
+                    screen and no RLS policy reads them yet, so leaving one off
+                    hides nothing. Advertising them as protection they don't yet
+                    provide is worse than admitting the gap (Phase 7a security
+                    review); the copy comes out when the fields are gated. */}
+                <p className="text-[12px] text-muted-foreground pb-2">
+                  Recorded on the role, but not enforced yet — these fields still follow area access
+                  everywhere in the app. Set them for the role you want; they take effect when
+                  per-field gating ships.
                 </p>
-              )}
+                {SENSITIVE_FLAGS.map((s) => {
+                  const available = flagAvailable(s, grants, builtinReadOnly);
+                  const checked = effectiveFlagSet.has(s.flag);
+                  const requiredLabels = s.requires.map(areaKeyLabel).join(', ');
+                  return (
+                    <div
+                      key={s.flag}
+                      data-testid={`flag-row-${s.flag}`}
+                      className={cn(
+                        'flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border/40',
+                        // The amber wash means "this role can see sensitive data",
+                        // so it appears only when the switch is actually on —
+                        // never merely because the flag is available.
+                        checked && 'bg-amber-500/10 border-amber-500/20',
+                        !available && 'bg-muted/40 opacity-70'
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <Label htmlFor={`flag-${s.flag}`} className="text-[13px] font-medium text-foreground">
+                          {s.name}
+                        </Label>
+                        <p className="text-[12px] text-muted-foreground">
+                          {available ? s.hint : `Needs access to ${requiredLabels}`}
+                        </p>
+                      </div>
+                      <Switch
+                        id={`flag-${s.flag}`}
+                        aria-label={s.name}
+                        checked={checked}
+                        disabled={builtinReadOnly || !available}
+                        onCheckedChange={(v) => toggleFlag(s.flag, v)}
+                        // Amber when on, matching the row's caution wash — these
+                        // switches grant sensitive data, not an ordinary setting.
+                        className="data-[state=checked]:bg-amber-600 dark:data-[state=checked]:bg-amber-500"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onBack}
-                className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={saveDisabled}
-                aria-describedby={saveHint ? 'save-hint' : undefined}
-                onClick={handleSave}
-                // Accent-filled, not the usual near-black primary: the approved
-                // design ties the save action to the same accent the selected
-                // "Manage" segment uses.
-                className="h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-medium disabled:opacity-45"
-              >
-                Save role
-              </Button>
+
+            {/* Copy to other restaurants — only meaningful for an already-saved
+                custom role, and only when there is somewhere to copy it to: a
+                single-restaurant operator would otherwise get an empty picker. */}
+            {role && !role.builtin && otherRestaurants.length > 0 && (
+              <div className="rounded-xl border border-border/40 bg-card p-5 space-y-3">
+                <div>
+                  <Label
+                    htmlFor="copy-targets"
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    Copy to other restaurants
+                  </Label>
+                  <p className="text-[13px] text-muted-foreground mt-0.5">
+                    Clone this role's areas and sensitive-data flags into other restaurants you manage.
+                  </p>
+                </div>
+                <select
+                  id="copy-targets"
+                  multiple
+                  value={copyTargetIds}
+                  onChange={(e) =>
+                    setCopyTargetIds(Array.from(e.target.selectedOptions).map((option) => option.value))
+                  }
+                  className="w-full min-h-[92px] rounded-lg border border-border/40 bg-muted/30 text-[14px] p-2"
+                >
+                  {otherRestaurants.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={copyTargetIds.length === 0 || isMutating}
+                  onClick={handleCopy}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  Copy role
+                </Button>
+                {copyReport && (
+                  <div className="text-[12px] space-y-1">
+                    {copyReport.copied.length > 0 && (
+                      <p className="text-muted-foreground">
+                        Copied to {copyReport.copied.length} restaurant{copyReport.copied.length === 1 ? '' : 's'}.
+                      </p>
+                    )}
+                    {copyReport.nameCollisions.length > 0 && (
+                      <p className="text-destructive">
+                        A role named "{name}" already exists at {copyReport.nameCollisions.length} restaurant
+                        {copyReport.nameCollisions.length === 1 ? '' : 's'} — those copies were skipped.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                {saveHint && (
+                  <p id="save-hint" className="text-[12px] text-muted-foreground">
+                    {saveHint}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onBack}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={saveDisabled}
+                  aria-describedby={saveHint ? 'save-hint' : undefined}
+                  onClick={handleSave}
+                  // Accent-filled, not the usual near-black primary: the approved
+                  // design ties the save action to the same accent the selected
+                  // "Manage" segment uses.
+                  className="h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-medium disabled:opacity-45"
+                >
+                  Save role
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Live preview */}
-        <RolePreviewPanel grants={grants} flags={effectiveFlags} roleName={name.trim() || 'This role'} />
-      </div>
+          {/* Live preview */}
+          <RolePreviewPanel grants={grants} flags={effectiveFlags} roleName={name.trim() || 'This role'} />
+        </div>
+        </TabsContent>
+
+        {role && (
+          <TabsContent value="people" className="mt-0">
+            <RoleRoster role={role} restaurantId={restaurantId} callerRole={callerRole} />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

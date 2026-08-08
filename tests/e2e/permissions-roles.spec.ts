@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { generateTestUser, signUpAndCreateRestaurant, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+import { navigateInApp } from '../helpers/e2e-navigation';
 
 // Helper to update a user's role via the database and reload
 async function setUserRole(page: Page, role: string): Promise<void> {
@@ -63,11 +64,23 @@ const collaboratorRoles = [
   },
 ];
 
+// The route sweeps below use `navigateInApp`, not `page.goto`: a real browser
+// navigation re-boots the whole SPA (4-6s per hop on CI's unbundled dev server)
+// to re-prove a boot sequence the test already proved, and a dozen of them ran
+// the specs past their time budget. Cold-boot-into-a-guarded-route is still
+// covered — `setUserRole` reloads onto a forbidden path before every sweep, and
+// the single-route tests at the bottom of this file navigate for real.
+//
+// A signup still costs ~35s, so `test.slow()` stays on the tests that do one.
+// It does not slow a passing run down; it only stops the clock from running out
+// on work that was always going to take this long.
+
 test.describe('Collaborator Role Routing and Access', () => {
   test.describe.configure({ mode: 'serial' });
 
   for (const { role, landing, allowed, forbidden } of collaboratorRoles) {
     test(`should redirect ${role} to landing (${landing}) and restrict access`, async ({ page }) => {
+      test.slow();
       const user = generateTestUser();
       await signUpAndCreateRestaurant(page, user);
 
@@ -76,27 +89,16 @@ test.describe('Collaborator Role Routing and Access', () => {
       // Should redirect to landing page from dashboard
       await expect(page).toHaveURL(landing, { timeout: 10000 });
 
-      // Allowed paths should be accessible.
-      // We deliberately don't use 'networkidle' here — pages often have
-      // background queries (realtime, refetch intervals) that prevent
-      // networkidle from ever settling. 'domcontentloaded' is sufficient
-      // to verify the route resolved without a redirect.
+      // Allowed paths should be accessible — the guard leaves them alone.
       for (const path of allowed) {
-        await page.goto(path, { waitUntil: 'domcontentloaded' });
-        await expect(page).toHaveURL(path, { timeout: 5000 });
+        await navigateInApp(page, path);
+        await expect(page).toHaveURL(path);
       }
 
       // Forbidden paths should redirect to landing.
-      // The SPA aborts the original navigation when the protected-route
-      // guard redirects, which surfaces as net::ERR_ABORTED. That's the
-      // correct behavior — we only care about the *final* URL, so use
-      // 'commit' (waits for nav to commit) and tolerate an abort.
-      // Timeout is generous (15s) because forbidden=['/'] hits Index.tsx,
-      // which fires several useQuery hooks before the collaborator redirect
-      // runs — under CI load those queries can take >5s to resolve.
       for (const path of forbidden) {
-        await page.goto(path, { waitUntil: 'commit' }).catch(() => {});
-        await expect(page).toHaveURL(landing, { timeout: 15000 });
+        await navigateInApp(page, path);
+        await expect(page).toHaveURL(landing);
       }
     });
   }
@@ -111,6 +113,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('owner should have access to dashboard and all routes', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('owner');
     await signUpAndCreateRestaurant(page, user);
 
@@ -133,14 +136,14 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     ];
 
     for (const route of ownerRoutes) {
-      await page.goto(route, { waitUntil: 'networkidle' });
-      await expect(page).not.toHaveURL('/auth');
+      await navigateInApp(page, route);
       // Owner should stay on the requested route (has full access)
       await expect(page).toHaveURL(route);
     }
   });
 
   test('manager should have access to dashboard and operational routes', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('manager');
     await signUpAndCreateRestaurant(page, user);
 
@@ -153,12 +156,13 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const managerRoutes = ['/', '/team', '/employees', '/transactions', '/inventory', '/recipes', '/scheduling'];
 
     for (const route of managerRoutes) {
-      await page.goto(route, { waitUntil: 'networkidle' });
+      await navigateInApp(page, route);
       await expect(page).not.toHaveURL('/auth');
     }
   });
 
   test('chef (internal) should have access to dashboard and recipe/inventory routes', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('chef');
     await signUpAndCreateRestaurant(page, user);
 
@@ -171,12 +175,13 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const chefRoutes = ['/', '/recipes', '/prep-recipes', '/batches', '/inventory'];
 
     for (const route of chefRoutes) {
-      await page.goto(route, { waitUntil: 'networkidle' });
+      await navigateInApp(page, route);
       await expect(page).not.toHaveURL('/auth');
     }
   });
 
   test('staff should be redirected to employee schedule', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('staff');
     await signUpAndCreateRestaurant(page, user);
 
@@ -198,7 +203,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     ];
 
     for (const route of staffAllowed) {
-      await page.goto(route, { waitUntil: 'networkidle' });
+      await navigateInApp(page, route);
       await expect(page).not.toHaveURL('/auth');
     }
 
@@ -206,16 +211,13 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const staffForbidden = ['/', '/team', '/payroll', '/banking', '/transactions'];
 
     for (const route of staffForbidden) {
-      // Same redirect-abort race as the collaborator loops above — see
-      // those comments. 'commit' + tolerate abort, then assert final URL.
-      // 15s timeout: forbidden=['/'] hits Index.tsx whose hooks may take
-      // multiple seconds to resolve under CI load before the redirect.
-      await page.goto(route, { waitUntil: 'commit' }).catch(() => {});
-      await expect(page).toHaveURL('/employee/schedule', { timeout: 15000 });
+      await navigateInApp(page, route);
+      await expect(page).toHaveURL('/employee/schedule');
     }
   });
 
   test('kiosk should only access kiosk route', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('kiosk');
     await signUpAndCreateRestaurant(page, user);
 
@@ -228,12 +230,8 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const kioskForbidden = ['/', '/team', '/employee/clock', '/settings'];
 
     for (const route of kioskForbidden) {
-      // Same redirect-abort race as the collaborator loops above — see
-      // those comments. 'commit' + tolerate abort, then assert final URL.
-      // 15s timeout: forbidden=['/'] hits Index.tsx whose hooks may take
-      // multiple seconds to resolve under CI load before the redirect.
-      await page.goto(route, { waitUntil: 'commit' }).catch(() => {});
-      await expect(page).toHaveURL('/kiosk', { timeout: 15000 });
+      await navigateInApp(page, route);
+      await expect(page).toHaveURL('/kiosk');
     }
   });
 });

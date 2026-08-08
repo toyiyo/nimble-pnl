@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 import { canUserCreateRestaurant } from '@/lib/restaurantPermissions';
@@ -35,32 +35,44 @@ interface RestaurantProviderProps {
 export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children }) => {
   const { user } = useAuth();
   const { restaurants, loading, createRestaurant } = useRestaurants();
-  const [selectedRestaurant, setSelectedRestaurant] = useState<UserRestaurant | null>(null);
+  // Only an *explicit* pick lives in state. The automatic pick (a saved choice,
+  // or the sole membership) is derived during render below.
+  const [chosenRestaurantId, setChosenRestaurantId] = useState<string | null>(null);
 
-  // Load selected restaurant from localStorage on mount
-  useEffect(() => {
-    if (user) {
-      const savedRestaurantId = localStorage.getItem(`selectedRestaurant_${user.id}`);
-      if (savedRestaurantId && restaurants.length > 0) {
-        const savedRestaurant = restaurants.find(r => r.restaurant_id === savedRestaurantId);
-        if (savedRestaurant) {
-          setSelectedRestaurant(savedRestaurant);
-        }
-      }
-    }
-  }, [user, restaurants]);
+  const storageKey = user ? `selectedRestaurant_${user.id}` : null;
 
-  // Auto-select first restaurant if only one exists and none is selected
-  useEffect(() => {
-    if (restaurants.length === 1 && !selectedRestaurant) {
-      setSelectedRestaurant(restaurants[0]);
-    }
-  }, [restaurants, selectedRestaurant]);
+  // Derived, not stored in an effect, for two reasons:
+  //
+  // 1. `StaffRoleChecker` (src/App.tsx) holds every protected route until
+  //    `loading` clears, then reads `selectedRestaurant?.role` to decide whether
+  //    a kiosk / staff / collaborator user belongs on the current path. Setting
+  //    the selection from an effect left one commit where `loading` was already
+  //    false but the selection was still null — `role` came back `undefined`,
+  //    every guard evaluated falsy, and the page those guards exist to block
+  //    rendered and fired its queries before the redirect landed.
+  // 2. Re-resolving against the freshest `restaurants` keeps the role current.
+  //    The old code stored a snapshot object, so an auto-selected membership
+  //    kept the role it was fetched with: a demotion picked up by a refetch
+  //    never reached the guards without a full reload.
+  const selectedRestaurant = useMemo(() => {
+    if (!storageKey || restaurants.length === 0) return null;
+    const byId = (id: string | null) =>
+      (id ? restaurants.find(r => r.restaurant_id === id) : undefined) ?? null;
+
+    return (
+      byId(chosenRestaurantId) ??
+      byId(localStorage.getItem(storageKey)) ??
+      // With several memberships and nothing saved, there is no right answer to
+      // guess — Index.tsx renders a "Select or create a restaurant" screen for
+      // exactly this state.
+      (restaurants.length === 1 ? restaurants[0] : null)
+    );
+  }, [storageKey, restaurants, chosenRestaurantId]);
 
   // Clear selection when user changes
   useEffect(() => {
     if (!user) {
-      setSelectedRestaurant(null);
+      setChosenRestaurantId(null);
       // Clear all localStorage entries for restaurant selection
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('selectedRestaurant_')) {
@@ -71,14 +83,14 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
   }, [user]);
 
   // Enhanced setSelectedRestaurant that persists to localStorage
-  const handleSetSelectedRestaurant = (restaurant: UserRestaurant | null) => {
-    setSelectedRestaurant(restaurant);
-    if (user && restaurant) {
-      localStorage.setItem(`selectedRestaurant_${user.id}`, restaurant.restaurant_id);
-    } else if (user) {
-      localStorage.removeItem(`selectedRestaurant_${user.id}`);
+  const handleSetSelectedRestaurant = useCallback((restaurant: UserRestaurant | null) => {
+    setChosenRestaurantId(restaurant?.restaurant_id ?? null);
+    if (storageKey && restaurant) {
+      localStorage.setItem(storageKey, restaurant.restaurant_id);
+    } else if (storageKey) {
+      localStorage.removeItem(storageKey);
     }
-  };
+  }, [storageKey]);
 
   // Centralized logic: Allow creation if user has no restaurants (first-time) OR is an owner
   const canCreateRestaurant = canUserCreateRestaurant(restaurants);
@@ -91,7 +103,7 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     loading,
     canCreateRestaurant,
     createRestaurant,
-  }), [selectedRestaurant, restaurants, loading, canCreateRestaurant, createRestaurant]);
+  }), [selectedRestaurant, handleSetSelectedRestaurant, restaurants, loading, canCreateRestaurant, createRestaurant]);
 
   return (
     <RestaurantContext.Provider value={value}>

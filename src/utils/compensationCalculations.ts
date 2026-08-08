@@ -19,6 +19,7 @@ import type {
   CompensationSummary,
   CompensationHistoryEntry,
 } from '@/types/scheduling';
+import { toDateOnlyString, parseDateOnly } from '@/lib/dateOnly';
 
 // ============================================================================
 // Constants
@@ -47,8 +48,17 @@ export const DAYS_PER_CONTRACTOR_INTERVAL: Record<
 // ============================================================================
 
 function normalizeDateString(input: string | Date): string {
-  const date = typeof input === 'string' ? new Date(input) : new Date(input);
-  return date.toISOString().split('T')[0];
+  // These values are always calendar days (hire/termination dates,
+  // compensation-history effective dates, pay-period boundaries) — never a
+  // moment in time — so we serialize local calendar fields, never
+  // `.toISOString()` (which shifts the day for viewers ahead of UTC, e.g.
+  // Pacific/Auckland, once `input` is a Date built at local midnight).
+  if (typeof input === 'string') {
+    // Already a calendar-day string (e.g. '2024-01-15'); take it as-is
+    // rather than round-tripping through `new Date()`.
+    return input.slice(0, 10);
+  }
+  return toDateOnlyString(input);
 }
 
 function getSortedHistory(employee: Employee): CompensationHistoryEntry[] {
@@ -229,8 +239,8 @@ export function getPayPeriodDates(
       const end = new Date(start);
       end.setDate(start.getDate() + 6);
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: toDateOnlyString(start),
+        end: toDateOnlyString(end),
       };
     }
     case 'bi-weekly': {
@@ -247,8 +257,8 @@ export function getPayPeriodDates(
       const end = new Date(start);
       end.setDate(start.getDate() + 13);
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: toDateOnlyString(start),
+        end: toDateOnlyString(end),
       };
     }
     case 'semi-monthly': {
@@ -258,15 +268,15 @@ export function getPayPeriodDates(
         const start = new Date(d.getFullYear(), d.getMonth(), 1);
         const end = new Date(d.getFullYear(), d.getMonth(), 15);
         return {
-          start: start.toISOString().split('T')[0],
-          end: end.toISOString().split('T')[0],
+          start: toDateOnlyString(start),
+          end: toDateOnlyString(end),
         };
       } else {
         const start = new Date(d.getFullYear(), d.getMonth(), 16);
         const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
         return {
-          start: start.toISOString().split('T')[0],
-          end: end.toISOString().split('T')[0],
+          start: toDateOnlyString(start),
+          end: toDateOnlyString(end),
         };
       }
     }
@@ -274,8 +284,8 @@ export function getPayPeriodDates(
       const start = new Date(d.getFullYear(), d.getMonth(), 1);
       const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: toDateOnlyString(start),
+        end: toDateOnlyString(end),
       };
     }
   }
@@ -698,7 +708,7 @@ function getDaysBetween(startDate: Date, endDate: Date): number {
  * @example
  * // Weekly salary of $1,000 for 3 days = $428.57
  * const employee = { compensation_type: 'salary', salary_amount: 100000, pay_period_type: 'weekly' };
- * calculateSalaryForPeriod(employee, new Date('2024-12-01'), new Date('2024-12-03')); // 42857
+ * calculateSalaryForPeriod(employee, parseDateOnly('2024-12-01'), parseDateOnly('2024-12-03')); // 42857
  */
 export function calculateSalaryForPeriod(
   employee: Employee,
@@ -710,9 +720,15 @@ export function calculateSalaryForPeriod(
   const end = new Date(endDate);
 
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dayDate = new Date(normalizeDateString(d));
-    const hireDate = employee.hire_date ? new Date(employee.hire_date) : null;
-    const terminationDate = employee.termination_date ? new Date(employee.termination_date) : null;
+    // Route the calendar-day string back through parseDateOnly (LOCAL
+    // midnight), not a bare `new Date(str)` (UTC midnight) — hire/
+    // termination dates below use the same anchor, so day-granularity
+    // comparisons stay self-consistent regardless of viewer TZ.
+    const dayDate = parseDateOnly(normalizeDateString(d));
+    const hireDate = employee.hire_date ? parseDateOnly(normalizeDateString(employee.hire_date)) : null;
+    const terminationDate = employee.termination_date
+      ? parseDateOnly(normalizeDateString(employee.termination_date))
+      : null;
 
     if (hireDate && dayDate < hireDate) continue;
     if (terminationDate && dayDate > terminationDate) continue;
@@ -742,7 +758,7 @@ export function calculateSalaryForPeriod(
  * @example
  * // Monthly contractor of $3,000 for 30 days = ~$2,957
  * const employee = { compensation_type: 'contractor', contractor_payment_amount: 300000, contractor_payment_interval: 'monthly' };
- * calculateContractorPayForPeriod(employee, new Date('2024-12-01'), new Date('2024-12-30'));
+ * calculateContractorPayForPeriod(employee, parseDateOnly('2024-12-01'), parseDateOnly('2024-12-30'));
  */
 export function calculateContractorPayForPeriod(
   employee: Employee,
@@ -754,9 +770,14 @@ export function calculateContractorPayForPeriod(
   const end = new Date(endDate);
 
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dayDate = new Date(normalizeDateString(d));
-    const hireDate = employee.hire_date ? new Date(employee.hire_date) : null;
-    const terminationDate = employee.termination_date ? new Date(employee.termination_date) : null;
+    // See calculateSalaryForPeriod above: keep dayDate/hireDate/terminationDate
+    // on the same LOCAL-midnight anchor (parseDateOnly) so day-granularity
+    // comparisons don't drift by a day for viewers outside UTC.
+    const dayDate = parseDateOnly(normalizeDateString(d));
+    const hireDate = employee.hire_date ? parseDateOnly(normalizeDateString(employee.hire_date)) : null;
+    const terminationDate = employee.termination_date
+      ? parseDateOnly(normalizeDateString(employee.termination_date))
+      : null;
 
     if (hireDate && dayDate < hireDate) continue;
     if (terminationDate && dayDate > terminationDate) continue;

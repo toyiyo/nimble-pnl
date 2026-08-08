@@ -116,13 +116,14 @@ export function ShiftPlannerTab({
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
   // `safeTz`, not `|| 'UTC'` — this value now feeds WRITE paths (drag-copy,
-  // copy-week, planner create/update) where it decides the UTC instant that
-  // gets stored, not just how a cell is labelled. `restaurants.timezone` is
-  // nullable, and every server-side scheduling function COALESCEs a null to
-  // 'America/Chicago'; anchoring the client to UTC for those rows would
-  // write instants the server then reads back on a different calendar day —
-  // the exact drift this PR exists to remove. `safeTz` maps null, empty and
-  // invalid zones to that same 'America/Chicago' default.
+  // copy-week, planner create/update, template hour cascade) where it decides
+  // the UTC instant that gets stored, not just how a cell is labelled.
+  // `restaurants.timezone` is nullable. The two template-cascade RPCs COALESCE
+  // a null to 'America/Chicago' to match this client fallback exactly; the six
+  // older scheduling functions still COALESCE to 'UTC' and are a known
+  // follow-up. Anchoring the client to UTC would write instants the server
+  // then reads back on a different calendar day. `safeTz` maps null, empty and
+  // invalid zones to 'America/Chicago'.
   const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const isMobile = useIsMobile();
 
@@ -468,6 +469,9 @@ export function ShiftPlannerTab({
       clearValidation();
       setHighlightCellId(`${template.id}:${day}`);
       setTimeout(() => setHighlightCellId(null), 600);
+      // `day` is a date-only token parsed at local midnight; this reads the
+      // weekday of that calendar day, so local fields are correct here.
+      // eslint-disable-next-line no-restricted-syntax
       const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
       toast({ title: `${employee.name} assigned to ${template.name} — ${dayLabel}` });
     } else if (result.pendingConflicts?.length || result.pendingWarnings?.length) {
@@ -637,12 +641,19 @@ export function ShiftPlannerTab({
     days: number[];
     break_duration: number;
     capacity: number;
+    cascade: boolean;
+    driftedShiftIds: string[];
+    notify: boolean;
+    promisedCount: number;
   }) => {
     if (editingTemplate) {
       await updateTemplate({ id: editingTemplate.id, ...data });
     } else {
+      // A brand-new template has no linked shifts, so the cascade fields are
+      // meaningless on the insert path.
+      const { cascade: _cascade, driftedShiftIds: _drifted, notify: _notify, promisedCount: _promisedCount, ...templateFields } = data;
       await createTemplate({
-        ...data,
+        ...templateFields,
         restaurant_id: restaurantId,
         is_active: true,
       });
@@ -1020,6 +1031,7 @@ export function ShiftPlannerTab({
         onSubmit={handleTemplateSubmit}
         positions={positions}
         restaurantId={restaurantId}
+        restaurantTimezone={restaurantTimezone}
       />
 
       {/* Assignment popover — shown after dropping an employee onto a shift cell */}

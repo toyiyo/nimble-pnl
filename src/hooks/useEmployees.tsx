@@ -7,18 +7,27 @@ export type EmployeeStatusFilter = 'active' | 'inactive' | 'all';
 
 interface UseEmployeesOptions {
   status?: EmployeeStatusFilter;
+  employeeId?: string;
 }
 
 const defaultOptions: UseEmployeesOptions = { status: 'active' };
+
+// Stable reference for the "no data yet" case. `data || []` would otherwise
+// allocate a fresh empty array on every render while the query is loading,
+// which breaks referential equality for any useMemo/useEffect keyed on the
+// returned `employees` array — capable of driving an infinite render loop in
+// a consumer that both derives from it and writes state back on every change
+// (see src/pages/Tips.tsx).
+const EMPTY_EMPLOYEES: Employee[] = [];
 
 export const useEmployees = (
   restaurantId: string | null,
   options: UseEmployeesOptions = defaultOptions
 ) => {
-  const { status = 'active' } = options;
+  const { status = 'active', employeeId } = options;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['employees', restaurantId, status],
+    queryKey: ['employees', restaurantId, status, employeeId],
     queryFn: async () => {
       if (!restaurantId) return [];
 
@@ -38,6 +47,10 @@ export const useEmployees = (
       }
       // 'all' = no filter
 
+      if (employeeId) {
+        query = query.eq('id', employeeId);
+      }
+
       query = query
         .order('name')
         .order('effective_date', { referencedTable: 'employee_compensation_history', ascending: false });
@@ -54,7 +67,7 @@ export const useEmployees = (
   });
 
   return {
-    employees: data || [],
+    employees: data ?? EMPTY_EMPLOYEES,
     loading: isLoading,
     error,
   };

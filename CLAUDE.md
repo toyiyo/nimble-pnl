@@ -6,6 +6,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 EasyShiftHQ is a **real-time restaurant management system** handling inventory, recipes, sales, P&L, payroll, and scheduling. Data accuracy is critical—stale data can cause stock-outs, incorrect financials, and operational issues.
 
+## Communication Standard: ASD-STE100 (MANDATORY)
+
+Write every word to the user in **Simplified Technical English (ASD-STE100)**.
+This applies to chat replies, plans, design docs, commit messages, PR bodies,
+code comments, and retrospectives. It applies to every sub-agent.
+
+The full standard is in [docs/STE100_STYLE.md](docs/STE100_STYLE.md). Read it
+before you write a long document. These 8 rules cover most sentences:
+
+1. One idea per sentence. Maximum 20 words for an instruction, 25 for a
+   description.
+2. Active voice. Start an instruction with the verb.
+3. One word for one meaning. Use `fix`, not repair/resolve/address/patch.
+4. Simple tenses only. No perfect tenses.
+5. No `-ing` word as a noun. Write "The sync fails", not "Syncing is failing".
+6. Keep the articles. Maximum 3 nouns in a cluster.
+7. No idioms, no slang, no metaphors, no hedges ("basically", "just",
+   "I think", "simply").
+8. Give the warning before the instruction.
+
+**Keep exact:** code identifiers, tool output, error messages, log lines, and
+quotes from reviewers. Do not rewrite them into plain English.
+
+**Do not claim STE certification.** The ASD dictionary is licensed and not
+available here. Call the output *STE-aligned*.
+
 ## Development Commands
 
 ```bash
@@ -226,7 +252,7 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 - Track via `initial_sync_done` and `sync_cursor` columns on connection
 - Edge functions use service role key - remove `auth.uid()` checks from RPC functions
 - **CPU Limits**: Edge functions have strict CPU limits (~10s). Batch processing and skip per-order RPC calls
-- **unified_sales sync**: For large imports, defer to cron job (runs every 6 hours) to avoid timeouts
+- **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts
 - Use `skipUnifiedSalesSync: true` in processOrder during bulk imports
 
 **Key Files:**
@@ -240,7 +266,8 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 - Bulk sync processes max 5 restaurants per cron run (round-robin by `last_sync_time`)
 - Max 200 orders per restaurant per run
 - 2-second delay between restaurants to avoid API rate limits
-- Cron runs every 6 hours - all restaurants eventually get synced
+- `toast-bulk-sync` cron runs every 2 hours (pg_cron jobid 7) - all restaurants eventually get synced
+- A separate SQL rollup, `sync_all_toast_to_unified_sales()`, runs every 5 minutes (pg_cron jobid 4) and also drives rule categorization
 - For faster sync with many restaurants, increase cron frequency or add workers
 
 **Testing Cron Locally:**

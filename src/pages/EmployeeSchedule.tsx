@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useShifts } from '@/hooks/useShifts';
+import { useMyShifts } from '@/hooks/useShifts';
+import { useWeekScheduleStatus, useWeekRetractionReason } from '@/hooks/useSchedulePublish';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -15,19 +16,17 @@ import {
   EmployeePageSkeleton,
   EmployeeNotLinkedState,
   EmployeeInfoAlert,
+  ScheduleStatusBanner,
+  ScheduleUpdatedPill,
+  ShiftRow,
 } from '@/components/employee';
 import {
-  Calendar,
   Clock,
   ChevronLeft,
   ChevronRight,
   CalendarDays,
-  MapPin,
-  Coffee,
-  CheckCircle,
-  XCircle,
-  ClockIcon,
   ArrowLeftRight,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   format,
@@ -38,75 +37,18 @@ import {
   eachDayOfInterval,
   parseISO,
   isToday,
-  isFuture,
-  isPast,
   differenceInMinutes,
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { safeTz } from '@/lib/restaurantClock';
+import { formatLocalDate } from '@/lib/shiftInterval';
+import {
+  computeScheduleFingerprint,
+  hasScheduleChangedSinceSeen,
+  readSeenFingerprint,
+  writeSeenFingerprint,
+} from '@/lib/scheduleSeenFingerprint';
 import { Shift } from '@/types/scheduling';
-
-const formatShiftDuration = (startTime: string, endTime: string, breakMinutes: number) => {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const totalMinutes = differenceInMinutes(end, start);
-  const netMinutes = totalMinutes - breakMinutes;
-  const hours = Math.floor(netMinutes / 60);
-  const minutes = netMinutes % 60;
-  return `${hours}h ${minutes}m`;
-};
-
-const getShiftStatusBadge = (shift: Shift) => {
-  const startTime = new Date(shift.start_time);
-  const endTime = new Date(shift.end_time);
-  const now = new Date();
-
-  if (shift.status === 'cancelled') {
-    return (
-      <Badge variant="destructive" className="flex items-center gap-1">
-        <XCircle className="h-3 w-3" />
-        Cancelled
-      </Badge>
-    );
-  }
-
-  if (isPast(endTime)) {
-    return (
-      <Badge variant="outline" className="flex items-center gap-1 bg-muted">
-        <CheckCircle className="h-3 w-3" />
-        Completed
-      </Badge>
-    );
-  }
-
-  if (now >= startTime && now <= endTime) {
-    return (
-      <Badge className="flex items-center gap-1 bg-green-500">
-        <ClockIcon className="h-3 w-3" />
-        In Progress
-      </Badge>
-    );
-  }
-
-  if (isToday(startTime)) {
-    return (
-      <Badge variant="default" className="flex items-center gap-1">
-        <Clock className="h-3 w-3" />
-        Today
-      </Badge>
-    );
-  }
-
-  if (isFuture(startTime)) {
-    return (
-      <Badge variant="outline" className="flex items-center gap-1">
-        <Calendar className="h-3 w-3" />
-        Upcoming
-      </Badge>
-    );
-  }
-
-  return null;
-};
 
 const EmployeeSchedule = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -123,13 +65,73 @@ const EmployeeSchedule = () => {
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
-  const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const {
+    shifts: myShifts,
+    loading: shiftsLoading,
+    error: shiftsError,
+    refetch: refetchShifts,
+  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
 
-  // Filter shifts to only show current employee's shifts
-  const myShifts = useMemo(() => {
-    if (!currentEmployee) return [];
-    return shifts.filter((shift) => shift.employee_id === currentEmployee.id);
-  }, [shifts, currentEmployee]);
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+
+  // What this week actually IS, as opposed to what the rows look like: a week
+  // that was announced and then pulled back is otherwise indistinguishable
+  // from one nobody ever published.
+  const {
+    state,
+    publication,
+    publishedCount,
+    draftCount,
+    loading: statusLoading,
+    // `employeeLoading` too, not just `shiftsLoading`: `useMyShifts` stays
+    // disabled until `employeeId` resolves, and a disabled query reports
+    // `isLoading: false` — so `shiftsLoading` alone would race ahead of
+    // `currentEmployee` instead of waiting for it.
+  } = useWeekScheduleStatus(
+    restaurantId,
+    currentWeekStart,
+    myShifts,
+    shiftsLoading || employeeLoading
+  );
+  const retractionReason = useWeekRetractionReason(
+    restaurantId,
+    currentWeekStart,
+    state === 'retracted'
+  );
+
+  // "Has anything moved since I last looked?" There is no server-side read
+  // tracking, so this compares a fingerprint of what the employee last saw.
+  const fingerprint = useMemo(
+    () =>
+      computeScheduleFingerprint({
+        publishedAt: publication?.published_at ?? null,
+        shifts: myShifts,
+      }),
+    [publication?.published_at, myShifts]
+  );
+
+  const weekStartStr = formatLocalDate(currentWeekStart);
+  const employeeId = currentEmployee?.id ?? null;
+
+  const [seenFingerprint, setSeenFingerprint] = useState<string | null>(null);
+
+  // Read on arrival, then immediately record the visit. Reading into state
+  // first is what keeps the pill on screen for the whole visit -- writing
+  // without it would mark the week seen and erase the pill in the same commit.
+  //
+  // Both loading flags gate this, not just `shiftsLoading`. The fingerprint
+  // covers `published_at`, which arrives from a *different* query: writing
+  // while that one is still in flight stores a fingerprint with a null
+  // published_at, and the moment it resolves the effect re-fires, reads its own
+  // stale write back, and shows "Updated since you last checked" on a week
+  // where nothing changed.
+  useEffect(() => {
+    if (!restaurantId || !employeeId || shiftsLoading || statusLoading) return;
+    setSeenFingerprint(readSeenFingerprint(restaurantId, employeeId, weekStartStr));
+    writeSeenFingerprint(restaurantId, employeeId, weekStartStr, fingerprint);
+  }, [restaurantId, employeeId, weekStartStr, fingerprint, shiftsLoading, statusLoading]);
+
+  const scheduleChangedSinceSeen = hasScheduleChangedSinceSeen(seenFingerprint, fingerprint);
 
   // Group shifts by day
   const shiftsByDay = useMemo(() => {
@@ -177,6 +179,9 @@ const EmployeeSchedule = () => {
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
       .slice(0, 5);
   }, [myShifts]);
+
+  const allUpcomingAreDrafts =
+    upcomingShifts.length > 0 && upcomingShifts.every((shift) => !shift.is_published);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -231,6 +236,18 @@ const EmployeeSchedule = () => {
         </Link>
       </div>
 
+      {/* Is this week actually mine? Above everything, because a retracted week
+          contradicts an email the employee may already have acted on. */}
+      <ScheduleStatusBanner
+        state={state}
+        publication={publication}
+        publishedCount={publishedCount}
+        draftCount={draftCount}
+        weekRange={`${format(currentWeekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`}
+        timezone={restaurantTimezone}
+        retractionReason={retractionReason}
+      />
+
       {/* My shift trades — poster tracker + claimant status */}
       <MyShiftTradesCard
         restaurantId={restaurantId}
@@ -238,55 +255,28 @@ const EmployeeSchedule = () => {
         fallbackFocusRef={pageHeaderRef}
       />
 
-      {/* Upcoming Shifts */}
+      {/* Upcoming Shifts. The green celebratory chrome is a claim that these
+          are locked in, so it only survives while at least one of them is. */}
       {upcomingShifts.length > 0 && (
-        <Card className="bg-gradient-to-br from-green-500/5 to-green-600/5 border-green-500/20">
+        <Card
+          className={
+            allUpcomingAreDrafts
+              ? 'bg-muted/20 border-border/40'
+              : 'bg-gradient-to-br from-green-500/5 to-green-600/5 border-green-500/20'
+          }
+        >
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-green-600" />
-              Upcoming Shifts
+              <Clock
+                className={`h-5 w-5 ${allUpcomingAreDrafts ? 'text-muted-foreground' : 'text-green-600'}`}
+              />
+              {allUpcomingAreDrafts ? 'Upcoming (tentative)' : 'Upcoming Shifts'}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {upcomingShifts.map((shift) => (
-                <div
-                  key={shift.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-background border"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="text-center">
-                      <div className="text-sm font-medium text-muted-foreground">
-                        {format(parseISO(shift.start_time), 'EEE')}
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {format(parseISO(shift.start_time), 'd')}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {format(parseISO(shift.start_time), 'MMM')}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="font-medium">
-                        {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                        {format(parseISO(shift.end_time), 'h:mm a')}
-                      </div>
-                      <div className="text-sm text-muted-foreground flex items-center gap-2">
-                        <MapPin className="h-3 w-3" />
-                        {shift.position}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {shift.break_duration > 0 && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Coffee className="h-3 w-3" />
-                        {shift.break_duration}m break
-                      </div>
-                    )}
-                    {getShiftStatusBadge(shift)}
-                  </div>
-                </div>
+                <ShiftRow key={shift.id} shift={shift} variant="upcoming" />
               ))}
             </div>
           </CardContent>
@@ -297,7 +287,10 @@ const EmployeeSchedule = () => {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <CardTitle>Weekly Schedule</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>Weekly Schedule</CardTitle>
+              {scheduleChangedSinceSeen && <ScheduleUpdatedPill />}
+            </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
               <div className="flex items-center gap-2">
                 <Button
@@ -335,6 +328,23 @@ const EmployeeSchedule = () => {
                 <Skeleton key={i} className="h-20 w-full" />
               ))}
             </div>
+          ) : shiftsError ? (
+            /* An empty grid on a failed load reads as "you are not working this
+               week" -- the most costly possible misreading on this page. */
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <AlertTriangle className="h-6 w-6 text-destructive" />
+              <div>
+                <p className="text-[14px] font-medium text-foreground">
+                  We couldn't load your schedule
+                </p>
+                <p className="text-[13px] text-muted-foreground">
+                  This is a loading problem, not an empty week. Your shifts are still there.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => refetchShifts()} className="min-h-[44px]">
+                Retry
+              </Button>
+            </div>
           ) : (
             <div className="space-y-3">
               {weekDays.map((day) => {
@@ -366,53 +376,7 @@ const EmployeeSchedule = () => {
                     ) : (
                       <div className="space-y-2">
                         {dayShifts.map((shift) => (
-                          <div
-                            key={shift.id}
-                            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg ${
-                              shift.status === 'cancelled'
-                                ? 'bg-destructive/10 line-through'
-                                : 'bg-muted/50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-4">
-                              <div>
-                                <div className="font-medium">
-                                  {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-                                  {format(parseISO(shift.end_time), 'h:mm a')}
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  {shift.position}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm text-muted-foreground">
-                                {formatShiftDuration(
-                                  shift.start_time,
-                                  shift.end_time,
-                                  shift.break_duration
-                                )}
-                              </div>
-                              {shift.break_duration > 0 && (
-                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Coffee className="h-3 w-3" />
-                                  {shift.break_duration}m
-                                </div>
-                              )}
-                              {getShiftStatusBadge(shift)}
-                              {isFuture(parseISO(shift.start_time)) && shift.status !== 'cancelled' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleTradeShift(shift)}
-                                  className="min-h-[44px]"
-                                >
-                                  <ArrowLeftRight className="h-4 w-4 mr-1" />
-                                  Trade
-                                </Button>
-                              )}
-                            </div>
-                          </div>
+                          <ShiftRow key={shift.id} shift={shift} onTrade={handleTradeShift} />
                         ))}
                       </div>
                     )}

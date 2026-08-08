@@ -99,6 +99,30 @@ describe('useSalesTrends', () => {
     );
   });
 
+  it('substitutes the default for a malformed timeZone rather than sending it to the RPC', async () => {
+    // A falsy-only guard (`timeZone || DEFAULT`) lets a non-empty junk zone
+    // through to `get_sales_trends`, whose `AT TIME ZONE v_time_zone` errors
+    // on a zone Postgres does not recognize -- the trends panel just fails.
+    rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
+
+    const { result } = renderHook(
+      () =>
+        useSalesTrends('rest-1', {
+          startDate: '2026-07-01',
+          endDate: '2026-07-20',
+          timeZone: 'Not/AZone',
+        }),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(rpcMock).toHaveBeenCalledWith(
+      'get_sales_trends',
+      expect.objectContaining({ p_time_zone: 'America/Chicago' }),
+    );
+  });
+
   it('normalizes blank start/end date strings to undefined (Clear filters case)', async () => {
     rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { suggestRateCorrections } from '@/hooks/useEmployeeLaborCosts';
 import { computeAge, isMinor } from '@/lib/employeeUtils';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -43,7 +44,10 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
 import { isActiveForStatus } from '@/utils/employeeFilters';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
+import { EmployeeAppAccessRow } from '@/components/employees/EmployeeAppAccessRow';
+import type { RoleWithGrants } from '@/hooks/useRoles';
 import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { CUSTOM_ROLE } from '@/lib/permissions/invitations';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -52,19 +56,51 @@ interface EmployeeDialogProps {
   restaurantId: string;
 }
 
+// Shared by the create-mode invite (fired on submit) and the edit-mode invite
+// (fired immediately from the row) so the two call sites cannot build the
+// payload differently. roleId must be ABSENT (not undefined) for a non-custom
+// role — send-team-invitation/index.ts:111 rejects the pairing when
+// role !== CUSTOM_ROLE && roleId.
+function invitePayloadFor(role: RoleWithGrants | null) {
+  const isCustomRole = !!role && role.legacy_role === null;
+  return {
+    role: isCustomRole ? CUSTOM_ROLE : (role?.legacy_role ?? 'staff'),
+    ...(isCustomRole ? { roleId: role.id } : {}),
+  };
+}
+
 export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: EmployeeDialogProps) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   // Access is opt-in and separate from the email field. Typing an email used to
   // silently provision a staff login — that unlabelled side effect is the bug
-  // this switch exists to remove.
-  const [grantAppAccess, setGrantAppAccess] = useState(false);
+  // this switch exists to remove. Drives both the create-mode invite (below)
+  // and the EmployeeAppAccessRow's own switch — there is only one decision
+  // to make about a given email, not two.
+  const [appAccessGrant, setAppAccessGrant] = useState(false);
+  // The role chosen in EmployeeAppAccessRow's picker. null means "unchosen" —
+  // the invite payload then defaults to staff, same as before this picker existed.
+  const [appAccessInviteRole, setAppAccessInviteRole] = useState<RoleWithGrants | null>(null);
+  // Edit-mode invite (EmployeeAppAccessRow's "Send invite" button) fires
+  // immediately, not on Save — this tracks that in-flight request only.
+  const [sendingInvite, setSendingInvite] = useState(false);
   // Offered instead of inviting when the typed email already belongs to a team
   // member — linking avoids double-provisioning a second account for the same person.
   const [linkToExisting, setLinkToExisting] = useState(false);
   const { data: restaurantMembers } = useRestaurantMembers(restaurantId);
+  // Declared before `getToday` below (which calls this immediately, via
+  // `useState(getToday())`) -- threading a local into an earlier hook while
+  // declaring it lower is a TDZ ReferenceError at render that tsc does not
+  // catch (memory/lessons.md:1303-1304).
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   // null while loading, on error, and for non-members — all mean "behave normally".
   const existingMember = findMemberByEmail(restaurantMembers, email);
+  // Both call sites pass the selected restaurant (Employees.tsx, Scheduling.tsx),
+  // but a mismatch must not silently borrow another restaurant's role — that
+  // would gate the app-access row on the wrong permissions.
+  const callerRole =
+    selectedRestaurant?.restaurant_id === restaurantId ? selectedRestaurant.role : null;
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
   const [area, setArea] = useState('');
@@ -104,7 +140,17 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     return weekly / standardDays;
   }, [dailyRateWeekly, standardDays]);
 
-  const getToday = () => new Date().toISOString().split('T')[0];
+  // An operator recording a pay change in the evening, US-zone, gets the
+  // effective date pre-filled from the restaurant's business day -- the UTC
+  // day (toISOString) rolls to tomorrow hours before local midnight, which
+  // would otherwise write a compensation-history row dated a day early.
+  // Memoized on the zone: now that this closes over `restaurantTimezone`, the
+  // reset effect below has to re-run when the zone changes, or a dialog left
+  // open across a settings change keeps pre-filling the stale business day.
+  const getToday = useCallback(
+    () => toBusinessDay(new Date(), restaurantTimezone),
+    [restaurantTimezone],
+  );
 
   type CompensationHistoryPayload = {
     restaurantId: string;
@@ -135,8 +181,6 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
   const { toast } = useToast();
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   // --------------------------------------------------------------------------
   // Default availability (create mode only)
@@ -163,11 +207,31 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
 
   const bulkSetAvailability = useBulkSetAvailability({ silent: true });
 
+  // The zone changing has to re-seed the effective date -- see `getToday`'s
+  // useCallback above. It gets its own effect rather than riding along in the
+  // reset below: that one re-seeds every field from `employee` and clears the
+  // access decision, so hanging it off the zone would let a settings change
+  // made anywhere else in the app silently discard what the admin has typed
+  // and the role they just picked, with the dialog open in front of them.
+  useEffect(() => {
+    setEffectiveDate(getToday());
+  }, [getToday]);
+
   useEffect(() => {
     setEffectiveDate(getToday());
     setIsEffectiveDateModalOpen(false);
     setPendingCompChange(null);
     setSavingCompHistory(false);
+
+    // The access decision belongs to whoever is on screen right now, so it is
+    // cleared for BOTH branches below. The edit branch re-seeds every other
+    // field from `employee` but has nothing to re-seed these from -- leaving
+    // them alone would carry a role picked for the last person into the next
+    // person's invite payload, and the "Send invite" button doesn't show what
+    // role it is about to send.
+    setAppAccessGrant(false);
+    setAppAccessInviteRole(null);
+    setLinkToExisting(false);
 
     if (employee) {
       setName(employee.name);
@@ -201,6 +265,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     } else {
       resetForm();
     }
+    // Deliberately NOT depending on `getToday`: this effect is "the person on
+    // screen changed", and the zone is not the person. The effect above owns
+    // the tz re-seed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee, open]);
 
   // Editing the email invalidates the access decision the user made against the
@@ -209,14 +277,16 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // from the new value, so the correct panel re-appears on the next keystroke.
   const handleEmailChange = (value: string) => {
     setEmail(value);
-    setGrantAppAccess(false);
+    setAppAccessGrant(false);
+    setAppAccessInviteRole(null);
     setLinkToExisting(false);
   };
 
   const resetForm = () => {
     setName('');
     setEmail('');
-    setGrantAppAccess(false);
+    setAppAccessGrant(false);
+    setAppAccessInviteRole(null);
     setLinkToExisting(false);
     setPhone('');
     setPosition('Server');
@@ -404,12 +474,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         } else {
           toast({ title: 'Employee created', description: `${name} was added.` });
         }
-      } else if (grantAppAccess && email?.trim()) {
+      } else if (appAccessGrant && email?.trim()) {
         supabase.functions.invoke('send-team-invitation', {
           body: {
             restaurantId: restaurantId,
             email: email.trim(),
-            role: 'staff',
+            ...invitePayloadFor(appAccessInviteRole),
             employeeId: newEmployee.id, // Pass employee ID for linking
           },
         }).then(({ error }) => {
@@ -440,6 +510,37 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       resetForm();
     } catch (error) {
       console.error('Error creating employee', error);
+    }
+  };
+
+  // Fires immediately from EmployeeAppAccessRow's "Send invite" button — not
+  // on Save. The edit path has two exits below (a plain update, and a
+  // compensation-change detour through the effective-date modal); hanging an
+  // outward-facing email off either would be three trigger sites for the same
+  // action instead of one.
+  const handleSendInvite = async () => {
+    if (!employee?.email) return;
+    setSendingInvite(true);
+    try {
+      const { error } = await supabase.functions.invoke('send-team-invitation', {
+        body: {
+          restaurantId,
+          email: employee.email,
+          ...invitePayloadFor(appAccessInviteRole),
+          employeeId: employee.id,
+        },
+      });
+      if (error) throw error;
+      toast({ title: `Invitation sent to ${employee.email}` });
+    } catch (e) {
+      console.error('Error sending invitation:', e);
+      toast({
+        title: "Couldn't send the invitation",
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingInvite(false);
     }
   };
 
@@ -799,6 +900,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                         <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[13px] text-amber-700 dark:text-amber-400">
+                          {/* eslint-disable-next-line no-restricted-syntax -- toLocaleString here formats a NUMBER (annualizedPay), not a date; the selector matches any toLocaleString member regardless of receiver type. */}
                           This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
                         </p>
                       </div>
@@ -1089,7 +1191,31 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 </div>
               </div>
 
-              {isCreateMode && (existingMember ? (
+              {/* An existing member matching the typed email offers linking
+                  instead — the invite switch below would double-provision
+                  the same person, so the row is skipped entirely rather than
+                  showing both options. */}
+              {!(isCreateMode && existingMember) && (
+                <EmployeeAppAccessRow
+                  // The row owns "is the invite panel expanded" locally, which
+                  // is per-person state the row has no other way to reset --
+                  // the dialog is reused across employees rather than
+                  // remounted. Keying on the employee remounts just this row.
+                  key={employee?.id ?? 'new'}
+                  restaurantId={restaurantId}
+                  callerRole={callerRole}
+                  employee={employee}
+                  email={email}
+                  grantAppAccess={appAccessGrant}
+                  onGrantAppAccessChange={setAppAccessGrant}
+                  inviteRole={appAccessInviteRole}
+                  onInviteRoleChange={setAppAccessInviteRole}
+                  onSendInvite={!isCreateMode ? handleSendInvite : undefined}
+                  sendingInvite={sendingInvite}
+                />
+              )}
+
+              {isCreateMode && existingMember && (
                 <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
                   <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5">
                     <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -1119,34 +1245,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     />
                   </div>
                 </div>
-              ) : (
-                <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/30 p-3">
-                  <div className="space-y-0.5 pr-4">
-                    <Label htmlFor="grantAppAccess" className="text-[14px] font-medium text-foreground cursor-pointer">
-                      Invite to the employee app
-                    </Label>
-                    <p id="grantAppAccessHint" className="text-[13px] text-muted-foreground">
-                      {email.trim()
-                        ? 'Lets them clock in, view their own schedule, and request time off from their phone. They will not see sales, costs, payroll, or other employees.'
-                        : 'Add an email address to enable.'}
-                    </p>
-                  </div>
-                  <Switch
-                    id="grantAppAccess"
-                    checked={grantAppAccess}
-                    // aria-disabled rather than disabled: a disabled Switch leaves
-                    // the tab order, so a keyboard user never hears why it is off.
-                    aria-disabled={!email.trim() ? true : undefined}
-                    aria-describedby="grantAppAccessHint"
-                    onCheckedChange={(checked) => {
-                      if (!email.trim()) return;
-                      setGrantAppAccess(checked);
-                    }}
-                    className="data-[state=checked]:bg-foreground aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
-                    aria-label="Invite to the employee app"
-                  />
-                </div>
-              ))}
+              )}
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">

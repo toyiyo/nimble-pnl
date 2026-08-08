@@ -1,0 +1,199 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { RolePicker } from '@/components/roles/RolePicker';
+
+const mockUseRoles = vi.fn();
+vi.mock('@/hooks/useRoles', () => ({ useRoles: (...a: unknown[]) => mockUseRoles(...a) }));
+
+const mutate = vi.fn();
+vi.mock('@/hooks/useAssignRole', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useAssignRole')>('@/hooks/useAssignRole');
+  return { ...actual, useAssignRole: () => ({ mutate, isPending: false }) };
+});
+
+const roleRow = (over: Record<string, unknown>) => ({
+  id: 'x', restaurant_id: 'r1', name: 'Role', description: null,
+  flavor: 'collaborator', builtin: false, legacy_role: null,
+  created_at: '', role_areas: [], role_flags: [], memberCount: 0, ...over,
+});
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+);
+
+const base = {
+  membershipId: 'm1', restaurantId: 'r1', personName: 'Dana Reyes',
+  currentRole: 'staff', currentRoleId: null, callerRole: 'owner' as const,
+};
+
+describe('RolePicker', () => {
+  beforeEach(() => { mockUseRoles.mockReset(); mutate.mockReset(); });
+
+  it("the trigger's accessible name contains its visible text (WCAG 2.5.3)", () => {
+    mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: null });
+    render(<RolePicker {...base} />, { wrapper });
+
+    const trigger = screen.getByRole('combobox', { name: /Dana Reyes/i });
+    const visible = trigger.textContent ?? '';
+    expect(visible.trim().length).toBeGreaterThan(0);
+    expect(trigger.getAttribute('aria-label')).toContain(visible.trim());
+    expect(trigger.getAttribute('aria-label')).toContain('Change role');
+  });
+
+  it('shows a loading state while roles resolve', async () => {
+    mockUseRoles.mockReturnValue({ roles: [], isLoading: true, error: null });
+    render(<RolePicker {...base} />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    expect(screen.getByText(/loading roles/i)).toBeInTheDocument();
+  });
+
+  it('shows an error state distinctly from an empty one', async () => {
+    mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: new Error('boom') });
+    render(<RolePicker {...base} />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    // Not "no roles found" — a load failure must never read as emptiness.
+    expect(screen.getByText(/couldn't load roles/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no roles found/i)).not.toBeInTheDocument();
+  });
+
+  it('hides owner from a manager and shows it to an owner', async () => {
+    // A builtin Owner row, as useRoles would actually return it (global,
+    // restaurant_id null) — needed so the assertion has something to find
+    // when callerRole is 'owner' and getInvitableRoles includes 'owner'.
+    mockUseRoles.mockReturnValue({
+      roles: [roleRow({ id: 'owner-role', name: 'Owner', legacy_role: 'owner', builtin: true, restaurant_id: null })],
+      isLoading: false, error: null,
+    });
+
+    const { unmount } = render(<RolePicker {...base} callerRole="manager" />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    expect(screen.queryByRole('option', { name: /^Owner/ })).not.toBeInTheDocument();
+    unmount();
+
+    render(<RolePicker {...base} callerRole="owner" />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    await waitFor(() => expect(screen.getByRole('option', { name: /Owner/ })).toBeInTheDocument());
+  });
+
+  it('lists a custom role and assigns it with both role and roleId', async () => {
+    mockUseRoles.mockReturnValue({
+      roles: [roleRow({ id: 'c1', name: 'Operations Lead' })],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/ }));
+    await userEvent.click(screen.getByRole('button', { name: /change role to/i }));
+
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ membershipId: 'm1', role: 'collaborator_custom', roleId: 'c1' }),
+      expect.anything()
+    );
+  });
+
+  // The e2e run caught this: the RPC wrote the row, useAssignRole invalidated
+  // its query keys, and the chip on /team still read "Employee (self-service)"
+  // ten seconds later. TeamMembers holds its list in useState + useEffect, so
+  // no amount of React Query invalidation reaches it — the picker has to say
+  // when it landed. Hosts that DO use React Query (Collaborators) omit the prop.
+  it('tells its host when the assignment landed', async () => {
+    const onAssigned = vi.fn();
+    mockUseRoles.mockReturnValue({
+      roles: [roleRow({ id: 'c1', name: 'Operations Lead' })],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} onAssigned={onAssigned} />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/ }));
+    await userEvent.click(screen.getByRole('button', { name: /change role to/i }));
+
+    // mutate is mocked, so drive its success callback the way React Query would.
+    expect(onAssigned).not.toHaveBeenCalled();
+    const [, handlers] = mutate.mock.calls[0];
+    handlers.onSuccess();
+    await waitFor(() => expect(onAssigned).toHaveBeenCalledTimes(1));
+  });
+
+  // A membership can carry role='collaborator_custom' with role_id NULL (or
+  // a role_id that doesn't resolve to any row useRoles returns) — the
+  // "zero-capability state" the design doc calls out as a pre-existing
+  // production risk. The chip must never print the raw enum literal.
+  it("never renders the raw 'collaborator_custom' literal as the chip label", () => {
+    mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: null });
+    render(
+      <RolePicker {...base} currentRole="collaborator_custom" currentRoleId={null} />,
+      { wrapper }
+    );
+    const trigger = screen.getByRole('combobox');
+    expect(trigger.textContent).not.toMatch(/collaborator_custom/);
+    expect(trigger.getAttribute('aria-label')).not.toMatch(/collaborator_custom/);
+    expect(trigger.textContent).toMatch(/custom role/i);
+  });
+
+  it('says so plainly when two roles grant the same thing', async () => {
+    mockUseRoles.mockReturnValue({
+      roles: [
+        roleRow({ id: 'c1', name: 'Twin A', role_areas: [{ area_key: 'recipes', level: 'view' }] }),
+        roleRow({ id: 'c2', name: 'Twin B', role_areas: [{ area_key: 'recipes', level: 'view' }] }),
+      ],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} currentRole="collaborator_custom" currentRoleId="c1" />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Twin B/ }));
+    expect(screen.getByText(/same access/i)).toBeInTheDocument();
+  });
+
+  // `copy_role_to_restaurants` copies the source row's flavor, so a restaurant
+  // can own a non-builtin platform-flavored role. The RPC always rejects it for
+  // `collaborator_custom`, so offering it would be a guaranteed 42501.
+  it('never offers a restaurant-scoped role the RPC cannot accept', async () => {
+    mockUseRoles.mockReturnValue({
+      roles: [
+        roleRow({ id: 'ok', name: 'Operations lead' }),
+        roleRow({ id: 'platform', name: 'Copied platform role', flavor: 'platform' }),
+        roleRow({ id: 'builtin-scoped', name: 'Scoped builtin', builtin: true }),
+      ],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+
+    expect(await screen.findByRole('option', { name: /Operations lead/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Copied platform role/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Scoped builtin/ })).not.toBeInTheDocument();
+  });
+
+  // RolePicker owns `open` precisely so commit's onSuccess can close it and
+  // clear the candidate. When the option list moved into RoleSelect, an
+  // uncontrolled popover would leave this dialog open on a stale candidate
+  // after a successful assignment. Written before the extraction, on purpose.
+  it('closes and clears the candidate once the assignment lands', async () => {
+    mockUseRoles.mockReturnValue({
+      roles: [roleRow({ id: 'c1', name: 'Operations Lead' })],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} />, { wrapper });
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/ }));
+    await userEvent.click(screen.getByRole('button', { name: /change role to/i }));
+
+    const [, handlers] = mutate.mock.calls[0];
+    handlers.onSuccess();
+
+    // Popover gone, so the commit button and the option list are gone with it.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /change role to/i })).not.toBeInTheDocument()
+    );
+    expect(screen.queryByRole('option', { name: /Operations Lead/ })).not.toBeInTheDocument();
+
+    // Reopening starts clean — no candidate carried over, so no commit footer.
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    expect(screen.queryByRole('button', { name: /change role to/i })).not.toBeInTheDocument();
+  });
+});

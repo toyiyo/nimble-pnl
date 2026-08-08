@@ -127,6 +127,42 @@ const WAIT_DISCIPLINE = [
   "- Kill every background process you start before you return, on the failure path too (`trap 'kill $pid 2>/dev/null' EXIT`). Orphans outlive the agent that spawned them.",
 ].join('\n')
 
+// Third failure mode, and the only one that reaches the PR: staging. The phase
+// prompts say "fix it and commit" and leave HOW to stage to each agent, so they
+// reach for `git add -A`. One worktree is shared by every phase, so that sweeps
+// in per-run scratch and whatever an earlier phase left dirty — it has produced
+// PR diffs carrying ~8k lines of workflow noise, and merge conflicts located
+// entirely inside regenerated artifacts (memory/lessons.md:386, :693, :1454,
+// :1770 — four incidents, one pattern).
+//
+// Gitignoring the scratch is a backstop, not the fix: a broad add still picks up
+// unrelated TRACKED files. Explicit paths are what actually bound a commit, and
+// like WAIT_DISCIPLINE the only lever is the prompt — the script layer cannot
+// see, let alone veto, an agent's git invocation.
+const STAGING_DISCIPLINE = [
+  'STAGING DISCIPLINE (applies to every commit you make, in every phase):',
+  `- Stage EXPLICIT paths, always with -C so the command cannot act on the wrong checkout: git -C ${ctx.worktreePath} add <path> [<path>...]`,
+  '- NEVER `git add -A`, `git add .`, or `git commit -a`. This worktree is shared across phases and accumulates per-run scratch (dev-tools/*.patch, dev-tools/*-output.md, dev-tools/9d-triage-*) plus whatever an earlier phase left dirty; a broad add sweeps all of it into your commit, where it becomes PR noise and conflicts with other branches regenerating the same files.',
+  '- `progress.md` is gitignored and must NEVER be staged — not even with `git add -f`.',
+  `- Before each commit, confirm the index holds only what you intended: git -C ${ctx.worktreePath} diff --cached --name-only`,
+].join('\n')
+
+// Fourth lever, same mechanism: prose style. Every agent starts with fresh
+// context, so none of them sees CLAUDE.md's ASD-STE100 rule unless it ships in
+// the prompt. These agents write the PR body, the commit messages, the review
+// findings and the retrospective — the text a human actually reads. The full
+// standard is docs/STE100_STYLE.md; this is the compressed form.
+const WRITING_STANDARD = [
+  'WRITING STANDARD — ASD-STE100 Simplified Technical English (applies to every commit message, PR body, review finding, progress.md update, and code comment you write):',
+  '- One idea per sentence. Maximum 20 words for an instruction, 25 for a description.',
+  '- Active voice. Start an instruction with the verb ("Run the tests", not "The tests should be run").',
+  '- One word for one meaning: use fix (not repair/resolve/address/patch), change (not modify/tweak/alter), delete (not remove/drop/purge), show (not display/surface/render), check (not verify/validate/ensure).',
+  '- Simple tenses only. No -ing word as a noun ("The sync fails", not "Syncing is failing"). Keep the articles. Maximum 3 nouns in a cluster.',
+  '- No idioms, no metaphors, no hedges ("basically", "just", "simply", "I think", "it seems").',
+  '- Keep EXACT: code identifiers, file paths, tool output, error messages, log lines, and quotes from CodeRabbit/Codex/SonarCloud. Do not rewrite them.',
+  `- Full standard: ${ctx.worktreePath}/docs/STE100_STYLE.md`,
+].join('\n')
+
 // Orientation block injected into EVERY agent prompt (fresh context).
 // The development-workflow.md pointer is OPT-IN (skillRef), not default: it is a
 // 42 KB file and every phase prompt below already states what that phase must do.
@@ -144,7 +180,11 @@ function envelope(body, { skillRef = false } = {}) {
       ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
       : []),
     '',
+    STAGING_DISCIPLINE,
+    '',
     WAIT_DISCIPLINE,
+    '',
+    WRITING_STANDARD,
     '',
     body,
   ].join('\n')
@@ -156,6 +196,10 @@ function envelope(body, { skillRef = false } = {}) {
 // always works, so the ceiling here is script-owned and measured against it.
 const TOKEN_CEILING = Number(ctx.tokenCeiling) > 0 ? Number(ctx.tokenCeiling) : 2000000
 const TASK_TOKEN_CEILING = Number(ctx.taskTokenCeiling) > 0 ? Number(ctx.taskTokenCeiling) : 350000
+// Phase 7c reads CodeRabbit output from disk instead of running the CLI itself —
+// see the 7c prompt. The launching session runs the review out-of-band and drops
+// its NDJSON here; ctx.coderabbitOutDir overrides the location per run.
+const CODERABBIT_OUT = ctx.coderabbitOutDir || '/tmp'
 function spent() {
   try {
     return typeof budget !== 'undefined' && budget && typeof budget.spent === 'function' ? budget.spent() || 0 : 0
@@ -535,8 +579,15 @@ const fold = await runAgent(
     'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (5 Claude — security, performance, maintainability, sound-logic, ocr-rules — plus Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>"). ' +
       'MINOR/INFO findings: fix any that are trivially safe (one-line, mechanical, no behaviour change) in the same commit. For every minor/info finding you do NOT fix, you MUST return it in `deferred[]` with file, line, severity, message and a one-line reason. ' +
       'NEVER discard a finding silently — "CodeRabbit will catch it in 7c" is NOT a valid reason to drop one, because 7c reviews a different surface and regularly misses them. Anything omitted from both your fixes and `deferred[]` is lost.\n' +
-      'If a critical/major fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human with details — do NOT improvise. After fixing, re-verify critical/security findings only. Also read dev-tools/codex-review-output.md if it exists.\n\n' +
-      '=== findings JSON ===\n' + foldInput,
+      'If a critical/major fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human with details — do NOT improvise. After fixing, re-verify critical/security findings only. Also read dev-tools/codex-review-output.md if it exists.\n' +
+      // The design gate above is what this phase halts on, and the resolution is
+      // always the same shape: the human amends the design to authorize the fix.
+      // Appending the note changes the prompt, which is also what makes
+      // resumeFromRunId re-run the fold instead of replaying its cached halt.
+      (ctx.foldResolutionNote
+        ? '\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.foldResolutionNote + '\n'
+        : '') +
+      '\n=== findings JSON ===\n' + foldInput,
   ),
   { label: 'fold-findings', phase: 'Review', schema: DEFERRED },
 )
@@ -552,7 +603,16 @@ let crClean = false
 for (let it = 1; it <= 3 && !crClean; it++) {
   const cr = await runAgent(
     envelope(
-      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --plain --type committed (in the worktree). Fix ONLY actionable findings and commit them. ` +
+      `PHASE 7c (CodeRabbit) iteration ${it}/3. ` +
+        'The CodeRabbit review for this branch has already been completed by the launching session, using `coderabbit review --agent --committed --base origin/main` from the worktree — base pinned to origin/main so the whole branch was reviewed as one coherent change. Your job is to act on its results, so there is no need to run the CLI again. ' +
+        'The results are newline-delimited JSON on disk. Read these files (a later one supersedes an earlier one; some may not exist):\n' +
+        '  1. ' + CODERABBIT_OUT + '/coderabbit-7c.md\n' +
+        '  2. ' + CODERABBIT_OUT + '/coderabbit-7c-retry.md\n' +
+        'Each line is a JSON object with a `type` field. `review_comment` lines are findings. A line with `"type":"error"` (for example `"errorType":"timeout"`) means the review service itself did not return results — that is the unavailable/best-effort case described below, and it is not the same as a clean review. ' +
+        'Fix ONLY actionable findings and commit them. ' +
+        (it > 1
+          ? 'NOTE: this iteration reads the same on-disk results as the previous one, so it cannot contain anything new. Confirm that findings fixed earlier are addressed on the branch, then return clean=true, rather than re-applying fixes that are already committed. '
+          : '') +
         'Return clean=true if there were NO actionable findings this run; clean=false if you fixed some (we re-run). On iteration 3 with findings still remaining, return clean=false and list the remaining items in reason — the script will escalate. ' +
         'BEST-EFFORT: if the CodeRabbit CLI is not installed, not authenticated, or returns a billing/credits/quota error (e.g. "run out of usage credits"), treat 7c as skipped — return status=completed, clean=true, and note "CodeRabbit skipped (unavailable/credits)" in reason. Do NOT return needs_human for environment/billing problems; the CodeRabbit GitHub bot still reviews the PR and is triaged in Phase 9d. Reserve needs_human only for genuinely ambiguous findings.',
     ),

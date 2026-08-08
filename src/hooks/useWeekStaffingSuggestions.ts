@@ -12,6 +12,7 @@ import { dayStringToDow } from '@/lib/staffingApply';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
 import type { StaffingSettings } from '@/types/scheduling';
@@ -69,7 +70,7 @@ export function useWeekStaffingSuggestions(
   settingsOverrides: Partial<StaffingSettings> | null,
 ) {
   const { selectedRestaurant } = useRestaurantContext();
-  const tz = selectedRestaurant?.restaurant?.timezone ?? 'America/Chicago';
+  const tz = safeTz(selectedRestaurant?.restaurant?.timezone);
 
   const { effectiveSettings, isLoading: settingsLoading, updateSettings, isSaving } = useStaffingSettings(restaurantId);
   const { employees } = useEmployees(restaurantId);
@@ -116,14 +117,21 @@ export function useWeekStaffingSuggestions(
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - activeSettings.lookback_weeks * 7);
+    // Both bounds are compared against sale_date (a date-only column) below,
+    // so they need to be the restaurant's business day, not the UTC day --
+    // UTC days slide the whole lookback window by a day for zones west of
+    // Greenwich in the evening.
     return {
-      startStr: startDate.toISOString().split('T')[0],
-      endStr: endDate.toISOString().split('T')[0],
+      startStr: toBusinessDay(startDate, tz),
+      endStr: toBusinessDay(endDate, tz),
     };
-  }, [activeSettings.lookback_weeks]);
+  }, [activeSettings.lookback_weeks, tz]);
 
   const { data: allSales, isLoading: salesLoading, error: salesError, refetch: refetchSales } = useQuery({
-    queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],
+    // `tz` belongs in the key because `dateRange` is now derived from it --
+    // without it, changing the restaurant's zone leaves this window cached
+    // against the old business days. The punch query below already keys on tz.
+    queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks, tz],
     queryFn: async () => {
       if (!restaurantId) return [];
       // Paginated (matches useSplhData.ts's fetchAllPunches / the time-punch

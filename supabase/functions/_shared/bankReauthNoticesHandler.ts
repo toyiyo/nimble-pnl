@@ -23,6 +23,11 @@ export interface CohortARow {
   deactivated_at: string;
   elapsed_days: number;
   sent_stages: string[];
+  // Sourced from restaurants.timezone (bank_reauth_cohort_a_candidates RPC).
+  // Optional/nullable — a row from before the RPC selected this column, or a
+  // restaurant with no timezone set, still needs to type-check; the content
+  // builder falls back to its own restaurant-default via safeTz().
+  restaurant_timezone?: string | null;
 }
 
 export interface CohortBRow {
@@ -32,6 +37,8 @@ export interface CohortBRow {
   account_mask: string | null;
   deactivated_at: string;
   data_current_through: string | null;
+  // See CohortARow.restaurant_timezone.
+  restaurant_timezone?: string | null;
 }
 
 export interface RecipientRow {
@@ -112,6 +119,7 @@ interface NoticeTarget {
   deactivatedAt: string;
   elapsedDays?: number;
   dataCurrentThrough?: string | null;
+  restaurantTimezone?: string | null;
   stage: NoticeStage;
 }
 
@@ -150,6 +158,7 @@ async function processTarget(
     deactivatedAt: target.deactivatedAt,
     elapsedDays: target.elapsedDays,
     dataCurrentThrough: target.dataCurrentThrough,
+    restaurantTimezone: target.restaurantTimezone,
     appUrl: deps.appUrl,
   });
 
@@ -253,6 +262,7 @@ export async function runBankReauthNotices(
         accountMask: row.account_mask,
         deactivatedAt: row.deactivated_at,
         elapsedDays: row.elapsed_days,
+        restaurantTimezone: row.restaurant_timezone,
         stage,
       });
     }),
@@ -267,6 +277,7 @@ export async function runBankReauthNotices(
         accountMask: row.account_mask,
         deactivatedAt: row.deactivated_at,
         dataCurrentThrough: row.data_current_through,
+        restaurantTimezone: row.restaurant_timezone,
         stage: 'recovered',
       }),
     ),

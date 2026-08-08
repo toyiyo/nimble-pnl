@@ -45,13 +45,37 @@ export function buildShiftChangeDescription(
   return description;
 }
 
-export function useShifts(
+interface UseShiftsResult {
+  shifts: Shift[];
+  loading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+function useShiftsQuery(
   restaurantId: string | null,
   startDate?: Date,
-  endDate?: Date
-): { shifts: Shift[]; loading: boolean; error: Error | null } {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['shifts', restaurantId, startDate?.toISOString(), endDate?.toISOString()],
+  endDate?: Date,
+  employeeId?: string | null
+): UseShiftsResult {
+  // `employeeId === undefined` is admin mode (useShifts); `null` is
+  // self-scoped mode with the id not yet resolved (useMyShifts, disabled
+  // below). These must map to DIFFERENT key segments — collapsing both
+  // through a single `?? 'all'` fallback would let a self-scoped query,
+  // while still disabled and waiting on `employeeId`, read back whatever an
+  // admin query already cached under the same key (`enabled: false` only
+  // suppresses a new fetch, not a cache read), briefly serving
+  // restaurant-wide shifts to a dual-role viewer's self-scoped page.
+  const queryKeyEmployeeId = employeeId === undefined ? 'all' : employeeId ?? 'pending';
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: [
+      'shifts',
+      restaurantId,
+      startDate?.toISOString(),
+      endDate?.toISOString(),
+      queryKeyEmployeeId,
+    ],
     queryFn: async () => {
       if (!restaurantId) return [];
 
@@ -59,6 +83,10 @@ export function useShifts(
         .from('shifts')
         .select('*, employee:employees(*)')
         .eq('restaurant_id', restaurantId);
+
+      if (employeeId) {
+        query = query.eq('employee_id', employeeId);
+      }
 
       if (startDate) {
         query = query.gte('start_time', startDate.toISOString());
@@ -73,7 +101,7 @@ export function useShifts(
 
       return data.map(toTypedShift);
     },
-    enabled: !!restaurantId,
+    enabled: !!restaurantId && (employeeId === undefined || !!employeeId),
     staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
@@ -83,7 +111,34 @@ export function useShifts(
     shifts: data || [],
     loading: isLoading,
     error,
+    // Exposed so a failed load can offer Retry rather than an empty grid that
+    // reads as "you are not working this week".
+    refetch,
   };
+}
+
+export function useShifts(
+  restaurantId: string | null,
+  startDate?: Date,
+  endDate?: Date
+): UseShiftsResult {
+  return useShiftsQuery(restaurantId, startDate, endDate);
+}
+
+/**
+ * Self-scoped variant of `useShifts` for employee-facing pages. Applies
+ * `.eq('employee_id', employeeId)` server-side and stays disabled until
+ * `employeeId` is resolved (non-null) — an optional filter that silently
+ * degrades to "no filter" while the caller is still resolving the current
+ * employee would re-open the restaurant-wide read this hook exists to close.
+ */
+export function useMyShifts(
+  restaurantId: string | null,
+  employeeId: string | null,
+  startDate?: Date,
+  endDate?: Date
+): UseShiftsResult {
+  return useShiftsQuery(restaurantId, startDate, endDate, employeeId);
 }
 
 type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;

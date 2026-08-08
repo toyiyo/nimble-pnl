@@ -37,6 +37,9 @@ verify_jwt = false
 [functions.validate-invitation]
 verify_jwt = false
 
+[functions.review-public]
+verify_jwt = false
+
 [functions.enhance-product-ai]
 verify_jwt = true
 
@@ -176,6 +179,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.notify-schedule-published]
+verify_jwt = true
+
+[functions.notify-schedule-unpublished]
 verify_jwt = true
 
 [functions.notify-availability-reminder]

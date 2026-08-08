@@ -9,6 +9,28 @@ description: "MANDATORY — invoke BEFORE any implementation, feature, bugfix, o
 
 This skill defines the mandatory development pipeline for every task. Follow each phase in order. Skip conditions are documented per phase.
 
+### Writing standard (applies to every phase)
+
+Write every word of prose in **ASD-STE100 Simplified Technical English**. This
+covers chat replies, the design doc, the plan file, `progress.md`, commit
+messages, the PR body, replies to reviewers, code comments, and the
+retrospective.
+
+One idea per sentence. Maximum 20 words for an instruction, 25 for a
+description. Active voice. Start an instruction with the verb. One word for one
+meaning: `fix` (not repair/resolve/address), `change` (not modify/tweak),
+`delete` (not remove/drop), `check` (not verify/validate/ensure). Simple tenses
+only. No `-ing` word as a noun. No idioms and no hedges.
+
+Keep exact: code identifiers, file paths, tool output, error messages, and
+quotes from CodeRabbit, Codex, or SonarCloud. Do not rewrite them.
+
+Full standard: `docs/STE100_STYLE.md`. Phases 4–9 inject the same rules into
+every sub-agent through the `WRITING_STANDARD` block in
+`.claude/workflows/dev-build-and-ship.js`. Phase 2.5 design reviewers and any
+other sub-agent you launch by hand must get the same instruction in their
+prompt.
+
 The workflow is designed for **autonomous execution**: after the user approves the plan (Phase 3), Claude executes Phases 4–9 without requiring human prompts. The user is only notified when the PR is green and ready for review, or when Claude is genuinely stuck.
 
 **Phases 4–9 run as a dynamic workflow.** After plan approval, Phases 4–9 are orchestrated by the `dev-build-and-ship` workflow script (`.claude/workflows/dev-build-and-ship.js`), launched via the `Workflow` tool. The runtime enforces phase ordering deterministically — this is the mechanism that stops phases (Verify, review-comment triage) from being silently skipped. Phases 0–3 stay interactive in the main session (they require human Q&A and plan approval, which a background workflow cannot do). See **Phase 4–9: Autonomous Workflow Execution** below. The prose for Phases 4–10 that follows is the **reference contract** each workflow agent implements — keep it accurate; the agents read this file.
@@ -137,6 +159,24 @@ git stash pop   # only if step 1 actually stashed something
 
 If `git stash push` reports "No local changes to save," skip step 3's `git stash pop`. If step 2's `git branch` fails because `HEAD` is already at `origin/main` (no accidental commits), skip it — the stashed edits alone are what need to move.
 </HARD-GATE>
+
+### Commit staging discipline (applies to every phase)
+
+Stage **explicit paths**, always with `-C` so the command cannot act on the wrong checkout:
+
+```bash
+git -C .claude/worktrees/<feature> add src/foo.ts tests/unit/foo.test.ts
+git -C .claude/worktrees/<feature> diff --cached --name-only   # confirm before committing
+```
+
+**Never `git add -A`, `git add .`, or `git commit -a`.** One worktree is shared by every phase, and it
+accumulates regenerated scratch — `dev-tools/*.patch`, `dev-tools/*-output.md`, `dev-tools/9d-triage-*`,
+`progress.md` — alongside whatever an earlier phase left dirty. A broad add sweeps all of it into a
+feature commit, where it becomes PR noise and merge conflicts against other branches regenerating the
+same files. `progress.md` is gitignored and must never be staged, not even with `git add -f`.
+
+Gitignoring the scratch is a backstop, not the fix: a broad add still picks up unrelated **tracked**
+files an earlier phase left modified. Explicit paths are what actually bound a commit.
 
 ## Phase 2: Brainstorm
 
@@ -495,6 +535,20 @@ Iteration 1: Run coderabbit review --committed
          +-- Has findings --> Fix them, commit fixes
               |
               Iteration 3: Run coderabbit review --committed
+**Command:** `coderabbit review --agent --committed --base origin/main`
+
+Review loop (max 3 iterations):
+
+```text
+Iteration 1: Run coderabbit review --agent --committed --base origin/main
+  |-- No actionable findings --> Proceed to Phase 8
+  +-- Has findings --> Fix them, commit fixes
+       |
+       Iteration 2: Run coderabbit review --agent --committed --base origin/main
+         |-- No actionable findings --> Proceed to Phase 8
+         +-- Has findings --> Fix them, commit fixes
+              |
+              Iteration 3: Run coderabbit review --agent --committed --base origin/main
                 |-- No actionable findings --> Proceed to Phase 8
                 +-- Still has findings --> Report to user for manual decision
 ```
@@ -504,6 +558,42 @@ is the CLI's default review mode, so there is no flag to ask for it; `--agent`
 is the opt-in for structured findings.
 Parse the output for actionable suggestions vs informational notes. Only
 fix actionable items.
+`--committed` reviews all committed changes on the branch; `--base origin/main`
+pins the comparison to the *remote-tracking* trunk — exactly the base the
+Phase 7a reviewers use (`git diff origin/main...HEAD`) — instead of letting
+the CLI infer one.
+
+Use `origin/main`, not `main`. A worktree's local `main` is frequently stale
+or divergent (nothing in this workflow updates it), and a stale base silently
+widens the review to include commits already on trunk, or narrows it to miss
+your own. Naming the remote-tracking ref removes the failure mode instead of
+documenting a `git fetch` workaround around it.
+
+Do **not** narrow 7c to the Phase 7a snapshot SHA via `--base-commit` —
+that would leave 7c reviewing only the 7b fixes, which is Phase 7d's job.
+7c's value is that it re-examines the whole branch as one coherent change.
+`--agent` emits **structured findings** intended for agent workflows —
+use it, because this phase parses the output programmatically to separate
+actionable suggestions from informational notes. Only fix actionable items.
+
+**Flag reference** (CLI v0.7.x — verify with `coderabbit review --help`
+before editing this section; the flags have churned before):
+
+| Flag | Use |
+|---|---|
+| `--agent` | Structured findings for agent workflows. Default for 7c. |
+| `--committed` | Review committed changes only (what 7c wants). |
+| `--uncommitted` | Staged changes + tracked edits (what the pre-commit hook wants). |
+| `--include-untracked` | Also review files never `git add`-ed. |
+| `--base <branch>` / `--base-commit <commit>` | Pin the comparison point. Prefer the remote-tracking form (`origin/main`). |
+| `--light` | Lighter review, reduced context work. Use when 7a already covered the diff and 7c is a formality. |
+| `coderabbit review findings` | Re-read the previous local review without spending another one. |
+
+There is no `--plain` flag and no `--type` flag: **plain text is now the
+default output mode**. If you see `error: unknown option '--plain'`, this
+section is stale again — re-check `--help` and fix it here, in
+`.claude/workflows/dev-build-and-ship.js`, `.claude/commands/review.md`,
+and the pre-commit hook in `.claude/settings.json` together.
 
 **Skip condition for the whole phase:** None. 7a and 7c always run on
 any task that produces code. 7a is skipped only when the task is
@@ -873,7 +963,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |
 | 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic`, `ocr-rules` (all NON-SKIPPABLE, parallel) + `dev-tools/codex-adversarial-review.sh` (best-effort) | Workflow/doc-only changes (no code diff) |
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
-| 7c CodeRabbit | `coderabbit review --committed` | Never |
+| 7c CodeRabbit | `coderabbit review --agent --committed --base origin/main` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |

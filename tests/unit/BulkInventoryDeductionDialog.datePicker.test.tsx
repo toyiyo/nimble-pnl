@@ -11,7 +11,7 @@
  * <DatePicker>.
  */
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BulkInventoryDeductionDialog } from '../../src/components/BulkInventoryDeductionDialog';
@@ -32,10 +32,46 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 
 // Alert uses ui primitives — no supabase dependency; no stub needed.
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a day cell by its label, ignoring outside days.
+ *
+ * react-day-picker pads the six-week grid with days from the adjacent months
+ * (`showOutsideDays` defaults to true in our Calendar), so a label like "5" can
+ * match both the 5th of the displayed month and an outside 5th of the next one
+ * — which month it happens to be decides whether the query is ambiguous.
+ * Outside days carry the `day-outside` class from `Calendar`'s
+ * `classNames.day_outside`; dropping them leaves exactly one in-month cell in
+ * any month, so these queries do not depend on the system clock.
+ */
+function getDayCell(grid: HTMLElement, day: string): HTMLElement {
+  const inMonth = within(grid)
+    .getAllByRole('gridcell', { name: day })
+    .filter((cell) => !cell.classList.contains('day-outside'));
+  expect(inMonth).toHaveLength(1);
+  return inMonth[0];
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', () => {
+  // These tests address calendar days by their number ("5", "15", "20"), and the
+  // calendar renders the *current* month plus the outside days that pad the grid.
+  // On a real clock that makes the day numbers ambiguous in some months and not
+  // others: this file went red on 2026-08-01 because the August grid trails into
+  // September, so "5" matched both Aug 5 and Sep 5 and getByRole found two.
+  //
+  // Pin the clock to a month whose padding cannot collide with any number the
+  // tests reach for. July 2026 pads with Jun 28-30 and Aug 1 only. Only Date is
+  // faked -- userEvent drives its own real timers and would hang otherwise.
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 6, 15, 12, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /** Open the outer Dialog by clicking the trigger button. */
@@ -44,6 +80,23 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     // or "Bulk Process" (sm:hidden). Either label may match.
     const trigger = screen.getByRole('button', { name: /bulk process/i });
     await user.click(trigger);
+  }
+
+  /**
+   * Return the day cell for `day` in the *displayed* month.
+   *
+   * The shadcn Calendar sets `showOutsideDays`, so react-day-picker renders the
+   * adjacent months' spill-over days in the same grid. A day number near either
+   * end of the month therefore matches twice — e.g. a grid whose last row is
+   * Aug 30 → Sep 5 contains both "5" cells. Outside days carry the
+   * `day-outside` class, so drop them and assert the match is unambiguous.
+   */
+  function getDayCell(grid: HTMLElement, day: string): HTMLElement {
+    const cells = within(grid)
+      .getAllByRole('gridcell', { name: day })
+      .filter((cell) => !cell.classList.contains('day-outside'));
+    expect(cells).toHaveLength(1);
+    return cells[0];
   }
 
   it('shows "Select start date" and "Select end date" trigger buttons', async () => {
@@ -76,7 +129,7 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     const startTrigger = screen.getByRole('button', { name: /select start date/i });
     await user.click(startTrigger);
     const grid = await screen.findByRole('grid');
-    await user.click(within(grid).getByRole('gridcell', { name: '10' }));
+    await user.click(getDayCell(grid, '10'));
 
     // After migration: controlled DatePicker closes on a real pick.
     expect(startTrigger).toHaveAttribute('aria-expanded', 'false');
@@ -90,7 +143,7 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     const endTrigger = screen.getByRole('button', { name: /select end date/i });
     await user.click(endTrigger);
     const grid = await screen.findByRole('grid');
-    await user.click(within(grid).getByRole('gridcell', { name: '20' }));
+    await user.click(getDayCell(grid, '20'));
 
     // After migration: controlled DatePicker closes on a real pick.
     expect(endTrigger).toHaveAttribute('aria-expanded', 'false');
@@ -105,7 +158,7 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     const startTrigger = screen.getByRole('button', { name: /select start date/i });
     await user.click(startTrigger);
     let grid = await screen.findByRole('grid');
-    await user.click(within(grid).getByRole('gridcell', { name: '15' }));
+    await user.click(getDayCell(grid, '15'));
     // Start picker closes after selection.
     expect(startTrigger).toHaveAttribute('aria-expanded', 'false');
 
@@ -117,11 +170,9 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     // Day 5 is before the start (day 15) → it must be disabled.
     // react-day-picker renders each day as a <button role="gridcell">;
     // disabled days carry the HTML `disabled` attribute directly on the button.
-    const day5Cell = within(grid).getByRole('gridcell', { name: '5' });
-    expect(day5Cell).toBeDisabled();
+    expect(getDayCell(grid, '5')).toBeDisabled();
 
     // Day 20 is after the start (day 15) → it must NOT be disabled.
-    const day20Cell = within(grid).getByRole('gridcell', { name: '20' });
-    expect(day20Cell).not.toBeDisabled();
+    expect(getDayCell(grid, '20')).not.toBeDisabled();
   });
 });

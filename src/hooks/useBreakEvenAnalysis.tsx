@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { addDays, format, subDays, startOfDay, differenceInDays, subMonths, startOfMonth, min as dateMin } from 'date-fns';
+import { addDays, format, subDays, differenceInDays, subMonths, startOfMonth, min as dateMin } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useOperatingCosts } from './useOperatingCosts';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { parseDateOnly } from '@/lib/dateOnly';
 import { BreakEvenData } from '@/types/operatingCosts';
 import { calculateBreakEven } from '@/lib/breakEvenCalculator';
 
@@ -99,8 +101,17 @@ export function useBreakEvenAnalysis(
   historyDays: number = 14
 ): { data: BreakEvenData | null; isLoading: boolean; error: Error | null } {
   const { costs, isLoading: costsLoading } = useOperatingCosts(restaurantId);
-  
-  const today = useMemo(() => startOfDay(new Date()), []);
+
+  // "Today" for a break-even window is the RESTAURANT's business day, not
+  // the viewer's -- `new Date()` bucketed via local getters put the RPC
+  // window (and every downstream day-of-month calculation) a day off for any
+  // viewer/host ahead of the restaurant's timezone. `useRestaurantClock().today`
+  // is already resolved in the restaurant's tz; `parseDateOnly` turns that
+  // calendar-day string into a local-midnight Date so the date-fns calendar
+  // math below (subDays/startOfMonth/format) operates on consistent local
+  // fields -- see case (a) in .superpowers/sdd/tz-sweep-common.md.
+  const { today: todayStr } = useRestaurantClock();
+  const today = useMemo(() => parseDateOnly(todayStr), [todayStr]);
   // Widen the query window to always cover the current month-to-date in
   // addition to the rolling `historyDays` window, so we never need a second
   // RPC call to derive monthly progress.

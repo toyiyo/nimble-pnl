@@ -20,8 +20,14 @@ describe('Payroll Calculations - Daily Rate', () => {
     tip_eligible: true,
   };
 
-  const periodStartDate = new Date('2024-01-01');
-  const periodEndDate = new Date('2024-01-07');
+  // Local-midnight calendar-day tokens, matching what every production caller
+  // passes: usePayroll serializes these same Dates with `format(d,'yyyy-MM-dd')`
+  // (local fields), and laborCalculations anchors its window at local noon.
+  // `new Date('2024-01-01')` would instead parse to UTC midnight, whose local
+  // calendar day is Dec 31 anywhere west of Greenwich -- so the period window
+  // silently slid a day earlier and the boundary tests only passed in UTC.
+  const periodStartDate = new Date(2024, 0, 1);
+  const periodEndDate = new Date(2024, 0, 7);
 
   describe('calculateEmployeePay - daily_rate', () => {
     it('calculates pay based on unique days with punches', () => {
@@ -30,42 +36,42 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T09:00:00',
+          punch_time: '2024-01-02T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T17:00:00',
+          punch_time: '2024-01-02T17:00:00Z',
           punch_type: 'clock_out',
         },
         {
           id: 'punch-5',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T09:00:00',
+          punch_time: '2024-01-03T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-6',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T17:00:00',
+          punch_time: '2024-01-03T17:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -74,6 +80,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         0, // tips
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -95,14 +102,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Day 2: Only 2 hours!
@@ -110,14 +117,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T09:00:00',
+          punch_time: '2024-01-02T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T11:00:00',
+          punch_time: '2024-01-02T11:00:00Z',
           punch_type: 'clock_out',
         },
         // Day 3: Long 16 hours!
@@ -125,14 +132,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-5',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T06:00:00',
+          punch_time: '2024-01-03T06:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-6',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T22:00:00',
+          punch_time: '2024-01-03T22:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -141,6 +148,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -158,14 +166,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T06:00:00',
+          punch_time: '2024-01-01T06:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T10:00:00',
+          punch_time: '2024-01-01T10:00:00Z',
           punch_type: 'clock_out',
         },
         // Evening shift (same day)
@@ -173,14 +181,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T21:00:00',
+          punch_time: '2024-01-01T21:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -189,6 +197,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -204,6 +213,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         [],
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -220,14 +230,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2023-12-31T09:00:00',
+          punch_time: '2023-12-31T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2023-12-31T17:00:00',
+          punch_time: '2023-12-31T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Within period (Jan 1)
@@ -235,14 +245,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Within period (Jan 2)
@@ -250,14 +260,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-5',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T09:00:00',
+          punch_time: '2024-01-02T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-6',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T17:00:00',
+          punch_time: '2024-01-02T17:00:00Z',
           punch_type: 'clock_out',
         },
         // After period (Jan 8)
@@ -265,14 +275,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-7',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-08T09:00:00',
+          punch_time: '2024-01-08T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-8',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-08T17:00:00',
+          punch_time: '2024-01-08T17:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -281,6 +291,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -297,14 +308,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -315,6 +326,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         tips,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -339,28 +351,28 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T09:00:00',
+          punch_time: '2024-01-02T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T17:00:00',
+          punch_time: '2024-01-02T17:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -369,6 +381,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         employee,
         punches,
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -386,14 +399,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Tuesday
@@ -401,14 +414,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T09:00:00',
+          punch_time: '2024-01-02T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T17:00:00',
+          punch_time: '2024-01-02T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Wednesday
@@ -416,14 +429,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-5',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T09:00:00',
+          punch_time: '2024-01-03T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-6',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T17:00:00',
+          punch_time: '2024-01-03T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Thursday
@@ -431,14 +444,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-7',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-04T09:00:00',
+          punch_time: '2024-01-04T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-8',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-04T17:00:00',
+          punch_time: '2024-01-04T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Friday
@@ -446,14 +459,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-9',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-05T09:00:00',
+          punch_time: '2024-01-05T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-10',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-05T17:00:00',
+          punch_time: '2024-01-05T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Saturday
@@ -461,14 +474,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-11',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-06T09:00:00',
+          punch_time: '2024-01-06T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-12',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-06T17:00:00',
+          punch_time: '2024-01-06T17:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -477,6 +490,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -488,19 +502,26 @@ describe('Payroll Calculations - Daily Rate', () => {
     });
 
     it('CRITICAL: handles 7 days worked (exceeds reference)', () => {
+      // Fixed UTC instants (not local-field `new Date(y, m, d, h, min)`): the
+      // calc buckets each punch's day via toBusinessDay(punch_time, 'UTC'),
+      // so the fixture's instants must be host-timezone-independent, or the
+      // clock_in/clock_out pair for a given shift can land on different UTC
+      // calendar days depending on the test host's TZ (this suite runs under
+      // a UTC / America/Chicago / Pacific/Auckland matrix in CI) -- see
+      // memory/lessons.md on local-field-constructor fixtures.
       const punches: TimePunch[] = Array.from({ length: 7 }, (_, i) => [
         {
           id: `punch-in-${i}`,
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: new Date(2024, 0, i + 1, 9, 0).toISOString(),
+          punch_time: new Date(Date.UTC(2024, 0, i + 1, 9, 0)).toISOString(),
           punch_type: 'clock_in' as const,
         },
         {
           id: `punch-out-${i}`,
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: new Date(2024, 0, i + 1, 17, 0).toISOString(),
+          punch_time: new Date(Date.UTC(2024, 0, i + 1, 17, 0)).toISOString(),
           punch_type: 'clock_out' as const,
         },
       ]).flat();
@@ -509,6 +530,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );
@@ -526,14 +548,14 @@ describe('Payroll Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -542,6 +564,7 @@ describe('Payroll Calculations - Daily Rate', () => {
         mockDailyRateEmployee,
         punches,
         0,
+        'UTC',
         periodStartDate,
         periodEndDate
       );

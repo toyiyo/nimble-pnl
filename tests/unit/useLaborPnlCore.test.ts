@@ -120,7 +120,8 @@ describe('useLaborPnlCore', () => {
 
     renderHook(() => useLaborPnlCore('rest-1', 12), { wrapper: createWrapper() });
 
-    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'UTC', 12);
+    // safeTz falls back to the restaurant default (America/Chicago), not UTC.
+    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'America/Chicago', 12);
   });
 
   it('derives the labor-cost window from the restaurant-local date, not the host/UTC date', () => {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { utcTimeToLocalTime, localTimeToUtcTime } from '@/lib/availabilityTimeUtils';
 import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
+import { safeTz } from '@/lib/restaurantClock';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -47,7 +48,7 @@ export const AvailabilityExceptionDialog = ({
   const updateException = useUpdateAvailabilityException();
 
   const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
 
   useEffect(() => {
     if (exception) {

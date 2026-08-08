@@ -5,7 +5,19 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  // `.claude/workflows/*.js` are executed by the Workflow tool inside an async
+  // wrapper, so a top-level `return` (the runtime's early-halt contract) sits
+  // alongside a top-level `export const meta`. No single parse mode accepts
+  // both -- `sourceType: "module"` rejects the `return`, and
+  // `allowReturnOutsideFunction` is only honoured for `sourceType: "script"`,
+  // which rejects the `export`. ESLint therefore reported a permanent
+  // `Parsing error: 'return' outside of function` for each script, which
+  // `dev-tools/refresh-queue.sh` ingested as a phantom `major` review item on
+  // every PR. Nothing is lost by ignoring them: `eslint --print-config` shows
+  // these files match zero rules (no config object below targets `.js` outside
+  // `src/`), so the parse error was their entire lint output. Kept narrow --
+  // a future `.claude/**` script outside `workflows/` should still be linted.
+  { ignores: ["dist", ".claude/workflows/**"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -22,5 +34,210 @@ export default tseslint.config(
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
     },
+  },
+  // --- Restaurant-timezone guardrail -------------------------------------
+  // A `Date` is either a day on a calendar or a moment in time. Browser-local
+  // formatting silently renders instants in the VIEWER's zone, which is how
+  // punches, labor cost and schedules end up on the wrong day for anyone
+  // outside the restaurant's timezone. Use `useRestaurantClock()` (components)
+  // or `src/lib/restaurantClock.ts` (pure code) instead.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/lib/restaurantClock.ts",
+      "src/lib/dateOnly.ts",
+      "src/hooks/useRestaurantClock.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.name='format'] > Literal.arguments[value=/yyyy-MM-dd/]",
+          message:
+            "restaurant-clock: format(instant, 'yyyy-MM-dd') buckets by the VIEWER's timezone. Use toBusinessDay() from useRestaurantClock(), or toDateOnlyString() if this is a calendar-day token.",
+        },
+        {
+          selector:
+            "MemberExpression[property.name=/^toLocale(Date|Time)?String$/]",
+          message:
+            "restaurant-clock: toLocale*String renders in the viewer's timezone. Use formatInstant() from useRestaurantClock().",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.callee.property.name='toISOString'][callee.property.name='split']",
+          message:
+            "restaurant-clock: .toISOString().split('T')[0] is neither a calendar day nor a moment in time. Use toBusinessDay() or toDateOnlyString().",
+        },
+        {
+          // Both the bare `DateTimeFormat()` and the `Intl.`-qualified form.
+          // The latter nests a MemberExpression under `object.callee`, so a
+          // plain `object.callee.name` test silently matches nothing -- and
+          // `Intl.DateTimeFormat()` is the only form this codebase uses.
+          selector:
+            "MemberExpression[property.name='resolvedOptions']:matches([object.callee.name='DateTimeFormat'], [object.callee.property.name='DateTimeFormat'])",
+          message:
+            "restaurant-clock: never default to the viewer's timezone. Use safeTz(restaurant.timezone).",
+        },
+      ],
+    },
+  },
+  // Migration allowlist. Every path here is a file still rendering instants in
+  // the viewer's timezone. Shrinking this list IS the migration; do not add to
+  // it. Later config objects win in flat config, so this disables the rule for
+  // exactly these files.
+  {
+    files: [
+      "src/components/BankConnectionCard.tsx",
+      "src/components/BulkInventoryDeductionDialog.tsx",
+      "src/components/CloverSync.tsx",
+      "src/components/ConsumptionTrendsChart.tsx",
+      "src/components/CustomRecurrenceDialog.tsx",
+      "src/components/DataInputDialog.tsx",
+      "src/components/DeactivateEmployeeDialog.tsx",
+      "src/components/DetailedPnLBreakdown.tsx",
+      "src/components/FocusSync.tsx",
+      "src/components/IntegrationCard.tsx",
+      "src/components/InventoryDeductionDialog.tsx",
+      "src/components/POSSaleDialog.tsx",
+      "src/components/POSSalesDashboard.tsx",
+      "src/components/POSSalesFileUpload.tsx",
+      "src/components/PnLIntelligenceReport.tsx",
+      "src/components/ProductUpdateDialog.tsx",
+      "src/components/ReceiptMappingReview.tsx",
+      "src/components/ReconciliationSummary.tsx",
+      "src/components/ReconciliationVarianceReport.tsx",
+      "src/components/RevelSync.tsx",
+      "src/components/ShiftDialog.tsx",
+      "src/components/SlingSync.tsx",
+      "src/components/SquareSync.tsx",
+      "src/components/TeamInvitations.tsx",
+      "src/components/VarianceAnalysis.tsx",
+      "src/components/WasteDialog.tsx",
+      "src/components/assets/AssetDepreciationSheet.tsx",
+      "src/components/assets/AssetDialog.tsx",
+      "src/components/assets/AssetDisposeDialog.tsx",
+      "src/components/assets/AssetImportUpload.tsx",
+      "src/components/assets/AssetList.tsx",
+      "src/components/banking/BankReauthBanner.tsx",
+      "src/components/banking/CashFlowTab.tsx",
+      "src/components/banking/FinancialPulseHero.tsx",
+      "src/components/banking/FreshnessStamp.tsx",
+      "src/components/banking/LiquidityTab.tsx",
+      "src/components/banking/PredictionsTab.tsx",
+      "src/components/banking/ReconciliationDialog.tsx",
+      "src/components/banking/RevenueHealthTab.tsx",
+      "src/components/banking/SpendingAnalysisTab.tsx",
+      "src/components/dashboard/OutflowByCategoryCard.tsx",
+      "src/components/dashboard/PredictableExpensesCard.tsx",
+      "src/components/financial-statements/BalanceSheet.tsx",
+      "src/components/financial-statements/IncomeStatement.tsx",
+      "src/components/financial-statements/TrialBalance.tsx",
+      "src/components/labor/DemandVsStaffingChart.tsx",
+      "src/components/labor/SalesVolumeHeatmap.tsx",
+      "src/components/payroll/AddManualPaymentDialog.tsx",
+      "src/components/pending-outflows/ManualMatchDialog.tsx",
+      "src/components/pos-sales/PosSaleCategoryReview.tsx",
+      "src/components/pos-sales/TrendKpiRow.tsx",
+      "src/components/prep/NewProductionRunDialog.tsx",
+      "src/components/prep/ProductionRunCard.tsx",
+      "src/components/prep/ProductionRunDetailDialog.tsx",
+      "src/components/receipt/DuplicateReceiptDialog.tsx",
+      "src/components/scheduling/LaborBudgetIndicator.tsx",
+      "src/components/scheduling/ScheduleExportDialog.tsx",
+      "src/components/scheduling/ScheduleMetricsRibbon.tsx",
+      "src/components/scheduling/ShiftImportPreview.tsx",
+      "src/components/scheduling/ShiftPlanner/CopyWeekDialog.tsx",
+      "src/components/scheduling/ShiftPlanner/EmployeeMiniWeek.tsx",
+      "src/components/scheduling/ShiftPlanner/GenerateScheduleDialog.tsx",
+      "src/components/scheduling/ShiftPlanner/PlannerHeader.tsx",
+      "src/components/scheduling/ShiftPlanner/ScheduleOverviewPanel.tsx",
+      "src/components/scheduling/ShiftPlanner/StaffingDayColumn.tsx",
+      "src/components/scheduling/ShiftPlanner/StaffingOverlay.tsx",
+      "src/components/scheduling/ShiftPlanner/TemplateGrid.tsx",
+      "src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx",
+      "src/components/scheduling/WeekScheduleMobile.tsx",
+      "src/components/settings/COGSPreferenceSettings.tsx",
+      "src/components/subscription/SubscriptionStatus.tsx",
+      "src/components/tips/EmployeeDeclaredTips.tsx",
+      "src/components/tips/RecentTipSplits.tsx",
+      "src/components/tips/TipHistoricalEntry.tsx",
+      "src/components/tips/TipPeriodTimeline.tsx",
+      "src/components/ui/chart.tsx",
+      "src/hooks/adapters/useRevelSalesAdapter.tsx",
+      "src/hooks/adapters/useToastSalesAdapter.tsx",
+      "src/hooks/useAlertsIntelligence.tsx",
+      "src/hooks/useAssetDepreciation.ts",
+      "src/hooks/useBreakEvenAnalysis.tsx",
+      "src/hooks/useCOGSFromFinancials.tsx",
+      "src/hooks/useCalculateOpeningBalance.tsx",
+      "src/hooks/useCashFlowMetrics.tsx",
+      "src/hooks/useCashFlowStatement.tsx",
+      "src/hooks/useConsumptionIntelligence.tsx",
+      "src/hooks/useCopyWeekShifts.ts",
+      "src/hooks/useDailyPnL.tsx",
+      "src/hooks/useEmployeeTips.tsx",
+      "src/hooks/useExpenseAlerts.tsx",
+      "src/hooks/useExpenseHealth.tsx",
+      "src/hooks/useFoodCosts.tsx",
+      "src/hooks/useHighUsageItems.tsx",
+      "src/hooks/useHourlySalesPattern.ts",
+      "src/hooks/useInventoryAlerts.tsx",
+      "src/hooks/useInventoryMetrics.tsx",
+      "src/hooks/useInventoryPurchases.tsx",
+      "src/hooks/useInventoryTransactions.tsx",
+      "src/hooks/useLaborCosts.tsx",
+      "src/hooks/useLaborCostsFromTransactions.tsx",
+      "src/hooks/useLiquidityMetrics.tsx",
+      "src/hooks/useMonthlyExpenses.tsx",
+      "src/hooks/useOutflowByCategory.tsx",
+      "src/hooks/usePnLAnalytics.tsx",
+      "src/hooks/usePredictableExpenses.tsx",
+      "src/hooks/usePredictiveMetrics.tsx",
+      "src/hooks/useRecipeIntelligence.tsx",
+      "src/hooks/useReconciliationCheck.tsx",
+      "src/hooks/useReconciliationVariance.tsx",
+      "src/hooks/useRevenueBreakdown.tsx",
+      "src/hooks/useRevenueHealth.tsx",
+      "src/hooks/useSpendingAnalysis.tsx",
+      "src/hooks/useSupplierPriceAnalytics.tsx",
+      "src/hooks/useTimePunches.tsx",
+      "src/hooks/useTopVendors.tsx",
+      "src/hooks/useUncategorizedTotals.tsx",
+      "src/lib/breakEvenCalculator.ts",
+      "src/lib/breakEvenInsights.ts",
+      "src/lib/coverageChartModel.ts",
+      "src/lib/expenseDataFetcher.ts",
+      "src/lib/shiftInterval.ts",
+      "src/lib/shiftValidator.ts",
+      "src/pages/AcceptInvitation.tsx",
+      "src/pages/Accounting.tsx",
+      "src/pages/Banking.tsx",
+      "src/pages/EmployeeSchedule.tsx",
+      "src/pages/EmployeeTips.tsx",
+      "src/pages/Expenses.tsx",
+      "src/pages/FinancialStatements.tsx",
+      "src/pages/Index.tsx",
+      "src/pages/Invoices.tsx",
+      "src/pages/Labor.tsx",
+      "src/pages/POSSales.tsx",
+      "src/pages/Payroll.tsx",
+      "src/pages/PrintChecks.tsx",
+      "src/pages/Recipes.tsx",
+      "src/pages/Tips.tsx",
+      "src/pages/Transactions.tsx",
+      "src/pages/WeeklyBrief.tsx",
+      "src/services/recipeAnalytics.service.ts",
+      "src/types/assetImport.ts",
+      "src/utils/checkPrinting.ts",
+      "src/utils/employeeFilters.ts",
+      "src/utils/payrollExportFormats.ts",
+      "src/utils/pdfExport.ts",
+      "src/utils/plannerExport.ts",
+      "src/utils/recurrenceUtils.ts",
+      "src/utils/recurringShiftHelpers.ts",
+      "src/utils/scheduleExport.ts",
+    ],
+    rules: { "no-restricted-syntax": "off" },
   },
 );

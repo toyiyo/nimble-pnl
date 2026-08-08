@@ -17,6 +17,8 @@ import { ReviewQrDialog } from './ReviewQrDialog';
 interface ReviewPageBuilderProps {
   page: ReviewPageWithStats | null;
   restaurantId: string;
+  /** Printed on the table tent, under the logo. */
+  restaurantName: string;
   /**
    * `manage:reviews`. A chef holds `view:reviews` and legitimately reaches
    * this pane to read a page's settings and print its QR — but every control
@@ -33,6 +35,7 @@ const THRESHOLDS = [1, 2, 3, 4, 5] as const;
 export function ReviewPageBuilder({
   page,
   restaurantId,
+  restaurantName,
   canManage,
   onCreated,
 }: ReviewPageBuilderProps) {
@@ -357,6 +360,11 @@ export function ReviewPageBuilder({
           onOpenChange={setQrOpen}
           slug={page.slug}
           publicUrl={`${window.location.origin}/r/${page.slug}`}
+          restaurantName={restaurantName}
+          logoPath={page.logo_path}
+          // The saved headline, not the `headline` state. The state can hold an
+          // unsaved edit, and the paper must match the page a guest reaches.
+          defaultMessage={page.headline}
         />
       )}
     </div>

@@ -69,7 +69,11 @@ export default function Reviews() {
 
       <div className="mt-6">
         {tab === 'pages' ? (
-          <PagesTab restaurantId={restaurantId} canManage={canManage} />
+          <PagesTab
+            restaurantId={restaurantId}
+            restaurantName={selectedRestaurant?.restaurant?.name ?? ''}
+            canManage={canManage}
+          />
         ) : (
           <FeedbackTab restaurantId={restaurantId} canManage={canManage} />
         )}
@@ -327,7 +331,15 @@ const FeedbackRow = memo(function FeedbackRow({
   );
 });
 
-function PagesTab({ restaurantId, canManage }: { restaurantId?: string; canManage: boolean }) {
+function PagesTab({
+  restaurantId,
+  restaurantName,
+  canManage,
+}: {
+  restaurantId?: string;
+  restaurantName: string;
+  canManage: boolean;
+}) {
   const { pages, isLoading, error } = useReviewPages(restaurantId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -430,6 +442,7 @@ function PagesTab({ restaurantId, canManage }: { restaurantId?: string; canManag
           <ReviewPageBuilder
             page={creating ? null : selected}
             restaurantId={restaurantId}
+            restaurantName={restaurantName}
             canManage={canManage}
             onCreated={(id) => {
               setCreating(false);

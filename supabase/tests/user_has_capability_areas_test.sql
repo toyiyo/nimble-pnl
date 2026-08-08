@@ -40,9 +40,14 @@
 --      collaborator_operations_manager by
 --      20260806100000_seed_employee_sensitive_flags.sql (the sensitive-data
 --      flags design). The legacy CASE predates both flags and denies them
---      through its ELSE FALSE on every role, so this is intended drift, not
---      a bug: the whole point of that migration is to make these flags real
---      for the five roles that hold view:employees.
+--      through its ELSE FALSE on every role.
+--
+--      This drift is a property of the CASE literal only. It is not the
+--      behaviour a caller sees. 20260806140000_legacy_role_sensitive_flags.sql
+--      answers both flags before control reaches the CASE, for the same five
+--      role strings. Section 2b below tests that path. The legacy denial was
+--      a bug, and that migration fixes it; the CASE keeps its old text
+--      because the new branch runs first.
 --
 -- 2. user_restaurants.role_id IS NULL falls back to the legacy CASE
 --    (denied capability first, then a granted one).

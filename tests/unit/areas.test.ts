@@ -239,7 +239,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
       payroll: 'manage', employees: 'manage', team: 'manage', collaborators: 'manage',
       settings: 'manage', integrations: 'manage',
     };
-    const result = new Set(expandAreas(grants));
+    const result = new Set(expandAreas(grants, ['view:pay_rates', 'view:employee_pii']));
     const expected = new Set([...ROLE_CAPABILITIES.owner, 'view:assets', 'edit:assets']);
     expect(result).toEqual(expected);
   });
@@ -258,7 +258,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
       payroll: 'manage', employees: 'manage', team: 'manage', collaborators: 'manage',
       settings: 'view', integrations: 'view',
     };
-    const result = new Set(expandAreas(grants));
+    const result = new Set(expandAreas(grants, ['view:pay_rates', 'view:employee_pii']));
     const expected = new Set([...ROLE_CAPABILITIES.manager, 'view:assets', 'edit:assets']);
     expect(result).toEqual(expected);
   });
@@ -272,7 +272,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
       reviews: 'manage', payroll: 'manage', employees: 'manage',
       team: 'manage', settings: 'view',
     };
-    const result = new Set(expandAreas(grants));
+    const result = new Set(expandAreas(grants, ['view:pay_rates', 'view:employee_pii']));
     const expected = new Set(ROLE_CAPABILITIES.operations_manager);
     expect(result).toEqual(expected);
   });
@@ -310,7 +310,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
       chart_of_accounts: 'manage', payroll: 'view', employees: 'view',
       settings: 'view',
     };
-    const result = new Set(expandAreas(grants));
+    const result = new Set(expandAreas(grants, ['view:pay_rates', 'view:employee_pii']));
     // books@manage newly includes view:assets/edit:assets (defect 1, closed):
     // the legacy SQL CASE already granted both to collaborator_accountant
     // (`WHEN 'view:assets' THEN v_role IN ('owner', 'manager',
@@ -345,7 +345,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
       scheduling: 'manage', time_punches: 'manage', tips: 'manage',
       payroll: 'view', employees: 'view', settings: 'view',
     };
-    const result = new Set(expandAreas(grants));
+    const result = new Set(expandAreas(grants, ['view:pay_rates', 'view:employee_pii']));
     const expected = new Set(ROLE_CAPABILITIES.collaborator_operations_manager);
     expect(result).toEqual(expected);
   });

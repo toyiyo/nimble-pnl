@@ -29,62 +29,10 @@ vi.mock('@/hooks/usePendingOutflows', () => ({
   usePendingOutflowMatches: () => ({ data: [] }),
 }));
 
-// PrintCheckButton is no longer mocked (design §5.6 removes it from
-// PendingOutflowCard's render path), but until that lands, PendingOutflowCard
-// still mounts the real PrintCheckButton behind the capability gate. Stub its
-// three hooks with valid data so the gate under test is `isResolved` /
-// `hasCapability` / `onPrintCheck`, not an unrelated "no check settings yet".
-vi.mock('@/hooks/useCheckSettings', () => ({
-  useCheckSettings: () => ({
-    settings: {
-      id: 'set-1',
-      restaurant_id: 'restaurant-1',
-      business_name: 'Test Restaurant LLC',
-      business_address_line1: '123 Main St',
-      business_address_line2: null,
-      business_city: 'Austin',
-      business_state: 'TX',
-      business_zip: '78701',
-      bank_name: null,
-      print_bank_info: false,
-      routing_number: null,
-      signature_url: null,
-    },
-  }),
-}));
-
-vi.mock('@/hooks/useCheckBankAccounts', () => ({
-  useCheckBankAccounts: () => ({
-    accounts: [{
-      id: 'acct-1',
-      account_name: 'Operating',
-      bank_name: 'First National',
-      next_check_number: 1001,
-      print_bank_info: false,
-      routing_number: null,
-      account_number_last4: null,
-      is_default: true,
-    }],
-    defaultAccount: {
-      id: 'acct-1',
-      account_name: 'Operating',
-      bank_name: 'First National',
-      next_check_number: 1001,
-      print_bank_info: false,
-      routing_number: null,
-      account_number_last4: null,
-      is_default: true,
-    },
-    claimCheckNumbers: { mutateAsync: vi.fn() },
-    fetchAccountSecrets: vi.fn(),
-  }),
-}));
-
-vi.mock('@/hooks/useCheckAuditLog', () => ({
-  useCheckAuditLog: () => ({
-    logCheckAction: { mutateAsync: vi.fn() },
-  }),
-}));
+// Design §5.6 moved the print-check dialog and its three hooks
+// (useCheckSettings, useCheckBankAccounts, useCheckAuditLog) out of
+// PendingOutflowCard, so this file no longer needs to stub them: the
+// component now only calls onPrintCheck, which the test passes directly.
 
 // Unrelated to this gate; only mounted when the (unopened) manual-match dialog
 // is shown, but it pulls in more hooks than this test needs to stub.

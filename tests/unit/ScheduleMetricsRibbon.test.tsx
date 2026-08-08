@@ -21,8 +21,9 @@ const summary: LaborCostSummary = {
   averageHourlyRate: 10,
   isAverageHigh: false,
   employeeCosts: [
-    { id: 'e1', name: 'Shy Harrison', position: 'Server', hours: 33, rate: 10, cost: 330, compensationType: 'hourly', isOutlier: false, outlierLevel: 'none' },
+    { id: 'e1', name: 'Shy Harrison', position: 'Server', hours: 33, rate: 10, cost: 330, compensationType: 'hourly', isOutlier: false, outlierLevel: 'none', costIsHidden: false },
   ],
+  hiddenCostCount: 0,
 };
 
 const budget: LaborBudgetData = {
@@ -60,6 +61,16 @@ describe('ScheduleMetricsRibbon', () => {
     // "labor cost" text is relied on by employee-payroll.spec.ts (PR #630) to
     // locate the labor figure on the scheduling page — keep it discoverable.
     expect(screen.getByText(/labor cost/i)).toBeInTheDocument();
+  });
+
+  it('says how many employees the average rate leaves out when some pay is masked', () => {
+    renderRibbon({ laborCostSummary: { ...summary, hiddenCostCount: 2 } });
+    expect(screen.getByText('(2 hidden)')).toBeInTheDocument();
+  });
+
+  it('does not mention hidden employees when every row is visible', () => {
+    renderRibbon();
+    expect(screen.queryByText(/hidden/)).not.toBeInTheDocument();
   });
 
   it('toggles the details panel and flips aria-expanded', () => {

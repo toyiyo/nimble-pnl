@@ -12,6 +12,8 @@ export interface EmployeeLaborCost {
   compensationType: string;
   isOutlier: boolean;
   outlierLevel: 'none' | 'warning' | 'critical';
+  /** True when the caller has no view:pay_rates, so cost and rate are unknown. */
+  costIsHidden: boolean;
 }
 
 export interface LaborCostSummary {
@@ -20,6 +22,8 @@ export interface LaborCostSummary {
   averageHourlyRate: number;
   isAverageHigh: boolean;
   employeeCosts: EmployeeLaborCost[];
+  /** How many employees the totals leave out because their pay is masked. */
+  hiddenCostCount: number;
 }
 
 // Rate thresholds for outlier detection (in dollars)
@@ -43,6 +47,7 @@ export function useEmployeeLaborCosts(
         averageHourlyRate: 0,
         isAverageHigh: false,
         employeeCosts: [],
+        hiddenCostCount: 0,
       };
     }
 
@@ -54,12 +59,21 @@ export function useEmployeeLaborCosts(
       if (empShifts.length === 0) return;
 
       const hours = empShifts.reduce((sum, s) => sum + calculateShiftHours(s), 0);
-      
+
+      // A masked pay column arrives as null. A $0 cost understates labor and
+      // drives a wrong P&L, so mark the row unknown and leave it out of the
+      // totals. The hours stay visible: they are not pay data.
+      const payIsHidden =
+        (emp.compensation_type === 'hourly' && emp.hourly_rate == null) ||
+        (emp.compensation_type === 'salary' && emp.salary_amount == null) ||
+        (emp.compensation_type === 'daily_rate' && emp.daily_rate_amount == null) ||
+        (emp.compensation_type === 'contractor' && emp.contractor_payment_amount == null);
+
       // Calculate effective rate based on compensation type
       let rate = 0;
       let cost = 0;
-      
-      switch (emp.compensation_type) {
+
+      if (!payIsHidden) switch (emp.compensation_type) {
         case 'hourly':
           rate = (emp.hourly_rate || 0) / 100; // Convert cents to dollars
           cost = hours * rate;
@@ -117,6 +131,7 @@ export function useEmployeeLaborCosts(
         compensationType: emp.compensation_type || 'hourly',
         isOutlier: outlierLevel !== 'none',
         outlierLevel,
+        costIsHidden: payIsHidden,
       });
     });
 
@@ -125,14 +140,19 @@ export function useEmployeeLaborCosts(
       .filter(e => e.hours > 0)
       .sort((a, b) => b.cost - a.cost);
 
+    // A masked row has no cost to add. Counting its 0 would drag the average
+    // down and understate the total.
+    const visibleCosts = employeeCosts.filter(e => !e.costIsHidden);
+    const hiddenCostCount = employeeCosts.length - visibleCosts.length;
+
     // Calculate totals (only from hourly employees for meaningful average)
-    const hourlyEmployees = employeeCosts.filter(e => e.compensationType === 'hourly');
+    const hourlyEmployees = visibleCosts.filter(e => e.compensationType === 'hourly');
     const totalHourlyCost = hourlyEmployees.reduce((sum, e) => sum + e.cost, 0);
     const totalHourlyHours = hourlyEmployees.reduce((sum, e) => sum + e.hours, 0);
-    
-    const totalCost = employeeCosts.reduce((sum, e) => sum + e.cost, 0);
-    const totalHours = employeeCosts.reduce((sum, e) => sum + e.hours, 0);
-    
+
+    const totalCost = visibleCosts.reduce((sum, e) => sum + e.cost, 0);
+    const totalHours = visibleCosts.reduce((sum, e) => sum + e.hours, 0);
+
     // Average hourly rate is only meaningful for hourly employees
     const averageHourlyRate = totalHourlyHours > 0 ? totalHourlyCost / totalHourlyHours : 0;
     
@@ -145,6 +165,7 @@ export function useEmployeeLaborCosts(
       averageHourlyRate,
       isAverageHigh,
       employeeCosts,
+      hiddenCostCount,
     };
   }, [shifts, employees]);
 }

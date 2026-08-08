@@ -222,13 +222,20 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
   };
 
   const getCompensationDisplay = () => {
+    // A masked column arrives as null. `$0.00/hr` would read as a real rate.
     switch (employee.compensation_type) {
       case 'hourly':
-        return `${formatCurrency(employee.hourly_rate)}/hr`;
+        return employee.hourly_rate == null
+          ? 'Hidden'
+          : `${formatCurrency(employee.hourly_rate)}/hr`;
       case 'salary':
-        return `${formatCurrency(employee.salary_amount || 0)}/${employee.pay_period_type}`;
+        return employee.salary_amount == null
+          ? 'Hidden'
+          : `${formatCurrency(employee.salary_amount)}/${employee.pay_period_type}`;
       case 'contractor':
-        return `${formatCurrency(employee.contractor_payment_amount || 0)}/${employee.contractor_payment_interval}`;
+        return employee.contractor_payment_amount == null
+          ? 'Hidden'
+          : `${formatCurrency(employee.contractor_payment_amount)}/${employee.contractor_payment_interval}`;
       default:
         return '';
     }

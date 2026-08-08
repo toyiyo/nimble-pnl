@@ -72,7 +72,7 @@ export const ReactivateEmployeeDialog = ({
 
   const currentRateDisplay = employee.hourly_rate
     ? `$${(employee.hourly_rate / 100).toFixed(2)}/hr`
-    : 'Not set';
+    : 'Hidden';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

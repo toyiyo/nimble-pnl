@@ -34,7 +34,7 @@ const fetchChangeLogs = async ({ restaurantId, shiftId, startDate, endDate }: Ch
 
   const { data, error } = await query.order('changed_at', { ascending: false });
   if (error) throw error;
-  return data as ScheduleChangeLog[];
+  return data as unknown as ScheduleChangeLog[];
 };
 
 export const useScheduleChangeLogs = (

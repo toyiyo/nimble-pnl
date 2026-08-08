@@ -320,13 +320,21 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     existing: Employee,
     payload: {
       compensationType: CompensationType;
-      hourlyRateInCents: number;
+      hourlyRateInCents: number | undefined;
       salaryAmountInCents?: number;
       payPeriodType?: PayPeriodType;
       contractorAmountInCents?: number;
       contractorInterval?: ContractorPaymentInterval;
     }
   ) => {
+    // An unknown (masked) rate is not a change. Without this guard, a
+    // caller without view:pay_rates would compare the real stored rate
+    // against `undefined`, always read as "changed", and open the
+    // effective-date modal for a rate the caller cannot even see.
+    if (payload.compensationType === 'hourly' && payload.hourlyRateInCents === undefined) {
+      return false;
+    }
+
     if (existing.compensation_type !== payload.compensationType) {
       return true;
     }
@@ -351,7 +359,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
 
   const buildHistoryPayload = (
     restaurant: string,
-    hourlyRateInCents: number,
+    hourlyRateInCents: number | undefined,
     salaryAmountInCents?: number,
     contractorAmountInCents?: number
   ): CompensationHistoryPayload | null => {
@@ -608,7 +616,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   };
 
   const proceedWithSubmit = async (
-    hourlyRateInCents: number,
+    hourlyRateInCents: number | undefined,
     salaryAmountInCents: number | undefined,
     contractorAmountInCents: number | undefined,
     dailyRateWeeklyInCents: number | undefined,

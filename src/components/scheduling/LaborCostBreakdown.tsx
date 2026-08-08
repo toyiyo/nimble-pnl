@@ -57,7 +57,11 @@ export const LaborCostBreakdown = ({
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">{emp.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {emp.hours.toFixed(1)}h × ${emp.rate.toFixed(2)}/hr
+                  {/* A hidden rate is 0, a placeholder. "$0.00/hr" next to the
+                      dash above would read as the real rate. */}
+                  {emp.costIsHidden
+                    ? `${emp.hours.toFixed(1)}h · rate hidden`
+                    : `${emp.hours.toFixed(1)}h × $${emp.rate.toFixed(2)}/hr`}
                 </div>
               </div>
             </div>

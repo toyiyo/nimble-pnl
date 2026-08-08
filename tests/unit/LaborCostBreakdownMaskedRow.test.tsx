@@ -49,6 +49,14 @@ describe('LaborCostBreakdown masked row', () => {
     expect(screen.getByLabelText('Labor cost hidden')).toBeInTheDocument();
   });
 
+  it('does not show a fabricated $0.00/hr rate under a masked row', () => {
+    render(
+      <LaborCostBreakdown employeeCosts={[maskedRow]} onEditEmployee={vi.fn()} />
+    );
+    expect(screen.getByText('8.0h · rate hidden')).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.00\/hr/)).not.toBeInTheDocument();
+  });
+
   it('still shows the real dollar figure for a visible row', () => {
     render(
       <LaborCostBreakdown employeeCosts={[visibleRow]} onEditEmployee={vi.fn()} />

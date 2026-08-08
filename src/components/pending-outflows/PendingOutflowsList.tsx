@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
+import { useCheckSettings } from "@/hooks/useCheckSettings";
 import { PendingOutflowCard } from "./PendingOutflowCard";
+import { PrintCheckDialog } from "./PrintCheckDialog";
 import { Plus, Wallet, AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/utils/pdfExport";
 import type { PendingOutflow, PendingOutflowStatus } from "@/types/pending-outflows";
@@ -17,6 +19,8 @@ interface PendingOutflowsListProps {
 
 export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 'all' }: PendingOutflowsListProps) {
   const { data: pendingOutflows, isLoading, error } = usePendingOutflows();
+  const { settings: checkSettings } = useCheckSettings();
+  const [activeOutflow, setActiveOutflow] = useState<PendingOutflow | null>(null);
 
   const filteredOutflows = useMemo(() => {
     if (!pendingOutflows) return [];
@@ -118,11 +122,26 @@ export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 
         ) : (
           <div className="space-y-3">
             {filteredOutflows.map((outflow) => (
-              <PendingOutflowCard key={outflow.id} outflow={outflow} onEdit={onEditExpense} />
+              <PendingOutflowCard
+                key={outflow.id}
+                outflow={outflow}
+                onEdit={onEditExpense}
+                onPrintCheck={checkSettings ? setActiveOutflow : undefined}
+              />
             ))}
           </div>
         )}
       </CardContent>
+
+      {checkSettings && (
+        <PrintCheckDialog
+          settings={checkSettings}
+          expense={activeOutflow}
+          onOpenChange={(open) => {
+            if (!open) setActiveOutflow(null);
+          }}
+        />
+      )}
     </Card>
   );
 }

@@ -22,17 +22,17 @@ import { ManualMatchDialog } from "./ManualMatchDialog";
 import type { PendingOutflow } from "@/types/pending-outflows";
 import { formatCurrency } from "@/utils/pdfExport";
 import { format } from "date-fns";
-import { CheckCircle2, XCircle, FileText, Calendar, Hash, Trash2, Sparkles, Link } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, Calendar, Hash, Trash2, Sparkles, Link, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { PrintCheckButton } from "./PrintCheckButton";
 
 interface PendingOutflowCardProps {
   outflow: PendingOutflow;
   onEdit?: (outflow: PendingOutflow) => void;
+  onPrintCheck?: (outflow: PendingOutflow) => void;
 }
 
-export const PendingOutflowCard = ({ outflow, onEdit }: PendingOutflowCardProps) => {
+export const PendingOutflowCard = ({ outflow, onEdit, onPrintCheck }: PendingOutflowCardProps) => {
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [showMatches, setShowMatches] = useState(false);
@@ -176,8 +176,20 @@ export const PendingOutflowCard = ({ outflow, onEdit }: PendingOutflowCardProps)
 
               {outflow.status === 'pending' || outflow.status.startsWith('stale_') ? (
                 <div className="flex gap-1">
-                  {isResolved && hasCapability('edit:pending_outflows') && (
-                    <PrintCheckButton expense={outflow} />
+                  {onPrintCheck && isResolved && hasCapability('edit:pending_outflows') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPrintCheck(outflow);
+                      }}
+                      className="h-8 px-2 rounded-lg text-[13px] font-medium"
+                      aria-label={`Print check for ${outflow.vendor_name}`}
+                    >
+                      <Printer className="h-3.5 w-3.5 mr-1" />
+                      Print
+                    </Button>
                   )}
                   {matches && matches.length > 0 && (
                     <Button

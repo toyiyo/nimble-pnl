@@ -400,6 +400,14 @@ FROM public.roles r
 JOIN public.role_areas ra ON ra.role_id = r.id
 JOIN test_area_capability_at_level acal
   ON acal.area_key = ra.area_key AND acal.level = ra.level
+WHERE r.builtin = true AND r.restaurant_id IS NULL
+UNION ALL
+-- A sensitive flag is a capability with no area behind it. user_has_capability
+-- resolves it straight off role_flags (20260805120000_page_areas.sql:322-327),
+-- so the round trip must read the same source.
+SELECT r.name AS role_name, rf.flag AS capability
+FROM public.roles r
+JOIN public.role_flags rf ON rf.role_id = r.id
 WHERE r.builtin = true AND r.restaurant_id IS NULL;
 
 -- ============================================================================

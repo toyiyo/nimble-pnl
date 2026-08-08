@@ -2,6 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import {
+  maskedEmployeeFields,
+  stripMaskedEmployeeFields,
+} from '@/lib/employeeMaskedFields';
 
 export type EmployeeStatusFilter = 'active' | 'inactive' | 'all';
 
@@ -76,13 +81,21 @@ export const useEmployees = (
 export const useCreateEmployee = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { hasCapability, isResolved } = usePermissions();
 
   return useMutation({
     mutationFn: async (employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) => {
+      // A caller with no flag cannot read these columns, so the form holds
+      // NULL for them. Writing that NULL back would erase the stored value.
+      const masked = maskedEmployeeFields({
+        payRates: isResolved && hasCapability('view:pay_rates'),
+        employeePii: isResolved && hasCapability('view:employee_pii'),
+      });
+
       const { data, error } = await supabase
         .from('employees')
-        .insert(employee)
-        .select()
+        .insert(stripMaskedEmployeeFields(employee, masked))
+        .select('id, restaurant_id, name')
         .single();
 
       if (error) throw error;
@@ -108,14 +121,20 @@ export const useCreateEmployee = () => {
 export const useUpdateEmployee = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { hasCapability, isResolved } = usePermissions();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Employee> & { id: string }) => {
+      const masked = maskedEmployeeFields({
+        payRates: isResolved && hasCapability('view:pay_rates'),
+        employeePii: isResolved && hasCapability('view:employee_pii'),
+      });
+
       const { data, error } = await supabase
         .from('employees')
-        .update(updates)
+        .update(stripMaskedEmployeeFields(updates, masked))
         .eq('id', id)
-        .select()
+        .select('id, restaurant_id, name')
         .single();
 
       if (error) throw error;

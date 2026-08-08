@@ -59,3 +59,15 @@ export function stripMaskedEmployeeFields<T extends object>(
 
   return result as T;
 }
+
+/**
+ * The columns an `employee:employees(...)` resource embed may ask for.
+ *
+ * A PostgREST resource embed resolves against the base table, not
+ * employees_secure (20260806110000). `employees(*)` would ask for the eight
+ * masked columns and fail with "permission denied for column hourly_rate".
+ * Every embed lists only the columns its consumer reads (useShifts,
+ * useTimeOffRequests, useScheduleChangeLogs).
+ */
+export const EMPLOYEE_EMBED_COLUMNS =
+  'id, name, position, area, status, is_active, employment_type, user_id';

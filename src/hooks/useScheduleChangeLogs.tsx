@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ScheduleChangeLog } from '@/types/scheduling';
+import { EMPLOYEE_EMBED_COLUMNS } from '@/lib/employeeMaskedFields';
 
 type ChangeLogParams = {
   restaurantId?: string | null;
@@ -14,7 +15,7 @@ const fetchChangeLogs = async ({ restaurantId, shiftId, startDate, endDate }: Ch
 
   let query = supabase
     .from('schedule_change_logs')
-    .select('*, employee:employees(id, name, position, area, status, is_active, employment_type, user_id)');
+    .select(`*, employee:employees(${EMPLOYEE_EMBED_COLUMNS})`);
 
   if (restaurantId) {
     query = query.eq('restaurant_id', restaurantId);

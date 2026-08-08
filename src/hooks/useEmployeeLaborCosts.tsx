@@ -73,44 +73,46 @@ export function useEmployeeLaborCosts(
       let rate = 0;
       let cost = 0;
 
-      if (!payIsHidden) switch (emp.compensation_type) {
-        case 'hourly':
-          rate = (emp.hourly_rate || 0) / 100; // Convert cents to dollars
-          cost = hours * rate;
-          break;
-        case 'salary':
-          // For salary, show the estimated daily cost divided by hours
-          if (emp.salary_amount && emp.pay_period_type) {
-            const weeksPerPeriod = emp.pay_period_type === 'weekly' ? 1 
-              : emp.pay_period_type === 'bi-weekly' ? 2 
-              : emp.pay_period_type === 'semi-monthly' ? 2.17 
-              : 4.33;
-            const dailyCost = (emp.salary_amount / 100) / (weeksPerPeriod * 7);
-            const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
-            cost = dailyCost * daysWorked;
-            rate = hours > 0 ? cost / hours : 0;
-          }
-          break;
-        case 'daily_rate':
-          if (emp.daily_rate_amount) {
-            const dailyRate = emp.daily_rate_amount / 100;
-            const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
-            cost = dailyRate * daysWorked;
-            rate = hours > 0 ? cost / hours : 0;
-          }
-          break;
-        case 'contractor':
-          if (emp.contractor_payment_amount && emp.contractor_payment_interval) {
-            const daysPerInterval = emp.contractor_payment_interval === 'weekly' ? 7 
-              : emp.contractor_payment_interval === 'bi-weekly' ? 14 
-              : emp.contractor_payment_interval === 'monthly' ? 30 
-              : 7;
-            const dailyCost = (emp.contractor_payment_amount / 100) / daysPerInterval;
-            const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
-            cost = dailyCost * daysWorked;
-            rate = hours > 0 ? cost / hours : 0;
-          }
-          break;
+      if (!payIsHidden) {
+        switch (emp.compensation_type) {
+          case 'hourly':
+            rate = (emp.hourly_rate || 0) / 100; // Convert cents to dollars
+            cost = hours * rate;
+            break;
+          case 'salary':
+            // For salary, show the estimated daily cost divided by hours
+            if (emp.salary_amount && emp.pay_period_type) {
+              const weeksPerPeriod = emp.pay_period_type === 'weekly' ? 1
+                : emp.pay_period_type === 'bi-weekly' ? 2
+                : emp.pay_period_type === 'semi-monthly' ? 2.17
+                : 4.33;
+              const dailyCost = (emp.salary_amount / 100) / (weeksPerPeriod * 7);
+              const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
+              cost = dailyCost * daysWorked;
+              rate = hours > 0 ? cost / hours : 0;
+            }
+            break;
+          case 'daily_rate':
+            if (emp.daily_rate_amount) {
+              const dailyRate = emp.daily_rate_amount / 100;
+              const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
+              cost = dailyRate * daysWorked;
+              rate = hours > 0 ? cost / hours : 0;
+            }
+            break;
+          case 'contractor':
+            if (emp.contractor_payment_amount && emp.contractor_payment_interval) {
+              const daysPerInterval = emp.contractor_payment_interval === 'weekly' ? 7
+                : emp.contractor_payment_interval === 'bi-weekly' ? 14
+                : emp.contractor_payment_interval === 'monthly' ? 30
+                : 7;
+              const dailyCost = (emp.contractor_payment_amount / 100) / daysPerInterval;
+              const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
+              cost = dailyCost * daysWorked;
+              rate = hours > 0 ? cost / hours : 0;
+            }
+            break;
+        }
       }
 
       // Determine outlier level

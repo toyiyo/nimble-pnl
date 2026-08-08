@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { TimeOffRequest } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { useCreateEntity, useUpdateEntity, useDeleteEntity } from './useCRUDEntity';
+import { EMPLOYEE_EMBED_COLUMNS } from '@/lib/employeeMaskedFields';
 
 export const useTimeOffRequests = (restaurantId: string | null) => {
   const { data, isLoading, error } = useQuery({
@@ -14,7 +15,7 @@ export const useTimeOffRequests = (restaurantId: string | null) => {
         .from('time_off_requests')
         .select(`
           *,
-          employee:employees(id, name, position, area, status, is_active, employment_type, user_id)
+          employee:employees(${EMPLOYEE_EMBED_COLUMNS})
         `)
         .eq('restaurant_id', restaurantId)
         .order('start_date', { ascending: false });

@@ -445,16 +445,28 @@ SELECT set_eq(
 );
 
 -- ============================================================================
--- 2. No role_flags rows are seeded for any builtin: the three sensitive
---    flags have no equivalent in the legacy Capability union, so seeding any
---    of them here would immediately break the round-trip property below.
+-- 2. The two employee flags are seeded onto exactly the five builtin roles
+--    that hold view:employees. view:costs stays unseeded: its gate is not
+--    built yet, so seeding it would grant a capability nothing reads.
 -- ============================================================================
-SELECT is(
-  (SELECT count(*)::int FROM public.role_flags rf
-   JOIN public.roles r ON r.id = rf.role_id
-   WHERE r.builtin = true AND r.restaurant_id IS NULL),
-  0,
-  'zero role_flags rows are seeded for any builtin role'
+SELECT set_eq(
+  $$SELECT r.name || '|' || rf.flag
+    FROM public.role_flags rf
+    JOIN public.roles r ON r.id = rf.role_id
+    WHERE r.builtin = true AND r.restaurant_id IS NULL$$,
+  ARRAY[
+    'Owner|view:pay_rates',
+    'Owner|view:employee_pii',
+    'Manager|view:pay_rates',
+    'Manager|view:employee_pii',
+    'Operations Manager|view:pay_rates',
+    'Operations Manager|view:employee_pii',
+    'Accountant|view:pay_rates',
+    'Accountant|view:employee_pii',
+    'Operations Manager (Collaborator)|view:pay_rates',
+    'Operations Manager (Collaborator)|view:employee_pii'
+  ],
+  'the two employee flags are seeded onto exactly the five view:employees roles'
 );
 
 -- ============================================================================

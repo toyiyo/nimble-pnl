@@ -12,6 +12,7 @@ import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { useUncategorizedTotals } from '@/hooks/useUncategorizedTotals';
 import { calculateSalaryForPeriod, calculateContractorPayForPeriod } from '@/utils/compensationCalculations';
 import type { Employee } from '@/types/scheduling';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -126,6 +127,7 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
+  const { hasCapability } = usePermissions();
   const [glOnly, setGlOnly] = useState(false);
   const [accrualMode, setAccrualMode] = useState<'actual' | 'projected'>('actual');
   
@@ -306,6 +308,14 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         let payrollFallback =
           Math.abs(Number(hourlyAgg?.sum) || 0) + Math.abs(Number(allocationAgg?.sum) || 0);
 
+        // True when a salary or contractor employee's amount reads as masked
+        // (employees_secure returns NULL for a caller without view:pay_rates).
+        // compensation_type is a plain column, so it still names the employee
+        // as salary/contractor even though the amount is hidden — that is
+        // enough to know payrollFallback below is an undercount, not a zero.
+        let payrollDataHidden = false;
+        const canSeePayRates = hasCapability('view:pay_rates');
+
         // If still zero, derive daily allocations from salary/contractor employees
         // Uses calculateSalaryForPeriod/calculateContractorPayForPeriod which respect hire_date
         if (payrollFallback === 0) {
@@ -322,34 +332,40 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
             const now = new Date();
             now.setHours(23, 59, 59, 999);
             const effectiveEndDate = accrualMode === 'actual' && dateTo > now ? now : dateTo;
-            
+
             employees.forEach(emp => {
               if (emp.allocate_daily === false) return;
-              
+
               // Cast to Employee type for the calculation functions
               const employee = emp as unknown as Employee;
-              
+
               if (emp.compensation_type === 'salary' && emp.salary_amount && emp.pay_period_type) {
                 // calculateSalaryForPeriod respects hire_date and termination_date
                 const periodCostCents = calculateSalaryForPeriod(employee, dateFrom, effectiveEndDate);
                 payrollFallback += periodCostCents / 100; // cents to dollars
+              } else if (emp.compensation_type === 'salary' && !canSeePayRates) {
+                payrollDataHidden = true;
               }
               if (emp.compensation_type === 'contractor' && emp.contractor_payment_amount && emp.contractor_payment_interval) {
                 // calculateContractorPayForPeriod respects hire_date and termination_date
                 const periodCostCents = calculateContractorPayForPeriod(employee, dateFrom, effectiveEndDate);
                 payrollFallback += periodCostCents / 100; // cents to dollars
+              } else if (emp.compensation_type === 'contractor' && !canSeePayRates) {
+                payrollDataHidden = true;
               }
             });
           }
         }
 
-        if (payrollFallback > 0) {
+        if (payrollFallback > 0 || payrollDataHidden) {
           accountsWithBalances = [
             ...accountsWithBalances,
             {
               id: 'payroll-expense-fallback',
               account_code: 'PAYROLL-EXP',
-              account_name: 'Payroll Expense (unposted)',
+              account_name: payrollDataHidden
+                ? 'Payroll Expense (unposted, incomplete — pay rates hidden from this role)'
+                : 'Payroll Expense (unposted)',
               account_type: 'expense' as const,
               account_subtype: 'payroll' as const,
               normal_balance: 'debit',

@@ -48,6 +48,13 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// IncomeStatement now reads view:pay_rates to flag hidden payroll data.
+// Default every test to a caller who can see pay rates, so the existing
+// cases below keep their old behavior (payrollDataHidden stays false).
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasCapability: () => true }),
+}));
+
 const renderIncomeStatement = () =>
   render(
     <MemoryRouter>

@@ -109,7 +109,7 @@ describe('useCreateEmployee — masked field strip', () => {
     hasCapabilityMock.mockReturnValue(false);
 
     const { result } = renderHook(() => useCreateEmployee(), { wrapper });
-    await result.current.mutateAsync(fullEmployeePayload() as any);
+    await result.current.mutateAsync(fullEmployeePayload() as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     expect(insertMock).toHaveBeenCalledTimes(1);
     const insertedRow = insertMock.mock.calls[0][0];
@@ -122,7 +122,7 @@ describe('useCreateEmployee — masked field strip', () => {
 
     const { result } = renderHook(() => useCreateEmployee(), { wrapper });
     const payload = fullEmployeePayload();
-    await result.current.mutateAsync(payload as any);
+    await result.current.mutateAsync(payload as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     expect(insertMock).toHaveBeenCalledWith(payload);
   });
@@ -132,7 +132,7 @@ describe('useCreateEmployee — masked field strip', () => {
     hasCapabilityMock.mockReturnValue(true);
 
     const { result } = renderHook(() => useCreateEmployee(), { wrapper });
-    await result.current.mutateAsync(fullEmployeePayload() as any);
+    await result.current.mutateAsync(fullEmployeePayload() as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     const insertedRow = insertMock.mock.calls[0][0];
     expect(insertedRow).toEqual({ restaurant_id: 'r1', name: 'Ada' });
@@ -143,7 +143,7 @@ describe('useCreateEmployee — masked field strip', () => {
     hasCapabilityMock.mockReturnValue(true);
 
     const { result } = renderHook(() => useCreateEmployee(), { wrapper });
-    await result.current.mutateAsync(fullEmployeePayload() as any);
+    await result.current.mutateAsync(fullEmployeePayload() as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     expect(insertSelectArgsMock).toHaveBeenCalledWith('id, restaurant_id, name');
   });
@@ -160,7 +160,7 @@ describe('useUpdateEmployee — masked field strip', () => {
     hasCapabilityMock.mockReturnValue(false);
 
     const { result } = renderHook(() => useUpdateEmployee(), { wrapper });
-    await result.current.mutateAsync({ id: 'e1', ...fullEmployeePayload() } as any);
+    await result.current.mutateAsync({ id: 'e1', ...fullEmployeePayload() } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     expect(updateMock).toHaveBeenCalledTimes(1);
     const updatedRow = updateMock.mock.calls[0][0];
@@ -174,7 +174,7 @@ describe('useUpdateEmployee — masked field strip', () => {
 
     const { result } = renderHook(() => useUpdateEmployee(), { wrapper });
     const payload = fullEmployeePayload();
-    await result.current.mutateAsync({ id: 'e1', ...payload } as any);
+    await result.current.mutateAsync({ id: 'e1', ...payload } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     expect(updateMock).toHaveBeenCalledWith(payload);
   });
@@ -184,7 +184,7 @@ describe('useUpdateEmployee — masked field strip', () => {
     hasCapabilityMock.mockReturnValue(true);
 
     const { result } = renderHook(() => useUpdateEmployee(), { wrapper });
-    await result.current.mutateAsync({ id: 'e1', ...fullEmployeePayload() } as any);
+    await result.current.mutateAsync({ id: 'e1', ...fullEmployeePayload() } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     expect(updateSelectArgsMock).toHaveBeenCalledWith('id, restaurant_id, name');
   });

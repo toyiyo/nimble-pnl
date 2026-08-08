@@ -105,3 +105,53 @@ COMMENT ON VIEW public.employees_secure IS
   'Read path for public.employees. Returns NULL for a pay or contact column '
   'the caller has no flag for. Owner rights on purpose: authenticated holds '
   'no SELECT on those columns, so an invoker-rights view would fail for all.';
+
+-- ============================================================================
+-- Step 2: the grant posture
+-- ============================================================================
+--
+-- Revoke from every role the stock ALTER DEFAULT PRIVILEGES entry grants to.
+-- REVOKE ... FROM PUBLIC cannot undo a direct grant to anon or to
+-- service_role, so name each one.
+REVOKE SELECT ON public.employees FROM PUBLIC, anon, authenticated, service_role;
+
+GRANT SELECT (
+  id, restaurant_id, name, position, area, status, hire_date,
+  termination_date, notes, created_at, updated_at, user_id,
+  compensation_type, pay_period_type, contractor_payment_interval,
+  allocate_daily, tip_eligible, requires_time_punch, is_active,
+  deactivation_reason, deactivated_at, deactivated_by, reactivated_at,
+  reactivated_by, last_active_date, daily_rate_reference_days,
+  is_exempt, exempt_changed_at, exempt_changed_by, employment_type
+) ON public.employees TO authenticated;
+
+-- service_role keeps the whole table. The payroll edge functions need pay, and
+-- rolbypassrls makes the table ACL the only control behind that role. State
+-- the grant. Do not inherit it.
+GRANT SELECT ON public.employees TO service_role;
+
+GRANT  SELECT ON public.employees_secure TO authenticated;
+REVOKE SELECT ON public.employees_secure FROM PUBLIC, anon;
+
+-- ============================================================================
+-- Step 3: employee_compensation_history
+-- ============================================================================
+--
+-- The whole table is pay data, so a row policy states the rule exactly. No
+-- view and no column grant are needed. PostgREST drops the embedded rows
+-- under RLS with no error for the client to handle.
+DROP POLICY IF EXISTS "Users can view compensation history for their restaurants"
+  ON public.employee_compensation_history;
+
+CREATE POLICY "Users can view compensation history for their restaurants"
+  ON public.employee_compensation_history
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_restaurants ur
+      WHERE ur.restaurant_id = employee_compensation_history.restaurant_id
+        AND ur.user_id = auth.uid()
+    )
+    AND public.user_has_capability(
+      employee_compensation_history.restaurant_id, 'view:pay_rates')
+  );

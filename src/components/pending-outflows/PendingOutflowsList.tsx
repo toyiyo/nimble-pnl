@@ -27,9 +27,19 @@ export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 
   // Derive the active outflow from the live query by id, not a frozen
   // snapshot. This way a refetch that drops or changes the row (voided,
   // deleted, or cleared by someone else) is reflected in the open dialog.
+  //
+  // usePendingOutflows does not filter by status, so a row that gets
+  // cleared or voided elsewhere still comes back in the same query. Only
+  // treat the row as active while its status is still printable — the
+  // same rule PendingOutflowCard uses to show the Print button — so the
+  // dialog closes the moment a refetch marks the open row cleared or
+  // voided, instead of staying open on a check that can no longer print.
   const activeOutflow = useMemo(() => {
     if (!activeOutflowId || !pendingOutflows) return null;
-    return pendingOutflows.find((outflow) => outflow.id === activeOutflowId) ?? null;
+    const outflow = pendingOutflows.find((o) => o.id === activeOutflowId);
+    if (!outflow) return null;
+    const isPrintable = outflow.status === 'pending' || outflow.status.startsWith('stale_');
+    return isPrintable ? outflow : null;
   }, [activeOutflowId, pendingOutflows]);
 
   const canPrintChecks = Boolean(checkSettings) && isResolved && hasCapability('edit:pending_outflows');

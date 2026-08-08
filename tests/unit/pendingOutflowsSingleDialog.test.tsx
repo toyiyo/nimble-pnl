@@ -241,4 +241,25 @@ describe('PendingOutflowsList — single print-check dialog (design §5)', () =>
 
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  // usePendingOutflows does not filter by status, so a cleared or voided
+  // row still comes back in the same query — it just leaves the printable
+  // set. The dialog must close even though the row itself is still
+  // present, the same way it closes when the row disappears outright.
+  it('closes the print-check dialog when the active row stays in the list but stops being printable', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<PendingOutflowsList onAddClick={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /^Print check for Vendor 1$/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Someone else clears row 1 elsewhere; the row stays in the
+    // (status-unfiltered) query but its status is no longer printable.
+    outflowsData = outflowsData.map((outflow) =>
+      outflow.id === 'pof-1' ? { ...outflow, status: 'cleared' as const } : outflow,
+    );
+    rerender(<PendingOutflowsList onAddClick={vi.fn()} />);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });

@@ -46,7 +46,13 @@ interface PrintCheckDialogProps {
 
 export function PrintCheckDialog({ settings, expense, onOpenChange }: PrintCheckDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const { accounts, defaultAccount, claimCheckNumbers: claimForAccount, fetchAccountSecrets } = useCheckBankAccounts();
+  const {
+    accounts,
+    defaultAccount,
+    isLoading: accountsLoading,
+    claimCheckNumbers: claimForAccount,
+    fetchAccountSecrets,
+  } = useCheckBankAccounts();
   const { logCheckAction } = useCheckAuditLog();
   const { updatePendingOutflow } = usePendingOutflowMutations();
 
@@ -167,7 +173,19 @@ export function PrintCheckDialog({ settings, expense, onOpenChange }: PrintCheck
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        // Ignore a close request (Escape, backdrop click, the built-in X
+        // button) while a print is in flight. Only the footer buttons
+        // check isPrinting on their own; without this guard the user can
+        // still dismiss the dialog through those other paths, open a
+        // different row, and then have the finishing print call the
+        // shared onOpenChange(false) and close that new row's dialog.
+        if (isPrinting) return;
+        onOpenChange(open);
+      }}
+    >
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
@@ -266,10 +284,10 @@ export function PrintCheckDialog({ settings, expense, onOpenChange }: PrintCheck
           </Button>
           <Button
             onClick={handlePrint}
-            disabled={isPrinting}
+            disabled={isPrinting || accountsLoading}
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
-            {isPrinting ? (
+            {isPrinting || accountsLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Printer className="mr-2 h-4 w-4" />

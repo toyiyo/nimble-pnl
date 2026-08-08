@@ -63,40 +63,50 @@ vi.mock('@/hooks/useCheckSettings', () => ({
   }),
 }));
 
+// `bankAccountsLoading` lets a test simulate the cold-load window where
+// useCheckBankAccounts has started fetching but has not resolved yet, so
+// `accounts` is still empty and `defaultAccount` is still null.
+let bankAccountsLoading = false;
+
 vi.mock('@/hooks/useCheckBankAccounts', () => ({
   useCheckBankAccounts: () => ({
-    accounts: [
-      {
-        id: 'acct-1',
-        account_name: 'Operating',
-        bank_name: 'First National',
-        next_check_number: 1001,
-        print_bank_info: false,
-        routing_number: null,
-        account_number_last4: null,
-        is_default: true,
-      },
-      {
-        id: 'acct-2',
-        account_name: 'Savings',
-        bank_name: 'Second National',
-        next_check_number: 2001,
-        print_bank_info: false,
-        routing_number: null,
-        account_number_last4: null,
-        is_default: false,
-      },
-    ],
-    defaultAccount: {
-      id: 'acct-1',
-      account_name: 'Operating',
-      bank_name: 'First National',
-      next_check_number: 1001,
-      print_bank_info: false,
-      routing_number: null,
-      account_number_last4: null,
-      is_default: true,
-    },
+    accounts: bankAccountsLoading
+      ? []
+      : [
+          {
+            id: 'acct-1',
+            account_name: 'Operating',
+            bank_name: 'First National',
+            next_check_number: 1001,
+            print_bank_info: false,
+            routing_number: null,
+            account_number_last4: null,
+            is_default: true,
+          },
+          {
+            id: 'acct-2',
+            account_name: 'Savings',
+            bank_name: 'Second National',
+            next_check_number: 2001,
+            print_bank_info: false,
+            routing_number: null,
+            account_number_last4: null,
+            is_default: false,
+          },
+        ],
+    defaultAccount: bankAccountsLoading
+      ? null
+      : {
+          id: 'acct-1',
+          account_name: 'Operating',
+          bank_name: 'First National',
+          next_check_number: 1001,
+          print_bank_info: false,
+          routing_number: null,
+          account_number_last4: null,
+          is_default: true,
+        },
+    isLoading: bankAccountsLoading,
     claimCheckNumbers: { mutateAsync: claimForAccountMutateAsync },
     fetchAccountSecrets: fetchAccountSecretsMock,
   }),
@@ -164,6 +174,7 @@ vi.mock('sonner', () => ({
 import { PendingOutflowsList } from '@/components/pending-outflows/PendingOutflowsList';
 
 beforeEach(() => {
+  bankAccountsLoading = false;
   claimForAccountMutateAsync.mockReset().mockResolvedValue(1001);
   fetchAccountSecretsMock.mockReset().mockResolvedValue(null);
   updatePendingOutflowMutateAsync.mockReset().mockResolvedValue({});
@@ -286,5 +297,54 @@ describe('PendingOutflowsList — print-check dialog category field (design §5)
     rerender(<PendingOutflowsList onAddClick={vi.fn()} />);
 
     expect(screen.getByLabelText(/memo/i)).toHaveValue('Keep me through a refetch');
+  });
+
+  // Gating the dialog's mount on edit:pending_outflows (a deliberate
+  // security fix) means useCheckBankAccounts starts in the same render
+  // that first shows the Print button, not earlier. Disable the Print
+  // Check button until that fetch resolves, so a click in that window
+  // shows a loading state instead of the misleading "Please select a
+  // bank account" error.
+  it('disables the Print Check button while bank accounts are still loading', async () => {
+    bankAccountsLoading = true;
+    outflowsData = [makeExpense()];
+    const user = userEvent.setup();
+    render(<PendingOutflowsList onAddClick={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /^Print check for ACME Rent$/i }));
+
+    expect(screen.getByRole('button', { name: /^Print Check$/i })).toBeDisabled();
+  });
+
+  // Only the footer buttons check isPrinting on their own. Without a
+  // guard on the Dialog's own onOpenChange, Escape (or the built-in X
+  // button, or a backdrop click) can still dismiss the dialog mid-print.
+  // If the user then opens a different row, the finishing print's
+  // success callback calls the shared onOpenChange(false) and closes
+  // that new row's dialog instead of the one that started the print.
+  it('ignores an Escape-key close request while a print is in flight', async () => {
+    outflowsData = [makeExpense()];
+    const user = userEvent.setup();
+
+    let resolveClaim: (checkNumber: number) => void = () => {};
+    claimForAccountMutateAsync.mockReset().mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveClaim = resolve;
+        }),
+    );
+
+    render(<PendingOutflowsList onAddClick={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /^Print check for ACME Rent$/i }));
+    await user.click(screen.getByRole('button', { name: /^Print Check$/i }));
+
+    // The print is in flight: claimForAccountMutateAsync has not resolved.
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    resolveClaim(1001);
+    await waitFor(() => expect(updatePendingOutflowMutateAsync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });

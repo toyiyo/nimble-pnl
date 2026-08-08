@@ -66,11 +66,13 @@ auto-create effect.
 ## 4. Other callers of the three hooks (must stay unaffected)
 
 - `src/pages/PrintChecks.tsx:99-101` calls all three hooks once, at page level.
+- `src/components/checks/CheckSettingsDialog.tsx:57` calls `useCheckSettings`
+  once.
 - `src/components/checks/CheckSettingsDialog.tsx:65` calls
   `useCheckBankAccounts` once.
 
-Neither renders inside a list, so neither multiplies. This change does not
-touch them.
+These are every non-test caller of the three hooks. Neither file renders inside
+a list, so neither multiplies. This change does not touch them.
 
 ## 5. Design
 
@@ -88,13 +90,23 @@ interface PrintCheckDialogProps {
 }
 ```
 
-The component keeps the whole body of today's dialog: the summary card, the
-bank-account `<Select>` (shown only when `accounts.length > 1`), the memo
-`<Input>`, the `<SearchableAccountSelector>`, and the footer buttons. It keeps
-`useCheckBankAccounts`, `useCheckAuditLog`, and `usePendingOutflowMutations`.
+The component keeps the whole body of today's dialog: the `DialogHeader` with
+its icon box, `DialogTitle`, and `DialogDescription`
+(`src/components/pending-outflows/PrintCheckButton.tsx:178-192`), the summary
+card, the bank-account `<Select>` (shown only when `accounts.length > 1`), the
+memo `<Input>`, the `<SearchableAccountSelector>`, and the footer buttons. It
+keeps `useCheckBankAccounts`, `useCheckAuditLog`, and
+`usePendingOutflowMutations`.
 
 It does **not** keep `useCheckSettings`; `settings` arrives as a prop. This
 avoids a second call to the same hook from the same subtree.
+
+The component holds no `open` state. Both current calls to `setOpen(false)`
+become `onOpenChange(false)`:
+
+- the success path in `handlePrint`
+  (`src/components/pending-outflows/PrintCheckButton.tsx:151`),
+- the Cancel button (`src/components/pending-outflows/PrintCheckButton.tsx:267`).
 
 `handlePrint` keeps its exact current order
 (`src/components/pending-outflows/PrintCheckButton.tsx:76-158`):
@@ -135,19 +147,48 @@ ends. If the component reads `expense` directly, `expense` is already `null`
 during the exit, so an empty box fades out and Radix warns about a missing
 `DialogTitle`.
 
-Hold the last non-null expense and adjust state during render:
+Hold the last non-null expense and adjust state during render.
+
+**Warning: the form state is now one variable for the whole list.** Today each
+row owns its own `PrintCheckButton` instance, so a fresh mount clears the
+fields. After the move, the fields keep their values between rows unless the
+component clears them. The reset must fire on two events: a row change, and
+every new open of the dialog.
 
 ```tsx
+const isOpen = expense !== null;
+
+const [wasOpen, setWasOpen] = useState(false);
 const [shownExpense, setShownExpense] = useState<PendingOutflow | null>(null);
 
-if (expense && expense.id !== shownExpense?.id) {
+if (isOpen !== wasOpen) {
+  setWasOpen(isOpen);
+}
+
+// Reset on each open, and when the user picks a different row.
+if (expense && (!wasOpen || expense.id !== shownExpense?.id)) {
   setShownExpense(expense);
   setMemo(expense.notes ?? '');
   setSelectedCategoryId(expense.category_id ?? null);
+  setSelectedAccountId(defaultAccount?.id ?? null);
 }
 
 const displayExpense = expense ?? shownExpense;
 ```
+
+Trace of the state:
+
+| Event | `wasOpen` before | Reset fires | `displayExpense` |
+|-------|------------------|-------------|------------------|
+| First render, closed | `false` | no | `null` |
+| Open row A | `false` | yes | A |
+| Refetch of row A while open | `true` | no | A |
+| Cancel (close) | `true` | no | A, through the exit animation |
+| Open row A again | `false` | yes | A |
+| Open row B | `false` | yes | B |
+
+`shownExpense` never returns to `null` after the first open. That is correct:
+its only job is to feed the exit animation.
 
 This replaces the reset effect at
 `src/components/pending-outflows/PrintCheckButton.tsx:60-65`. That effect
@@ -158,17 +199,23 @@ row does not reset the fields.
 
 ### 5.4 Account init
 
-Keep the current behaviour
-(`src/components/pending-outflows/PrintCheckButton.tsx:68-71`), with `open`
-derived from the prop:
+The render-phase reset in section 5.3 sets `selectedAccountId` on each open.
+The account list can still load after the open, so keep the current effect
+(`src/components/pending-outflows/PrintCheckButton.tsx:68-71`) as the late fill:
 
 ```tsx
-const isOpen = expense !== null;
 useEffect(() => {
   if (!isOpen) return;
   setSelectedAccountId((current) => current ?? defaultAccount?.id ?? null);
 }, [isOpen, defaultAccount?.id]);
 ```
+
+The effect writes only when `current` is `null`, so it never overwrites the
+account the user picked.
+
+`handlePrint` also falls back to `defaultAccount`
+(`src/components/pending-outflows/PrintCheckButton.tsx:79`), so a null
+`selectedAccountId` at print time still prints from the default account.
 
 ### 5.5 `PendingOutflowsList`
 
@@ -220,7 +267,7 @@ settings, no Print button appears.
 
 ### 5.7 Delete `PrintCheckButton.tsx`
 
-After the move, nothing imports it. `PendingOutflowCard.tsx:179` is its only
+After the move, nothing imports it. `PendingOutflowCard.tsx:180` is its only
 render site in the app. Delete the file.
 
 ## 6. Test plan
@@ -232,6 +279,13 @@ render site in the app. Delete the file.
 | Category flows into `updatePendingOutflow` | rewrite of `tests/unit/PrintCheckButtonCategory.test.tsx` | the print path still works from list level |
 | Capability gate | update of `tests/unit/pendingOutflowCardPrintCheckGate.test.tsx` | button hidden when `!isResolved`, `!hasCapability`, or no `onPrintCheck` |
 | No check settings | new case in the list test | no Print button and no dialog |
+| **Row switch clears the form** | new `tests/unit/PrintCheckDialogCategory.test.tsx` | open row A, type a memo, pick account X, close, open row B: the memo, the category, and the account show row B's own values |
+| **Reopen clears the form** | same file | open row A, type a memo, cancel, reopen row A: the memo returns to `expense.notes` |
+| **Refetch keeps the form** | same file | open row A, type a memo, push a new object with the same `id`: the typed memo stays |
+
+The row-switch test and the reopen test guard the two defects that shared form
+state introduces. Without them, a wrong bank account can print on the next
+check with no error.
 
 The auto-create test counts hook instances, not database writes: mock
 `useCheckBankAccounts` with a module-level counter and assert the counter is 1
@@ -249,7 +303,9 @@ the list, so it covers the trigger and the dialog together.
 | First print shows "Please select a bank account" | always-mounted dialog (section 5.2) |
 | Print button appears with no check settings | `onPrintCheck` is `undefined` when `settings` is null (section 5.6) |
 | Typed memo lost on a background refetch | key the reset on `expense.id` (section 5.3) |
-| A second render site for `PrintCheckButton` exists | grep before delete; only `PendingOutflowCard.tsx:179` renders it today |
+| A check prints from the previous row's bank account | reset `selectedAccountId` on each open (section 5.3) plus a row-switch test (section 6) |
+| A reopen shows the previous typed memo | reset on the `wasOpen` transition (section 5.3) plus a reopen test (section 6) |
+| A second render site for `PrintCheckButton` exists | grep before delete; only `PendingOutflowCard.tsx:180` renders it today |
 
 ## 8. Files
 

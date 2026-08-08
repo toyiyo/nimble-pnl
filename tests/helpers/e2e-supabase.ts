@@ -79,18 +79,39 @@ export async function exposeSupabaseHelpers(page: Page) {
     };
 
     (window as any).__insertEmployees = async (employees: any[], restaurantId: string) => {
-      const { data, error } = await supabase
+      // Two steps, on purpose. A bare .select() after the insert sends
+      // Prefer: return=representation, so PostgREST runs INSERT ... RETURNING *
+      // and reads the eight masked columns that `authenticated` no longer holds.
+      // Ask the insert for `id` alone, then read the full row back through
+      // `employees_secure`. The seeding user is the owner, who holds both
+      // sensitive flags, so the view returns every column unmasked. Callers
+      // read `position`, `area`, and `hourly_rate` off these rows.
+      const { data: inserted, error } = await supabase
         .from('employees')
         .insert(employees.map(emp => ({
           ...emp,
           restaurant_id: restaurantId,
         })))
-        .select('id, name');
+        .select('id');
 
       if (error) {
         throw new Error(error.message);
       }
-      return data;
+
+      const ids = (inserted ?? []).map((row: any) => row.id);
+      const { data, error: readError } = await supabase
+        .from('employees_secure')
+        .select('*')
+        .in('id', ids);
+
+      if (readError) {
+        throw new Error(readError.message);
+      }
+
+      // Keep the caller's insert order. `.in()` does not promise it, and specs
+      // pair the returned rows with their own seed array by index.
+      const byId = new Map((data ?? []).map((row: any) => [row.id, row]));
+      return ids.map((id: string) => byId.get(id));
     };
 
     (window as any).__insertTimePunches = async (punches: any[], restaurantId: string) => {

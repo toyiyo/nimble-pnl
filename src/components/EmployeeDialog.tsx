@@ -882,7 +882,6 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={hourlyRate}
                       onChange={(e) => setHourlyRate(e.target.value)}
                       placeholder="15.00"
-                      required
                       aria-label="Hourly rate in dollars"
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
@@ -947,7 +946,6 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={salaryAmount}
                       onChange={(e) => setSalaryAmount(e.target.value)}
                       placeholder="52000.00"
-                      required
                       aria-label="Salary amount in dollars"
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
@@ -1044,7 +1042,6 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={contractorPaymentAmount}
                       onChange={(e) => setContractorPaymentAmount(e.target.value)}
                       placeholder="2500.00"
-                      required
                       aria-label="Payment amount in dollars"
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />

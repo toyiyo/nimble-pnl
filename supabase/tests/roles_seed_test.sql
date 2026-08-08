@@ -210,6 +210,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Owner', 'manage:collaborators'),
   ('Owner', 'view:reviews'),
   ('Owner', 'manage:reviews'),
+  ('Owner', 'view:pay_rates'),
+  ('Owner', 'view:employee_pii'),
   ('Manager', 'view:dashboard'),
   ('Manager', 'view:ai_assistant'),
   ('Manager', 'view:transactions'),
@@ -263,6 +265,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Manager', 'manage:collaborators'),
   ('Manager', 'view:reviews'),
   ('Manager', 'manage:reviews'),
+  ('Manager', 'view:pay_rates'),
+  ('Manager', 'view:employee_pii'),
   ('Operations Manager', 'view:dashboard'),
   ('Operations Manager', 'view:ai_assistant'),
   ('Operations Manager', 'view:inventory'),
@@ -298,6 +302,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Operations Manager', 'view:settings'),
   ('Operations Manager', 'view:reviews'),
   ('Operations Manager', 'manage:reviews'),
+  ('Operations Manager', 'view:pay_rates'),
+  ('Operations Manager', 'view:employee_pii'),
   ('Chef', 'view:dashboard'),
   ('Chef', 'view:inventory'),
   ('Chef', 'edit:inventory'),
@@ -339,6 +345,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Accountant', 'view:payroll'),
   ('Accountant', 'view:employees'),
   ('Accountant', 'view:settings'),
+  ('Accountant', 'view:pay_rates'),
+  ('Accountant', 'view:employee_pii'),
   ('Inventory Helper', 'view:inventory'),
   ('Inventory Helper', 'edit:inventory'),
   ('Inventory Helper', 'view:inventory_audit'),
@@ -386,7 +394,9 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Operations Manager (Collaborator)', 'edit:tips'),
   ('Operations Manager (Collaborator)', 'view:payroll'),
   ('Operations Manager (Collaborator)', 'view:employees'),
-  ('Operations Manager (Collaborator)', 'view:settings');
+  ('Operations Manager (Collaborator)', 'view:settings'),
+  ('Operations Manager (Collaborator)', 'view:pay_rates'),
+  ('Operations Manager (Collaborator)', 'view:employee_pii');
 
 -- ----------------------------------------------------------------------------
 -- derived_capabilities: what the seed actually produces, computed purely

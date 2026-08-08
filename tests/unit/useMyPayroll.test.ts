@@ -66,7 +66,7 @@ const restaurantScopedChains: Record<string, ReturnType<typeof makeChainable>> =
 };
 
 const allChains: Record<string, ReturnType<typeof makeChainable>> = {
-  employees: employeesChain,
+  employees_secure: employeesChain,
   ...perEmployeeTableChains,
   ...restaurantScopedChains,
 };
@@ -140,7 +140,7 @@ describe('useMyPayroll (self-scoped)', () => {
       expect(fromMock).toHaveBeenCalledWith(table);
       expect(chain.calls).toContainEqual({ method: 'eq', args: ['employee_id', 'emp-1'] });
     });
-    expect(fromMock).toHaveBeenCalledWith('employees');
+    expect(fromMock).toHaveBeenCalledWith('employees_secure');
     expect(employeesChain.calls).toContainEqual({ method: 'eq', args: ['id', 'emp-1'] });
   });
 

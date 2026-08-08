@@ -93,7 +93,7 @@ describe('Employee Activation Status', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('employees');
+      expect(mockSupabase.from).toHaveBeenCalledWith('employees_secure');
       expect(mockChain.eq).toHaveBeenCalledWith('restaurant_id', 'restaurant-123');
       expect(mockChain.eq).toHaveBeenCalledWith('is_active', true);
       expect(result.current.employees).toHaveLength(2);

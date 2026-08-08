@@ -14,7 +14,7 @@ export const useTimeOffRequests = (restaurantId: string | null) => {
         .from('time_off_requests')
         .select(`
           *,
-          employee:employees(*)
+          employee:employees(id, name, position, area, status, is_active, employment_type, user_id)
         `)
         .eq('restaurant_id', restaurantId)
         .order('start_date', { ascending: false });

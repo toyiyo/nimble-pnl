@@ -14,7 +14,7 @@ const fetchChangeLogs = async ({ restaurantId, shiftId, startDate, endDate }: Ch
 
   let query = supabase
     .from('schedule_change_logs')
-    .select('*, employee:employees(*)');
+    .select('*, employee:employees(id, name, position, area, status, is_active, employment_type, user_id)');
 
   if (restaurantId) {
     query = query.eq('restaurant_id', restaurantId);

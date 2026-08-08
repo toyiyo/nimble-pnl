@@ -81,7 +81,7 @@ function useShiftsQuery(
 
       let query = supabase
         .from('shifts')
-        .select('*, employee:employees(*)')
+        .select('*, employee:employees(id, name, position, area, status, is_active, employment_type, user_id)')
         .eq('restaurant_id', restaurantId);
 
       if (employeeId) {

@@ -3,7 +3,6 @@ import { format, isToday as isDateToday } from 'date-fns';
 import { Edit, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { isMinor } from '@/lib/employeeUtils';
 import { pickDefaultMobileDay } from '@/lib/scheduleMobile';
 import { type WeekAvailabilitySummary } from '@/lib/effectiveAvailability';
 import type { EmployeeWeekTimeOff } from '@/lib/scheduleTimeOff';
@@ -88,7 +87,7 @@ function EmployeeCardHeader({
   selectionMode,
   onEditEmployee,
 }: Readonly<EmployeeCardHeaderProps>) {
-  const isMinorEmployee = isMinor(employee.date_of_birth);
+  const isMinorEmployee = employee.is_minor === true;
 
   return (
     <div className="flex items-center justify-between gap-3">

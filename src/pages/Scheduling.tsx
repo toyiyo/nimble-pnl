@@ -77,7 +77,6 @@ import { BulkEditShiftsDialog } from '@/components/scheduling/BulkEditShiftsDial
 import { useBulkShiftActions } from '@/hooks/useBulkShiftActions';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { isMinor } from '@/lib/employeeUtils';
 import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import {
   computeEffectiveAvailability,
@@ -1283,7 +1282,7 @@ const Scheduling = () => {
                         {!isCollapsed && group.employees.map((employee, idx) => {
                           const empOff = weekTimeOff.get(employee.id);
                           const off = empOff ? summarizeOff(empOff) : null;
-                          const isMinorEmployee = isMinor(employee.date_of_birth);
+                          const isMinorEmployee = employee.is_minor === true;
                           const weekAvailability = weekAvailabilityByEmployee.get(employee.id);
                           return (
                           <tr

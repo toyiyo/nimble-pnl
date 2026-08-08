@@ -62,15 +62,20 @@ membership row with role = 'owner' ... Not addressed here". It is still open.
 
 ## Which flows actually INSERT a membership row
 
-This decides whether a hard guard is safe. Four writers exist. **Every one of
-them bypasses RLS.**
+This decides whether a hard guard is safe. Four writers insert a row. **Every
+one of them bypasses RLS.**
 
 | Writer | Mechanism | Bypasses RLS? | Citation |
 |---|---|---|---|
 | `create_restaurant_with_owner` | `SECURITY DEFINER`, owner `postgres` | **Yes** | `supabase/migrations/20260129000000_add_subscription_system.sql:367-420` |
 | `accept-invitation` | service-role client | **Yes** | `supabase/functions/accept-invitation/index.ts:118-133` |
 | `scim-v2` | service-role client | **Yes** | `supabase/functions/scim-v2/index.ts:473-475` |
-| `assign_membership_role` | `SECURITY DEFINER`, owner `postgres` | **Yes** | `supabase/migrations/20260802110000_assign_membership_role.sql` |
+| `create-kiosk-service-account` | service-role client, `.upsert()` | **Yes** | `supabase/functions/create-kiosk-service-account/index.ts:38, 129-136` |
+
+`assign_membership_role` is **not** a writer of new rows. It only UPDATEs an
+existing row (`supabase/migrations/20260802110000_assign_membership_role.sql:200-203`).
+It is `SECURITY DEFINER` owned by `postgres`, so it bypasses RLS as well, but
+the new INSERT guard cannot reach it.
 
 **No browser client inserts a membership row.** A grep of `src/` for
 `from('user_restaurants')` returns 7 `.select(` and 2 `.delete(` call sites and
@@ -152,6 +157,12 @@ nothing.
 DROP POLICY IF EXISTS "Users can insert their own restaurant associations"
   ON public.user_restaurants;
 
+-- Drop the new policy by its own name first, so a re-run of this file is a
+-- refresh and not a "policy already exists" failure. Same pattern as
+-- 20260730180000_close_role_id_self_escalation.sql:45-47.
+DROP POLICY IF EXISTS "Only owners can insert restaurant associations"
+  ON public.user_restaurants;
+
 CREATE POLICY "Only owners can insert restaurant associations"
   ON public.user_restaurants
   AS RESTRICTIVE
@@ -182,30 +193,42 @@ prefix.
 
 **File:** `supabase/tests/user_restaurants_insert_guard.test.sql`
 
-Every deny case uses `throws_ok`. `memory/lessons.md:851`: a deny-guard test
-that does not prove the exception fires is the only thing that catches the
-permissive-OR mistake.
+Every deny case uses `throws_ok` **pinned to SQLSTATE `42501`**
+(`insufficient_privilege`). `memory/lessons.md:851`: a deny-guard test that does
+not prove the exception fires is the only thing that catches the permissive-OR
+mistake. A bare `throws_ok` is not enough here — see the warning below.
 
 | # | Case | Expect |
 |---|---|---|
-| 1 | Stranger inserts self as `owner` on another restaurant | throws |
-| 2 | Stranger inserts self as `staff` on another restaurant | throws |
-| 3 | Stranger inserts self as `manager` on another restaurant | throws |
-| 4 | Existing `staff` member inserts self as `owner` on their own restaurant | throws |
+| 1 | Stranger inserts self as `owner` on another restaurant | throws `42501` |
+| 2 | Stranger inserts self as `staff` on another restaurant | throws `42501` |
+| 3 | Stranger inserts self as `manager` on another restaurant | throws `42501` |
+| 4 | Existing `staff` member of A inserts self as `owner` on **restaurant B** | throws `42501` |
 | 5 | Real owner inserts another user as `staff` | succeeds |
 | 6 | Real owner inserts another user as `owner` | succeeds |
 | 7 | `create_restaurant_with_owner` still creates the bootstrap owner row | succeeds |
 | 8 | Policy exists, is RESTRICTIVE, and is scoped to INSERT | passes |
 | 9 | The dropped policy is gone | passes |
 
-Case 4 matters most. It is the non-vacuous test: the subject is already a member
-of that exact restaurant, so the `user_id = auth.uid()` disjunct is satisfied and
-only the new restrictive policy can deny it. `memory/lessons.md:866` — a clause
-tested with a subject that another clause already authorizes proves nothing.
+**Cases 1-4 are the non-vacuous ones.** Each is a *self*-insert, so
+`user_id = auth.uid()` holds by construction and the permissive set admits the
+row. Only the new RESTRICTIVE policy can deny it. `memory/lessons.md:866` — a
+clause tested with a subject that another clause already authorizes proves
+nothing.
+
+**Warning: do not test a self-insert into a restaurant the subject already
+belongs to.** `public.user_restaurants` has `UNIQUE(user_id, restaurant_id)`
+(`supabase/migrations/20250915210020_774bc2c1-abb6-4f03-b10f-5cfc85e9b772.sql:18`).
+That INSERT raises `23505` (`unique_violation`) before RLS ever reports `42501`.
+A bare `throws_ok` on such a case passes even if the RESTRICTIVE policy is
+deleted. The SQLSTATE pin makes the trap impossible: a `23505` no longer counts
+as a pass. Case 4 therefore targets **restaurant B**, where the subject holds no
+row.
 
 Case 7 guards the bootstrap path. A new user is not yet an owner when
 `create_restaurant_with_owner` writes their first membership row. The test
-proves the `SECURITY DEFINER` bypass holds.
+proves the `SECURITY DEFINER` bypass holds. This is the highest-risk regression
+in the change.
 
 ---
 

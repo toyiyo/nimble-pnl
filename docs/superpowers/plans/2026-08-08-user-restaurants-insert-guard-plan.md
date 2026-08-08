@@ -61,7 +61,7 @@ then run 6. A second insert of the same pair raises `23505`.
 
 Warning: never point a deny case at a restaurant the actor already belongs to.
 `UNIQUE(user_id, restaurant_id)`
-(`supabase/migrations/20250915210020_774bc2c1-abb6-4f03-b10f-5cfc85e9b772.sql:18`)
+(`supabase/migrations/20250915210020_774bc2c1-abb6-4f03-b10f-5cfc85e9b772.sql:19`)
 raises `23505` before RLS raises `42501`. The SQLSTATE pin on cases 1-4 makes
 that mistake fail loudly instead of passing.
 

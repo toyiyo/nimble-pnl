@@ -220,7 +220,7 @@ nothing.
 
 **Warning: do not test a self-insert into a restaurant the subject already
 belongs to.** `public.user_restaurants` has `UNIQUE(user_id, restaurant_id)`
-(`supabase/migrations/20250915210020_774bc2c1-abb6-4f03-b10f-5cfc85e9b772.sql:18`).
+(`supabase/migrations/20250915210020_774bc2c1-abb6-4f03-b10f-5cfc85e9b772.sql:19`).
 That INSERT raises `23505` (`unique_violation`) before RLS ever reports `42501`.
 A bare `throws_ok` on such a case passes even if the RESTRICTIVE policy is
 deleted. The SQLSTATE pin makes the trap impossible: a `23505` no longer counts

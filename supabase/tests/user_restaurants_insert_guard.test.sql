@@ -183,13 +183,28 @@ SELECT is(
 
 -- ============================================================================
 -- 11. Anon-role boundary. Runs as the real `anon` role (no `sub` claim), not
---    as `authenticated` with a stub id. auth.uid() is NULL for anon, and
---    is_restaurant_owner() returns false for a NULL owner id, so the new
---    RESTRICTIVE policy denies anon with no special case — the claim the
---    migration header and design doc make. This case pins that claim to a
---    real test, so a future edit that narrows the policy's `TO public` to
---    `TO authenticated`, or a change to is_restaurant_owner's NULL
---    handling, fails here instead of shipping silently.
+--    as `authenticated` with a stub id.
+--
+--    This case does NOT pin the new RESTRICTIVE policy or
+--    is_restaurant_owner()'s NULL handling. By default `anon` has only
+--    SELECT on public.user_restaurants (see
+--    supabase/migrations/20260628000000_grant_user_restaurants_select.sql)
+--    and Postgres checks table-level grants before RLS, so this INSERT is
+--    denied at the grant-check stage — it never reaches the RESTRICTIVE
+--    policy's WITH CHECK. Even granting anon INSERT for this test would not
+--    reach the policy either: the pre-existing permissive "Owners can
+--    manage restaurant associations" WITH CHECK
+--    (user_id = auth.uid() OR is_restaurant_owner(...)) already denies any
+--    anon insert on its own, since auth.uid() is NULL for anon and user_id
+--    is never NULL.
+--
+--    The weaker, true guarantee this case pins: the anon role cannot insert
+--    into user_restaurants at all, today, for this exact reason (the
+--    missing table grant). The error message is checked, not just the
+--    SQLSTATE, so a future migration that grants anon INSERT — which would
+--    change *why* anon is denied, even though anon would still end up
+--    denied by the permissive policy above — fails here instead of shipping
+--    a silently changed guarantee.
 -- ============================================================================
 SET LOCAL ROLE anon;
 SET LOCAL request.jwt.claims = '{"role":"anon"}';
@@ -198,7 +213,7 @@ SELECT throws_ok(
   $$ INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
      VALUES ('d0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-0000000000a1', 'owner') $$,
   '42501',
-  NULL,
+  'permission denied for table user_restaurants',
   'the anon role cannot insert into user_restaurants at all'
 );
 

@@ -32,7 +32,7 @@ export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 
     return pendingOutflows.find((outflow) => outflow.id === activeOutflowId) ?? null;
   }, [activeOutflowId, pendingOutflows]);
 
-  const canPrintChecks = isResolved && hasCapability('edit:pending_outflows');
+  const canPrintChecks = Boolean(checkSettings) && isResolved && hasCapability('edit:pending_outflows');
 
   const filteredOutflows = useMemo(() => {
     if (!pendingOutflows) return [];
@@ -138,14 +138,14 @@ export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 
                 key={outflow.id}
                 outflow={outflow}
                 onEdit={onEditExpense}
-                onPrintCheck={checkSettings && canPrintChecks ? (o) => setActiveOutflowId(o.id) : undefined}
+                onPrintCheck={canPrintChecks ? (o) => setActiveOutflowId(o.id) : undefined}
               />
             ))}
           </div>
         )}
       </CardContent>
 
-      {checkSettings && canPrintChecks && (
+      {canPrintChecks && checkSettings && (
         <PrintCheckDialog
           settings={checkSettings}
           expense={activeOutflow}

@@ -90,8 +90,7 @@ vi.mock('@/hooks/usePendingOutflows', () => ({
 
 // `capabilityGranted` lets a test flip the user's edit:pending_outflows
 // capability, so a test can prove the dialog and its hooks stay unmounted
-// for a viewer who can never open the dialog (review finding: security,
-// performance).
+// for a viewer who can never open the dialog.
 let capabilityGranted = true;
 
 vi.mock('@/hooks/usePermissions', () => ({
@@ -213,10 +212,10 @@ describe('PendingOutflowsList — single print-check dialog (design §5)', () =>
     expect(screen.queryByRole('button', { name: /Print check for/i })).toBeNull();
   });
 
-  // Review finding (security, performance): the dialog and its three data
-  // hooks (useCheckBankAccounts, useCheckAuditLog, usePendingOutflowMutations)
-  // must stay unmounted for a viewer who lacks edit:pending_outflows, the
-  // same as the per-row gate on the Print button itself.
+  // The dialog and its three data hooks (useCheckBankAccounts,
+  // useCheckAuditLog, usePendingOutflowMutations) must stay unmounted for a
+  // viewer who lacks edit:pending_outflows, the same as the per-row gate on
+  // the Print button itself.
   it('does not mount the dialog or its hooks with no edit:pending_outflows capability', () => {
     capabilityGranted = false;
 
@@ -226,9 +225,9 @@ describe('PendingOutflowsList — single print-check dialog (design §5)', () =>
     expect(screen.queryByRole('button', { name: /Print check for/i })).toBeNull();
   });
 
-  // Review finding (sound-logic, codex): the active outflow must come from
-  // the live query by id, not a frozen snapshot, so a row that leaves the
-  // list (voided, cleared, or deleted elsewhere) also closes the dialog.
+  // The active outflow must come from the live query by id, not a frozen
+  // snapshot, so a row that leaves the list (voided, cleared, or deleted
+  // elsewhere) also closes the dialog.
   it('closes the print-check dialog when the active row leaves the list on refetch', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<PendingOutflowsList onAddClick={vi.fn()} />);

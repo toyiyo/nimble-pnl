@@ -79,7 +79,7 @@ vi.mock('@/hooks/useCheckAuditLog', () => ({
 }));
 
 vi.mock('@/hooks/usePendingOutflows', () => ({
-  usePendingOutflows: () => ({ data: makeOutflows(5), isLoading: false, error: null }),
+  usePendingOutflows: () => ({ data: outflowsData, isLoading: false, error: null }),
   usePendingOutflowMatches: () => ({ data: [] }),
   usePendingOutflowMutations: () => ({
     updatePendingOutflow: { mutateAsync: updatePendingOutflowMutateAsync },
@@ -88,9 +88,15 @@ vi.mock('@/hooks/usePendingOutflows', () => ({
   }),
 }));
 
+// `capabilityGranted` lets a test flip the user's edit:pending_outflows
+// capability, so a test can prove the dialog and its hooks stay unmounted
+// for a viewer who can never open the dialog (review finding: security,
+// performance).
+let capabilityGranted = true;
+
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({
-    hasCapability: () => true,
+    hasCapability: () => capabilityGranted,
     isResolved: true,
   }),
 }));
@@ -157,8 +163,12 @@ function makeOutflows(count: number): PendingOutflow[] {
   }));
 }
 
+let outflowsData: PendingOutflow[] = makeOutflows(5);
+
 beforeEach(() => {
   bankAccountsHookCalls = 0;
+  capabilityGranted = true;
+  outflowsData = makeOutflows(5);
   checkSettingsValue = {
     id: 'set-1',
     restaurant_id: 'rest-1',
@@ -201,5 +211,35 @@ describe('PendingOutflowsList — single print-check dialog (design §5)', () =>
     render(<PendingOutflowsList onAddClick={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: /Print check for/i })).toBeNull();
+  });
+
+  // Review finding (security, performance): the dialog and its three data
+  // hooks (useCheckBankAccounts, useCheckAuditLog, usePendingOutflowMutations)
+  // must stay unmounted for a viewer who lacks edit:pending_outflows, the
+  // same as the per-row gate on the Print button itself.
+  it('does not mount the dialog or its hooks with no edit:pending_outflows capability', () => {
+    capabilityGranted = false;
+
+    render(<PendingOutflowsList onAddClick={vi.fn()} />);
+
+    expect(bankAccountsHookCalls).toBe(0);
+    expect(screen.queryByRole('button', { name: /Print check for/i })).toBeNull();
+  });
+
+  // Review finding (sound-logic, codex): the active outflow must come from
+  // the live query by id, not a frozen snapshot, so a row that leaves the
+  // list (voided, cleared, or deleted elsewhere) also closes the dialog.
+  it('closes the print-check dialog when the active row leaves the list on refetch', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<PendingOutflowsList onAddClick={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /^Print check for Vendor 1$/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Someone else voids row 1; the next refetch drops it from the list.
+    outflowsData = outflowsData.filter((outflow) => outflow.id !== 'pof-1');
+    rerender(<PendingOutflowsList onAddClick={vi.fn()} />);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

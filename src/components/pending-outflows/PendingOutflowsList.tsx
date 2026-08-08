@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
 import { useCheckSettings } from "@/hooks/useCheckSettings";
+import { usePermissions } from "@/hooks/usePermissions";
 import { PendingOutflowCard } from "./PendingOutflowCard";
 import { PrintCheckDialog } from "./PrintCheckDialog";
 import { Plus, Wallet, AlertCircle } from "lucide-react";
@@ -20,7 +21,18 @@ interface PendingOutflowsListProps {
 export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 'all' }: PendingOutflowsListProps) {
   const { data: pendingOutflows, isLoading, error } = usePendingOutflows();
   const { settings: checkSettings } = useCheckSettings();
-  const [activeOutflow, setActiveOutflow] = useState<PendingOutflow | null>(null);
+  const { hasCapability, isResolved } = usePermissions();
+  const [activeOutflowId, setActiveOutflowId] = useState<string | null>(null);
+
+  // Derive the active outflow from the live query by id, not a frozen
+  // snapshot. This way a refetch that drops or changes the row (voided,
+  // deleted, or cleared by someone else) is reflected in the open dialog.
+  const activeOutflow = useMemo(() => {
+    if (!activeOutflowId || !pendingOutflows) return null;
+    return pendingOutflows.find((outflow) => outflow.id === activeOutflowId) ?? null;
+  }, [activeOutflowId, pendingOutflows]);
+
+  const canPrintChecks = isResolved && hasCapability('edit:pending_outflows');
 
   const filteredOutflows = useMemo(() => {
     if (!pendingOutflows) return [];
@@ -126,19 +138,19 @@ export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 
                 key={outflow.id}
                 outflow={outflow}
                 onEdit={onEditExpense}
-                onPrintCheck={checkSettings ? setActiveOutflow : undefined}
+                onPrintCheck={checkSettings && canPrintChecks ? (o) => setActiveOutflowId(o.id) : undefined}
               />
             ))}
           </div>
         )}
       </CardContent>
 
-      {checkSettings && (
+      {checkSettings && canPrintChecks && (
         <PrintCheckDialog
           settings={checkSettings}
           expense={activeOutflow}
           onOpenChange={(open) => {
-            if (!open) setActiveOutflow(null);
+            if (!open) setActiveOutflowId(null);
           }}
         />
       )}

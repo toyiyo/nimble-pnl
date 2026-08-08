@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react';
 
 // Phase 7a finding (codex adversarial review): the Expenses page header
 // rendered an unconditional "Print Checks" button that navigates to
-// `/print-checks`, unlike the render-site gate applied to PrintCheckButton
+// `/print-checks`, unlike the render-site gate applied to PrintCheckDialog
 // inside PendingOutflowCard (design §3.4, Task 4). A role with `books@view`
 // can open `/expenses` but is excluded from `/print-checks` (`books@manage`),
 // so the button sent such users into a protected route they cannot open.

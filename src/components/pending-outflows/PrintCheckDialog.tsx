@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
 
 import { Printer, FileText, Loader2 } from 'lucide-react';
 
@@ -24,7 +25,10 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCheckBankAccounts } from '@/hooks/useCheckBankAccounts';
 import { useCheckAuditLog } from '@/hooks/useCheckAuditLog';
 import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
-import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
+
+import type { PendingOutflow } from '@/types/pending-outflows';
+import type { CheckSettings } from '@/hooks/useCheckSettings';
+
 import {
   generateCheckPDF,
   generateCheckPDFAsync,
@@ -34,9 +38,6 @@ import {
 } from '@/utils/checkPrinting';
 import { formatCurrency } from '@/utils/pdfExport';
 import { toast } from 'sonner';
-
-import type { PendingOutflow } from '@/types/pending-outflows';
-import type { CheckSettings } from '@/hooks/useCheckSettings';
 
 interface PrintCheckDialogProps {
   settings: CheckSettings;
@@ -165,7 +166,9 @@ export function PrintCheckDialog({ settings, expense, onOpenChange }: PrintCheck
       toast.success(`Check #${checkNumber} printed`);
       onOpenChange(false);
     } catch (err) {
-      console.error('Print check error:', err);
+      if (import.meta.env.DEV) {
+        console.error('Print check error:', err);
+      }
       toast.error(err instanceof Error ? err.message : 'Failed to print check');
     } finally {
       setIsPrinting(false);
@@ -285,6 +288,7 @@ export function PrintCheckDialog({ settings, expense, onOpenChange }: PrintCheck
           <Button
             onClick={handlePrint}
             disabled={isPrinting || accountsLoading}
+            aria-busy={isPrinting || accountsLoading}
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
             {isPrinting || accountsLoading ? (
@@ -294,6 +298,15 @@ export function PrintCheckDialog({ settings, expense, onOpenChange }: PrintCheck
             )}
             Print Check
           </Button>
+        </div>
+
+        {/* Name the active operation for a screen reader. */}
+        <div role="status" aria-live="polite" className="sr-only">
+          {isPrinting
+            ? 'The check prints.'
+            : accountsLoading
+              ? 'The bank accounts load.'
+              : ''}
         </div>
       </DialogContent>
     </Dialog>

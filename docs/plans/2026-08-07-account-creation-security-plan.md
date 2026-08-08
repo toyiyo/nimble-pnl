@@ -26,9 +26,22 @@ TypeScript, Vitest, Playwright.
 | **A — code** | Claude Code sessions | Tasks 1-11 below. Migrations, edge functions, frontend. |
 | **B — hosted settings** | Jose, in the Supabase dashboard | `docs/SUPABASE_AUTH_HARDENING_CHECKLIST.md`. Confirm email, CAPTCHA, leaked-password protection, auth rate limits. |
 
-**One hard dependency:** Task 8 (signup hardening) needs Track B step B1 and B2
-done first. Every other task is independent. Do them in any order, but keep the
-severity order below if you have no other reason to reorder.
+**Two hard dependencies, and they point in opposite directions:**
+
+1. Task 8 (signup hardening) needs Track B step **B1** (Confirm email) first.
+2. Track B step **B2** (CAPTCHA **enforcement**) needs Task 8 **deployed**
+   first. Reverse of what an earlier version of this plan said.
+
+Warning: do not switch on CAPTCHA enforcement before the client sends a token.
+`src/hooks/useAuth.tsx:125` and `:177` call `signInWithPassword` and `signUp`
+with no `captchaToken`. `src/pages/AcceptInvitation.tsx:163-166` does the same.
+Enforcement before the deploy breaks every password sign-up and sign-in.
+
+B2 therefore splits in two. Provision the provider and the site key at any
+time. Switch on enforcement only after Task 8 ships.
+
+Every other task is independent. Do them in any order, but keep the severity
+order below if you have no other reason to reorder.
 
 ---
 
@@ -50,48 +63,57 @@ severity order below if you have no other reason to reorder.
 
 ---
 
-### Task 1: Block self-grant of `owner` on `user_restaurants`
+### Task 1: Block self-grant of `owner` on `user_restaurants` — DONE
 
-Audit: Vuln 1. **Ship this first.** Any signed-up user can become owner of any
-restaurant today.
+Audit: Vuln 1. Shipped in
+[PR #725](https://github.com/toyiyo/nimble-pnl/pull/725).
+
+Design: `docs/superpowers/specs/2026-08-08-user-restaurants-insert-guard-design.md`.
+Plan: `docs/superpowers/plans/2026-08-08-user-restaurants-insert-guard-plan.md`.
 
 **Files:**
-- Create: `supabase/migrations/20260807000000_restrict_user_restaurants_insert.sql`
+- Create: `supabase/migrations/20260808100000_restrict_user_restaurants_insert.sql`
 - Test: `supabase/tests/user_restaurants_insert_guard.test.sql`
+- Delete: the dead `__inviteCollaborator` helper in
+  `tests/helpers/e2e-supabase.ts`
 
-- [ ] **Step 1: Write the pgTAP test first.** Prove the hole exists, then prove
-      it closes. Cover these cases:
-      - A non-member INSERT with `role = 'owner'` on another restaurant **fails**.
-      - A non-member INSERT with `role = 'staff'` on another restaurant **fails**.
-      - A real owner CAN still add a member with any role.
-      - `create_restaurant_with_owner` still works end to end. It is
-        `SECURITY DEFINER`, so confirm whether RLS applies to its insert.
-      - `accept-invitation` still works. It uses the service role, which
-        bypasses RLS, so it must be unaffected.
-- [ ] **Step 2: Add the RESTRICTIVE INSERT policy.** Mirror the existing UPDATE
-      guard `"Prevent self-escalation to privileged roles"` exactly, so both
-      commands enforce the same rule.
+**The shipped policy differs from the draft below it.** The draft mirrored the
+UPDATE guard and allowed `role IN ('staff','kiosk')`. That branch is wrong for
+INSERT. For UPDATE it permits a **downgrade** of a membership that already
+exists. For INSERT it permits a stranger to **join** a tenant they have no
+relationship with, and many tenant policies treat any `user_restaurants` row as
+authorization.
+
+Research answered the self-join question: **no product flow needs the
+permissive INSERT grant at all.** `src/` holds 7 `.select(` and 2 `.delete(`
+call sites on the table and zero `.insert(`. All five real writers bypass RLS —
+`create_restaurant_with_owner` is `SECURITY DEFINER` owned by `postgres`, and
+`accept-invitation`, `scim-v2`, and `create-kiosk-service-account` use the
+service-role key.
+
+- [x] **Step 1: Write the pgTAP test first.** 11 cases. Every deny case pins
+      SQLSTATE `42501`. `UNIQUE(user_id, restaurant_id)` raises `23505` before
+      RLS raises `42501`, so a bare `throws_ok` passes even with the guard
+      deleted.
+- [x] **Step 2: Drop the permissive policy and add a RESTRICTIVE one.**
 
       ```sql
-      CREATE POLICY "Prevent self-grant of privileged roles on insert"
+      DROP POLICY IF EXISTS "Users can insert their own restaurant associations"
+        ON public.user_restaurants;
+
+      DROP POLICY IF EXISTS "Only owners can insert restaurant associations"
+        ON public.user_restaurants;
+
+      CREATE POLICY "Only owners can insert restaurant associations"
         ON public.user_restaurants
         AS RESTRICTIVE
         FOR INSERT
-        TO authenticated
-        WITH CHECK (
-          is_restaurant_owner(restaurant_id, auth.uid())
-          OR (
-            role = ANY (ARRAY['staff','kiosk'])
-            AND (role_id IS NULL OR role_id = builtin_role_id_for(role))
-          )
-        );
+        TO public
+        WITH CHECK (is_restaurant_owner(restaurant_id, auth.uid()));
       ```
 
-- [ ] **Step 3: Decide the self-join question.** The clause above still lets a
-      stranger insert themselves as `staff` on any restaurant. Decide whether
-      self-join is a real product flow. If it is not, tighten the second branch
-      to also require an accepted invitation. Write the decision in the
-      migration comment.
+      Effective INSERT check afterwards:
+      `is_restaurant_owner(restaurant_id, auth.uid())`.
 - [ ] **Step 4: Run `npm run test:db`.** All pgTAP suites must pass, not only
       the new one. 113 policies depend on `is_restaurant_owner()`.
 - [ ] **Step 5: Run the permissions E2E suite.** `npm run test:e2e`.
@@ -201,22 +223,66 @@ Audit: Vuln 6.
 **Files:**
 - Modify: `supabase/functions/validate-invitation/index.ts`
 - Modify: `supabase/functions/signup-with-invitation/index.ts`
+- Create: a migration that adds `invitations.signup_claimed_at timestamptz`
+
+**Warning: do not set `status = 'accepted'` in `signup-with-invitation`.** The
+create-account path is two calls, not one. `signup-with-invitation` only makes
+the auth account (`src/pages/AcceptInvitation.tsx:211-219`). The user then
+signs in, and `AcceptInvitation.tsx:129` calls `accept-invitation`, which
+selects `.eq('status', 'pending')` (`accept-invitation/index.ts:71`) before it
+inserts the membership row. An early `accepted` makes that second call reject
+the token, and the new user never joins the restaurant.
+
+Claim the invitation with a **separate** column instead. `status` stays
+`pending`, so `accept-invitation` still works.
 
 - [ ] **Step 1: Delete the plaintext logs.** Remove
       `console.log('Plain token from URL:', token)` at line 32. Remove the
       plaintext email log at line 77. Log a boolean or a hash prefix if you
       need the trace.
-- [ ] **Step 2: Consume the invitation** in `signup-with-invitation`. After the
-      password write succeeds, set `invitations.status = 'accepted'` and stamp
-      `accepted_at`. Today only `accept-invitation/index.ts:174-183` does this,
-      so the token stays replayable for its full 7-day life.
-- [ ] **Step 3: Make the consumption atomic.** Use a conditional update
-      (`... WHERE status = 'pending'`) and check the affected row count, so two
-      concurrent redemptions cannot both win.
-- [ ] **Step 4: Audit the remaining logs in both files** for any other secret
+- [ ] **Step 2: Add `invitations.signup_claimed_at timestamptz` (nullable).**
+      One column. No change to `status`.
+- [ ] **Step 3: Claim the row BEFORE the password mutation.** Order matters.
+      `signup-with-invitation/index.ts:73` calls
+      `admin.updateUserById` to set the password on an account that already
+      exists. Two concurrent redemptions of a leaked token can both validate
+      the pending invitation and both change the password. A conditional
+      status update placed **after** the mutation cannot undo the loser's
+      password write, so the live password can belong to a request the
+      function reported as rejected.
+
+      Claim first:
+
+      ```ts
+      const { data: claimed } = await supabaseAdmin
+        .from('invitations')
+        .update({ signup_claimed_at: new Date().toISOString() })
+        .eq('id', invitation.id)
+        .is('signup_claimed_at', null)
+        .eq('status', 'pending')
+        .select('id');
+
+      if (!claimed?.length) return errorResponse('Invalid or expired invitation', 400);
+      ```
+
+      The row lock inside that one UPDATE serializes the two callers. Exactly
+      one gets a row back.
+- [ ] **Step 4: Release the claim on failure.** If `updateUserById` or
+      `createUser` fails, set `signup_claimed_at` back to `NULL`. A real
+      invitee must be able to retry after a transient error.
+- [ ] **Step 5: Reject an already-claimed token in `validate-invitation`,**
+      so the UI does not show a form that cannot succeed.
+- [ ] **Step 6: Audit the remaining logs in both files** for any other secret
       or PII.
-- [ ] **Step 5: Test.** Redeem an invitation, then replay the same token. The
-      replay must fail.
+- [ ] **Step 7: Test.** Three cases.
+      - Redeem an invitation through the create-account path, then replay the
+        same token. The replay must fail.
+      - After `signup-with-invitation` succeeds, `accept-invitation` must still
+        grant the membership. This is the regression the warning above
+        describes.
+      - Fire two concurrent `signup-with-invitation` calls with the same token
+        and different passwords. Exactly one must succeed, and the live
+        password must be the winner's.
 
 ---
 
@@ -286,15 +352,25 @@ Audit: Vuln 10.
 
 Audit: Vulns 7 and 12.
 
-> **BLOCKED until Track B steps B1 and B2 are done.** The CAPTCHA provider and
-> its site key must exist before this code can send a token.
+> **BLOCKED until Track B step B1 is done**, and until B2 provisions the
+> CAPTCHA provider and the site key. This code cannot send a token before the
+> key exists.
+>
+> **Warning: B2 enforcement must stay OFF until this task deploys.** The switch
+> is the last step, not the first. See "Track split" above.
 
 **Files:**
 - Modify: `src/pages/Auth.tsx`
 - Modify: `src/hooks/useAuth.tsx`
+- Modify: `src/pages/AcceptInvitation.tsx`
 - Modify: `tests/e2e/helpers/e2e-supabase.ts`
 - Create: `src/lib/validation/signupSchema.ts`
 - Test: `tests/unit/signupSchema.test.ts`
+
+`src/pages/AcceptInvitation.tsx:163-166` calls `supabase.auth.signInWithPassword`
+direct, not through `useAuth`. `/accept-invitation` is a live authentication
+path. Miss it, and every existing invitee fails CAPTCHA at the invitation
+screen.
 
 - [ ] **Step 1: Write the zod password schema and its Vitest test.** Match
       `src/pages/ResetPassword.tsx:13-17` — 8+ characters, upper, lower, digit.

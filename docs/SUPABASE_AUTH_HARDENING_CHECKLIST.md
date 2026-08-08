@@ -55,12 +55,27 @@ hCaptcha.
 **Why:** A repo-wide grep for `captcha`, `turnstile`, `hcaptcha`, `recaptcha`
 returns zero hits. Nothing stands between a script and `supabase.auth.signUp`.
 
+**Warning: this step has two halves, and they are weeks apart.** The switch
+makes Supabase reject any `signUp` or `signInWithPassword` that carries no
+`captchaToken`. Three call sites send no token today:
+`src/hooks/useAuth.tsx:125`, `src/hooks/useAuth.tsx:177`, and
+`src/pages/AcceptInvitation.tsx:163-166`. Switch on enforcement before Task 8
+deploys, and every password sign-up and sign-in fails in production.
+
+### B2a — Provision. Do this at any time.
+
 - [ ] Create a Turnstile site at `dash.cloudflare.com` → Turnstile.
-- [ ] Paste the **secret key** into the Supabase dashboard.
 - [ ] Give the **site key** to the code session doing Task 8. It is public and
       safe to commit.
 - [ ] Create a second Turnstile site in **"Always passes"** test mode. Give that
       secret to the E2E environment so tests keep working.
+
+### B2b — Enforce. Do this only after Task 8 is live in production.
+
+- [ ] Confirm Task 8 is deployed, and that a real sign-up works.
+- [ ] Paste the **secret key** into the Supabase dashboard.
+- [ ] Switch on **Enable CAPTCHA protection**.
+- [ ] Test a sign-up, a sign-in, and an invitation sign-in right away.
 
 ---
 
@@ -141,7 +156,8 @@ almost certainly the project's own E2E suite hitting production.
 | Step | Effort | Blocks | Blocked by |
 |---|---|---|---|
 | B1 Confirm email | 15 min | Task 8, Task 10 step 3 | Task 8 step 4 (E2E fix) |
-| B2 CAPTCHA | 20 min | Task 8 | — |
+| B2a CAPTCHA provision | 15 min | Task 8 | — |
+| B2b CAPTCHA enforce | 5 min | — | **Task 8 deployed** |
 | B3 Leaked passwords | 2 min | — | — |
 | B4 Rate limits | 10 min | — | — |
 | B5 Cloudflare | 1-2 h | — | B1-B4 |

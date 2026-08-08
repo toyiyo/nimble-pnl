@@ -173,6 +173,11 @@ export function ScheduleMetricsRibbon({
           <span className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
             <TrendingUp className="h-3 w-3" />
             ${laborCostSummary.averageHourlyRate.toFixed(2)}/hr avg
+            {laborCostSummary.hiddenCostCount > 0 && (
+              <span className="text-[11px] text-muted-foreground ml-1">
+                ({laborCostSummary.hiddenCostCount} hidden)
+              </span>
+            )}
           </span>
         )}
       </div>
@@ -239,6 +244,11 @@ export function ScheduleMetricsRibbon({
                 <span className="text-muted-foreground">Avg Rate</span>
                 <span className={cn('font-medium tabular-nums', laborCostSummary.isAverageHigh && 'text-destructive')}>
                   ${laborCostSummary.averageHourlyRate.toFixed(2)}/hr
+                  {laborCostSummary.hiddenCostCount > 0 && (
+                    <span className="text-[11px] text-muted-foreground ml-1">
+                      ({laborCostSummary.hiddenCostCount} hidden)
+                    </span>
+                  )}
                 </span>
               </div>
             )}

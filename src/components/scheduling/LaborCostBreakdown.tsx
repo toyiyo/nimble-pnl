@@ -62,12 +62,15 @@ export const LaborCostBreakdown = ({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className={cn(
-                "text-sm font-semibold",
-                emp.outlierLevel === 'critical' && "text-destructive",
-                emp.outlierLevel === 'warning' && "text-accent-foreground"
-              )}>
-                ${emp.cost.toFixed(2)}
+              <span
+                className={cn(
+                  "text-sm font-semibold",
+                  emp.outlierLevel === 'critical' && "text-destructive",
+                  emp.outlierLevel === 'warning' && "text-accent-foreground"
+                )}
+                aria-label={emp.costIsHidden ? 'Labor cost hidden' : undefined}
+              >
+                {emp.costIsHidden ? '—' : `$${emp.cost.toFixed(2)}`}
               </span>
               <Edit className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>

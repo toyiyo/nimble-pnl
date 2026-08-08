@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 
+import { BrandMark } from '@/components/reviews/BrandMark';
 import { StarRating } from '@/components/reviews/StarRating';
 
 import { ChevronLeft } from 'lucide-react';
@@ -27,15 +28,6 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@/styles/counter-theme.css';
 
 type Stage = 'land' | 'promoter' | 'feedback' | 'thanks';
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 /** The Google review hand-off. The promoter stage and the thanks stage both render it. */
 function GoogleReviewLink({ href }: { href: string }) {
@@ -289,20 +281,11 @@ export default function ReviewPage() {
   return shell(
     <>
       <div className="flex flex-col items-center">
-        {page.logo_url ? (
-          <img
-            src={page.logo_url}
-            alt=""
-            className="h-14 w-14 rounded-full object-cover"
-          />
-        ) : (
-          <div
-            aria-hidden="true"
-            className="counter-display flex h-14 w-14 items-center justify-center rounded-full bg-muted text-[18px] font-semibold text-foreground"
-          >
-            {initials(page.restaurant_name)}
-          </div>
-        )}
+        <BrandMark
+          logoUrl={page.logo_url}
+          name={page.restaurant_name}
+          className="h-14 w-14 text-[18px]"
+        />
         <p className="counter-micro mt-3 text-[12px] uppercase tracking-wider text-muted-foreground">
           {page.restaurant_name}
         </p>

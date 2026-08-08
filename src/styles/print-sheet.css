@@ -1,0 +1,104 @@
+/* The printed review sheet. The first print CSS in this codebase.
+ *
+ * Why a portal on document.body and not the dialog:
+ * DialogContent carries `fixed`, `max-h-[85vh]`, `overflow-y-auto`, and two
+ * translate transforms (src/components/ui/dialog.tsx:40). A clipped,
+ * transformed, fixed ancestor prints the visible scroll window only, and
+ * WebKit often prints nothing at all. The print copy therefore hangs off
+ * document.body, where no Radix wrapper can reach it.
+ *
+ * Why `position: absolute; left: -100000px` and not `display: none`:
+ * a display:none image is not laid out, and img.decode() can reject on it.
+ * waitForPrintReady depends on that decode, so the print copy stays in the
+ * layout and moves off screen instead.
+ */
+
+#review-print-root {
+  position: absolute;
+  left: -100000px;
+  top: 0;
+}
+
+/* Named pages. `@page` cannot read a class, so each size gets its own page
+ * name and the root opts in through `page:`. Every rule zeroes the margin: a
+ * browser applies about 0.5in by default, which shrinks the printable area and
+ * pushes a seventh partial row of stickers onto a second sheet. */
+@page tent {
+  size: 4in 6in;
+  margin: 0;
+}
+
+@page card {
+  size: 5.5in 8.5in;
+  margin: 0;
+}
+
+@page stickers {
+  size: 8.5in 11in;
+  margin: 0;
+}
+
+#review-print-root[data-size='tent'] {
+  page: tent;
+}
+
+#review-print-root[data-size='card'] {
+  page: card;
+}
+
+#review-print-root[data-size='stickers'] {
+  page: stickers;
+}
+
+/* The one place in this feature that names a colour instead of a token.
+ *
+ * A QR scanner reads contrast, not theme. The Counter palette's warm paper
+ * (--background: 38 34% 96%) behind black modules drops the contrast ratio and
+ * makes a worn print harder to read at arm's length. The code therefore sits on
+ * pure white on screen and on paper. The surrounding sheet keeps the token. */
+.print-qr-paper {
+  background-color: #fff;
+}
+
+/* The trim guide. Safari often ignores `@page size` and prints on the user's
+ * chosen paper, so a manager needs to see where to cut. */
+.print-tile {
+  outline: 1px dashed hsl(var(--border));
+  outline-offset: -2px;
+}
+
+@media print {
+  /* WARNING: this rule must never apply without the print root on the page.
+   *
+   * The selector needs the `review-print-active` class, which ReviewQrDialog
+   * adds to body only while the print portal is mounted. Scoped to `body >`
+   * alone, the rule stays live for the whole session, because this stylesheet
+   * loads with the Reviews route and never unloads. A manager who opened the
+   * QR dialog once would then print a blank sheet from every other page —
+   * payroll, P&L, an invoice. tests/e2e/review-qr-print.spec.ts closes the
+   * dialog and prints again to hold this.
+   *
+   * DialogPortal makes the whole dialog a direct child of body
+   * (src/components/ui/dialog.tsx:34-36), so this reaches it. */
+  body.review-print-active > *:not(#review-print-root) {
+    display: none !important;
+  }
+
+  #review-print-root {
+    position: static;
+    left: auto;
+  }
+
+  /* Only the logo and the QR force their ink. A full-bleed warm background
+   * would drain a restaurant printer's colour cartridge on every sheet. */
+  .print-ink {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* No tile may split across two sheets. */
+  .print-tile {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

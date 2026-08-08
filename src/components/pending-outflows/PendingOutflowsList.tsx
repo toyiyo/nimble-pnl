@@ -1,10 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
+import { useCheckSettings } from "@/hooks/useCheckSettings";
+import { usePermissions } from "@/hooks/usePermissions";
 import { PendingOutflowCard } from "./PendingOutflowCard";
+import { PrintCheckDialog } from "./PrintCheckDialog";
 import { Plus, Wallet, AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/utils/pdfExport";
 import type { PendingOutflow, PendingOutflowStatus } from "@/types/pending-outflows";
@@ -17,6 +20,29 @@ interface PendingOutflowsListProps {
 
 export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 'all' }: PendingOutflowsListProps) {
   const { data: pendingOutflows, isLoading, error } = usePendingOutflows();
+  const { settings: checkSettings } = useCheckSettings();
+  const { hasCapability, isResolved } = usePermissions();
+  const [activeOutflowId, setActiveOutflowId] = useState<string | null>(null);
+
+  // Derive the active outflow from the live query by id, not a frozen
+  // snapshot. This way a refetch that drops or changes the row (voided,
+  // deleted, or cleared by someone else) is reflected in the open dialog.
+  //
+  // usePendingOutflows does not filter by status, so a row that gets
+  // cleared or voided elsewhere still comes back in the same query. Only
+  // treat the row as active while its status is still printable — the
+  // same rule PendingOutflowCard uses to show the Print button — so the
+  // dialog closes the moment a refetch marks the open row cleared or
+  // voided, instead of staying open on a check that can no longer print.
+  const activeOutflow = useMemo(() => {
+    if (!activeOutflowId || !pendingOutflows) return null;
+    const outflow = pendingOutflows.find((o) => o.id === activeOutflowId);
+    if (!outflow) return null;
+    const isPrintable = outflow.status === 'pending' || outflow.status.startsWith('stale_');
+    return isPrintable ? outflow : null;
+  }, [activeOutflowId, pendingOutflows]);
+
+  const canPrintChecks = Boolean(checkSettings) && isResolved && hasCapability('edit:pending_outflows');
 
   const filteredOutflows = useMemo(() => {
     if (!pendingOutflows) return [];
@@ -118,11 +144,26 @@ export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 
         ) : (
           <div className="space-y-3">
             {filteredOutflows.map((outflow) => (
-              <PendingOutflowCard key={outflow.id} outflow={outflow} onEdit={onEditExpense} />
+              <PendingOutflowCard
+                key={outflow.id}
+                outflow={outflow}
+                onEdit={onEditExpense}
+                onPrintCheck={canPrintChecks ? (o) => setActiveOutflowId(o.id) : undefined}
+              />
             ))}
           </div>
         )}
       </CardContent>
+
+      {canPrintChecks && checkSettings && (
+        <PrintCheckDialog
+          settings={checkSettings}
+          expense={activeOutflow}
+          onOpenChange={(open) => {
+            if (!open) setActiveOutflowId(null);
+          }}
+        />
+      )}
     </Card>
   );
 }

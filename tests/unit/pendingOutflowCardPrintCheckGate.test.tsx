@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Capability gate under test (design §3.4): `PrintCheckButton` renders only
-// when `isResolved && hasCapability('edit:pending_outflows')`.
+// Print-button gate under test (design §5.6): the inline Print button renders
+// only when `onPrintCheck && isResolved && hasCapability('edit:pending_outflows')`.
 const hasCapabilityMock = vi.fn();
 let isResolvedMock = true;
 vi.mock('@/hooks/usePermissions', () => ({
@@ -14,22 +14,25 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }));
 
-// Isolate the render-site gate from PrintCheckButton's own hooks/dialog.
-vi.mock('@/components/pending-outflows/PrintCheckButton', () => ({
-  PrintCheckButton: () => <button data-testid="print-check-button">Print check</button>,
-}));
-
 vi.mock('@/contexts/RestaurantContext', () => ({
-  useRestaurantContext: () => ({ selectedRestaurant: { id: 'restaurant-1' } }),
+  useRestaurantContext: () => ({
+    selectedRestaurant: { id: 'restaurant-1', restaurant: { name: 'Test Restaurant' }, restaurant_id: 'restaurant-1' },
+  }),
 }));
 
 vi.mock('@/hooks/usePendingOutflows', () => ({
   usePendingOutflowMutations: () => ({
     voidPendingOutflow: { mutate: vi.fn() },
     deletePendingOutflow: { mutate: vi.fn() },
+    updatePendingOutflow: { mutateAsync: vi.fn() },
   }),
   usePendingOutflowMatches: () => ({ data: [] }),
 }));
+
+// Design §5.6 moved the print-check dialog and its three hooks
+// (useCheckSettings, useCheckBankAccounts, useCheckAuditLog) out of
+// PendingOutflowCard, so this file no longer needs to stub them: the
+// component now only calls onPrintCheck, which the test passes directly.
 
 // Unrelated to this gate; only mounted when the (unopened) manual-match dialog
 // is shown, but it pulls in more hooks than this test needs to stub.
@@ -61,48 +64,62 @@ const baseOutflow: PendingOutflow = {
   chart_account: null,
 };
 
-const renderCard = (outflow: PendingOutflow = baseOutflow) => {
+const renderCard = (
+  outflow: PendingOutflow = baseOutflow,
+  onPrintCheck?: (outflow: PendingOutflow) => void,
+) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <PendingOutflowCard outflow={outflow} />
+      <PendingOutflowCard outflow={outflow} onPrintCheck={onPrintCheck} />
     </QueryClientProvider>,
   );
 };
 
-describe('PendingOutflowCard — PrintCheckButton capability gate (design §3.4)', () => {
+const findPrintButton = () => screen.queryByRole('button', { name: /^Print check for Acme Produce$/i });
+
+describe('PendingOutflowCard — Print button capability gate (design §5.6)', () => {
   beforeEach(() => {
     hasCapabilityMock.mockReset();
     isResolvedMock = true;
   });
 
-  it('hides PrintCheckButton when the capability context has not resolved yet, even if capability would be granted', () => {
+  it('hides the Print button when the capability context has not resolved yet, even if capability would be granted', () => {
     isResolvedMock = false;
     hasCapabilityMock.mockReturnValue(true);
 
-    renderCard();
+    renderCard(baseOutflow, vi.fn());
 
-    expect(screen.queryByTestId('print-check-button')).not.toBeInTheDocument();
+    expect(findPrintButton()).not.toBeInTheDocument();
   });
 
-  it('hides PrintCheckButton once resolved when the user lacks edit:pending_outflows', () => {
+  it('hides the Print button once resolved when the user lacks edit:pending_outflows', () => {
     isResolvedMock = true;
     hasCapabilityMock.mockReturnValue(false);
 
-    renderCard();
+    renderCard(baseOutflow, vi.fn());
 
-    expect(screen.queryByTestId('print-check-button')).not.toBeInTheDocument();
+    expect(findPrintButton()).not.toBeInTheDocument();
     expect(hasCapabilityMock).toHaveBeenCalledWith('edit:pending_outflows');
   });
 
-  it('shows PrintCheckButton once resolved when the user has edit:pending_outflows', () => {
+  it('shows the Print button once resolved when the user has edit:pending_outflows', () => {
     isResolvedMock = true;
     hasCapabilityMock.mockReturnValue(true);
 
-    renderCard();
+    renderCard(baseOutflow, vi.fn());
 
-    expect(screen.getByTestId('print-check-button')).toBeInTheDocument();
+    expect(findPrintButton()).toBeInTheDocument();
+  });
+
+  it('hides the Print button when no onPrintCheck is passed, even with capability granted', () => {
+    isResolvedMock = true;
+    hasCapabilityMock.mockReturnValue(true);
+
+    renderCard(baseOutflow, undefined);
+
+    expect(findPrintButton()).not.toBeInTheDocument();
   });
 });

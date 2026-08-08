@@ -2,13 +2,13 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-// Phase 7a finding (codex adversarial review): the Expenses page header
-// rendered an unconditional "Print Checks" button that navigates to
-// `/print-checks`, unlike the render-site gate applied to PrintCheckButton
-// inside PendingOutflowCard (design §3.4, Task 4). A role with `books@view`
-// can open `/expenses` but is excluded from `/print-checks` (`books@manage`),
-// so the button sent such users into a protected route they cannot open.
-// Same fix, same capability, applied at this second render site:
+// The Expenses page header rendered an unconditional "Print Checks" button
+// that navigates to `/print-checks`, unlike the render-site gate applied to
+// the Print button in PendingOutflowCard, which opens PrintCheckDialog
+// (design §3.4, Task 4). A role with `books@view` can open `/expenses` but
+// is excluded from `/print-checks` (`books@manage`), so the button sent
+// such users into a protected route they cannot open. Same fix, same
+// capability, applied at this second render site:
 // `isResolved && hasCapability('edit:pending_outflows')`.
 const hasCapabilityMock = vi.fn();
 let isResolvedMock = true;

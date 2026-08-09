@@ -1040,9 +1040,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         </Tooltip>
                       </TooltipProvider>
                     </Label>
-                    <Select 
-                      value={payPeriodType} 
+                    <Select
+                      value={payPeriodType}
                       onValueChange={(value) => setPayPeriodType(value as PayPeriodType)}
+                      disabled={!canSeePayRates}
                     >
                       <SelectTrigger id="payPeriodType" aria-label="Pay period" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
@@ -1062,6 +1063,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         checked={allocateDaily}
                         onCheckedChange={(checked) => setAllocateDaily(checked === true)}
                         aria-label="Allocate to Daily P&L"
+                        disabled={!canSeePayRates}
                       />
                       <Label htmlFor="allocateDaily" className="cursor-pointer flex items-center gap-1.5">
                         Allocate to Daily P&L
@@ -1122,9 +1124,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     <Label htmlFor="contractorPaymentInterval">
                       Payment Interval <span className="text-destructive">*</span>
                     </Label>
-                    <Select 
-                      value={contractorPaymentInterval} 
+                    <Select
+                      value={contractorPaymentInterval}
                       onValueChange={(value) => setContractorPaymentInterval(value as ContractorPaymentInterval)}
+                      disabled={!canSeePayRates}
                     >
                       <SelectTrigger id="contractorPaymentInterval" aria-label="Payment interval" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
@@ -1188,9 +1191,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     <Label htmlFor="dailyRateStandardDays">
                       Standard Work Days <span className="text-destructive">*</span>
                     </Label>
-                    <Select 
-                      value={dailyRateStandardDays} 
+                    <Select
+                      value={dailyRateStandardDays}
                       onValueChange={setDailyRateStandardDays}
+                      disabled={!canSeePayRates}
                     >
                       <SelectTrigger id="dailyRateStandardDays" aria-label="Standard work days per week" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />

@@ -40,6 +40,13 @@ vi.mock('@/hooks/use-toast', () => ({
   }),
 }));
 
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    hasCapability: () => true,
+    isResolved: true,
+  }),
+}));
+
 // Test wrapper with QueryClient
 let queryClient: QueryClient;
 

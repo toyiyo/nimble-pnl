@@ -138,7 +138,13 @@ Reasons:
 - A blank masked email that stays editable invites an accidental clear. Disable
   removes that trap.
 - Every builtin role that can reach this dialog holds `view:employee_pii`, so
-  standard invite flows keep working. Only a custom role set to manage
+  standard invite flows keep working. Only three builtin roles hold
+  `manage:employees`: `owner` (`src/lib/permissions/definitions.ts:75`),
+  `manager` (`src/lib/permissions/definitions.ts:139`), and
+  `operations_manager` (`src/lib/permissions/definitions.ts:186`). All three
+  also hold `view:employee_pii` (`src/lib/permissions/definitions.ts:88`,
+  `src/lib/permissions/definitions.ts:150`,
+  `src/lib/permissions/definitions.ts:194`). Only a custom role set to manage
   employees without the PII flag loses invite-by-typed-email — and that role
   cannot see any contact details anyway, so the block is consistent.
 
@@ -197,6 +203,36 @@ RoleEditor copy: a light assertion that the paragraph names the enforced flags
 and the deferred flag, if a RoleEditor test harness already exists; otherwise
 the copy is static text and the unit gate above is the primary coverage.
 
+### Fix an existing test that Fix 2 makes misleading
+
+`tests/unit/EmployeeDialog.maskedDob.test.tsx` has two tests with opposite
+permission premises, but no `usePermissions` mock. The real hook then falls
+through to a null-role branch, so `hasCapability` returns `false` for both
+tests. Test 1 (`tests/unit/EmployeeDialog.maskedDob.test.tsx:119`,
+`MASKED_EMPLOYEE`) expects a caller without `view:employee_pii`. Test 2
+(`tests/unit/EmployeeDialog.maskedDob.test.tsx:138`, `VISIBLE_DOB_EMPLOYEE`)
+expects a caller who holds `view:employee_pii` ("a caller who CAN see the
+date"). After Fix 2, `canSeePii` is `false` for both, so the date_of_birth
+input disables in test 2 too, and contradicts its own premise. The test still
+passes only because `fireEvent.change` writes the DOM value directly and
+bypasses the native `disabled` gate.
+
+A single file-level granting mock (the pattern at
+`tests/unit/EmployeeDialog.maskedRate.test.tsx:54`) fixes test 2 but falsifies
+test 1. So control `hasCapability` per test with `vi.hoisted`:
+
+```ts
+const { mockHasCapability } = vi.hoisted(() => ({ mockHasCapability: vi.fn() }));
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasCapability: mockHasCapability, isResolved: true }),
+}));
+```
+
+- Test 1 (masked, no PII): `mockHasCapability.mockImplementation((c) => c !== 'view:employee_pii')`.
+- Test 2 (visible DOB): `mockHasCapability.mockReturnValue(true)`.
+
+This keeps both premises honest and keeps both assertions green.
+
 ### E2E
 
 Extend `tests/e2e/sensitive-data-flags.spec.ts` only if it already opens
@@ -219,3 +255,6 @@ already flagged at its call site.
   invite-by-email in this dialog. Accepted — that role has no PII access.
 - No new `enforced` field on `SENSITIVE_FLAGS`. The shared paragraph states the
   split in prose. Keeps the change to copy, not data.
+- Silent disable, no `title` tooltip on a disabled control. This matches the
+  five pay-amount controls already live (`src/components/EmployeeDialog.tsx:907`
+  and siblings). A hint is optional polish, not part of this PR.

@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { TIP_SERVER_EARNINGS_SELECT } from '@/hooks/tipServerEarningsSelect';
+
+export { TIP_SERVER_EARNINGS_SELECT };
 
 export interface TipServerEarning {
   id: string;
@@ -31,13 +34,13 @@ export function useTipServerEarnings(splitId: string | null) {
 
       const { data, error } = await supabase
         .from('tip_server_earnings')
-        .select('*, employees(first_name, last_name)')
+        .select(TIP_SERVER_EARNINGS_SELECT)
         .eq('tip_split_id', splitId);
 
       if (error) throw error;
 
       type EarningRow = Omit<TipServerEarning, 'employee_name'> & {
-        employees: { first_name: string; last_name: string } | null;
+        employees: { name: string } | null;
       };
 
       return ((data ?? []) as unknown as EarningRow[]).map((row) => ({
@@ -48,9 +51,7 @@ export function useTipServerEarnings(splitId: string | null) {
         retained_amount: row.retained_amount,
         refunded_amount: row.refunded_amount,
         created_at: row.created_at,
-        employee_name: row.employees
-          ? `${row.employees.first_name} ${row.employees.last_name}`
-          : undefined,
+        employee_name: row.employees ? row.employees.name : undefined,
       }));
     },
     enabled: !!splitId,

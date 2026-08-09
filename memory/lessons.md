@@ -2427,6 +2427,24 @@
 - **Correction:** Cut the axis on the rule the rest of the UI already used — `isActionableResponse`, which is `comment IS NOT NULL OR contact_consent`. The middle filter became `needsReply` with the predicate `.or('comment.not.is.null,contact_consent.is.true')`. `silent` became `.is('comment', null).eq('contact_consent', false)`.
 - **Rule:** Check a filter axis against the rule the rest of the UI acts on, not against the column it happens to read. A predicate over one column partitions that column, not the domain. When a later change adds a second signal for the same concept, the split misfiles rows instead of dropping them, so no test fails and no count looks wrong. When one rule lives in more than one place — here a TS function, a SQL `FILTER`, and a query predicate — name the other copies in a comment on each.
 
+### [2026-08-08] Hoisting a dialog out of a list turns per-row state into shared state — the reset must key on the open, not on the item
+- **Mistake:** I moved `PrintCheckButton`'s dialog to `PendingOutflowsList` to follow the Single Dialog Pattern. The dialog held `memo`, `selectedCategoryId`, and `selectedAccountId`. My design reset the first two when `expense.id` changed, and reset the third never. That looks complete, and every existing test passed. It is not complete. One `PrintCheckDialog` now serves every row, so the state survives the close. Print row A from bank account X, close, open row B: **row B prints from account X**, with no error and no warning. A wrong check number claim against the wrong account, silently.
+- **Root cause:** The old code got its reset for free. Each row owned a `PrintCheckButton`, so a fresh mount cleared the fields. The mount **was** the reset. Hoisting deletes that mount and nothing announces it.
+- **Correction:** Reset on two events, not one — the open transition and the row change. Track the previous open state during render:
+  ```tsx
+  if (isOpen !== wasOpen) setWasOpen(isOpen);
+  if (expense && (!wasOpen || expense.id !== shownExpense?.id)) { /* reset every field */ }
+  ```
+  `expense.id` alone misses the reopen of the same row, which is how a stale typed memo returns.
+- **Rule:** When you hoist a dialog out of a list, list **every** `useState` in it and name the reset event for each one. The old per-row mount cleared all of them; the new shared instance clears none. Key the reset on the open transition, not only on the item id — a reopen of the same row is a new session. Write the row-switch test and the reopen test in the same commit: no existing test can fail, because the shared instance did not exist before.
+
+### [2026-08-08] An always-mounted dialog beats `{active && <Dialog/>}` when the dialog owns data hooks
+- **Context:** CLAUDE.md's Single Dialog Pattern shows `{activeItem && <Dialog item={activeItem} />}`. That is right when the dialog is pure UI. It is wrong when the dialog owns the hooks you hoisted.
+- **Why:** Conditional mount starts `useCheckBankAccounts` on the **first open**. `defaultAccount` is still `null` at that moment, so the account init loses the race and the first print shows `Please select a bank account`. Always-mounted keeps today's timing: the hooks load while the list loads.
+- **Cost:** near zero. Radix does not render `DialogContent` children while the dialog is closed, so the idle cost is the hooks alone — the same hooks a one-row list paid before.
+- **Second trap:** `src/components/ui/dialog.tsx` gives `DialogContent` `data-[state=closed]:animate-out`. Radix keeps the subtree mounted through that exit animation, and React re-renders it with the new props. Read `expense` directly and an empty box fades out, plus Radix warns about a missing `DialogTitle`. Hold the last non-null item (`displayExpense = expense ?? shownExpense`) and render from that.
+- **Rule:** Mount the dialog when it holds hooks; gate only the `open` prop. Never let the close animation read state the parent already cleared.
+
 ---
 
 ## Category: CI / Workflows (continued)
@@ -2435,6 +2453,12 @@
 - **Confirms and extends [2026-08-05]** ("the check is a snapshot of the moment it ran"). The workflow triggers are `pull_request_target` (opened, synchronize, reopened, ready_for_review), a `*/30` cron, and `workflow_dispatch`. `pull_request_review_comment` is absent on purpose: the file's own comment explains that the event runs the workflow **from the PR**, so a contributor could disarm the gate by editing the YAML. Answering every finding therefore leaves the red check in place for up to 30 minutes.
 - **Rule:** After you reply to the findings, dispatch the gate yourself: `gh workflow run pr-comment-response.yml -f pr=<N>`. Confirm with `node dev-tools/pr-triage.js list --pr <N>`, which must print `No unanswered findings.` Do not wait for the cron, and do not read the old failure as a new one.
 
+### [2026-08-08] The fix push starts the gate before your replies land, so the new commit inherits the red check
+- **Mistake:** I fixed 3 CodeRabbit findings, pushed the commit, then replied to each finding with the new SHA. That order looks correct, and the reply needs the SHA. But `synchronize` starts `pr-comment-response` the moment the push lands. It ran at 05:54:10Z against 0 replies and failed. `gh pr checks` then showed a **failure on the current SHA**, which reads like a new failure, not a stale one.
+- **Correction:** `gh workflow run pr-comment-response.yml --ref main -f pr=723`. The dispatch run passed. Note `--ref main`: the workflow only exists on the default branch, so `gh workflow run` without `--ref` fails with `could not find any workflows named pr-comment-response`.
+- **Also tried and failed:** `gh api -X POST repos/<owner>/<repo>/check-runs/<id>/rerequest` returns 404 for this check. Re-request works for GitHub App check runs, not for a check a workflow publishes. Do not spend a turn on it.
+- **Rule:** Treat a `pr-comment-response` failure on the newest SHA as stale by default. Check the run's `completed_at` against the time you posted the replies before you read it as real: `gh api repos/<o>/<r>/commits/<sha>/check-runs --jq '.check_runs[] | select(.name=="pr-comment-response")'`. Reply first, then dispatch, then read.
+
 ### [2026-08-06] `gh pr checks --watch --fail-fast` exits at once when a check is already red
 - **Mistake:** I started `gh pr checks 713 --watch --fail-fast` while a stale gate failure was still posted. It exited 0 after one snapshot, and the background task reported success. Nothing was watched, and 30 other checks were still pending.
 - **Rule:** `--fail-fast` treats the **current** state as a stop condition, not only a future transition. Use plain `--watch` whenever a known-stale failure is still on the PR. Clear the stale check first, or you get a green exit code over an unread suite.
@@ -2442,6 +2466,7 @@
 ### [2026-08-06] `--reporter=basic` does not exist in vitest 4
 - **Mistake:** `npx vitest run --reporter=basic` failed with `ERR_LOAD_URL`. The error names a module load failure, not an unknown reporter, so it reads like a broken install.
 - **Rule:** Use no `--reporter` flag, or `--reporter=dot`. Treat an `ERR_LOAD_URL` from a test runner as a bad flag value first, a broken install last.
+- **[2026-08-08] Confirmed again with `--reporter=line`.** Same `ERR_LOAD_URL`, same 12-line stack out of `loadCustomReporterModule`. The stack names vite internals only, so it never names the flag that caused it. Two reporter names now fail this way. Pass no `--reporter` flag.
 
 ## Category: Code Review Process (continued)
 

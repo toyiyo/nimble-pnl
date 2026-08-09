@@ -117,6 +117,11 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // (which then silently strips it — see src/lib/employeeMaskedFields.ts).
   const { hasCapability, isResolved: isPermissionsResolved } = usePermissions();
   const canSeePayRates = isPermissionsResolved && hasCapability('view:pay_rates');
+  // Contact details (email, phone, date of birth) gate on view:employee_pii,
+  // the same way pay amounts gate on view:pay_rates. The write path already
+  // strips these keys for a caller without the flag, so this gate makes the
+  // disabled state honest and stops a masked blank box from reading as a clear.
+  const canSeePii = isPermissionsResolved && hasCapability('view:employee_pii');
   // null while loading, on error, and for non-members — all mean "behave normally".
   const existingMember = findMemberByEmail(restaurantMembers, email);
   // Both call sites pass the selected restaurant (Employees.tsx, Scheduling.tsx),
@@ -1251,6 +1256,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => handleEmailChange(e.target.value)}
                     placeholder="john@example.com"
                     aria-label="Employee email"
+                    disabled={!canSeePii}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
@@ -1264,6 +1270,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="(555) 123-4567"
                     aria-label="Employee phone number"
+                    disabled={!canSeePii}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
@@ -1360,6 +1367,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     value={dateOfBirth}
                     onChange={(e) => setDateOfBirth(e.target.value)}
                     aria-label="Date of birth"
+                    disabled={!canSeePii}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                   {dateOfBirth && isMinor(dateOfBirth) && (

@@ -594,9 +594,13 @@ export const useCurrentEmployee = (restaurantId: string | null) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
+      // Explicit projection, not select('*'): this hook only feeds the PIN
+      // and kiosk-clock flows below, which read only `id` and `name`. A
+      // wildcard select through employees_secure would also pull pay-rate
+      // and PII columns into this cache for no reason.
       const { data, error } = await supabase
         .from('employees_secure')
-        .select('*')
+        .select('id, name')
         .eq('restaurant_id', restaurantId)
         .eq('user_id', user.id)
         .single();

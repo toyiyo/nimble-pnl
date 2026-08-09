@@ -127,7 +127,12 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
-  const { hasCapability } = usePermissions();
+  const { hasCapability, isResolved } = usePermissions();
+  // Force this false until the role finishes resolving, so a caller who
+  // will end up without view:pay_rates cannot get one query run with the
+  // capability wrongly true, then have the true-run result cached under a
+  // queryKey that never changes again for this render.
+  const canSeePayRates = isResolved && hasCapability('view:pay_rates');
   const [glOnly, setGlOnly] = useState(false);
   const [accrualMode, setAccrualMode] = useState<'actual' | 'projected'>('actual');
   
@@ -186,7 +191,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   });
 
   const { data: incomeData, isLoading } = useQuery({
-    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly, accrualMode, unifiedCOGS.totalCOGS],
+    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly, accrualMode, unifiedCOGS.totalCOGS, canSeePayRates],
     queryFn: async () => {
       // Fetch all chart of accounts for this restaurant
       const { data: accounts, error: accountsError } = await supabase
@@ -314,7 +319,6 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         // as salary/contractor even though the amount is hidden — that is
         // enough to know payrollFallback below is an undercount, not a zero.
         let payrollDataHidden = false;
-        const canSeePayRates = hasCapability('view:pay_rates');
 
         // If still zero, derive daily allocations from salary/contractor employees
         // Uses calculateSalaryForPeriod/calculateContractorPayForPeriod which respect hire_date
@@ -388,7 +392,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         cogs: accountsWithBalances.filter(a => a.account_type === 'cogs'),
       };
     },
-    enabled: !!restaurantId,
+    // Wait for the role to resolve before running: canSeePayRates is part of
+    // the queryKey above, but the first render (isResolved false) would
+    // otherwise still fire one query under the false-permission key.
+    enabled: !!restaurantId && isResolved,
   });
 
   const formatCurrency = (amount: number) => {
@@ -768,7 +775,12 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     });
   };
 
-  if (isLoading || revenueLoading || unifiedCOGS.isLoading || uncategorized.isLoading) {
+  // !isResolved covers the gap `enabled: !!restaurantId && isResolved` opens:
+  // React Query's `isLoading` is `isPending && isFetching`, and a disabled
+  // query never fetches, so isLoading reads false while permissions are
+  // still resolving — without this check the render below would run against
+  // an undefined incomeData.
+  if (isLoading || !isResolved || revenueLoading || unifiedCOGS.isLoading || uncategorized.isLoading) {
     return (
       <Card>
         <CardContent className="pt-6 flex items-center justify-center py-12">

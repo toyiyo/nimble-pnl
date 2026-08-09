@@ -102,7 +102,7 @@ describe('useMonthlyMetrics labor_cost_hidden (masked employees_secure rows)', (
     vi.resetModules();
   });
 
-  it('marks labor_cost_hidden true when an employee row is masked, and never reports a bare $0', async () => {
+  it('should mark labor_cost_hidden true and never report a bare $0 when an employee row is masked', async () => {
     mockSupabaseClient([maskedEmployee]);
 
     const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
@@ -120,7 +120,7 @@ describe('useMonthlyMetrics labor_cost_hidden (masked employees_secure rows)', (
     expect(july!.labor_cost_hidden).toBe(true);
   });
 
-  it('leaves labor_cost_hidden false when every employee row carries a real rate', async () => {
+  it('should leave labor_cost_hidden false when every employee row carries a real rate', async () => {
     mockSupabaseClient([unmaskedEmployee]);
 
     const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
@@ -138,7 +138,7 @@ describe('useMonthlyMetrics labor_cost_hidden (masked employees_secure rows)', (
     expect(july!.labor_cost_hidden).toBe(false);
   });
 
-  it('marks labor_cost_hidden true when even one employee among several is masked', async () => {
+  it('should mark labor_cost_hidden true when even one employee among several is masked', async () => {
     mockSupabaseClient([unmaskedEmployee, maskedEmployee]);
 
     const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');

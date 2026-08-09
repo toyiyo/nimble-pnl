@@ -104,7 +104,8 @@ export async function exposeSupabaseHelpers(page: Page) {
       const { data, error: readError } = await supabase
         .from('employees_secure')
         .select('*')
-        .in('id', ids);
+        .in('id', ids)
+        .eq('restaurant_id', restaurantId);
 
       if (readError) {
         throw new Error(readError.message);

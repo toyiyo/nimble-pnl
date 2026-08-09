@@ -17,7 +17,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(19);
+SELECT plan(27);
 
 SET LOCAL role TO postgres;
 
@@ -176,6 +176,132 @@ SELECT is(
   (SELECT hourly_rate FROM public.employees_secure WHERE id = 'b1111111-0000-0000-0000-000000000031'),
   NULL::integer,
   'a row with no linked account (user_id IS NULL) stays masked for a caller without the flags'
+);
+
+-- ----------------------------------------------------------------------------
+-- 5. Each flag alone, and both flags together, on a COWORKER row (not self).
+--    The self-row exception cannot explain any result here, so every read
+--    below comes only from role_flags. Three role_id-based custom roles,
+--    each on the same restaurant as the self-row fixtures above, holding
+--    respectively: view:pay_rates only, view:employee_pii only, both.
+-- ----------------------------------------------------------------------------
+SET LOCAL role TO postgres;
+ALTER TABLE public.roles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_flags DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_restaurants DISABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.roles (id, restaurant_id, name, flavor, builtin) VALUES
+  ('b1111111-0000-0000-0000-0000000000c1', 'b1111111-0000-0000-0000-000000000001', 'Pay Only', 'collaborator', false),
+  ('b1111111-0000-0000-0000-0000000000c2', 'b1111111-0000-0000-0000-000000000001', 'PII Only', 'collaborator', false),
+  ('b1111111-0000-0000-0000-0000000000c3', 'b1111111-0000-0000-0000-000000000001', 'Both Flags', 'collaborator', false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.role_flags (role_id, flag) VALUES
+  ('b1111111-0000-0000-0000-0000000000c1', 'view:pay_rates'),
+  ('b1111111-0000-0000-0000-0000000000c2', 'view:employee_pii'),
+  ('b1111111-0000-0000-0000-0000000000c3', 'view:pay_rates'),
+  ('b1111111-0000-0000-0000-0000000000c3', 'view:employee_pii')
+ON CONFLICT (role_id, flag) DO NOTHING;
+
+INSERT INTO auth.users (
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  created_at, updated_at, confirmation_token, recovery_token,
+  email_change_token_new, email_change
+) VALUES
+  ('b1111111-0000-0000-0000-000000000040', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pay_only@test.com',
+   crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+  ('b1111111-0000-0000-0000-000000000050', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'pii_only@test.com',
+   crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+  ('b1111111-0000-0000-0000-000000000060', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'both_flags@test.com',
+   crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+ON CONFLICT (id) DO NOTHING;
+
+-- role_id is set, role stays NULL: user_has_capability resolves the two
+-- flags from role_flags, never touching the legacy CASE.
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role_id) VALUES
+  ('b1111111-0000-0000-0000-000000000040', 'b1111111-0000-0000-0000-000000000001', 'b1111111-0000-0000-0000-0000000000c1'),
+  ('b1111111-0000-0000-0000-000000000050', 'b1111111-0000-0000-0000-000000000001', 'b1111111-0000-0000-0000-0000000000c2'),
+  ('b1111111-0000-0000-0000-000000000060', 'b1111111-0000-0000-0000-000000000001', 'b1111111-0000-0000-0000-0000000000c3')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role_id = EXCLUDED.role_id;
+
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_restaurants ENABLE ROW LEVEL SECURITY;
+
+SET LOCAL role TO authenticated;
+SET LOCAL request.jwt.claim.sub TO 'b1111111-0000-0000-0000-000000000040'; -- Pay Only
+
+SELECT is(
+  (SELECT hourly_rate FROM public.employees_secure WHERE id = 'b1111111-0000-0000-0000-000000000021'),
+  2000,
+  'view:pay_rates alone unmasks a coworker''s hourly_rate'
+);
+SELECT is(
+  (SELECT email FROM public.employees_secure WHERE id = 'b1111111-0000-0000-0000-000000000021'),
+  NULL::text,
+  'view:pay_rates alone still masks a coworker''s email'
+);
+
+SET LOCAL request.jwt.claim.sub TO 'b1111111-0000-0000-0000-000000000050'; -- PII Only
+
+SELECT is(
+  (SELECT hourly_rate FROM public.employees_secure WHERE id = 'b1111111-0000-0000-0000-000000000021'),
+  NULL::integer,
+  'view:employee_pii alone still masks a coworker''s hourly_rate'
+);
+SELECT is(
+  (SELECT email FROM public.employees_secure WHERE id = 'b1111111-0000-0000-0000-000000000021'),
+  'coworker_staff@test.com'::text,
+  'view:employee_pii alone unmasks a coworker''s email'
+);
+
+SET LOCAL request.jwt.claim.sub TO 'b1111111-0000-0000-0000-000000000060'; -- Both Flags
+
+SELECT is(
+  (SELECT hourly_rate FROM public.employees_secure WHERE id = 'b1111111-0000-0000-0000-000000000021'),
+  2000,
+  'both flags together unmask a coworker''s hourly_rate'
+);
+SELECT is(
+  (SELECT email FROM public.employees_secure WHERE id = 'b1111111-0000-0000-0000-000000000021'),
+  'coworker_staff@test.com'::text,
+  'both flags together unmask a coworker''s email'
+);
+
+-- ----------------------------------------------------------------------------
+-- 6. employee_compensation_history (Step 3 of 20260806110000): the SELECT
+--    policy now requires view:pay_rates, not bare membership. A caller who
+--    holds view:employee_pii but not view:pay_rates reads zero rows, not an
+--    error — RLS drops the rows silently.
+-- ----------------------------------------------------------------------------
+SET LOCAL role TO postgres;
+
+INSERT INTO public.employee_compensation_history
+  (employee_id, restaurant_id, compensation_type, amount_cents, effective_date)
+VALUES
+  ('b1111111-0000-0000-0000-000000000021', 'b1111111-0000-0000-0000-000000000001',
+   'hourly', 2000, CURRENT_DATE)
+ON CONFLICT (employee_id, effective_date) DO NOTHING;
+
+SET LOCAL role TO authenticated;
+SET LOCAL request.jwt.claim.sub TO 'b1111111-0000-0000-0000-000000000060'; -- Both Flags: holds view:pay_rates
+
+SELECT ok(
+  (SELECT count(*) FROM public.employee_compensation_history
+   WHERE restaurant_id = 'b1111111-0000-0000-0000-000000000001') >= 1,
+  'a caller with view:pay_rates reads the restaurant''s compensation history'
+);
+
+SET LOCAL request.jwt.claim.sub TO 'b1111111-0000-0000-0000-000000000050'; -- PII Only: lacks view:pay_rates
+
+SELECT is(
+  (SELECT count(*) FROM public.employee_compensation_history
+   WHERE restaurant_id = 'b1111111-0000-0000-0000-000000000001'),
+  0::bigint,
+  'a caller without view:pay_rates reads zero compensation history rows'
 );
 
 SELECT * FROM finish();

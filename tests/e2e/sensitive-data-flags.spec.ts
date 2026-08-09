@@ -14,13 +14,19 @@ test('a role without view:pay_rates receives no rate from PostgREST', async ({ p
   // 1. Sign the member up first, purely to mint a real auth.users row — the
   //    membership row's user_id is a foreign key, so it cannot be faked.
   await page.goto('/auth');
+  // Clear any stale session left by another test before signing up — a
+  // leftover session here would sign the member in as the wrong user.
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
   await exposeSupabaseHelpers(page);
   await page.getByRole('tab', { name: /sign up/i }).click();
   await page.getByLabel(/email/i).first().fill(member.email);
   await page.getByLabel(/full name/i).fill(member.fullName);
   await page.getByLabel(/password/i).first().fill(member.password);
   await page.getByRole('button', { name: /sign up|create account/i }).click();
-  await page.waitForURL('/', { timeout: 15000 });
+  await page.waitForURL('/', { timeout: 10000 });
 
   const memberUserId = await page.evaluate(async () => {
     // `any`: test-only global attached by exposeSupabaseHelpers, no typed surface.
@@ -42,7 +48,7 @@ test('a role without view:pay_rates receives no rate from PostgREST', async ({ p
   //    view:pay_rates, no view:employee_pii role_flags row at all), the
   //    member's membership on that role, and one employee row with a real
   //    rate and a real email — proof of what a leak would look like.
-  const roleName = `Scheduler ${Date.now()}`;
+  const roleName = `Scheduler ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await page.evaluate(
     async ({ memberUserId, roleName }) => {
       // `any`: both are test-only globals attached by exposeSupabaseHelpers, no typed surface.
@@ -94,7 +100,7 @@ test('a role without view:pay_rates receives no rate from PostgREST', async ({ p
   await page.getByLabel(/email/i).first().fill(member.email);
   await page.getByLabel(/password/i).first().fill(member.password);
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith('/auth'), { timeout: 15000 });
+  await page.waitForURL((url) => !url.pathname.startsWith('/auth'), { timeout: 10000 });
 
   // Some other query on the page (the caller's own self-scope employee
   // lookup) also hits employees_secure, via `.single()`, and 406s here

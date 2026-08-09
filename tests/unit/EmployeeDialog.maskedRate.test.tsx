@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 
@@ -36,7 +37,8 @@ vi.mock('@/hooks/useShiftTemplates', () => {
   };
 });
 
-vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const toastMock = vi.fn();
+vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastMock }) }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: () => ({ selectedRestaurant: { restaurant: { id: 'r1', timezone: 'UTC' } } }),
@@ -46,6 +48,12 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 // which throws without an AuthProvider by design. Nothing here asserts on app
 // access — this just keeps the dialog mountable.
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'caller-1' } }) }));
+
+// This suite tests the masked-rate save path, not the view:pay_rates gate
+// itself — grant the flag so the compensation controls stay interactive.
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasCapability: () => true, isResolved: true }),
+}));
 
 vi.mock('@/integrations/supabase/client', () => {
   // Recursive fluent-builder mock — must be `any` because the chain can call
@@ -107,6 +115,7 @@ describe('EmployeeDialog — masked hourly rate is not fabricated as zero', () =
   beforeEach(() => {
     updateMock.mockClear();
     createMock.mockClear();
+    toastMock.mockClear();
   });
 
   it('never sends hourly_rate: 0 for a masked (blank) rate box on save', async () => {
@@ -132,5 +141,28 @@ describe('EmployeeDialog — masked hourly rate is not fabricated as zero', () =
     expect(
       screen.queryByRole('heading', { name: /apply new compensation rate/i }),
     ).not.toBeInTheDocument();
+  });
+
+  // Regression test for a related bug: a caller switches the compensation
+  // type on a masked row (rate box blank) but never enters the new type's
+  // amount. hasCompensationChanged must not read this as "unchanged" — that
+  // would silently write the old type with no new amount and no history row.
+  it('blocks save and shows an error when a compensation-type change has no new amount', async () => {
+    renderEdit();
+
+    await userEvent.click(screen.getByRole('combobox', { name: /compensation type/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /^salary$/i }));
+
+    const form = document.body.querySelector('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: 'destructive' }),
+      ),
+    );
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
   });
 });

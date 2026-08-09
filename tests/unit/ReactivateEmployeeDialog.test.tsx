@@ -5,11 +5,19 @@ import { ReactivateEmployeeDialog } from '@/components/ReactivateEmployeeDialog'
 import type { Employee } from '@/types/scheduling';
 
 const mockMutate = vi.fn();
+let canSeePayRates = true;
 
 vi.mock('@/hooks/useEmployees', () => ({
   useReactivateEmployee: () => ({
     mutate: mockMutate,
     isPending: false,
+  }),
+}));
+
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    hasCapability: (cap: string) => cap === 'view:pay_rates' && canSeePayRates,
+    isResolved: true,
   }),
 }));
 
@@ -23,14 +31,15 @@ const employee = {
   deactivation_reason: 'seasonal',
 } as unknown as Employee;
 
-const renderDialog = () =>
+const renderDialog = (employeeOverride: Employee = employee) =>
   render(
-    <ReactivateEmployeeDialog open onOpenChange={() => {}} employee={employee} />
+    <ReactivateEmployeeDialog open onOpenChange={() => {}} employee={employeeOverride} />
   );
 
 describe('ReactivateEmployeeDialog', () => {
   beforeEach(() => {
     mockMutate.mockClear();
+    canSeePayRates = true;
   });
 
   it('does not render an "Enable kiosk PIN" checkbox', () => {
@@ -54,5 +63,18 @@ describe('ReactivateEmployeeDialog', () => {
   it('top info alert mentions the existing kiosk PIN', () => {
     renderDialog();
     expect(screen.getByText(/kiosk PIN/i)).toBeInTheDocument();
+  });
+
+  it('shows "Hidden" for the rate when the caller lacks view:pay_rates', () => {
+    canSeePayRates = false;
+    renderDialog();
+    expect(screen.getByText('Hidden')).toBeInTheDocument();
+  });
+
+  it('shows "Not set" (not "Hidden") for a real null rate when the caller can see pay rates', () => {
+    const noRateEmployee = { ...employee, hourly_rate: null } as unknown as Employee;
+    renderDialog(noRateEmployee);
+    expect(screen.getByText('Not set')).toBeInTheDocument();
+    expect(screen.queryByText('Hidden')).toBeNull();
   });
 });

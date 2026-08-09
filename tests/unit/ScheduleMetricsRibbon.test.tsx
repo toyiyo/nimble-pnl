@@ -63,12 +63,12 @@ describe('ScheduleMetricsRibbon', () => {
     expect(screen.getByText(/labor cost/i)).toBeInTheDocument();
   });
 
-  it('says how many employees the average rate leaves out when some pay is masked', () => {
+  it('should show the hidden employee count when some pay is masked', () => {
     renderRibbon({ laborCostSummary: { ...summary, hiddenCostCount: 2 } });
     expect(screen.getByText('(2 hidden)')).toBeInTheDocument();
   });
 
-  it('does not mention hidden employees when every row is visible', () => {
+  it('should omit hidden employees when every row is visible', () => {
     renderRibbon();
     expect(screen.queryByText(/hidden/)).not.toBeInTheDocument();
   });

@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useReactivateEmployee } from '@/hooks/useEmployees';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Employee } from '@/types/scheduling';
 import { CheckCircle, RotateCcw, Info } from 'lucide-react';
 
@@ -31,6 +32,8 @@ export const ReactivateEmployeeDialog = ({
   const [updateRate, setUpdateRate] = useState(false);
 
   const reactivateMutation = useReactivateEmployee();
+  const { hasCapability, isResolved } = usePermissions();
+  const canSeePayRates = isResolved && hasCapability('view:pay_rates');
 
   const resetForm = () => {
     setHourlyRate('');
@@ -70,9 +73,14 @@ export const ReactivateEmployeeDialog = ({
 
   if (!employee) return null;
 
-  const currentRateDisplay = employee.hourly_rate
-    ? `$${(employee.hourly_rate / 100).toFixed(2)}/hr`
-    : 'Hidden';
+  // A masked rate arrives as null because the caller lacks view:pay_rates —
+  // show "Hidden" only for that case. A resolved rate of 0 or null is a real
+  // "Not set", not a masked value, so it must not read as "Hidden" too.
+  const currentRateDisplay = !canSeePayRates
+    ? 'Hidden'
+    : employee.hourly_rate
+      ? `$${(employee.hourly_rate / 100).toFixed(2)}/hr`
+      : 'Not set';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

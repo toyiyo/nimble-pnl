@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Employee, EmployeeStatus, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
+import { usePermissions } from '@/hooks/usePermissions';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PositionCombobox } from '@/components/PositionCombobox';
@@ -94,6 +95,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // catch (memory/lessons.md:1303-1304).
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+  // A caller without view:pay_rates sees a blank (masked) amount box, not a
+  // real stored value — typing into it and saving would write a fabricated
+  // rate. Disable the rate-setting controls below until the role resolves
+  // and grants the flag, instead of letting a blind write reach the mutation
+  // (which then silently strips it — see src/lib/employeeMaskedFields.ts).
+  const { hasCapability, isResolved: isPermissionsResolved } = usePermissions();
+  const canSeePayRates = isPermissionsResolved && hasCapability('view:pay_rates');
   // null while loading, on error, and for non-members — all mean "behave normally".
   const existingMember = findMemberByEmail(restaurantMembers, email);
   // Both call sites pass the selected restaurant (Employees.tsx, Scheduling.tsx),
@@ -596,6 +604,29 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       ? Math.round(dailyRateWeeklyInCents / dailyRateDays)
       : undefined;
 
+    // Block a compensation-type change when the new type's amount is
+    // undefined. A masked caller sees a blank box for the current type, so a
+    // blank box is normal there — but a real type change with no new amount
+    // must not reach hasCompensationChanged, which would read "unchanged"
+    // and write an inconsistent record (old type, no new amount, no history row).
+    if (employee && employee.compensation_type !== compensationType) {
+      const newTypeAmountInCents = {
+        hourly: hourlyRateInCents,
+        salary: salaryAmountInCents,
+        contractor: contractorAmountInCents,
+        daily_rate: dailyRateAmountInCents,
+      }[compensationType];
+
+      if (newTypeAmountInCents === undefined) {
+        toast({
+          title: 'Amount needed',
+          description: 'Enter an amount for the new compensation type before you save.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     // Check for unusually high hourly rate. hourlyRateInCents is undefined
     // for a masked or blank box, so this division reads NaN. NaN > threshold
     // is false, so the check below skips the warning instead of throwing —
@@ -863,6 +894,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     setCompensationType(newType);
                     if (newType !== 'hourly') setIsExempt(false);
                   }}
+                  disabled={!canSeePayRates}
                 >
                   <SelectTrigger id="compensationType" aria-label="Compensation type" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                     <SelectValue />
@@ -902,6 +934,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       onChange={(e) => setHourlyRate(e.target.value)}
                       placeholder="15.00"
                       aria-label="Hourly rate in dollars"
+                      disabled={!canSeePayRates}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
@@ -966,6 +999,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       onChange={(e) => setSalaryAmount(e.target.value)}
                       placeholder="52000.00"
                       aria-label="Salary amount in dollars"
+                      disabled={!canSeePayRates}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
@@ -1062,6 +1096,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       onChange={(e) => setContractorPaymentAmount(e.target.value)}
                       placeholder="2500.00"
                       aria-label="Payment amount in dollars"
+                      disabled={!canSeePayRates}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
@@ -1124,6 +1159,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         placeholder="1000.00"
                         required
                         aria-label="Weekly reference amount"
+                        disabled={!canSeePayRates}
                         className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                       <span className="text-sm text-muted-foreground whitespace-nowrap">per week</span>

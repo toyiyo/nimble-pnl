@@ -85,11 +85,18 @@ export const useCreateEmployee = () => {
 
   return useMutation({
     mutationFn: async (employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) => {
+      // Reject here, before the mask runs. isResolved false would otherwise
+      // read as "no flags" and strip every pay and contact field — a silent
+      // partial write, not the explicit retry this error gives the caller.
+      if (!isResolved) {
+        throw new Error('Permissions are still loading. Try again in a moment.');
+      }
+
       // A caller with no flag cannot read these columns, so the form holds
       // NULL for them. Writing that NULL back would erase the stored value.
       const masked = maskedEmployeeFields({
-        payRates: isResolved && hasCapability('view:pay_rates'),
-        employeePii: isResolved && hasCapability('view:employee_pii'),
+        payRates: hasCapability('view:pay_rates'),
+        employeePii: hasCapability('view:employee_pii'),
       });
 
       const { data, error } = await supabase
@@ -125,9 +132,16 @@ export const useUpdateEmployee = () => {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Employee> & { id: string }) => {
+      // Reject here, before the mask runs. isResolved false would otherwise
+      // read as "no flags" and strip every pay and contact field — a silent
+      // partial write, not the explicit retry this error gives the caller.
+      if (!isResolved) {
+        throw new Error('Permissions are still loading. Try again in a moment.');
+      }
+
       const masked = maskedEmployeeFields({
-        payRates: isResolved && hasCapability('view:pay_rates'),
-        employeePii: isResolved && hasCapability('view:employee_pii'),
+        payRates: hasCapability('view:pay_rates'),
+        employeePii: hasCapability('view:employee_pii'),
       });
 
       const { data, error } = await supabase

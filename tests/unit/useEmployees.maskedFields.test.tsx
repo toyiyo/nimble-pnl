@@ -127,15 +127,16 @@ describe('useCreateEmployee — masked field strip', () => {
     expect(insertMock).toHaveBeenCalledWith(payload);
   });
 
-  it('treats an unresolved permission state as holding neither flag', async () => {
+  it('rejects immediately, before any insert, when permissions are still resolving', async () => {
     isResolvedMock.mockReturnValue(false);
     hasCapabilityMock.mockReturnValue(true);
 
     const { result } = renderHook(() => useCreateEmployee(), { wrapper });
-    await result.current.mutateAsync(fullEmployeePayload() as any); // eslint-disable-line @typescript-eslint/no-explicit-any -- fixture omits Employee fields the mutation hook never reads
+    await expect(
+      result.current.mutateAsync(fullEmployeePayload() as any), // eslint-disable-line @typescript-eslint/no-explicit-any -- fixture omits Employee fields the mutation hook never reads
+    ).rejects.toThrow(/still loading/i);
 
-    const insertedRow = insertMock.mock.calls[0][0];
-    expect(insertedRow).toEqual({ restaurant_id: 'r1', name: 'Ada' });
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it('selects only id, restaurant_id, name — not a bare select()', async () => {
@@ -187,5 +188,17 @@ describe('useUpdateEmployee — masked field strip', () => {
     await result.current.mutateAsync({ id: 'e1', ...fullEmployeePayload() } as any); // eslint-disable-line @typescript-eslint/no-explicit-any -- fixture omits Employee fields the mutation hook never reads
 
     expect(updateSelectArgsMock).toHaveBeenCalledWith('id, restaurant_id, name');
+  });
+
+  it('rejects immediately, before any update, when permissions are still resolving', async () => {
+    isResolvedMock.mockReturnValue(false);
+    hasCapabilityMock.mockReturnValue(true);
+
+    const { result } = renderHook(() => useUpdateEmployee(), { wrapper });
+    await expect(
+      result.current.mutateAsync({ id: 'e1', ...fullEmployeePayload() } as any), // eslint-disable-line @typescript-eslint/no-explicit-any -- fixture omits Employee fields the mutation hook never reads
+    ).rejects.toThrow(/still loading/i);
+
+    expect(updateMock).not.toHaveBeenCalled();
   });
 });

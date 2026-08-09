@@ -7,28 +7,28 @@ import {
 } from '@/lib/employeeMaskedFields';
 
 describe('maskedEmployeeFields', () => {
-  it('masks nothing when the caller holds both flags', () => {
+  it('should mask nothing when the caller holds both flags', () => {
     expect(maskedEmployeeFields({ payRates: true, employeePii: true })).toEqual([]);
   });
 
-  it('masks the pay fields when the caller lacks view:pay_rates', () => {
+  it('should mask the pay fields when the caller lacks view:pay_rates', () => {
     expect(maskedEmployeeFields({ payRates: false, employeePii: true }))
       .toEqual([...PAY_RATE_FIELDS]);
   });
 
-  it('masks the contact fields when the caller lacks view:employee_pii', () => {
+  it('should mask the contact fields when the caller lacks view:employee_pii', () => {
     expect(maskedEmployeeFields({ payRates: true, employeePii: false }))
       .toEqual([...EMPLOYEE_PII_FIELDS]);
   });
 
-  it('masks all eight fields when the caller holds neither flag', () => {
+  it('should mask all eight fields when the caller holds neither flag', () => {
     expect(maskedEmployeeFields({ payRates: false, employeePii: false }))
       .toHaveLength(8);
   });
 });
 
 describe('stripMaskedEmployeeFields', () => {
-  it('drops every masked key from the payload', () => {
+  it('should drop every masked key from the payload', () => {
     const payload = {
       id: 'e1',
       name: 'Ada',
@@ -48,7 +48,7 @@ describe('stripMaskedEmployeeFields', () => {
     expect(result).toEqual({ id: 'e1', name: 'Ada' });
   });
 
-  it('keeps a key that is not masked, even when its value is null', () => {
+  it('should keep a key that is not masked, even when its value is null', () => {
     const result = stripMaskedEmployeeFields(
       { id: 'e1', notes: null, hourly_rate: 0 },
       ['hourly_rate']
@@ -57,7 +57,7 @@ describe('stripMaskedEmployeeFields', () => {
     expect(result).toEqual({ id: 'e1', notes: null });
   });
 
-  it('returns a new object and does not change the input', () => {
+  it('should return a new object and not change the input', () => {
     const payload = { id: 'e1', hourly_rate: 0 };
     const result = stripMaskedEmployeeFields(payload, ['hourly_rate']);
 
@@ -65,7 +65,7 @@ describe('stripMaskedEmployeeFields', () => {
     expect(payload).toEqual({ id: 'e1', hourly_rate: 0 });
   });
 
-  it('drops nothing when the masked list is empty', () => {
+  it('should drop nothing when the masked list is empty', () => {
     const payload = { id: 'e1', hourly_rate: 1500 };
     expect(stripMaskedEmployeeFields(payload, [])).toEqual(payload);
   });

@@ -43,6 +43,12 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 // access — this just keeps the dialog mountable.
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'caller-1' } }) }));
 
+// This suite tests the is_active/status sync, not the view:pay_rates gate —
+// grant the flag so the compensation controls stay interactive.
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasCapability: () => true, isResolved: true }),
+}));
+
 vi.mock('@/integrations/supabase/client', () => {
   // Recursive fluent-builder mock — must be `any` because the chain can call
   // any subset of methods in any order; a typed interface would require an

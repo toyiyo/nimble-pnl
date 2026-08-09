@@ -130,6 +130,20 @@ describe('EmployeeDialog — sensitive-data input gating', () => {
     expect(screen.getByLabelText(/date of birth/i)).not.toBeDisabled();
   });
 
+  it('disables the exempt-from-overtime switch when the caller lacks view:pay_rates', () => {
+    mockHasCapability.mockReturnValue(false);
+    renderEdit(HOURLY_EMPLOYEE);
+
+    expect(screen.getByRole('switch', { name: /mark employee as exempt/i })).toBeDisabled();
+  });
+
+  it('enables the exempt-from-overtime switch when the caller holds view:pay_rates', () => {
+    mockHasCapability.mockImplementation((c: string) => c === 'view:pay_rates');
+    renderEdit(HOURLY_EMPLOYEE);
+
+    expect(screen.getByRole('switch', { name: /mark employee as exempt/i })).not.toBeDisabled();
+  });
+
   it('disables the salary pay-schedule controls when the caller lacks view:pay_rates', () => {
     mockHasCapability.mockReturnValue(false);
     renderEdit(SALARY_EMPLOYEE);

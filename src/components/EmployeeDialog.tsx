@@ -969,6 +969,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       onCheckedChange={setIsExempt}
                       className="data-[state=checked]:bg-foreground"
                       aria-label="Mark employee as exempt from overtime"
+                      // Overtime exemption is pay configuration, the same class
+                      // as pay period and payment interval below. Gate it on
+                      // view:pay_rates for the same reason (see canSeePayRates
+                      // above). employeeMaskedFields.ts strips is_exempt from
+                      // the write for the same caller, so a bypassed disabled
+                      // prop still cannot change it.
+                      disabled={!canSeePayRates}
                     />
                   </div>
 

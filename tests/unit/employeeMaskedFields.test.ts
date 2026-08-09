@@ -23,9 +23,19 @@ describe('maskedEmployeeFields', () => {
       .toEqual([...EMPLOYEE_PII_FIELDS]);
   });
 
-  it('should mask all eight fields when the caller holds neither flag', () => {
+  it('should mask all nine fields when the caller holds neither flag', () => {
     expect(maskedEmployeeFields({ payRates: false, employeePii: false }))
-      .toHaveLength(8);
+      .toHaveLength(9);
+  });
+
+  it('should mask is_exempt with the pay fields, though the column is not read-masked', () => {
+    // is_exempt keeps its SELECT grant for every caller (20260806110000). The
+    // strip below is the only guard on the write, so it must fire with the
+    // other pay fields, not only when a real masked NULL is on the line.
+    expect(maskedEmployeeFields({ payRates: false, employeePii: true }))
+      .toContain('is_exempt');
+    expect(maskedEmployeeFields({ payRates: true, employeePii: true }))
+      .not.toContain('is_exempt');
   });
 });
 

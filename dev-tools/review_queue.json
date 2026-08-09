@@ -102615,6 +102615,4426 @@
       "created_at": "2026-08-06T09:11:58.274Z",
       "updated_at": "2026-08-06T09:11:58.274Z",
       "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "725",
+        "comment_id": 3740197443,
+        "file": "docs/superpowers/specs/2026-08-08-user-restaurants-insert-guard-design.md",
+        "line": 214
+      },
+      "title": "_📐 Maintainability & Code Quality_ | _🟡 Minor_ | _⚡ Quick win_",
+      "body": "_📐 Maintainability & Code Quality_ | _🟡 Minor_ | _⚡ Quick win_\n\n**Synchronize the test contract with the shipped pgTAP test.**\n\nThis table defines nine cases. `supabase/tests/user_restaurants_insert_guard.test.sql` defines eleven cases. It adds the non-vacuity control as case 8 and the anon-role boundary as case 11.\n\nAdd the omitted cases and update the case numbers. The design must describe the shipped security contract.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@docs/superpowers/specs/2026-08-08-user-restaurants-insert-guard-design.md`\naround lines 192 - 212, Update the Tests table to match all eleven cases in\nuser_restaurants_insert_guard.test.sql, including the non-vacuity control and\nanon-role boundary cases. Renumber the existing policy-scope and dropped-policy\nchecks to their shipped positions, and document the expected outcome for each\nomitted case.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:8b86d37d4bb5e7e886f20019 -->\n\n<!-- This is an auto-generated reply by CodeRabbit -->\n\n✅ Confirmed as addressed by @jdelgado2002\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "877874780fb8caab52a57128d9dd76d5989ed21b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:48.954Z",
+      "updated_at": "2026-08-08T07:09:48.954Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "725",
+        "comment_id": 3740197444,
+        "file": "supabase/tests/user_restaurants_insert_guard.test.sql",
+        "line": 183
+      },
+      "title": "_🔒 Security & Privacy_ | _🟡 Minor_ | _⚡ Quick win_",
+      "body": "_🔒 Security & Privacy_ | _🟡 Minor_ | _⚡ Quick win_\n\n**Constrain policy checks to the `public` schema.**\n\n`pg_policies` contains policies from all schemas. An identically named policy on another `user_restaurants` table can make the policy-presence assertion pass incorrectly.\n\nAdd `AND schemaname = 'public'` to both catalog subqueries.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@supabase/tests/user_restaurants_insert_guard.test.sql` around lines 164 -\n181, Constrain both pg_policies subqueries in the user_restaurants policy\nassertions to the public schema by adding schemaname = 'public' alongside the\nexisting tablename and policyname filters. Keep the current checks for the\nrestrictive INSERT policy and removal of the old policy unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:c3ee87d46bf92a2ccc762eca -->\n\n<!-- This is an auto-generated reply by CodeRabbit -->\n\n✅ Confirmed as addressed by @jdelgado2002\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "8898eaadcd224a5e860b85638a9e31ea3c3a725b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:48.955Z",
+      "updated_at": "2026-08-08T07:09:48.955Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "725",
+        "comment_id": 3740225616,
+        "file": "docs/superpowers/specs/2026-08-08-user-restaurants-insert-guard-design.md",
+        "line": 214
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Updated the Tests table to list all 11 shipped cases: added case 8 (non-vacuity control) and case 11 (anon-role boundary), and renumbered the policy-scope and dropped-policy checks to 9 and 10. Fixed in `a4378ee37a217614f18042a49a5f73a8e5d10768`.",
+      "severity": "info",
+      "id": "eac053632c22a278b5d2abc1f48127d412a3f9a6",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:48.956Z",
+      "updated_at": "2026-08-08T07:09:48.956Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "725",
+        "comment_id": 3740225870,
+        "file": "supabase/tests/user_restaurants_insert_guard.test.sql",
+        "line": 183
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Added AND schemaname = 'public' to both pg_policies subqueries (cases 9 and 10). Fixed in `a4378ee37a217614f18042a49a5f73a8e5d10768`.",
+      "severity": "info",
+      "id": "9883b4a639e6125fee3d4c68a8d497080d1980ed",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:48.956Z",
+      "updated_at": "2026-08-08T07:09:48.956Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "725",
+        "comment_id": 3740226220,
+        "file": "docs/superpowers/specs/2026-08-08-user-restaurants-insert-guard-design.md",
+        "line": 214
+      },
+      "title": "`@jdelgado2002`, thank you. The design test table now matches the shipped 11-case pgTAP security contract.",
+      "body": "`@jdelgado2002`, thank you. The design test table now matches the shipped 11-case pgTAP security contract.\n\n🐇 ✅\n\n<!-- <review_comment_addressed> -->\n\n---\n\n<!-- This is an auto-generated comment: tweet message by coderabbit.ai -->\n\nIf you found this review helpful, would you consider giving us a shout-out on [X](https://twitter.com/intent/tweet?related=CodeRabbitAI&text=Keep%20security%20docs%20aligned%20with%20shipped%20pgTAP%20tests%3A%20all%2011%20cases%2C%20including%20non-vacuity%20and%20anon-role%20boundaries.%20Catch%20contract%20drift%20fast%20with%20%40coderabbitai%20%F0%9F%94%8D%F0%9F%9B%A1%EF%B8%8F&url=https%3A%2F%2Fgithub.com%2Ftoyiyo%2Fnimble-pnl%2Fpull%2F725%23discussion_r3740197443)?\n\nThank you for using CodeRabbit!\n\n<!-- end of auto-generated comment: tweet message by coderabbit.ai -->\n\n<sub>You are interacting with an AI system.</sub>\n\n<!-- This is an auto-generated reply by CodeRabbit -->",
+      "severity": "info",
+      "id": "2437c39a25b7f97c5f08b0ec12bb6ba3b30d02b7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:48.956Z",
+      "updated_at": "2026-08-08T07:09:48.956Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "725",
+        "comment_id": 3740226228,
+        "file": "supabase/tests/user_restaurants_insert_guard.test.sql",
+        "line": 183
+      },
+      "title": "`@jdelgado2002`, confirmed. The two catalog checks now constrain `pg_policies` to the `public` schema. This resolves the finding.",
+      "body": "`@jdelgado2002`, confirmed. The two catalog checks now constrain `pg_policies` to the `public` schema. This resolves the finding.\n\n🐇 ✅\n\n<!-- <review_comment_addressed> -->\n\n---\n\n<!-- This is an auto-generated comment: tweet message by coderabbit.ai -->\n\nIf you found this review helpful, would you consider giving us a shout-out on [X](https://twitter.com/intent/tweet?related=CodeRabbitAI&text=Prevent%20false-positive%20RLS%20policy%20tests%20by%20scoping%20%60pg_policies%60%20checks%20to%20%60public%60.%20A%20small%20fix%20with%20real%20security%20impact%E2%80%94try%20%40coderabbitai%20%F0%9F%94%92&url=https%3A%2F%2Fgithub.com%2Ftoyiyo%2Fnimble-pnl%2Fpull%2F725%23discussion_r3740197444)?\n\nThank you for using CodeRabbit!\n\n<!-- end of auto-generated comment: tweet message by coderabbit.ai -->\n\n<sub>You are interacting with an AI system.</sub>\n\n<!-- This is an auto-generated reply by CodeRabbit -->",
+      "severity": "info",
+      "id": "7a74a0067ca4d5278264011d894d50a719a3c698",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:48.956Z",
+      "updated_at": "2026-08-08T07:09:48.956Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/usePayroll.tsx",
+        "line": 532
+      },
+      "title": "@typescript-eslint/no-explicit-any in usePayroll.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/src/hooks/usePayroll.tsx"
+      ],
+      "id": "2990f93ada0ce4d8a5a1a09f3bfa5d100cdb10ae",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.001Z",
+      "updated_at": "2026-08-08T07:09:49.001Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useShiftTemplates.tsx",
+        "line": 160
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/src/hooks/useShiftTemplates.tsx"
+      ],
+      "id": "a702ba96976ff5ff4c416a31e9ae52c26e8ad336",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.007Z",
+      "updated_at": "2026-08-08T07:09:49.007Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useShiftTemplates.tsx",
+        "line": 352
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/src/hooks/useShiftTemplates.tsx"
+      ],
+      "id": "e5e3a7e55a7654e6261673bb5075d4d0a778cb30",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.007Z",
+      "updated_at": "2026-08-08T07:09:49.007Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useShiftTemplates.tsx",
+        "line": 371
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/src/hooks/useShiftTemplates.tsx"
+      ],
+      "id": "e3b96942141832c575b6761e37fe965ae6512835",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.008Z",
+      "updated_at": "2026-08-08T07:09:49.008Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AvailableShiftsPage.tsx",
+        "line": 455
+      },
+      "title": "@typescript-eslint/no-explicit-any in AvailableShiftsPage.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/src/pages/AvailableShiftsPage.tsx"
+      ],
+      "id": "a3cddc99c6dc168f2cdae2123511c55841b83221",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.009Z",
+      "updated_at": "2026-08-08T07:09:49.009Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AvailableShiftsPage.tsx",
+        "line": 462
+      },
+      "title": "@typescript-eslint/no-explicit-any in AvailableShiftsPage.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/src/pages/AvailableShiftsPage.tsx"
+      ],
+      "id": "fd2a028a3a92b9209f783c178bb46a093f117e70",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.009Z",
+      "updated_at": "2026-08-08T07:09:49.009Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AvailableShiftsPage.tsx",
+        "line": 465
+      },
+      "title": "@typescript-eslint/no-explicit-any in AvailableShiftsPage.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/src/pages/AvailableShiftsPage.tsx"
+      ],
+      "id": "f07f40ba38f23b1014d4664914468a1977450a28",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.009Z",
+      "updated_at": "2026-08-08T07:09:49.009Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 306
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "7210d5c32c8831bed2ae2844274b44c502f032eb",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.019Z",
+      "updated_at": "2026-08-08T07:09:49.019Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 370
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b45507e5b4897b4ae1cf697ad7632587c6b382ef",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 404
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4999bfb85601612061c053b8f31ee91c4e021dd7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 408
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4ce64c8116fb962006f8b7fdf137c74fdde43b9f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 417
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "998e44fc0bea2c184ad8118e41dcd948936d2639",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 423
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a239042162282d291fb19b029969ef7f7c937fb9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 436
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8a5ccf78a4d17e8a3aad862dc3d644a58c9cc975",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 438
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d15c908a0621e9e2272bd37502f8b353e9438d36",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 439
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "12aacd97b0574c6619d7f1a1f8e3d01aee845cfe",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 495
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "cf73ab56698101d172b847bbc18282da71f64647",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 496
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1abee3100d37387f2956ce565a607f0313e01025",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.020Z",
+      "updated_at": "2026-08-08T07:09:49.020Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 526
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "9913b71da27ac36d1db0bea0a6bd5c100b8ec0b5",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 550
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2efb82816e7777cfefd7d75d3b189229e724b6c3",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 552
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a7970caaf76a17cf3f7f364da0c1265b3f0c87d9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 553
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "014b1e1b37cc9ab17752b8867b663a5ce5dfb43a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 579
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "75463adc538f599b6492a1f9b54547dd994ef6f7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 582
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "588d16d826e19b1d8672e25c3204ab1ce60d6185",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 603
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a937790034c95451690300fe449d9b0c86ab67bc",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 605
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e5dd950f368a327e065a023db8a34a780249e2d7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 649
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "201a72452677a80ff9ee982e47ed7fd64fe97b1d",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.021Z",
+      "updated_at": "2026-08-08T07:09:49.021Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 667
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0cf563278abf4a29aff46006aa06204b2ea7e758",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 690
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2295e7083638e5ad65de75ac043d13055833b1aa",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 709
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "87a034335a3e831e8d1e23bd62e41849dd3e82d5",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 726
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "9234a237061565de08eb3fd3501666c7f34674b9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 728
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2a7127fafea6bd8447c24efca97221cb98169a7a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 747
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "bf9a6e671b4a9a0ab77de0a92a1e0ed64a420011",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 748
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "45506d73aca2513cab06dfe8de037e7f5c073806",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 751
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "123babfb33ee093c5cfff010d0f6c12f19a2bee4",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 770
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2adafe3ac37fafb6076ce1453a07a41a98e9039a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 772
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c622431bd2487de0868684fb525214702e0d8530",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 773
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "9fc8bee2f4444eeb6a05808bcac0a269ba112d7f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 776
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "9c2c04fe66ceab576eb7ef0c679dcb908ada4549",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.022Z",
+      "updated_at": "2026-08-08T07:09:49.022Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 823
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "89dfdd00bd95405fe9fdc1257dc6db22276034a8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 825
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fcbb7d413636ed840764c5b1ec24c318eb70751d",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 826
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c50f3bd38fdf61744453b3d84a4931db9e0c4bf9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 884
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3f9ca6ff7b3b632e46ed19284633ee8b5b36eb1b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 887
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "bd417d534f643dbc9dfba1aafa1031543105ac05",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 901
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "7d8776bc9800cceaef089516c181c929e4b41fd2",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 925
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e2e01d2426d3e6753122ef5636c55d6409999b3f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 926
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "aeb665e341bfeb28298ec289f1b017cda05a0e01",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 940
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fc613353247b71d392e2e44a6eaf5feb510c65e7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 960
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "270e0a32a28a577f6abca22f208978649633377b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.023Z",
+      "updated_at": "2026-08-08T07:09:49.023Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1013
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fa091f1c012ec13496717daa7ab7c5172d8c34f4",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1021
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "f529175b4de6735f03fe1cba7e61b65b45ff4ae2",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1072
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d7943942e7cee674c70c614e4089b66c95480149",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1117
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fcfd6b7e0c49d50473d2e46aa0076a3e568a5979",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1121
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "f0faa041b826650a573a2c5866f3befc2d867874",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1172
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b736be79aae90541f5e7d4d325a2339ad0daf277",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1174
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e4bf9437e631df0ed605d189e06efe2f9a1adabd",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1175
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c601f7a78a76c2197658f6583b253631e429e359",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1256
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2a8daa239781388ed4ff58e38c9fef7826ad1fe4",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.024Z",
+      "updated_at": "2026-08-08T07:09:49.024Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1326
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b2b082f12d04ce4a43726a8c29264524912e1041",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1328
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "44a7aa123a3fc79033ad9a98183d03e617ea256b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1383
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "60dd509cb414da9a25c56f76ad4aa615396f1545",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1430
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d65cdee4144b78b8aae7c44e44d941f530d8ba10",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1432
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1ede27d3121b9d4f5384d0cdbb2a0abe7982fcc9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1433
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "cf58395fcf3f446af7a060316f6aafbd34f4d643",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1437
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "7e48aa2d41faec5d59856e09194c43ff83075c38",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1652
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ba1bd5a7d6245af3f6cf50c2b0cf0fef3f40d77e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1654
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6d5639ea1736deccd41685a12c2b6e1e9b87e3f8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1655
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "84eabd846164bbbd1f9d0db4c48286b6378eb470",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1666
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0697a51bcadebdfc1c9946581fbd2336e0a6f7ee",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1679
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d9d7ae17439ccf8c2556d661ed45a37c05ccfdfb",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1690
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a967c0be29cffc4a4a6c065f85a8cc35a8210aec",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1701
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d1f2e5e3e9af69ff849bb233aca18434faaedd9f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.025Z",
+      "updated_at": "2026-08-08T07:09:49.025Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1724
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "18abae206decf6d25a0c96d29217251398e3b3fd",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1757
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ab550111b7532b0b46e4db7caad7818b31319560",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1787
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4e90463a4b344958e8222b5774d804102ae9bda1",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1788
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "74b88a66a1db968904d9656a07431f0c037f8b61",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1795
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "f5a96658d418cbaf42a7a6059346bcb07fbf1bc9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1812
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d6a20dabb3219d5c7916302c36fbf9064ac2c612",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1924
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "afa15de29b57098b75dd29130e6e10b32f28ed58",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1929
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "44496d5bae34d9ec8026290b9afe667578491378",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1978
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0f343e58b4bbdd46dd3008d89f92b7b1521ef2c1",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1980
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c64aaceb12cae90df3efb034bc64e5c797d2586d",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.026Z",
+      "updated_at": "2026-08-08T07:09:49.026Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2046
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "27274499e781e557f6a43043d38fa04ed50f1643",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2048
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "73a42ce98a586d9fefd2321155dcaf1cddb3f317",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2172
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4be0183ccba5631cd9897a009cc3e17e88bcdafb",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2175
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2d59dc082207b069a7c316c5db45d98850362654",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2225
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2bf027457386117721283bed2fc05a54da47f371",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2274
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b410dc0d5f0ca1af8635c8d2f1cbcdbb7b86689e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2276
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8b6c3ee15fa903892d8e91d196bebd90180b0625",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2277
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3d2e826706ff52387e802978f9bf9ab4636ae188",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2326
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "94f4c44b184f30317e480dbc6717eb79c2e1d023",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2341
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "347bfd4c3e451f2f919b540719f843011ab92751",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2342
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6786b2a26643637733547fc96f292d315f46783a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2349
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5d156ba1b14722bb865216615a0b5b13022fa18e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.027Z",
+      "updated_at": "2026-08-08T07:09:49.027Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2390
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "bd4dc0fb82a1d246e3b5971d128d5d410e835da5",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2392
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b541cd4ac2b13af479e7ee7344ffc1db989fb63c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2393
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ce93b8adb5ca9c12897520b716a57020f648a3fe",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2445
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d0120dec5a45f76982b0827d230ccac75d49a946",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2475
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "95bebb9a523f679dcf58422df9ae000e2ec27036",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2477
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0e6e3d2cec2716da10b030fd27865aaa5418792d",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2478
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "bbcca2e5565be57de86e4dfcddc41dad9309da1c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2538
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c9c6cea813578ab4635118016deda9259473f48c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2550
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "125b4433da2582f836349ebe531e923c65e9a479",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2566
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fc237054bb927cba6aa6fb75dec59bef106dc53b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2568
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "61309bb54cfbb9bc5e247c9b811ab7d6483e25e5",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2569
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8af6643076c00e8c2381cedcd0bb0575452b7f23",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2622
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4d6c8fbfc60a375bae9d45ceeb2a66485867419b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.028Z",
+      "updated_at": "2026-08-08T07:09:49.028Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2670
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "99eeb921aeb27c37023ddac0377723b1e145260b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2673
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "461684985ac2d9b880cb701c2741461bedc06490",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2708
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4618163631660dd0041b8a7acb41454ed26d0400",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2714
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1dc0592a652bbe1aa36b6d652cfc6f03371261fe",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2717
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3b5de3a1e7b752c1ee3fe6221777961eeee29c7e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2721
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2ff3ed5623ae549ce0f34497b6c972b66494c1f7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2781
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a5ce518bf010ec55e396eea6d22836ad1860ac71",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2819
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "14cf420ab69450325efcba7d22f274a5a460302c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2822
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "84de39920982088f906da8ad0fbfbd47ff6ce3d2",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2828
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "cb458f2b8331382268e2a41fadccde1c441dd390",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.029Z",
+      "updated_at": "2026-08-08T07:09:49.029Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2838
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ddf2dea41cd60237c68f196d0865dfdc8a4c00e8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2842
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e8a48dd9b817f41f3e14df4e2cf22857a05e5455",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2846
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "7cabef31497a8b86347d453481139a7524926898",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2849
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0b724d304ec7b3b03610c3310f5b3a900b1a9fb7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2850
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c43fa011a6f3d842443088eb2e446995cb907491",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2852
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "65256f6b33dfd353930785bcfef9756e015a143e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2869
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6f3ca0f2d2cc86570a7d59e6133163e8617ff9f7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2948
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a7f2f2c4bdc89129a7f07aa76c1ce7c869d2edb2",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2950
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "285516f7382d23a13b234023cc848cd6f7521c3e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2951
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4fd377cac40d0d9b6f31422fbc2ecdd5ce3db5e8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2964
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "07defb0061babbe6e6f13dac654e8d09776f4eed",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2984
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ca04674d3ed29763aa3e6254eebccd01a28959e7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.030Z",
+      "updated_at": "2026-08-08T07:09:49.030Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3008
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "007e3522ce4c81d7471ec5f304a7b69ea4befd69",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3010
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4f38da6db247dec251ef0ccd69a997850eb42290",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3011
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "9e2bcbb9d181ff4e18e71f90d9e3335e0d01999a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3100
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "77039f39484d9a31c3fde1eba1c5c40a716c8631",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3149
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fdaa7beafd74bb55505bdd5ace9fcb898807992a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3206
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "cbb3ea509ddf4ef86cf4f199b052163ac5105cd1",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3208
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5698b3f767ba3606c94c0253749f1e63b27b1299",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3209
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b3363dacad07505e6fcbaf75dd7588a16a6f30c7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3259
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1c22383edb36a3813ca760c9bc0edaf42f358e11",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3283
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "de5edd89ba8908fdc0631fa6888568019bde0a8a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3321
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "aaa290e070513b8df0b4c647482f11b469b02a35",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3371
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "36c5f1c2d5ac19be6a4e3fe8c4acc8e6803942b9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.031Z",
+      "updated_at": "2026-08-08T07:09:49.031Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3373
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0b140b18ec6132b6b3ee5c23ed09bed2700d6fa4",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3374
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d0d97e224d7cffd0cf9758cc23afd8e0162bb496",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3409
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6260fd5e53cca8355896aa56870be7f232f62245",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3460
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4556e239009ccc8b2128d45fe055422080e90747",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3462
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "76eeeaa53dc9339ce80d2cdb9941cf95fb9cc346",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3463
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8929f1b2c97219b90c6e485895d754f3d7a4d92f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3581
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "443ac9ac15f9c91c80cafead628b4936b3f070ee",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3583
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a2ca0a6fa0e5988a137f950cd53dac253d77f5ea",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3585
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c6c6b76b546433618741bb5bff388b05fb154e81",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.032Z",
+      "updated_at": "2026-08-08T07:09:49.032Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/permissions-roles.spec.ts",
+        "line": 10
+      },
+      "title": "@typescript-eslint/no-explicit-any in permissions-roles.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/permissions-roles.spec.ts"
+      ],
+      "id": "f6752c6ad18d105b863130ea73bafdcf20b05826",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.048Z",
+      "updated_at": "2026-08-08T07:09:49.048Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/permissions-roles.spec.ts",
+        "line": 13
+      },
+      "title": "@typescript-eslint/no-explicit-any in permissions-roles.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/permissions-roles.spec.ts"
+      ],
+      "id": "a86190ad1214370790c3d716ebe6a9e66bd2ebf8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.048Z",
+      "updated_at": "2026-08-08T07:09:49.048Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/permissions-roles.spec.ts",
+        "line": 16
+      },
+      "title": "@typescript-eslint/no-explicit-any in permissions-roles.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/permissions-roles.spec.ts"
+      ],
+      "id": "7046837175febbffaec12d3d4bc38e36c0c36399",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.048Z",
+      "updated_at": "2026-08-08T07:09:49.048Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 36
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "4d5e3dde93878659f705e5c36d241af90b241b99",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 77
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "85a27effbdca2b8f17ed90e18016982401672bc7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 97
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "253a3ba64693c57db96082f599b5ad9c9527ad84",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 149
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "db744017fa21fff59eef25857d1d36ec03dbfaaf",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 174
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "570120f3c0737442cd8dabe1e53d29651a961ab0",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 227
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "8eac6aa59ab47483ca41708a23a0589e98999436",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 281
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "ed345a853f4a1b43144ed4101f11c278e6df3a5a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 294
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "3ed568f1079e302c00bc4319ec97fab899fd5d11",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.058Z",
+      "updated_at": "2026-08-08T07:09:49.058Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 323
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "00d2f2ee040935e7f8ad1708c95e26ae8a8a54ed",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 370
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "47e92fe2d7bc949567fd2462f3e43bab8a32efbe",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 403
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "d137709e2ebd84bd1c75514c145f483a62e46890",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 452
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "15b4e78828034c32d5098e587e67fd892cc10ef6",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 477
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "10825a907dcda3ce8a8db082218ed54dc8a54984",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 522
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "5d778a70227010a8d9471352b9a08ef0ce6bde33",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 559
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "97600c09da7f5d1f4b81a2a926b95c632394e6b2",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/template-hours-cascade.spec.ts",
+        "line": 583
+      },
+      "title": "@typescript-eslint/no-explicit-any in template-hours-cascade.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/e2e/template-hours-cascade.spec.ts"
+      ],
+      "id": "2de94d93c47c6c51fff64e447c74a27ca0a10a8d",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 38
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "8f495be562fd16b176ec33dc45604ba8036cca6a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 41
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "a057132f9708b05be3017a00bd066c912b004aaf",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 52
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "45cf7a25ecd5a3da108196afc6e0fa87b7836795",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 54
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "5461d6208c8f50a6452181f4b77607f1ae3f97c6",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.059Z",
+      "updated_at": "2026-08-08T07:09:49.059Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 81
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "e992a8b7be0d9158313ceff2aa78cf5bc97d768c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 96
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "160c01038046370dcb330c4cee0a65406eb12b36",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 117
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "276a29e2dcd098bbf704a729645c61f6bb4b4c29",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 132
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "6e903f1d314784f8fbd0e8ec66520bcc710dbd53",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 150
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "b57beee186f2497b9b82292c4ba14da962d6836f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 179
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "f0587925a270a1fc60f4786cfeaf32ddec6400fd",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 188
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "b756fae3ec63a591f42820466817185b2da9e111",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 197
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "97a57e5c8af0df1061631d7a973b794d99e5c18a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.060Z",
+      "updated_at": "2026-08-08T07:09:49.060Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 213
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "42840ec399d49168613c3fb570fa8281afd397c8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 228
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "45a312d28b2d0a0b58ee786e35250a9d9b475aa2",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 271
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "c4142d9220162c9e7438e1cab5be7709b5cfdecc",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 330
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "66e978543cff005290c1cad3c955c6a5ea0a8167",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 496
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "c195748192536a285596e8ac27a3afe00126ff08",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 532
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "18e82a8cc36fac88fc8a8ec7623aeaa736f56d9d",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 545
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "7287f52060cd2b93149f489d1511c37338c6adc6",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 622
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "5378a97502879bf946b6acbdab3a41f6b49fee0b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 649
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "4dfdef28785c2ca314905c9183290334b5be6f9f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 667
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "41cc39598c47df0d1c512c582b780e59c0b0a253",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 901
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "29a9517c6e77976856c60ff9d961dbe8a89b18cd",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 946
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "91e122a417e269bd98e9789a0eb93422cde7f7f5",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.061Z",
+      "updated_at": "2026-08-08T07:09:49.061Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 1016
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "613fc34be18afb4c66072471de36690ab4c90461",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.062Z",
+      "updated_at": "2026-08-08T07:09:49.062Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 1202
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "216dec11306f3737bf4baf4afcece23ac7da184b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.062Z",
+      "updated_at": "2026-08-08T07:09:49.062Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 1205
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "ec7932e868f42bfa9fc26a5f5c5c0d09363616e3",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.062Z",
+      "updated_at": "2026-08-08T07:09:49.062Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 135
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "9b175acc7a326af2369c2c401c9c2d256b6a4ece",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 162
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "7c6e5c88622bbc1a515c33b0ba8fa3f1118b2961",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 178
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "814c27d588da1ff13ea8e333c6724b942022b882",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 198
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "c51dddb6c494f1975a782197c5ee6c6fe1402eb9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 222
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "f877df1231433165074b20f38e538d2711071a93",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 245
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "b89785d6a318121e0975fc1f5e72f900a8a097d7",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 271
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "54a5d8525f6d4c02b46b6198373018a91597579c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 292
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "711b6cdbaae7ef39ad27dfeef43084359173a841",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 315
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "148c64afdac336f194098dfec1bf481d2e414a75",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 340
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "532867bb91d645a32b1c527df09aad07545b1db2",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 363
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "e0c3632bc77b55bc8fdaf9171e43fce3e26f6f86",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 386
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "cf5490fa4f0a7212fff27d7c6c8f131d7ab09674",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 407
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "4320b597bccc1e472e1bb6b48fd39207d1fc23fa",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.071Z",
+      "updated_at": "2026-08-08T07:09:49.071Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 428
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "df4c59c6628ba38458cc3fcbab34b9c9efe6cbf0",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 448
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "c04187dfef5559cd63879d024fc93e7e2207e92e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 476
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "09906814902aed2a62ceec0c0cebffea0a050f9a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 506
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "d1ec25e113af2f6dffa4c56f92c8185903962cc8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 537
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "a90bd931660eecd4b7ae57041a5f8c637a0100dd",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 574
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "8f722c4a8b0720f4daedb78a86c00f709e0b21b9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 605
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "60bb66d590a612d055f9bcbecf4ed4f941e21836",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 625
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "96ce9e3d9937ae877bab69f0046561c0a419c648",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 648
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "f9648800372d6d8d8bac03dd0c5dd75665129ccd",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 673
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "df6ac1a92db54930bd364a8e26dcf66fe9580f53",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 688
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "9ee46812702a76f8ecced6dc7cc76e5375055a1e",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 698
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "ee31a37fd68d830b53461ebc5b07ae669b421af1",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 702
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "03b60aced3d33e278a4bdb42142f3ee2b9298a38",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 722
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "784b89c625d0069a3c14184f34b995e7caa4dad9",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.072Z",
+      "updated_at": "2026-08-08T07:09:49.072Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 729
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "239dad43c7ee62920ab12468c716d692d8a66e99",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 770
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "1e1d48bb69748e9a4dfc06c2b733429b45266162",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 793
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "0096197cec20662e60250f3041be3508881d5581",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 809
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "508388aa28b485ceec0159f125bd2a90031fc9f0",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 842
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "facc8d13e410e2cf8a8520e9b9388376b2c66126",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 870
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "c38dea61f0e0c6caa972cff43eb44f6d28c69687",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 901
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "cd44c0c0c127c18c1670f69f81f49022e4369957",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 980
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "5e3f6ec32e7f885535200b6d78c5e6edc7a8e51b",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 981
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "dd950973e101ae27d54a518404d17026864d4fe0",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1030
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "1f34060b909134324d4d99293c4e7624c29f5450",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1053
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "fbb0a51b5142003e70155fd60a9dae077ef94f0c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1057
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "d100085537b21499078bc8ed0beab311c13c70bd",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1083
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "0ecc9412edbedf26b3b1278a4bcced95d3fd64e6",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1095
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "ef5f71be3048f1ea8258b9512b5480eb1d9c9815",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.073Z",
+      "updated_at": "2026-08-08T07:09:49.073Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1119
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "610bfadbe049f6b356d5ee4736a53f39cd1712fc",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.074Z",
+      "updated_at": "2026-08-08T07:09:49.074Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1139
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "9eef868a8c2160b66c54d0206d514d6b282957af",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.074Z",
+      "updated_at": "2026-08-08T07:09:49.074Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1161
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "45cba6fe53da06f25c6a0ac919a75bbd8d2b7ead",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.074Z",
+      "updated_at": "2026-08-08T07:09:49.074Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1183
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "9cb3450c62c8fbd4523966666e71bac8987dfea0",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.074Z",
+      "updated_at": "2026-08-08T07:09:49.074Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1214
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "04cb21cf2e7f3011dc10037276e250707dbddee3",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.074Z",
+      "updated_at": "2026-08-08T07:09:49.074Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1248
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "4f32d82d978b01cedeacd67cfcf9e61a815e71d8",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.074Z",
+      "updated_at": "2026-08-08T07:09:49.074Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1271
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "ee0aee67c1a1efcfa61498d8bd498639f4485211",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.074Z",
+      "updated_at": "2026-08-08T07:09:49.074Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 97
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "eadd14b341a2f7fc4192fe2d816cfa12de3867ba",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 98
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "2b93eda78c35be7889a7971c5e18954969e7d7c3",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 126
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "e097afb93b9a3ac9825cd4737450eb29394b05ee",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 127
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "c709283764ddc2c6332d138408d2cb1c55e0b63f",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 197
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "d8607eeba5b34f42d6342390c2c33dfc8858750c",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 242
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "1412de79837fc90e50f3831481451fd42f8db72d",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 243
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "921430923de57166ffd7e329cb4ce31c0075d864",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 244
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "fa9e961411719d05ed9b1fd1cb6e49d3236ea888",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.075Z",
+      "updated_at": "2026-08-08T07:09:49.075Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 263
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "c7762748db9ea006c6d772cbacd9b9134ff3ff3a",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.076Z",
+      "updated_at": "2026-08-08T07:09:49.076Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useTemplateLinkedShifts.test.ts",
+        "line": 264
+      },
+      "title": "@typescript-eslint/no-explicit-any in useTemplateLinkedShifts.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/user-restaurants-insert-guard/tests/unit/useTemplateLinkedShifts.test.ts"
+      ],
+      "id": "7d17809b8daaf436b305f908313659048dfe5c44",
+      "status": "open",
+      "created_at": "2026-08-08T07:09:49.076Z",
+      "updated_at": "2026-08-08T07:09:49.076Z"
     }
   ]
 }

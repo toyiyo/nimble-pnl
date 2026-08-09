@@ -33,6 +33,8 @@ export interface MonthlyMetrics {
   pending_labor_cost: number;
   actual_labor_cost: number;
   has_data: boolean;
+  /** True when at least one employee row is masked (no view:pay_rates), so labor_cost is unknown, not zero. */
+  labor_cost_hidden: boolean;
 }
 
 const PASS_THROUGH_OTHER_LIABILITY_TYPES = new Set(['service_charge', 'fee']);
@@ -412,6 +414,22 @@ export function useMonthlyMetrics(
         console.warn('Failed to fetch employees for labor calculation:', employeesError);
       }
 
+      // A masked pay column arrives as null from employees_secure, and a null
+      // rate computes as a $0 cost — a wrong number, not a hidden one. Same
+      // masked-row check as useEmployeeLaborCosts.tsx. One employee's masked
+      // row makes the whole labor_cost figure unknown, so the Dashboard must
+      // show it as unavailable instead of a number the caller could read as
+      // real.
+      const laborCostHidden = (employeesData ?? []).some((emp) => {
+        const compType = emp.compensation_type ?? 'hourly';
+        return (
+          (compType === 'hourly' && (emp.hourly_rate === null || emp.hourly_rate === undefined)) ||
+          (compType === 'salary' && (emp.salary_amount === null || emp.salary_amount === undefined)) ||
+          (compType === 'daily_rate' && (emp.daily_rate_amount === null || emp.daily_rate_amount === undefined)) ||
+          (compType === 'contractor' && (emp.contractor_payment_amount === null || emp.contractor_payment_amount === undefined))
+        );
+      });
+
       // Fetch per-job contractor payments (manual payments stored as source='per-job')
       const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
         .from('daily_labor_allocations')
@@ -593,6 +611,7 @@ export function useMonthlyMetrics(
         pending_labor_cost: Math.round(month.pending_labor_cost) / 100,
         actual_labor_cost: Math.round(month.actual_labor_cost) / 100,
         has_data: month.has_data,
+        labor_cost_hidden: laborCostHidden,
         net_revenue: Math.round(month.net_revenue) / 100,
         total_collected_at_pos: Math.round(month.total_collected_at_pos) / 100,
       }));

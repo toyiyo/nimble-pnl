@@ -26,6 +26,8 @@ interface MonthlyData {
   pending_labor_cost: number;
   actual_labor_cost: number;
   has_data: boolean;
+  /** True when at least one employee row is masked (no view:pay_rates), so labor_cost is unknown, not zero. */
+  labor_cost_hidden: boolean;
 }
 
 interface MonthlyBreakdownTableProps {
@@ -312,21 +314,31 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           </div>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                            <span className="font-semibold text-xs sm:text-sm">{formatCurrency(laborCost)}</span>
-                            <span className="text-[10px] sm:text-xs text-amber-600 flex items-center gap-1 justify-end">
-                              Pending: {formatCurrency(pendingLaborCost)} ({pendingLaborPercent.toFixed(1)}%)
-                              {perf.laborBasis === 'accrued' && (
-                                <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">counted</span>
-                              )}
-                            </span>
-                            <span className="text-[10px] sm:text-xs text-blue-600 flex items-center gap-1 justify-end">
-                              Actual: {formatCurrency(actualLaborCost)} ({actualLaborPercent.toFixed(1)}%)
-                              {perf.laborBasis === 'paid' && (
-                                <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">counted</span>
-                              )}
-                            </span>
-                          </div>
+                          {month.labor_cost_hidden ? (
+                            <div
+                              className="flex flex-col items-end gap-0.5 sm:gap-1"
+                              title="Pay rates are hidden from this role. Ask an owner or manager for the labor cost."
+                            >
+                              <span className="font-semibold text-xs sm:text-sm text-muted-foreground">Unavailable</span>
+                              <span className="text-[10px] sm:text-xs text-muted-foreground">Pay rates hidden</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                              <span className="font-semibold text-xs sm:text-sm">{formatCurrency(laborCost)}</span>
+                              <span className="text-[10px] sm:text-xs text-amber-600 flex items-center gap-1 justify-end">
+                                Pending: {formatCurrency(pendingLaborCost)} ({pendingLaborPercent.toFixed(1)}%)
+                                {perf.laborBasis === 'accrued' && (
+                                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">counted</span>
+                                )}
+                              </span>
+                              <span className="text-[10px] sm:text-xs text-blue-600 flex items-center gap-1 justify-end">
+                                Actual: {formatCurrency(actualLaborCost)} ({actualLaborPercent.toFixed(1)}%)
+                                {perf.laborBasis === 'paid' && (
+                                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">counted</span>
+                                )}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <div className="flex flex-col items-end gap-0.5 sm:gap-1">
@@ -337,38 +349,48 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           </div>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                            <span className={`font-bold text-xs sm:text-sm ${
-                              actualNetProfit > 0 ? 'text-primary'
-                                : actualNetProfit < 0 ? 'text-destructive'
-                                : 'text-foreground'
-                            }`}>
-                              {formatCurrency(actualNetProfit)}
-                            </span>
-                            <span className="text-[10px] sm:text-xs text-blue-600">
-                              Actual
-                              {month.net_revenue > 0
-                                ? ` (${((actualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
-                                : ''}
-                            </span>
-                            {pendingLaborCost > 0 && (
-                              <>
-                                <span className={`font-semibold text-xs sm:text-sm ${
-                                  accrualNetProfit > 0 ? 'text-primary'
-                                    : accrualNetProfit < 0 ? 'text-destructive'
-                                    : 'text-foreground'
-                                }`}>
-                                  {formatCurrency(accrualNetProfit)}
-                                </span>
-                                <span className="text-[10px] sm:text-xs text-amber-600">
-                                  Accrual basis (matches hours worked)
-                                  {month.net_revenue > 0
-                                    ? ` (${((accrualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
-                                    : ''}
-                                </span>
-                              </>
-                            )}
-                          </div>
+                          {month.labor_cost_hidden ? (
+                            <div
+                              className="flex flex-col items-end gap-0.5 sm:gap-1"
+                              title="Net profit needs the labor cost, which pay-rate permissions hide from this role."
+                            >
+                              <span className="font-bold text-xs sm:text-sm text-muted-foreground">Unavailable</span>
+                              <span className="text-[10px] sm:text-xs text-muted-foreground">Labor cost hidden</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                              <span className={`font-bold text-xs sm:text-sm ${
+                                actualNetProfit > 0 ? 'text-primary'
+                                  : actualNetProfit < 0 ? 'text-destructive'
+                                  : 'text-foreground'
+                              }`}>
+                                {formatCurrency(actualNetProfit)}
+                              </span>
+                              <span className="text-[10px] sm:text-xs text-blue-600">
+                                Actual
+                                {month.net_revenue > 0
+                                  ? ` (${((actualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
+                                  : ''}
+                              </span>
+                              {pendingLaborCost > 0 && (
+                                <>
+                                  <span className={`font-semibold text-xs sm:text-sm ${
+                                    accrualNetProfit > 0 ? 'text-primary'
+                                      : accrualNetProfit < 0 ? 'text-destructive'
+                                      : 'text-foreground'
+                                  }`}>
+                                    {formatCurrency(accrualNetProfit)}
+                                  </span>
+                                  <span className="text-[10px] sm:text-xs text-amber-600">
+                                    Accrual basis (matches hours worked)
+                                    {month.net_revenue > 0
+                                      ? ` (${((accrualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
+                                      : ''}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {month.profitChangePercent !== null ? (
@@ -446,7 +468,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                               ) : (
                                 <>
                                   {/* Data Availability Warnings */}
-                                  {(month.food_cost === 0 && month.labor_cost === 0) && (
+                                  {(month.food_cost === 0 && month.labor_cost === 0 && !month.labor_cost_hidden) && (
                                     <div className="flex items-start gap-2 p-3 rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
                                       <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                                       <div className="text-xs text-blue-700 dark:text-blue-400 space-y-1">

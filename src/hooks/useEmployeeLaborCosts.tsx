@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Shift, Employee } from '@/types/scheduling';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
+import { isCompensationHidden } from '@/lib/employeeMaskedFields';
 
 export interface EmployeeLaborCost {
   id: string;
@@ -63,11 +64,7 @@ export function useEmployeeLaborCosts(
       // A masked pay column arrives as null. A $0 cost understates labor and
       // drives a wrong P&L, so mark the row unknown and leave it out of the
       // totals. The hours stay visible: they are not pay data.
-      const payIsHidden =
-        (emp.compensation_type === 'hourly' && emp.hourly_rate == null) ||
-        (emp.compensation_type === 'salary' && emp.salary_amount == null) ||
-        (emp.compensation_type === 'daily_rate' && emp.daily_rate_amount == null) ||
-        (emp.compensation_type === 'contractor' && emp.contractor_payment_amount == null);
+      const payIsHidden = isCompensationHidden(emp);
 
       // Calculate effective rate based on compensation type
       let rate = 0;

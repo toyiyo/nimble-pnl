@@ -10,6 +10,7 @@ import { Employee } from '@/types/scheduling';
 import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { isCompensationHidden } from '@/lib/employeeMaskedFields';
 import {
   Tooltip,
   TooltipContent,
@@ -223,19 +224,17 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
 
   const getCompensationDisplay = () => {
     // A masked column arrives as null. `$0.00/hr` would read as a real rate.
+    if (isCompensationHidden(employee)) return 'Hidden';
+
     switch (employee.compensation_type) {
       case 'hourly':
-        return employee.hourly_rate === null || employee.hourly_rate === undefined
-          ? 'Hidden'
-          : `${formatCurrency(employee.hourly_rate)}/hr`;
+        return `${formatCurrency(employee.hourly_rate)}/hr`;
       case 'salary':
-        return employee.salary_amount === null || employee.salary_amount === undefined
-          ? 'Hidden'
-          : `${formatCurrency(employee.salary_amount)}/${employee.pay_period_type}`;
+        return `${formatCurrency(employee.salary_amount)}/${employee.pay_period_type}`;
+      case 'daily_rate':
+        return `${formatCurrency(employee.daily_rate_amount)}/day`;
       case 'contractor':
-        return employee.contractor_payment_amount === null || employee.contractor_payment_amount === undefined
-          ? 'Hidden'
-          : `${formatCurrency(employee.contractor_payment_amount)}/${employee.contractor_payment_interval}`;
+        return `${formatCurrency(employee.contractor_payment_amount)}/${employee.contractor_payment_interval}`;
       default:
         return '';
     }

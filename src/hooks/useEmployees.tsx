@@ -4,6 +4,7 @@ import { Employee } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
+  assertPermissionsResolved,
   maskedEmployeeFields,
   stripMaskedEmployeeFields,
 } from '@/lib/employeeMaskedFields';
@@ -85,12 +86,8 @@ export const useCreateEmployee = () => {
 
   return useMutation({
     mutationFn: async (employee: Omit<Employee, 'id' | 'created_at' | 'updated_at'>) => {
-      // Reject here, before the mask runs. isResolved false would otherwise
-      // read as "no flags" and strip every pay and contact field — a silent
-      // partial write, not the explicit retry this error gives the caller.
-      if (!isResolved) {
-        throw new Error('Permissions are still loading. Try again in a moment.');
-      }
+      // Reject here, before the mask runs. See assertPermissionsResolved.
+      assertPermissionsResolved(isResolved);
 
       // A caller with no flag cannot read these columns, so the form holds
       // NULL for them. Writing that NULL back would erase the stored value.
@@ -132,12 +129,8 @@ export const useUpdateEmployee = () => {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Employee> & { id: string }) => {
-      // Reject here, before the mask runs. isResolved false would otherwise
-      // read as "no flags" and strip every pay and contact field — a silent
-      // partial write, not the explicit retry this error gives the caller.
-      if (!isResolved) {
-        throw new Error('Permissions are still loading. Try again in a moment.');
-      }
+      // Reject here, before the mask runs. See assertPermissionsResolved.
+      assertPermissionsResolved(isResolved);
 
       const masked = maskedEmployeeFields({
         payRates: hasCapability('view:pay_rates'),
@@ -258,6 +251,7 @@ export interface ReactivateEmployeeParams {
 export const useReactivateEmployee = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { hasCapability, isResolved } = usePermissions();
 
   return useMutation({
     mutationFn: async ({ employeeId, hourlyRate }: ReactivateEmployeeParams) => {
@@ -265,11 +259,17 @@ export const useReactivateEmployee = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
+      // A caller with no view:pay_rates cannot read the real rate, so the
+      // dialog disables the rate box. Drop any value here too, in case a
+      // caller reaches this hook another way: the dialog's disable is a UI
+      // hint, not the gate.
+      const canSetRate = isResolved && hasCapability('view:pay_rates');
+
       // Call the database function for reactivation
       const { data, error } = await supabase.rpc('reactivate_employee', {
         p_employee_id: employeeId,
         p_reactivated_by: user.id,
-        p_new_hourly_rate: hourlyRate || null,
+        p_new_hourly_rate: canSetRate ? (hourlyRate || null) : null,
       });
 
       if (error) throw error;

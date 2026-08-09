@@ -14,9 +14,9 @@ vi.mock('@/contexts/RestaurantContext', () => ({
   }),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for the Supabase query builder; each method returns the same object, a shape the SDK's generic builder type does not describe
 function makeChainable(data: unknown = []): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see makeChainable above; the object gains its methods below, one property at a time
   const chain: any = {};
   ['select', 'eq', 'in', 'order', 'gte', 'lte', 'lt', 'is', 'or', 'limit', 'maybeSingle'].forEach((m) => {
     chain[m] = vi.fn(() => chain);
@@ -25,9 +25,9 @@ function makeChainable(data: unknown = []): any {
   return chain;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for the Supabase query builder; see makeChainable above
 function makeTimePunchesChain(data: unknown[]): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see makeChainable above; the object gains its methods below, one property at a time
   const chain: any = {};
   ['select', 'eq', 'gte', 'lte', 'order'].forEach((m) => {
     chain[m] = vi.fn(() => chain);
@@ -45,7 +45,7 @@ const createWrapper = () => {
   };
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- builds a raw DB punch row; the return type would just repeat the object literal below
 function toDbPunch(employee_id: string, punch_time: string, punch_type: 'clock_in' | 'clock_out', id: string): any {
   return {
     id, employee_id, restaurant_id: RESTAURANT,
@@ -60,13 +60,13 @@ const EMPLOYEE_ID = 'emp-masked-1';
 
 // hourly_rate is null: the caller (e.g. Chef) has no view:pay_rates, so
 // employees_secure masked this column instead of returning a real amount.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a partial employees_secure row; only the fields this test reads are set
 const maskedEmployee: any = {
   id: EMPLOYEE_ID, restaurant_id: RESTAURANT,
   status: 'active', compensation_type: 'hourly', hourly_rate: null,
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see maskedEmployee above
 const unmaskedEmployee: any = {
   id: 'emp-visible-1', restaurant_id: RESTAURANT,
   status: 'active', compensation_type: 'hourly', hourly_rate: 2000, // $20.00/hr
@@ -154,5 +154,39 @@ describe('useMonthlyMetrics labor_cost_hidden (masked employees_secure rows)', (
     const july = result.current.data?.find((m) => m.period === '2026-07');
     expect(july).toBeDefined();
     expect(july!.labor_cost_hidden).toBe(true);
+  });
+
+  it('should mark labor_cost_hidden only for months the masked employee was employed', async () => {
+    // Hired mid-July: June is before the hire date, so it must stay
+    // "not hidden" even though the same employee row masks July and August.
+    const maskedEmployeeHiredMidJuly = {
+      ...maskedEmployee,
+      hire_date: '2026-07-10',
+      termination_date: null,
+    };
+    mockSupabaseClient([maskedEmployeeHiredMidJuly]);
+
+    const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
+
+    const multiMonthFrom = new Date(2026, 5, 1); // June 1
+    const multiMonthTo = new Date(2026, 7, 31, 23, 59, 59, 999); // Aug 31
+
+    const { result } = renderHook(
+      () => useMonthlyMetrics(RESTAURANT, multiMonthFrom, multiMonthTo),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+
+    const june = result.current.data?.find((m) => m.period === '2026-06');
+    const july = result.current.data?.find((m) => m.period === '2026-07');
+    const august = result.current.data?.find((m) => m.period === '2026-08');
+    expect(june).toBeDefined();
+    expect(july).toBeDefined();
+    expect(august).toBeDefined();
+    expect(june!.labor_cost_hidden).toBe(false);
+    expect(july!.labor_cost_hidden).toBe(true);
+    expect(august!.labor_cost_hidden).toBe(true);
   });
 });

@@ -76,11 +76,14 @@ export const ReactivateEmployeeDialog = ({
   // A masked rate arrives as null because the caller lacks view:pay_rates —
   // show "Hidden" only for that case. A resolved rate of 0 or null is a real
   // "Not set", not a masked value, so it must not read as "Hidden" too.
-  const currentRateDisplay = !canSeePayRates
-    ? 'Hidden'
-    : employee.hourly_rate
-      ? `$${(employee.hourly_rate / 100).toFixed(2)}/hr`
-      : 'Not set';
+  let currentRateDisplay: string;
+  if (!canSeePayRates) {
+    currentRateDisplay = 'Hidden';
+  } else if (employee.hourly_rate) {
+    currentRateDisplay = `$${(employee.hourly_rate / 100).toFixed(2)}/hr`;
+  } else {
+    currentRateDisplay = 'Not set';
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -142,6 +145,7 @@ export const ReactivateEmployeeDialog = ({
                 id="update-rate"
                 checked={updateRate}
                 onCheckedChange={(checked) => setUpdateRate(checked as boolean)}
+                disabled={!canSeePayRates}
               />
               <div className="grid gap-1 leading-none flex-1">
                 <Label
@@ -174,6 +178,7 @@ export const ReactivateEmployeeDialog = ({
                     placeholder="15.00"
                     value={hourlyRate}
                     onChange={(e) => setHourlyRate(e.target.value)}
+                    disabled={!canSeePayRates}
                     className="max-w-[150px] h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                   <span className="text-[13px] text-muted-foreground">/hour</span>

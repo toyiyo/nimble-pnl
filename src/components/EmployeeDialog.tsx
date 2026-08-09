@@ -70,6 +70,21 @@ function invitePayloadFor(role: RoleWithGrants | null) {
   };
 }
 
+// undefined drops out of the JSON body; null writes a real erase. An empty
+// box is ambiguous by itself: a masked read starts empty with nothing to
+// erase, but a caller who can see the date can also clear it on purpose.
+// `initialDateOfBirth` tells the two apart — it only holds a real date when
+// the box opened with one visible, so a clear against a masked-empty box
+// still sends undefined, not null.
+function resolveDateOfBirthForSubmit(
+  dateOfBirth: string,
+  initialDateOfBirth: string
+): string | null | undefined {
+  if (dateOfBirth) return dateOfBirth;
+  if (initialDateOfBirth) return null;
+  return undefined;
+}
+
 export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: EmployeeDialogProps) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -677,13 +692,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       position,
       area: area.trim() || null,
       employment_type: employmentType,
-      // undefined drops out of the JSON body; null writes a real erase.
-      // An empty box is ambiguous by itself: a masked read starts empty with
-      // nothing to erase, but a caller who can see the date can also clear
-      // it on purpose. `initialDateOfBirth` tells the two apart -- it only
-      // holds a real date when the box opened with one visible, so a clear
-      // against a masked-empty box still sends undefined, not null.
-      date_of_birth: dateOfBirth ? dateOfBirth : initialDateOfBirth ? null : undefined,
+      // See resolveDateOfBirthForSubmit for the undefined-vs-null rule.
+      date_of_birth: resolveDateOfBirthForSubmit(dateOfBirth, initialDateOfBirth),
       status,
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 
@@ -960,12 +970,15 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   {(() => {
                     const annualizedPay = Number.parseFloat(hourlyRate || '0') * 2080;
                     if (!isExempt || annualizedPay >= 35568) return null;
+                    // annualizedPay is a NUMBER, not a date, so toLocaleString is safe
+                    // here; the restaurant-clock rule flags any toLocaleString call.
+                    // eslint-disable-next-line no-restricted-syntax
+                    const annualizedPayDisplay = annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 });
                     return (
                       <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                         <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[13px] text-amber-700 dark:text-amber-400">
-                          {/* eslint-disable-next-line no-restricted-syntax -- toLocaleString here formats a NUMBER (annualizedPay), not a date; the selector matches any toLocaleString member regardless of receiver type. */}
-                          This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
+                          This employee's annualized pay (${annualizedPayDisplay}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
                         </p>
                       </div>
                     );

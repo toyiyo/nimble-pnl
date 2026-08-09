@@ -71,3 +71,50 @@ export function stripMaskedEmployeeFields<T extends object>(
  */
 export const EMPLOYEE_EMBED_COLUMNS =
   'id, name, position, area, status, is_active, employment_type, user_id';
+
+/** The pay fields `isCompensationHidden` reads, one per compensation type. */
+export interface CompensationPayFields {
+  compensation_type?: string | null;
+  hourly_rate?: number | null;
+  salary_amount?: number | null;
+  daily_rate_amount?: number | null;
+  contractor_payment_amount?: number | null;
+}
+
+/**
+ * True when the pay field for this employee's own compensation type is
+ * masked (null or undefined). `employees_secure` returns null for a pay
+ * column the caller cannot see, and a null rate must read as "unknown," not
+ * as a real $0.
+ *
+ * One shared check for the three call sites that render or total pay:
+ * `useEmployeeLaborCosts`, `useMonthlyMetrics` (`labor_cost_hidden`), and
+ * `EmployeeList` (`getCompensationDisplay`).
+ */
+export function isCompensationHidden(employee: CompensationPayFields): boolean {
+  const compensationType = employee.compensation_type ?? 'hourly';
+  switch (compensationType) {
+    case 'hourly':
+      return employee.hourly_rate === null || employee.hourly_rate === undefined;
+    case 'salary':
+      return employee.salary_amount === null || employee.salary_amount === undefined;
+    case 'daily_rate':
+      return employee.daily_rate_amount === null || employee.daily_rate_amount === undefined;
+    case 'contractor':
+      return employee.contractor_payment_amount === null || employee.contractor_payment_amount === undefined;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Throw when permissions are still loading. An unresolved `isResolved`
+ * would otherwise read as "no flags" and strip every pay and contact field
+ * from the write — a silent partial write, not the explicit retry this
+ * gives the caller.
+ */
+export function assertPermissionsResolved(isResolved: boolean): void {
+  if (!isResolved) {
+    throw new Error('Permissions are still loading. Try again in a moment.');
+  }
+}

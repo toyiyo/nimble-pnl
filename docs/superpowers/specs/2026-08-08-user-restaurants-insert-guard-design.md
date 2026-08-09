@@ -221,11 +221,19 @@ nothing.
 **Warning: do not test a self-insert into a restaurant the subject already
 belongs to.** `public.user_restaurants` has `UNIQUE(user_id, restaurant_id)`
 (`supabase/migrations/20250915210020_774bc2c1-abb6-4f03-b10f-5cfc85e9b772.sql:19`).
-That INSERT raises `23505` (`unique_violation`) before RLS ever reports `42501`.
-A bare `throws_ok` on such a case passes even if the RESTRICTIVE policy is
-deleted. The SQLSTATE pin makes the trap impossible: a `23505` no longer counts
-as a pass. Case 4 therefore targets **restaurant B**, where the subject holds no
-row.
+That INSERT has two reasons to fail, so a bare `throws_ok` passes even if the
+RESTRICTIVE policy is deleted.
+
+`ExecInsert` evaluates the RLS `WITH CHECK` before it writes the tuple or any
+index entry, so the policy reports first: `42501` while the policy exists.
+Delete the policy and the identical statement reaches the index and reports
+`23505` (`unique_violation`). The constraint is a fallback, not a pre-empt — it
+supplies the mutant with a different error, which is what keeps an unpinned
+assertion green.
+
+The SQLSTATE pin makes the trap impossible: a `23505` no longer counts as a
+pass. Case 4 targets **restaurant B** as well, where the subject holds no row,
+so exactly one thing can reject it.
 
 Case 7 guards the bootstrap path. A new user is not yet an owner when
 `create_restaurant_with_owner` writes their first membership row. The test

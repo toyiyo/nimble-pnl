@@ -62,8 +62,10 @@ then run 6. A second insert of the same pair raises `23505`.
 Warning: never point a deny case at a restaurant the actor already belongs to.
 `UNIQUE(user_id, restaurant_id)`
 (`supabase/migrations/20250915210020_774bc2c1-abb6-4f03-b10f-5cfc85e9b772.sql:19`)
-raises `23505` before RLS raises `42501`. The SQLSTATE pin on cases 1-4 makes
-that mistake fail loudly instead of passing.
+rejects that row too, so the case has two reasons to fail. RLS reports first
+while the policy exists (`42501`). Delete the policy and the same statement
+reaches the index and reports `23505`. An unpinned `throws_ok` passes in both
+states. The SQLSTATE pin on cases 1-4 makes that mistake fail loudly.
 
 Case 7 is the bootstrap regression guard. Run it as STRANGER, who owns nothing
 at that moment. It proves the `SECURITY DEFINER` bypass still works

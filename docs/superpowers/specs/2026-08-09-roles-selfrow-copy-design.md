@@ -54,7 +54,8 @@ The first and last sentences stay the same, so the two existing copy tests
 
 ## Scope
 
-- The dialog input gate (`EmployeeDialog.tsx`) is correct and needs no change.
+- The dialog input gate (`EmployeeDialog.tsx:119,124`) is correct and needs no
+  change. `canSeePayRates` and `canSeePii` key only off `hasCapability(...)`.
   The admin surface has no self-row case there.
 - `view:costs` stays deferred. The copy keeps its caveat.
 

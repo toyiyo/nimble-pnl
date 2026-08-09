@@ -129,4 +129,34 @@ describe('EmployeeDialog — sensitive-data input gating', () => {
     expect(screen.getByLabelText(/employee phone number/i)).not.toBeDisabled();
     expect(screen.getByLabelText(/date of birth/i)).not.toBeDisabled();
   });
+
+  it('disables the salary pay-schedule controls when the caller lacks view:pay_rates', () => {
+    mockHasCapability.mockReturnValue(false);
+    renderEdit(SALARY_EMPLOYEE);
+
+    expect(screen.getByRole('combobox', { name: /pay period/i })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: /allocate to daily/i })).toBeDisabled();
+  });
+
+  it('disables the contractor payment interval when the caller lacks view:pay_rates', () => {
+    mockHasCapability.mockReturnValue(false);
+    renderEdit(CONTRACTOR_EMPLOYEE);
+
+    expect(screen.getByRole('combobox', { name: /payment interval/i })).toBeDisabled();
+  });
+
+  it('disables the daily-rate standard work days when the caller lacks view:pay_rates', () => {
+    mockHasCapability.mockReturnValue(false);
+    renderEdit(DAILY_RATE_EMPLOYEE);
+
+    expect(screen.getByRole('combobox', { name: /standard work days/i })).toBeDisabled();
+  });
+
+  it('enables the salary pay-schedule controls when the caller holds view:pay_rates', () => {
+    mockHasCapability.mockImplementation((c: string) => c === 'view:pay_rates');
+    renderEdit(SALARY_EMPLOYEE);
+
+    expect(screen.getByRole('combobox', { name: /pay period/i })).not.toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: /allocate to daily/i })).not.toBeDisabled();
+  });
 });

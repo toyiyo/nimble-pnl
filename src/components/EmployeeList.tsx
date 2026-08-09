@@ -10,7 +10,7 @@ import { Employee } from '@/types/scheduling';
 import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { isMinor } from '@/lib/employeeUtils';
+import { isCompensationHidden } from '@/lib/employeeMaskedFields';
 import {
   Tooltip,
   TooltipContent,
@@ -223,13 +223,18 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
   };
 
   const getCompensationDisplay = () => {
+    // A masked column arrives as null. `$0.00/hr` would read as a real rate.
+    if (isCompensationHidden(employee)) return 'Hidden';
+
     switch (employee.compensation_type) {
       case 'hourly':
         return `${formatCurrency(employee.hourly_rate)}/hr`;
       case 'salary':
-        return `${formatCurrency(employee.salary_amount || 0)}/${employee.pay_period_type}`;
+        return `${formatCurrency(employee.salary_amount)}/${employee.pay_period_type}`;
+      case 'daily_rate':
+        return `${formatCurrency(employee.daily_rate_amount)}/day`;
       case 'contractor':
-        return `${formatCurrency(employee.contractor_payment_amount || 0)}/${employee.contractor_payment_interval}`;
+        return `${formatCurrency(employee.contractor_payment_amount)}/${employee.contractor_payment_interval}`;
       default:
         return '';
     }
@@ -291,7 +296,7 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
               <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted shrink-0">
                 {employee.employment_type === 'part_time' ? 'PT' : 'FT'}
               </span>
-              {isMinor(employee.date_of_birth) && (
+              {employee.is_minor && (
                 <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium shrink-0">
                   Minor
                 </span>

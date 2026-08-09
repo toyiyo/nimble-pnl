@@ -12,6 +12,7 @@ import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { useUncategorizedTotals } from '@/hooks/useUncategorizedTotals';
 import { calculateSalaryForPeriod, calculateContractorPayForPeriod } from '@/utils/compensationCalculations';
 import type { Employee } from '@/types/scheduling';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -126,6 +127,12 @@ interface IncomeStatementProps {
 
 export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatementProps) {
   const { toast } = useToast();
+  const { hasCapability, isResolved } = usePermissions();
+  // Force this false until the role finishes resolving, so a caller who
+  // will end up without view:pay_rates cannot get one query run with the
+  // capability wrongly true, then have the true-run result cached under a
+  // queryKey that never changes again for this render.
+  const canSeePayRates = isResolved && hasCapability('view:pay_rates');
   const [glOnly, setGlOnly] = useState(false);
   const [accrualMode, setAccrualMode] = useState<'actual' | 'projected'>('actual');
   
@@ -184,7 +191,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   });
 
   const { data: incomeData, isLoading } = useQuery({
-    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly, accrualMode, unifiedCOGS.totalCOGS],
+    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly, accrualMode, unifiedCOGS.totalCOGS, canSeePayRates],
     queryFn: async () => {
       // Fetch all chart of accounts for this restaurant
       const { data: accounts, error: accountsError } = await supabase
@@ -306,11 +313,18 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         let payrollFallback =
           Math.abs(Number(hourlyAgg?.sum) || 0) + Math.abs(Number(allocationAgg?.sum) || 0);
 
+        // True when a salary or contractor employee's amount reads as masked
+        // (employees_secure returns NULL for a caller without view:pay_rates).
+        // compensation_type is a plain column, so it still names the employee
+        // as salary/contractor even though the amount is hidden — that is
+        // enough to know payrollFallback below is an undercount, not a zero.
+        let payrollDataHidden = false;
+
         // If still zero, derive daily allocations from salary/contractor employees
         // Uses calculateSalaryForPeriod/calculateContractorPayForPeriod which respect hire_date
         if (payrollFallback === 0) {
           const { data: employees, error: empErr } = await supabase
-            .from('employees')
+            .from('employees_secure')
             .select('id, restaurant_id, name, position, compensation_type, salary_amount, pay_period_type, contractor_payment_amount, contractor_payment_interval, allocate_daily, hire_date, termination_date, hourly_rate, is_active')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true);
@@ -322,34 +336,40 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
             const now = new Date();
             now.setHours(23, 59, 59, 999);
             const effectiveEndDate = accrualMode === 'actual' && dateTo > now ? now : dateTo;
-            
+
             employees.forEach(emp => {
               if (emp.allocate_daily === false) return;
-              
+
               // Cast to Employee type for the calculation functions
               const employee = emp as unknown as Employee;
-              
+
               if (emp.compensation_type === 'salary' && emp.salary_amount && emp.pay_period_type) {
                 // calculateSalaryForPeriod respects hire_date and termination_date
                 const periodCostCents = calculateSalaryForPeriod(employee, dateFrom, effectiveEndDate);
                 payrollFallback += periodCostCents / 100; // cents to dollars
+              } else if (emp.compensation_type === 'salary' && !canSeePayRates) {
+                payrollDataHidden = true;
               }
               if (emp.compensation_type === 'contractor' && emp.contractor_payment_amount && emp.contractor_payment_interval) {
                 // calculateContractorPayForPeriod respects hire_date and termination_date
                 const periodCostCents = calculateContractorPayForPeriod(employee, dateFrom, effectiveEndDate);
                 payrollFallback += periodCostCents / 100; // cents to dollars
+              } else if (emp.compensation_type === 'contractor' && !canSeePayRates) {
+                payrollDataHidden = true;
               }
             });
           }
         }
 
-        if (payrollFallback > 0) {
+        if (payrollFallback > 0 || payrollDataHidden) {
           accountsWithBalances = [
             ...accountsWithBalances,
             {
               id: 'payroll-expense-fallback',
               account_code: 'PAYROLL-EXP',
-              account_name: 'Payroll Expense (unposted)',
+              account_name: payrollDataHidden
+                ? 'Payroll Expense (unposted, incomplete — pay rates hidden from this role)'
+                : 'Payroll Expense (unposted)',
               account_type: 'expense' as const,
               account_subtype: 'payroll' as const,
               normal_balance: 'debit',
@@ -372,7 +392,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         cogs: accountsWithBalances.filter(a => a.account_type === 'cogs'),
       };
     },
-    enabled: !!restaurantId,
+    // Wait for the role to resolve before running: canSeePayRates is part of
+    // the queryKey above, but the first render (isResolved false) would
+    // otherwise still fire one query under the false-permission key.
+    enabled: !!restaurantId && isResolved,
   });
 
   const formatCurrency = (amount: number) => {
@@ -752,7 +775,12 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     });
   };
 
-  if (isLoading || revenueLoading || unifiedCOGS.isLoading || uncategorized.isLoading) {
+  // !isResolved covers the gap `enabled: !!restaurantId && isResolved` opens:
+  // React Query's `isLoading` is `isPending && isFetching`, and a disabled
+  // query never fetches, so isLoading reads false while permissions are
+  // still resolving — without this check the render below would run against
+  // an undefined incomeData.
+  if (isLoading || !isResolved || revenueLoading || unifiedCOGS.isLoading || uncategorized.isLoading) {
     return (
       <Card>
         <CardContent className="pt-6 flex items-center justify-center py-12">

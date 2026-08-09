@@ -31,7 +31,7 @@ export function useSlingEmployeeMapping(restaurantId: string) {
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true),
       supabase
-        .from('employees')
+        .from('employees_secure')
         .select('id, name, position, restaurant_id, status, email, phone, hire_date, notes, created_at, updated_at, is_active, compensation_type, hourly_rate')
         .eq('restaurant_id', restaurantId),
     ]);

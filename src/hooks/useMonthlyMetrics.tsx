@@ -17,6 +17,7 @@ import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
+import { isCompensationHidden } from '@/lib/employeeMaskedFields';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -33,6 +34,8 @@ export interface MonthlyMetrics {
   pending_labor_cost: number;
   actual_labor_cost: number;
   has_data: boolean;
+  /** True when at least one employee row is masked (no view:pay_rates), so labor_cost is unknown, not zero. */
+  labor_cost_hidden: boolean;
 }
 
 const PASS_THROUGH_OTHER_LIABILITY_TYPES = new Set(['service_charge', 'fee']);
@@ -49,6 +52,25 @@ export interface MonthRevenueTotals {
 
 const toC = (n: number): number =>
   Number.isFinite(n) ? Math.sign(n) * Math.round(Math.abs(n) * 100) : 0;
+
+/**
+ * True when an employee's employment window overlaps a month. Scopes the
+ * `labor_cost_hidden` check below to employees who could actually book cost
+ * in that month — a masked employee hired last week must not blank out a
+ * year of earlier months, and a masked employee gone since last year must
+ * not blank out this month.
+ */
+const isEmployedDuringMonth = (
+  emp: { hire_date?: string | null; termination_date?: string | null },
+  monthStart: Date,
+  monthEnd: Date
+): boolean => {
+  const hireDate = emp.hire_date ? new Date(`${emp.hire_date}T12:00:00`) : null;
+  if (hireDate && hireDate > monthEnd) return false;
+  const terminationDate = emp.termination_date ? new Date(`${emp.termination_date}T12:00:00`) : null;
+  if (terminationDate && terminationDate < monthStart) return false;
+  return true;
+};
 
 /**
  * Pull revenue + pass-through totals for the period from the same RPCs that
@@ -183,6 +205,8 @@ export function useMonthlyMetrics(
         pending_labor_cost: number; // cents
         actual_labor_cost: number; // cents
         has_data: boolean;
+        /** True when a masked employee's window overlaps this month. Per-month, not roster-wide — see isEmployedDuringMonth. */
+        labor_cost_hidden: boolean;
       }>();
 
       const ensureMonth = (monthKey: string) => {
@@ -192,7 +216,7 @@ export function useMonthlyMetrics(
             gross_revenue: 0, total_collected_at_pos: 0, net_revenue: 0,
             discounts: 0, refunds: 0, sales_tax: 0, tips: 0, other_liabilities: 0,
             food_cost: 0, labor_cost: 0, pending_labor_cost: 0, actual_labor_cost: 0,
-            has_data: false,
+            has_data: false, labor_cost_hidden: false,
           });
         }
         return monthlyMap.get(monthKey)!;
@@ -404,7 +428,7 @@ export function useMonthlyMetrics(
       }
 
       const { data: employeesData, error: employeesError } = await supabase
-        .from('employees')
+        .from('employees_secure')
         .select('*')
         .eq('restaurant_id', restaurantId);
 
@@ -547,6 +571,14 @@ export function useMonthlyMetrics(
         const month = ensureMonth(monthKey);
         month.pending_labor_cost += actualLaborCents + monthPerJobCents;
         month.labor_cost += actualLaborCents + monthPerJobCents;
+
+        // A masked pay column arrives as null from employees_secure, and a
+        // null rate computes as a $0 cost — a wrong number, not a hidden
+        // one. Scoped to employees whose employment window overlaps this
+        // month, so a masked hire last week does not blank out last year.
+        month.labor_cost_hidden = typedEmployees.some(
+          (emp) => isEmployedDuringMonth(emp, clampedStart, clampedEnd) && isCompensationHidden(emp)
+        );
       }
 
       // Aggregate actual labor costs from bank transactions
@@ -593,6 +625,7 @@ export function useMonthlyMetrics(
         pending_labor_cost: Math.round(month.pending_labor_cost) / 100,
         actual_labor_cost: Math.round(month.actual_labor_cost) / 100,
         has_data: month.has_data,
+        labor_cost_hidden: month.labor_cost_hidden,
         net_revenue: Math.round(month.net_revenue) / 100,
         total_collected_at_pos: Math.round(month.total_collected_at_pos) / 100,
       }));

@@ -79,6 +79,15 @@ export interface Employee {
   // Employment classification
   employment_type?: EmploymentType; // Defaults to 'full_time' at DB level
   date_of_birth?: string; // YYYY-MM-DD, optional
+  /**
+   * Computed by public.employees_secure, not by the client.
+   *
+   * date_of_birth is masked behind view:employee_pii, and isMinor() returns
+   * false for a null date. Reading the badge off the raw date would delete a
+   * labor-compliance cue for every user without the flag. The view returns
+   * the boolean to every member and keeps the date gated.
+   */
+  is_minor?: boolean;
 
   // Compensation history (optional join)
   compensation_history?: CompensationHistoryEntry[];

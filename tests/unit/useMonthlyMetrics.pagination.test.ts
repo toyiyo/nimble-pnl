@@ -175,7 +175,7 @@ describe('useMonthlyMetrics time_punches pagination (1000-row cap fix)', () => {
 
     const fromMock = vi.fn((table: string) => {
       if (table === 'time_punches') return timePunchesChain;
-      if (table === 'employees') return makeChainable(employees);
+      if (table === 'employees_secure') return makeChainable(employees);
       return makeChainable([]);
     });
     const rpcMock = vi.fn(() => Promise.resolve({ data: [], error: null }));

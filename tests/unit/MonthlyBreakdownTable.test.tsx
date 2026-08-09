@@ -73,6 +73,7 @@ const aprilFixture = {
   pending_labor_cost: 16528,
   actual_labor_cost: 32959,
   has_data: true,
+  labor_cost_hidden: false,
 };
 
 describe('MonthlyBreakdownTable — single source of truth', () => {

@@ -171,7 +171,10 @@ describe('useShifts (admin) — regression guard for the shared implementation',
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(mockSupabase.from).toHaveBeenCalledWith('shifts');
-    expect(calls).toContainEqual({ method: 'select', args: ['*, employee:employees(*)'] });
+    expect(calls).toContainEqual({
+      method: 'select',
+      args: ['*, employee:employees(id, name, position, area, status, is_active, employment_type, user_id)'],
+    });
     expect(calls).toContainEqual({ method: 'eq', args: ['restaurant_id', restaurantId] });
     expect(calls).toContainEqual({ method: 'gte', args: ['start_time', startDate.toISOString()] });
     expect(calls).toContainEqual({ method: 'lte', args: ['start_time', endDate.toISOString()] });

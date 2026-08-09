@@ -20,22 +20,43 @@
 --    public.user_has_capability() must return exactly what the legacy
 --    fixture returns for that builtin's legacy role string.
 --
---    ONE sanctioned, documented exception: collaborator_inventory (Inventory
---    Helper) + view:reports. The legacy CASE granted it (line ~120 of
---    20260723120000: 'view:reports' includes collaborator_inventory). The
---    seed migration (20260730110000_seed_builtin_roles.sql) deliberately did
---    NOT grant Inventory Helper a 'reports' area at all, following
---    ROLE_CAPABILITIES (src/lib/permissions/definitions.ts), which never
---    granted collaborator_inventory view:reports either (see PR #596, and
---    the design doc's "Three real defects" section, defect 3: zero
---    production memberships/invitations on this role justified fixing the
---    drift by tightening to match the TypeScript source of truth rather
---    than widening the seed to preserve the SQL-only grant). This is the
---    one cell excluded from the aggregate mismatch count below and asserted
---    explicitly, in both directions, instead.
+--    ELEVEN sanctioned, documented exceptions, each excluded from the
+--    aggregate mismatch count below and asserted explicitly instead:
+--
+--    - collaborator_inventory (Inventory Helper) + view:reports. The legacy
+--      CASE granted it (line ~120 of 20260723120000: 'view:reports' includes
+--      collaborator_inventory). The seed migration
+--      (20260730110000_seed_builtin_roles.sql) deliberately did NOT grant
+--      Inventory Helper a 'reports' area at all, following ROLE_CAPABILITIES
+--      (src/lib/permissions/definitions.ts), which never granted
+--      collaborator_inventory view:reports either (see PR #596, and the
+--      design doc's "Three real defects" section, defect 3: zero production
+--      memberships/invitations on this role justified fixing the drift by
+--      tightening to match the TypeScript source of truth rather than
+--      widening the seed to preserve the SQL-only grant).
+--
+--    - Ten more: view:pay_rates and view:employee_pii, each granted TRUE on
+--      owner, manager, operations_manager, collaborator_accountant, and
+--      collaborator_operations_manager by
+--      20260806100000_seed_employee_sensitive_flags.sql (the sensitive-data
+--      flags design). The legacy CASE predates both flags and denies them
+--      through its ELSE FALSE on every role.
+--
+--      This drift is a property of the CASE literal only. It is not the
+--      behaviour a caller sees. 20260806140000_legacy_role_sensitive_flags.sql
+--      answers both flags before control reaches the CASE, for the same five
+--      role strings. Section 2b below tests that path. The legacy denial was
+--      a bug, and that migration fixes it; the CASE keeps its old text
+--      because the new branch runs first.
 --
 -- 2. user_restaurants.role_id IS NULL falls back to the legacy CASE
 --    (denied capability first, then a granted one).
+--
+-- 2b. The two sensitive flags answer BEFORE that fallback. The legacy CASE
+--    denies them through its ELSE FALSE, and create_restaurant_with_owner
+--    still leaves role_id NULL, so every new restaurant's owner would lose
+--    pay and contact data to the column gate. The branch grants both flags to
+--    the five legacy role strings that hold view:employees, and to no other.
 --
 -- 3. A custom role holding {inventory: manage} gets edit:inventory and not
 --    edit:recipes (denied first, then granted).
@@ -71,7 +92,7 @@
 
 BEGIN;
 
-SELECT plan(29);
+SELECT plan(36);
 
 -- ----------------------------------------------------------------------------
 -- Fixture: legacy CASE, transcribed verbatim and parameterized on p_role.
@@ -321,18 +342,49 @@ SELECT is(
   'new area-based function: Inventory Helper denies view:reports — sanctioned drift from the legacy CASE per the design''s defect-3 resolution (follow TypeScript/ROLE_CAPABILITIES, PR #596); Task 2''s seed intentionally grants no reports area to this role'
 );
 
+-- The ten more sanctioned exceptions from the sensitive-data flags seed,
+-- checked as one bag rather than twenty individual assertions.
+CREATE TEMP TABLE test_sensitive_flag_exceptions (legacy_role TEXT, capability TEXT) ON COMMIT DROP;
+INSERT INTO test_sensitive_flag_exceptions (legacy_role, capability) VALUES
+  ('owner', 'view:pay_rates'), ('owner', 'view:employee_pii'),
+  ('manager', 'view:pay_rates'), ('manager', 'view:employee_pii'),
+  ('operations_manager', 'view:pay_rates'), ('operations_manager', 'view:employee_pii'),
+  ('collaborator_accountant', 'view:pay_rates'), ('collaborator_accountant', 'view:employee_pii'),
+  ('collaborator_operations_manager', 'view:pay_rates'), ('collaborator_operations_manager', 'view:employee_pii');
+
+SELECT is(
+  (
+    SELECT count(*)::int FROM test_sensitive_flag_exceptions x
+    JOIN test_expected_results e USING (legacy_role, capability)
+    WHERE e.expected = FALSE
+  ),
+  10,
+  'legacy CASE fixture: all ten (role, sensitive flag) pairs denied — both flags postdate the legacy CASE'
+);
+SELECT is(
+  (
+    SELECT count(*)::int FROM test_sensitive_flag_exceptions x
+    JOIN test_actual_results a USING (legacy_role, capability)
+    WHERE a.actual = TRUE
+  ),
+  10,
+  'new area-based function: all ten (role, sensitive flag) pairs granted — 20260806100000_seed_employee_sensitive_flags.sql'
+);
+
 -- Full-matrix aggregate: every other cell (10 roles x 61 capabilities, minus
--- the one documented exception) must match exactly, in both directions.
+-- the eleven documented exceptions) must match exactly, in both directions.
 SELECT is(
   (
     SELECT count(*)::int
     FROM test_actual_results a
     JOIN test_expected_results e USING (legacy_role, capability)
+    LEFT JOIN test_sensitive_flag_exceptions x USING (legacy_role, capability)
     WHERE a.actual IS DISTINCT FROM e.expected
       AND NOT (a.legacy_role = 'collaborator_inventory' AND a.capability = 'view:reports')
+      AND x.legacy_role IS NULL
   ),
   0,
-  'user_has_capability(role_id-based) matches the legacy CASE byte-for-byte across all ten builtins x 61 capabilities, with exactly the one documented, sanctioned exception excluded above'
+  'user_has_capability(role_id-based) matches the legacy CASE byte-for-byte across all ten builtins x 61 capabilities, with exactly the eleven documented, sanctioned exceptions excluded above'
 );
 
 -- ============================================================================
@@ -363,6 +415,63 @@ SELECT is(
   public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:recipes'),
   TRUE,
   'role_id IS NULL fallback: legacy chef granted view:recipes (legacy CASE)'
+);
+
+-- ============================================================================
+-- 2b. The two sensitive flags on a legacy membership.
+--
+-- create_restaurant_with_owner still writes (user_id, restaurant_id, role)
+-- and leaves role_id NULL, so the owner of every restaurant created from now
+-- on lands on the legacy path. The legacy CASE predates both flags and denies
+-- them through its ELSE FALSE. Without the branch under test, the column gate
+-- in 20260806110000 hides pay and contact data from that owner.
+--
+-- The five role strings below are the legacy equivalents of the five builtin
+-- roles that 20260806100000 seeds, and they match view:employees exactly.
+-- view:costs stays denied on both paths: no code reads it yet.
+-- ============================================================================
+INSERT INTO auth.users (id, email)
+VALUES ('5a000000-0000-0000-0000-000000000202', 'task5-legacy-owner-flags@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id)
+VALUES ('5a000000-0000-0000-0000-000000000202', '5a000000-0000-0000-0000-000000000099', 'owner', NULL)
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner', role_id = NULL;
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000202","role":"authenticated"}', true);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pay_rates'),
+  TRUE,
+  'role_id IS NULL: legacy owner holds view:pay_rates'
+);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:employee_pii'),
+  TRUE,
+  'role_id IS NULL: legacy owner holds view:employee_pii'
+);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:costs'),
+  FALSE,
+  'role_id IS NULL: legacy owner denied view:costs (no code reads it yet)'
+);
+
+-- The legacy chef holds view:employees on neither path, so it holds neither
+-- flag. Same membership row as section 2.
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000201","role":"authenticated"}', true);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pay_rates'),
+  FALSE,
+  'role_id IS NULL: legacy chef denied view:pay_rates'
+);
+
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:employee_pii'),
+  FALSE,
+  'role_id IS NULL: legacy chef denied view:employee_pii'
 );
 
 -- ============================================================================

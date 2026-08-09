@@ -7,6 +7,7 @@ import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftH
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
 import { ShiftInterval, formatLocalDate, formatLocalDateInTz, formatLocalHHMMInTz, localDayOffsetInTz, requireTz } from '@/lib/shiftInterval';
+import { EMPLOYEE_EMBED_COLUMNS } from '@/lib/employeeMaskedFields';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
@@ -81,7 +82,7 @@ function useShiftsQuery(
 
       let query = supabase
         .from('shifts')
-        .select('*, employee:employees(*)')
+        .select(`*, employee:employees(${EMPLOYEE_EMBED_COLUMNS})`)
         .eq('restaurant_id', restaurantId);
 
       if (employeeId) {

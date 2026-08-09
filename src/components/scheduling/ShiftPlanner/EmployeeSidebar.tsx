@@ -15,8 +15,6 @@ import { computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 
 import { cn } from '@/lib/utils';
 
-import { isMinor } from '@/lib/employeeUtils';
-
 import { EmployeeMiniWeek } from './EmployeeMiniWeek';
 
 // ---------------------------------------------------------------------------
@@ -29,7 +27,7 @@ interface Employee {
   position: string | null;
   area?: string;
   employment_type?: 'full_time' | 'part_time';
-  date_of_birth?: string;
+  is_minor?: boolean;
 }
 
 export function filterEmployees(
@@ -156,7 +154,7 @@ const DraggableEmployee = memo(
             <p className="text-[11px] text-muted-foreground truncate">
               {employee.position}
             </p>
-            {isMinor(employee.date_of_birth) && (
+            {employee.is_minor && (
               <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 font-medium shrink-0">
                 Minor
               </span>
@@ -177,7 +175,7 @@ const DraggableEmployee = memo(
     prev.employee.id === next.employee.id &&
     prev.employee.name === next.employee.name &&
     prev.employee.position === next.employee.position &&
-    prev.employee.date_of_birth === next.employee.date_of_birth &&
+    prev.employee.is_minor === next.employee.is_minor &&
     prev.shiftCount === next.shiftCount &&
     prev.hours === next.hours &&
     prev.onSelect === next.onSelect &&

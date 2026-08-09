@@ -54,6 +54,8 @@ const GRANTED: Capability[] = [
   'view:payroll',
   'view:employees',
   'view:settings',
+  'view:pay_rates',
+  'view:employee_pii',
 ];
 
 const DENIED: Capability[] = [

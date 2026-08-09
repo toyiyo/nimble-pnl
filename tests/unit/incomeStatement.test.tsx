@@ -48,6 +48,15 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// IncomeStatement now reads view:pay_rates to flag hidden payroll data.
+// Default every test to a resolved caller who can see pay rates, so the
+// existing cases below keep their old behavior (payrollDataHidden stays
+// false). isResolvedMock lets one test drive the still-resolving case.
+const { isResolvedMock } = vi.hoisted(() => ({ isResolvedMock: vi.fn(() => true) }));
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasCapability: () => true, isResolved: isResolvedMock() }),
+}));
+
 const renderIncomeStatement = () =>
   render(
     <MemoryRouter>
@@ -64,6 +73,7 @@ describe('IncomeStatement P&L behavior', () => {
     mockUseRevenueBreakdown.mockReset();
     mockUseUnifiedCOGS.mockReset();
     mockUseUncategorizedTotals.mockReset();
+    isResolvedMock.mockReturnValue(true);
     // Default: no unified COGS data (hook loaded but zero total)
     mockUseUnifiedCOGS.mockReturnValue({
       totalCOGS: 0,
@@ -471,5 +481,18 @@ describe('IncomeStatement P&L behavior', () => {
     const netIncomeRow = screen.getByText('Net Income').closest('div');
     expect(netIncomeRow).not.toBeNull();
     expect(within(netIncomeRow as HTMLElement).getByText('-$100.00')).toBeInTheDocument();
+  });
+
+  it('shows the loading state, not a crash, while the role is still resolving', () => {
+    isResolvedMock.mockReturnValue(false);
+    mockUseRevenueBreakdown.mockReturnValue({
+      revenue: 0, discounts: 0, refunds: 0, passThroughSales: 0, isLoading: false,
+    });
+
+    currentIncomeData = { revenue: [], cogs: [], expenses: [] };
+
+    renderIncomeStatement();
+
+    expect(screen.queryByText('Total Revenue')).not.toBeInTheDocument();
   });
 });

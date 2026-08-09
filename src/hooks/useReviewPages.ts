@@ -195,7 +195,7 @@ export function useReviewPages(restaurantId?: string) {
       // error, so the updated row travels straight through as the receipt.
       await withSlugCollisionRetry(rest.slug, async (slug) => {
         const { data, error } = await updateReviewPageRow(id, restaurantId, { ...rest, slug });
-        return { data: data as { id: string } | null, error };
+        return { data: data as unknown as { id: string } | null, error };
       });
     },
     onSuccess: () => {

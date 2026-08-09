@@ -81,6 +81,11 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'manage:collaborators',
     'view:reviews',
     'manage:reviews',
+    // Sensitive-data flags. These five roles hold view:employees, so the
+    // Employees page and the Payroll page are already open to them. Without
+    // the flags, 20260806110000 masks pay and contact data for every user.
+    'view:pay_rates',
+    'view:employee_pii',
   ],
 
   manager: [
@@ -138,6 +143,11 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'manage:collaborators',
     'view:reviews',
     'manage:reviews',
+    // Sensitive-data flags. These five roles hold view:employees, so the
+    // Employees page and the Payroll page are already open to them. Without
+    // the flags, 20260806110000 masks pay and contact data for every user.
+    'view:pay_rates',
+    'view:employee_pii',
   ],
 
   operations_manager: [
@@ -177,6 +187,11 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:settings',
     'view:reviews',
     'manage:reviews',
+    // Sensitive-data flags. These five roles hold view:employees, so the
+    // Employees page and the Payroll page are already open to them. Without
+    // the flags, 20260806110000 masks pay and contact data for every user.
+    'view:pay_rates',
+    'view:employee_pii',
   ],
 
   chef: [
@@ -236,6 +251,11 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:payroll', // Read-only payroll for bookkeeping
     'view:employees', // See employee names for payroll context
     'view:settings',
+    // Sensitive-data flags. These five roles hold view:employees, so the
+    // Employees page and the Payroll page are already open to them. Without
+    // the flags, 20260806110000 masks pay and contact data for every user.
+    'view:pay_rates',
+    'view:employee_pii',
   ],
 
   collaborator_inventory: [
@@ -297,6 +317,11 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:payroll', // Read-only payroll for labor context
     'view:employees', // Read-only, required to assign shifts
     'view:settings',
+    // Sensitive-data flags. These five roles hold view:employees, so the
+    // Employees page and the Payroll page are already open to them. Without
+    // the flags, 20260806110000 masks pay and contact data for every user.
+    'view:pay_rates',
+    'view:employee_pii',
   ],
 } as const;
 

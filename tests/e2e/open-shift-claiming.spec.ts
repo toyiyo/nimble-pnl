@@ -422,7 +422,7 @@ test.describe('Open Shift Claiming', () => {
       const { data: other, error: otherErr } = await supabase.from('employees').insert({
         restaurant_id: restId, name: 'Other Server', position: 'Server',
         status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500,
-      }).select().single();
+      }).select('id, name').single();
       if (otherErr) throw new Error(`other employee insert failed: ${otherErr.message}`);
 
       // Anchor to explicit UTC so the seed is independent of the CI runner's tz

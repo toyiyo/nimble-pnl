@@ -2350,6 +2350,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "employee_compensation_history_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "employee_compensation_history_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
@@ -10367,6 +10374,58 @@ export type Database = {
           tip_eligible?: boolean | null
           updated_at?: string | null
           user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees_secure: {
+        Row: {
+          allocate_daily: boolean | null
+          area: string | null
+          compensation_type: string | null
+          contractor_payment_amount: number | null
+          contractor_payment_interval: string | null
+          created_at: string | null
+          daily_rate_amount: number | null
+          daily_rate_reference_days: number | null
+          daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          email: string | null
+          employment_type: string | null
+          exempt_changed_at: string | null
+          exempt_changed_by: string | null
+          hire_date: string | null
+          hourly_rate: number | null
+          id: string | null
+          is_active: boolean | null
+          is_exempt: boolean | null
+          is_minor: boolean | null
+          last_active_date: string | null
+          name: string | null
+          notes: string | null
+          pay_period_type: string | null
+          phone: string | null
+          position: string | null
+          reactivated_at: string | null
+          reactivated_by: string | null
+          requires_time_punch: boolean | null
+          restaurant_id: string | null
+          salary_amount: number | null
+          status: string | null
+          termination_date: string | null
+          tip_eligible: boolean | null
+          updated_at: string | null
+          user_id: string | null
         }
         Relationships: [
           {

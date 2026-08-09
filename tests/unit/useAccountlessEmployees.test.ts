@@ -39,7 +39,7 @@ function createWrapper() {
  */
 function stubQuery(result: { data: unknown; error: unknown }) {
   mockSupabase.from.mockImplementation((table: string) => {
-    if (table === 'employees') {
+    if (table === 'employees_secure') {
       return {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
@@ -92,7 +92,7 @@ describe('useAccountlessEmployees query', () => {
     const eqStatusActive = vi.fn().mockResolvedValue({ data: [], error: null });
 
     mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'employees') {
+      if (table === 'employees_secure') {
         return {
           select: vi.fn((columns: string) => {
             expect(columns).toBe('id, name, email');

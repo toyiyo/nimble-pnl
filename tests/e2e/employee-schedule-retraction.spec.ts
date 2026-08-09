@@ -32,7 +32,7 @@ async function seedSelfAsEmployeeWithShift(page: Page, restaurantId: string): Pr
         compensation_type: 'hourly',
         hourly_rate: 1500,
       })
-      .select()
+      .select('id, name')
       .single();
     if (empError) throw new Error(`employees insert failed: ${empError.message}`);
 

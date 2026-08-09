@@ -57,17 +57,24 @@ export const LaborCostBreakdown = ({
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">{emp.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {emp.hours.toFixed(1)}h × ${emp.rate.toFixed(2)}/hr
+                  {/* A hidden rate is 0, a placeholder. "$0.00/hr" next to the
+                      dash above would read as the real rate. */}
+                  {emp.costIsHidden
+                    ? `${emp.hours.toFixed(1)}h · rate hidden`
+                    : `${emp.hours.toFixed(1)}h × $${emp.rate.toFixed(2)}/hr`}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className={cn(
-                "text-sm font-semibold",
-                emp.outlierLevel === 'critical' && "text-destructive",
-                emp.outlierLevel === 'warning' && "text-accent-foreground"
-              )}>
-                ${emp.cost.toFixed(2)}
+              <span
+                className={cn(
+                  "text-sm font-semibold",
+                  emp.outlierLevel === 'critical' && "text-destructive",
+                  emp.outlierLevel === 'warning' && "text-accent-foreground"
+                )}
+                aria-label={emp.costIsHidden ? 'Labor cost hidden' : undefined}
+              >
+                {emp.costIsHidden ? '—' : `$${emp.cost.toFixed(2)}`}
               </span>
               <Edit className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>

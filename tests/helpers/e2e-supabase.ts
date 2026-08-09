@@ -79,18 +79,43 @@ export async function exposeSupabaseHelpers(page: Page) {
     };
 
     (window as any).__insertEmployees = async (employees: any[], restaurantId: string) => {
-      const { data, error } = await supabase
+      // Two steps, on purpose. A bare .select() after the insert sends
+      // Prefer: return=representation, so PostgREST runs INSERT ... RETURNING *
+      // and reads the eight masked columns that `authenticated` no longer holds.
+      // Ask the insert for `id` alone, then read the full row back through
+      // `employees_secure`. The seeding user is the owner, who holds both
+      // sensitive flags, so the view returns every column unmasked. Callers
+      // read `position`, `area`, and `hourly_rate` off these rows.
+      const { data: inserted, error } = await supabase
         .from('employees')
         .insert(employees.map(emp => ({
           ...emp,
           restaurant_id: restaurantId,
         })))
-        .select();
+        .select('id');
 
       if (error) {
         throw new Error(error.message);
       }
-      return data;
+
+      // any: PostgREST's row shape here is untyped in this helper file, same
+      // as every other row map above.
+      const ids = (inserted ?? []).map((row: any) => row.id); // eslint-disable-line @typescript-eslint/no-explicit-any
+      const { data, error: readError } = await supabase
+        .from('employees_secure')
+        .select('*')
+        .in('id', ids)
+        .eq('restaurant_id', restaurantId);
+
+      if (readError) {
+        throw new Error(readError.message);
+      }
+
+      // Keep the caller's insert order. `.in()` does not promise it, and specs
+      // pair the returned rows with their own seed array by index.
+      // any: same untyped row shape as the map above.
+      const byId = new Map((data ?? []).map((row: any) => [row.id, row])); // eslint-disable-line @typescript-eslint/no-explicit-any
+      return ids.map((id: string) => byId.get(id));
     };
 
     (window as any).__insertTimePunches = async (punches: any[], restaurantId: string) => {
@@ -987,7 +1012,7 @@ export async function seedTemplateWithShifts(
             hourly_rate: 1500,
           }))
         )
-        .select();
+        .select('id, name');
       if (empError) throw new Error(`employees insert failed: ${empError.message}`);
 
       const employeeIdByName = new Map<string, string>((employees ?? []).map((e: any) => [e.name, e.id]));

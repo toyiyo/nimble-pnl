@@ -210,6 +210,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Owner', 'manage:collaborators'),
   ('Owner', 'view:reviews'),
   ('Owner', 'manage:reviews'),
+  ('Owner', 'view:pay_rates'),
+  ('Owner', 'view:employee_pii'),
   ('Manager', 'view:dashboard'),
   ('Manager', 'view:ai_assistant'),
   ('Manager', 'view:transactions'),
@@ -263,6 +265,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Manager', 'manage:collaborators'),
   ('Manager', 'view:reviews'),
   ('Manager', 'manage:reviews'),
+  ('Manager', 'view:pay_rates'),
+  ('Manager', 'view:employee_pii'),
   ('Operations Manager', 'view:dashboard'),
   ('Operations Manager', 'view:ai_assistant'),
   ('Operations Manager', 'view:inventory'),
@@ -298,6 +302,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Operations Manager', 'view:settings'),
   ('Operations Manager', 'view:reviews'),
   ('Operations Manager', 'manage:reviews'),
+  ('Operations Manager', 'view:pay_rates'),
+  ('Operations Manager', 'view:employee_pii'),
   ('Chef', 'view:dashboard'),
   ('Chef', 'view:inventory'),
   ('Chef', 'edit:inventory'),
@@ -339,6 +345,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Accountant', 'view:payroll'),
   ('Accountant', 'view:employees'),
   ('Accountant', 'view:settings'),
+  ('Accountant', 'view:pay_rates'),
+  ('Accountant', 'view:employee_pii'),
   ('Inventory Helper', 'view:inventory'),
   ('Inventory Helper', 'edit:inventory'),
   ('Inventory Helper', 'view:inventory_audit'),
@@ -386,7 +394,9 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Operations Manager (Collaborator)', 'edit:tips'),
   ('Operations Manager (Collaborator)', 'view:payroll'),
   ('Operations Manager (Collaborator)', 'view:employees'),
-  ('Operations Manager (Collaborator)', 'view:settings');
+  ('Operations Manager (Collaborator)', 'view:settings'),
+  ('Operations Manager (Collaborator)', 'view:pay_rates'),
+  ('Operations Manager (Collaborator)', 'view:employee_pii');
 
 -- ----------------------------------------------------------------------------
 -- derived_capabilities: what the seed actually produces, computed purely
@@ -400,6 +410,14 @@ FROM public.roles r
 JOIN public.role_areas ra ON ra.role_id = r.id
 JOIN test_area_capability_at_level acal
   ON acal.area_key = ra.area_key AND acal.level = ra.level
+WHERE r.builtin = true AND r.restaurant_id IS NULL
+UNION ALL
+-- A sensitive flag is a capability with no area behind it. user_has_capability
+-- resolves it straight off role_flags (20260805120000_page_areas.sql:322-327),
+-- so the round trip must read the same source.
+SELECT r.name AS role_name, rf.flag AS capability
+FROM public.roles r
+JOIN public.role_flags rf ON rf.role_id = r.id
 WHERE r.builtin = true AND r.restaurant_id IS NULL;
 
 -- ============================================================================
@@ -437,16 +455,28 @@ SELECT set_eq(
 );
 
 -- ============================================================================
--- 2. No role_flags rows are seeded for any builtin: the three sensitive
---    flags have no equivalent in the legacy Capability union, so seeding any
---    of them here would immediately break the round-trip property below.
+-- 2. The two employee flags are seeded onto exactly the five builtin roles
+--    that hold view:employees. view:costs stays unseeded: its gate is not
+--    built yet, so seeding it would grant a capability nothing reads.
 -- ============================================================================
-SELECT is(
-  (SELECT count(*)::int FROM public.role_flags rf
-   JOIN public.roles r ON r.id = rf.role_id
-   WHERE r.builtin = true AND r.restaurant_id IS NULL),
-  0,
-  'zero role_flags rows are seeded for any builtin role'
+SELECT set_eq(
+  $$SELECT r.name || '|' || rf.flag
+    FROM public.role_flags rf
+    JOIN public.roles r ON r.id = rf.role_id
+    WHERE r.builtin = true AND r.restaurant_id IS NULL$$,
+  ARRAY[
+    'Owner|view:pay_rates',
+    'Owner|view:employee_pii',
+    'Manager|view:pay_rates',
+    'Manager|view:employee_pii',
+    'Operations Manager|view:pay_rates',
+    'Operations Manager|view:employee_pii',
+    'Accountant|view:pay_rates',
+    'Accountant|view:employee_pii',
+    'Operations Manager (Collaborator)|view:pay_rates',
+    'Operations Manager (Collaborator)|view:employee_pii'
+  ],
+  'the two employee flags are seeded onto exactly the five view:employees roles'
 );
 
 -- ============================================================================

@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Employee, EmployeeStatus, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
+import { usePermissions } from '@/hooks/usePermissions';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PositionCombobox } from '@/components/PositionCombobox';
@@ -69,6 +70,21 @@ function invitePayloadFor(role: RoleWithGrants | null) {
   };
 }
 
+// undefined drops out of the JSON body; null writes a real erase. An empty
+// box is ambiguous by itself: a masked read starts empty with nothing to
+// erase, but a caller who can see the date can also clear it on purpose.
+// `initialDateOfBirth` tells the two apart — it only holds a real date when
+// the box opened with one visible, so a clear against a masked-empty box
+// still sends undefined, not null.
+function resolveDateOfBirthForSubmit(
+  dateOfBirth: string,
+  initialDateOfBirth: string
+): string | null | undefined {
+  if (dateOfBirth) return dateOfBirth;
+  if (initialDateOfBirth) return null;
+  return undefined;
+}
+
 export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: EmployeeDialogProps) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -94,6 +110,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // catch (memory/lessons.md:1303-1304).
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+  // A caller without view:pay_rates sees a blank (masked) amount box, not a
+  // real stored value — typing into it and saving would write a fabricated
+  // rate. Disable the rate-setting controls below until the role resolves
+  // and grants the flag, instead of letting a blind write reach the mutation
+  // (which then silently strips it — see src/lib/employeeMaskedFields.ts).
+  const { hasCapability, isResolved: isPermissionsResolved } = usePermissions();
+  const canSeePayRates = isPermissionsResolved && hasCapability('view:pay_rates');
   // null while loading, on error, and for non-members — all mean "behave normally".
   const existingMember = findMemberByEmail(restaurantMembers, email);
   // Both call sites pass the selected restaurant (Employees.tsx, Scheduling.tsx),
@@ -106,6 +129,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [area, setArea] = useState('');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('full_time');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  // The date the dialog opened with. Empty means either "no date on file" or
+  // "the caller lacks view:employee_pii and the box reads masked". The submit
+  // payload below needs to tell those two apart from an intentional clear.
+  const [initialDateOfBirth, setInitialDateOfBirth] = useState('');
   const [status, setStatus] = useState<EmployeeStatus>('active');
   const [hireDate, setHireDate] = useState('');
   const [terminationDate, setTerminationDate] = useState('');
@@ -241,6 +268,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       setArea(employee.area || '');
       setEmploymentType(employee.employment_type || 'full_time');
       setDateOfBirth(employee.date_of_birth || '');
+      setInitialDateOfBirth(employee.date_of_birth || '');
       setStatus(employee.status);
       setHireDate(employee.hire_date || '');
       setTerminationDate(employee.termination_date || '');
@@ -293,6 +321,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setArea('');
     setEmploymentType('full_time');
     setDateOfBirth('');
+    setInitialDateOfBirth('');
     setStatus('active');
     setHireDate('');
     setTerminationDate('');
@@ -320,13 +349,27 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     existing: Employee,
     payload: {
       compensationType: CompensationType;
-      hourlyRateInCents: number;
+      hourlyRateInCents: number | undefined;
       salaryAmountInCents?: number;
       payPeriodType?: PayPeriodType;
       contractorAmountInCents?: number;
       contractorInterval?: ContractorPaymentInterval;
     }
   ) => {
+    // An unknown (masked) amount is not a change. Without this guard, a
+    // caller without view:pay_rates would compare the real stored amount
+    // against `undefined`, always read as "changed", and open the
+    // effective-date modal for an amount the caller cannot even see.
+    if (payload.compensationType === 'hourly' && payload.hourlyRateInCents === undefined) {
+      return false;
+    }
+    if (payload.compensationType === 'salary' && payload.salaryAmountInCents === undefined) {
+      return false;
+    }
+    if (payload.compensationType === 'contractor' && payload.contractorAmountInCents === undefined) {
+      return false;
+    }
+
     if (existing.compensation_type !== payload.compensationType) {
       return true;
     }
@@ -351,7 +394,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
 
   const buildHistoryPayload = (
     restaurant: string,
-    hourlyRateInCents: number,
+    hourlyRateInCents: number | undefined,
     salaryAmountInCents?: number,
     contractorAmountInCents?: number
   ): CompensationHistoryPayload | null => {
@@ -548,9 +591,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     e.preventDefault();
 
     // Build compensation data based on type
-    const hourlyRateInCents = compensationType === 'hourly' 
-      ? Math.round(Number.parseFloat(hourlyRate || '0') * 100)
-      : 0;
+    // An empty box is "unknown", not "zero". A fabricated 0 reaches
+    // hasCompensationChanged below, compares unequal to the real rate, and
+    // writes a permanent $0.00 row into the compensation history.
+    const hourlyRateInCents = compensationType === 'hourly' && hourlyRate.trim() !== ''
+      ? Math.round(Number.parseFloat(hourlyRate) * 100)
+      : undefined;
     
     const salaryAmountInCents = compensationType === 'salary' && salaryAmount
       ? Math.round(Number.parseFloat(salaryAmount) * 100)
@@ -573,7 +619,33 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       ? Math.round(dailyRateWeeklyInCents / dailyRateDays)
       : undefined;
 
-    // Check for unusually high hourly rate
+    // Block a compensation-type change when the new type's amount is
+    // undefined. A masked caller sees a blank box for the current type, so a
+    // blank box is normal there — but a real type change with no new amount
+    // must not reach hasCompensationChanged, which would read "unchanged"
+    // and write an inconsistent record (old type, no new amount, no history row).
+    if (employee && employee.compensation_type !== compensationType) {
+      const newTypeAmountInCents = {
+        hourly: hourlyRateInCents,
+        salary: salaryAmountInCents,
+        contractor: contractorAmountInCents,
+        daily_rate: dailyRateAmountInCents,
+      }[compensationType];
+
+      if (newTypeAmountInCents === undefined) {
+        toast({
+          title: 'Amount needed',
+          description: 'Enter an amount for the new compensation type before you save.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
+    // Check for unusually high hourly rate. hourlyRateInCents is undefined
+    // for a masked or blank box, so this division reads NaN. NaN > threshold
+    // is false, so the check below skips the warning instead of throwing —
+    // the same intentional short-circuit as the guard in hasCompensationChanged.
     const hourlyRateInDollars = hourlyRateInCents / 100;
     if (compensationType === 'hourly' && hourlyRateInDollars > HIGH_RATE_THRESHOLD) {
       const suggestions = suggestRateCorrections(hourlyRateInDollars);
@@ -605,7 +677,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   };
 
   const proceedWithSubmit = async (
-    hourlyRateInCents: number,
+    hourlyRateInCents: number | undefined,
     salaryAmountInCents: number | undefined,
     contractorAmountInCents: number | undefined,
     dailyRateWeeklyInCents: number | undefined,
@@ -620,7 +692,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       position,
       area: area.trim() || null,
       employment_type: employmentType,
-      date_of_birth: dateOfBirth || null,
+      // See resolveDateOfBirthForSubmit for the undefined-vs-null rule.
+      date_of_birth: resolveDateOfBirthForSubmit(dateOfBirth, initialDateOfBirth),
       status,
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 
@@ -831,6 +904,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     setCompensationType(newType);
                     if (newType !== 'hourly') setIsExempt(false);
                   }}
+                  disabled={!canSeePayRates}
                 >
                   <SelectTrigger id="compensationType" aria-label="Compensation type" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                     <SelectValue />
@@ -869,8 +943,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={hourlyRate}
                       onChange={(e) => setHourlyRate(e.target.value)}
                       placeholder="15.00"
-                      required
                       aria-label="Hourly rate in dollars"
+                      disabled={!canSeePayRates}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
@@ -896,12 +970,15 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   {(() => {
                     const annualizedPay = Number.parseFloat(hourlyRate || '0') * 2080;
                     if (!isExempt || annualizedPay >= 35568) return null;
+                    // annualizedPay is a NUMBER, not a date, so toLocaleString is safe
+                    // here; the restaurant-clock rule flags any toLocaleString call.
+                    // eslint-disable-next-line no-restricted-syntax
+                    const annualizedPayDisplay = annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 });
                     return (
                       <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                         <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[13px] text-amber-700 dark:text-amber-400">
-                          {/* eslint-disable-next-line no-restricted-syntax -- toLocaleString here formats a NUMBER (annualizedPay), not a date; the selector matches any toLocaleString member regardless of receiver type. */}
-                          This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
+                          This employee's annualized pay (${annualizedPayDisplay}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
                         </p>
                       </div>
                     );
@@ -934,8 +1011,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={salaryAmount}
                       onChange={(e) => setSalaryAmount(e.target.value)}
                       placeholder="52000.00"
-                      required
                       aria-label="Salary amount in dollars"
+                      disabled={!canSeePayRates}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
@@ -1031,8 +1108,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={contractorPaymentAmount}
                       onChange={(e) => setContractorPaymentAmount(e.target.value)}
                       placeholder="2500.00"
-                      required
                       aria-label="Payment amount in dollars"
+                      disabled={!canSeePayRates}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
@@ -1095,6 +1172,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         placeholder="1000.00"
                         required
                         aria-label="Weekly reference amount"
+                        disabled={!canSeePayRates}
                         className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                       <span className="text-sm text-muted-foreground whitespace-nowrap">per week</span>

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Shift, Employee } from '@/types/scheduling';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
+import { isCompensationHidden } from '@/lib/employeeMaskedFields';
 
 export interface EmployeeLaborCost {
   id: string;
@@ -12,6 +13,8 @@ export interface EmployeeLaborCost {
   compensationType: string;
   isOutlier: boolean;
   outlierLevel: 'none' | 'warning' | 'critical';
+  /** True when the caller has no view:pay_rates, so cost and rate are unknown. */
+  costIsHidden: boolean;
 }
 
 export interface LaborCostSummary {
@@ -20,6 +23,8 @@ export interface LaborCostSummary {
   averageHourlyRate: number;
   isAverageHigh: boolean;
   employeeCosts: EmployeeLaborCost[];
+  /** How many employees the totals leave out because their pay is masked. */
+  hiddenCostCount: number;
 }
 
 // Rate thresholds for outlier detection (in dollars)
@@ -43,6 +48,7 @@ export function useEmployeeLaborCosts(
         averageHourlyRate: 0,
         isAverageHigh: false,
         employeeCosts: [],
+        hiddenCostCount: 0,
       };
     }
 
@@ -54,49 +60,56 @@ export function useEmployeeLaborCosts(
       if (empShifts.length === 0) return;
 
       const hours = empShifts.reduce((sum, s) => sum + calculateShiftHours(s), 0);
-      
+
+      // A masked pay column arrives as null. A $0 cost understates labor and
+      // drives a wrong P&L, so mark the row unknown and leave it out of the
+      // totals. The hours stay visible: they are not pay data.
+      const payIsHidden = isCompensationHidden(emp);
+
       // Calculate effective rate based on compensation type
       let rate = 0;
       let cost = 0;
-      
-      switch (emp.compensation_type) {
-        case 'hourly':
-          rate = (emp.hourly_rate || 0) / 100; // Convert cents to dollars
-          cost = hours * rate;
-          break;
-        case 'salary':
-          // For salary, show the estimated daily cost divided by hours
-          if (emp.salary_amount && emp.pay_period_type) {
-            const weeksPerPeriod = emp.pay_period_type === 'weekly' ? 1 
-              : emp.pay_period_type === 'bi-weekly' ? 2 
-              : emp.pay_period_type === 'semi-monthly' ? 2.17 
-              : 4.33;
-            const dailyCost = (emp.salary_amount / 100) / (weeksPerPeriod * 7);
-            const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
-            cost = dailyCost * daysWorked;
-            rate = hours > 0 ? cost / hours : 0;
-          }
-          break;
-        case 'daily_rate':
-          if (emp.daily_rate_amount) {
-            const dailyRate = emp.daily_rate_amount / 100;
-            const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
-            cost = dailyRate * daysWorked;
-            rate = hours > 0 ? cost / hours : 0;
-          }
-          break;
-        case 'contractor':
-          if (emp.contractor_payment_amount && emp.contractor_payment_interval) {
-            const daysPerInterval = emp.contractor_payment_interval === 'weekly' ? 7 
-              : emp.contractor_payment_interval === 'bi-weekly' ? 14 
-              : emp.contractor_payment_interval === 'monthly' ? 30 
-              : 7;
-            const dailyCost = (emp.contractor_payment_amount / 100) / daysPerInterval;
-            const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
-            cost = dailyCost * daysWorked;
-            rate = hours > 0 ? cost / hours : 0;
-          }
-          break;
+
+      if (!payIsHidden) {
+        switch (emp.compensation_type) {
+          case 'hourly':
+            rate = (emp.hourly_rate || 0) / 100; // Convert cents to dollars
+            cost = hours * rate;
+            break;
+          case 'salary':
+            // For salary, show the estimated daily cost divided by hours
+            if (emp.salary_amount && emp.pay_period_type) {
+              const weeksPerPeriod = emp.pay_period_type === 'weekly' ? 1
+                : emp.pay_period_type === 'bi-weekly' ? 2
+                : emp.pay_period_type === 'semi-monthly' ? 2.17
+                : 4.33;
+              const dailyCost = (emp.salary_amount / 100) / (weeksPerPeriod * 7);
+              const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
+              cost = dailyCost * daysWorked;
+              rate = hours > 0 ? cost / hours : 0;
+            }
+            break;
+          case 'daily_rate':
+            if (emp.daily_rate_amount) {
+              const dailyRate = emp.daily_rate_amount / 100;
+              const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
+              cost = dailyRate * daysWorked;
+              rate = hours > 0 ? cost / hours : 0;
+            }
+            break;
+          case 'contractor':
+            if (emp.contractor_payment_amount && emp.contractor_payment_interval) {
+              const daysPerInterval = emp.contractor_payment_interval === 'weekly' ? 7
+                : emp.contractor_payment_interval === 'bi-weekly' ? 14
+                : emp.contractor_payment_interval === 'monthly' ? 30
+                : 7;
+              const dailyCost = (emp.contractor_payment_amount / 100) / daysPerInterval;
+              const daysWorked = new Set(empShifts.map(s => s.start_time.split('T')[0])).size;
+              cost = dailyCost * daysWorked;
+              rate = hours > 0 ? cost / hours : 0;
+            }
+            break;
+        }
       }
 
       // Determine outlier level
@@ -117,6 +130,7 @@ export function useEmployeeLaborCosts(
         compensationType: emp.compensation_type || 'hourly',
         isOutlier: outlierLevel !== 'none',
         outlierLevel,
+        costIsHidden: payIsHidden,
       });
     });
 
@@ -125,14 +139,19 @@ export function useEmployeeLaborCosts(
       .filter(e => e.hours > 0)
       .sort((a, b) => b.cost - a.cost);
 
+    // A masked row has no cost to add. Counting its 0 would drag the average
+    // down and understate the total.
+    const visibleCosts = employeeCosts.filter(e => !e.costIsHidden);
+    const hiddenCostCount = employeeCosts.length - visibleCosts.length;
+
     // Calculate totals (only from hourly employees for meaningful average)
-    const hourlyEmployees = employeeCosts.filter(e => e.compensationType === 'hourly');
+    const hourlyEmployees = visibleCosts.filter(e => e.compensationType === 'hourly');
     const totalHourlyCost = hourlyEmployees.reduce((sum, e) => sum + e.cost, 0);
     const totalHourlyHours = hourlyEmployees.reduce((sum, e) => sum + e.hours, 0);
-    
-    const totalCost = employeeCosts.reduce((sum, e) => sum + e.cost, 0);
-    const totalHours = employeeCosts.reduce((sum, e) => sum + e.hours, 0);
-    
+
+    const totalCost = visibleCosts.reduce((sum, e) => sum + e.cost, 0);
+    const totalHours = visibleCosts.reduce((sum, e) => sum + e.hours, 0);
+
     // Average hourly rate is only meaningful for hourly employees
     const averageHourlyRate = totalHourlyHours > 0 ? totalHourlyCost / totalHourlyHours : 0;
     
@@ -145,6 +164,7 @@ export function useEmployeeLaborCosts(
       averageHourlyRate,
       isAverageHigh,
       employeeCosts,
+      hiddenCostCount,
     };
   }, [shifts, employees]);
 }

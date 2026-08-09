@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useReactivateEmployee } from '@/hooks/useEmployees';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Employee } from '@/types/scheduling';
 import { CheckCircle, RotateCcw, Info } from 'lucide-react';
 
@@ -31,6 +32,8 @@ export const ReactivateEmployeeDialog = ({
   const [updateRate, setUpdateRate] = useState(false);
 
   const reactivateMutation = useReactivateEmployee();
+  const { hasCapability, isResolved } = usePermissions();
+  const canSeePayRates = isResolved && hasCapability('view:pay_rates');
 
   const resetForm = () => {
     setHourlyRate('');
@@ -70,9 +73,17 @@ export const ReactivateEmployeeDialog = ({
 
   if (!employee) return null;
 
-  const currentRateDisplay = employee.hourly_rate
-    ? `$${(employee.hourly_rate / 100).toFixed(2)}/hr`
-    : 'Not set';
+  // A masked rate arrives as null because the caller lacks view:pay_rates —
+  // show "Hidden" only for that case. A resolved rate of 0 or null is a real
+  // "Not set", not a masked value, so it must not read as "Hidden" too.
+  let currentRateDisplay: string;
+  if (!canSeePayRates) {
+    currentRateDisplay = 'Hidden';
+  } else if (employee.hourly_rate) {
+    currentRateDisplay = `$${(employee.hourly_rate / 100).toFixed(2)}/hr`;
+  } else {
+    currentRateDisplay = 'Not set';
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -134,6 +145,7 @@ export const ReactivateEmployeeDialog = ({
                 id="update-rate"
                 checked={updateRate}
                 onCheckedChange={(checked) => setUpdateRate(checked as boolean)}
+                disabled={!canSeePayRates}
               />
               <div className="grid gap-1 leading-none flex-1">
                 <Label
@@ -166,6 +178,7 @@ export const ReactivateEmployeeDialog = ({
                     placeholder="15.00"
                     value={hourlyRate}
                     onChange={(e) => setHourlyRate(e.target.value)}
+                    disabled={!canSeePayRates}
                     className="max-w-[150px] h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                   <span className="text-[13px] text-muted-foreground">/hour</span>

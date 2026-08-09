@@ -43,7 +43,7 @@ test.describe('Shift Trade Acceptance (accept_shift_trade authz)', () => {
             restaurant_id: restId, user_id: pUserId, name: 'Pat Offerer', position: 'Server',
             status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500,
           })
-          .select().single();
+          .select('id, name').single();
         if (pErr) throw new Error(`P employee insert: ${pErr.message}`);
 
         // P's future published shift.
@@ -89,7 +89,7 @@ test.describe('Shift Trade Acceptance (accept_shift_trade authz)', () => {
             restaurant_id: restId, user_id: qUserId, name: 'Quinn Acceptor', position: 'Server',
             status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500,
           })
-          .select().single();
+          .select('id, name').single();
         if (qEmpErr) throw new Error(`Q employee insert: ${qEmpErr.message}`);
 
         const { error: memErr } = await supabase

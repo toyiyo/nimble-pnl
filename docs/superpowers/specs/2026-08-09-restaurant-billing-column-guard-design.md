@@ -88,7 +88,7 @@ complete list.
 
 | Writer | Columns | Client |
 |---|---|---|
-| `supabase/functions/stripe-subscription-webhook/subscription-handler.ts:208-215, 364, 405-410, 458, 485` | eight of the ten | `supabaseAdmin`, built from `SUPABASE_SERVICE_ROLE_KEY` at `supabase/functions/stripe-subscription-webhook/index.ts:61-64` |
+| `supabase/functions/stripe-subscription-webhook/subscription-handler.ts:208-215, 364, 405-410, 458, 485` | nine of the ten — every column except `stripe_customer_id` | `supabaseAdmin`, built from `SUPABASE_SERVICE_ROLE_KEY` at `supabase/functions/stripe-subscription-webhook/index.ts:61-64` |
 | `supabase/functions/stripe-financial-connections-session/index.ts:128, 165, 185, 207` | `stripe_customer_id` | `supabaseAdmin`, `…/index.ts:58-61` |
 | `supabase/functions/stripe-subscription-checkout/index.ts:198` | `stripe_subscription_customer_id` | `supabaseAdmin`, `…/index.ts:91-94` |
 
@@ -111,23 +111,32 @@ writes the geofence columns. Neither names a billing column.
 
 ### The test itself
 
-PostgREST runs `SET LOCAL ROLE` to `authenticated` or `anon` for every
-browser request. Every legitimate billing writer runs as `service_role`,
-`postgres`, or `supabase_admin`. The trigger therefore checks the columns
-only when the effective role is an end-user role:
+PostgREST runs `SET LOCAL ROLE` to the role in the JWT — `authenticated`
+or `anon` — for every browser request. See the PostgREST authentication
+documentation, <https://docs.postgrest.org/en/v12/references/auth.html>.
+Every legitimate billing writer runs as `service_role`, `postgres`, or
+`supabase_admin`. The trigger therefore checks the columns only when the
+effective role is an end-user role:
 
 ```sql
-IF current_user IN ('authenticated', 'anon')
-   OR coalesce(
-        nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
-        ''
-      ) IN ('authenticated', 'anon')
-THEN
-  -- compare the ten columns
-END IF;
+CREATE OR REPLACE FUNCTION public._guard_restaurant_billing_columns()
+RETURNS trigger AS $$
+BEGIN
+  IF current_user IN ('authenticated', 'anon')
+     OR coalesce(
+          nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
+          ''
+        ) IN ('authenticated', 'anon')
+  THEN
+    -- compare the ten columns with IS DISTINCT FROM, then
+    -- RAISE EXCEPTION ... USING ERRCODE = '42501'
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp;
 ```
 
-Three notes on that expression.
+Four notes on that definition.
 
 - **`nullif` before the cast.** An empty `request.jwt.claims` string makes
   `''::jsonb` raise. `supabase/migrations/20251221000001_create_invoicing_tables.sql:342-345`
@@ -144,10 +153,28 @@ Three notes on that expression.
   version could pick a third role and break every deploy. A deny-list of
   the two PostgREST roles cannot break a deploy, and PostgREST has no
   third end-user role in this project.
+- **`SET search_path = pg_catalog, pg_temp`.** The body calls only
+  `pg_catalog` builtins. The pin stops a search-path attack and keeps the
+  Supabase advisor lint `function_search_path_mutable` quiet. The
+  precedent function `_guard_check_bank_account_secrets`
+  (`…20260426120000….sql:27-47`) omits the pin. This design does not copy
+  that omission.
 
 The trigger function is `SECURITY INVOKER` (the default). A
 `SECURITY DEFINER` trigger would read `current_user = postgres` for every
 caller and never fire.
+
+### Trigger name and firing order
+
+The trigger is `restaurant_billing_columns_guard`, `BEFORE UPDATE`,
+`FOR EACH ROW`.
+
+Postgres fires two `BEFORE UPDATE FOR EACH ROW` triggers in alphabetical
+order by trigger name. `restaurant_billing_columns_guard` therefore runs
+before `update_restaurants_updated_at`. Order does not change the result
+today: the two triggers touch disjoint columns, the guard reads the ten
+billing columns and the stamper writes `updated_at`. A future migration
+that widens either scope must re-check this paragraph.
 
 ## 5. Blast radius: the E2E helper is the exploit
 
@@ -196,12 +223,36 @@ file is outside the coverage gate.
 ### pgTAP — `supabase/tests/restaurant_billing_columns.test.sql`
 
 Fixture: one restaurant, one owner, one manager, membership rows for both.
+The fixture inserts run as the harness role, before the first role switch.
 
-**A deny case must pin the message, not only the SQLSTATE.** RLS denial
-and this trigger both raise `42501`. A test pinned to the code alone would
-stay green if the actor lost RLS access and never reached the trigger.
-This repeats the trap recorded in `memory/lessons.md:2539-2545` through a
-new mechanism, so every deny case passes both arguments to `throws_ok`:
+**Every case must switch the Postgres role, not only the JWT claims.**
+`supabase/tests/run_tests.sh:17` connects as `postgres`. A superuser
+bypasses RLS, and no table in this repository sets
+`FORCE ROW LEVEL SECURITY`. A test that sets only `request.jwt.claims`
+still runs as `postgres`, so its RLS control case proves nothing. The
+sibling test for this same migration,
+`supabase/tests/20260129000000_subscription_system.sql`, uses that weaker
+pattern. **Do not copy it.** Copy
+`supabase/tests/24_check_printing.sql:269-286` instead:
+
+```sql
+SET LOCAL role TO authenticated;
+SELECT set_config('request.jwt.claims',
+  '{"sub":"<OWNER_UUID>","role":"authenticated"}', true);
+-- ... cases ...
+RESET ROLE;
+```
+
+`RESET ROLE` runs before every fixture read and before each role change.
+
+**A deny case must pin the message, not only the SQLSTATE.** A `WITH CHECK`
+violation also raises `42501`. Today the policy has no `WITH CHECK` of its
+own, and the `USING` clause it falls back to keys on `restaurants.id`,
+which an UPDATE never changes — so RLS cannot raise `42501` for an owner.
+A future policy change can make it raise. A test pinned to the code alone
+would then stay green while the trigger did nothing. This is the trap
+recorded in `memory/lessons.md:2539-2545` in a new form, so every deny
+case passes both arguments to `throws_ok`:
 
 ```sql
 SELECT throws_ok(
@@ -211,17 +262,22 @@ SELECT throws_ok(
 );
 ```
 
-| # | Case | Expect |
-|---|---|---|
-| 1 | Trigger exists on `public.restaurants` | `has_trigger` |
-| 2-11 | Owner changes each of the ten billing columns | `throws_ok` 42501 + message |
-| 12 | Manager changes `subscription_tier` | `throws_ok` 42501 + message |
-| 13 | Owner changes `name` | `lives_ok` — the non-vacuity control. It proves RLS lets this actor write, so cases 2-12 fail on the trigger. |
-| 14 | Owner changes `address` and `timezone` | `lives_ok` |
-| 15 | Owner writes `subscription_tier` with its current value | `lives_ok` — `IS DISTINCT FROM` sees no change |
-| 16 | `service_role` changes `subscription_tier` | `lives_ok` |
-| 17 | Value after case 16 | `is(...)` — the write landed |
-| 18 | `postgres` changes `subscription_tier` | `lives_ok` — later migrations keep working |
+| # | Role | Case | Expect |
+|---|---|---|---|
+| 1 | `postgres` | Trigger `restaurant_billing_columns_guard` exists on `public.restaurants` | `has_trigger` |
+| 2-11 | `authenticated`, owner | Change each of the ten billing columns | `throws_ok` 42501 + message |
+| 12 | `authenticated`, manager | Change `subscription_tier` | `throws_ok` 42501 + message |
+| 13 | `authenticated`, owner | Change `name` | `lives_ok` — the non-vacuity control. It proves RLS lets this actor write, so cases 2-12 fail on the trigger, not on RLS. |
+| 14 | `postgres` | Read `name` after case 13 | `is(...)` — the control write landed |
+| 15 | `authenticated`, owner | Change `address` and `timezone` | `lives_ok` |
+| 16 | `authenticated`, owner | Write `subscription_tier` with its current value | `lives_ok` — `IS DISTINCT FROM` sees no change |
+| 17 | `authenticated`, staff | Change `subscription_tier`, then read it back | `lives_ok` + `is(...)` unchanged — the RLS `USING` clause filters the row, so the statement matches zero rows and raises nothing |
+| 18 | `service_role` | Change `subscription_tier` | `lives_ok` |
+| 19 | `postgres` | Read `subscription_tier` after case 18 | `is(...)` — the write landed |
+| 20 | `postgres` | Change `subscription_tier` | `lives_ok` — later migrations keep working |
+
+Case 14 matters. `lives_ok` alone passes for an UPDATE that matches zero
+rows, so the control needs a value assertion behind it.
 
 ### E2E — `tests/e2e/subscription-tier-guard.spec.ts`
 

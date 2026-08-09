@@ -129,20 +129,21 @@ CREATE VIEW public.employees_secure
 WITH (security_barrier = true) AS
 SELECT
   e.id, e.restaurant_id, e.name, e.position, /* ...30 plain columns... */
-  CASE WHEN caps.pay THEN e.hourly_rate END                 AS hourly_rate,
-  CASE WHEN caps.pay THEN e.salary_amount END               AS salary_amount,
-  CASE WHEN caps.pay THEN e.contractor_payment_amount END   AS contractor_payment_amount,
-  CASE WHEN caps.pay THEN e.daily_rate_amount END           AS daily_rate_amount,
-  CASE WHEN caps.pay THEN e.daily_rate_reference_weekly END AS daily_rate_reference_weekly,
-  CASE WHEN caps.pii THEN e.email END                       AS email,
-  CASE WHEN caps.pii THEN e.phone END                       AS phone,
-  CASE WHEN caps.pii THEN e.date_of_birth END               AS date_of_birth,
+  CASE WHEN caps.pay OR caps.self THEN e.hourly_rate END                 AS hourly_rate,
+  CASE WHEN caps.pay OR caps.self THEN e.salary_amount END               AS salary_amount,
+  CASE WHEN caps.pay OR caps.self THEN e.contractor_payment_amount END   AS contractor_payment_amount,
+  CASE WHEN caps.pay OR caps.self THEN e.daily_rate_amount END           AS daily_rate_amount,
+  CASE WHEN caps.pay OR caps.self THEN e.daily_rate_reference_weekly END AS daily_rate_reference_weekly,
+  CASE WHEN caps.pii OR caps.self THEN e.email END                       AS email,
+  CASE WHEN caps.pii OR caps.self THEN e.phone END                       AS phone,
+  CASE WHEN caps.pii OR caps.self THEN e.date_of_birth END               AS date_of_birth,
   (e.date_of_birth IS NOT NULL
    AND e.date_of_birth > (CURRENT_DATE - INTERVAL '18 years')) AS is_minor
 FROM public.employees e
 CROSS JOIN LATERAL (
   SELECT public.user_has_capability(e.restaurant_id, 'view:pay_rates')    AS pay,
-         public.user_has_capability(e.restaurant_id, 'view:employee_pii') AS pii
+         public.user_has_capability(e.restaurant_id, 'view:employee_pii') AS pii,
+         (e.user_id = auth.uid())                                        AS self
 ) caps
 WHERE e.restaurant_id IN (
         SELECT ur.restaurant_id FROM public.user_restaurants ur
@@ -150,7 +151,17 @@ WHERE e.restaurant_id IN (
    OR e.user_id = auth.uid();
 ```
 
-Three parts need a reason.
+Five parts need a reason.
+
+**The self-row exception.** `caps.self` is `(e.user_id = auth.uid())`. A
+person always reads their own wage and their own contact data — a role flag
+gates a coworker's data, not your own. `/employee/pay` exists to show a staff
+member their own pay, so the column mask must carry the same exception the
+row predicate already has. `e.user_id` is nullable. An employee row with no
+linked account must not unmask for a caller with a `NULL` `auth.uid()`:
+`NULL = auth.uid()` evaluates to `NULL`, and `caps.pay OR NULL` is `NULL`
+(not `TRUE`) when `caps.pay` is `false`, so the `CASE WHEN` takes the `ELSE`
+branch and the column stays masked.
 
 **Owner rights.** `security_invoker` stays off. The caller no longer holds the
 column privilege, so an invoker-rights view fails for everyone. Note the

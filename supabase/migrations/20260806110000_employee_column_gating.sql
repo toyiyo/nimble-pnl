@@ -47,6 +47,13 @@
 -- is_minor goes to every member. isMinor(date_of_birth) returns false for a
 -- null date, so a masked date would silently delete the "Minor" badge from the
 -- roster. That badge is a labor-compliance cue. The raw date stays gated.
+--
+-- Self-row exception: a caller always reads their own pay and their own
+-- contact data, flag or no flag. Your own wage and your own contact details
+-- are your own data, and /employee/pay exists to show them. caps.self is
+-- (e.user_id = auth.uid()). e.user_id is nullable, so an employee row with no
+-- linked account must stay masked: NULL = auth.uid() evaluates to NULL, which
+-- OR treats as FALSE, so the row does not unmask.
 CREATE VIEW public.employees_secure
 WITH (security_barrier = true) AS
 SELECT
@@ -80,20 +87,21 @@ SELECT
   e.exempt_changed_at,
   e.exempt_changed_by,
   e.employment_type,
-  CASE WHEN caps.pay THEN e.hourly_rate END                 AS hourly_rate,
-  CASE WHEN caps.pay THEN e.salary_amount END               AS salary_amount,
-  CASE WHEN caps.pay THEN e.contractor_payment_amount END   AS contractor_payment_amount,
-  CASE WHEN caps.pay THEN e.daily_rate_amount END           AS daily_rate_amount,
-  CASE WHEN caps.pay THEN e.daily_rate_reference_weekly END AS daily_rate_reference_weekly,
-  CASE WHEN caps.pii THEN e.email END                       AS email,
-  CASE WHEN caps.pii THEN e.phone END                       AS phone,
-  CASE WHEN caps.pii THEN e.date_of_birth END               AS date_of_birth,
+  CASE WHEN caps.pay OR caps.self THEN e.hourly_rate END                 AS hourly_rate,
+  CASE WHEN caps.pay OR caps.self THEN e.salary_amount END               AS salary_amount,
+  CASE WHEN caps.pay OR caps.self THEN e.contractor_payment_amount END   AS contractor_payment_amount,
+  CASE WHEN caps.pay OR caps.self THEN e.daily_rate_amount END           AS daily_rate_amount,
+  CASE WHEN caps.pay OR caps.self THEN e.daily_rate_reference_weekly END AS daily_rate_reference_weekly,
+  CASE WHEN caps.pii OR caps.self THEN e.email END                       AS email,
+  CASE WHEN caps.pii OR caps.self THEN e.phone END                       AS phone,
+  CASE WHEN caps.pii OR caps.self THEN e.date_of_birth END               AS date_of_birth,
   (e.date_of_birth IS NOT NULL
    AND e.date_of_birth > (CURRENT_DATE - INTERVAL '18 years')) AS is_minor
 FROM public.employees e
 CROSS JOIN LATERAL (
   SELECT public.user_has_capability(e.restaurant_id, 'view:pay_rates')    AS pay,
-         public.user_has_capability(e.restaurant_id, 'view:employee_pii') AS pii
+         public.user_has_capability(e.restaurant_id, 'view:employee_pii') AS pii,
+         (e.user_id = auth.uid())                                        AS self
 ) caps
 WHERE e.restaurant_id IN (
         SELECT ur.restaurant_id
@@ -103,8 +111,10 @@ WHERE e.restaurant_id IN (
 
 COMMENT ON VIEW public.employees_secure IS
   'Read path for public.employees. Returns NULL for a pay or contact column '
-  'the caller has no flag for. Owner rights on purpose: authenticated holds '
-  'no SELECT on those columns, so an invoker-rights view would fail for all.';
+  'the caller has no flag for, unless the row is the caller''s own record '
+  '(e.user_id = auth.uid()) — a person always reads their own pay and their '
+  'own contact data. Owner rights on purpose: authenticated holds no SELECT '
+  'on those columns, so an invoker-rights view would fail for all.';
 
 -- ============================================================================
 -- Step 2: the grant posture

@@ -12,13 +12,27 @@
  * component protects one of them.
  */
 
-/** Masked by view:pay_rates. */
+/**
+ * Stripped from the write for a caller without view:pay_rates.
+ *
+ * The first five are the pay amounts that 20260806110000 masks on read. The
+ * caller sees a masked NULL for these, so the strip stops that NULL from
+ * overwriting a real stored value (see the file comment above).
+ *
+ * `is_exempt` is different: 20260806110000 grants SELECT on it to every
+ * authenticated caller (it is not one of the eight masked columns), and the
+ * table carries no column-level UPDATE grant at all — RLS governs the row,
+ * not the column. So this strip is the only guard on the overtime-exemption
+ * flag. It is here for write parity with the disabled Switch in
+ * EmployeeDialog (id="isExempt"), not because the value is ever masked.
+ */
 export const PAY_RATE_FIELDS = [
   'hourly_rate',
   'salary_amount',
   'contractor_payment_amount',
   'daily_rate_amount',
   'daily_rate_reference_weekly',
+  'is_exempt',
 ] as const;
 
 /** Masked by view:employee_pii. */

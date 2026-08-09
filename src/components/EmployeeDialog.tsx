@@ -117,6 +117,11 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // (which then silently strips it — see src/lib/employeeMaskedFields.ts).
   const { hasCapability, isResolved: isPermissionsResolved } = usePermissions();
   const canSeePayRates = isPermissionsResolved && hasCapability('view:pay_rates');
+  // Contact details (email, phone, date of birth) gate on view:employee_pii,
+  // the same way pay amounts gate on view:pay_rates. The write path already
+  // strips these keys for a caller without the flag, so this gate makes the
+  // disabled state honest and stops a masked blank box from reading as a clear.
+  const canSeePii = isPermissionsResolved && hasCapability('view:employee_pii');
   // null while loading, on error, and for non-members — all mean "behave normally".
   const existingMember = findMemberByEmail(restaurantMembers, email);
   // Both call sites pass the selected restaurant (Employees.tsx, Scheduling.tsx),
@@ -964,6 +969,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       onCheckedChange={setIsExempt}
                       className="data-[state=checked]:bg-foreground"
                       aria-label="Mark employee as exempt from overtime"
+                      // Overtime exemption is pay configuration, the same class
+                      // as pay period and payment interval below. Gate it on
+                      // view:pay_rates for the same reason (see canSeePayRates
+                      // above). employeeMaskedFields.ts strips is_exempt from
+                      // the write for the same caller, so a bypassed disabled
+                      // prop still cannot change it.
+                      disabled={!canSeePayRates}
                     />
                   </div>
 
@@ -1035,9 +1047,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         </Tooltip>
                       </TooltipProvider>
                     </Label>
-                    <Select 
-                      value={payPeriodType} 
+                    <Select
+                      value={payPeriodType}
                       onValueChange={(value) => setPayPeriodType(value as PayPeriodType)}
+                      disabled={!canSeePayRates}
                     >
                       <SelectTrigger id="payPeriodType" aria-label="Pay period" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
@@ -1057,6 +1070,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         checked={allocateDaily}
                         onCheckedChange={(checked) => setAllocateDaily(checked === true)}
                         aria-label="Allocate to Daily P&L"
+                        disabled={!canSeePayRates}
                       />
                       <Label htmlFor="allocateDaily" className="cursor-pointer flex items-center gap-1.5">
                         Allocate to Daily P&L
@@ -1117,9 +1131,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     <Label htmlFor="contractorPaymentInterval">
                       Payment Interval <span className="text-destructive">*</span>
                     </Label>
-                    <Select 
-                      value={contractorPaymentInterval} 
+                    <Select
+                      value={contractorPaymentInterval}
                       onValueChange={(value) => setContractorPaymentInterval(value as ContractorPaymentInterval)}
+                      disabled={!canSeePayRates}
                     >
                       <SelectTrigger id="contractorPaymentInterval" aria-label="Payment interval" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
@@ -1183,9 +1198,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     <Label htmlFor="dailyRateStandardDays">
                       Standard Work Days <span className="text-destructive">*</span>
                     </Label>
-                    <Select 
-                      value={dailyRateStandardDays} 
+                    <Select
+                      value={dailyRateStandardDays}
                       onValueChange={setDailyRateStandardDays}
+                      disabled={!canSeePayRates}
                     >
                       <SelectTrigger id="dailyRateStandardDays" aria-label="Standard work days per week" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
@@ -1251,6 +1267,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => handleEmailChange(e.target.value)}
                     placeholder="john@example.com"
                     aria-label="Employee email"
+                    disabled={!canSeePii}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
@@ -1264,6 +1281,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="(555) 123-4567"
                     aria-label="Employee phone number"
+                    disabled={!canSeePii}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
@@ -1360,6 +1378,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     value={dateOfBirth}
                     onChange={(e) => setDateOfBirth(e.target.value)}
                     aria-label="Date of birth"
+                    disabled={!canSeePii}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                   {dateOfBirth && isMinor(dateOfBirth) && (

@@ -295,6 +295,19 @@ describe('RoleEditor', () => {
     expect(screen.getAllByRole('switch')).toHaveLength(3);
   });
 
+  it('states which sensitive-data flags are enforced and which is not', () => {
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+
+    // The enforced flags are named as enforced.
+    expect(screen.getByText(/pay rates and contact details now gate real reads/i)).toBeInTheDocument();
+    // The deferred flag is named as not yet in force.
+    expect(screen.getByText(/costs switch has no effect yet/i)).toBeInTheDocument();
+
+    // The stale "not enforced yet" framing is gone.
+    expect(screen.queryByText(/not enforced yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/per-field gating ships/i)).not.toBeInTheDocument();
+  });
+
   it('disables a sensitive-data switch with a "Needs access to" hint until a requiring area is granted', async () => {
     const user = userEvent.setup();
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });

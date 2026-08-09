@@ -653,16 +653,16 @@ export function RoleEditor({
                   either can or cannot see. */}
               <GroupHeader label="Sensitive data" legend="Off · On" />
               <div className="p-5 pt-4 space-y-1">
-                {/* Say plainly what these switches do today. They are stored on
-                    the role and resolvable through user_has_capability(), but no
-                    screen and no RLS policy reads them yet, so leaving one off
-                    hides nothing. Advertising them as protection they don't yet
-                    provide is worse than admitting the gap (Phase 7a security
-                    review); the copy comes out when the fields are gated. */}
+                {/* State plainly what these switches do now. Pay rates and
+                    contact details gate real reads. PR #727 enforces them
+                    through employees_secure and the column REVOKE. A role
+                    without the switch cannot see those fields. view:costs is
+                    not gated yet. No screen and no RLS policy reads it, so its
+                    switch changes nothing. The copy below keeps that caveat. */}
                 <p className="text-[12px] text-muted-foreground pb-2">
-                  Recorded on the role, but not enforced yet — these fields still follow area access
-                  everywhere in the app. Set them for the role you want; they take effect when
-                  per-field gating ships.
+                  Pay rates and contact details now gate real reads. A role without the switch
+                  cannot see those fields. Item costs still follow area access. The costs switch
+                  has no effect yet.
                 </p>
                 {SENSITIVE_FLAGS.map((s) => {
                   const available = flagAvailable(s, grants, builtinReadOnly);

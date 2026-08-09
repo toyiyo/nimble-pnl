@@ -9,6 +9,8 @@ import { EmployeeDialog } from '@/components/EmployeeDialog';
 // dialog prefills the date box as an empty string. On save, the box must NOT
 // be read as an explicit null — that would erase the stored date of birth.
 
+const { mockHasCapability } = vi.hoisted(() => ({ mockHasCapability: vi.fn() }));
+
 const updateMock = vi.fn().mockResolvedValue({ id: 'emp-1' });
 const createMock = vi.fn().mockResolvedValue({ id: 'emp-1' });
 
@@ -45,6 +47,10 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 // which throws without an AuthProvider by design. Nothing here asserts on app
 // access — this just keeps the dialog mountable.
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'caller-1' } }) }));
+
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasCapability: mockHasCapability, isResolved: true }),
+}));
 
 vi.mock('@/integrations/supabase/client', () => {
   // Recursive fluent-builder mock — must be `any` because the chain can call
@@ -117,11 +123,13 @@ describe('EmployeeDialog — masked date of birth is not erased', () => {
   });
 
   it('never sends date_of_birth: null for a masked (blank) date box on save', async () => {
+    // A masked (no-PII) caller: the date box is gated and blank.
+    mockHasCapability.mockImplementation((c: string) => c !== 'view:employee_pii');
     renderEdit();
 
-    // Confirm the fixture actually masks the date box, as the bug requires.
     const dobInput = screen.getByLabelText(/date of birth/i) as HTMLInputElement;
     expect(dobInput.value).toBe('');
+    expect(dobInput).toBeDisabled();
 
     const form = document.body.querySelector('form');
     expect(form).not.toBeNull();
@@ -136,10 +144,14 @@ describe('EmployeeDialog — masked date of birth is not erased', () => {
   // not start empty this time, so the clear must send an explicit null, not
   // silently keep the old value.
   it('sends date_of_birth: null when a caller who can see the date clears it', async () => {
+    // A caller who holds view:employee_pii: the date box is editable and shows
+    // the real date of birth.
+    mockHasCapability.mockReturnValue(true);
     renderEdit(VISIBLE_DOB_EMPLOYEE);
 
     const dobInput = screen.getByLabelText(/date of birth/i) as HTMLInputElement;
     expect(dobInput.value).toBe('2000-01-01');
+    expect(dobInput).not.toBeDisabled();
 
     fireEvent.change(dobInput, { target: { value: '' } });
     expect(dobInput.value).toBe('');

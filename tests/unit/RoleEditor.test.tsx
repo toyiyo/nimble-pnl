@@ -300,9 +300,17 @@ describe('RoleEditor', () => {
 
     // The enforced flags are named as enforced.
     expect(screen.getByText(/pay rates and contact details now gate real reads/i)).toBeInTheDocument();
+    // The guarantee is qualified to OTHER employees. The SQL self-row
+    // exception keeps own-row pay and PII visible without the flag.
+    expect(
+      screen.getByText(/cannot see other employees' pay rates or contact details/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/each person still sees their own/i)).toBeInTheDocument();
     // The deferred flag is named as not yet in force.
     expect(screen.getByText(/costs switch has no effect yet/i)).toBeInTheDocument();
 
+    // The stale absolute claim is gone.
+    expect(screen.queryByText(/cannot see those fields/i)).not.toBeInTheDocument();
     // The stale "not enforced yet" framing is gone.
     expect(screen.queryByText(/not enforced yet/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/per-field gating ships/i)).not.toBeInTheDocument();

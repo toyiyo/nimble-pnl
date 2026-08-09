@@ -4,16 +4,21 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Regression guard (BUG-001): the app is hosted on Lovable, not Vercel, so
- * `@vercel/analytics` and `@vercel/speed-insights` try to load
- * `/_vercel/insights/script.js`, which 404s on every page load for every
- * user. These packages must not be imported from `src/App.tsx`.
+ * Regression guard: `src/App.tsx` does not add Vercel Web Analytics
+ * (`@vercel/analytics`). PostHog already captures product analytics
+ * (pageviews and pageleaves in `src/main.tsx`), so Web Analytics would
+ * duplicate it. See
+ * docs/superpowers/specs/2026-08-09-vercel-speed-insights-design.md.
  *
- * Scoped to the two exact specifiers (not a blanket ban on the `@vercel/`
- * prefix) so a deliberate future reintroduction stays legible — see
+ * BUG-001 history: this file once also banned `@vercel/speed-insights`,
+ * because the app ran on Lovable, where the Vercel script 404s. Production
+ * now deploys to Vercel, so Speed Insights is deliberately reintroduced
+ * through `src/components/SpeedInsightsGate.tsx` (web only, off on native
+ * Capacitor builds). So the speed-insights ban is gone; the
+ * `@vercel/analytics` ban stays. See
  * docs/superpowers/specs/2026-07-04-script-error-noise-design.md.
  */
-describe('App.tsx does not import dead Vercel analytics packages', () => {
+describe('App.tsx does not import Vercel Web Analytics', () => {
   const appSource = readFileSync(
     path.resolve(__dirname, '../../src/App.tsx'),
     'utf-8'
@@ -21,9 +26,5 @@ describe('App.tsx does not import dead Vercel analytics packages', () => {
 
   it('does not contain the "@vercel/analytics" specifier', () => {
     expect(appSource).not.toContain('@vercel/analytics');
-  });
-
-  it('does not contain the "@vercel/speed-insights" specifier', () => {
-    expect(appSource).not.toContain('@vercel/speed-insights');
   });
 });

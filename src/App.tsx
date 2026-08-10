@@ -15,6 +15,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { InstallBanner } from "@/components/InstallBanner";
+import { SpeedInsightsGate } from '@/components/SpeedInsightsGate';
 import { PersonalViewBanner } from "@/components/PersonalViewBanner";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileLayout } from '@/components/employee/MobileLayout';
@@ -349,6 +350,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <InstallBanner />
+          <SpeedInsightsGate />
           <Routes>
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/auth" element={<Auth />} />

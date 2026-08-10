@@ -250,7 +250,12 @@ SELECT is(
 -- lands
 -- ==========================================
 
+-- Clear the stale JWT claim from case 17. Each real PostgREST request sets
+-- its own request.jwt.claims fresh, so a service_role or postgres writer
+-- never carries a leftover "authenticated" claim. Only this test's shared
+-- transaction can leak one role's claim into the next role's case.
 RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
 SET LOCAL role TO service_role;
 
 SELECT lives_ok(

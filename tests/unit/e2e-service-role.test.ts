@@ -29,6 +29,7 @@ vi.mock('@supabase/supabase-js', () => ({
 // file proves the absent-file path.
 let tmpRoot: string;
 
+/** Restore the process env, then drop the two keys under test. */
 function resetEnv() {
   process.env = { ...ORIGINAL_ENV };
   delete process.env.SUPABASE_URL;

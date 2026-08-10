@@ -76,6 +76,12 @@ function requireEnv(key: string): string {
   return value;
 }
 
+/**
+ * Return the shared service-role client, and build it on the first call.
+ *
+ * The build is lazy on purpose. An import of this module must not throw in a
+ * spec that never calls `setSubscriptionTier`.
+ */
 function getServiceRoleClient(): SupabaseClient<Database> {
   if (cachedClient) {
     return cachedClient;

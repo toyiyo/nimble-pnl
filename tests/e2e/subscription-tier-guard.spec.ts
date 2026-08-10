@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
+import {
+  signUpAndCreateRestaurant,
+  generateTestUser,
+  type E2EHelperWindow,
+} from '../helpers/e2e-supabase';
 
 /**
  * E2E test for the restaurant billing column guard.
@@ -20,13 +24,15 @@ test.describe('Restaurant billing column guard', () => {
     const user = generateTestUser('billing-guard');
     await signUpAndCreateRestaurant(page, user);
 
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    const restaurantId = await page.evaluate(() =>
+      (window as E2EHelperWindow).__getRestaurantId()
+    );
     expect(restaurantId).toBeTruthy();
 
     const readSubscriptionTier = (stage: 'before' | 'after') =>
       page.evaluate(
         async ({ id, stage }) => {
-          const supabase = (window as any).__supabase;
+          const supabase = (window as E2EHelperWindow).__supabase;
           const { data, error } = await supabase
             .from('restaurants')
             .select('subscription_tier')
@@ -46,7 +52,7 @@ test.describe('Restaurant billing column guard', () => {
     expect(await readSubscriptionTier('before')).toBe('pro');
 
     const selfUpgrade = await page.evaluate(async (id: string) => {
-      const supabase = (window as any).__supabase;
+      const supabase = (window as E2EHelperWindow).__supabase;
       const { error } = await supabase
         .from('restaurants')
         .update({ subscription_tier: 'growth' })

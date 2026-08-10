@@ -1,6 +1,10 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const ORIGINAL_ENV = { ...process.env };
+const ORIGINAL_CWD = process.cwd();
 
 // Mock target captured per-test so we can assert on the exact call args.
 const updateMock = vi.fn();
@@ -13,18 +17,17 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: (...args: unknown[]) => createClientMock(...args),
 }));
 
-// The helper falls back to .env.local when the process env is absent.
-// Stub the read so these tests never depend on a real file.
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return {
-    ...actual,
-    default: actual,
-    readFileSync: () => {
-      throw new Error('ENOENT');
-    },
-  };
-});
+// The helper searches upward from `process.cwd()` for `.env.local`.
+//
+// Do not mock `node:fs` for this. A mocked `readFileSync` does not reach the
+// helper module, and the helper's own `catch` then swallows the resulting
+// TypeError as if the file were absent. Every assertion still passes, for the
+// wrong reason.
+//
+// Each test runs in a fresh temporary directory instead. No ancestor of the
+// system temporary directory holds a `.env.local`, so a test that writes no
+// file proves the absent-file path.
+let tmpRoot: string;
 
 function resetEnv() {
   process.env = { ...ORIGINAL_ENV };
@@ -37,6 +40,9 @@ describe('tests/helpers/e2e-service-role', () => {
     vi.resetModules();
     resetEnv();
 
+    tmpRoot = mkdtempSync(join(tmpdir(), 'e2e-service-role-'));
+    process.chdir(tmpRoot);
+
     selectMock.mockReset().mockResolvedValue({ data: [{ id: 'restaurant-1' }], error: null });
     eqMock.mockReset().mockReturnValue({ select: selectMock });
     updateMock.mockReset().mockReturnValue({ eq: eqMock });
@@ -45,6 +51,8 @@ describe('tests/helpers/e2e-service-role', () => {
   });
 
   afterEach(() => {
+    process.chdir(ORIGINAL_CWD);
+    rmSync(tmpRoot, { recursive: true, force: true });
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -138,6 +146,67 @@ describe('tests/helpers/e2e-service-role', () => {
 
     await expect(setSubscriptionTier('missing-id', 'pro', 'active')).rejects.toThrow(
       /no restaurant row matched id missing-id/
+    );
+  });
+
+  it('reads .env.local when the process env is absent', async () => {
+    writeFileSync(
+      join(process.cwd(), '.env.local'),
+      'SUPABASE_URL=http://from-file:54321\nSUPABASE_SERVICE_ROLE_KEY="file-key"\n'
+    );
+
+    const { setSubscriptionTier } = await import('../helpers/e2e-service-role');
+
+    await setSubscriptionTier('restaurant-1', 'pro', 'active');
+
+    expect(createClientMock).toHaveBeenCalledWith(
+      'http://from-file:54321',
+      'file-key',
+      expect.anything()
+    );
+  });
+
+  it('prefers the process env over .env.local', async () => {
+    process.env.SUPABASE_URL = 'http://from-env:54321';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'env-key';
+    writeFileSync(
+      join(process.cwd(), '.env.local'),
+      'SUPABASE_URL=http://from-file:54321\nSUPABASE_SERVICE_ROLE_KEY=file-key\n'
+    );
+
+    const { setSubscriptionTier } = await import('../helpers/e2e-service-role');
+
+    await setSubscriptionTier('restaurant-1', 'pro', 'active');
+
+    expect(createClientMock).toHaveBeenCalledWith(
+      'http://from-env:54321',
+      'env-key',
+      expect.anything()
+    );
+  });
+
+  it('continues the upward search when a nested .env.local lacks the key', async () => {
+    const parent = process.cwd();
+    writeFileSync(
+      join(parent, '.env.local'),
+      'SUPABASE_URL=http://from-parent:54321\nSUPABASE_SERVICE_ROLE_KEY=parent-key\n'
+    );
+
+    // The nearest file exists but holds an unrelated key. The search must not
+    // stop there.
+    const nested = join(parent, 'package');
+    mkdirSync(nested);
+    writeFileSync(join(nested, '.env.local'), 'UNRELATED_KEY=1\n');
+    process.chdir(nested);
+
+    const { setSubscriptionTier } = await import('../helpers/e2e-service-role');
+
+    await setSubscriptionTier('restaurant-1', 'pro', 'active');
+
+    expect(createClientMock).toHaveBeenCalledWith(
+      'http://from-parent:54321',
+      'parent-key',
+      expect.anything()
     );
   });
 

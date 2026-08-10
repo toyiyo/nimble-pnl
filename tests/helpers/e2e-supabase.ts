@@ -4,6 +4,9 @@
  */
 
 import { expect, type Page } from '@playwright/test';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import type { Database } from '../../src/integrations/supabase/types';
 
 // Node-side reuse of the app's own DST-safe wall-clock <-> instant conversion,
 // so seed data is constructed with the exact same reasoning the feature code
@@ -16,6 +19,23 @@ import { wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
 // `restaurants.subscription_tier` (supabase/migrations/20260809100000_guard_restaurant_billing_columns.sql).
 // Use the Node-side service-role helper instead of a browser-exposed function.
 import { setSubscriptionTier } from './e2e-service-role';
+
+/**
+ * The helpers that `exposeSupabaseHelpers` attaches to `window`.
+ *
+ * Use this type in a `page.evaluate` callback instead of an `any` cast. An
+ * `any` cast hides a typo in a helper name until the spec fails at run time,
+ * and it reports as an ESLint error.
+ *
+ * The rest of this file still uses `any` casts. Convert them when you next
+ * touch each line.
+ */
+export interface E2EHelperWindow extends Window {
+  __supabase: SupabaseClient<Database>;
+  __getAuthUser: () => Promise<{ id: string } | null>;
+  __getRestaurantId: (userId?: string) => Promise<string | null>;
+  __supabaseHelpersReady?: boolean;
+}
 
 /**
  * Shape of `tip_pool_settings.role_percentages`, keyed by role name.
@@ -1211,7 +1231,9 @@ export async function signUpAndCreateRestaurant(
   // Set subscription tier to Pro so E2E tests can access all features.
   // Use the Node-side service-role helper: the guard trigger blocks this
   // update from the browser session's own role.
-  const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+  const restaurantId = await page.evaluate(() =>
+    (window as E2EHelperWindow).__getRestaurantId()
+  );
   if (!restaurantId) {
     throw new Error('Failed to set subscription tier to Pro: no restaurant ID found');
   }

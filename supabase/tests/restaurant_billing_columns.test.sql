@@ -5,7 +5,7 @@
 -- public.restaurants from PostgREST callers (authenticated, anon). Only
 -- service_role, postgres, and supabase_admin may write these columns.
 BEGIN;
-SELECT plan(21);
+SELECT plan(22);
 
 -- ==========================================
 -- Fixture: one restaurant, one owner, one manager, one staff member.
@@ -246,7 +246,28 @@ SELECT is(
 );
 
 -- ==========================================
--- Case 18-19: service_role can change subscription_tier, and the write
+-- Case 19: the JWT branch of the guard, tested on its own.
+--
+-- Cases 2-12 satisfy both halves of the guard's condition at once: the role
+-- is authenticated AND the JWT claim says authenticated. The first half alone
+-- would pass them, so the JWT half stays unproven.
+--
+-- Here current_user is postgres, a trusted role, but the JWT claim from case
+-- 17 still says authenticated. This is the shape of a SECURITY DEFINER
+-- function that an end user can call. Only the JWT half can block it.
+-- ==========================================
+
+RESET ROLE;
+SELECT throws_ok(
+  $$UPDATE public.restaurants SET subscription_tier = 'growth'
+    WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid$$,
+  '42501',
+  'Direct writes to restaurants billing columns are not allowed; billing changes come from Stripe',
+  'an authenticated JWT claim blocks the write even when current_user is trusted'
+);
+
+-- ==========================================
+-- Case 20-21: service_role can change subscription_tier, and the write
 -- lands
 -- ==========================================
 
@@ -273,7 +294,7 @@ SELECT is(
 );
 
 -- ==========================================
--- Case 20: postgres (the migration role) can still change
+-- Case 22: postgres (the migration role) can still change
 -- subscription_tier, so future migrations keep working
 -- ==========================================
 

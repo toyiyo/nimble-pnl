@@ -52,7 +52,13 @@ function readEnvLocal(key: string): string | undefined {
         return match[2].trim().replace(/^["']|["']$/g, '');
       }
     }
-    return undefined;
+
+    // The file exists but does not hold this key. Continue upward. A nested
+    // `.env.local` for an unrelated purpose must not hide the repository-level
+    // one.
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
   }
 
   return undefined;

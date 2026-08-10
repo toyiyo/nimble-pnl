@@ -199,16 +199,20 @@ SELECT ok(
   'Active Pro owner can view financial intelligence'
 );
 
--- Clear the stale JWT claim. This UPDATE runs as the test harness, not
--- as an authenticated user. The billing guard trigger checks this
--- claim as a defense-in-depth measure, and a leftover 'authenticated'
--- claim would block a legitimate fixture write.
+-- Clear the JWT claim for the fixture write below. This UPDATE runs as
+-- the test harness, not as an authenticated user. The billing guard
+-- trigger checks this claim as a defense-in-depth measure, and a
+-- leftover 'authenticated' claim would block a legitimate fixture
+-- write. Restore the claim right after: user_has_capability() below
+-- needs auth.uid(), which reads the 'sub' field of this same claim.
 SELECT set_config('request.jwt.claims', NULL, true);
 
 -- Downgrade to trialing growth
 UPDATE restaurants
 SET subscription_tier = 'growth', subscription_status = 'trialing', trial_ends_at = now() + interval '7 days'
 WHERE id = '00000000-0000-0000-0000-ddd000000010';
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-ddd000000001","role":"authenticated"}', true);
 
 SELECT ok(
   NOT user_has_capability('00000000-0000-0000-0000-ddd000000010', 'view:ai_assistant'),
@@ -219,10 +223,16 @@ SELECT ok(
   'Growth trial can access financial intelligence'
 );
 
--- Canceled removes subscription features
+-- Canceled removes subscription features. Clear the claim for this
+-- guarded write too, then restore it for the auth.uid()-dependent
+-- checks below, same reason as above.
+SELECT set_config('request.jwt.claims', NULL, true);
+
 UPDATE restaurants
 SET subscription_status = 'canceled'
 WHERE id = '00000000-0000-0000-0000-ddd000000010';
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-ddd000000001","role":"authenticated"}', true);
 
 SELECT ok(
   NOT user_has_capability('00000000-0000-0000-0000-ddd000000010', 'view:financial_intelligence'),

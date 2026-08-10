@@ -12,6 +12,11 @@ import { expect, type Page } from '@playwright/test';
 // `@/` alias here the same way it does inside spec files.
 import { wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
 
+// The billing-column guard trigger blocks a normal browser-session update to
+// `restaurants.subscription_tier` (supabase/migrations/20260809100000_guard_restaurant_billing_columns.sql).
+// Use the Node-side service-role helper instead of a browser-exposed function.
+import { setSubscriptionTier } from './e2e-service-role';
+
 /**
  * Shape of `tip_pool_settings.role_percentages`, keyed by role name.
  * Exported so specs and the `__getTipPoolSettings` helper cannot drift apart.
@@ -670,25 +675,6 @@ export async function exposeSupabaseHelpers(page: Page) {
       return { role, restaurantId };
     };
 
-    // Helper to set subscription tier on a restaurant (for E2E testing)
-    (window as any).__setSubscriptionTier = async (
-      restaurantId: string,
-      tier: 'starter' | 'growth' | 'pro' = 'pro',
-      status: 'trialing' | 'active' | 'past_due' | 'canceled' | 'grandfathered' = 'active'
-    ) => {
-      const { error } = await supabase
-        .from('restaurants')
-        .update({
-          subscription_tier: tier,
-          subscription_status: status,
-        })
-        .eq('id', restaurantId);
-
-      if (error) {
-        throw new Error(`Failed to set subscription tier: ${error.message}`);
-      }
-    };
-
     (window as any).__supabaseHelpersReady = true;
   };
 
@@ -1222,16 +1208,12 @@ export async function signUpAndCreateRestaurant(
     console.log('Onboarding drawer handling skipped or failed', e);
   }
 
-  // Set subscription tier to Pro so E2E tests can access all features
-  try {
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
-    if (restaurantId) {
-      await page.evaluate(
-        (restId) => (window as any).__setSubscriptionTier(restId, 'pro', 'active'),
-        restaurantId
-      );
-    }
-  } catch (e) {
-    console.log('Failed to set subscription tier to Pro:', e);
+  // Set subscription tier to Pro so E2E tests can access all features.
+  // Use the Node-side service-role helper: the guard trigger blocks this
+  // update from the browser session's own role.
+  const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+  if (!restaurantId) {
+    throw new Error('Failed to set subscription tier to Pro: no restaurant ID found');
   }
+  await setSubscriptionTier(restaurantId, 'pro', 'active');
 }

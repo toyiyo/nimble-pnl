@@ -23,21 +23,27 @@ test.describe('Restaurant billing column guard', () => {
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
-    const before = await page.evaluate(async (id: string) => {
-      const supabase = (window as any).__supabase;
-      const { data, error } = await supabase
-        .from('restaurants')
-        .select('subscription_tier')
-        .eq('id', id)
-        .single();
-      if (error) throw new Error(`Failed to read restaurant before the self-upgrade attempt: ${error.message}`);
-      return data.subscription_tier as string;
-    }, restaurantId);
+    const readSubscriptionTier = (stage: 'before' | 'after') =>
+      page.evaluate(
+        async ({ id, stage }) => {
+          const supabase = (window as any).__supabase;
+          const { data, error } = await supabase
+            .from('restaurants')
+            .select('subscription_tier')
+            .eq('id', id)
+            .single();
+          if (error) {
+            throw new Error(`Failed to read restaurant ${stage} the self-upgrade attempt: ${error.message}`);
+          }
+          return data.subscription_tier as string;
+        },
+        { id: restaurantId, stage }
+      );
 
     // signUpAndCreateRestaurant seeds the tier to 'pro' through the
     // service-role helper, so the owner's own attempt below must target a
     // different value for the write to count as a change.
-    expect(before).toBe('pro');
+    expect(await readSubscriptionTier('before')).toBe('pro');
 
     const selfUpgrade = await page.evaluate(async (id: string) => {
       const supabase = (window as any).__supabase;
@@ -50,17 +56,6 @@ test.describe('Restaurant billing column guard', () => {
 
     expect(selfUpgrade.message).toBeTruthy();
 
-    const after = await page.evaluate(async (id: string) => {
-      const supabase = (window as any).__supabase;
-      const { data, error } = await supabase
-        .from('restaurants')
-        .select('subscription_tier')
-        .eq('id', id)
-        .single();
-      if (error) throw new Error(`Failed to read restaurant after the self-upgrade attempt: ${error.message}`);
-      return data.subscription_tier as string;
-    }, restaurantId);
-
-    expect(after).toBe('pro');
+    expect(await readSubscriptionTier('after')).toBe('pro');
   });
 });

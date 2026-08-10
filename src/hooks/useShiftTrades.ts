@@ -146,13 +146,11 @@ export const useShiftTrades = (
           offered_by:employees!offered_by_employee_id(
             id,
             name,
-            email,
             position
           ),
           accepted_by:employees!accepted_by_employee_id(
             id,
             name,
-            email,
             position
           ),
           target_employee:employees!target_employee_id(
@@ -252,14 +250,12 @@ export const useMyTradeActivity = (
           offered_by:employees!offered_by_employee_id(
             id,
             name,
-            email,
             position,
             area
           ),
           accepted_by:employees!accepted_by_employee_id(
             id,
             name,
-            email,
             position
           )
         `)
@@ -315,7 +311,7 @@ export const useCreateShiftTrade = () => {
         .select(`
           *,
           offered_shift:shifts!offered_shift_id(start_time, end_time, position),
-          offered_by:employees!offered_by_employee_id(name, email)
+          offered_by:employees!offered_by_employee_id(name)
         `)
         .single();
 

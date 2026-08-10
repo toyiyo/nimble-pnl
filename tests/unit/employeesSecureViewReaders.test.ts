@@ -80,3 +80,31 @@ describe('no base-table read names a masked column', () => {
     expect(named).toEqual([]);
   });
 });
+
+// A PostgREST embed reads the base `employees` table too, even though the
+// syntax differs from a plain .from('employees').select(...). The shift-trade
+// hooks embed the offerer and the claimant with `employees!<fk>(...)`. An
+// embed that names a masked column breaks the same way — "permission denied
+// for table employees" for every caller — but the base-table scan above does
+// not see it. Scan the embed column lists as well.
+const employeeEmbedColumnLists = (source: string): string[] =>
+  [...source.matchAll(/employees![a-z_]+\(([^)]*)\)/g)].map((m) => m[1]);
+
+describe('no employees embed names a masked column', () => {
+  it.each([
+    ['src/hooks/useShiftTrades.ts'],
+    ['src/hooks/useEmployeeTips.tsx'],
+    ['src/hooks/useTemplateLinkedShifts.ts'],
+  ])('CRITICAL: %s embeds no masked column from employees', (path) => {
+    // The guard must scan at least one embed. An empty match list would let
+    // the masked-column check pass without reading anything, so a renamed hook
+    // or a changed embed syntax would silently disarm the guard.
+    const embeddedColumns = employeeEmbedColumnLists(readSource(path));
+    expect(embeddedColumns).not.toHaveLength(0);
+    const embedded = embeddedColumns.join(',');
+    const named = MASKED_COLUMNS.filter((column) =>
+      new RegExp(`\\b${column}\\b`).test(embedded)
+    );
+    expect(named).toEqual([]);
+  });
+});

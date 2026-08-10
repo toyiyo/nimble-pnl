@@ -95,8 +95,13 @@ describe('no employees embed names a masked column', () => {
     ['src/hooks/useShiftTrades.ts'],
     ['src/hooks/useEmployeeTips.tsx'],
     ['src/hooks/useTemplateLinkedShifts.ts'],
-  ])('%s embeds no masked column from employees', (path) => {
-    const embedded = employeeEmbedColumnLists(readSource(path)).join(',');
+  ])('CRITICAL: %s embeds no masked column from employees', (path) => {
+    // The guard must scan at least one embed. An empty match list would let
+    // the masked-column check pass without reading anything, so a renamed hook
+    // or a changed embed syntax would silently disarm the guard.
+    const embeddedColumns = employeeEmbedColumnLists(readSource(path));
+    expect(embeddedColumns).not.toHaveLength(0);
+    const embedded = embeddedColumns.join(',');
     const named = MASKED_COLUMNS.filter((column) =>
       new RegExp(`\\b${column}\\b`).test(embedded)
     );

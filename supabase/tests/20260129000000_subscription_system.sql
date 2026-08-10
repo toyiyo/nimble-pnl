@@ -199,6 +199,12 @@ SELECT ok(
   'Active Pro owner can view financial intelligence'
 );
 
+-- Clear the stale JWT claim. This UPDATE runs as the test harness, not
+-- as an authenticated user. The billing guard trigger checks this
+-- claim as a defense-in-depth measure, and a leftover 'authenticated'
+-- claim would block a legitimate fixture write.
+SELECT set_config('request.jwt.claims', NULL, true);
+
 -- Downgrade to trialing growth
 UPDATE restaurants
 SET subscription_tier = 'growth', subscription_status = 'trialing', trial_ends_at = now() + interval '7 days'

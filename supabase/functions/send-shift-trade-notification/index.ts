@@ -1,7 +1,7 @@
 import { generateHeader, formatDateTime } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "https://esm.sh/resend@4.0.0";
+import { sendEmailResult, sendPaced } from "../_shared/emailQueue.ts";
 import { sendWebPushToUser, sendWebPushToUsers } from '../_shared/webPushHelper.ts';
 import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
 import { resolveCreatedTradeEmailRecipients, type DirectedTarget } from '../_shared/tradeEmailAudience.ts';
@@ -260,7 +260,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    // Initialize Resend with API key check
+    // Check the Resend API key. The paced send below needs it.
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
       console.error('RESEND_API_KEY is not set');
@@ -269,7 +269,6 @@ const handler = async (req: Request): Promise<Response> => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    const resend = new Resend(resendApiKey);
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -319,8 +318,8 @@ const handler = async (req: Request): Promise<Response> => {
     // shift_trades SELECT policy (20260713000000) makes a DIRECTED trade visible
     // only to its target, offerer, or accepter, so this RLS-filtered read IS the
     // participant authorization gate: a non-participant gets zero rows and a 404.
-    // Elevating it to `admin` would let a same-restaurant non-participant read a
-    // private trade and receive the target's email in the response.
+    // With `admin`, a same-restaurant non-participant could read a private trade.
+    // The response would then include the target's email.
     //
     // The embeds name only ungated columns (`name`, `user_id`). They must NOT
     // name `email`: this read runs as `authenticated`, and migration
@@ -434,16 +433,25 @@ const handler = async (req: Request): Promise<Response> => {
     // it here as service_role, after the participant gate (the trade read) and the
     // membership gate. `offered_by_employee_id`/`accepted_by_employee_id` come from
     // the `select('*')` on shift_trades above.
-    const participantIds = [
-      trade.offered_by_employee_id,
-      trade.accepted_by_employee_id,
-    ].filter((id): id is string => !!id);
+    // Skip for 'created': the created branch of buildEmails reads directedTarget
+    // and its own broadcast query, never these two participant emails. The lookup
+    // would run on the most frequent action for nothing.
+    const participantIds = action === 'created'
+      ? []
+      : [
+          trade.offered_by_employee_id,
+          trade.accepted_by_employee_id,
+        ].filter((id): id is string => !!id);
     const emailByEmployeeId = new Map<string, string>();
     if (participantIds.length > 0) {
+      // Scope to the trade's restaurant. `admin` bypasses RLS, so a malformed
+      // trade row that points at an employee in another tenant must not resolve
+      // that employee's email here.
       const { data: participantRows, error: participantErr } = await admin
         .from('employees')
         .select('id, email')
-        .in('id', participantIds);
+        .in('id', participantIds)
+        .eq('restaurant_id', trade.restaurant_id);
       if (participantErr) {
         console.error('Error resolving participant emails:', participantErr);
       }
@@ -476,7 +484,10 @@ const handler = async (req: Request): Promise<Response> => {
     const content = ACTION_CONTENT[action];
     const employeeName = action === 'accepted' ? acceptedByName : offeredByName;
 
-    let emailData: { id?: string } | undefined;
+    // Email fan-out counts for the response. No single message id: each recipient
+    // gets its own send below.
+    let emailSentCount = 0;
+    let emailFailedCount = 0;
 
     if (ch.email && recipients.length > 0) {
       console.log(`Sending shift trade notification to ${recipients.length} recipients`);
@@ -490,24 +501,37 @@ const handler = async (req: Request): Promise<Response> => {
         trade.manager_note
       );
 
-      // Send emails via Resend
-      const { data, error: emailError } = await resend.emails.send({
-        from: 'EasyShiftHQ <notifications@easyshifthq.com>',
-        to: recipients,
-        subject: content.subject(employeeName),
-        html: html,
-      });
+      // One send per recipient, paced under Resend's 2/s limit. A single
+      // `to: recipients` call puts every address in one shared header, so each
+      // recipient reads all the others -- a roster leak on an open trade. Pacing
+      // also avoids the 429s a bare loop hits on a large roster.
+      const emailResults = await sendPaced(
+        recipients,
+        (to) =>
+          sendEmailResult(
+            resendApiKey,
+            'EasyShiftHQ <notifications@easyshifthq.com>',
+            to,
+            content.subject(employeeName),
+            html
+          ),
+        { label: `shift-trade-${action} ${tradeId}` }
+      );
 
-      if (emailError) {
-        console.error('Error sending email:', emailError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to send email', details: emailError }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      emailSentCount = emailResults.filter((r) => r.ok).length;
+      emailFailedCount = emailResults.length - emailSentCount;
+
+      for (const result of emailResults) {
+        if (!result.ok) {
+          // Status and attempts only, never the address: function logs are
+          // readable outside the tenant, and a bounce is not a reason to spill
+          // an employee email into them.
+          console.error(
+            `Failed to send shift trade email after ${result.attempts} attempt(s) [${result.status}]:`,
+            result.error
+          );
+        }
       }
-
-      emailData = data ?? undefined;
-      console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
     } else {
       // No email recipients (e.g. a directed trade whose target has no email on file) — this
       // is not an error. Fall through so the push block below still runs; it's the only
@@ -604,8 +628,10 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // Return counts, never the recipient list: any employee with an open tradeId
+    // could call action:'created' and read the roster from the response.
     return new Response(
-      JSON.stringify({ success: true, emailId: emailData?.id, recipients }),
+      JSON.stringify({ success: true, email_sent: emailSentCount, email_failed: emailFailedCount }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

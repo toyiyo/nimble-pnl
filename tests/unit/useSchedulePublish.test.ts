@@ -109,7 +109,7 @@ describe('publish notification outcomes', () => {
   });
 
   it('confirms the publish and says to tell the team when the fan-out errors server-side', async () => {
-    // The Wetzel's incident: the function 500s with an engineering-only body
+    // The failing case: the function returns a 500 with an engineering-only body
     // ({ error: 'Failed to fetch employees' }), which supabase-js further masks
     // as "Edge Function returned a non-2xx status code". Neither string helps a
     // manager. The toast must instead confirm the publish and say to tell the

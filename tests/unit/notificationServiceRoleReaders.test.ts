@@ -6,9 +6,9 @@ import { resolve } from 'path';
 // columns) from the `authenticated` role. Two notifier edge functions read the
 // roster to fan out schedule and shift-trade emails. When a notifier reads
 // `employees` with a client that carries the caller's JWT, PostgREST runs the
-// read as `authenticated`, so naming `email` raises 42501 "permission denied for
-// table employees" and aborts the whole request. The manager then sees an
-// engineering error with no action.
+// read as `authenticated`. A `select` on `email` then raises 42501 "permission
+// denied for table employees" and aborts the whole request. The manager then
+// sees an engineering error with no action.
 //
 // Each notifier already holds an authorization gate that does NOT depend on the
 // roster read (see the assertions below). So each notifier may read the email
@@ -43,8 +43,8 @@ describe('notify-schedule-published reads the roster as service_role', () => {
 
   it('reads the active-employee roster with serviceClient', () => {
     // The authorization gate here is an explicit owner/manager role check on
-    // `user_restaurants` (independent of this read), so elevating the roster
-    // read to service_role does not bypass any gate.
+    // `user_restaurants` (independent of this read). A service-role read here
+    // bypasses no gate.
     expect(source).toContain(
       'const { data: employees, error: empError } = await serviceClient\n      .from("employees")'
     );
@@ -70,9 +70,9 @@ describe('send-shift-trade-notification keeps the trade read gated but resolves 
     // CRITICAL privacy property. The `shift_trades` SELECT policy
     // (20260713000000) makes a DIRECTED trade visible only to its target,
     // offerer, or accepter. That RLS-filtered read IS the participant
-    // authorization gate. Elevating it to `admin` would let a same-restaurant
-    // non-participant read a private trade and receive the target's email in the
-    // `recipients` response — the exact leak that migration closed.
+    // authorization gate. With `admin`, a same-restaurant non-participant could
+    // read a private trade, and the function would then send the target's email
+    // to them — the exact leak that migration closed.
     expect(source).toContain(
       "const { data: trade, error: tradeError } = await supabase\n      .from('shift_trades')"
     );
@@ -83,8 +83,8 @@ describe('send-shift-trade-notification keeps the trade read gated but resolves 
 
   it('names no gated column inside any employees embed', () => {
     // A PostgREST embed reads the base `employees` table as the caller's role.
-    // Naming `email` in an embed on the JWT-scoped trade read raises 42501 and
-    // aborts the whole query. Keep the embeds to ungated columns (`name`,
+    // An `email` column in an embed on the JWT-scoped trade read raises 42501
+    // and aborts the whole query. Keep the embeds to ungated columns (`name`,
     // `user_id`); resolve `email` separately via `admin`.
     // The guard must scan at least one embed, or a renamed field would disarm it.
     const embeddedColumns = [...source.matchAll(/employees![a-z_]+\(([^)]*)\)/g)].map((m) => m[1]);

@@ -89,8 +89,16 @@ serve(async (req) => {
       "schedule_published"
     );
 
-    // Get all employees for this restaurant
-    const { data: employees, error: empError } = await supabase
+    // Get all employees for this restaurant.
+    //
+    // serviceClient, not `supabase`. This read runs as the caller
+    // (`authenticated`), and migration 20260806110000 revoked SELECT on
+    // `employees.email` from that role. Naming `email` here raised 42501
+    // "permission denied for table employees" and 500'd the whole publish -- the
+    // unactionable error the manager saw. The owner/manager gate above (on
+    // user_restaurants) is the authorization check; it does not depend on this
+    // read, so a service-role read bypasses no gate.
+    const { data: employees, error: empError } = await serviceClient
       .from("employees")
       .select("id, name, email, user_id")
       .eq("restaurant_id", restaurantId)

@@ -313,7 +313,20 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Processing shift trade notification: tradeId=${tradeId}, action=${action}`);
 
-    // Fetch trade details with employee and shift information
+    // Fetch trade details with employee and shift information.
+    //
+    // This read stays on `supabase` (the caller's JWT), NOT `admin`. The
+    // shift_trades SELECT policy (20260713000000) makes a DIRECTED trade visible
+    // only to its target, offerer, or accepter, so this RLS-filtered read IS the
+    // participant authorization gate: a non-participant gets zero rows and a 404.
+    // Elevating it to `admin` would let a same-restaurant non-participant read a
+    // private trade and receive the target's email in the response.
+    //
+    // The embeds name only ungated columns (`name`, `user_id`). They must NOT
+    // name `email`: this read runs as `authenticated`, and migration
+    // 20260806110000 revoked SELECT on `employees.email` from that role, so an
+    // embed on it raises 42501 and aborts the whole query. The two participant
+    // emails are resolved separately via `admin`, after the gates below.
     const { data: trade, error: tradeError } = await supabase
       .from('shift_trades')
       .select(`
@@ -325,12 +338,10 @@ const handler = async (req: Request): Promise<Response> => {
         ),
         offered_by:employees!offered_by_employee_id(
           name,
-          email,
           user_id
         ),
         accepted_by:employees!accepted_by_employee_id(
           name,
-          email,
           user_id
         ),
         restaurant:restaurants(
@@ -418,13 +429,44 @@ const handler = async (req: Request): Promise<Response> => {
       ? { email: directedTargetEmployee?.email ?? null }
       : null;
 
-    // Determine recipients based on action
+    // Resolve the two participant emails via `admin`. The embeds above no longer
+    // carry `email` (the JWT-scoped trade read cannot select it -- 42501), so read
+    // it here as service_role, after the participant gate (the trade read) and the
+    // membership gate. `offered_by_employee_id`/`accepted_by_employee_id` come from
+    // the `select('*')` on shift_trades above.
+    const participantIds = [
+      trade.offered_by_employee_id,
+      trade.accepted_by_employee_id,
+    ].filter((id): id is string => !!id);
+    const emailByEmployeeId = new Map<string, string>();
+    if (participantIds.length > 0) {
+      const { data: participantRows, error: participantErr } = await admin
+        .from('employees')
+        .select('id, email')
+        .in('id', participantIds);
+      if (participantErr) {
+        console.error('Error resolving participant emails:', participantErr);
+      }
+      participantRows?.forEach((row: { id: string; email: string | null }) => {
+        if (row.email) emailByEmployeeId.set(row.id, row.email);
+      });
+    }
+    const offeredByEmail = trade.offered_by_employee_id
+      ? emailByEmployeeId.get(trade.offered_by_employee_id)
+      : undefined;
+    const acceptedByEmail = trade.accepted_by_employee_id
+      ? emailByEmployeeId.get(trade.accepted_by_employee_id)
+      : undefined;
+
+    // Determine recipients based on action. `admin`, not `supabase`: buildEmails
+    // reads `employees.email` for the open-trade broadcast, which the caller's
+    // role cannot select. It runs only after both gates above.
     const recipients = await buildEmails(
-      supabase,
+      admin,
       trade.restaurant_id,
       action,
-      trade.offered_by?.email,
-      trade.accepted_by?.email,
+      offeredByEmail,
+      acceptedByEmail,
       directedTarget
     );
 

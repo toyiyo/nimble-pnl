@@ -98,6 +98,16 @@ async function invokeAndInterpret(
   functionName: string,
   body: Record<string, unknown>,
 ): Promise<NotificationOutcome> {
+  // Curated fallback for "we cannot say what happened": the invoke never
+  // reached the function (offline, DNS, cold-start), or its response body was
+  // already consumed or was not JSON. Both cases below return this same value,
+  // so the manager-facing copy cannot drift between them. Never the raw SDK
+  // string (e.g. "Failed to fetch"), which is engineering noise.
+  const unreachableOutcome: NotificationOutcome = {
+    status: 'unknown',
+    message: 'We could not reach the notification service.',
+  };
+
   try {
     const { data, error } = await supabase.functions.invoke(functionName, { body });
 
@@ -126,20 +136,9 @@ async function invokeAndInterpret(
       return { status: 'error' };
     }
 
-    // No readable body -- the invoke never reached the function (offline, DNS,
-    // cold-start). Delivery is genuinely unconfirmed. Curated message only; the
-    // raw `error.message` (e.g. "Failed to fetch") is engineering noise.
-    return {
-      status: 'unknown',
-      message: 'We could not reach the notification service.',
-    };
+    return unreachableOutcome;
   } catch {
-    // A body that was already consumed, or one that isn't JSON at all. We know
-    // something went wrong and nothing more. Same curated message.
-    return {
-      status: 'unknown',
-      message: 'We could not reach the notification service.',
-    };
+    return unreachableOutcome;
   }
 }
 

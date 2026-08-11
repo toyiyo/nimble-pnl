@@ -49,7 +49,7 @@ runs as `authenticated`, so the read fails.
 A JWT-scoped client uses the service key but sends the caller JWT in the
 `Authorization` header:
 
-```
+```ts
 createClient(url, SERVICE_ROLE_KEY, { global: { headers: { Authorization: authHeader } } })
 ```
 
@@ -178,7 +178,7 @@ is elevated. This mirrors #738's frontend embed fix.
    participant emails with `admin`, keyed by the base columns
    `offered_by_employee_id` and `accepted_by_employee_id` (both present
    via `select('*')`):
-   ```
+   ```ts
    const ids = [trade.offered_by_employee_id, trade.accepted_by_employee_id].filter(Boolean);
    const emailById = new Map<string, string>();
    if (ids.length) {
@@ -256,12 +256,13 @@ a future edge failure, and it removes the raw string from every path.
 ### 7.2 Design
 
 Add one outcome variant with no payload:
-```
+```ts
 | { status: 'error' }
 ```
 It means the function ran and returned an error body we could read, but
-not the `partial`/`failed` shape. Nobody was notified. Its copy is
-static, so no raw string can leak through it.
+not the `partial`/`failed` shape. Delivery is not confirmed. Some or all
+notifications may go out. Its copy is static, so no raw string can leak
+through it.
 
 Keep `unknown` for the case with no readable HTTP body (offline, relay
 failure) and for the timeout. Make its `message` ALWAYS a curated,
@@ -279,9 +280,9 @@ user-safe string. Never assign a raw server or network string to it.
 
 `notificationToast` copy:
 - `error`:
-  - title: `${title} — notifications not sent`
-  - description: `The schedule is published and your team can see it. We
-    could not send the notifications. Please tell your team directly.`
+  - title: `${title} — notifications may not be sent`
+  - description: `The notification service returned an error, so some or
+    all may not go out. Please tell your team directly.`
   - variant: `destructive`
 - `unknown` (revised — no raw string):
   - title: `${title} — notifications unconfirmed`
@@ -294,9 +295,10 @@ Radix wires `aria-describedby` on the toast description, so assistive
 tech announces the message
 (`src/components/ui/toast.tsx`, `src/components/ui/toaster.tsx`).
 
-Note on `error` wording: it states nobody was notified. This is true for
-the two bugs, which fail before any send. A future function that crashes
-mid-send must map to `partial`, not `error`, so this copy stays honest.
+Note on `error` wording: it states uncertainty, not a false "not sent".
+The two bugs fail before any send, so nobody is notified then. A post-send
+500 can also reach this path after some emails go out. So the copy must
+not claim "not sent" as a fact.
 
 Lesson [2026-04-22] warns against leaking raw 500 strings. This design
 removes the raw string from every path.

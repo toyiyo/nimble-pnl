@@ -29,8 +29,9 @@ interface UnpublishScheduleParams {
  * to remove.
  *
  * `error` is distinct from `unknown`: the function ran and answered non-2xx with
- * a body (a 500/4xx), so the fan-out failed on the server. The schedule change
- * itself already committed, so the manager is told to notify the team directly.
+ * a body (a 500/4xx), so the fan-out returned an error. The server may not send
+ * some notifications, so the manager is told to notify the team directly. The
+ * schedule change itself already committed.
  */
 export type NotificationOutcome =
   | { status: 'sent'; sent: number }
@@ -135,10 +136,10 @@ async function invokeAndInterpret(
     }
 
     // The function answered with a body, but not the { sent, failed } shape -- a
-    // 500/4xx. The fan-out failed on the server; the schedule RPC already
-    // committed. Report an actionable error, never the raw SDK string
-    // ("Edge Function returned a non-2xx status code"), which the manager can do
-    // nothing with.
+    // 500/4xx. The fan-out returned an error; the schedule RPC already committed.
+    // The server may not send some notifications. Report an actionable error,
+    // never the raw SDK string ("Edge Function returned a non-2xx status code"),
+    // which the manager can do nothing with.
     return { status: 'error' };
   } catch {
     return unreachableOutcome;
@@ -187,8 +188,8 @@ function notificationToast(
       // stays path-neutral (this toast serves publish AND unpublish) and gives
       // the one action left: tell the team by hand.
       return {
-        title: `${title} — notifications not sent`,
-        description: 'We could not send the notifications. Please tell your team directly.',
+        title: `${title} — notifications may not be sent`,
+        description: 'The notification service returned an error, so some or all may not go out. Please tell your team directly.',
         variant: 'destructive',
       };
     case 'unknown':

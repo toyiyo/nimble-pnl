@@ -126,7 +126,7 @@ describe('publish notification outcomes', () => {
 
     const toasted = lastToast();
     expect(toasted.variant).toBe('destructive');
-    expect(toasted.title).toContain('notifications not sent');
+    expect(toasted.title).toContain('notifications may not be sent');
     expect(toasted.description).toContain('tell your team directly');
     // The engineering strings must never reach the manager.
     expect(toasted.description).not.toContain('Edge Function returned a non-2xx status code');

@@ -27,11 +27,16 @@ interface UnpublishScheduleParams {
  * before the function runs at all (offline, cold-start timeout), and claiming
  * "everyone was notified" in that case is the behaviour this change set exists
  * to remove.
+ *
+ * `error` is distinct from `unknown`: the function ran and answered non-2xx with
+ * a body (a 500/4xx), so the fan-out failed on the server. The schedule change
+ * itself already committed, so the manager is told to notify the team directly.
  */
 export type NotificationOutcome =
   | { status: 'sent'; sent: number }
   | { status: 'partial'; sent: number; failed: number }
   | { status: 'failed'; failed: number }
+  | { status: 'error' }
   | { status: 'unknown'; message: string };
 
 interface InvokeError {
@@ -112,13 +117,28 @@ async function invokeAndInterpret(
         : { status: 'failed', failed: payload.failed };
     }
 
-    return { status: 'unknown', message: (error as InvokeError).message ?? 'Unknown error' };
-  } catch (error) {
-    // A body that was already consumed, or one that isn't JSON at all. We know
-    // something went wrong and nothing more than that.
+    // The function answered with a body, but not the { sent, failed } shape -- a
+    // 500/4xx. The fan-out failed on the server; the schedule RPC already
+    // committed. Report an actionable error, never the raw SDK string
+    // ("Edge Function returned a non-2xx status code"), which the manager can do
+    // nothing with.
+    if (payload) {
+      return { status: 'error' };
+    }
+
+    // No readable body -- the invoke never reached the function (offline, DNS,
+    // cold-start). Delivery is genuinely unconfirmed. Curated message only; the
+    // raw `error.message` (e.g. "Failed to fetch") is engineering noise.
     return {
       status: 'unknown',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: 'We could not reach the notification service.',
+    };
+  } catch {
+    // A body that was already consumed, or one that isn't JSON at all. We know
+    // something went wrong and nothing more. Same curated message.
+    return {
+      status: 'unknown',
+      message: 'We could not reach the notification service.',
     };
   }
 }
@@ -159,10 +179,23 @@ function notificationToast(
         description: `All ${outcome.failed} notification${outcome.failed !== 1 ? 's' : ''} failed to send. Please tell your team directly.`,
         variant: 'destructive',
       };
+    case 'error':
+      // The title already states the schedule change committed
+      // ("Schedule Published — ...") -- same as partial/failed. The description
+      // stays path-neutral (this toast serves publish AND unpublish) and gives
+      // the one action left: tell the team by hand.
+      return {
+        title: `${title} — notifications not sent`,
+        description: 'We could not send the notifications. Please tell your team directly.',
+        variant: 'destructive',
+      };
     case 'unknown':
+      // Delivery is uncertain, not known-failed (offline, or a timeout where the
+      // send may still be in flight), so the action is softer: check, do not
+      // assume. `outcome.message` is always curated copy, never a raw SDK string.
       return {
         title: `${title} — notifications unconfirmed`,
-        description: `We could not confirm that employees were notified: ${outcome.message}`,
+        description: `${outcome.message} Please check with your team.`,
         variant: 'destructive',
       };
   }

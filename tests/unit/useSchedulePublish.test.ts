@@ -37,10 +37,11 @@ function createWrapper() {
 
 /**
  * supabase-js turns a non-2xx into an `error` carrying the raw `Response` on
- * `error.context`, which is the only place the per-recipient counts survive.
- * The functions answer 502 with that body whenever anyone failed.
+ * `error.context`, which is the only place the response body survives. A 502
+ * carries the per-recipient counts ({ sent, failed }); a 500 carries only an
+ * engineering `error` string. The client must read both.
  */
-function invokeFailure(body: { sent?: number; failed?: number }) {
+function invokeFailure(body: { error?: string; sent?: number; failed?: number }) {
   return {
     data: null,
     error: {
@@ -107,7 +108,36 @@ describe('publish notification outcomes', () => {
     expect(toasted.description).toContain('All 11 notifications failed');
   });
 
+  it('confirms the publish and says to tell the team when the fan-out errors server-side', async () => {
+    // The Wetzel's incident: the function 500s with an engineering-only body
+    // ({ error: 'Failed to fetch employees' }), which supabase-js further masks
+    // as "Edge Function returned a non-2xx status code". Neither string helps a
+    // manager. The toast must instead confirm the publish and say to tell the
+    // team directly.
+    mockSupabase.functions.invoke.mockResolvedValue(
+      invokeFailure({ error: 'Failed to fetch employees' })
+    );
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => usePublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    const toasted = lastToast();
+    expect(toasted.variant).toBe('destructive');
+    expect(toasted.title).toContain('notifications not sent');
+    expect(toasted.description).toContain('tell your team directly');
+    // The engineering strings must never reach the manager.
+    expect(toasted.description).not.toContain('Edge Function returned a non-2xx status code');
+    expect(toasted.description).not.toContain('Failed to fetch employees');
+    // The publish RPC already committed; a failed fan-out is not a failed publish.
+    expect(result.current.isError).toBe(false);
+  });
+
   it('admits it cannot confirm delivery when the invoke never reached the function', async () => {
+    // No `context` — the invoke never reached the function (offline, DNS,
+    // cold-start). The raw SDK message must be replaced with a curated one.
     mockSupabase.functions.invoke.mockResolvedValue({
       data: null,
       error: { message: 'Failed to fetch' },
@@ -122,7 +152,9 @@ describe('publish notification outcomes', () => {
     const toasted = lastToast();
     expect(toasted.variant).toBe('destructive');
     expect(toasted.title).toContain('notifications unconfirmed');
-    expect(toasted.description).toContain('Failed to fetch');
+    expect(toasted.description).toContain('We could not reach the notification service');
+    // The raw fetch/SDK string must never reach the manager.
+    expect(toasted.description).not.toContain('Failed to fetch');
   });
 
   it('still reports the publish itself as done when notifications fail', async () => {

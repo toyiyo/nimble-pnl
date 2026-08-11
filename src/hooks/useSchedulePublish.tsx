@@ -40,7 +40,6 @@ export type NotificationOutcome =
   | { status: 'unknown'; message: string };
 
 interface InvokeError {
-  message?: string;
   context?: { json?: () => Promise<unknown> };
 }
 
@@ -120,6 +119,14 @@ async function invokeAndInterpret(
       | { sent?: number; failed?: number }
       | undefined;
 
+    // `context.json()` returns undefined only when the body was unreadable
+    // (already consumed, or not JSON). A body that parsed -- even to a falsy
+    // value -- means the function answered, so the branches below treat it as an
+    // error, not as "unreachable".
+    if (payload === undefined) {
+      return unreachableOutcome;
+    }
+
     if (payload && typeof payload.failed === 'number' && payload.failed > 0) {
       const sent = typeof payload.sent === 'number' ? payload.sent : 0;
       return sent > 0
@@ -132,11 +139,7 @@ async function invokeAndInterpret(
     // committed. Report an actionable error, never the raw SDK string
     // ("Edge Function returned a non-2xx status code"), which the manager can do
     // nothing with.
-    if (payload) {
-      return { status: 'error' };
-    }
-
-    return unreachableOutcome;
+    return { status: 'error' };
   } catch {
     return unreachableOutcome;
   }

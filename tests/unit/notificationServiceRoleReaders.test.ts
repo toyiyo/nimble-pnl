@@ -66,7 +66,7 @@ describe('send-shift-trade-notification keeps the trade read gated but resolves 
     expect(source).toContain('const admin = createClient(supabaseUrl, supabaseServiceKey);');
   });
 
-  it('reads the trade row with the JWT-scoped client, NOT admin', () => {
+  it('CRITICAL: reads the trade row with the JWT-scoped client, NOT admin', () => {
     // CRITICAL privacy property. The `shift_trades` SELECT policy
     // (20260713000000) makes a DIRECTED trade visible only to its target,
     // offerer, or accepter. That RLS-filtered read IS the participant
@@ -99,5 +99,35 @@ describe('send-shift-trade-notification keeps the trade read gated but resolves 
     // gate) and the membership gate above.
     expect(source).toContain('await buildEmails(\n      admin,');
     expect(source).not.toContain('await buildEmails(\n      supabase,');
+  });
+
+  it('scopes the participant email lookup to the trade tenant and skips created', () => {
+    // This function has leaked employee emails three times: the directed-trade
+    // RLS gap, the service-role read, and this fold. `admin` bypasses RLS, so two
+    // source invariants stop the next leak, and a mocked-client test sees neither.
+    //
+    // 1. The participant email lookup, keyed by `participantIds`, must re-apply
+    //    the tenant filter RLS gave the old embed. Without it, a malformed
+    //    cross-tenant employee_id resolves and receives a real email.
+    expect(source).toContain(
+      ".in('id', participantIds)\n        .eq('restaurant_id', trade.restaurant_id);"
+    );
+    // 2. `participantIds` must stay gated on the action. The `created` branch
+    //    never reads the two participant emails, so the lookup must skip it.
+    expect(source).toContain("const participantIds = action === 'created'");
+  });
+
+  it('sends one email per recipient and returns counts, not the roster', () => {
+    // S1: a single `to: recipients` Resend call put every address in one shared
+    // header, so each recipient read the whole roster on an open trade. The send
+    // must stay per-recipient through the paced helper, and the old Resend client
+    // must be gone.
+    expect(source).toContain('await sendPaced(');
+    expect(source).not.toContain('new Resend');
+    expect(source).not.toContain('resend.emails.send');
+    // The response must return counts, never the recipient list or a message id
+    // the caller could read back as a roster.
+    expect(source).toContain('email_sent: emailSentCount, email_failed: emailFailedCount');
+    expect(source).not.toContain('emailId');
   });
 });

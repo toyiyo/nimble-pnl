@@ -2,6 +2,7 @@ import { generateHeader, formatDateTime } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendEmailResult, sendPaced } from "../_shared/emailQueue.ts";
+import { truncateError } from "../_shared/emailSendSummary.ts";
 import { sendWebPushToUser, sendWebPushToUsers } from '../_shared/webPushHelper.ts';
 import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
 import { resolveCreatedTradeEmailRecipients, type DirectedTarget } from '../_shared/tradeEmailAudience.ts';
@@ -523,12 +524,13 @@ const handler = async (req: Request): Promise<Response> => {
 
       for (const result of emailResults) {
         if (!result.ok) {
-          // Status and attempts only, never the address: function logs are
-          // readable outside the tenant, and a bounce is not a reason to spill
-          // an employee email into them.
+          // Redact the Resend body before it reaches the log. Function logs are
+          // readable outside the tenant, and Resend can echo the recipient
+          // address back inside an error. truncateError strips any address and
+          // bounds the length. Keep the status and the attempt count.
+          const detail = result.error ? truncateError(result.error) : `HTTP ${result.status}`;
           console.error(
-            `Failed to send shift trade email after ${result.attempts} attempt(s) [${result.status}]:`,
-            result.error
+            `Failed to send shift trade email after ${result.attempts} attempt(s) [${result.status}]: ${detail}`
           );
         }
       }

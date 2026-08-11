@@ -32,9 +32,10 @@ const redactEmails = (message: string): string => message.replace(EMAIL_PATTERN,
 
 /**
  * Truncates an error message to a bounded length so a Resend error body
- * never gets pasted whole into a response the manager sees.
+ * never gets pasted whole into a response the manager sees. Exported so an
+ * edge function that logs a raw Resend error can redact it the same way.
  */
-const truncateError = (message: string): string => {
+export const truncateError = (message: string): string => {
   const bounded =
     message.length > MAX_RAW_INPUT_LENGTH ? message.slice(0, MAX_RAW_INPUT_LENGTH) : message;
   const redacted = redactEmails(bounded);

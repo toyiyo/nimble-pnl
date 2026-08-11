@@ -91,9 +91,10 @@ serve(async (req) => {
 
     // Get all employees for this restaurant.
     //
-    // serviceClient, not `supabase`. This read runs as the caller
-    // (`authenticated`), and migration 20260806110000 revoked SELECT on
-    // `employees.email` from that role. A `select` on `email` here raised 42501
+    // serviceClient is a bare service-role client, so this read keeps its column
+    // grants. The previous read used `supabase` (the caller's JWT) and ran as
+    // `authenticated`. Migration 20260806110000 revoked SELECT on
+    // `employees.email` from that role. The `select` on `email` then raised 42501
     // "permission denied for table employees". It made the whole publish return
     // a 500 -- the unactionable error the manager saw. The owner/manager gate
     // above (on user_restaurants) is the authorization check; it does not depend

@@ -15,7 +15,12 @@ describe('localWindow', () => {
   it('CRITICAL: uses the restaurant-local calendar day, not the host/UTC day', () => {
     // 2026-07-14T05:00:00Z is already July 14 in UTC, but still July 13 in
     // Honolulu (UTC-10, no DST). A host-date implementation returns the wrong
-    // endStr for any non-UTC restaurant.
+    // endStr for any non-UTC restaurant. This proof needs the host machine's
+    // own timezone to differ from Honolulu — else a host-date implementation
+    // would produce the same July 13 result by coincidence and this test
+    // would pass without catching the regression it exists to catch.
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).not.toBe('Pacific/Honolulu');
+
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-07-14T05:00:00Z'));
     expect(localWindow('Pacific/Honolulu', 4)).toEqual({ startStr: '2026-06-15', endStr: '2026-07-13' });

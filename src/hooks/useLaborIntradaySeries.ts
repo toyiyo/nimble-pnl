@@ -42,11 +42,17 @@ export function useLaborIntradaySeries(
   dateStr: string,
   targetPct: number,
   enabled: boolean,
-): { series: FinancialPoint[]; isLoading: boolean; isError: boolean; error: Error | null } {
+): {
+  series: FinancialPoint[];
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: () => void;
+} {
   const { employees } = useEmployees(restaurantId, { status: 'all' });
   const avgHourlyRateCents = useMemo(() => computeAvgHourlyRateCents(employees), [employees]);
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['labor-intraday', restaurantId, tz, dateStr],
     queryFn: async (): Promise<IntradayData> => {
       const dayStart = fromZonedTime(`${dateStr}T00:00:00`, tz);
@@ -89,7 +95,15 @@ export function useLaborIntradaySeries(
   // keeps `data.punches` reference-stable across content-identical refetches,
   // so a memo keyed only on the punches would freeze the synthetic clock-out
   // at first compute and the chart's labor line would collapse mid-shift.
-  const nowMs = useNowTick();
+  //
+  // The ticker keeps running even when `enabled` is false (React hooks must
+  // run unconditionally), so freeze the value the memo sees at 0 while
+  // disabled. Without this, `series` would get a new array reference every
+  // 60s for the whole life of any /labor page visit, not only during the Day
+  // view — and that reference change propagates into every memo in
+  // `useLaborPnlAnalytics` that depends on `intraday.series`.
+  const liveNowMs = useNowTick();
+  const nowMs = enabled ? liveNowMs : 0;
   const series = useMemo(() => {
     if (!data) return [];
     const sessions = identifyWorkSessions(
@@ -99,10 +113,12 @@ export function useLaborIntradaySeries(
     return buildIntradayFinancialSeries(data.sales, sessions, tz, dateStr, avgHourlyRateCents, targetPct, capHour);
   }, [data, dateStr, tz, avgHourlyRateCents, targetPct, nowMs]);
 
-  return {
-    series,
-    isLoading: enabled ? isLoading : false,
-    isError: enabled ? isError : false,
-    error: enabled ? (error as Error | null) : null,
-  };
+  // Query state only means something while this view is active; freeze it to
+  // the empty/idle shape while disabled instead of a "false" or "null" value
+  // on every field separately.
+  const queryState = enabled
+    ? { isLoading, isError, error: error as Error | null }
+    : { isLoading: false, isError: false, error: null };
+
+  return { series, ...queryState, refetch };
 }

@@ -83,6 +83,33 @@ describe('useLaborIntradaySeries', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
+  // Regression test: the `series` memo's "now" dependency used to keep
+  // ticking even while `enabled` was false, so every 60s tick (from the
+  // background `useNowTick` ticker, which must run unconditionally per React
+  // rules) handed the memo a new dependency value and produced a new array
+  // reference — for the whole life of any /labor page visit, not only during
+  // the Day view. That broke memoization for every consumer of `series`
+  // downstream in `useLaborPnlAnalytics`.
+  it('keeps the series reference stable across "now" ticks while disabled', () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { result } = renderHook(
+        () => useLaborIntradaySeries('rest-1', 'UTC', '2026-07-06', 22, false),
+        { wrapper: createWrapper() },
+      );
+      const firstSeries = result.current.series;
+
+      act(() => {
+        vi.advanceTimersByTime(60_000); // one useNowTick tick
+      });
+
+      expect(result.current.series).toBe(firstSeries);
+      expect(fromMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not fetch when restaurantId is null', () => {
     const { result } = renderHook(
       () => useLaborIntradaySeries(null, 'UTC', '2026-07-06', 22, true),

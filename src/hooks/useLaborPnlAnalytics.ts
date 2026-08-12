@@ -47,16 +47,11 @@ export function useLaborPnlAnalytics(restaurantId: string | null, selection: Lab
     () => seriesGranularityForRange(range.startStr, range.endStr),
     [range],
   );
+  const isIntraday = granularity === 'intraday';
 
   // Intraday (Day view) series comes from its own lazy single-day fetch (design
   // §9). The hook always runs (React rules) but fetches only when enabled.
-  const intraday = useLaborIntradaySeries(
-    restaurantId,
-    tz,
-    range.endStr,
-    targetPct,
-    granularity === 'intraday',
-  );
+  const intraday = useLaborIntradaySeries(restaurantId, tz, range.endStr, targetPct, isIntraday);
 
   const periodSales = useMemo(
     () => dailySales.filter((p) => p.bucketStart >= range.startStr && p.bucketStart <= range.endStr),
@@ -74,10 +69,10 @@ export function useLaborPnlAnalytics(restaurantId: string | null, selection: Lab
   const summary = useMemo(() => summarizeLaborPnl(periodDaily, targetPct), [periodDaily, targetPct]);
 
   const series = useMemo(() => {
-    if (granularity === 'intraday') return intraday.series;
+    if (isIntraday) return intraday.series;
     if (granularity === 'day') return periodDaily;
     return buildFinancialSeries(periodSales, periodLabor, 'week', targetPct);
-  }, [granularity, intraday.series, periodDaily, periodSales, periodLabor, targetPct]);
+  }, [isIntraday, granularity, intraday.series, periodDaily, periodSales, periodLabor, targetPct]);
 
   const overWindows = useMemo(() => extractBalanceWindows(series, 'over'), [series]);
   const underWindows = useMemo(() => extractBalanceWindows(series, 'under'), [series]);
@@ -95,10 +90,25 @@ export function useLaborPnlAnalytics(restaurantId: string | null, selection: Lab
     [targetPct, updateSettings],
   );
 
+  // Retry must cover whichever fetch actually failed. `refetch` from
+  // `useLaborPnlCore` only re-runs the 18-week sales/labor aggregate; it does
+  // not touch the intraday hook's own single-day query. Without this, a
+  // failed Day-view fetch put the page in the error state (isError below) but
+  // the page's Retry button did nothing.
+  //
+  // Depend on the leaf `intradayRefetch` function, not the `intraday` object:
+  // `useLaborIntradaySeries` returns a fresh object every render, so
+  // depending on the whole object would recreate `refetchAll` every render.
+  const { refetch: intradayRefetch } = intraday;
+  const refetchAll = useCallback(() => {
+    refetch();
+    if (isIntraday) intradayRefetch();
+  }, [refetch, isIntraday, intradayRefetch]);
+
   return {
     series,
     granularity,
-    seriesIsShapeEstimate: granularity === 'intraday',
+    seriesIsShapeEstimate: isIntraday,
     range,
     todayStr,
     grid,
@@ -108,10 +118,10 @@ export function useLaborPnlAnalytics(restaurantId: string | null, selection: Lab
     targetPct,
     capped,
     hasData,
-    isLoading: isLoading || (granularity === 'intraday' && intraday.isLoading),
-    isError: isError || (granularity === 'intraday' && !!intraday.isError),
-    error: error ?? (granularity === 'intraday' ? (intraday.error ?? null) : null),
-    refetch,
+    isLoading: isLoading || (isIntraday && intraday.isLoading),
+    isError: isError || (isIntraday && !!intraday.isError),
+    error: error ?? (isIntraday ? (intraday.error ?? null) : null),
+    refetch: refetchAll,
     updateTarget,
     isSavingTarget,
   };

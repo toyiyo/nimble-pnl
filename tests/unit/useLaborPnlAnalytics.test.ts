@@ -65,7 +65,13 @@ function setup(overrides: {
   isLoading?: boolean;
   isError?: boolean;
   updateSettings?: ReturnType<typeof vi.fn>;
-  intraday?: { series: typeof INTRADAY_SERIES; isLoading: boolean; isError?: boolean; error?: Error | null };
+  intraday?: {
+    series: typeof INTRADAY_SERIES;
+    isLoading: boolean;
+    isError?: boolean;
+    error?: Error | null;
+    refetch?: ReturnType<typeof vi.fn>;
+  };
 } = {}) {
   mockUseRestaurantContext.mockReturnValue({
     selectedRestaurant: { restaurant: { timezone: overrides.timezone ?? 'UTC' } },
@@ -91,7 +97,7 @@ function setup(overrides: {
     capped: overrides.laborCapped ?? false,
   });
   mockUseLaborIntradaySeries.mockReturnValue(
-    overrides.intraday ?? { series: INTRADAY_SERIES, isLoading: false, isError: false, error: null },
+    overrides.intraday ?? { series: INTRADAY_SERIES, isLoading: false, isError: false, error: null, refetch: vi.fn() },
   );
 }
 
@@ -232,6 +238,34 @@ describe('useLaborPnlAnalytics', () => {
     expect(result.current.hasData).toBe(true);
     expect(result.current.isError).toBe(true);
     expect(typeof result.current.refetch).toBe('function');
+  });
+
+  // Regression test: Retry must cover whichever fetch actually failed. The
+  // page-level `refetch` used to come straight from `useLaborPnlCore`, which
+  // never touches the intraday hook's own single-day query — so a failed Day
+  // view left the Retry button as a no-op.
+  it('CRITICAL: refetch also retries the intraday fetch during the Day view', () => {
+    const intradayRefetch = vi.fn();
+    setup({ intraday: { series: INTRADAY_SERIES, isLoading: false, isError: true, error: new Error('boom'), refetch: intradayRefetch } });
+    // 'today' preset with mockGetToday = '2026-07-10' -> single day -> intraday.
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
+
+    result.current.refetch();
+
+    expect(intradayRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry the intraday fetch outside the Day view', () => {
+    const intradayRefetch = vi.fn();
+    setup({ intraday: { series: [], isLoading: false, isError: false, error: null, refetch: intradayRefetch } });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', CUSTOM('2026-07-06', '2026-07-25')), {
+      wrapper: createWrapper(),
+    });
+    expect(result.current.granularity).toBe('week');
+
+    result.current.refetch();
+
+    expect(intradayRefetch).not.toHaveBeenCalled();
   });
 
   it('ORs the intraday hook loading state into isLoading for a single-day range', () => {

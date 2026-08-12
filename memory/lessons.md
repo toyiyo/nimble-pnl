@@ -2452,6 +2452,7 @@
 ### [2026-08-06] The `pr-comment-response` gate does not re-run when you answer the findings
 - **Confirms and extends [2026-08-05]** ("the check is a snapshot of the moment it ran"). The workflow triggers are `pull_request_target` (opened, synchronize, reopened, ready_for_review), a `*/30` cron, and `workflow_dispatch`. `pull_request_review_comment` is absent on purpose: the file's own comment explains that the event runs the workflow **from the PR**, so a contributor could disarm the gate by editing the YAML. Answering every finding therefore leaves the red check in place for up to 30 minutes.
 - **Rule:** After you reply to the findings, dispatch the gate yourself: `gh workflow run pr-comment-response.yml -f pr=<N>`. Confirm with `node dev-tools/pr-triage.js list --pr <N>`, which must print `No unanswered findings.` Do not wait for the cron, and do not read the old failure as a new one.
+- **Confirmed [2026-08-11] (PR #739):** The same sequence repeated. I folded 4 CodeRabbit findings, then replied to each with `node dev-tools/pr-triage.js reply`. `pr-triage.js list --pr 739` printed `No unanswered findings.`, but `pr-comment-response` stayed red on the newest SHA `eb5a7f26`. One `gh workflow run pr-comment-response.yml -f pr=739` recomputed the check green in about two minutes. The reply events do not trigger the gate, exactly as this entry states. Note: the dispatch here omitted `--ref` and still resolved to the default branch, so it ran `main`'s copy of the workflow.
 
 ### [2026-08-08] The fix push starts the gate before your replies land, so the new commit inherits the red check
 - **Mistake:** I fixed 3 CodeRabbit findings, pushed the commit, then replied to each finding with the new SHA. That order looks correct, and the reply needs the SHA. But `synchronize` starts `pr-comment-response` the moment the push lands. It ran at 05:54:10Z against 0 replies and failed. `gh pr checks` then showed a **failure on the current SHA**, which reads like a new failure, not a stale one.
@@ -2632,3 +2633,41 @@
 - **Mistake:** The ocr-rules reviewer flagged `import React from 'react'` in `tests/unit/speedInsightsGate.test.tsx` as dead code. It noted that 234 of 265 `.tsx` test files omit the import. It suggested to delete the line. The file mocks the Vercel component: `vi.mock('@vercel/speed-insights/react', () => ({ SpeedInsights: () => <div data-testid="speed-insights" /> }))`.
 - **Correction:** I ran an experiment. I deleted the line. I ran `npm run test -- speedInsightsGate`. Both tests failed with `ReferenceError: React is not defined`. I restored the line. `vi.mock` factories hoist above the file imports and above the automatic JSX runtime. So the JSX inside the factory needs `React` by name.
 - **Rule:** Do not delete `import React from 'react'` from a test file that returns JSX inside a `vi.mock` factory. A dead-code rule and the "other files omit it" heuristic both miss the hoist. Prove the need with one experiment: delete, run, read the `ReferenceError`, restore. Most test files omit the import because they render JSX in the test body, after the JSX runtime loads. A hoisted factory runs before it.
+
+## Category: Security (continued)
+
+### [2026-08-11] A column REVOKE raises 42501 and aborts the query; an RLS policy filters rows and stays silent (PR #739)
+- **Mistake:** A manager published a schedule under the wetzel's account and got a 500. The `supabase-js` client showed only "Edge Function returned a non-2xx status code". The first read was a generic application bug in `notify-schedule-published`.
+- **Correction:** The production logs showed a Postgres `42501` permission-denied. Migration `20260806110000` revoked SELECT on `employees.email` from `authenticated`. The roster read ran under the caller JWT, hit the revoked column, and raised `42501`. That error aborted the whole request as a 500.
+- **Rule:** A column-level REVOKE raises `42501` and aborts the whole statement. An RLS row policy filters rows and returns an empty set with no error. Read the two failure modes apart: a hard `42501` in the logs means a grant problem, an empty result set means a policy problem. Do not chase application code before you read the database error class.
+
+### [2026-08-11] Convert a JWT read to service_role to escape a column grant, then re-apply every tenant filter (PR #739)
+- **Mistake:** The failing roster read ran as `authenticated`, so the new `employees.email` column grant blocked it. A JWT-scoped client keeps the `authenticated` role even with the service-role key, because the code passes the caller token in `global.headers.Authorization`.
+- **Correction:** The read now uses a bare `createClient(url, SERVICE_ROLE_KEY)` client. That client runs as `service_role` and bypasses RLS and the column grant. The read keeps its explicit `restaurant_id` filter, so the tenant scope stays intact.
+- **Rule:** A bare service-role client bypasses RLS, so re-apply every tenant filter (`restaurant_id`) by hand. Do not assume the service-role key alone grants the role: a client that forwards the caller JWT still runs as `authenticated` and still hits the column grant. Name the role in the code and match the filter to it.
+
+### [2026-08-11] A service-role email fan-out must send per recipient and redact the provider error (PR #739)
+- **Mistake:** The `send-shift-trade-notification` loop logged the raw Resend response body on a send failure. That body can echo the recipient address. The function's own comment said the log must never hold the address.
+- **Correction:** The loop now redacts the body with the shared `truncateError` helper before the log. `emailSendSummary.ts` exports `truncateError` so the function reuses one redaction path. The loop sends one message per recipient and logs `recipient.id` and counts only.
+- **Rule:** A service-role email fan-out must send one message per recipient, never a shared `to:` list. Log the recipient id and the sent and failed counts, never the address. Redact any provider error body with `truncateError` before the log, because the body can carry the address the log must protect.
+
+## Category: UI Patterns (continued)
+
+### [2026-08-11] A client must not report "not sent" from the mere absence of a success signal (PR #739)
+- **Mistake:** The publish toast reported a definite failure. A post-send 500 can reach the error path after some emails go out. So "Nobody was notified" can be false.
+- **Correction:** The toast copy now states uncertainty: the schedule published, but notifications may not be sent. The manager gets one actionable next step: check and re-notify.
+- **Rule:** A client must not report a definite "not sent" from the absence of a success signal. The absence of a success signal is not proof of no side effect. State the uncertainty and give the user one actionable next step.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-11] A comment that states a security invariant or a runtime role must match the code (PR #739)
+- **Mistake:** The `notify-schedule-published` comment said the roster read runs as `authenticated`. The read uses `serviceClient`, a bare service-role client. The comment contradicted the code and hid the real role.
+- **Correction:** The comment now restates that `authenticated` describes only the previous failing read. The comment names the current role as `service_role`, so the comment and the code agree.
+- **Rule:** A comment that states a security invariant or a runtime role is part of the contract. A reviewer reads the comment as truth. A wrong role comment hides a real RLS bypass or a real grant escape. Update the comment in the same commit as the role change.
+
+## Category: Dev-tools / Node module mode (continued)
+
+### [2026-08-11] `deno check --node-modules-dir=auto` corrupts a shared npm node_modules; check a local-graph file standalone (PR #739)
+- **Mistake:** I ran `deno check --node-modules-dir=auto` on an edge function file to validate the import graph. The flag rewrote the repository npm `node_modules`. The worktree tooling then failed.
+- **Correction:** I repaired the tree with `npm ci`. I validated the edge file with a standalone `deno check`, with no `--node-modules-dir=auto`. The standalone check reads the local import graph and does not touch npm `node_modules`.
+- **Rule:** Do not run `deno check --node-modules-dir=auto` inside a repository that holds an npm `node_modules`. The flag corrupts the shared tree. Check a local-graph edge file standalone. If the tree is already corrupt, repair it with `npm ci`.

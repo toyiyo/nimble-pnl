@@ -53,8 +53,8 @@ export const BALANCED_BAND = 0.15;
  * as separate constants here — this lib intentionally has no dependency on
  * the hooks layer — but the values must stay identical).
  */
-const FALLBACK_OPEN_HOUR = 9;
-const FALLBACK_CLOSE_HOUR = 22; // 10pm
+export const FALLBACK_OPEN_HOUR = 9;
+export const FALLBACK_CLOSE_HOUR = 22; // 10pm
 
 const _fmtCache = new Map<string, Intl.DateTimeFormat>();
 function partsFormatter(tz: string): Intl.DateTimeFormat {

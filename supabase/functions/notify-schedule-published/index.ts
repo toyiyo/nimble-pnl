@@ -1,4 +1,4 @@
-import { generateHeader } from '../_shared/emailTemplates.ts';
+import { escapeHtml, generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fromZonedTime } from "https://esm.sh/date-fns-tz@3.2.0";
@@ -89,8 +89,17 @@ serve(async (req) => {
       "schedule_published"
     );
 
-    // Get all employees for this restaurant
-    const { data: employees, error: empError } = await supabase
+    // Get all employees for this restaurant.
+    //
+    // serviceClient is a bare service-role client, so this read keeps its column
+    // grants. The previous read used `supabase` (the caller's JWT) and ran as
+    // `authenticated`. Migration 20260806110000 revoked SELECT on
+    // `employees.email` from that role. The `select` on `email` then raised 42501
+    // "permission denied for table employees". It made the whole publish return
+    // a 500 -- the unactionable error the manager saw. The owner/manager gate
+    // above (on user_restaurants) is the authorization check; it does not depend
+    // on this read, so a service-role read bypasses no gate.
+    const { data: employees, error: empError } = await serviceClient
       .from("employees")
       .select("id, name, email, user_id")
       .eq("restaurant_id", restaurantId)
@@ -188,11 +197,11 @@ serve(async (req) => {
                 <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">${isRepublish ? "Updated Schedule" : "New Schedule Published"}</h1>
 
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
-                  Hi <strong style="color: #1f2937;">${employeeName}</strong>,
+                  Hi <strong style="color: #1f2937;">${escapeHtml(employeeName)}</strong>,
                 </p>
 
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
-                  Your schedule for <strong style="color: #1f2937;">${weekStartFormatted} - ${weekEndFormatted}</strong> has been published at <strong style="color: #1f2937;">${restaurant.name}</strong>.
+                  Your schedule for <strong style="color: #1f2937;">${weekStartFormatted} - ${weekEndFormatted}</strong> has been published at <strong style="color: #1f2937;">${escapeHtml(restaurant.name)}</strong>.
                 </p>
                 ${
                   isRepublish
@@ -206,7 +215,7 @@ serve(async (req) => {
                   <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                       <td style="padding: 6px 0; color: #4b5563; font-size: 14px; font-weight: 600;">Restaurant:</td>
-                      <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${restaurant.name}</td>
+                      <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${escapeHtml(restaurant.name)}</td>
                     </tr>
                     <tr>
                       <td style="padding: 6px 0; color: #4b5563; font-size: 14px; font-weight: 600;">Schedule Period:</td>

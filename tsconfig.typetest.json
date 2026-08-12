@@ -3,13 +3,19 @@
 // test file is therefore a no-op under both. This config compiles the type
 // tests so those directives become a real gate (`npm run typecheck:types`).
 //
-// The include list is one file per type under test, not `tests`. The wider
-// test tree carries 930 pre-existing type errors, so a broad include would
-// fail on day one and gate nothing.
+// The include is a glob over `tests/unit/types`, not a list of file names. A
+// list gates only the files a person remembers to add to it, so a new
+// type-assertion test would assert nothing and CI would stay green. Put every
+// new type-assertion test in that directory.
+//
+// The glob does not cover the wider test tree on purpose. That tree carries
+// 930 pre-existing type errors, so a broad include would fail on day one and
+// gate nothing. Vitest still collects these files: its include pattern is
+// `tests/unit/**/*.test.{ts,tsx}`.
 {
   "extends": "./tsconfig.app.json",
   "include": [
     "src/vite-env.d.ts",
-    "tests/unit/restaurantUpdateBillingColumns.test.ts"
+    "tests/unit/types/**/*.test.ts"
   ]
 }

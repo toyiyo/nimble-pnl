@@ -34,10 +34,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Vitest strips types with esbuild and never checks them, so a
-      # `@ts-expect-error` in a test file passes whatever the type says. This
-      # step compiles the type-assertion tests, which makes those directives
-      # a real gate. See tsconfig.typetest.json.
+      # No CI job compiled `src` before this step. Vitest strips types with
+      # esbuild, and there is no build job, so `tsc` never saw an application
+      # file. A type that blocks a bad call (`RestaurantUpdate`, for example)
+      # gated nothing at the real call sites. This step is that gate.
+      - name: Typecheck the application source
+        run: npm run typecheck
+
+      # The step above compiles only `src`. Vitest strips types with esbuild
+      # and never checks them, so a `@ts-expect-error` in a test file passes
+      # whatever the type says. This step compiles the type-assertion tests,
+      # which makes those directives a real gate. See tsconfig.typetest.json.
       - name: Typecheck the type-assertion tests
         run: npm run typecheck:types
 

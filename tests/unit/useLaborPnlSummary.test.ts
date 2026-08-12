@@ -8,16 +8,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // are exercised for real, using their own unit tests in
 // laborPnlAnalytics.test.ts) — mirrors useSplhSummary.test.ts's pattern of
 // mocking useSplhCore's collaborators rather than useSplhCore itself, so the
-// core+summary composition is covered end-to-end. ---
+// core+summary composition is covered end-to-end. The core now reads the SQL
+// sales aggregate via `useLaborSalesAnalytics`, so we mock that (not the old
+// `useSplhData`). ---
 const {
   mockUseRestaurantContext,
   mockUseStaffingSettings,
-  mockUseSplhData,
+  mockUseLaborSalesAnalytics,
   mockUseLaborCostsFromTimeTracking,
 } = vi.hoisted(() => ({
   mockUseRestaurantContext: vi.fn(),
   mockUseStaffingSettings: vi.fn(),
-  mockUseSplhData: vi.fn(),
+  mockUseLaborSalesAnalytics: vi.fn(),
   mockUseLaborCostsFromTimeTracking: vi.fn(),
 }));
 
@@ -27,8 +29,8 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 vi.mock('@/hooks/useStaffingSettings', () => ({
   useStaffingSettings: mockUseStaffingSettings,
 }));
-vi.mock('@/hooks/useSplhData', () => ({
-  useSplhData: mockUseSplhData,
+vi.mock('@/hooks/useLaborSalesAnalytics', () => ({
+  useLaborSalesAnalytics: mockUseLaborSalesAnalytics,
 }));
 vi.mock('@/hooks/useLaborCostsFromTimeTracking', () => ({
   useLaborCostsFromTimeTracking: mockUseLaborCostsFromTimeTracking,
@@ -36,15 +38,15 @@ vi.mock('@/hooks/useLaborCostsFromTimeTracking', () => ({
 
 import { useLaborPnlSummary } from '@/hooks/useLaborPnlSummary';
 
-const SALES = [
-  { sale_date: '2026-07-06', sale_time: '17:00:00', sold_at: '2026-07-06T17:00:00Z', total_price: 400 },
-  { sale_date: '2026-07-07', sale_time: '12:00:00', sold_at: '2026-07-07T12:00:00Z', total_price: 200 },
-];
-
-const PUNCHES = [
-  { id: 'p1', restaurant_id: 'rest-1', employee_id: 'emp-1', punch_type: 'clock_in', punch_time: '2026-07-06T17:00:00Z' },
-  { id: 'p2', restaurant_id: 'rest-1', employee_id: 'emp-1', punch_type: 'clock_out', punch_time: '2026-07-06T18:00:00Z' },
-];
+const RPC = {
+  daily: [
+    { sale_date: '2026-07-06', revenue: 400 },
+    { sale_date: '2026-07-07', revenue: 200 },
+  ],
+  grid: [],
+  by_weekday: [],
+  has_hourly: false,
+};
 
 const DAILY_LABOR = [
   { date: '2026-07-06', total_labor_cost: 50, hourly_wages: 50, salary_wages: 0, contractor_payments: 0, total_hours: 1 },
@@ -54,21 +56,24 @@ const DAILY_LABOR = [
 function setup(overrides: {
   timezone?: string;
   target_labor_pct?: number;
-  data?: { sales: typeof SALES; punches: typeof PUNCHES; capped: boolean };
+  data?: typeof RPC;
   dailyLabor?: typeof DAILY_LABOR;
   isLoading?: boolean;
   isError?: boolean;
   laborLoading?: boolean;
   laborError?: Error | null;
+  laborCapped?: boolean;
 } = {}) {
   mockUseRestaurantContext.mockReturnValue({
     selectedRestaurant: { restaurant: { timezone: overrides.timezone ?? 'UTC' } },
   });
   mockUseStaffingSettings.mockReturnValue({
     effectiveSettings: { target_labor_pct: overrides.target_labor_pct ?? 22 },
+    updateSettings: vi.fn(),
+    isSaving: false,
   });
-  mockUseSplhData.mockReturnValue({
-    data: overrides.data ?? { sales: SALES, punches: PUNCHES, capped: false },
+  mockUseLaborSalesAnalytics.mockReturnValue({
+    data: overrides.data ?? RPC,
     isLoading: overrides.isLoading ?? false,
     isError: overrides.isError ?? false,
     error: null,
@@ -80,6 +85,7 @@ function setup(overrides: {
     isLoading: overrides.laborLoading ?? false,
     error: overrides.laborError ?? null,
     refetch: vi.fn(),
+    capped: overrides.laborCapped ?? false,
   });
 }
 
@@ -94,13 +100,13 @@ describe('useLaborPnlSummary', () => {
     vi.clearAllMocks();
   });
 
-  it('passes restaurantId + validated tz + the 4-week window through to useSplhData', () => {
+  it('passes restaurantId + validated tz + the 4-week window through to useLaborSalesAnalytics', () => {
     setup({ timezone: 'Not/AValidZone' });
 
     renderHook(() => useLaborPnlSummary('rest-1'), { wrapper: createWrapper() });
 
     // safeTz falls back to the restaurant default (America/Chicago), not UTC.
-    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'America/Chicago', 4);
+    expect(mockUseLaborSalesAnalytics).toHaveBeenCalledWith('rest-1', 'America/Chicago', 4);
   });
 
   it('CRITICAL: reconciliation — summary totals equal the sum of the daily sparkline series', async () => {
@@ -130,7 +136,7 @@ describe('useLaborPnlSummary', () => {
   });
 
   it('labor% is null and verdictTone is "none" when the window has no sales', () => {
-    setup({ data: { sales: [], punches: [], capped: false }, dailyLabor: [] });
+    setup({ data: { daily: [], grid: [], by_weekday: [], has_hourly: false }, dailyLabor: [] });
 
     const { result } = renderHook(() => useLaborPnlSummary('rest-1'), { wrapper: createWrapper() });
 
@@ -148,7 +154,7 @@ describe('useLaborPnlSummary', () => {
   });
 
   it('propagates capped, hasData, isLoading/isError/error, and refetch from the core hook', () => {
-    setup({ data: { sales: SALES, punches: PUNCHES, capped: true }, laborError: new Error('boom') });
+    setup({ laborCapped: true, laborError: new Error('boom') });
 
     const { result } = renderHook(() => useLaborPnlSummary('rest-1'), { wrapper: createWrapper() });
 

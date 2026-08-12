@@ -2,45 +2,20 @@ import { useMemo } from 'react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
-import { useSplhData } from '@/hooks/useSplhData';
+import { useLaborSalesAnalytics } from '@/hooks/useLaborSalesAnalytics';
 import { useLaborCostsFromTimeTracking } from '@/hooks/useLaborCostsFromTimeTracking';
-import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
-import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
-import { buildSplhTimeseries } from '@/lib/splhAnalytics';
+import { dailySalesFromRpc } from '@/lib/laborPnlAnalytics';
 import { safeTz } from '@/lib/restaurantClock';
 import { useTodayInTimezone } from '@/hooks/useTodayInTimezone';
-import { useNowTick } from '@/hooks/useNowTick';
 
 /**
- * Restaurant-tz window for the labor-cost fetch, expressed as `Date` objects
- * whose *host-local* calendar day matches the restaurant-tz calendar day
- * (§4/§5 design: window boundaries derive from `getTodayInTimezone`, not
- * `new Date()`). `useLaborCostsFromTimeTracking` formats these via
- * `date-fns`'s `format()`, which reads a Date's host-local
- * year/month/day — unlike `useSplhData`'s own UTC-anchored window, so we
- * deliberately build the Date with the *local* constructor here (not
- * `Date.UTC`) so `format(windowEnd, 'yyyy-MM-dd')` reproduces the exact
- * restaurant-tz "today" string regardless of the host's own timezone.
- *
- * `windowEnd` is the **end** of today (23:59:59.999), not midnight at its
- * start — `useLaborCostsFromTimeTracking` passes it straight into
- * `lookaheadPunchFetchRange(dateFrom, dateTo)` (`src/utils/punchWindow.ts`),
- * which widens only the *end* of the fetch by `OVERNIGHT_BUFFER_HOURS`.
- * Anchoring `windowEnd` at today's midnight-start silently capped the
- * `time_punches` fetch at ~6pm today (`OVERNIGHT_BUFFER_HOURS = 18` past
- * midnight), dropping every clock-in/clock-out later than that from the
- * query — not merely undercounting hours but excluding whole evening shifts
- * (an open clock-in with a since-fetched-out-of-window clock-out reads as an
- * incomplete shift and is entirely dropped). Anchoring at end-of-day makes
- * today's fetch cover the full day (through "now" and beyond, matching
- * design §3's clock-in-through-now requirement — future timestamps simply
- * don't exist yet, so this never over-fetches).
- *
- * `todayStr` is passed in (from `useTodayInTimezone`) rather than read here via
- * `getTodayInTimezone` so the window recomputes as the date rolls over: a
- * midnight-frozen `windowEnd` would keep the labor-cost fetch anchored to
- * yesterday and silently drop today's punches for both the page and the
- * Dashboard card (`useLaborPnlSummary`) until remount.
+ * The labor-cost fetch window, derived from the restaurant-local "today"
+ * (`todayStr`), not host/UTC `new Date()`. `windowEnd` is anchored at
+ * end-of-day (23:59:59.999) so today's evening punches are not cut off:
+ * `useLaborCostsFromTimeTracking` feeds `windowEnd` into
+ * `lookaheadPunchFetchRange`, which widens only the END of the punch fetch. A
+ * midnight-start anchor would drop every punch after 00:00 today, undercounting
+ * today's labor against sales (which have no such cutoff).
  */
 function laborCostWindow(tz: string, weeks: number, todayStr: string): { windowStart: Date; windowEnd: Date } {
   const [y, m, d] = todayStr.split('-').map(Number);
@@ -50,15 +25,12 @@ function laborCostWindow(tz: string, weeks: number, todayStr: string): { windowS
 }
 
 /**
- * Shared setup for the labor P&L hooks: restaurant tz/target, the
- * restaurant-tz labor-cost window, the paginated sales+punches fetch
- * (`useSplhData`, reused as-is), the payroll-grade daily labor series
- * (`useLaborCostsFromTimeTracking`), and the real per-day sales series
- * derived from the same sales+sessions `useSplhCore` already trusts.
- * `useLaborPnlSummary` (Dashboard card) and `useLaborPnlAnalytics` (`/labor`
- * page) both build on this and only differ in the `weeks` fetch window and
- * which additional aggregation (`buildFinancialSeries`, `buildSalesVolumeGrid`)
- * they layer on top.
+ * Shared data core for the Labor P&L feature (dashboard card + `/labor` page).
+ * Fetches the SQL sales aggregate (`useLaborSalesAnalytics`) and the
+ * payroll-grade daily labor costs (`useLaborCostsFromTimeTracking`), then joins
+ * them by restaurant-local date. The sales aggregate replaces the old
+ * client-side aggregation of ~23,700 raw rows. Punch → session math stays in
+ * the labor-cost hook. `tz` is validated here via `safeTz`.
  */
 export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
   const { selectedRestaurant } = useRestaurantContext();
@@ -66,8 +38,6 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
   const { effectiveSettings, updateSettings, isSaving: isSavingTarget } = useStaffingSettings(restaurantId);
   const targetPct = effectiveSettings.target_labor_pct;
 
-  // Restaurant-tz "today", refreshed across midnight (see useTodayInTimezone) so
-  // the labor-cost fetch window below never freezes on the mount day.
   const todayStr = useTodayInTimezone(tz);
   const { windowStart, windowEnd } = useMemo(
     () => laborCostWindow(tz, weeks, todayStr),
@@ -80,7 +50,7 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
     isError: salesIsError,
     error: salesError,
     refetch: refetchSales,
-  } = useSplhData(restaurantId, tz, weeks);
+  } = useLaborSalesAnalytics(restaurantId, tz, weeks);
 
   const {
     dailyCosts,
@@ -90,26 +60,7 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
     capped: laborCapped,
   } = useLaborCostsFromTimeTracking(restaurantId, windowStart, windowEnd, { throughNow: true });
 
-  // Close still-open shifts at "now" before deriving sessions, so the intraday
-  // (Day-view) labor shape counts in-progress hours — matching the payroll-grade
-  // daily cost above (which uses the same `throughNow`). `nowMs` (a minute
-  // ticker) is a real dependency here: React Query's structural sharing keeps
-  // `data.punches` reference-stable across content-identical refetches, so a memo
-  // keyed only on the punches would freeze the synthetic clock-out at first
-  // compute and the chart's labor line would collapse mid-shift.
-  const nowMs = useNowTick();
-  const sessions = useMemo(
-    () =>
-      data?.punches?.length
-        ? identifyWorkSessions(normalizePunches(appendOpenShiftClockOuts(data.punches, new Date(nowMs))))
-        : [],
-    [data?.punches, nowMs],
-  );
-
-  const dailySales = useMemo(
-    () => (data ? buildSplhTimeseries(data.sales, sessions, tz, 'day') : []),
-    [data, sessions, tz],
-  );
+  const dailySales = useMemo(() => (data ? dailySalesFromRpc(data.daily) : []), [data]);
 
   return {
     tz,
@@ -119,22 +70,14 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
     windowEnd,
     dailySales,
     dailyLabor: dailyCosts,
-    // Raw per-sale/per-punch inputs, exposed (not just the derived daily
-    // series) so `useLaborPnlAnalytics` (`/labor` page, C3) can build the
-    // hourly sales-volume grid via `buildSplhGrid` without a second
-    // `useSplhData` fetch — mirrors `useSplhCore` exposing both `data` and
-    // `sessions` alongside its own derived `grid`/`summary`.
-    sales: data?.sales ?? [],
-    sessions,
-    // OR'd with the labor-cost fetch's own `capped` (both `useSplhData` and
-    // `useLaborCostsFromTimeTracking` paginate `time_punches` independently
-    // with their own page caps) so a truncation surfaced by either fetch
-    // still reaches the `/labor` banner.
-    capped: (data?.capped ?? false) || laborCapped,
-    // Per design §6 (mirroring `useSplhCore`): a restaurant with sales but
-    // zero punches anywhere in the window hasn't enabled time tracking yet —
-    // a setup-invite empty state, distinct from per-bucket "no labor" cells.
-    hasData: (data?.sales?.length ?? 0) > 0 && (data?.punches?.length ?? 0) > 0,
+    grid: data?.grid ?? [],
+    byWeekday: data?.by_weekday ?? [],
+    hasHourly: data?.has_hourly ?? false,
+    // The SQL aggregate never truncates; `capped` reflects only the labor fetch.
+    capped: laborCapped,
+    // Sales present + zero labor days = time-tracking-not-set-up invite state,
+    // not a silent all-zero labor read (design §6).
+    hasData: dailySales.some((p) => p.totalSales !== 0) && dailyCosts.length > 0,
     isLoading: salesLoading || laborLoading,
     isError: salesIsError || !!laborError,
     error: salesError ?? laborError ?? null,
@@ -142,8 +85,6 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
       refetchSales();
       refetchLabor();
     },
-    // Target-% write path (design §2.2 "Editable target"), shared here so
-    // `useLaborPnlAnalytics` doesn't need its own `useStaffingSettings` call.
     updateSettings,
     isSavingTarget,
   };

@@ -107035,6 +107035,1077 @@
       "status": "open",
       "created_at": "2026-08-08T07:09:49.076Z",
       "updated_at": "2026-08-08T07:09:49.076Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763330003,
+        "file": "src/hooks/useLaborIntradaySeries.ts",
+        "line": 65
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Paginate the single-day sales query**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Paginate the single-day sales query**\n\nWhen a restaurant records more than PostgREST's configured 1,000-row limit in one day, this unpaginated request silently returns only the first 1,000 sales (`supabase/config.toml` sets `max_rows = 1000`). The Day-view chart then understates sales and can disagree with the RPC-backed KPI totals; use the repository's `fetchAllRows` pagination helper with deterministic ordering, as the previous labor sales fetch did.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "3f5d08bddc9526bd6c5b1228f0d2640292ac2ff2",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.689Z",
+      "updated_at": "2026-08-12T03:24:58.689Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343048,
+        "file": "docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md",
+        "line": 216
+      },
+      "title": "_🎯 Functional Correctness_ | _🟠 Major_ | _⚡ Quick win_",
+      "body": "_🎯 Functional Correctness_ | _🟠 Major_ | _⚡ Quick win_\n\n**Correct the pgTAP test count.**\n\n`plan(16)` is followed by 15 top-level assertions: 13 `is(...)` calls, one `throws_ok(...)`, and one `has_function(...)`. The test will fail because the planned count does not match the executed count.\n\nThe design also requires JSON-key and foreign-key coverage, but this test block does not include those assertions. Add them or change the plan to match the implemented tests.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md` around lines\n215 - 216, Correct the pgTAP setup around plan(16) so the planned assertion\ncount matches the actual top-level assertions, while adding the required\nJSON-key and foreign-key coverage if those tests are intended by the design.\nEnsure the final plan count exactly equals every is(...), throws_ok(...),\nhas_function(...), and newly added assertion in the test block.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:triton:caracal -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:05ca51e989e590d48a28d632 -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "0961e1027715c1aeef6446970146fd2de6f556d6",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.690Z",
+      "updated_at": "2026-08-12T03:24:58.690Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343053,
+        "file": "docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md",
+        "line": 386
+      },
+      "title": "_🔒 Security & Privacy_ | _🔴 Critical_ | _⚡ Quick win_",
+      "body": "_🔒 Security & Privacy_ | _🔴 Critical_ | _⚡ Quick win_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -e\nprintf '%s\\n' '--- plan excerpt ---'\nsed -n '350,410p' docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md\nprintf '%s\\n' '--- design excerpt ---'\nsed -n '125,180p' docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md\nprintf '%s\\n' '--- related identifiers ---'\nrg -n -C 3 'get_labor_sales_analytics|user_restaurants|unified_sales|search_path' docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 42112\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -e\npython3 - <<'PY'\nfrom pathlib import Path\nimport re\n\npath = Path(\"docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md\")\ntext = path.read_text()\nstart = text.index(\"CREATE OR REPLACE FUNCTION public.get_labor_sales_analytics(\")\nend = text.index(\"GRANT EXECUTE ON FUNCTION\", start)\nbody = text[start:end]\n\nprint(\"function search_path:\", re.search(r\"SET search_path\\s*=\\s*([^\\n]+)\", body).group(1))\nfor name in (\"user_restaurants\", \"unified_sales\"):\n    refs = [f\"{m.group(0)} at line {body[:m.start()].count(chr(10)) + text[:start].count(chr(10)) + 1}\"\n            for m in re.finditer(rf\"(?<![\\w.]){name}\\b\", body)]\n    print(name, \"references:\", refs)\n\nprint(\"qualified table references:\")\nfor m in re.finditer(r\"\\b(?:public\\.)?(?:user_restaurants|unified_sales)\\b\", body):\n    print(repr(m.group(0)))\nPY\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 365\n\n---\n\n🌐 Web query:\n\n`PostgreSQL documentation SECURITY DEFINER search_path pg_temp temporary table shadowing unqualified names`\n\n💡 Result:\n\nIn PostgreSQL, a SECURITY DEFINER function executes with the privileges of the user who owns it, rather than the user who calls it [1][2][3]. This mechanism, similar to setuid in Unix, creates a significant security risk if the function accesses database objects (such as tables, operators, or functions) using unqualified names [1][4][2]. The Vulnerability: Object Shadowing Because the function executes with elevated privileges, a malicious user with EXECUTE permission on the function can exploit the default behavior of the search_path [1][4]. By default, PostgreSQL searches schemas in a specific order to resolve unqualified names. An attacker can create a malicious object (e.g., a table, function, operator, or even a user-defined type) with the same name as an object the function expects to use [4][2][5]. By placing this malicious object in a schema that is searched before the intended schema (such as a temporary schema or the public schema), the attacker can cause the SECURITY DEFINER function to execute the attacker's code or access the attacker's data instead of the intended objects [1][4][2]. The Temporary Schema (pg_temp) The temporary-table schema (pg_temp) is particularly dangerous because it is typically writable by any user and is searched first by default in many configurations [2][3][6]. If a SECURITY DEFINER function does not explicitly set its search_path, it inherits the caller's search_path, allowing an attacker to easily shadow objects by creating them in their own temporary schema [1][4][7]. Best Practices for Security To prevent these vulnerabilities, the PostgreSQL documentation and security community mandate the following practices: 1. Explicitly Set search_path: Always define a secure, fixed search_path for SECURITY DEFINER functions using the SET clause [1][4][2]. 2. Include pg_temp Last: When setting the search_path, include pg_temp as the very last element [4][2][6]. This ensures that the function searches its required trusted schemas first, and only falls back to the user-writable temporary schema if necessary, preventing shadowing of critical objects [2][3]. 3. Example of Secure Definition: CREATE FUNCTION secure_function RETURNS... LANGUAGE plpgsql SECURITY DEFINER SET search_path = admin, pg_temp; -- Explicitly set trusted schemas then pg_temp AS... Additional precautions include revoking the default PUBLIC EXECUTE privilege from new functions and granting it selectively to trusted users only [2][3][6]. Even with SQL-standard function bodies (which track dependencies), explicitly setting the search_path is considered a best practice to protect against unforeseen interaction with other code that relies on the search_path [8].\n\nCitations:\n\n- 1: https://www.postgresql.org/message-id/2A6D9C5BF85D484CA75928DC9C6D3FD702FEA02E%40ente2kdata04.mdcc.edu\n- 2: https://www.postgresql.org/docs/17/sql-createfunction.html\n- 3: https://www.postgresql.org/docs/19/sql-createfunction.html\n- 4: https://www.cybertec-postgresql.com/en/abusing-security-definer-functions/\n- 5: https://notcve.org/cve/CVE-2019-10208\n- 6: https://www.postgresql.org/docs/18/sql-createfunction.html\n- 7: https://www.postgresql.org/message-id/Y0Axbu5hdZtJ1NgR%40momjian.us\n- 8: https://www.postgresql.org/message-id/AM9PR01MB8268FB1629B5AAF1680E0594FE5C9%40AM9PR01MB8268.eurprd01.prod.exchangelabs.com\n\n---\n\n\n\n</details>\n\n**Harden the `SECURITY DEFINER` search path in both documents.**\n\nUse `SET search_path = public, pg_temp` and qualify the table references as `public.user_restaurants` and `public.unified_sales`. Without this, callers can shadow the unqualified tables with temporary relations.\n\n<details>\n<summary>📍 Affects 2 files</summary>\n\n- `docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md#L376-L386` (this comment)\n- `docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md#L148-L160`\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md` around lines\n376 - 386, Harden the SECURITY DEFINER function get_labor_sales_analytics in\ndocs/superpowers/plans/2026-08-09-labor-sales-aggregation.md lines 376-386 and\ndocs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md lines\n148-160 by setting search_path to public, pg_temp and qualifying every\nuser_restaurants and unified_sales reference as public.user_restaurants and\npublic.unified_sales.\n```\n\n</details>\n\n<!-- consolidated_sites_start -->\n<!--\n<consolidated_sites>\n<site>\n<role>anchor</role>\n<file>docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md</file>\n<line_range>376-386</line_range>\n</site>\n<site>\n<role>sibling</role>\n<file>docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md</file>\n<line_range>148-160</line_range>\n</site>\n</consolidated_sites>\n-->\n<!-- consolidated_sites_end -->\n\n<!-- fingerprinting:phantom:triton:caracal -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:d9633624567835a29041d261 -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "bff9fb06493612f278fdbf827dcb6c55278056dd",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.690Z",
+      "updated_at": "2026-08-12T03:24:58.690Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343058,
+        "file": "docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md",
+        "line": 848
+      },
+      "title": "_🎯 Functional Correctness_ | _🟡 Minor_ | _⚡ Quick win_",
+      "body": "_🎯 Functional Correctness_ | _🟡 Minor_ | _⚡ Quick win_\n\n**Guard `restaurantId` before both query functions.**\n\nThe plan uses `restaurantId!` inside the RPC and Supabase query functions. `enabled` currently prevents the normal fetch, but a future refetch or option change could execute the function with a null ID.\n\nAdd an explicit guard that narrows `restaurantId` before using it.\n\n\n\n\nAs per coding guidelines, `**/*.{ts,tsx}` requires null checks and does not allow missing null checks. \n\n\nAlso applies to: 1066-1082\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md` around lines\n834 - 848, Add an explicit early guard for null restaurantId inside\nuseLaborSalesAnalytics before the Supabase RPC, narrowing the value and removing\nthe non-null assertion; apply the same guard to the analogous query function at\nthe additional referenced location. Preserve enabled: !!restaurantId and\nexisting query behavior for valid IDs.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:triton:caracal -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:0f768e82ecd7ff8469e7e760 -->\n\n_Source: Coding guidelines_\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "df69bcc52e36f8fef0523655e9110c9088a8ac8f",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.690Z",
+      "updated_at": "2026-08-12T03:24:58.690Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343060,
+        "file": "docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md",
+        "line": 1055
+      },
+      "title": "_🩺 Stability & Availability_ | _🟠 Major_ | _🏗️ Heavy lift_",
+      "body": "_🩺 Stability & Availability_ | _🟠 Major_ | _🏗️ Heavy lift_\n\n**Carry lazy intraday failures through the complete hook contract.**\n\nBoth documents allow intraday query failures to become empty data without page-level error or retry state.\n\n- `docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md#L1049-L1055`: return intraday `isError`, `error`, and `refetch`.\n- `docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md#L1853-L1858`: combine intraday error state and retry with the core state.\n- `docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md#L353-L359`: document the expanded intraday return type.\n- `docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md#L458-L465`: include intraday failures in the documented error state.\n\n<details>\n<summary>📍 Affects 2 files</summary>\n\n- `docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md#L1049-L1055` (this comment)\n- `docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md#L1853-L1858`\n- `docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md#L353-L359`\n- `docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md#L458-L465`\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md` around lines\n1049 - 1055, Expand useLaborIntradaySeries in\ndocs/superpowers/plans/2026-08-09-labor-sales-aggregation.md:1049-1055 to return\nisError, error, and refetch alongside series and isLoading. Update the\npage-level state aggregation at\ndocs/superpowers/plans/2026-08-09-labor-sales-aggregation.md:1853-1858 to\ncombine intraday error and retry state with the core state. Document the\nexpanded hook return type at\ndocs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md:353-359 and\ninclude intraday failures in the documented error state at\ndocs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md:458-465.\n```\n\n</details>\n\n<!-- consolidated_sites_start -->\n<!--\n<consolidated_sites>\n<site>\n<role>anchor</role>\n<file>docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md</file>\n<line_range>1049-1055</line_range>\n</site>\n<site>\n<role>sibling</role>\n<file>docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md</file>\n<line_range>1853-1858</line_range>\n</site>\n<site>\n<role>sibling</role>\n<file>docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md</file>\n<line_range>353-359</line_range>\n</site>\n<site>\n<role>sibling</role>\n<file>docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md</file>\n<line_range>458-465</line_range>\n</site>\n</consolidated_sites>\n-->\n<!-- consolidated_sites_end -->\n\n<!-- fingerprinting:phantom:triton:caracal -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:061e470471edefc8725a97cf -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "fb1455a869187b3ee04d9610e3a5ecf6de08e343",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343067,
+        "file": "docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md",
+        "line": 1101
+      },
+      "title": "_🩺 Stability & Availability_ | _🟡 Minor_ | _⚡ Quick win_",
+      "body": "_🩺 Stability & Availability_ | _🟡 Minor_ | _⚡ Quick win_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nprintf '%s\\n' '--- plan excerpt ---'\nsed -n '1070,1120p' docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md\n\nprintf '%s\\n' '--- spec excerpt ---'\nsed -n '350,400p' docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md\n\nprintf '%s\\n' '--- related hook and helper references ---'\nrg -n -C 8 'buildIntradayFinancialSeries|currentHourInTz|getTodayInTimezone|useLaborPnlAnalytics|appendOpenShiftClockOuts|identifyWorkSessions' src tests docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md\n\nprintf '%s\\n' '--- time-related hooks ---'\nrg -n -C 5 'use.*(Clock|Time|Interval|Tick)|setInterval|setTimeout|currentHour|new Date\\(' src/hooks src/lib tests 2>/dev/null || true\n\nprintf '%s\\n' '--- relevant test filenames ---'\ngit ls-files 'tests/*' 'src/**/*test*' | rg -i 'labor|pnl|analytics|intraday|clock|time|sales'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 50374\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nprintf '%s\\n' '--- plan excerpt ---'\nsed -n '1090,1108p' docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md\n\nprintf '%s\\n' '--- spec excerpt ---'\nsed -n '370,390p' docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md\n\nprintf '%s\\n' '--- exact source definitions and call sites ---'\nrg -n -C 12 --glob '*.ts' --glob '*.tsx' \\\n  'buildIntradayFinancialSeries|currentHourInTz|getTodayInTimezone|useLaborPnlAnalytics|appendOpenShiftClockOuts' \\\n  src tests | head -n 500\n\nprintf '%s\\n' '--- time-refresh primitives ---'\nrg -n -C 8 --glob '*.ts' --glob '*.tsx' \\\n  'setInterval|setTimeout|useInterval|useClock|useTime|minuteTick|timeTick|currentHourInTz' \\\n  src/hooks src/lib tests | head -n 500\n\nprintf '%s\\n' '--- likely analytics tests ---'\ngit ls-files | rg -i '(labor.*(pnl|sales|analytics)|pnl.*(labor|sales|analytics)|intraday|open.*shift.*clock|sales.*analytics)'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 50375\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nprintf '%s\\n' '--- useLaborIntradaySeries implementation ---'\ncat -n src/hooks/useLaborIntradaySeries.ts | sed -n '1,180p'\n\nprintf '%s\\n' '--- useNowTick implementation ---'\ncat -n src/hooks/useNowTick.ts | sed -n '1,140p'\n\nprintf '%s\\n' '--- intraday refresh tests ---'\ncat -n tests/unit/useLaborIntradaySeries.test.ts | sed -n '80,190p'\n\nprintf '%s\\n' '--- analytics hook integration ---'\ncat -n src/hooks/useLaborPnlAnalytics.ts | sed -n '1,150p'\n\nprintf '%s\\n' '--- all useNowTick call sites ---'\nrg -n -C 5 'useNowTick' src tests\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 27766\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nprintf '%s\\n' '--- time-refresh references in the two documents ---'\nrg -n -C 5 'useNowTick|nowMs|liveNowMs|minute|refresh|open.shift|open shift|clock.out|clock out|time progression|time tick' \\\n  docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md \\\n  docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md\n\nprintf '%s\\n' '--- plan/spec references to the intraday regression test ---'\nrg -n -C 5 'useLaborIntradaySeries.test|intraday.*test|regression test|Step 4|Run the test' \\\n  docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md \\\n  docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md\n\nprintf '%s\\n' '--- exact test setup and assertions for capHour ---'\ncat -n tests/unit/useLaborIntradaySeries.test.ts | sed -n '123,180p'\ncat -n tests/unit/laborPnlAnalytics.test.ts | sed -n '596,610p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 26643\n\n---\n\n\n\n</details>\n\n**Document `useNowTick` in both intraday designs.**\n\n`useLaborIntradaySeries` uses `useNowTick` to recompute open-shift hours and `capHour`, but the plan and specification do not define this dependency. Document it and require a test that advances time without a refetch and asserts increased open-shift labor.\n\n<details>\n<summary>📍 Affects 2 files</summary>\n\n- `docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md#L1096-L1101` (this comment)\n- `docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md#L377-L382`\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md` around lines\n1096 - 1101, Document the useNowTick dependency in both intraday designs: update\ndocs/superpowers/plans/2026-08-09-labor-sales-aggregation.md lines 1096-1101 and\ndocs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md lines\n377-382 to require useLaborIntradaySeries to recompute open-shift hours and\ncapHour as time advances without refetching, and specify a test that advances\ntime and asserts increased open-shift labor.\n```\n\n</details>\n\n<!-- consolidated_sites_start -->\n<!--\n<consolidated_sites>\n<site>\n<role>anchor</role>\n<file>docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md</file>\n<line_range>1096-1101</line_range>\n</site>\n<site>\n<role>sibling</role>\n<file>docs/superpowers/specs/2026-08-09-labor-sales-aggregation-design.md</file>\n<line_range>377-382</line_range>\n</site>\n</consolidated_sites>\n-->\n<!-- consolidated_sites_end -->\n\n<!-- fingerprinting:phantom:triton:caracal -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:43031a6291f9238254a37617 -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b401d75b80a81a7baed6c390d904c6b3996dd9e1",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343075,
+        "file": "docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md",
+        "line": 1299
+      },
+      "title": "_🗄️ Data Integrity & Integration_ | _🟠 Major_ | _⚡ Quick win_",
+      "body": "_🗄️ Data Integrity & Integration_ | _🟠 Major_ | _⚡ Quick win_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nfile=\"docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md\"\nprintf '%s\\n' '--- plan structure ---'\nast-grep outline \"$file\" 2>/dev/null || true\nprintf '%s\\n' '--- relevant plan sections ---'\nsed -n '1180,1435p' \"$file\"\nprintf '%s\\n' '--- related identifiers ---'\nrg -n \"useLaborCostsFromTimeTracking|labor window|fromZonedTime|new Date\\\\(|useLaborPnlCore|timezone\" \\\n  --glob '!docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md' .\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 50374\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nplan=\"docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md\"\nprintf '%s\\n' '--- plan lines 1200-1420 ---'\nsed -n '1200,1420p' \"$plan\"\n\nprintf '%s\\n' '--- hook files ---'\nfd -t f -i 'useLaborCostsFromTimeTracking|useLaborPnlCore|laborCalculations' .\n\nprintf '%s\\n' '--- relevant hook declarations and calls ---'\nrg -n -C 8 \"useLaborCostsFromTimeTracking|useLaborPnlCore|calculateActualLaborCost|punch_time|clock_in\" \\\n  src tests supabase/functions --glob '*.{ts,tsx}' \\\n  | head -n 500\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 42094\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nprintf '%s\\n' '--- useLaborPnlCore.ts ---'\ncat -n src/hooks/useLaborPnlCore.ts\n\nprintf '%s\\n' '--- useLaborCostsFromTimeTracking.tsx ---'\ncat -n src/hooks/useLaborCostsFromTimeTracking.tsx\n\nprintf '%s\\n' '--- date-range helpers and call sites ---'\nrg -n -C 12 \"lookaheadPunchFetchRange|fetchRange|dateFrom|dateTo|clock_in|punch_time\" \\\n  src/hooks/useLaborCostsFromTimeTracking.tsx src/services src/lib tests/unit/useLaborCostsFromTimeTracking.fetchRange.test.ts \\\n  | head -n 700\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43164\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nprintf '%s\\n' '--- timezone/date helpers ---'\nrg -n -C 12 \"export function useTodayInTimezone|function useTodayInTimezone|export function toDateOnlyString|function toDateOnlyString|lookaheadPunchFetchRange\" \\\n  src tests --glob '*.{ts,tsx}'\nprintf '%s\\n' '--- labor calculation entry and date filtering ---'\nrg -n -C 20 \"export function calculateActualLaborCost|function calculateActualLaborCost|startDate|endDate|generateDateRange|formatLocalDate|toDateOnly\" \\\n  src/services/laborCalculations.ts src/lib/dateOnly.ts src/utils/punchWindow.ts\nprintf '%s\\n' '--- focused plan references ---'\nrg -n -C 5 \"fromZonedTime|laborCostWindow|toISOString|windowStart|windowEnd|restaurant-local date\" \\\n  docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 50373\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -eu\n\nprintf '%s\\n' '--- getTodayInTimezone implementation ---'\ncat -n src/lib/timezone.ts | sed -n '1,90p'\ncat -n src/hooks/useTodayInTimezone.ts | sed -n '1,65p'\n\nprintf '%s\\n' '--- calculateActualLaborCost implementation ---'\nrg -n \"export function calculateActualLaborCost\" src/services/laborCalculations.ts\nsed -n '470,660p' src/services/laborCalculations.ts\n\nprintf '%s\\n' '--- package timezone dependency ---'\nrg -n '\"date-fns-tz\"|\"date-fns\"' package.json package-lock.json pnpm-lock.yaml yarn.lock 2>/dev/null || true\n\nprintf '%s\\n' '--- deterministic instant comparison ---'\nnode - <<'JS'\nconst { spawnSync } = require('node:child_process');\nconst script = `\n  const tz = 'Pacific/Honolulu';\n  const now = new Date('2026-07-14T05:00:00Z');\n  const parts = new Intl.DateTimeFormat('en-CA', {\n    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'\n  }).formatToParts(now);\n  const get = type => parts.find(p => p.type === type).value;\n  const today = [get('year'), get('month'), get('day')].join('-');\n  const [y, m, d] = today.split('-').map(Number);\n  const start = new Date(y, m - 1, d - 4 * 7);\n  const end = new Date(y, m - 1, d, 23, 59, 59, 999);\n  console.log(JSON.stringify({ hostTZ: process.env.TZ, today, start: start.toISOString(), end: end.toISOString()}));\n`;\nfor (const hostTZ of ['UTC', 'America/Los_Angeles']) {\n  const r = spawnSync(process.execPath, ['-e', script], { env: { ...process.env, TZ: hostTZ }, encoding: 'utf8' });\n  process.stdout.write(r.stdout);\n}\nJS\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 13095\n\n---\n\n\n\n</details>\n\n**Separate restaurant-local date keys from UTC fetch instants.**\n\n`useLaborCostsFromTimeTracking` sends `dateFrom` and `dateTo` as instants to the `time_punches` query, but `calculateActualLaborCost` uses their host-local fields as date keys. The current `new Date(y, m - 1, d, ...)` construction makes both incorrect when the host timezone differs from the restaurant timezone. Keep date keys for calculation and derive separate `fromZonedTime` instants for the punch query. Assert the ISO boundaries and daily keys in the test.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@docs/superpowers/plans/2026-08-09-labor-sales-aggregation.md` around lines\n1288 - 1299, Update useLaborCostsFromTimeTracking and calculateActualLaborCost\nto keep restaurant-local yyyy-MM-dd keys separate from query instants: retain\nthe keys for labor-cost calculation and derive dateFrom/dateTo with\nfromZonedTime using the restaurant timezone for time_punches. Extend the\nexisting restaurant-local timezone test to assert the query arguments’ ISO\nboundaries and the daily calculation keys, preserving the expected June 15\nthrough July 13 window.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:triton:caracal -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:0d4bd3372e28ddf3e8f98a4d -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "0e722abdbb6206dd790c805ccc16f381345699c0",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343077,
+        "file": "src/hooks/useLaborIntradaySeries.ts",
+        "line": 53
+      },
+      "title": "_🎯 Functional Correctness_ | _🟠 Major_ | _⚡ Quick win_",
+      "body": "_🎯 Functional Correctness_ | _🟠 Major_ | _⚡ Quick win_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -euo pipefail\n\nemployee_file=\"$(fd -t f 'useEmployees\\.(ts|tsx)$' src/hooks | head -n 1)\"\ntest -n \"$employee_file\"\n\nast-grep outline \"$employee_file\" --match useEmployees --view expanded\nrg -n -C 4 'return|loading|isLoading|error|refetch' \"$employee_file\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 8431\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -euo pipefail\n\ntarget=\"src/hooks/useLaborIntradaySeries.ts\"\nprintf '%s\\n' \"=== target outline ===\"\nast-grep outline \"$target\"\nprintf '%s\\n' \"=== target source ===\"\ncat -n \"$target\"\nprintf '%s\\n' \"=== hook usages ===\"\nrg -n -C 5 'useLaborIntradaySeries|avgHourlyRateCents|labor' src tests 2>/dev/null | head -n 400 || true\nprintf '%s\\n' \"=== related tests ===\"\nfd -t f . tests src | rg 'Labor|labor|Intraday|intraday|useEmployees'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 36855\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -euo pipefail\n\nprintf '%s\\n' \"=== intraday hook tests ===\"\ncat -n tests/unit/useLaborIntradaySeries.test.ts\nprintf '%s\\n' \"=== direct consumers ===\"\nrg -n -C 8 'intraday|useLaborIntradaySeries' src/pages/Labor.tsx src/hooks src/components tests/unit/useLaborPnlAnalytics.test.ts tests/unit/useLaborPnlCore.test.ts 2>/dev/null | head -n 500\nprintf '%s\\n' \"=== employee-query mock shapes in hook tests ===\"\nrg -n -C 6 'mockUseEmployees|useEmployees' tests/unit/useLaborIntradaySeries.test.ts tests/unit/useLaborPnlAnalytics.test.ts tests/unit/useLaborPnlCore.test.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43775\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -euo pipefail\n\nprintf '%s\\n' \"=== average-rate behavior ===\"\nrg -n -C 10 'computeAvgHourlyRateCents|function buildIntradayFinancialSeries|export function buildIntradayFinancialSeries' src/lib src\nprintf '%s\\n' \"=== static state-flow verifier ===\"\npython3 - <<'PY'\nfrom pathlib import Path\nsource = Path(\"src/hooks/useLaborIntradaySeries.ts\").read_text()\nassert \"const { employees } = useEmployees\" in source\nassert \"loading\" not in source.split(\"const { employees } = useEmployees\", 1)[1].split(\"const avgHourlyRateCents\", 1)[0]\nassert \"error\" not in source.split(\"const { employees } = useEmployees\", 1)[1].split(\"const avgHourlyRateCents\", 1)[0]\nassert \"computeAvgHourlyRateCents(employees)\" in source\nprint(\"useLaborIntradaySeries reads employees but does not read employee loading/error state\")\nPY\nprintf '%s\\n' \"=== employee hook return contract ===\"\nsed -n '29,80p' src/hooks/useEmployees.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 35289\n\n---\n\n\n\n</details>\n\n**Propagate the employee query state.**\n\nWhen the Day view is active and `useEmployees` is loading or fails, `useLaborIntradaySeries` still builds a series with the `$15/hr` fallback rate and reports only the sales/punch query state. Include the employee loading and error state in the active intraday result, and add loading and error regression tests.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@src/hooks/useLaborIntradaySeries.ts` around lines 52 - 53, Update\nuseLaborIntradaySeries to propagate the useEmployees loading and error state\nwhen the Day view is active, rather than producing a fallback-rate series while\nthat query is unresolved or failed. Combine the employee query state with the\nexisting sales/punch query state in the returned intraday result, and add\nregression tests covering employee loading and error cases.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:f41937e29ee5721ea3b52136 -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "96471e5156baed32d27c09869df5c0b740b2ad2a",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343081,
+        "file": "src/hooks/useLaborIntradaySeries.ts",
+        "line": 90
+      },
+      "title": "_🎯 Functional Correctness_ | _🟠 Major_ | _🏗️ Heavy lift_",
+      "body": "_🎯 Functional Correctness_ | _🟠 Major_ | _🏗️ Heavy lift_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🌐 Web query:\n\n`For TanStack Query v5, does `staleTime` automatically refetch a mounted query? What is the recommended pattern to invalidate a query after a Supabase Realtime table change?`\n\n💡 Result:\n\nIn TanStack Query v5, whether a mounted query automatically refetches depends on its staleness status and the `refetchOnMount` configuration [1][2]. Does staleTime automatically refetch a mounted query? - Yes, if the data is considered stale. By default, `staleTime` is set to `0`, meaning queries are considered stale immediately after fetching [1][2]. - When a query instance mounts, TanStack Query checks if the data is stale [3][4]. If `refetchOnMount` is set to `true` (the default) and the data is stale, the query will automatically trigger a background refetch [1][2]. - If you set a `staleTime` greater than `0`, the query will be considered fresh until that time elapses, and it will not automatically refetch on mount during that period [3][4]. Recommended pattern for Supabase Realtime invalidation: To keep your TanStack Query cache synchronized with Supabase Realtime, the recommended pattern is to use the `invalidateQueries` method inside a real-time subscription listener [5][6][7]. 1. Subscribe to your Supabase table changes using `supabase.channel()` and the `.on('postgres_changes', ...)` listener [5][7][8]. 2. In the callback function, call `queryClient.invalidateQueries()` with the appropriate `queryKey` to mark the relevant queries as stale [5][9]. This instructs TanStack Query to immediately refetch the data in the background if the query is currently mounted [9]. 3. Ensure you clean up the subscription (e.g., using `supabase.removeChannel(channel)`) within a `useEffect` cleanup function or equivalent to prevent memory leaks [5][7][8]. While you can also use `queryClient.setQueryData` to manually update the cache for performance, `invalidateQueries` is generally preferred for its simplicity and reliability, as it ensures the UI remains consistent with the server state [5][9][8].\n\nCitations:\n\n- 1: https://tanstack.com/query/v5/docs/framework/react/reference/useQuery\n- 2: https://tanstack.com/query/latest/docs/framework/react/reference/useQuery\n- 3: https://tanstack.com/query/v5/docs/framework/react/guides/important-defaults\n- 4: https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults\n- 5: https://www.duskolicanin.com/stack/react-query-supabase\n- 6: https://makerkit.dev/blog/tutorials/supabase-react-query\n- 7: https://makerkit.dev/docs/next-supabase-turbo/data-fetching/react-query\n- 8: https://github.com/majiayu000/claude-skill-registry/blob/main/skills/data/supabase-react-best-practices/SKILL.md\n- 9: https://tanstack.com/query/latest/docs/framework/react/guides/query-invalidation\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -e\nprintf '%s\\n' '--- hook outline ---'\nast-grep outline src/hooks/useLaborIntradaySeries.ts --view expanded\nprintf '%s\\n' '--- hook implementation ---'\ncat -n src/hooks/useLaborIntradaySeries.ts | sed -n '1,180p'\nprintf '%s\\n' '--- realtime and invalidation patterns ---'\nrg -n -S \"postgres_changes|removeChannel|invalidateQueries|labor-intraday|time_punches|unified_sales\" src\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 50373\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\nset -e\nprintf '%s\\n' '--- existing Supabase Realtime implementations ---'\ncat -n src/hooks/useAutomaticInventoryDeduction.tsx | sed -n '145,205p'\ncat -n src/hooks/useRecipes.tsx | sed -n '430,510p'\nprintf '%s\\n' '--- relevant mutation invalidations ---'\nrg -n -C 4 \"from\\\\(['\\\"](unified_sales|time_punches)['\\\"]\\\\)|invalidateQueries.*(unified-sales|timePunches|labor-intraday)\" src/hooks src/components | head -n 260\nprintf '%s\\n' '--- Realtime table configuration ---'\nrg -n -S -C 3 \"supabase_realtime|publication.*realtime|time_punches|unified_sales\" supabase/migrations | head -n 260\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 50373\n\n---\n\n\n\n</details>\n\n**Add Realtime invalidation for intraday labor data.**\n\nWhile the Day view is open, `staleTime: 60000` does not refetch the mounted query when new sales or punches arrive. Subscribe to `unified_sales` and `time_punches` changes for the restaurant, invalidate `['labor-intraday', restaurantId, tz, dateStr]`, and remove the channel during cleanup.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@src/hooks/useLaborIntradaySeries.ts` around lines 55 - 90, Add a realtime\nsubscription alongside the useQuery flow in useLaborIntradaySeries for\nunified_sales and time_punches changes filtered to restaurantId. In the\nsubscription callback, invalidate the exact ['labor-intraday', restaurantId, tz,\ndateStr] query key through the existing query client, and remove the realtime\nchannel during effect cleanup.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:f8ce99724f6deda0a1c4d578 -->\n\n_Source: Coding guidelines_\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "fe59e188490fab49bf77cedfb1b09684f1a8969e",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343083,
+        "file": "src/hooks/useLaborSalesAnalytics.ts",
+        "line": 33
+      },
+      "title": "_🎯 Functional Correctness_ | _🟠 Major_ | _⚡ Quick win_",
+      "body": "_🎯 Functional Correctness_ | _🟠 Major_ | _⚡ Quick win_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/usr/bin/env bash\nset -euo pipefail\n\n# Inspect all call sites and existing regression coverage for restaurant-local\n# date changes and React Query cache keys.\nrg -n -C 4 '\\buseLaborSalesAnalytics\\s*\\(' src tests\nrg -n -C 4 'labor-sales-analytics|localWindow|useTodayInTimezone' src tests\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 18723\n\n---\n\n🏁 Script executed:\n\n```shell\n#!/usr/bin/env bash\nset -euo pipefail\n\nprintf '%s\\n' '--- useLaborSalesAnalytics.ts ---'\ncat -n src/hooks/useLaborSalesAnalytics.ts | sed -n '1,55p'\n\nprintf '%s\\n' '--- useLaborPnlCore.ts ---'\ncat -n src/hooks/useLaborPnlCore.ts | sed -n '35,65p'\n\nprintf '%s\\n' '--- useTodayInTimezone.ts ---'\ncat -n src/hooks/useTodayInTimezone.ts | sed -n '1,80p'\n\nprintf '%s\\n' '--- localDateWindow.ts ---'\ncat -n src/lib/localDateWindow.ts | sed -n '1,70p'\n\nprintf '%s\\n' '--- static invariant check ---'\npython3 - <<'PY'\nfrom pathlib import Path\nimport re\n\nanalytics = Path(\"src/hooks/useLaborSalesAnalytics.ts\").read_text()\ncore = Path(\"src/hooks/useLaborPnlCore.ts\").read_text()\ntoday = Path(\"src/hooks/useTodayInTimezone.ts\").read_text()\n\nkey = re.search(r\"queryKey:\\s*\\[(.*?)\\]\", analytics, re.S)\nwindow_in_query = re.search(\n    r\"queryFn:.*?localWindow\\(tz,\\s*weeks\\)\",\n    analytics,\n    re.S,\n)\ncore_today = \"useTodayInTimezone(tz)\" in core\ncore_today_state = \"setTodayStr\" in today and \"setInterval\" in today\n\nprint(\"query_key:\", key.group(1).strip() if key else \"<not found>\")\nprint(\"window_computed_inside_query_fn:\", bool(window_in_query))\nprint(\"core_rerenders_from_useTodayInTimezone:\", core_today)\nprint(\"useTodayInTimezone_polls_for_day_rollover:\", core_today_state)\nprint(\"dates_in_query_key:\",\n      bool(key and re.search(r\"\\b(startStr|endStr)\\b\", key.group(1))))\nPY\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 6713\n\n---\n\n\n\n</details>\n\n**Include the local date window in the query key.**\n\nAt restaurant-local midnight, the caller rerenders, but the unchanged key lets React Query reuse data from the previous `endStr` until a focus or manual refetch. Compute `localWindow(tz, weeks)` before `useQuery` and add `startStr` and `endStr` to `queryKey`.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@src/hooks/useLaborSalesAnalytics.ts` around lines 23 - 33, Compute\nlocalWindow(tz, weeks) before configuring useQuery, then include its startStr\nand endStr values in the queryKey alongside the existing labor analytics\nidentifiers. Reuse those computed values in the queryFn RPC parameters so the\nkey and requested date window stay synchronized.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:39efe7fc171d0a8f82c4a21c -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "9e2e94f991eb1fafcc261b9f4ca717f4bd9693a7",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343090,
+        "file": "supabase/migrations/20260809120000_get_labor_sales_analytics.sql",
+        "line": 84
+      },
+      "title": "_🗄️ Data Integrity & Integration_ | _🟠 Major_ | _⚡ Quick win_",
+      "body": "_🗄️ Data Integrity & Integration_ | _🟠 Major_ | _⚡ Quick win_\n\n**Keep RPC revenue values numeric when `total_price` is NULL.**\n\n`unified_sales.total_price` is nullable. `SUM(total_price)` returns `NULL` when all eligible rows in a group have a NULL price. The RPC then returns `revenue: null`, but the TypeScript analytics contract expects a number.\n\n- `supabase/migrations/20260809120000_get_labor_sales_analytics.sql#L57-L84`: Use `ROUND(COALESCE(SUM(total_price), 0), 2)` in all three aggregates, or explicitly exclude invalid prices.\n- `supabase/tests/63_get_labor_sales_analytics.sql#L32-L44`: Add an eligible NULL-price row and assert the selected numeric behavior.\n\n<details>\n<summary>📍 Affects 2 files</summary>\n\n- `supabase/migrations/20260809120000_get_labor_sales_analytics.sql#L57-L84` (this comment)\n- `supabase/tests/63_get_labor_sales_analytics.sql#L32-L44`\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@supabase/migrations/20260809120000_get_labor_sales_analytics.sql` around\nlines 57 - 84, The revenue aggregates in the migration’s daily, grid, and\nby_weekday JSON sections must return numeric zero instead of null when all\neligible total_price values are null; update each ROUND(SUM(total_price), 2) to\ncoalesce the sum before rounding. In\nsupabase/tests/63_get_labor_sales_analytics.sql lines 32-44, add an eligible\nnull-price row and assert the resulting revenue is numeric zero.\n```\n\n</details>\n\n<!-- consolidated_sites_start -->\n<!--\n<consolidated_sites>\n<site>\n<role>anchor</role>\n<file>supabase/migrations/20260809120000_get_labor_sales_analytics.sql</file>\n<line_range>57-84</line_range>\n</site>\n<site>\n<role>sibling</role>\n<file>supabase/tests/63_get_labor_sales_analytics.sql</file>\n<line_range>32-44</line_range>\n</site>\n</consolidated_sites>\n-->\n<!-- consolidated_sites_end -->\n\n<!-- fingerprinting:phantom:medusa:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:9c98256dd77aa115ff6b0e7f -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "a18fb448878eb41e9dc3c7266d2c7808ac8e3c91",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343093,
+        "file": "supabase/tests/63_get_labor_sales_analytics.sql",
+        "line": 25
+      },
+      "title": "_📐 Maintainability & Code Quality_ | _🟡 Minor_ | _⚡ Quick win_",
+      "body": "_📐 Maintainability & Code Quality_ | _🟡 Minor_ | _⚡ Quick win_\n\n**Make fixture conflicts deterministic.**\n\n`ON CONFLICT DO NOTHING` can retain fixture values from an earlier setup. Use conflict targets with `DO UPDATE` to set the expected values.\n\nAs per coding guidelines, “Use ON CONFLICT ... DO UPDATE for idempotent test data inserts in pgTAP tests.”\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@supabase/tests/63_get_labor_sales_analytics.sql` around lines 14 - 25, Update\nthe fixture inserts for auth.users, restaurants, and user_restaurants to use\nexplicit conflict targets with ON CONFLICT ... DO UPDATE, resetting email,\nrestaurant name, and membership role to the expected test values on reruns.\nPreserve the existing fixture IDs and relationships so setup remains idempotent\nand deterministic.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:0150be1874c27b35fe3263a3 -->\n\n_Source: Coding guidelines_\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "cd5b5e96880781bb89d4e6ea8193e597718df99e",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343095,
+        "file": "supabase/tests/63_get_labor_sales_analytics.sql",
+        "line": 69
+      },
+      "title": "_📐 Maintainability & Code Quality_ | _🟠 Major_ | _⚡ Quick win_",
+      "body": "_📐 Maintainability & Code Quality_ | _🟠 Major_ | _⚡ Quick win_\n\n**Test the supplied time zone.**\n\nAll calls use `UTC`. A regression that ignores `p_time_zone` will pass. Add an `America/Chicago` call and assert that `2024-06-15T14:00:00Z` maps to hour `9`. Update `plan(15)`.\n\nAs per coding guidelines, “Write database tests in supabase/tests/*.sql using pgTAP for all SQL functions and migrations with logic (100% coverage).”\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@supabase/tests/63_get_labor_sales_analytics.sql` around lines 65 - 69, Extend\nthe pgTAP coverage around the main get_labor_sales_analytics call to invoke it\nwith America/Chicago and assert that 2024-06-15T14:00:00Z is assigned to hour 9,\nwhile preserving the existing UTC assertions. Increase the test plan from 15 to\n16 to include the new assertion.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:tapir -->\n\n<!-- cr-indicator-types:refactor_suggestion -->\n\n<!-- cr-comment:v1:5497f91be0ade16c199f2ba4 -->\n\n_Source: Coding guidelines_\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b1721836785399be5255f4b21d4275a6793540b1",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "741",
+        "comment_id": 3763343099,
+        "file": "tests/unit/localDateWindow.test.ts",
+        "line": 21
+      },
+      "title": "_📐 Maintainability & Code Quality_ | _🟡 Minor_ | _⚡ Quick win_",
+      "body": "_📐 Maintainability & Code Quality_ | _🟡 Minor_ | _⚡ Quick win_\n\n**Make the host-timezone precondition explicit.**\n\nThis test detects a host-local regression only when the host calendar date differs from `Pacific/Honolulu`. If the test runs in Honolulu, the regression passes.\n\nPin and verify a host timezone with a different date at the test instant. For example, use the repository timezone helper and a time where Phoenix is July 14 while Honolulu is July 13.\n\n\n\n\n\n\nBased on learnings, timezone-sensitive tests must verify that the effective host timezone differs from the restaurant fixture timezone.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nVerify each finding against current code. Fix only still-valid issues, skip the\nrest with a brief reason, keep changes minimal, and validate.\n\nIn `@tests/unit/localDateWindow.test.ts` around lines 15 - 21, Update the test\ncase around localWindow to explicitly pin the host timezone using the\nrepository’s timezone helper, choosing Phoenix for the existing instant where it\nis July 14 while Pacific/Honolulu remains July 13. Verify the effective host\ntimezone differs from the restaurant timezone before asserting the expected\nwindow, and restore the timezone and fake timers after the test.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:tapir -->\n\n<!-- cr-indicator-types:potential_issue -->\n\n<!-- cr-comment:v1:bdb293b7849fca0e6682f9a0 -->\n\n_Source: Learnings_\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "bf2816f5b75fbe8b8f4182fea50b6bf9dfa81eb1",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.691Z",
+      "updated_at": "2026-08-12T03:24:58.691Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/App.tsx",
+        "line": 201
+      },
+      "title": "react-refresh/only-export-components in App.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/App.tsx"
+      ],
+      "id": "b8e485306e7d8754e1041571a8323041660d09e1",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.721Z",
+      "updated_at": "2026-08-12T03:24:58.721Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/EmployeeDialog.tsx",
+        "line": 467
+      },
+      "title": "@typescript-eslint/no-explicit-any in EmployeeDialog.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/components/EmployeeDialog.tsx"
+      ],
+      "id": "f52b9092e7496742da1c1f7d63ff3d6c7c592717",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.722Z",
+      "updated_at": "2026-08-12T03:24:58.722Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/EmployeeDialog.tsx",
+        "line": 794
+      },
+      "title": "@typescript-eslint/no-explicit-any in EmployeeDialog.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/components/EmployeeDialog.tsx"
+      ],
+      "id": "63a281a6c298c64a0878829f9533a5286897aa8b",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.722Z",
+      "updated_at": "2026-08-12T03:24:58.722Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/scheduling/ShiftPlanner/EmployeeSidebar.tsx",
+        "line": 33
+      },
+      "title": "react-refresh/only-export-components in EmployeeSidebar.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/components/scheduling/ShiftPlanner/EmployeeSidebar.tsx"
+      ],
+      "id": "446f8032901b577b6e09c1e416863942870e6c6f",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.729Z",
+      "updated_at": "2026-08-12T03:24:58.729Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/scheduling/ShiftPlanner/EmployeeSidebar.tsx",
+        "line": 50
+      },
+      "title": "react-refresh/only-export-components in EmployeeSidebar.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/components/scheduling/ShiftPlanner/EmployeeSidebar.tsx"
+      ],
+      "id": "38486aab4583b17c3b0da379f237c84dc3636821",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.729Z",
+      "updated_at": "2026-08-12T03:24:58.729Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useMonthlyMetrics.tsx",
+        "line": 552
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "b5774dca7e59f3b691b438e0a925a42ccdf7b29d",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.734Z",
+      "updated_at": "2026-08-12T03:24:58.734Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useMonthlyMetrics.tsx",
+        "line": 585
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "0aaf6852f1f96971a8bad50dad2984c2208a4d3f",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.734Z",
+      "updated_at": "2026-08-12T03:24:58.734Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useMonthlyMetrics.tsx",
+        "line": 598
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "3c535230c0a6939655e45514ef089abd1e2b9fd1",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.734Z",
+      "updated_at": "2026-08-12T03:24:58.734Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 166
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/pages/Scheduling.tsx"
+      ],
+      "id": "547dfccd59af5ca260795c78ddfc2e05b1a5dc0b",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.746Z",
+      "updated_at": "2026-08-12T03:24:58.746Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 206
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/pages/Scheduling.tsx"
+      ],
+      "id": "97f0fdfb255f4d4f000701b0b3780db2365b1895",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.746Z",
+      "updated_at": "2026-08-12T03:24:58.746Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 407
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'setCurrentWeekStart'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/pages/Scheduling.tsx"
+      ],
+      "id": "44b413b3e3a8329c4d5f72d3b08fe8b8e3097584",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.746Z",
+      "updated_at": "2026-08-12T03:24:58.746Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/types/scheduling.ts",
+        "line": 241
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/types/scheduling.ts"
+      ],
+      "id": "4eef16f59629adbc703a47079bf19c0e9aa6c7dd",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.747Z",
+      "updated_at": "2026-08-12T03:24:58.747Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/types/scheduling.ts",
+        "line": 242
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/src/types/scheduling.ts"
+      ],
+      "id": "5028330647132aa3846fa0a999567e7cfa626147",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.747Z",
+      "updated_at": "2026-08-12T03:24:58.747Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 27
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "6f44538678ec80b9c6103d285c745fa99fac968f",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 33
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "574c92dcb8489b3b2cf09b837d1ae035c5459ebe",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 74
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "f193b8cb07da7f50bfe3428c850a85905f7d31eb",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 75
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "6cd952d41a81b0503ba4737c8fc9eb0fb161a355",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 114
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "71cbfcd091a874f7d886a6b5c2082dac1ea41ee9",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 176
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "06c4905e6d8a323fcf771314558948c1219cdc78",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 177
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "158688c2f6149de1391a498ec227d857642598c6",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 218
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "1a3c1aa3d3302ac6bec82e7084a6195e5533d376",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 236
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "a302c0944a54d69efd3609a7b7e983f678dc35b2",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 237
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "2789a0f30ce5c5d48061ac8b2c06e553cd36d3b0",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 287
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "22aa3e749eb31affdac3d106a8a12a855ae6ade9",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 288
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "2a61256598e1c354d0ee45f92ae25772cab53408",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/sensitive-data-flags.spec.ts",
+        "line": 314
+      },
+      "title": "@typescript-eslint/no-explicit-any in sensitive-data-flags.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/e2e/sensitive-data-flags.spec.ts"
+      ],
+      "id": "6753fd8d3abaae8d0188446cf2fe6b93baaa60ad",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.787Z",
+      "updated_at": "2026-08-12T03:24:58.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 121
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "ce956dfd19d15016194c0a61e8216b3f836f7477",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.794Z",
+      "updated_at": "2026-08-12T03:24:58.794Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 142
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "02f13b72d8d96501bdf3d7aeb5a182b06619d585",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.794Z",
+      "updated_at": "2026-08-12T03:24:58.794Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 157
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "89c3f6af1976577d706d484c4bf74b22985e7f0d",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.794Z",
+      "updated_at": "2026-08-12T03:24:58.794Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 175
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "5a452c19e0c355b0cc8136b9cd709e9d4e8bc7d2",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.794Z",
+      "updated_at": "2026-08-12T03:24:58.794Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 204
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "fcd00e68f7aba27c2baa545b6d3ea421aaad8196",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.794Z",
+      "updated_at": "2026-08-12T03:24:58.794Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 222
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "4cdc551d4f565ebad44637b7c15b66975699d1c1",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.794Z",
+      "updated_at": "2026-08-12T03:24:58.794Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 231
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "94602830808bcf70162e39b990ec6ce714aac7f7",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.794Z",
+      "updated_at": "2026-08-12T03:24:58.794Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 238
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "4eebfa75884601f15cc1c651f647a4fce9bd8967",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 253
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "b35764a1d7404cd647f2efd5b07caef82721460a",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 296
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "cce8fcae81374ae7ef6bee19ccbce93087f0a802",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 355
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "6253b782af8415aa50bfb724898c5100dcbffba0",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 521
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "ea325eed4fffe0440579a09c9800e6fbc8ab1f6f",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 557
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "5e231c4c62d2b27ac5a2e5ee15c85485ccf25847",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 570
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "fea8ff727bd09e313f19e3f086be5c4e6e2e9ccd",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 642
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "b85da7adad283dab8ed2303f49b334e0306585c2",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 647
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "610af0a88191e1a3f4db26ac82fc33f694916d46",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 674
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "4237c59094fa144a13b2c6f3698d07750d8da6cd",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 692
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "21a36ab7fd0a0f647efbd672f93bb9d44c62c8e5",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 926
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "d1099fea94837fa9ab8da5b6772438ac178c736b",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 971
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "3b4bd7177726c78d86da65f7c58518de85297770",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 1041
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "b2ddf1e92e832af7ca61be6d765f9499d162e7a9",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.795Z",
+      "updated_at": "2026-08-12T03:24:58.795Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 1227
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "243a2328ca939fa42c7c9eef5554ad13d3d5f8e2",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.796Z",
+      "updated_at": "2026-08-12T03:24:58.796Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/helpers/e2e-supabase.ts",
+        "line": 1230
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/perf+labor-sales-aggregation/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "614b2a1dadde71dbbacdb8c481a74f3de83ffa8a",
+      "status": "open",
+      "created_at": "2026-08-12T03:24:58.796Z",
+      "updated_at": "2026-08-12T03:24:58.796Z"
     }
   ]
 }

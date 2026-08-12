@@ -9,7 +9,7 @@
  * what my team cost me" with payroll-grade labor $ (see design §1.1/§4).
  */
 
-import { mondayOf, hourOfSale, distributeWorkedHours } from './splhAnalytics';
+import { mondayOf, hourOfSale, distributeWorkedHours, FALLBACK_OPEN_HOUR, FALLBACK_CLOSE_HOUR } from './splhAnalytics';
 import type { SplhPoint, SplhGridCell, SplhSaleRow } from './splhAnalytics';
 import { formatCoverageHour } from './coverageSummary';
 import type { LaborCostData } from '@/hooks/useLaborCostsFromTimeTracking';
@@ -549,4 +549,64 @@ export function balanceStateBgClassName(
   if (tone === 'under') return 'bg-[hsl(var(--labor-under))]';
   if (tone === 'balanced') return 'bg-[hsl(var(--labor-balanced))]';
   return noneClassName;
+}
+
+/**
+ * Maps the RPC `daily` array to the `SplhPoint[]` shape the labor daily series
+ * consumes. `totalHours`/`splh` are unused by the financial series (it reads
+ * only `bucketStart` + `totalSales`), so they are zero/null. Mirrors the
+ * `buildSplhTimeseries(..., 'day')` output this replaces.
+ */
+export function dailySalesFromRpc(daily: { sale_date: string; revenue: number }[]): SplhPoint[] {
+  return daily.map((d) => ({
+    bucketStart: d.sale_date,
+    label: d.sale_date,
+    totalSales: d.revenue,
+    totalHours: 0,
+    splh: null,
+  }));
+}
+
+/**
+ * Maps the RPC grid/by_weekday arrays to a full 7x24 `SplhGridCell[]`, matching
+ * `buildSplhGrid`'s sales output to the cent. When `hasHourly` is true, real
+ * (dow, hour) revenue fills the reported cells. When false (no sale carries an
+ * hour), each weekday's total is spread evenly across business hours 9..21 —
+ * the same daily-spread fallback `buildSplhGrid` performs. Labor hours are not
+ * part of this map (the caller supplies labor separately); `totalHours` is 0
+ * and `splh` is null, and every cell is `state: 'closed'` — the busy-hours grid
+ * (`buildSalesVolumeGrid`) reads only `totalSales`/`dow`/`hour`.
+ */
+export function salesGridCellsFromRpc(
+  grid: { dow: number; hour: number; revenue: number }[],
+  byWeekday: { dow: number; revenue: number }[],
+  hasHourly: boolean,
+): SplhGridCell[] {
+  const key = (dow: number, hour: number) => dow * 24 + hour;
+  const salesMap = new Map<number, number>();
+  if (hasHourly) {
+    for (const cell of grid) salesMap.set(key(cell.dow, cell.hour), cell.revenue);
+  } else {
+    const businessHours = FALLBACK_CLOSE_HOUR - FALLBACK_OPEN_HOUR;
+    for (const w of byWeekday) {
+      const perHour = w.revenue / businessHours;
+      for (let hour = FALLBACK_OPEN_HOUR; hour < FALLBACK_CLOSE_HOUR; hour++) {
+        salesMap.set(key(w.dow, hour), perHour);
+      }
+    }
+  }
+  const cells: SplhGridCell[] = [];
+  for (let dow = 0; dow < 7; dow++) {
+    for (let hour = 0; hour < 24; hour++) {
+      cells.push({
+        dow,
+        hour,
+        totalSales: round2(salesMap.get(key(dow, hour)) ?? 0),
+        totalHours: 0,
+        splh: null,
+        state: 'closed',
+      });
+    }
+  }
+  return cells;
 }

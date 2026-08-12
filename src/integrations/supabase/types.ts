@@ -11286,6 +11286,15 @@ export type Database = {
           on_break: boolean
         }[]
       }
+      get_labor_sales_analytics: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+          p_time_zone?: string
+        }
+        Returns: Json
+      }
       get_monthly_sales_metrics: {
         Args: {
           p_date_from: string

@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest';
 import type { RestaurantUpdate } from '@/hooks/useRestaurants';
 
-describe('RestaurantUpdate excludes the guarded billing columns', () => {
+describe('CRITICAL: RestaurantUpdate excludes the guarded billing columns', () => {
   it('accepts the non-billing columns the settings page writes', () => {
     const settings: RestaurantUpdate = {
       name: 'Test Restaurant',

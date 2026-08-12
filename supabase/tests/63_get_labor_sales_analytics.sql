@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(15);
+SELECT plan(17);
 
 -- Fixed identities for this test.
 -- member:     00000000-0000-0000-0000-000000000000
@@ -13,16 +13,16 @@ SET LOCAL role TO postgres;
 -- auth.users(id). Seed it first.
 INSERT INTO auth.users (id, email)
 VALUES ('00000000-0000-0000-0000-000000000000', 'labor-rpc-test@example.com')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 -- Seed a restaurant and a member.
 INSERT INTO restaurants (id, name)
 VALUES ('00000000-0000-0000-0000-000000000099', 'Labor RPC Test Diner')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role)
 VALUES ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000099', 'owner')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 -- unified_sales requires pos_system, external_order_id, item_name (all NOT NULL,
 -- no default). A partial unique index (restaurant_id, pos_system,
@@ -57,6 +57,14 @@ VALUES ('bbbbbbbb-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, sale_date, sale_time, sold_at, total_price, item_type, parent_sale_id, adjustment_type)
 VALUES ('bbbbbbbb-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000099',
         'manual', 'ls-x3', 'Test Item', '2024-06-15', '14:00:00', '2024-06-15T14:00:00Z', 4000, 'tip', NULL, NULL);
+
+-- S4: 2024-07-01, outside the main 06-01..06-30 window below (so it does not
+-- change the 'daily'/'by_weekday' assertions on 'r'), an eligible sale row
+-- with a NULL price. The COALESCE(SUM(...), 0) guard must turn this into
+-- numeric 0, not SQL NULL.
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, sale_date, sale_time, sold_at, total_price, item_type, parent_sale_id, adjustment_type)
+VALUES ('aaaaaaaa-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000099',
+        'manual', 'ls-4', 'Test Item', '2024-07-01', NULL, NULL, NULL, 'sale', NULL, NULL);
 
 -- Act as the member.
 SET LOCAL request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000000","role":"authenticated"}';
@@ -136,6 +144,29 @@ SELECT get_labor_sales_analytics(
 ) AS r3 \gset
 SELECT is(:'r3'::jsonb->'daily', '[]'::jsonb, 'empty range returns an empty daily array');
 SELECT is(:'r3'::jsonb->'has_hourly', 'false'::jsonb, 'empty range returns has_hourly false');
+
+-- NULL-price revenue: a day with only a NULL-price eligible sale row still
+-- returns a numeric zero, not SQL NULL (the COALESCE(SUM(...), 0) guard).
+SELECT get_labor_sales_analytics(
+  '00000000-0000-0000-0000-000000000099',
+  '2024-07-01'::date, '2024-07-01'::date, 'UTC'
+) AS r4 \gset
+SELECT is(
+  (SELECT (elem->>'revenue')::numeric FROM jsonb_array_elements(:'r4'::jsonb->'daily') elem),
+  0::numeric, 'a NULL-price row totals to numeric zero, not NULL'
+);
+
+-- Timezone-aware hour bucket: America/Chicago is UTC-5 in June (CDT), so S1's
+-- sold_at 2024-06-15T14:00:00Z buckets to hour 9, not hour 14 (UTC).
+SELECT get_labor_sales_analytics(
+  '00000000-0000-0000-0000-000000000099',
+  '2024-06-15'::date, '2024-06-15'::date, 'America/Chicago'
+) AS r5 \gset
+SELECT is(
+  (SELECT (elem->>'revenue')::numeric FROM jsonb_array_elements(:'r5'::jsonb->'grid') elem
+   WHERE (elem->>'dow')::int = 6 AND (elem->>'hour')::int = 9),
+  100::numeric, 'America/Chicago buckets sold_at 14:00Z to local hour 9'
+);
 
 -- Access control: a non-member is denied.
 SET LOCAL request.jwt.claims = '{"sub":"99999999-9999-9999-9999-999999999999","role":"authenticated"}';

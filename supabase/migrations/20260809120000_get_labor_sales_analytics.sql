@@ -15,7 +15,7 @@ RETURNS JSONB
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_time_zone TEXT := COALESCE(p_time_zone, 'America/Chicago');
@@ -24,7 +24,7 @@ BEGIN
   -- Access check: the caller must be a member of the restaurant. SECURITY
   -- DEFINER bypasses RLS, so this gate is the tenant isolation boundary.
   IF NOT EXISTS (
-    SELECT 1 FROM user_restaurants ur
+    SELECT 1 FROM public.user_restaurants ur
     WHERE ur.restaurant_id = p_restaurant_id
       AND ur.user_id = auth.uid()
   ) THEN
@@ -42,7 +42,7 @@ BEGIN
           THEN EXTRACT(HOUR FROM us.sale_time)::int
         ELSE NULL
       END AS hour_bucket
-    FROM unified_sales us
+    FROM public.unified_sales us
     WHERE us.restaurant_id = p_restaurant_id
       AND us.parent_sale_id IS NULL
       AND us.adjustment_type IS NULL
@@ -54,7 +54,7 @@ BEGIN
     'daily', (
       SELECT COALESCE(jsonb_agg(d ORDER BY d.sale_date), '[]'::jsonb)
       FROM (
-        SELECT sale_date, ROUND(SUM(total_price), 2) AS revenue
+        SELECT sale_date, ROUND(COALESCE(SUM(total_price), 0), 2) AS revenue
         FROM revenue_rows
         GROUP BY sale_date
       ) d
@@ -65,7 +65,7 @@ BEGIN
         SELECT
           EXTRACT(DOW FROM sale_date)::int AS dow,
           hour_bucket AS hour,
-          ROUND(SUM(total_price), 2) AS revenue
+          ROUND(COALESCE(SUM(total_price), 0), 2) AS revenue
         FROM revenue_rows
         WHERE hour_bucket IS NOT NULL
         GROUP BY EXTRACT(DOW FROM sale_date)::int, hour_bucket
@@ -74,7 +74,7 @@ BEGIN
     'by_weekday', (
       SELECT COALESCE(jsonb_agg(w ORDER BY w.dow), '[]'::jsonb)
       FROM (
-        SELECT EXTRACT(DOW FROM sale_date)::int AS dow, ROUND(SUM(total_price), 2) AS revenue
+        SELECT EXTRACT(DOW FROM sale_date)::int AS dow, ROUND(COALESCE(SUM(total_price), 0), 2) AS revenue
         FROM revenue_rows
         GROUP BY EXTRACT(DOW FROM sale_date)::int
       ) w

@@ -4,6 +4,7 @@ import { fromZonedTime } from 'date-fns-tz';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useNowTick } from '@/hooks/useNowTick';
 import { buildIntradayFinancialSeries } from '@/lib/laborPnlAnalytics';
 import type { FinancialPoint } from '@/lib/laborPnlAnalytics';
 import { computeAvgHourlyRateCents } from '@/lib/staffingCalculator';
@@ -41,11 +42,11 @@ export function useLaborIntradaySeries(
   dateStr: string,
   targetPct: number,
   enabled: boolean,
-): { series: FinancialPoint[]; isLoading: boolean } {
+): { series: FinancialPoint[]; isLoading: boolean; isError: boolean; error: Error | null } {
   const { employees } = useEmployees(restaurantId, { status: 'all' });
   const avgHourlyRateCents = useMemo(() => computeAvgHourlyRateCents(employees), [employees]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['labor-intraday', restaurantId, tz, dateStr],
     queryFn: async (): Promise<IntradayData> => {
       const dayStart = fromZonedTime(`${dateStr}T00:00:00`, tz);
@@ -82,12 +83,26 @@ export function useLaborIntradaySeries(
     refetchOnWindowFocus: true,
   });
 
+  // Close still-open shifts at "now" before deriving sessions, so the chart's
+  // in-progress hours keep advancing while a shift stays open. `nowMs` (a
+  // minute ticker) is a real dependency: React Query's structural sharing
+  // keeps `data.punches` reference-stable across content-identical refetches,
+  // so a memo keyed only on the punches would freeze the synthetic clock-out
+  // at first compute and the chart's labor line would collapse mid-shift.
+  const nowMs = useNowTick();
   const series = useMemo(() => {
     if (!data) return [];
-    const sessions = identifyWorkSessions(normalizePunches(appendOpenShiftClockOuts(data.punches, new Date())));
+    const sessions = identifyWorkSessions(
+      normalizePunches(appendOpenShiftClockOuts(data.punches, new Date(nowMs))),
+    );
     const capHour = dateStr === getTodayInTimezone(tz) ? currentHourInTz(tz) : undefined;
     return buildIntradayFinancialSeries(data.sales, sessions, tz, dateStr, avgHourlyRateCents, targetPct, capHour);
-  }, [data, dateStr, tz, avgHourlyRateCents, targetPct]);
+  }, [data, dateStr, tz, avgHourlyRateCents, targetPct, nowMs]);
 
-  return { series, isLoading: enabled ? isLoading : false };
+  return {
+    series,
+    isLoading: enabled ? isLoading : false,
+    isError: enabled ? isError : false,
+    error: enabled ? (error as Error | null) : null,
+  };
 }

@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { buildIntradayFinancialSeries } from '@/lib/laborPnlAnalytics';
@@ -90,5 +90,57 @@ describe('useLaborIntradaySeries', () => {
     );
     expect(result.current.series).toEqual([]);
     expect(fromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('useLaborIntradaySeries — open shift "now" tick', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Regression test: the `series` memo used to depend only on `data` (plus
+  // dateStr/tz/rate/target), so an open shift's synthetic clock-out froze at
+  // the first compute. React Query keeps `data.punches` reference-stable
+  // across content-identical refetches (structural sharing), so this only
+  // shows up when time passes with NO new fetch — exactly what this test
+  // does via `useNowTick`, not a refetch.
+  it('keeps advancing the open-shift labor hours as real time passes, with no new fetch', async () => {
+    // `shouldAdvanceTime` keeps the fake clock ticking at real-world pace so
+    // Testing Library's `waitFor` (which polls via real `setTimeout`) still
+    // works, while `setSystemTime`/`advanceTimersByTime` can still jump it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-07-06T14:00:00Z'));
+    mockGetToday.mockReturnValue('2026-07-06'); // dateStr below IS "today" -> capHour applies
+    const openShiftPunch: TimePunch = {
+      id: 'p1',
+      restaurant_id: 'rest-1',
+      employee_id: 'emp-1',
+      punch_type: 'clock_in',
+      punch_time: '2026-07-06T12:00:00Z',
+    } as TimePunch;
+    fromMock.mockImplementation((table: string) =>
+      table === 'unified_sales' ? makeBuilder(SALES) : makeBuilder([openShiftPunch]));
+
+    const { result } = renderHook(
+      () => useLaborIntradaySeries('rest-1', 'UTC', '2026-07-06', 22, true),
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(fromMock).toHaveBeenCalledTimes(2); // one fetch for sales, one for punches
+
+    const sumHours = () => result.current.series.reduce((total, p) => total + p.laborHours, 0);
+    const hoursAt14 = sumHours();
+    expect(hoursAt14).toBeGreaterThan(0); // clocked in at 12:00, ~2h worked so far
+
+    // Advance 2 real hours. No refetch: the queryKey is unchanged, so React
+    // Query serves the same `data` object — only the `useNowTick` ticker moves.
+    act(() => {
+      vi.setSystemTime(new Date('2026-07-06T16:00:00Z'));
+      vi.advanceTimersByTime(2 * 60 * 60 * 1000);
+    });
+
+    expect(fromMock).toHaveBeenCalledTimes(2); // still no new fetch
+    const hoursAt16 = sumHours();
+    expect(hoursAt16).toBeGreaterThan(hoursAt14); // the open shift kept accruing hours
   });
 });

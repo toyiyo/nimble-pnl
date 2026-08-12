@@ -65,7 +65,7 @@ function setup(overrides: {
   isLoading?: boolean;
   isError?: boolean;
   updateSettings?: ReturnType<typeof vi.fn>;
-  intraday?: { series: typeof INTRADAY_SERIES; isLoading: boolean };
+  intraday?: { series: typeof INTRADAY_SERIES; isLoading: boolean; isError?: boolean; error?: Error | null };
 } = {}) {
   mockUseRestaurantContext.mockReturnValue({
     selectedRestaurant: { restaurant: { timezone: overrides.timezone ?? 'UTC' } },
@@ -91,7 +91,7 @@ function setup(overrides: {
     capped: overrides.laborCapped ?? false,
   });
   mockUseLaborIntradaySeries.mockReturnValue(
-    overrides.intraday ?? { series: INTRADAY_SERIES, isLoading: false },
+    overrides.intraday ?? { series: INTRADAY_SERIES, isLoading: false, isError: false, error: null },
   );
 }
 
@@ -239,6 +239,17 @@ describe('useLaborPnlAnalytics', () => {
     const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
     // today = 2026-07-10 → single day → intraday; its loading must surface.
     expect(result.current.isLoading).toBe(true);
+  });
+
+  it('ORs the intraday hook error state into isError/error for a single-day range', () => {
+    const intradayError = new Error('single-day fetch failed');
+    setup({ intraday: { series: [], isLoading: false, isError: true, error: intradayError } });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
+    // today = 2026-07-10 → single day → intraday; its error must surface, not
+    // get silently dropped (an empty series with no error signal would break
+    // the chart's loading/empty/error state contract).
+    expect(result.current.isError).toBe(true);
+    expect(result.current.error).toBe(intradayError);
   });
 
   it('returns an empty series and an all-zero grid when there is no data (loading)', () => {

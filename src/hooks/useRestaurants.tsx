@@ -82,8 +82,19 @@ type GuardedBillingColumn =
  * aborts the whole statement, so a billing column in the payload fails at
  * runtime, not at build time (memory/lessons.md, PR #738 and PR #739). This type
  * moves that failure to the compiler.
+ *
+ * `Omit` alone is not enough. TypeScript checks excess properties only on an
+ * object literal at the assignment. A pre-built variable is checked by
+ * structural assignability, which permits extra properties. So
+ * `Omit<Partial<Restaurant>, GuardedBillingColumn>` accepts
+ * `const p = { name: 'X', subscription_tier: 'pro' }`. The `?: never` half
+ * rejects it, because `string` is not assignable to `never`. The two halves
+ * together also cover `subscription_cancel_at` and `stripe_customer_id`, which
+ * the `Restaurant` interface does not declare, so `Omit` cannot reach them.
  */
-export type RestaurantUpdate = Omit<Partial<Restaurant>, GuardedBillingColumn>;
+export type RestaurantUpdate = Omit<Partial<Restaurant>, GuardedBillingColumn> & {
+  [K in GuardedBillingColumn]?: never;
+};
 
 export interface UserRestaurant {
   id: string;

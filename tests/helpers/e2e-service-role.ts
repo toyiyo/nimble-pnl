@@ -35,7 +35,11 @@ let cachedClient: SupabaseClient<Database> | null = null;
 function readEnvLocal(key: string): string | undefined {
   let dir = process.cwd();
 
-  for (let depth = 0; depth < 5; depth += 1) {
+  // The loop ends at the filesystem root. Both paths below take `dirname(dir)`
+  // and return when it stops changing, so the walk is bounded by the path
+  // depth. A fixed depth cap is not safe here: a worktree sits three levels
+  // inside the repository, and a test can start deeper still.
+  for (;;) {
     let contents: string;
     try {
       contents = readFileSync(join(dir, '.env.local'), 'utf8');
@@ -60,8 +64,6 @@ function readEnvLocal(key: string): string | undefined {
     if (parent === dir) return undefined;
     dir = parent;
   }
-
-  return undefined;
 }
 
 /** Prefer the process env, so the CI job env always wins. */

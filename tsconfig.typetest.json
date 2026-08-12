@@ -1,0 +1,15 @@
+// Type-assertion tests. `npm run typecheck` compiles only `src`, and Vitest
+// strips types with esbuild without checking them. A `@ts-expect-error` in a
+// test file is therefore a no-op under both. This config compiles the type
+// tests so those directives become a real gate (`npm run typecheck:types`).
+//
+// The include list is one file per type under test, not `tests`. The wider
+// test tree carries 930 pre-existing type errors, so a broad include would
+// fail on day one and gate nothing.
+{
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/vite-env.d.ts",
+    "tests/unit/restaurantUpdateBillingColumns.test.ts"
+  ]
+}

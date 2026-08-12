@@ -7,11 +7,15 @@
  *
  * PR #738 and PR #739 show the failure mode this file prevents: a server-side
  * gate landed on a column, the client kept touching that column, and the break
- * appeared at runtime instead of at build time. `RestaurantUpdate` omits the ten
- * guarded columns, so `tsc` rejects such a payload before it ships.
+ * appeared at runtime instead of at build time. `RestaurantUpdate` blocks the
+ * ten guarded columns, so `tsc` rejects such a payload before it ships.
  *
- * These are type assertions. `npm run typecheck` is the real test. The runtime
- * cases below keep the file honest in Vitest.
+ * These are type assertions, so `npm run typecheck:types` is the real test.
+ * Do not rely on Vitest here. Vitest strips the types with esbuild and never
+ * checks them, so every `@ts-expect-error` below passes under `npm run test`
+ * whatever the type says. `npm run typecheck` does not cover this file either:
+ * tsconfig.app.json includes only `src`. The CI `Unit Tests` job runs
+ * `typecheck:types` for that reason.
  */
 import { describe, it, expect } from 'vitest';
 import type { RestaurantUpdate } from '@/hooks/useRestaurants';
@@ -44,9 +48,7 @@ describe('RestaurantUpdate excludes the guarded billing columns', () => {
     // Each @ts-expect-error below fails the build if the column becomes
     // assignable again. That is the assertion.
     //
-    // Nine of the ten guarded columns appear here. The tenth,
-    // subscription_cancel_at, is absent from the `Restaurant` interface, so an
-    // object literal that carries it already fails as an excess property.
+    // All ten guarded columns appear here.
     const rejected: RestaurantUpdate[] = [
       // @ts-expect-error subscription_tier is guarded; Stripe owns it
       { subscription_tier: 'pro' },
@@ -66,8 +68,40 @@ describe('RestaurantUpdate excludes the guarded billing columns', () => {
       { grandfathered_until: '2030-01-01T00:00:00Z' },
       // @ts-expect-error stripe_customer_id is guarded; Stripe owns it
       { stripe_customer_id: 'cus_fake2' },
+      // @ts-expect-error subscription_cancel_at is guarded; Stripe owns it
+      { subscription_cancel_at: '2030-01-01T00:00:00Z' },
     ];
 
-    expect(rejected).toHaveLength(9);
+    expect(rejected).toHaveLength(10);
+  });
+
+  it('rejects a guarded column in a variable payload, not only in a literal', () => {
+    // TypeScript checks excess properties only on an object literal at the
+    // assignment. A variable is checked by structural assignability, which
+    // permits extra properties. `Omit` alone therefore lets these three through
+    // to the database, where the guard raises SQLSTATE 42501 at runtime. The
+    // `?: never` half of `RestaurantUpdate` rejects them at build time.
+    const withTier = { name: 'Test Restaurant', subscription_tier: 'pro' };
+    // @ts-expect-error subscription_tier is guarded, even in a variable payload
+    const tierPayload: RestaurantUpdate = withTier;
+
+    const withCustomer = { name: 'Test Restaurant', stripe_customer_id: 'cus_fake' };
+    // @ts-expect-error stripe_customer_id is guarded, even in a variable payload
+    const customerPayload: RestaurantUpdate = withCustomer;
+
+    const withCancelAt = { name: 'Test Restaurant', subscription_cancel_at: '2030-01-01' };
+    // @ts-expect-error subscription_cancel_at is guarded, even in a variable payload
+    const cancelAtPayload: RestaurantUpdate = withCancelAt;
+
+    expect([tierPayload, customerPayload, cancelAtPayload]).toHaveLength(3);
+  });
+
+  it('accepts a variable payload that holds only allowed columns', () => {
+    // The negative cases above must not pass for the wrong reason. This case
+    // proves a variable payload is still assignable when no column is guarded.
+    const allowed = { name: 'Test Restaurant', city: 'Austin' };
+    const payload: RestaurantUpdate = allowed;
+
+    expect(payload.city).toBe('Austin');
   });
 });

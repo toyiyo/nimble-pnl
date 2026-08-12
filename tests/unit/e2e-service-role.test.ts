@@ -211,6 +211,31 @@ describe('tests/helpers/e2e-service-role', () => {
     );
   });
 
+  it('searches past seven parent directories to find .env.local', async () => {
+    // A fixed depth cap breaks a deep working directory. A worktree already
+    // sits three levels inside the repository, and a test can start deeper.
+    // Seven levels is past any small cap and still ends at the filesystem root.
+    const root = process.cwd();
+    writeFileSync(
+      join(root, '.env.local'),
+      'SUPABASE_URL=http://from-deep-root:54321\nSUPABASE_SERVICE_ROLE_KEY=deep-root-key\n'
+    );
+
+    const deep = join(root, 'a', 'b', 'c', 'd', 'e', 'f', 'g');
+    mkdirSync(deep, { recursive: true });
+    process.chdir(deep);
+
+    const { setSubscriptionTier } = await import('../helpers/e2e-service-role');
+
+    await setSubscriptionTier('restaurant-1', 'pro', 'active');
+
+    expect(createClientMock).toHaveBeenCalledWith(
+      'http://from-deep-root:54321',
+      'deep-root-key',
+      expect.anything()
+    );
+  });
+
   it('asks PostgREST to return the updated row so a zero-row update is detectable', async () => {
     process.env.SUPABASE_URL = 'http://localhost:54321';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';

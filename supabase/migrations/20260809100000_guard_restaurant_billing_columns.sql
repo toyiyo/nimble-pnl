@@ -29,13 +29,39 @@ LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = pg_catalog, pg_temp
 AS $$
+DECLARE
+  v_claims      text;
+  v_is_end_user boolean := false;
 BEGIN
-  IF current_user IN ('authenticated', 'anon')
-     OR coalesce(
-          nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
-          ''
-        ) IN ('authenticated', 'anon')
-  THEN
+  -- Two hazards make this a control-flow block, not one SQL OR expression.
+  --
+  -- 1. Postgres does not guarantee that OR short-circuits. A single
+  --    "role check OR claim cast" evaluates the cast even when the role check
+  --    alone is TRUE. plpgsql IF/ELSE does guarantee the order.
+  -- 2. The cast raises on text that is not JSON. An uncaught raise here aborts
+  --    every UPDATE on public.restaurants, for every role, not only the
+  --    billing writes this guard must block.
+  --
+  -- PostgREST sets current_user from the verified JWT, and a client cannot
+  -- forge it. So the common end-user path stops at the first branch and never
+  -- reads the claim.
+  IF current_user IN ('authenticated', 'anon') THEN
+    v_is_end_user := true;
+  ELSE
+    v_claims := nullif(current_setting('request.jwt.claims', true), '');
+    IF v_claims IS NOT NULL THEN
+      BEGIN
+        v_is_end_user := coalesce(v_claims::jsonb ->> 'role', '')
+                           IN ('authenticated', 'anon');
+      EXCEPTION WHEN others THEN
+        -- A claim that is not JSON proves nothing about the caller. Fall back
+        -- to current_user, which the first branch already tested.
+        v_is_end_user := false;
+      END;
+    END IF;
+  END IF;
+
+  IF v_is_end_user THEN
     IF NEW.subscription_tier IS DISTINCT FROM OLD.subscription_tier
        OR NEW.subscription_status IS DISTINCT FROM OLD.subscription_status
        OR NEW.subscription_period IS DISTINCT FROM OLD.subscription_period

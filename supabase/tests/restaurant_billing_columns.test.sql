@@ -5,7 +5,7 @@
 -- public.restaurants from PostgREST callers (authenticated, anon). Only
 -- service_role, postgres, and supabase_admin may write these columns.
 BEGIN;
-SELECT plan(22);
+SELECT plan(28);
 
 -- ==========================================
 -- Fixture: one restaurant, one owner, one manager, one staff member.
@@ -198,12 +198,27 @@ SELECT lives_ok(
   'owner can change address and timezone together'
 );
 
+-- lives_ok alone would still pass if the trigger were deleted. Check the
+-- values to make this case fail on a regression.
+RESET ROLE;
+SELECT is(
+  (SELECT address || '|' || timezone FROM public.restaurants
+     WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid),
+  '2 Test Way|America/New_York',
+  'the address and timezone control write landed'
+);
+
 -- ==========================================
 -- Case 16: writing subscription_tier with its current value is a no-op
 -- under IS DISTINCT FROM, so it does not trip the guard
 -- ==========================================
 
 RESET ROLE;
+SELECT set_config('pgtap.pre_selfassign_subscription_tier',
+  (SELECT subscription_tier FROM public.restaurants
+     WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid),
+  true);
+
 SET LOCAL role TO authenticated;
 SELECT set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-b0000000a001","role":"authenticated"}', true);
@@ -212,6 +227,14 @@ SELECT lives_ok(
   $$UPDATE public.restaurants SET subscription_tier = subscription_tier
     WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid$$,
   'owner writing subscription_tier with its current value does not trip the guard'
+);
+
+RESET ROLE;
+SELECT is(
+  (SELECT subscription_tier FROM public.restaurants
+     WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid),
+  current_setting('pgtap.pre_selfassign_subscription_tier'),
+  'subscription_tier is unchanged after the self-assign'
 );
 
 -- ==========================================
@@ -303,6 +326,65 @@ SELECT lives_ok(
   $$UPDATE public.restaurants SET subscription_tier = 'pro'
     WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid$$,
   'postgres can change subscription_tier'
+);
+
+SELECT is(
+  (SELECT subscription_tier FROM public.restaurants
+     WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid),
+  'pro',
+  'the postgres write landed'
+);
+
+-- ==========================================
+-- Case 23-24: a malformed request.jwt.claims must not break the Stripe
+-- webhook path.
+--
+-- service_role and postgres carry rolbypassrls, so RLS never calls
+-- auth.uid() for them. A malformed claims GUC is therefore harmless to
+-- them today. This trigger is FOR EACH ROW on every UPDATE, so an
+-- unguarded cast in it would newly break service_role writes -- the
+-- Stripe webhook. The guard reads the claim in a trapped block to
+-- prevent that.
+--
+-- The matching authenticated case is not testable. authenticated does
+-- not bypass RLS, so auth.uid() raises on the same malformed claim
+-- before the trigger ever runs.
+-- ==========================================
+
+RESET ROLE;
+SET LOCAL role TO service_role;
+SELECT set_config('request.jwt.claims', 'not-json-at-all', true);
+
+SELECT lives_ok(
+  $$UPDATE public.restaurants SET subscription_tier = 'starter'
+    WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid$$,
+  'a malformed request.jwt.claims does not break a service_role billing write'
+);
+
+RESET ROLE;
+SELECT is(
+  (SELECT subscription_tier FROM public.restaurants
+     WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid),
+  'starter',
+  'the service_role write landed despite the malformed claim'
+);
+
+-- ==========================================
+-- Case 25: a malformed claim must not become a bypass. current_user is
+-- still the primary gate, and a client cannot forge it.
+-- ==========================================
+
+RESET ROLE;
+SET LOCAL role TO authenticated;
+SELECT set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-b0000000a001","role":"authenticated"}', true);
+
+SELECT throws_ok(
+  $$UPDATE public.restaurants SET subscription_tier = 'pro'
+    WHERE id = '00000000-0000-0000-0000-b00000000001'::uuid$$,
+  '42501',
+  'Direct writes to restaurants billing columns are not allowed; billing changes come from Stripe',
+  'the guard still blocks an owner after the malformed-claim cases'
 );
 
 SELECT * FROM finish();

@@ -59,6 +59,32 @@ export interface RoleRecord {
   role_flags: Array<{ flag: SensitiveFlag }>;
 }
 
+/**
+ * The ten billing columns that the `restaurant_billing_columns_guard` trigger
+ * blocks for PostgREST callers
+ * (supabase/migrations/20260809100000_guard_restaurant_billing_columns.sql).
+ * Stripe owns these columns and writes them as `service_role`.
+ */
+type GuardedBillingColumn =
+  | 'subscription_tier'
+  | 'subscription_status'
+  | 'subscription_period'
+  | 'stripe_subscription_customer_id'
+  | 'stripe_subscription_id'
+  | 'trial_ends_at'
+  | 'subscription_ends_at'
+  | 'grandfathered_until'
+  | 'subscription_cancel_at'
+  | 'stripe_customer_id';
+
+/**
+ * The columns `updateRestaurant` may write. The guard raises SQLSTATE 42501 and
+ * aborts the whole statement, so a billing column in the payload fails at
+ * runtime, not at build time (memory/lessons.md, PR #738 and PR #739). This type
+ * moves that failure to the compiler.
+ */
+export type RestaurantUpdate = Omit<Partial<Restaurant>, GuardedBillingColumn>;
+
 export interface UserRestaurant {
   id: string;
   user_id: string;
@@ -195,7 +221,7 @@ export function useRestaurants() {
     }
   };
 
-  const updateRestaurant = async (restaurantId: string, updates: Partial<Restaurant>) => {
+  const updateRestaurant = async (restaurantId: string, updates: RestaurantUpdate) => {
     try {
       const { error } = await supabase
         .from('restaurants')

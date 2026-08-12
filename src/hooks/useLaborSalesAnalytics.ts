@@ -17,12 +17,19 @@ export interface LaborSalesAnalytics {
  * (same window as `useSplhData` via the shared `localWindow` helper). Replaces
  * the client-side aggregation of ~23,700 raw rows per load. Callers are
  * expected to have already validated `tz` (e.g. via `safeTz`).
+ *
+ * `localWindow` is computed here, before `useQuery`, not inside `queryFn` —
+ * `startStr`/`endStr` go into the query key so a restaurant-local midnight
+ * rollover (which changes `endStr` but not `restaurantId`/`tz`/`weeks`) opens
+ * a fresh cache entry and fetches immediately, instead of leaving a
+ * long-lived mounted page (e.g. a back-office TV dashboard) pinned to
+ * yesterday's window until an unrelated refetch trigger fires.
  */
 export function useLaborSalesAnalytics(restaurantId: string | null, tz: string, weeks: number) {
+  const { startStr, endStr } = localWindow(tz, weeks);
   return useQuery({
-    queryKey: ['labor-sales-analytics', restaurantId, tz, weeks],
+    queryKey: ['labor-sales-analytics', restaurantId, tz, weeks, startStr, endStr],
     queryFn: async (): Promise<LaborSalesAnalytics> => {
-      const { startStr, endStr } = localWindow(tz, weeks);
       const { data, error } = await supabase.rpc('get_labor_sales_analytics', {
         p_restaurant_id: restaurantId!,
         p_start_date: startStr,

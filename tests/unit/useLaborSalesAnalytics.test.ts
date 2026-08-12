@@ -64,4 +64,27 @@ describe('useLaborSalesAnalytics', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toEqual(new Error('rpc failed'));
   });
+
+  // Regression test: the query key used to omit startStr/endStr, so a
+  // restaurant-local midnight rollover on a long-lived mounted page (e.g. a
+  // back-office TV dashboard) left the RPC pinned to yesterday's window —
+  // re-rendering with the same restaurantId/tz/weeks never refetched.
+  it('refetches with a new window when the restaurant-local date rolls over', async () => {
+    rpcMock.mockResolvedValue({ data: RPC, error: null });
+    const { result, rerender } = renderHook(() => useLaborSalesAnalytics('rest-1', 'UTC', 18), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(rpcMock).toHaveBeenCalledWith('get_labor_sales_analytics', expect.objectContaining({
+      p_end_date: '2026-07-14',
+    }));
+
+    rpcMock.mockClear();
+    vi.setSystemTime(new Date('2026-07-16T12:00:00Z')); // two restaurant-local days later
+    rerender();
+
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_labor_sales_analytics', expect.objectContaining({
+      p_end_date: '2026-07-16',
+    })));
+  });
 });

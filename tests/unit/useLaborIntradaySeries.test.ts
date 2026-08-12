@@ -36,11 +36,13 @@ const PUNCHES: TimePunch[] = [
 const EMPLOYEES = [{ id: 'emp-1', hourly_rate: 20 }];
 
 // A thenable fake query-builder: every chained filter returns `this`; awaiting
-// it resolves to { data, error } keyed by the table passed to `.from()`.
+// it resolves to { data, error } keyed by the table passed to `.from()`. All
+// `rows` come back on the first `.range()` page — fewer than the page size,
+// so `fetchAllRows` stops after one page, matching real single-day volume.
 function makeBuilder(rows: unknown[]) {
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
-  for (const m of ['select', 'eq', 'is', 'gte', 'lte', 'order']) builder[m] = vi.fn(chain);
+  for (const m of ['select', 'eq', 'is', 'gte', 'lte', 'order', 'range']) builder[m] = vi.fn(chain);
   builder.then = (resolve: (v: { data: unknown[]; error: null }) => void) =>
     resolve({ data: rows, error: null });
   return builder;
@@ -117,6 +119,45 @@ describe('useLaborIntradaySeries', () => {
     );
     expect(result.current.series).toEqual([]);
     expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  // Regression test: a still-loading employee roster used to be silent — the
+  // series rendered with the $15/hr fallback rate from
+  // `computeAvgHourlyRateCents([])` and `isLoading` stayed false once the
+  // sales/punch query settled, hiding the fact the rate was a guess.
+  it('reports isLoading while the employee roster is still loading', () => {
+    mockUseEmployees.mockReturnValue({ employees: [], loading: true, error: null });
+    const { result } = renderHook(
+      () => useLaborIntradaySeries('rest-1', 'UTC', '2026-07-06', 22, true),
+      { wrapper: createWrapper() },
+    );
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  // Regression test: a failed employee roster fetch used to be silent the
+  // same way — no isError/error signal reached the caller.
+  it('reports isError and the employee error when the employee roster fetch fails', async () => {
+    const employeesError = new Error('roster fetch failed');
+    mockUseEmployees.mockReturnValue({ employees: [], loading: false, error: employeesError });
+    const { result } = renderHook(
+      () => useLaborIntradaySeries('rest-1', 'UTC', '2026-07-06', 22, true),
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.isError).toBe(true);
+    expect(result.current.error).toBe(employeesError);
+  });
+
+  // The employee query state must not leak into the disabled/idle shape,
+  // matching the existing sales/punch query-state gating.
+  it('does not surface the employee error while disabled', () => {
+    mockUseEmployees.mockReturnValue({ employees: [], loading: false, error: new Error('roster fetch failed') });
+    const { result } = renderHook(
+      () => useLaborIntradaySeries('rest-1', 'UTC', '2026-07-06', 22, false),
+      { wrapper: createWrapper() },
+    );
+    expect(result.current.isError).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 });
 

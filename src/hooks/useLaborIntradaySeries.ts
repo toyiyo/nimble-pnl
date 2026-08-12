@@ -12,6 +12,7 @@ import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcess
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { getTodayInTimezone } from '@/lib/timezone';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 import type { SplhSaleRow } from '@/lib/splhAnalytics';
 import type { TimePunch } from '@/types/timeTracking';
 
@@ -33,8 +34,11 @@ interface IntradayData {
  * Fetches one restaurant-local day of sales + punches only when `enabled`
  * (the range is a single day) and returns the hour-of-day financial series via
  * `buildIntradayFinancialSeries` — an average-rate SHAPE estimate, not
- * payroll-grade (the KPI row still uses the day's payroll-grade total). One day
- * is ~200 rows, so no pagination is needed.
+ * payroll-grade (the KPI row still uses the day's payroll-grade total). A
+ * single day is usually well under PostgREST's 1,000-row page cap, but a
+ * high-volume day can exceed it, so both queries page through `fetchAllRows`
+ * (same helper and ordering the prior labor sales fetch used) instead of an
+ * unbounded `.select()`.
  */
 export function useLaborIntradaySeries(
   restaurantId: string | null,
@@ -49,7 +53,11 @@ export function useLaborIntradaySeries(
   error: Error | null;
   refetch: () => void;
 } {
-  const { employees } = useEmployees(restaurantId, { status: 'all' });
+  // The employee query's loading/error state feeds the average-rate estimate
+  // below. Fold it into the returned state (queryState) so a failed or
+  // still-loading roster fetch shows as loading/error, not a silent $15/hr
+  // fallback presented as real data.
+  const { employees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId, { status: 'all' });
   const avgHourlyRateCents = useMemo(() => computeAvgHourlyRateCents(employees), [employees]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -60,28 +68,35 @@ export function useLaborIntradaySeries(
       const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dayStart, dayEnd);
 
       const [salesRes, punchesRes] = await Promise.all([
-        supabase
-          .from('unified_sales')
-          .select('sale_date, sale_time, sold_at, total_price')
-          .eq('restaurant_id', restaurantId!)
-          .eq('item_type', 'sale')
-          .is('parent_sale_id', null)
-          .is('adjustment_type', null)
-          .eq('sale_date', dateStr),
-        supabase
-          .from('time_punches')
-          .select('id, restaurant_id, employee_id, punch_type, punch_time')
-          .eq('restaurant_id', restaurantId!)
-          .gte('punch_time', fetchStart.toISOString())
-          .lte('punch_time', fetchEnd.toISOString())
-          .order('employee_id')
-          .order('punch_time'),
+        fetchAllRows<SplhSaleRow>((from, to) =>
+          supabase
+            .from('unified_sales')
+            .select('sale_date, sale_time, sold_at, total_price')
+            .eq('restaurant_id', restaurantId!)
+            .eq('item_type', 'sale')
+            .is('parent_sale_id', null)
+            .is('adjustment_type', null)
+            .eq('sale_date', dateStr)
+            .order('created_at')
+            .order('id')
+            .range(from, to) as unknown as PromiseLike<{ data: SplhSaleRow[] | null; error: unknown }>,
+        ),
+        fetchAllRows<TimePunch>((from, to) =>
+          supabase
+            .from('time_punches')
+            .select('id, restaurant_id, employee_id, punch_type, punch_time')
+            .eq('restaurant_id', restaurantId!)
+            .gte('punch_time', fetchStart.toISOString())
+            .lte('punch_time', fetchEnd.toISOString())
+            .order('employee_id')
+            .order('punch_time')
+            .order('id')
+            .range(from, to) as unknown as PromiseLike<{ data: TimePunch[] | null; error: unknown }>,
+        ),
       ]);
-      if (salesRes.error) throw salesRes.error;
-      if (punchesRes.error) throw punchesRes.error;
       return {
-        sales: (salesRes.data ?? []) as unknown as SplhSaleRow[],
-        punches: (punchesRes.data ?? []) as unknown as TimePunch[],
+        sales: salesRes.rows,
+        punches: punchesRes.rows,
       };
     },
     enabled: enabled && !!restaurantId,
@@ -115,9 +130,16 @@ export function useLaborIntradaySeries(
 
   // Query state only means something while this view is active; freeze it to
   // the empty/idle shape while disabled instead of a "false" or "null" value
-  // on every field separately.
+  // on every field separately. Fold in the employee query state: while it is
+  // loading or has failed, `avgHourlyRateCents` above falls back to the
+  // $15/hr default from `computeAvgHourlyRateCents([])`, and the series
+  // would render that guess as real data with no loading/error signal.
   const queryState = enabled
-    ? { isLoading, isError, error: error as Error | null }
+    ? {
+        isLoading: isLoading || employeesLoading,
+        isError: isError || !!employeesError,
+        error: (error as Error | null) ?? employeesError ?? null,
+      }
     : { isLoading: false, isError: false, error: null };
 
   return { series, ...queryState, refetch };

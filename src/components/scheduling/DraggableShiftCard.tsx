@@ -34,6 +34,16 @@ export function DraggableShiftCard({
         isDragging && 'opacity-40',
       )}
       aria-roledescription="draggable shift"
+      // dnd-kit's `attributes` sets `role="button"` on this wrapper, with no
+      // name of its own. With no aria-label, the browser builds the name
+      // from content. That name then includes every nested button's
+      // aria-label: Edit shift, Offer shift for trade, Delete shift.
+      // Playwright's `getByRole('button', { name: /offer shift for trade/i })`
+      // matched this wrapper too, and the wrapper comes first in DOM order.
+      // `.first()` picked the wrapper, so the click landed on the card body
+      // and opened Edit Shift, not the real Offer button. This aria-label
+      // gives the wrapper its own name and stops that fallback.
+      aria-label="Drag shift to copy"
     >
       {children}
     </div>

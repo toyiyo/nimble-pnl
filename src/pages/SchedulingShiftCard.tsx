@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, Check, Clock, Edit, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowRightLeft, Check, Clock, Edit, Trash2 } from 'lucide-react';
 import type { ConflictCheck, Shift } from '@/types/scheduling';
 
 /**
@@ -41,12 +41,13 @@ export type ShiftCardProps = {
   isSelected?: boolean;
   selectionMode?: boolean;
   onToggleSelect?: (shiftId: string) => void;
+  onOfferTrade?: (shift: Shift) => void;
 };
 
 const buildConflictKey = (conflict: ConflictCheck) =>
   conflict.time_off_id ? `timeoff-${conflict.time_off_id}` : `${conflict.conflict_type}-${conflict.message}`;
 
-export const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSelectionMode, onToggleSelect }: ShiftCardProps) => {
+export const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSelectionMode, onToggleSelect, onOfferTrade }: ShiftCardProps) => {
   // `shift.start_time`/`shift.end_time` are already UTC-instant ISO strings
   // (see src/lib/shiftTimeMath.ts's `minutesToIso`, which produces them via
   // `.toISOString()`). `useCheckConflicts`'s RPC takes a
@@ -216,6 +217,20 @@ export const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: 
           >
             <Edit className="h-3 w-3" />
           </Button>
+          {onOfferTrade && (shift.status === 'scheduled' || shift.status === 'confirmed') && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOfferTrade(shift);
+              }}
+              aria-label="Offer shift for trade"
+            >
+              <ArrowRightLeft className="h-3 w-3" />
+            </Button>
+          )}
           <Button
             size="icon"
             variant="ghost"

@@ -60,7 +60,7 @@ export const TradeRequestDialog = ({
   const isManagerMode = Boolean(onBehalfOfEmployee);
   const { mutate: createTrade, isPending } = isManagerMode ? managerMutation : selfMutation;
 
-  const { employees, loading: employeesLoading } = useEmployees(restaurantId);
+  const { employees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId);
 
   // The offerer is the on-behalf employee in manager mode, else the signed-in
   // employee.
@@ -202,6 +202,10 @@ export const TradeRequestDialog = ({
                   {employeesLoading ? (
                     <div className="p-4 text-center text-sm text-muted-foreground">
                       Loading employees...
+                    </div>
+                  ) : employeesError ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      Couldn't load coworkers. Something went wrong.
                     </div>
                   ) : availableEmployees.length === 0 ? (
                     <div className="p-4 text-center text-sm text-muted-foreground">

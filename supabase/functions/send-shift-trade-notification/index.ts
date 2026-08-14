@@ -401,7 +401,7 @@ const handler = async (req: Request): Promise<Response> => {
           startTime: formatDateTime(shift.start_time, restaurantTimezone),
           endTime: formatDateTime(shift.end_time, restaurantTimezone),
           position: shift.position,
-          isPublished: shift.is_published as boolean | null | undefined
+          isPublished: shift.is_published
         }
       : null;
 

@@ -119,6 +119,7 @@ vi.mock('@/hooks/useAvailableShifts', () => ({
             end_time: `${DAY_A}T20:00:00Z`,
             position: 'Bartender',
             break_duration: 0,
+            is_published: true,
           },
           offered_by: {
             id: 'emp-poster',
@@ -144,6 +145,7 @@ vi.mock('@/hooks/useAvailableShifts', () => ({
             end_time: `${DAY_B}T20:00:00Z`,
             position: 'Server',
             break_duration: 0,
+            is_published: true,
           },
           offered_by: {
             id: 'emp-poster2',
@@ -301,6 +303,8 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
     renderPage();
     // The same-area trade should have an Accept button
     expect(screen.getByRole('button', { name: /Accept trade from Carol Poster/i })).toBeInTheDocument();
+    // The same-area fixture has is_published: true, so no tentative badge.
+    expect(screen.queryByText('Tentative — draft')).not.toBeInTheDocument();
   });
 
   it('(7) Accept button has no aria-describedby for same-area trade', () => {
@@ -333,5 +337,43 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
     renderPage();
     const panel = document.getElementById('area-mismatch-trade-mismatch');
     expect(panel).not.toBeNull();
+  });
+
+  it('marks a draft offered shift as tentative', async () => {
+    // Same fixture builder as the other tests, with is_published: false.
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: [
+        {
+          key: 'trade-draft',
+          type: 'trade',
+          date: new Date(DAY_A),
+          trade: {
+            id: 'trade-draft',
+            status: 'open',
+            offered_shift: {
+              id: 'shift-draft',
+              start_time: `${DAY_A}T14:00:00Z`,
+              end_time: `${DAY_A}T20:00:00Z`,
+              position: 'Bartender',
+              break_duration: 0,
+              is_published: false,
+            },
+            offered_by: {
+              id: 'emp-poster',
+              name: 'Bob Poster',
+              position: 'Bartender',
+              area: 'FOH',
+            },
+            reason: null,
+            target_employee_id: null,
+          },
+          openShift: undefined,
+        },
+      ],
+      loading: false,
+    });
+    renderPage();
+    expect(screen.getByText('Tentative — draft')).toBeInTheDocument();
   });
 });

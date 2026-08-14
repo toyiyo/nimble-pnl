@@ -41,6 +41,7 @@ import {
 } from '@/components/employee';
 import { OpenShiftCard } from '@/components/scheduling/OpenShiftCard';
 import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
 
@@ -108,6 +109,7 @@ const TradeCard = memo(function TradeCard({
               <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
               {trade.offered_shift.position}
             </span>
+            {trade.offered_shift.is_published === false && <TentativeDraftBadge />}
           </div>
           <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
             <User className="h-3.5 w-3.5" aria-hidden="true" />

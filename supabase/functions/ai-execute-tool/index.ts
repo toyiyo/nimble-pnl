@@ -200,7 +200,7 @@ async function executeGetKpis(
   // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
 
-  const [hasLaborAccess, salesTotals, foodCostResult] = await Promise.all([
+  const [hasLaborAccess, salesTotals, foodCostResult, salesCountResult] = await Promise.all([
     hasSchedulingOrPayrollCapability(restaurantId, supabase),
     // Net sales for the period (gross - discounts - refunds), from the shared RPC.
     fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
@@ -212,6 +212,26 @@ async function executeGetKpis(
       .eq('transaction_type', 'usage')
       .gte('created_at', startDateStr)
       .lte('created_at', endDateStr + 'T23:59:59.999Z'),
+    // Server-side count of sale transactions in the period (head:true, so it
+    // is not subject to the 1000-row cap a normal select would hit). This
+    // counts sale transactions, not split-child rows: a split sale's parent
+    // row represents the one transaction, so its children (rows carrying a
+    // parent_sale_id) do not count separately here. That is the opposite
+    // exclusion direction from fetchNetSales/get_monthly_sales_metrics, which
+    // sums the children and drops the pre-split parent so a categorized
+    // transaction's dollar amount is not counted twice — this count works at
+    // transaction granularity, not revenue-line-item granularity. This
+    // differs from the old client-side count (calculateRevenueBreakdown's
+    // filterSplitSales), which counted split children instead of their parent.
+    supabase
+      .from('unified_sales')
+      .select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .gte('sale_date', startDateStr)
+      .lte('sale_date', endDateStr)
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null)
+      .or('item_type.is.null,item_type.eq.sale'),
   ]);
 
   const { data: foodCostData, error: foodCostError } = foodCostResult;
@@ -219,6 +239,8 @@ async function executeGetKpis(
   if (foodCostError) {
     throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
   }
+
+  const salesCount = salesCountResult.count ?? 0;
 
   // Fetch labor costs using time_punches + employees (same as Dashboard) —
   // only when the caller can actually see restaurant-wide punches. Skipping
@@ -312,8 +334,6 @@ async function executeGetKpis(
     hasLaborAccess
   );
 
-  // sales_count isn't available from the monthly-aggregate RPC — it needed
-  // the individual sale rows this fetch replaced — so it's dropped here.
   const revenue = {
     gross_revenue: salesTotals.gross,
     discounts: salesTotals.discounts,
@@ -323,6 +343,7 @@ async function executeGetKpis(
     sales_tax: salesTotals.salesTax,
     tips: salesTotals.tips,
     other_liabilities: salesTotals.otherLiabilities,
+    sales_count: salesCount,
   };
 
   return {

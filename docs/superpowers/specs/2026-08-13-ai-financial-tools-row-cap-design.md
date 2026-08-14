@@ -70,16 +70,16 @@ tools also disagree on the end boundary.
 
 ### 2.2 Non-goals
 
-- Do not change the break-even variable-cost math or the margin-of-safety unit
-  ([`index.ts:2623-2640`](supabase/functions/ai-execute-tool/index.ts:2623)). This
-  is a later PR (fix 2). Note: the revenue sum that feeds this math
-  ([`index.ts:2622`](supabase/functions/ai-execute-tool/index.ts:2622)) IS in
-  scope. This PR replaces that one `reduce()` with the shared revenue RPC. The
-  break-even formula below it stays the same.
-- Do not relabel the operating-costs output as a budget
-  ([`index.ts:2565`](supabase/functions/ai-execute-tool/index.ts:2565)). This is
-  a later PR (fix 3).
-- Do not change the AI chat UI, the tool registry schema, or the model prompts.
+> **Scope change (2026-08-14).** The owner folded fix 2 and fix 3 into this PR
+> after the July diagnosis proved the three defects compound. See §13. The first
+> two bullets below no longer apply; §13.2 and §13.3 replace them.
+
+- ~~Do not change the break-even variable-cost math or the margin-of-safety
+  unit.~~ **In scope now (fix 2, §13.2).**
+- ~~Do not relabel the operating-costs output as a budget.~~ **In scope now
+  (fix 3, §13.3).**
+- Do not change the AI chat UI or the tool registry parameter schemas. Tool
+  *descriptions* and the chat system prompt DO change (fix 3, §13.3).
 - Do not change the categorization write logic. Only clamp its input id count.
 
 ---
@@ -618,15 +618,111 @@ number. Record the before-and-after in the PR body.
 1. **Bank status values per site.** Confirm the exact `transaction_status_enum`
    values each bank caller filters today, so `p_statuses` reproduces per-site
    behavior (low risk; the default `NULL` applies no status filter).
-2. **PR shape.** Decide one PR, or a short stacked series by cluster. Also decide
-   whether the `get_monthly_sales_metrics` `INVOKER` conversion (§5.1 Change A)
-   ships first as its own small security PR. It fixes a live cross-tenant hole and
-   does not depend on the cap work. The design does not change either way.
+2. ~~**PR shape.**~~ **Resolved (2026-08-14).** One PR. The
+   `get_monthly_sales_metrics` `INVOKER` conversion (§5.1 Change A) shipped
+   first as its own security PR
+   ([#743](https://github.com/toyiyo/nimble-pnl/pull/743), migration
+   `20260814120000_secure_monthly_sales_metrics_tenancy.sql`). See §13.1.
 
 ---
 
 ## 12. Out of scope (follow-ups)
 
-- Break-even variable-cost math and the margin-of-safety unit (fix 2).
-- The operating-costs budget label (fix 3).
 - The same cap pattern in any non-financial tool path outside this file.
+- The journal data gap: July 2026 holds only 12 expense lines (`$11,271.79`)
+  against a `$40,456.15/month` configured budget. The income statement is
+  correct code over incomplete books. This is a product problem, not a code
+  defect in this PR.
+
+---
+
+## 13. Addendum (2026-08-14) — fold fix 2 and fix 3, post-#743 state
+
+The July 2026 diagnosis (restaurant `7c0c76e3-e770-401b-a2a9-c1edd407efed`)
+reproduced every wrong number to the cent. Three defect classes compound in one
+answer: the row cap (this design), the variable-cost math (fix 2), and the
+budget label plus prompt gaps (fix 3). The owner folded fix 2 and fix 3 into
+this PR.
+
+### 13.1 §5.1 Change A shipped — build Change B on top of it
+
+PR #743 merged migration `20260814120000_secure_monthly_sales_metrics_tenancy.sql`.
+The live function is now `SECURITY INVOKER` with a `user_restaurants` membership
+guard, a `child.restaurant_id = p_restaurant_id` filter in both child-sale
+checks, and `EXECUTE` revoked from `PUBLIC` and `anon`. The Change B migration
+(the `refunds` column) must reproduce that full body — the guard, the child
+filter, the grants — and add the column. pgTAP files
+`36_monthly_sales_metrics_revenue_filter.sql` and
+`37_monthly_sales_metrics_tenancy.sql` already pin the security properties.
+Change B must keep them green. The §9.1 item-5 tenancy test for this function
+already exists (`37_`); the new RPCs still need their own.
+
+### 13.2 Fix 2 — operating-costs variable math (now in scope)
+
+The defect: `variableTotal` sums only `monthly_value`
+([`index.ts:2607`](supabase/functions/ai-execute-tool/index.ts:2607)).
+`monthly_value` is 0 for every `entry_type = 'percentage'` row, so percentage
+items (COGS 27%, marketing 3%, processing 2.5%) contribute nothing. July output:
+`Variable Costs: $82.00` against an itemized list of `$1,199.52`, and a
+break-even of `$40,964.12` from a 1.44% variable ratio.
+
+New math, over the net sales the cluster-1 RPC returns (`netSales`):
+
+- `variableFlatTotal` = Σ `monthly_value / 100` over `cost_type = 'variable'`
+  AND `entry_type = 'value'`.
+- `variablePercentTotal` = Σ `(percentage_value / 100) * netSales` over
+  `cost_type = 'variable'` AND `entry_type = 'percentage'`.
+- `variableTotal = variableFlatTotal + variablePercentTotal`. This is the
+  displayed "Variable Costs" dollar figure.
+- `variableCostPercentage` = Σ `percentage_value` + (`netSales > 0` ?
+  `variableFlatTotal / netSales * 100` : 0). Keep the existing fallback: when
+  the restaurant has no variable rows at all, use the hardcoded 25.
+- `contributionMargin = 100 - variableCostPercentage` and
+  `breakEvenRevenue = totalFixedCosts / (contributionMargin / 100)` stay as
+  today ([`index.ts:2628-2631`](supabase/functions/ai-execute-tool/index.ts:2628)).
+- Each `entry_type = 'percentage'` item in the response gains
+  `computed_monthly_amount = (percentage_value / 100) * netSales`, so the model
+  does not do its own arithmetic on a stale revenue figure.
+- `total_monthly_costs` becomes `fixedTotal + semiVariableTotal +
+  variableTotal` with the corrected `variableTotal`.
+
+Semi-variable handling stays as today: folded into `totalFixedCosts` for the
+break-even.
+
+### 13.3 Fix 3 — budget labels, units, prompt guidance (now in scope)
+
+Three parts.
+
+**Response labels.** `get_operating_costs` output gains
+`"source": "budget_config"` and a `note` string: the costs are the configured
+budget, not period actuals; the `period` parameter scopes only the revenue used
+for the break-even. Rename `margin_of_safety` to `margin_of_safety_percent` and
+add `margin_of_safety_amount = netSales - breakEvenRevenue` (dollars). Apply the
+same rename in `get_break_even_progress`
+([`index.ts:3156-3166`](supabase/functions/ai-execute-tool/index.ts:3156)). No
+typed consumer reads these fields (the model reads the JSON), so the rename is
+safe.
+
+**Registry descriptions.** Update the `get_operating_costs` description
+([`tools-registry.ts:506-534`](supabase/functions/_shared/tools-registry.ts:506))
+to state: budget config, not actuals. State the unit of every percent field.
+
+**Prompt guidance.** Add one financial-tools block to the `ai-chat-stream`
+system prompt (the hardcoded string at
+[`ai-chat-stream/index.ts:523-661`](supabase/functions/ai-chat-stream/index.ts:523)):
+
+- `get_operating_costs` returns the configured budget. For actual spend, use
+  `get_financial_statement` or `get_bank_transactions`.
+- Every revenue figure comes from one net-sales definition. When two tools
+  disagree, say so and stop; do not invent a reconciliation.
+- Fields that end in `_percent` are percentages. Never print them with a `$`.
+
+### 13.4 Validated July 2026 numbers (2026-08-14 re-run)
+
+| Bot said | Mechanism | True value |
+|---|---|---|
+| Revenue `$3,647.22` | first 1000 of 22,366 rows, no filters | `$72,090.74` net |
+| COGS `$197.50` | first 1000 of 14,806 usage rows | `$2,680.51` |
+| Break-even revenue input `$5,693.62` | first 1000 of 13,049 filtered rows | `$72,090.74` |
+| `Variable Costs: $82.00` | `monthly_value`-only sum | ≈ `$19,546` at true revenue |
+| `Margin of Safety -$619.47` | percent field printed as dollars | +43% (above break-even) |

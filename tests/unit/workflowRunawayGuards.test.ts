@@ -260,6 +260,51 @@ describe('dev-continue-verify-and-ship: same containment', () => {
   })
 })
 
+/**
+ * Regression for the incomplete #695 fix. envelope() emitted TWO "PRIOR
+ * STATE:" paragraphs: the parameterized one, then a stale hardcoded one from
+ * the error-boundary branch. The stale paragraph told every agent that phases
+ * 4-7 were complete and that commit ff3776c1 resolved a Codex finding. On
+ * every other branch both claims were false. The guard: each prompt carries
+ * exactly ONE "PRIOR STATE:" line, and its text comes only from
+ * args.priorState or the claim-free fallback.
+ */
+describe('dev-continue-verify-and-ship: PRIOR STATE comes only from the caller', () => {
+  const priorStateCount = (prompt: string) => prompt.split('PRIOR STATE:').length - 1
+
+  it('emits exactly one PRIOR STATE line, carrying the supplied text', async () => {
+    const SUPPLIED = 'The human fixed the fold-gate finding in commit abc1234 on this branch.'
+    const run = await runWorkflow(CONTINUE_SCRIPT, {
+      args: { ...BASE_ARGS, priorState: SUPPLIED },
+      onAgent: responder(),
+    })
+
+    expect(run.calls.length).toBeGreaterThan(0)
+    for (const call of run.calls) {
+      expect(priorStateCount(call.prompt), String(call.label)).toBe(1)
+      expect(call.prompt, String(call.label)).toContain(SUPPLIED)
+      // The stale paragraph's landmarks, none of which may survive anywhere.
+      expect(call.prompt, String(call.label)).not.toContain('ff3776c1')
+      expect(call.prompt, String(call.label)).not.toContain('c0872b91')
+      expect(call.prompt, String(call.label)).not.toContain('RouteShellBoundary')
+      expect(call.prompt, String(call.label)).not.toContain('Phases 4-7 are COMPLETE')
+    }
+  })
+
+  it('falls back to claim-free text that sends the agent to the records', async () => {
+    const run = await runWorkflow(CONTINUE_SCRIPT, { args: BASE_ARGS, onAgent: responder() })
+
+    expect(run.calls.length).toBeGreaterThan(0)
+    for (const call of run.calls) {
+      expect(priorStateCount(call.prompt), String(call.label)).toBe(1)
+      expect(call.prompt, String(call.label)).toContain('progress.md')
+      expect(call.prompt, String(call.label)).not.toContain('ff3776c1')
+      expect(call.prompt, String(call.label)).not.toContain('RouteShellBoundary')
+      expect(call.prompt, String(call.label)).not.toContain('Phases 4-7 are COMPLETE')
+    }
+  })
+})
+
 describe('both scripts still stop cleanly on ordinary gates', () => {
   it('missing args halts before any agent runs', async () => {
     for (const script of [BUILD_SCRIPT, CONTINUE_SCRIPT]) {

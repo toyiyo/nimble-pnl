@@ -33,6 +33,7 @@ import {
   useRejectClaimMutation,
   OpenShiftClaimWithJoins,
 } from '@/hooks/useOpenShiftClaims';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
 import { isTradeExpired } from '@/lib/shiftTradeStatus';
@@ -619,6 +620,9 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                     <p>
                       <span className="font-medium text-foreground">Shift date:</span>{' '}
                       <span className="text-muted-foreground">{format(new Date(confirmTarget.trade.offered_shift.start_time), 'EEEE, MMMM d, yyyy')}</span>
+                      {confirmTarget.trade.offered_shift.is_published === false && (
+                        <TentativeDraftBadge className="mt-1" />
+                      )}
                     </p>
                   )}
                   <p>
@@ -848,6 +852,9 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                     <p>
                       <span className="font-medium text-foreground">Position:</span>{' '}
                       <span className="text-muted-foreground">{selectedTrade.offered_shift?.position}</span>
+                      {selectedTrade.offered_shift?.is_published === false && (
+                        <TentativeDraftBadge className="mt-1" />
+                      )}
                     </p>
                   </div>
                 </div>
@@ -944,6 +951,7 @@ const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequest
         <div className="flex items-start justify-between">
           <div>
             <CardTitle className="text-[17px] font-semibold text-foreground">{trade.offered_shift.position}</CardTitle>
+            {trade.offered_shift.is_published === false && <TentativeDraftBadge />}
             <CardDescription className="text-[13px] mt-1">
               {format(shiftStart, 'EEEE, MMMM d, yyyy')}
             </CardDescription>
@@ -1164,6 +1172,7 @@ const OpenTradeCard = ({ trade, expired = false, isRemoving = false, onRemove }:
           <Badge variant="outline" className="text-xs">
             {trade.offered_shift.position}
           </Badge>
+          {trade.offered_shift.is_published === false && <TentativeDraftBadge />}
         </div>
         {trade.reason && (
           <p className="text-xs text-muted-foreground italic">"{trade.reason}"</p>
@@ -1205,6 +1214,7 @@ const StalePendingRow = ({ trade, isRemoving, onRemove }: StalePendingRowProps) 
           <span className="font-medium">{trade.offered_by?.name ?? 'Unknown'}</span>
           <span className="text-muted-foreground">•</span>
           <span className="text-muted-foreground">{trade.offered_shift.position}</span>
+          {trade.offered_shift.is_published === false && <TentativeDraftBadge />}
           <Badge variant="outline" className="text-[12px] text-muted-foreground">
             {isGhost ? 'Ghost' : 'Expired'}
           </Badge>

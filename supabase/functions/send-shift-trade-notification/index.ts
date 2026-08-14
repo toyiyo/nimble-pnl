@@ -8,6 +8,7 @@ import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
 import { resolveCreatedTradeEmailRecipients, type DirectedTarget } from '../_shared/tradeEmailAudience.ts';
 import { resolveChannels, type SupabaseLike } from '../_shared/resolveChannels.ts';
 import { TRADE_ACTION_TYPE } from '../_shared/notificationActionTypes.ts';
+import { tentativeEmailBlock, tentativePushBody } from '../_shared/draftTradeNote.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -151,7 +152,7 @@ const escapeHtml = (str: string): string => {
 const generateEmailHtml = (
   content: typeof ACTION_CONTENT[keyof typeof ACTION_CONTENT],
   employeeName: string,
-  shiftDetails: { startTime: string; endTime: string; position: string } | null,
+  shiftDetails: { startTime: string; endTime: string; position: string; isPublished?: boolean | null } | null,
   restaurantName: string,
   managerNote?: string
 ) => {
@@ -210,7 +211,8 @@ const generateEmailHtml = (
         </table>
       </div>
       ` : ''}
-      
+      ${shiftDetails ? tentativeEmailBlock(shiftDetails.isPublished) : ''}
+
       ${safeManagerNote ? `
       <!-- Manager Note -->
       <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; padding: 16px; margin: 24px 0;">
@@ -334,7 +336,8 @@ const handler = async (req: Request): Promise<Response> => {
         offered_shift:shifts!offered_shift_id(
           start_time,
           end_time,
-          position
+          position,
+          is_published
         ),
         offered_by:employees!offered_by_employee_id(
           name,
@@ -397,7 +400,8 @@ const handler = async (req: Request): Promise<Response> => {
       ? {
           startTime: formatDateTime(shift.start_time, restaurantTimezone),
           endTime: formatDateTime(shift.end_time, restaurantTimezone),
-          position: shift.position
+          position: shift.position,
+          isPublished: shift.is_published as boolean | null | undefined
         }
       : null;
 
@@ -579,7 +583,7 @@ const handler = async (req: Request): Promise<Response> => {
           }
           await sendWebPushToUsers(admin, broadcastTargets, trade.restaurant_id, {
             title: content.heading,
-            body: 'A teammate offered a shift for trade. Tap to view.',
+            body: tentativePushBody('A teammate offered a shift for trade. Tap to view.', shift?.is_published),
             url: EMPLOYEE_SHIFTS_ROUTE,
             tag: `trade-created-${tradeId}`,
           });

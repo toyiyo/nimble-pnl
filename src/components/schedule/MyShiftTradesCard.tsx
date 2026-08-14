@@ -15,6 +15,7 @@ import {
 import { ArrowRightLeft, Loader2, Undo2 } from 'lucide-react';
 
 import { useMyTradeActivity, useCancelShiftTrade } from '@/hooks/useShiftTrades';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 import type { ShiftTrade } from '@/hooks/useShiftTrades';
 
@@ -86,7 +87,10 @@ const ShiftDateBlock = ({ trade }: { trade: ShiftTrade }) => {
         <div className="text-[11px] text-muted-foreground">{format(start, 'MMM')}</div>
       </div>
       <div className="min-w-0">
-        <div className="text-[14px] font-medium text-foreground">{shift.position}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[14px] font-medium text-foreground">{shift.position}</div>
+          {shift.is_published === false && <TentativeDraftBadge />}
+        </div>
         <div className="text-[13px] text-muted-foreground">
           {format(start, 'h:mm a')} - {format(end, 'h:mm a')}
         </div>
@@ -274,6 +278,9 @@ export const MyShiftTradesCard = ({
                 {format(parseISO(confirmTarget.offered_shift.start_time), 'h:mm a')} -{' '}
                 {format(parseISO(confirmTarget.offered_shift.end_time), 'h:mm a')}
               </div>
+              {confirmTarget.offered_shift.is_published === false && (
+                <TentativeDraftBadge className="mt-1" />
+              )}
             </div>
           )}
           <DialogFooter className="px-6 pb-6 gap-2">

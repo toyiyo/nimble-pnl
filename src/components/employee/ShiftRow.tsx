@@ -123,14 +123,15 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
   const isCancelled = shift.status === 'cancelled';
 
   // Every draft signal below is load-bearing and redundant on purpose: the
-  // dashed surface, the badge copy, the muted type and the missing Trade
-  // button each say "not final" on their own, because the banner above may go
-  // unread on a fast mobile glance.
+  // dashed surface, the badge copy and the muted type each say "not final"
+  // on their own, because the banner above may go unread on a fast mobile
+  // glance. The Trade button is NOT a draft signal anymore: the draft-trade
+  // design (docs/superpowers/specs/2026-08-14-draft-shift-trade-design.md)
+  // lets an employee offer a draft shift, marked tentative on the trade side.
   const surface = getSurfaceClass(isCancelled, isDraft, variant);
   const timeText = isDraft ? 'font-normal text-muted-foreground' : 'font-medium';
 
-  const canTrade =
-    !!onTrade && shift.is_published && !isCancelled && isFuture(parseISO(shift.start_time));
+  const canTrade = !!onTrade && !isCancelled && isFuture(parseISO(shift.start_time));
 
   const tradeButton = canTrade ? (
     <Button

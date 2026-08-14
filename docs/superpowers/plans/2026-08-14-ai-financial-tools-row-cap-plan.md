@@ -18,7 +18,7 @@
 - pgTAP files: fixtures insert as the session role (`postgres`, `BYPASSRLS`), RLS stays enabled. Tenancy assertions run under `SET LOCAL ROLE authenticated` + `SET LOCAL request.jwt.claims`. Follow `supabase/tests/37_monthly_sales_metrics_tenancy.sql`.
 - Never run `git add -A`, `git add .`, or `git commit -a`. Stage explicit paths.
 - End every commit message with: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
-- Test commands: `npm run db:reset` applies migrations locally; `npm run test:db` runs pgTAP; `npx vitest run <file>` runs one unit file; `npm run typecheck` must stay clean.
+- Test commands: `npm run env:setup && npx supabase@2.65.5 db reset` applies migrations locally (2.65.5 is the CI pin from `.github/workflows/unit-tests.yml:165`; the newest CLI fails on `CONCURRENTLY` migrations with `LegacyMigrationApplyError`). `npm run test:db` runs pgTAP; `npx vitest run <file>` runs one unit file; `npm run typecheck` must stay clean. Where a task step says `npm run db:reset`, use the pinned form.
 - The branch is `fix/ai-financial-tools-row-cap`, worktree `.claude/worktrees/ai-financial-tools-row-cap`, already rebased on `main`.
 - Do not edit `supabase/migrations/20260814120000_secure_monthly_sales_metrics_tenancy.sql`. Build on top of it.
 

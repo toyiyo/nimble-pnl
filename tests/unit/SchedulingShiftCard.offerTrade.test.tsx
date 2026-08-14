@@ -66,4 +66,16 @@ describe('ShiftCard offer-trade action', () => {
     );
     expect(screen.queryByLabelText('Offer shift for trade')).toBeNull();
   });
+
+  it('hides the offer action for an unpublished draft shift', () => {
+    render(
+      <ShiftCard
+        shift={mockShift({ is_published: false })}
+        onEdit={() => {}}
+        onDelete={() => {}}
+        onOfferTrade={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText('Offer shift for trade')).toBeNull();
+  });
 });

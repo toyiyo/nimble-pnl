@@ -67,6 +67,15 @@ BEGIN
     RAISE EXCEPTION 'Only a scheduled or confirmed shift can be traded';
   END IF;
 
+  -- The shift must be published. A draft shift is not visible to the staff yet,
+  -- so a trade on it would notify a coworker about a shift that can still change
+  -- or disappear. The employee self-service flow guards on is_published too
+  -- (src/components/employee/ShiftRow.tsx); this mirrors that guard on the
+  -- server so a direct RPC call cannot post a draft shift for trade.
+  IF NOT v_shift.is_published THEN
+    RAISE EXCEPTION 'Only a published shift can be traded';
+  END IF;
+
   -- The offered employee must be active in this restaurant. Without this guard
   -- a manager can post a trade for a terminated employee: deactivate_employee
   -- auto-cancels only 'scheduled' shifts, so a 'confirmed' shift of an inactive

@@ -19,13 +19,14 @@
 --                    empBInactive (inactive coworker). Employee on R2: empX.
 --   Shifts owned by empA on R1: shift1..shift4 (shift3 is 'cancelled').
 --   shift5 belongs to empX on R2. shift6 is a 'confirmed' shift owned by the
---   inactive empBInactive on R1.
+--   inactive empBInactive on R1. shift7 is a draft ('is_published' = false)
+--   owned by empA on R1. Every other shift is published.
 --   Every allow scenario uses its own shift so an earlier insert never
 --   changes a later scenario's starting state.
 -- ============================================================================
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(16);
 
 -- ============================================================================
 -- Setup (as postgres/superuser — bypasses RLS regardless of enable state)
@@ -69,15 +70,18 @@ INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('55000000-0000-0000-0000-000000000014', '55000000-0000-0000-0000-000000000002', 'manager')
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
--- Four shifts owned by empA on R1. shift3 is cancelled (non-tradeable).
-INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, position, break_duration, status) VALUES
-  ('55000000-0000-0000-0000-000000000041', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-01 09:00:00+00', '2026-09-01 17:00:00+00', 'Server', 30, 'scheduled'),
-  ('55000000-0000-0000-0000-000000000042', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-02 09:00:00+00', '2026-09-02 17:00:00+00', 'Server', 30, 'scheduled'),
-  ('55000000-0000-0000-0000-000000000043', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-03 09:00:00+00', '2026-09-03 17:00:00+00', 'Server', 30, 'cancelled'),
-  ('55000000-0000-0000-0000-000000000044', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-04 09:00:00+00', '2026-09-04 17:00:00+00', 'Server', 30, 'scheduled'),
-  ('55000000-0000-0000-0000-000000000045', '55000000-0000-0000-0000-000000000002', '55000000-0000-0000-0000-000000000024', '2026-09-05 09:00:00+00', '2026-09-05 17:00:00+00', 'Server', 30, 'scheduled'),
-  ('55000000-0000-0000-0000-000000000046', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000023', '2026-09-06 09:00:00+00', '2026-09-06 17:00:00+00', 'Server', 30, 'confirmed')
-ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, employee_id = EXCLUDED.employee_id, restaurant_id = EXCLUDED.restaurant_id;
+-- Shifts owned by empA on R1. shift3 is cancelled (non-tradeable). shift7 is a
+-- draft (is_published = false) used to test the publication guard. Every other
+-- shift is published so it reaches its intended check.
+INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, position, break_duration, status, is_published) VALUES
+  ('55000000-0000-0000-0000-000000000041', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-01 09:00:00+00', '2026-09-01 17:00:00+00', 'Server', 30, 'scheduled', true),
+  ('55000000-0000-0000-0000-000000000042', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-02 09:00:00+00', '2026-09-02 17:00:00+00', 'Server', 30, 'scheduled', true),
+  ('55000000-0000-0000-0000-000000000043', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-03 09:00:00+00', '2026-09-03 17:00:00+00', 'Server', 30, 'cancelled', true),
+  ('55000000-0000-0000-0000-000000000044', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-04 09:00:00+00', '2026-09-04 17:00:00+00', 'Server', 30, 'scheduled', true),
+  ('55000000-0000-0000-0000-000000000045', '55000000-0000-0000-0000-000000000002', '55000000-0000-0000-0000-000000000024', '2026-09-05 09:00:00+00', '2026-09-05 17:00:00+00', 'Server', 30, 'scheduled', true),
+  ('55000000-0000-0000-0000-000000000046', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000023', '2026-09-06 09:00:00+00', '2026-09-06 17:00:00+00', 'Server', 30, 'confirmed', true),
+  ('55000000-0000-0000-0000-000000000047', '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000021', '2026-09-07 09:00:00+00', '2026-09-07 17:00:00+00', 'Server', 30, 'scheduled', false)
+ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, employee_id = EXCLUDED.employee_id, restaurant_id = EXCLUDED.restaurant_id, is_published = EXCLUDED.is_published;
 
 DELETE FROM shift_trades WHERE restaurant_id IN (
   '55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000002'
@@ -287,6 +291,22 @@ SELECT throws_ok(
   $$ SELECT create_shift_trade_for_employee('55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000046', '55000000-0000-0000-0000-000000000023') $$,
   'P0001', NULL,
   'Scenario 13: a shift of an inactive employee cannot be posted for trade'
+);
+
+-- ============================================================================
+-- Scenario 14 (assertion 16): Owner O posts shift7, a 'scheduled' draft shift
+-- (is_published = false) owned by the active empA -> denied (publication guard).
+-- The status check passes, so this proves the publish check, not the status
+-- check, rejects the draft.
+-- ============================================================================
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"55000000-0000-0000-0000-000000000011","role":"authenticated"}', true);
+
+SELECT throws_ok(
+  $$ SELECT create_shift_trade_for_employee('55000000-0000-0000-0000-000000000001', '55000000-0000-0000-0000-000000000047', '55000000-0000-0000-0000-000000000021') $$,
+  'P0001', NULL,
+  'Scenario 14: an unpublished draft shift cannot be posted for trade'
 );
 
 -- ============================================================================

@@ -567,50 +567,44 @@ async function calculateCashFlow(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch bank transactions
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, category_id')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: transactions, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch transactions: ${error.message}`);
-  
-  const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
-  const netCashFlow = inflows - outflows;
-  
-  // Calculate daily average
-  const days = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
-  const avgDailyCashFlow = days > 0 ? netCashFlow / days : 0;
-  
-  // Calculate volatility (standard deviation)
-  const dailyFlows: Record<string, number> = {};
-  transactions?.forEach((t: any) => {
-    const date = t.transaction_date;
-    dailyFlows[date] = (dailyFlows[date] || 0) + t.amount;
+
+  // Daily inflow/outflow/net series (get_bank_transactions_daily) replaces
+  // the raw per-transaction fetch. p_bank_account_id filters
+  // connected_bank_id, which fixes the prior filter on a bank_account_id
+  // column that bank_transactions does not have.
+  const { data: dailyRows, error } = await supabase.rpc('get_bank_transactions_daily', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_bank_account_id: bank_account_id || null,
   });
-  
-  const flowValues = Object.values(dailyFlows);
+
+  if (error) throw new Error(`get_bank_transactions_daily failed: ${error.message}`);
+
+  const days = dailyRows || [];
+  const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
+  const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
+  const netCashFlow = inflows - outflows;
+
+  // Calculate daily average over the full requested period
+  const periodDays = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
+  const avgDailyCashFlow = periodDays > 0 ? netCashFlow / periodDays : 0;
+
+  // Calculate volatility (standard deviation) over each day's net flow
+  const flowValues = days.map((d: any) => Number(d.net ?? 0));
   const mean = flowValues.reduce((sum: number, val: number) => sum + val, 0) / (flowValues.length || 1);
   const variance = flowValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (flowValues.length || 1);
   const volatility = Math.sqrt(variance);
-  
+
   results.cash_flow = {
     inflows_7d: inflows,
     outflows_7d: outflows,
     net_cash_flow_7d: netCashFlow,
     avg_daily_cash_flow: avgDailyCashFlow,
     volatility: volatility,
-    transaction_count: transactions?.length || 0,
+    // Days with at least one transaction. The daily RPC emits one row per
+    // active day, not per transaction, so this counts active days.
+    transaction_count: days.length,
   };
 }
 
@@ -624,41 +618,35 @@ async function calculateRevenueHealth(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch bank transactions that look like revenue deposits
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, description')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date)
-    .gt('amount', 0);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: deposits, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch deposits: ${error.message}`);
-  
-  // Filter for likely revenue deposits (excluding small transfers/refunds)
-  const revenueDeposits = deposits?.filter((d: any) => d.amount > 10) || [];
-  
-  const totalRevenue = revenueDeposits.reduce((sum: number, d: any) => sum + d.amount, 0);
-  const avgDeposit = revenueDeposits.length > 0 ? totalRevenue / revenueDeposits.length : 0;
-  const largestDeposit = revenueDeposits.reduce((max: number, d: any) => Math.max(max, d.amount), 0);
-  
-  // Calculate deposit frequency
-  const dates = revenueDeposits.map((d: any) => new Date(d.transaction_date).getTime()).sort((a: number, b: number) => a - b);
-  let totalGap = 0;
-  for (let i = 1; i < dates.length; i++) {
-    totalGap += (dates[i] - dates[i-1]) / (1000 * 60 * 60 * 24); // Convert to days
-  }
-  const avgDaysBetweenDeposits = dates.length > 1 ? totalGap / (dates.length - 1) : 0;
-  
+
+  // Deposit summary (get_bank_transaction_summary) replaces the raw
+  // amount>0 fetch. The RPC has no minimum-amount filter, so it counts
+  // every positive transaction as a deposit. The prior code also required
+  // amount > 10 to exclude small transfers/refunds; that threshold has no
+  // RPC equivalent and is dropped here.
+  const { data: summaryRows, error } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (error) throw new Error(`get_bank_transaction_summary failed: ${error.message}`);
+
+  const summary = summaryRows?.[0] ?? {};
+  const depositCount = Number(summary.inflow_count ?? 0);
+  const totalRevenue = Number(summary.inflow ?? 0);
+  const avgDeposit = Number(summary.avg_inflow ?? 0);
+  const largestDeposit = Number(summary.max_inflow ?? 0);
+
+  // Days between deposits: the summary has no per-transaction dates, so this
+  // approximates the average gap from the period length and deposit count
+  // instead of walking individual transaction dates.
+  const periodDays = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const avgDaysBetweenDeposits = depositCount > 1 ? periodDays / (depositCount - 1) : 0;
+
   results.revenue_health = {
-    deposit_count: revenueDeposits.length,
+    deposit_count: depositCount,
     avg_deposit_size: avgDeposit,
     largest_deposit: largestDeposit,
     total_revenue: totalRevenue,
@@ -676,58 +664,34 @@ async function calculateSpending(
   supabase: any,
   results: any
 ): Promise<void> {
-  const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch expense transactions
-  let query = supabase
-    .from('bank_transactions')
-    .select(`
-      amount, 
-      transaction_date, 
-      description,
-      merchant_name,
-      category:chart_of_accounts!category_id(id, account_name, account_code)
-    `)
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date)
-    .lt('amount', 0);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: expenses, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch expenses: ${error.message}`);
-  
-  const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + e.amount, 0) || 0);
-  
-  // Group by merchant/vendor
-  const byVendor: Record<string, number> = {};
-  expenses?.forEach((e: any) => {
-    const vendor = e.merchant_name || e.description || 'Unknown';
-    byVendor[vendor] = (byVendor[vendor] || 0) + Math.abs(e.amount);
+  const { start_date, end_date } = args;
+
+  // Category breakdown (get_bank_spending_by_category) replaces the raw
+  // amount<0 fetch. Note: this RPC has no p_bank_account_id parameter, so a
+  // bank_account_id filter on this analysis_type is not applied (a known
+  // gap in the Task 8 RPC surface, out of scope to add here). Per-vendor
+  // grouping also has no RPC (only category-level breakdown exists), so
+  // top_vendors is dropped rather than reintroducing an unbounded
+  // per-transaction fetch to compute it.
+  const { data: categoryRows, error } = await supabase.rpc('get_bank_spending_by_category', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
   });
-  
-  const topVendors = Object.entries(byVendor)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10)
-    .map(([name, amount]) => ({ name, amount }));
-  
-  // Group by category
-  const byCategory: Record<string, number> = {};
-  expenses?.forEach((e: any) => {
-    const category = e.category?.account_name || 'Uncategorized';
-    byCategory[category] = (byCategory[category] || 0) + Math.abs(e.amount);
-  });
-  
+
+  if (error) throw new Error(`get_bank_spending_by_category failed: ${error.message}`);
+
+  const rows = categoryRows || [];
+  const totalExpenses = rows.reduce((sum: number, r: any) => sum + Number(r.spend ?? 0), 0);
+  const expenseCount = rows.reduce((sum: number, r: any) => sum + Number(r.tx_count ?? 0), 0);
+
   results.spending = {
     total_expenses: totalExpenses,
-    expense_count: expenses?.length || 0,
-    avg_transaction: expenses?.length ? totalExpenses / expenses.length : 0,
-    top_vendors: topVendors,
-    by_category: Object.entries(byCategory).map(([name, amount]) => ({ name, amount })),
+    expense_count: expenseCount,
+    avg_transaction: expenseCount > 0 ? totalExpenses / expenseCount : 0,
+    // No vendor-level RPC exists; see note above.
+    top_vendors: [],
+    by_category: rows.map((r: any) => ({ name: r.category_name, amount: Number(r.spend ?? 0) })),
   };
 }
 
@@ -763,21 +727,22 @@ async function calculateLiquidity(
     return sum + balance;
   }, 0) || 0;
   
-  // Calculate burn rate from recent outflows
-  let outflowQuery = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date')
-    .eq('restaurant_id', restaurantId)
-    .lt('amount', 0)
-    .gte('transaction_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  
-  if (bank_account_id) {
-    outflowQuery = outflowQuery.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: recentOutflows } = await outflowQuery;
-  
-  const totalOutflows = Math.abs(recentOutflows?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+  // Calculate burn rate from recent outflows (get_bank_transaction_summary),
+  // a 30-day trailing window. p_bank_account_id filters connected_bank_id,
+  // which fixes the prior filter on a bank_account_id column that
+  // bank_transactions does not have.
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { data: outflowSummaryRows, error: outflowSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: thirtyDaysAgo,
+    p_end_date: todayStr,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (outflowSummaryError) throw new Error(`get_bank_transaction_summary failed: ${outflowSummaryError.message}`);
+
+  const totalOutflows = Number(outflowSummaryRows?.[0]?.outflow ?? 0);
   const avgDailyOutflow = totalOutflows / 30;
   const daysOfCash = avgDailyOutflow > 0 ? totalCash / avgDailyOutflow : 999;
   
@@ -800,36 +765,40 @@ async function calculatePredictions(
   results: any
 ): Promise<void> {
   const { bank_account_id } = args;
-  
-  // Simple predictions based on historical patterns
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, description, merchant_name')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: historical } = await query;
-  
-  // Find recurring patterns
-  const depositPattern = historical?.filter((t: any) => t.amount > 100);
-  const avgDepositSize = depositPattern?.reduce((sum: number, t: any) => sum + t.amount, 0) / (depositPattern?.length || 1);
-  
-  // Calculate days since last deposit
-  const lastDepositDate = depositPattern?.reduce((latest: string, t: any) => {
-    return t.transaction_date > latest ? t.transaction_date : latest;
+
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Daily inflow series (get_bank_transactions_daily) replaces the raw
+  // per-transaction fetch. "Recurring deposit" detection now looks at days
+  // whose total inflow exceeds $100 rather than individual transactions
+  // above that amount, since the daily RPC has no per-transaction
+  // granularity. The forecast math below stays in TypeScript over these
+  // bounded daily rows.
+  const { data: dailyRows, error } = await supabase.rpc('get_bank_transactions_daily', {
+    p_restaurant_id: restaurantId,
+    p_start_date: sixtyDaysAgo,
+    p_end_date: todayStr,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (error) throw new Error(`get_bank_transactions_daily failed: ${error.message}`);
+
+  const depositDays = (dailyRows || []).filter((d: any) => Number(d.inflow ?? 0) > 100);
+  const avgDepositSize = depositDays.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0) / (depositDays.length || 1);
+
+  // Calculate days since last deposit day
+  const lastDepositDate = depositDays.reduce((latest: string, d: any) => {
+    return d.day > latest ? d.day : latest;
   }, '1970-01-01');
-  
+
   const daysSinceDeposit = Math.floor((Date.now() - new Date(lastDepositDate).getTime()) / (1000 * 60 * 60 * 24));
-  
+
   results.predictions = {
     next_deposit_prediction: {
       expected_days_from_now: Math.max(0, 7 - daysSinceDeposit), // Assume weekly deposits
       expected_amount: avgDepositSize,
-      confidence: depositPattern?.length > 4 ? 'high' : depositPattern?.length > 2 ? 'medium' : 'low',
+      confidence: depositDays.length > 4 ? 'high' : depositDays.length > 2 ? 'medium' : 'low',
     },
   };
 }
@@ -946,26 +915,42 @@ async function executeGetBankTransactions(
   }
   
   const { data: transactions, error } = await query;
-  
+
   if (error) {
     throw new Error(`Failed to fetch transactions: ${error.message}`);
   }
-  
-  // Calculate summary stats
-  const total = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+
+  // Period summary totals (get_bank_transaction_summary) cover the whole
+  // date range for this bank account, not just the current page returned
+  // above. The RPC has no category_id/min_amount/max_amount/is_categorized
+  // parameters, so those filters (when set) narrow the transaction list
+  // below but do not narrow this summary.
+  const { data: summaryRows, error: summaryError } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (summaryError) {
+    throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+  }
+
+  const periodSummary = summaryRows?.[0] ?? {};
+  // categorized_count/categorization_rate have no RPC (the summary RPC has
+  // no categorization awareness), so they stay computed from the fetched
+  // page, same as before.
   const categorized = transactions?.filter((t: any) => t.is_categorized).length || 0;
-  
+
   return {
     ok: true,
     data: {
       period: { start_date, end_date },
       summary: {
-        total_transactions: transactions?.length || 0,
-        total_net: total,
-        total_inflows: inflows,
-        total_outflows: outflows,
+        total_transactions: Number(periodSummary.tx_count ?? 0),
+        total_net: Number(periodSummary.net ?? 0),
+        total_inflows: Number(periodSummary.inflow ?? 0),
+        total_outflows: Number(periodSummary.outflow ?? 0),
         categorized_count: categorized,
         categorization_rate: transactions?.length ? (categorized / transactions.length) * 100 : 0,
       },
@@ -1110,17 +1095,18 @@ async function executeGetFinancialStatement(
       }
 
       case 'cash_flow': {
-        const { data: transactions } = await supabase
-          .from('bank_transactions')
-          .select('amount, transaction_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .order('transaction_date', { ascending: true });
-        
-        const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-        const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
-        
+        // Scalar summary (get_bank_transaction_summary) replaces the raw
+        // per-transaction fetch.
+        const { data: summaryRows, error: summaryError } = await supabase.rpc('get_bank_transaction_summary', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (summaryError) throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+        const cfSummary = summaryRows?.[0] ?? {};
+        const inflows = Number(cfSummary.inflow ?? 0);
+        const outflows = Number(cfSummary.outflow ?? 0);
+
         return {
           ok: true,
           data: {
@@ -1140,7 +1126,7 @@ async function executeGetFinancialStatement(
             net_change_in_cash: inflows - outflows,
           },
           evidence: [
-            { table: 'bank_transactions', summary: `Cash flow from ${transactions?.length || 0} transactions ${start_date} to ${end_date}` },
+            { table: 'bank_transactions', summary: `Cash flow from ${Number(cfSummary.tx_count ?? 0)} transactions ${start_date} to ${end_date}` },
           ],
         };
       }
@@ -1732,16 +1718,15 @@ async function executeGenerateReport(
         if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
         const totalCOGS = sumMonthlyFoodCost(usageRows);
 
-        // Get expenses from bank transactions
-        const { data: expenses } = await supabase
-          .from('bank_transactions')
-          .select('amount, description')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .lt('amount', 0);
-
-        const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + (e.amount || 0), 0) || 0);
+        // Get expenses from bank transactions (get_bank_transaction_summary).
+        // outflow is already positive, so no Math.abs() is needed here.
+        const { data: expenseSummaryRows, error: expenseSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (expenseSummaryError) throw new Error(`get_bank_transaction_summary failed: ${expenseSummaryError.message}`);
+        const totalExpenses = Number(expenseSummaryRows?.[0]?.outflow ?? 0);
 
         reportData = {
           period: { start_date, end_date },
@@ -1810,28 +1795,34 @@ async function executeGenerateReport(
       }
 
       case 'cash_flow': {
-        const { data: transactions } = await supabase
-          .from('bank_transactions')
-          .select('amount, description, transaction_date, category:chart_of_accounts!category_id(account_name)')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .order('transaction_date', { ascending: true });
+        // Daily inflow/outflow/net series (get_bank_transactions_daily)
+        // replaces the raw per-transaction fetch. The per-transaction
+        // `transactions` list this report used to return (with
+        // description/category) is replaced by `daily_breakdown`, one row
+        // per day - the daily RPC has no per-transaction detail, and a raw
+        // fetch here would reintroduce the unbounded read this branch fixes.
+        const { data: dailyRows, error: dailyError } = await supabase.rpc('get_bank_transactions_daily', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (dailyError) throw new Error(`get_bank_transactions_daily failed: ${dailyError.message}`);
 
-        const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-        const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+        const days = dailyRows || [];
+        const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
+        const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
 
         reportData = {
           period: { start_date, end_date },
           cash_inflows: inflows,
           cash_outflows: outflows,
           net_cash_flow: inflows - outflows,
-          transactions: transactions?.map((t: any) => ({
-            date: t.transaction_date,
-            description: t.description,
-            amount: t.amount,
-            category: t.category?.account_name || 'Uncategorized',
-          })) || [],
+          daily_breakdown: days.map((d: any) => ({
+            date: d.day,
+            inflow: Number(d.inflow ?? 0),
+            outflow: Number(d.outflow ?? 0),
+            net: Number(d.net ?? 0),
+          })),
         };
         break;
       }
@@ -2812,68 +2803,29 @@ async function executeGetExpenseHealth(
     'card fee', 'payment fee', 'square', 'stripe', 'clover fee', 'toast fee',
   ];
 
-  // Fetch bank transactions
-  let txQuery = supabase
-    .from('bank_transactions')
-    .select(`
-      amount,
-      description,
-      merchant_name,
-      category_id,
-      is_split,
-      chart_of_accounts!category_id(account_name, account_subtype)
-    `)
-    .eq('restaurant_id', restaurantId)
-    .in('status', ['posted', 'pending'])
-    .gte('transaction_date', startDateStr)
-    .lte('transaction_date', endDateStr);
+  // One aggregate call (get_expense_health_metrics) replaces the raw fetch
+  // and the six filter/reduce passes over it. The RPC hardcodes the same
+  // status IN ('posted', 'pending') filter as the prior query, so no
+  // p_statuses argument is needed. p_bank_account_id filters
+  // connected_bank_id, the same column the prior query already used.
+  const feePatterns = processingFeePatterns.map((p) => `%${p.toLowerCase()}%`);
+  const { data: healthRows, error: healthError } = await supabase.rpc('get_expense_health_metrics', {
+    p_restaurant_id: restaurantId,
+    p_start_date: startDateStr,
+    p_end_date: endDateStr,
+    p_fee_patterns: feePatterns,
+    p_bank_account_id: bank_account_id || null,
+  });
 
-  if (bank_account_id) {
-    txQuery = txQuery.eq('connected_bank_id', bank_account_id);
-  }
+  if (healthError) throw new Error(`get_expense_health_metrics failed: ${healthError.message}`);
 
-  const { data: transactions, error: txError } = await txQuery;
-
-  if (txError) throw new Error(`Failed to fetch transactions: ${txError.message}`);
-
-  const txns = transactions || [];
-
-  // Calculate metrics
-  const revenue = txns.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0);
-
-  const foodCost = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      if (!t.category_id || !t.chart_of_accounts) return false;
-      const subtype = t.chart_of_accounts.account_subtype;
-      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
-      return subtype === 'cost_of_goods_sold' || name.includes('food') || name.includes('inventory');
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const laborCost = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      if (!t.category_id || !t.chart_of_accounts) return false;
-      const subtype = t.chart_of_accounts.account_subtype;
-      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
-      return subtype === 'payroll' || name.includes('payroll') || name.includes('labor');
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const processingFees = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      const desc = ((t.description || '') + ' ' + (t.merchant_name || '')).toLowerCase();
-      return processingFeePatterns.some(pattern => desc.includes(pattern));
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const outflows = txns.filter((t: any) => t.amount < 0);
-  const totalOutflows = Math.abs(outflows.reduce((sum: number, t: any) => sum + t.amount, 0));
-  const uncategorizedSpend = Math.abs(
-    outflows.filter((t: any) => !t.category_id && !t.is_split).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
+  const health = healthRows?.[0] ?? {};
+  const revenue = Number(health.revenue ?? 0);
+  const foodCost = Number(health.food_cost ?? 0);
+  const laborCost = Number(health.labor_cost ?? 0);
+  const processingFees = Number(health.processing_fees ?? 0);
+  const totalOutflows = Number(health.total_outflows ?? 0);
+  const uncategorizedSpend = Number(health.uncategorized_spend ?? 0);
 
   // Calculate percentages
   const foodCostPercentage = revenue > 0 ? (foodCost / revenue) * 100 : 0;
@@ -2958,7 +2910,7 @@ async function executeGetExpenseHealth(
       alerts: alerts,
     },
     evidence: [
-      { table: 'bank_transactions', summary: `${txns.length} transactions from ${startDateStr} to ${endDateStr} for expense health analysis` },
+      { table: 'bank_transactions', summary: `Expense health metrics ${startDateStr} to ${endDateStr}` },
     ],
   };
 }
@@ -3307,6 +3259,10 @@ async function executeBatchCategorizeTransactions(
 ): Promise<any> {
   const { transaction_ids, category_id, preview = false, confirmed = false } = args;
 
+  if (transaction_ids.length > 1000) {
+    return { error: `Too many ids (${transaction_ids.length}). Send at most 1000 per call.` };
+  }
+
   // Fetch the category info
   const { data: category, error: catError } = await supabase
     .from('chart_of_accounts')
@@ -3396,6 +3352,10 @@ async function executeBatchCategorizePosSales(
   supabase: any
 ): Promise<any> {
   const { sale_ids, category_id, preview = false, confirmed = false } = args;
+
+  if (sale_ids.length > 1000) {
+    return { error: `Too many ids (${sale_ids.length}). Send at most 1000 per call.` };
+  }
 
   const { data: category, error: catError } = await supabase
     .from('chart_of_accounts')

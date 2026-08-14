@@ -95,6 +95,25 @@ describe('MyShiftTradesCard', () => {
       screen.getByRole('img', { name: 'Posted — waiting for a claimant' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /withdraw post/i })).toBeInTheDocument();
+    expect(screen.queryByText('Tentative — draft')).not.toBeInTheDocument();
+  });
+
+  it('marks a draft offered shift as tentative', () => {
+    setActivity([
+      makeTrade({
+        status: 'open',
+        offered_shift: {
+          id: 'shift-1',
+          start_time: '2026-07-10T17:00:00Z',
+          end_time: '2026-07-10T23:00:00Z',
+          position: 'Server',
+          break_duration: 0,
+          is_published: false,
+        },
+      }),
+    ]);
+    renderCard();
+    expect(screen.getByText('Tentative — draft')).toBeInTheDocument();
   });
 
   it('pending_approval posted trade names the claimant and hides Withdraw', () => {

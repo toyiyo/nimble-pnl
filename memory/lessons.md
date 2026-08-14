@@ -2693,3 +2693,92 @@
 - **Mistake:** I ran `deno check --node-modules-dir=auto` on an edge function file to validate the import graph. The flag rewrote the repository npm `node_modules`. The worktree tooling then failed.
 - **Correction:** I repaired the tree with `npm ci`. I validated the edge file with a standalone `deno check`, with no `--node-modules-dir=auto`. The standalone check reads the local import graph and does not touch npm `node_modules`.
 - **Rule:** Do not run `deno check --node-modules-dir=auto` inside a repository that holds an npm `node_modules`. The flag corrupts the shared tree. Check a local-graph edge file standalone. If the tree is already corrupt, repair it with `npm ci`.
+
+---
+
+## Category: Testing (Vitest mocks) (continued)
+
+### [2026-08-09] A `vi.mock('node:fs')` override does not reach a separate helper module — and a `catch` hid it (PR #736)
+- **Mistake:** `tests/helpers/e2e-service-role.ts` reads `.env.local` with `readFileSync`. The unit test mocked `node:fs` through `vi.mock` with a `vi.hoisted` holder, then re-imported the helper after `vi.resetModules()`. Inside the helper the binding arrived as `undefined`. The call threw `readFileSync is not a function`. The helper wraps that call in a `catch` that treats every error as an absent file. So the two tests named "throws a clear error when SUPABASE_URL is absent" passed for the wrong reason from the day I wrote them. A plain delegating arrow function in place of the `vi.fn` did not fix it either.
+- **Diagnosis:** An isolated probe file proved the mock itself was correct: `IS_MOCK: true`, `SAME_REF: true`, and the call returned the mocked text — even with `vi.resetModules()` and a `beforeEach` reset. The mock was correct from the test and absent inside the helper. Only a temporary `console.log` inside the helper's `catch` showed the real error string.
+- **Correction:** I deleted the `node:fs` mock. Each test now calls `mkdtempSync(join(tmpdir(), ...))`, calls `process.chdir(tmpRoot)`, and writes real `.env.local` files. `afterEach` restores the working directory and deletes the tree. No ancestor of the system temporary directory holds a `.env.local`, so the absent-file tests now prove the absent-file path. All 11 tests pass, and the full suite of 9168 passes with `process.chdir` in a worker.
+- **Rule:** A broken module mock and a passing test look the same when the code under test catches every error and returns a default. Two defenses. First, when the subject wraps I/O in a `catch` that flattens all errors, do not mock the I/O module — use a real temporary directory. Second, when a mock seems not to apply, print the caught error from inside the subject, not from the test; the test's view of the mock proves nothing about the subject's view. This extends the hoist lesson from PR #734: a `vi.mock` factory and the module graph around `vi.resetModules()` both behave differently from ordinary imports.
+
+---
+
+## Category: Database Tests (pgTAP) (continued)
+
+### [2026-08-09] `supabase test db` is not the pgTAP runner this repo uses — it reported 5 false failures (PR #736)
+- **Mistake:** I verified the branch with `npx supabase test db`. It reported `Result: FAIL`, with `More than one plan found in TAP output` and `Tests out of sequence` across 5 files. One of those files, `20260129000000_subscription_system.sql`, is a file this branch edits. I started to bisect it against `origin/main`.
+- **Correction:** `.github/workflows/unit-tests.yml:176` runs `supabase/tests/run_tests.sh`, which is the `npm run test:db` script. That runner drives `psql` per file. It reported `Total tests: 2795, Passed: 2795, Failed: 0`, and 22 of 22 for the new `restaurant_billing_columns.test.sql`. `supabase test db` drives `prove`, which mis-parses these files.
+- **Rule:** Read the CI workflow and run the exact command it runs. Two signals said "runner fault, not code fault" before any bisect: files this branch never touched also failed, and the parse errors were about TAP structure, not about an assertion. Check both before you suspect your own change.
+
+---
+
+## Category: Dev workflow / Worktree hygiene (continued)
+
+### [2026-08-09] `supabase db reset` is not atomic — a CLI version gap left the database 30 migrations behind (PR #736)
+- **Mistake:** I ran `npx supabase db reset` with the local CLI 2.113.0. It stopped at `20260804090500_drop_superseded_rule_candidate_indexes.sql` with `ERROR: DROP INDEX CONCURRENTLY cannot run inside a transaction block (SQLSTATE 25001)`. The partial reset left `supabase_migrations.schema_migrations` at `20260804090400` and deleted the guard trigger the branch adds. Every later verification would have run against the wrong schema.
+- **Correction:** `.github/workflows/unit-tests.yml:149` pins `supabase/setup-cli@v1` to version `2.65.5`. `npx --yes supabase@2.65.5 db reset` applied every migration, including `20260809100000_guard_restaurant_billing_columns.sql`.
+- **Rule:** Pin the local Supabase CLI to the CI version for any reset. A newer CLI can wrap a migration in a transaction that the pinned CLI does not. A failed reset is not a no-op: it leaves a half-migrated database that still answers queries. After any failed reset, read `SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 5` before you trust a test result.
+
+### [2026-08-09] A rebase onto a moved `main` can add a dependency the worktree `node_modules` lacks (PR #736)
+- **Mistake:** `npm run typecheck` failed with `Cannot find module '@vercel/speed-insights/react'` in `src/components/SpeedInsightsGate.tsx`. I read it as a code fault first. The rebase onto `origin/main` brought commit `c571862e`, which adds that dependency to `package.json`. The worktree `node_modules` predates the rebase.
+- **Correction:** `npm install` in the worktree added 1 package. Typecheck went clean.
+- **Rule:** Run `npm install` in the worktree right after any rebase onto a moved `main`. A missing-module typecheck error on a file your branch never touched means a stale `node_modules`, not a code fault. Check `git log --oneline -1 origin/main -- <file>` before you debug the file.
+
+---
+
+## Category: Code Review Process (continued)
+
+### [2026-08-09] A plain `gh api` reply does not satisfy the PR comment gate — and the reason it prints is not yours (PR #736)
+- **Mistake:** I answered the three CodeRabbit findings with `gh api -X POST repos/<owner>/<repo>/pulls/736/comments/<id>/replies`. The replies were prose, with no verdict marker. The `pr-comment-response` check failed: `Review findings are waiting for a verdict reply`, `3 unanswered`. The reason column said `reply from a bot` for all three, so I first looked for a wrong identity. `gh api user` returned `jdelgado2002`, type `User`, and the three replies carried that author.
+- **Diagnosis:** `firstUnansweredReason` in `dev-tools/pr-triage.js:319` walks every reply and keeps the LAST failing reason. CodeRabbit answered after me in each thread, so the bot reason overwrote the true one. The true reason for my replies was `no verdict in reply`: `parseVerdict` needs the `<!-- pr-triage: agreed -->` marker, or a first line that opens with a verdict word.
+- **Correction:** I reposted each with `node dev-tools/pr-triage.js reply --pr 736 --comment <id> --verdict agreed --commit 487f03cc --rationale "..."`. `node dev-tools/pr-triage.js audit --pr 736` then reported `0 unanswered · 3 answered` and exit 0. The check only refreshes on `pull_request_target`, a 30-minute cron, or `workflow_dispatch`, so I ran `gh workflow run pr-comment-response.yml --ref main -f pr=736` to publish the green check without an empty push.
+- **Rule:** Reply to review findings with `dev-tools/pr-triage.js reply`, never with a raw `gh api ... /replies`. An `agreed` verdict must cite a SHA that is on the PR. Run `node dev-tools/pr-triage.js audit --pr <N>` locally before you push; it is the same classifier the check runs. Do not trust the reason string in the check summary to describe your own reply — it names the last failure in the thread, and a bot that answers after you overwrites it.
+
+---
+
+## Category: Security (continued)
+
+### [2026-08-11] Postgres does not guarantee that OR short-circuits — put a raising cast behind plpgsql control flow (PR #736)
+- **Mistake:** The billing guard tested the caller in one SQL expression: `current_user IN ('authenticated','anon') OR (current_setting('request.jwt.claims', true))::jsonb ->> 'role' IN (...)`. I read the left operand as a short-circuit, so I judged the `::jsonb` cast unreachable on the common path. A review agent stated the same premise back to me as a refutation.
+- **Diagnosis:** I ran the case instead of arguing it. With `SET LOCAL role TO authenticated` and `request.jwt.claims` set to `not-json-at-all`, the UPDATE failed with `ERROR: invalid input syntax for type json`. The left operand alone was TRUE. The control run, with well-formed claims, returned `UPDATE 0`. Postgres may evaluate either side of an `OR` in any order.
+- **Correction:** The function now declares two variables and uses `IF`/`ELSE`. plpgsql control flow does guarantee the order. A trapped `BEGIN ... EXCEPTION WHEN others` holds the cast for the roles that reach it. A pgTAP `lives_ok` case pins the behavior. A mutation run, with the old function installed, failed that case.
+- **Rule:** Never rely on OR short-circuit in SQL to make a raising expression unreachable. Postgres does not promise the order. Put the guard in plpgsql `IF`/`ELSE`, and wrap any cast that can raise in its own `BEGIN ... EXCEPTION` block. A `BEFORE UPDATE ... FOR EACH ROW` trigger runs for every role, so one uncaught raise in it aborts every write to the table, not only the writes you meant to block.
+
+### [2026-08-11] Measure a new guard's blast radius against the role that does NOT already fail (PR #736)
+- **Mistake:** I first rated the unguarded cast as high severity, because a malformed claim would break every `authenticated` write to `public.restaurants`.
+- **Diagnosis:** `auth.uid()` is a Supabase platform function and carries the identical unguarded `::jsonb` cast. A probe proved it: under `authenticated` with malformed claims, a plain `SELECT count(*) FROM public.restaurants` already fails, with no trigger involved. So for `authenticated` the trigger added nothing. `service_role` and `postgres` carry `rolbypassrls`, so RLS never calls `auth.uid()` for them, and a malformed claim is harmless to them today. The trigger is `FOR EACH ROW` and runs for them anyway. That made the Stripe webhook path the one genuinely new crash point.
+- **Rule:** To size a new guard's blast radius, name every role that reaches it, then subtract the roles that already fail for the same reason. Check `rolbypassrls` in `pg_roles` first: a bypass role skips the whole RLS layer, so a trigger can be the only new code it runs. Rate the severity from the surviving role, not from the loudest one.
+
+---
+
+## Category: Database Tests (pgTAP) (continued)
+
+### [2026-08-11] An UPDATE with no read-back is not a test — three cases asserted nothing (PR #736)
+- **Mistake:** Three cases in `restaurant_billing_columns.test.sql` ran an UPDATE inside `lives_ok`, then moved on. They proved only that the statement did not raise. A silent no-op passed them. Case 16 was the worst: it asserted that a self-assign of `subscription_tier` did not raise, but never checked that the value stayed unchanged.
+- **Correction:** Each case now reads the row back with `is()`. Case 16 captures the value into a temp table before the write and compares after. `plan(22)` became `plan(28)`; six new assertions, including two for the malformed-claim path and one that proves the guard still blocks an owner after them.
+- **Rule:** `lives_ok` around a write is a smoke test, not an assertion. Pair every `lives_ok(UPDATE ...)` with an `is()` that reads the row back. For a guard test, assert both directions in the same file: the blocked write must raise, and the allowed write must land the value. A trigger that silently stops doing its job passes a suite of `lives_ok` calls.
+
+---
+
+## Category: Testing (TypeScript type assertions)
+
+### [2026-08-11] A `@ts-expect-error` in a test file is not a gate until a tsconfig compiles that file (PR #736)
+- **Mistake:** I wrote `tests/unit/restaurantUpdateBillingColumns.test.ts` with nine `@ts-expect-error` directives, one per guarded billing column. The file docstring said "`npm run typecheck` is the real test". Vitest reported 2 passed. I treated that as proof the type rejected the payloads.
+- **Diagnosis:** Neither claim held. `tsconfig.app.json` sets `"include": ["src"]`, so `npm run typecheck` never read the test file. Vitest strips types with esbuild and never checks them, so a directive is a no-op under `npm run test`. No CI job runs `npm run typecheck` at all. Every directive could have pointed at code with no error, and nothing would have failed. A repo-wide fix was not available either: `tsc` over `src` plus `tests` reports 930 pre-existing errors.
+- **Correction:** `tsconfig.typetest.json` extends `tsconfig.app.json` and globs `tests/unit/types/**/*.test.ts`. `npm run typecheck:types` compiles it. A step in the CI `Unit Tests` job runs the script. A mutation run, with the weaker type installed, reported `TS2578: Unused '@ts-expect-error' directive` on the three cases that matter. The next lesson covers the second half of this fix.
+- **Rule:** Before you trust a type assertion, name the command that compiles the file. Read the `include` list of the tsconfig, and confirm a CI job runs that command. A green Vitest run says nothing about a type. Prove each directive with a mutation: weaken the type, and check the compiler reports `TS2578` on that exact line. This is the `lives_ok`-with-no-read-back failure from this same PR, in a second disguise.
+
+### [2026-08-11] I named the root cause in the diagnosis, then fixed the narrower half of it (PR #736)
+- **Mistake:** The diagnosis above holds one sentence that I wrote and then walked past: "No CI job runs `npm run typecheck` at all." I fixed the test-file gap and added `typecheck:types` to CI. I left the sentence itself unfixed. So `src` stayed uncompiled in CI, and the type that the whole PR exists to add gated nothing at any real call site.
+- **Diagnosis:** An adversarial review agent found it, after CodeRabbit reported `Review rate limited` and skipped the commit. Two commands prove it. `grep -rn "typecheck" .github/workflows/` returned one line, the `typecheck:types` step. `grep -rn "npm run build" .github/workflows/` returned nothing. Vite builds with SWC and does not typecheck, so no job ever ran `tsc` over `src`. A future caller could write `subscription_tier` through `updateRestaurant` and CI would stay green. That is the PR #738 and PR #739 failure class, inside the PR that cites them.
+- **Correction:** The `Unit Tests` job now runs `npm run typecheck` before `npm run typecheck:types`. A mutation proved the gate: I added `subscription_tier: 'pro'` to the geofence payload in `src/pages/RestaurantSettings.tsx`, and the run failed with `error TS2322: Type 'string' is not assignable to type 'never'`, exit 2. The same commit deleted an `as any` cast on a `restaurants` update, which had cancelled the guard for that page.
+- **Rule:** Read your own diagnosis back before you close the task. Mark every cause it names, then map each one to a line in the fix. A cause with no matching line is a cause you left open. Write the correction to answer the diagnosis, not to answer the symptom you first saw. When a new type or a new guard claims to move a failure to build time, name the CI job that compiles the code, and prove it with a mutation at a real call site — not at a test-only call site.
+
+### [2026-08-11] `Omit` does not stop a guarded key in a variable payload — excess-property checking is literal-only (PR #736)
+- **Mistake:** I typed the update payload as `Omit<Partial<Restaurant>, GuardedBillingColumn>` to move a SQLSTATE `42501` runtime failure to the compiler. My nine test cases were object literals, and they all failed to compile as intended, so I read the type as complete.
+- **Diagnosis:** CodeRabbit found the hole. TypeScript checks excess properties only on an object literal at the assignment site. A pre-built variable is checked by structural assignability, which permits extra properties. So `const p = { name: 'X', subscription_tier: 'pro' }; const u: RestaurantUpdate = p;` compiled, and the guarded column reached the database. The literal-only tests could not see this.
+- **Correction:** `RestaurantUpdate` now intersects the `Omit` with `{ [K in GuardedBillingColumn]?: never }`. `string` is not assignable to `never`, so the variable form is rejected too. The `never` half also reaches `subscription_cancel_at` and `stripe_customer_id`, which the `Restaurant` interface does not declare, so `Omit` could not name them.
+- **Rule:** To forbid a key, declare it as `?: never`; do not only `Omit` it. `Omit` removes a key from the target type, which makes it an *excess* property, and excess-property checking fires on literals alone. Test both forms: a literal and a variable assigned to the same type. A type that passes only the literal case gives false assurance for every call site that builds the payload first.

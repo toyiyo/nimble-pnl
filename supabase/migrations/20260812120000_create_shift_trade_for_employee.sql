@@ -67,6 +67,19 @@ BEGIN
     RAISE EXCEPTION 'Only a scheduled or confirmed shift can be traded';
   END IF;
 
+  -- The offered employee must be active in this restaurant. Without this guard
+  -- a manager can post a trade for a terminated employee: deactivate_employee
+  -- auto-cancels only 'scheduled' shifts, so a 'confirmed' shift of an inactive
+  -- employee stays tradeable.
+  IF NOT EXISTS (
+    SELECT 1 FROM employees
+    WHERE id = p_offered_by_employee_id
+      AND restaurant_id = p_restaurant_id
+      AND is_active = true
+  ) THEN
+    RAISE EXCEPTION 'Offered employee is not active';
+  END IF;
+
   -- Directed trade: the target must be a different, active employee of this
   -- restaurant.
   IF p_target_employee_id IS NOT NULL THEN

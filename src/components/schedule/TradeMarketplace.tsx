@@ -35,6 +35,7 @@ interface TradeWithConflict {
     end_time: string;
     position: string;
     break_duration: number;
+    is_published: boolean;
   };
   offered_by: {
     id: string;

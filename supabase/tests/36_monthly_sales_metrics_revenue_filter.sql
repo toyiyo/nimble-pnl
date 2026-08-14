@@ -4,7 +4,7 @@
 -- restricts gross_revenue to revenue-categorized + uncategorized sales only.
 
 BEGIN;
-SELECT plan(4);
+SELECT plan(5);
 
 -- get_monthly_sales_metrics now runs as SECURITY INVOKER and checks
 -- user_restaurants membership. The test caller must be an authenticated
@@ -102,6 +102,44 @@ SELECT is(
    WHERE period = '2026-04'),
   150.00::numeric,
   'uncategorized sales still count toward gross_revenue (NULL category_id pass-through)'
+);
+
+-- Cross-restaurant child boundary (defense in depth for the BYPASSRLS path).
+-- The parent-sale check excludes a parent that has a child sale. Without the
+-- restaurant_id filter, a child in ANOTHER restaurant suppresses an in-tenant
+-- parent. This test runs on the RLS-disabled path (RLS is off above), so RLS
+-- cannot hide the cross-restaurant child. The restaurant_id filter must.
+-- Restaurant ...223 owns the child; the caller queries restaurant ...222.
+INSERT INTO restaurants (id, name) VALUES
+  ('00000000-0000-0000-0000-000000000223'::uuid, 'Cross-Restaurant Child Test')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+DELETE FROM unified_sales WHERE restaurant_id = '00000000-0000-0000-0000-000000000223';
+
+-- Parent P ($70, uncategorized, in the caller's restaurant, May 2026).
+-- Child C references P but belongs to restaurant ...223.
+INSERT INTO unified_sales (
+  id, restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+  quantity, unit_price, total_price, sale_date, item_type,
+  is_categorized, category_id, adjustment_type, parent_sale_id
+) VALUES
+  ('00000000-0000-0000-0000-000000000801', :'restaurant_id', 'test', 'ord-p-1', 'item-p-1',
+    'Parent Sale', 1, 70, 70, '2026-05-15', 'sale', false,
+    NULL, NULL, NULL),
+  ('00000000-0000-0000-0000-000000000802', '00000000-0000-0000-0000-000000000223'::uuid,
+    'test', 'ord-c-1', 'item-c-1',
+    'Cross-Restaurant Child', 1, 999, 999, '2026-05-15', 'sale', false,
+    NULL, NULL, '00000000-0000-0000-0000-000000000801');
+
+-- gross_revenue must be 70. A child in restaurant ...223 must not suppress the
+-- parent in restaurant ...222. Without the restaurant_id filter, the RPC drops
+-- the parent and returns no 2026-05 row (gross_revenue NULL, the test fails).
+SELECT is(
+  (SELECT gross_revenue::numeric(10,2)
+   FROM get_monthly_sales_metrics(:'restaurant_id', '2026-05-01'::date, '2026-05-31'::date)
+   WHERE period = '2026-05'),
+  70.00::numeric,
+  'a child sale in another restaurant does not suppress an in-tenant parent sale'
 );
 
 SELECT * FROM finish();

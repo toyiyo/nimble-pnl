@@ -13,9 +13,13 @@
 --   2. Add a user_restaurants membership guard (same as migration
 --      20260302120000).
 --   3. Revoke EXECUTE from PUBLIC and anon; grant it to authenticated only.
+--   4. Filter the child-sale checks by restaurant_id. A cross-restaurant child
+--      must not suppress an in-tenant parent sale on a BYPASSRLS path (cron or
+--      service_role). RLS already scopes an authenticated caller, so this
+--      filter is defense in depth and follows the project restaurant_id rule.
 --
--- The aggregation logic is unchanged from migration 20260501120000. Only the
--- security mode, the membership guard, and the grants change.
+-- The aggregation logic matches migration 20260501120000, plus the
+-- restaurant_id filter on the child-sale checks (item 4).
 
 CREATE OR REPLACE FUNCTION public.get_monthly_sales_metrics(
   p_restaurant_id UUID,
@@ -66,6 +70,7 @@ BEGIN
       AND NOT EXISTS (
         SELECT 1 FROM unified_sales child
         WHERE child.parent_sale_id = us.id
+          AND child.restaurant_id = p_restaurant_id
       )
     GROUP BY TO_CHAR(us.sale_date, 'YYYY-MM')
   ),
@@ -105,6 +110,7 @@ BEGIN
       AND NOT EXISTS (
         SELECT 1 FROM unified_sales child
         WHERE child.parent_sale_id = us.id
+          AND child.restaurant_id = p_restaurant_id
       )
     GROUP BY TO_CHAR(us.sale_date, 'YYYY-MM'),
       CASE

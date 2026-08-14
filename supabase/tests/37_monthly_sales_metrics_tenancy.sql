@@ -5,15 +5,16 @@
 --   2. A non-member gets an access-denied error (SQLSTATE P0001).
 --   3. The function runs as SECURITY INVOKER (prosecdef = false).
 --   4. The anon role cannot EXECUTE the function.
+--
+-- Tests 1 and 2 run as the real caller role, authenticated, with RLS active.
+-- The local postgres role has BYPASSRLS, so the fixtures below insert while
+-- RLS stays enabled. The membership guard reads user_restaurants under the
+-- caller's own RLS, the same as production.
 
 BEGIN;
 SELECT plan(4);
 
-SET LOCAL role TO postgres;
-
-ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
-ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
-
+-- Fixtures insert as the session role (postgres, BYPASSRLS). RLS stays on.
 -- A member and a non-member.
 INSERT INTO auth.users (id, email) VALUES
   ('00000000-0000-0000-0000-000000000230'::uuid, 'metrics-member@example.com'),
@@ -30,8 +31,9 @@ INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
    '00000000-0000-0000-0000-000000000232'::uuid, 'owner')
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
--- Test 1: the member can call the function.
-SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000230"}';
+-- Test 1: the member can call the function. Run as authenticated with RLS on.
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000230","role":"authenticated"}';
 SELECT lives_ok(
   $$ SELECT * FROM get_monthly_sales_metrics(
        '00000000-0000-0000-0000-000000000232'::uuid,
@@ -40,7 +42,7 @@ SELECT lives_ok(
 );
 
 -- Test 2: the non-member gets an access-denied error.
-SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000231"}';
+SET LOCAL request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000231","role":"authenticated"}';
 SELECT throws_ok(
   $$ SELECT * FROM get_monthly_sales_metrics(
        '00000000-0000-0000-0000-000000000232'::uuid,
@@ -49,6 +51,10 @@ SELECT throws_ok(
   NULL,
   'A non-member cannot call get_monthly_sales_metrics'
 );
+
+-- Back to the session role for the catalog checks.
+RESET ROLE;
+RESET request.jwt.claims;
 
 -- Test 3: the function runs as SECURITY INVOKER, so RLS applies to the caller.
 SELECT is(

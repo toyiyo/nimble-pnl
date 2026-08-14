@@ -6,6 +6,21 @@
 BEGIN;
 SELECT plan(4);
 
+-- get_monthly_sales_metrics now runs as SECURITY INVOKER and checks
+-- user_restaurants membership. The test caller must be an authenticated
+-- member of the restaurant it queries, so simulate a signed-in member.
+SET LOCAL role TO postgres;
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000220"}';
+
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE unified_sales DISABLE ROW LEVEL SECURITY;
+ALTER TABLE chart_of_accounts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
+
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-0000-0000-000000000220'::uuid, 'monthly-metrics-test@example.com')
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+
 SELECT
   '00000000-0000-0000-0000-000000000222'::uuid AS restaurant_id,
   '2026-04-01'::date AS date_from,
@@ -18,6 +33,11 @@ DELETE FROM chart_of_accounts WHERE restaurant_id = :'restaurant_id';
 
 INSERT INTO restaurants (id, name) VALUES (:'restaurant_id', 'Monthly Metrics Test')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+-- The caller belongs to this restaurant.
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('00000000-0000-0000-0000-000000000220'::uuid, :'restaurant_id', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 -- A revenue account and a liability (sales tax) account
 INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance)

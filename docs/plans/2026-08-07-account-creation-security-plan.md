@@ -132,12 +132,39 @@ Retrospective in [PR #737](https://github.com/toyiyo/nimble-pnl/pull/737).
 Design: `docs/superpowers/specs/2026-08-09-restaurant-billing-column-guard-design.md`.
 Plan: `docs/superpowers/plans/2026-08-09-restaurant-billing-column-guard-plan.md`.
 
-**Files:**
+**Files, all 16 that PR #736 changed.** The guard needs more than a migration.
+A server-side block alone leaves the client free to send a write that now
+fails, so the task also added a type barrier and a service-role test path.
+
+*Server guard:*
 - Create: `supabase/migrations/20260809100000_guard_restaurant_billing_columns.sql`
   (the draft below named `20260807000001_...`; the shipped file uses the later
   timestamp)
-- Test: `supabase/tests/restaurant_billing_columns.test.sql`
+- Create: `supabase/tests/restaurant_billing_columns.test.sql`
 - Change: `supabase/tests/20260129000000_subscription_system.sql`
+
+*Client type barrier — blocks the write before it reaches the database:*
+- Change: `src/hooks/useRestaurants.tsx` (the `RestaurantUpdate` type)
+- Change: `src/pages/RestaurantSettings.tsx`
+- Change: `src/components/settings/GeofenceSettings.tsx`
+- Create: `tests/unit/types/restaurantUpdateBillingColumns.test.ts`
+
+*Test path — the browser role can no longer set a tier, so E2E needs
+`service_role`:*
+- Create: `tests/helpers/e2e-service-role.ts`
+- Create: `tests/unit/e2e-service-role.test.ts`
+- Create: `tests/e2e/subscription-tier-guard.spec.ts`
+- Change: `tests/helpers/e2e-supabase.ts`
+
+*CI gate — no job compiled `src` before this task, so the type barrier gated
+nothing:*
+- Create: `tsconfig.typetest.json`
+- Change: `.github/workflows/unit-tests.yml`
+- Change: `package.json`
+
+*Design record:*
+- Create: `docs/superpowers/specs/2026-08-09-restaurant-billing-column-guard-design.md`
+- Create: `docs/superpowers/plans/2026-08-09-restaurant-billing-column-guard-plan.md`
 
 **The shipped guard blocks two writer shapes, not one.** The draft below says
 "the writer is not the service role". The trigger tests two things in order.
@@ -148,10 +175,11 @@ That second test matters. Inside a `SECURITY DEFINER` function, `current_user`
 becomes the function owner, but the JWT claim still says `authenticated`. The
 first test alone would let such a function through. The second test stops it.
 
-The same asymmetry changed an existing pgTAP test. The harness runs as
-`postgres`, so the first test is false, but a leftover `authenticated` claim
-made the second test true and blocked a fixture UPDATE. The fix clears the
-claim around each guarded write and restores it after.
+The second test also blocked a fixture `UPDATE` in an existing pgTAP test. The
+harness runs as `postgres`, so the first test was false. But the harness kept
+an `authenticated` JWT claim from an earlier assertion. That claim made the
+second test true. The fix clears the claim before each guarded write. It
+restores the claim after, because the assertions below need `auth.uid()`.
 
 **A pre-merge audit found no regression.** No production `SECURITY DEFINER`
 function updates `public.restaurants`. `create_restaurant_with_owner` only

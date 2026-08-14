@@ -86,14 +86,26 @@ policy admits every active employee to an open trade
 and the `shifts` SELECT policy then admits the same employees to the
 referenced shift
 (`supabase/migrations/20260805130000_self_scope_employee_reads.sql:66-74`).
-They read `start_time`, `end_time`, and `position` before publication.
+The client query joins `start_time`, `end_time`, `position`,
+`break_duration`, and `is_published` from the shift
+(`src/hooks/useShiftTrades.ts:139-145,632-638`). The same query also reads
+`reason`, `manager_note`, and the name and position of `offered_by`,
+`accepted_by`, and `target_employee` from the `shift_trades` row itself
+(`src/hooks/useShiftTrades.ts:125-163`).
 
-This design accepts that risk on its own terms. It does not reuse the
-narrower accepted-risk note inside the self-scope migration. The basis: the
-user chose "Notify and mark tentative" in chat, and the broadcast email for
-an open trade already shows the same three fields to every active employee
+This design accepts only the new part of that risk: the shift fields.
+Before this design, `is_published = false` blocked a trade from existing at
+all, so those shift fields stayed hidden until publication. The
+`shift_trades` row fields — `reason`, `manager_note`, participant name, and
+participant position — were already readable on any open trade before this
+design. This design does not add, remove, or change access to those fields.
+
+The basis for accepting the new part: the user chose "Notify and mark
+tentative" in chat. The broadcast email for an open trade already shows the
+shift's position, start time, and end time to every active employee
 (`supabase/functions/send-shift-trade-notification/index.ts:187-200,398-400`).
-The table read discloses no data beyond the approved notification.
+`break_duration` is a benign scheduling detail. `is_published` drives the
+tentative label and discloses no shift content on its own.
 
 ## 5. Change set
 

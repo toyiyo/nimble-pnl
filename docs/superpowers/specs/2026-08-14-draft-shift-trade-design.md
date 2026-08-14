@@ -18,8 +18,8 @@ The user made these decisions in chat:
 1. **Both actors.** An employee can offer an own draft shift. A manager can
    offer the draft shift of a coworker.
 2. **Notify and mark tentative.** Send the trade notification the same as
-   today. Add a "tentative — draft schedule" label to the notification and to
-   the trade card.
+   today. Mark the notification and the trade card as tentative. The exact
+   strings: the UI badge in section 5D, the notification line in section 5E.
 3. **Approval runs in draft.** The trade lifecycle does not wait for
    publication. A draft trade runs offer → accept → approve like any other
    trade.
@@ -77,6 +77,24 @@ mitigations answer the original concern:
 3. The tentative state derives live from `offered_shift.is_published`. When
    the manager unpublishes the week, the label reappears.
 
+### 4.1 Accepted risk: pre-publish visibility of the draft shift
+
+An open-marketplace draft trade makes the draft shift readable by every
+active employee in the restaurant. The chain: the `shift_trades` SELECT
+policy admits every active employee to an open trade
+(`supabase/migrations/20260713000000_restrict_directed_shift_trade_visibility.sql:38-39`),
+and the `shifts` SELECT policy then admits the same employees to the
+referenced shift
+(`supabase/migrations/20260805130000_self_scope_employee_reads.sql:66-74`).
+They read `start_time`, `end_time`, and `position` before publication.
+
+This design accepts that risk on its own terms. It does not reuse the
+narrower accepted-risk note inside the self-scope migration. The basis: the
+user chose "Notify and mark tentative" in chat, and the broadcast email for
+an open trade already shows the same three fields to every active employee
+(`supabase/functions/send-shift-trade-notification/index.ts:187-200,398-400`).
+The table read discloses no data beyond the approved notification.
+
 ## 5. Change set
 
 ### A. Relax the two UI gates
@@ -84,6 +102,11 @@ mitigations answer the original concern:
 - Delete the `shift.is_published` term from `canTrade` in
   `src/components/employee/ShiftRow.tsx:132-133`. Keep `!!onTrade`,
   `!isCancelled`, and the `isFuture` check.
+- Rewrite the design comment at `src/components/employee/ShiftRow.tsx:125-128`.
+  Today it names four draft signals, and one is "the missing Trade button".
+  That signal disappears with this change. The new comment must name the
+  three signals that remain: the dashed surface, the badge copy, and the
+  muted type.
 - Delete the `shift.is_published` term from the offer-button condition in
   `src/pages/SchedulingShiftCard.tsx:220`. Keep the `onOfferTrade` check and
   the status allow-list `('scheduled', 'confirmed')`.
@@ -108,15 +131,39 @@ mitigations answer the original concern:
 
 - The Trade button now appears next to the existing `DraftBadge` in
   `ShiftRow`.
-- Add a small "Tentative — draft" badge to each trade card that renders an
-  offered shift with `is_published = false`:
+- Badge text, one string everywhere in the UI: **"Tentative — draft"**. The
+  wording differs from `DraftBadge` ("Draft — not confirmed") on purpose.
+  `DraftBadge` speaks to the shift owner. The tentative badge speaks to a
+  different employee who considers the trade. It tells that employee the
+  shift can still change.
+- Add the badge to each list card that shows an offered shift with
+  `is_published = false`:
   - `src/components/schedule/TradeMarketplace.tsx`
   - `src/components/schedule/MyShiftTradesCard.tsx`
   - `src/components/schedule/TradeApprovalQueue.tsx`
+  - `src/pages/AvailableShiftsPage.tsx` — the `TradeCard` component
+    (lines 68-186) shows `trade.offered_shift` and is routed. Without the
+    badge here, an employee can accept a draft trade with no warning.
+- Add the badge, or one equivalent inline warning line, inside the four
+  confirm and approval dialogs. These are the point of commitment:
+  - `src/components/schedule/TradeMarketplace.tsx:206-215` (accept-confirm)
+  - `src/components/schedule/MyShiftTradesCard.tsx:267-278` (withdraw-confirm)
+  - `src/components/schedule/TradeApprovalQueue.tsx:618-621` (cleanup-confirm)
+  - `src/components/schedule/TradeApprovalQueue.tsx:837-851` (approve/reject)
 - Use warning tokens for the badge, consistent with `DraftBadge`. Do not use
-  direct colors.
+  direct colors. The badge must show visible text, not only an icon or a
+  color.
 - The trade queries in `src/hooks/useShiftTrades.ts` must select
-  `is_published` in the `offered_shift` embed where they do not today.
+  `is_published` in the `offered_shift` embed where they do not today. The
+  three embeds: `src/hooks/useShiftTrades.ts:139-145`, `:243-249`, and
+  `:632-638`. These three cover every current consumer.
+- Add `is_published: boolean` to the two types that describe the embed:
+  `ShiftTrade.offered_shift` (`src/hooks/useShiftTrades.ts:21-27`) and
+  `TradeWithConflict.offered_shift`
+  (`src/components/schedule/TradeMarketplace.tsx:32-38`).
+- `src/pages/EmployeeShiftMarketplace.tsx` also renders `offered_shift`
+  through the same hook, but no route or import references it. It is dead
+  code and out of scope. A follow-up task can delete it.
 
 ### E. Mark tentative in the notification
 
@@ -135,6 +182,7 @@ mitigations answer the original concern:
 | Manager unpublishes the week | Trade stays. The tentative label reappears. |
 | Manager deletes the draft shift | The database deletes the trade (cascade). |
 | Coworker accepts, manager approves | The shift moves to the coworker while in draft. |
+| Approval while draft, audit log | `schedule_change_logs` gets no entry. The `log_shift_change()` trigger fires only when `OLD.is_published = true` (`supabase/migrations/20251123000000_schedule_publishing.sql:96-162`). The trigger already skips every draft edit. No code change. |
 
 ## 7. Out of scope
 
@@ -154,7 +202,9 @@ mitigations answer the original concern:
    action for an unpublished draft shift".
 3. `supabase/tests/55_create_shift_trade_for_employee.sql:297-311` — Scenario
    14 becomes a success test: the RPC posts a draft shift and returns a UUID.
-   The plan count stays correct after the flip.
+   Add one follow-up `is()` check that the trade row exists, on the pattern
+   of Scenario 1 (`lives_ok` at lines 106-109, `is()` at lines 113-117).
+   `SELECT plan(16)` at line 29 becomes `SELECT plan(17)`.
 
 ### Add
 
@@ -173,6 +223,13 @@ mitigations answer the original concern:
 fixture rows that omit the column sit on the passing side. Run the whole
 `55_create_shift_trade_for_employee.sql` file after the change, not only
 Scenario 14.
+
+The same trap exists in the unit-test fixtures, with a different default.
+The `offered_shift` fixtures in
+`tests/unit/AvailableShiftsPage.tradeCard.test.tsx` omit `is_published`. In
+TypeScript an omitted field is `undefined`, and `!undefined` is true, so a
+badge check reads those fixtures as tentative. Set `is_published` on every
+fixture in that file when the badge lands there.
 
 ## 9. Approach alternatives considered
 

@@ -196,4 +196,28 @@ describe('MyShiftTradesCard', () => {
       }),
     );
   });
+
+  it('withdraw-confirm dialog shows the tentative-draft badge for a draft offered shift', () => {
+    setActivity([
+      makeTrade({
+        id: 'trade-9',
+        status: 'open',
+        offered_shift: {
+          id: 'shift-1',
+          start_time: '2026-07-10T17:00:00Z',
+          end_time: '2026-07-10T23:00:00Z',
+          position: 'Server',
+          break_duration: 0,
+          is_published: false,
+        },
+      }),
+    ]);
+    renderCard();
+    fireEvent.click(screen.getByRole('button', { name: /withdraw post/i }));
+
+    const badgesInDialog = screen
+      .getAllByText('Tentative — draft')
+      .filter((el) => el.closest('[role="dialog"]'));
+    expect(badgesInDialog).toHaveLength(1);
+  });
 });

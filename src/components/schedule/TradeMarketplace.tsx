@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 interface TradeWithConflict {
   id: string;
@@ -201,6 +202,9 @@ export const TradeMarketplace = () => {
                 <h4 className="mb-2 text-sm font-semibold text-muted-foreground">
                   Shift Details
                 </h4>
+                {selectedTrade.offered_shift.is_published === false && (
+                  <TentativeDraftBadge className="mb-2" />
+                )}
                 <div className="space-y-1 text-sm">
                   <p>
                     <span className="font-medium">Date:</span>{' '}
@@ -287,7 +291,12 @@ const ShiftTradeCard = ({ trade, onAccept, disabled, showConflict }: ShiftTradeC
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <CardTitle className="text-lg">{trade.offered_shift.position}</CardTitle>
+            <CardTitle className="text-lg">
+              {trade.offered_shift.position}
+              {trade.offered_shift.is_published === false && (
+                <TentativeDraftBadge className="ml-2 align-middle" />
+              )}
+            </CardTitle>
             <CardDescription className="mt-1 text-xs">
               Posted by {trade.offered_by?.name ?? 'Unknown'} •{' '}
               {formatDistanceToNow(new Date(trade.created_at), { addSuffix: true })}

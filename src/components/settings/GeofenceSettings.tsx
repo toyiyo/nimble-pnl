@@ -10,11 +10,15 @@ interface GeofenceSettingsProps {
   longitude: number | null;
   radiusMeters: number;
   enforcement: 'off' | 'warn' | 'block';
+  // `geofence_enforcement` repeats the `enforcement` union above; it is not
+  // `string`. The parent writes this payload to `public.restaurants`, and a
+  // `string` there forced an `as any` at the call site, which cancelled the
+  // compile-time guard on the billing columns of that same table.
   onSave: (values: {
     latitude: number | null;
     longitude: number | null;
     geofence_radius_meters: number;
-    geofence_enforcement: string;
+    geofence_enforcement: 'off' | 'warn' | 'block';
   }) => void;
   saving: boolean;
 }

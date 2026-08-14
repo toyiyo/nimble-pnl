@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useRestaurants, type Restaurant } from '@/hooks/useRestaurants';
+import { useRestaurants, type Restaurant, type RestaurantUpdate } from '@/hooks/useRestaurants';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -385,18 +385,24 @@ export default function RestaurantSettings() {
     }
   };
 
+  // This handler writes to `public.restaurants` directly, not through
+  // `updateRestaurant`. Keep it that way: `updateRestaurant` raises its own
+  // toast and swallows the error, so the toasts and the `geofenceSaving` state
+  // below would both stop working. `RestaurantUpdate` gives this path the same
+  // compile-time guard on the billing columns.
   const handleSaveGeofence = async (values: {
     latitude: number | null;
     longitude: number | null;
     geofence_radius_meters: number;
-    geofence_enforcement: string;
+    geofence_enforcement: 'off' | 'warn' | 'block';
   }) => {
     if (!selectedRestaurant) return;
     setGeofenceSaving(true);
     try {
+      const payload: RestaurantUpdate = values;
       const { error } = await supabase
         .from('restaurants')
-        .update(values as any)
+        .update(payload)
         .eq('id', selectedRestaurant.restaurant_id);
       if (error) throw error;
       toast({ title: 'Geofence settings saved', description: 'Clock-in location enforcement has been updated.' });

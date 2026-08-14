@@ -43,18 +43,17 @@ BEGIN
     RAISE EXCEPTION 'Only an owner or a manager can post a trade for an employee';
   END IF;
 
-  -- Load the offered shift.
+  -- Load the offered shift. Filter by restaurant_id here, not in a separate
+  -- check after the load: a cross-restaurant shift id must raise the same
+  -- 'Shift not found' as a missing one, so the error never tells a caller
+  -- that a given id exists in someone else's restaurant.
   SELECT * INTO v_shift
   FROM shifts
-  WHERE id = p_offered_shift_id;
+  WHERE id = p_offered_shift_id
+    AND restaurant_id = p_restaurant_id;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Shift not found';
-  END IF;
-
-  -- The shift must belong to this restaurant.
-  IF v_shift.restaurant_id != p_restaurant_id THEN
-    RAISE EXCEPTION 'Shift does not belong to this restaurant';
   END IF;
 
   -- The shift must belong to the employee named as the offerer.

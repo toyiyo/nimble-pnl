@@ -237,8 +237,9 @@ SELECT throws_ok(
 
 -- ============================================================================
 -- Scenario 10 (assertion 12): Owner O passes shift5 (an R2 shift) with
--- p_restaurant_id = R1 -> denied (shift belongs to another restaurant). O is
--- owner of R1, so the role check passes and the restaurant-match check fires.
+-- p_restaurant_id = R1 -> denied (shift not found). O is owner of R1, so
+-- the role check passes; the shift load filters by restaurant_id, so a
+-- cross-restaurant shift id raises the same error as a missing one.
 -- ============================================================================
 RESET ROLE;
 SET LOCAL role = 'authenticated';

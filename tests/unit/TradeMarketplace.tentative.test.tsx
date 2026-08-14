@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockUseMarketplaceTrades = vi.hoisted(() => vi.fn());
@@ -75,6 +75,7 @@ describe('TradeMarketplace tentative badge', () => {
     mockUseMarketplaceTrades.mockReturnValue({ trades: [makeTrade(false)], loading: false });
     render(<TradeMarketplace />);
     fireEvent.click(screen.getByRole('button', { name: /accept shift/i }));
-    expect(screen.getAllByText('Tentative — draft').length).toBeGreaterThan(1);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getAllByText('Tentative — draft')).toHaveLength(1);
   });
 });

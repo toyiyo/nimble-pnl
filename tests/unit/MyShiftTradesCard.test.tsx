@@ -88,7 +88,19 @@ describe('MyShiftTradesCard', () => {
   });
 
   it('shows a posted open trade with the waiting stepper and a Withdraw button', () => {
-    setActivity([makeTrade({ status: 'open' })]);
+    setActivity([
+      makeTrade({
+        status: 'open',
+        offered_shift: {
+          id: 'shift-1',
+          start_time: '2026-07-10T17:00:00Z',
+          end_time: '2026-07-10T23:00:00Z',
+          position: 'Server',
+          break_duration: 0,
+          is_published: true,
+        },
+      }),
+    ]);
     renderCard();
     expect(screen.getByText('Posted by you')).toBeInTheDocument();
     expect(

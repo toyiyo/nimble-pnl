@@ -11,7 +11,7 @@ describe('draftTradeNote', () => {
     expect(tentativeEmailBlock(true)).toBe('');
   });
 
-  it('CRITICAL: undefined and null do not read as tentative', () => {
+  it('undefined and null do not read as tentative', () => {
     // A row from before the embed change lacks the field. Fail safe:
     // no tentative note rather than a wrong one on a published shift.
     expect(tentativeEmailBlock(undefined)).toBe('');

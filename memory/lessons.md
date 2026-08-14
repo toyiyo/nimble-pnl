@@ -2701,6 +2701,7 @@
 - **Mistake:** PR #744 added `create_shift_trade_for_employee`, a SECURITY DEFINER function. The RLS INSERT policy on `shift_trades` blocks a manager, so the function does the insert. It checked the caller role, the shift owner, the status allow-list (`scheduled`/`confirmed`), and the offerer-active state. It did not check `is_published`. The employee self-service flow gates on `is_published`: `src/components/employee/ShiftRow.tsx` offers a trade only for a published shift. So a manager, or a direct RPC call, could post a draft shift for trade. That trade would notify a coworker about a shift that can still change or disappear. The status allow-list looked complete, so the gap was invisible in the diff. Codex flagged it P1 on the open PR. No Phase 7a reviewer and no other bot caught it.
 - **Correction:** Added `IF NOT v_shift.is_published THEN RAISE EXCEPTION 'Only a published shift can be traded'` in the function, after the status check and before the offerer-active check (commit `ecbfb8ba`). Added the same gate to the UI: `SchedulingShiftCard.tsx` renders the offer button only when `shift.is_published` is true. Added a pgTAP rejection scenario (a `scheduled` draft shift is denied) and a unit test (an unpublished shift hides the offer button).
 - **Rule:** Before you add a privileged path that parallels a self-service path, read the self-service path end to end — UI gate, hook, RLS, RPC — and list every precondition it applies. Mirror each precondition in the new path. A SECURITY DEFINER function bypasses RLS, so it is the last line of defense. A precondition the UI enforced but the function omits is a real hole. The status allow-list is not the whole contract: `is_published`, `is_active`, and tenant scope are separate invariants, and each one needs its own check.
+- **Update [2026-08-14] (PR #747):** The `is_published` precondition is lifted on purpose. A draft shift can now be traded, marked tentative in the UI and the notification (design: `docs/superpowers/specs/2026-08-14-draft-shift-trade-design.md`). Do not read the missing guard in `create_shift_trade_for_employee` as a regression. The rule stands, in both directions: when you add a privileged path, mirror every precondition; when a product decision deletes a precondition, delete it from every parallel path in one change — UI gate, RPC, and tests.
 
 ## Category: Database Tests (pgTAP) (continued)
 
@@ -2797,6 +2798,33 @@
 - **Correction:** `RestaurantUpdate` now intersects the `Omit` with `{ [K in GuardedBillingColumn]?: never }`. `string` is not assignable to `never`, so the variable form is rejected too. The `never` half also reaches `subscription_cancel_at` and `stripe_customer_id`, which the `Restaurant` interface does not declare, so `Omit` could not name them.
 - **Rule:** To forbid a key, declare it as `?: never`; do not only `Omit` it. `Omit` removes a key from the target type, which makes it an *excess* property, and excess-property checking fires on literals alone. Test both forms: a literal and a variable assigned to the same type. A type that passes only the literal case gives false assurance for every call site that builds the payload first.
 
+## Category: Security (continued)
+
+### [2026-08-14] A tenant check after a load-by-id is a cross-tenant existence oracle (PR #747)
+- **Mistake:** `create_shift_trade_for_employee` loaded the shift by `id` alone, then raised `Shift does not belong to this restaurant` when `restaurant_id` did not match. `Shift not found` and the mismatch error were distinct. A manager in restaurant A could probe shift ids from restaurant B: a different error means the id exists. The pattern came from the PR #744 migration; the draft-trade migration copied the body forward, and CodeRabbit flagged it major on the copy.
+- **Correction:** Fold the tenant filter into the load: `WHERE id = p_offered_shift_id AND restaurant_id = p_restaurant_id`. A missing id and a foreign id now raise the same `Shift not found` (commit `68358ec0`). The pgTAP scenario asserts only the SQLSTATE, so it needed no change.
+- **Rule:** Filter by tenant inside the load query. Do not load by id and check the tenant after. Warning: a `CREATE OR REPLACE` migration re-submits the whole old body to review. Read the copied body as new code, because its defects are now yours.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-14] The plan may not narrow a spec sentence silently (PR #747)
+- **Mistake:** The design doc said add the tentative line to "the email body and to the push body". The plan narrowed the push change to the created-broadcast body and stated the reason only in the plan text. The per-user push for accepted/approved/rejected/cancelled kept the plain body. The sound-logic reviewer and Codex both flagged the gap as a real deviation from the design doc.
+- **Correction:** Applied `tentativePushBody` to the per-user push loop too (commit `97ae4c1f`). The email needed no change: the shared template already covered every action.
+- **Rule:** Reviewers check the diff against the spec, not against the plan. When the plan narrows a spec sentence, change the spec sentence in the same commit, or implement the full sentence. A narrowing that lives only in the plan reads as a bug to every reviewer.
+
+## Category: UI Patterns (continued)
+
+### [2026-08-14] shadcn `Badge` renders a `div`; a `div` may not sit inside `<p>` (PR #747)
+- **Mistake:** `TentativeDraftBadge` (a shadcn `Badge`, root element `div`) sat inside a `<p>` in two dialogs of `TradeApprovalQueue.tsx`. The HTML parser closes a `<p>` at a block element, so the browser re-parents the markup and React logs a DOM-nesting error. No unit test asserts markup validity, so the tests stayed green; the Phase 5 UI review caught it.
+- **Correction:** Moved the badge to a sibling position after the `<p>` in both spots (commit `f0b61b41`). `Badge` inside `CardTitle` (an `h3`) is valid and has precedent at `SubscriptionPlans.tsx:53-56`.
+- **Rule:** Before you place a component inside a text element, check the component's root element. `Badge` renders a `div`. Flow content inside `<p>` is invalid HTML, and React only warns at runtime.
+
+## Category: React Query (continued)
+
+### [2026-08-14] A badge derived from a joined column needs the mutation invalidation AND the memo comparator (PR #747)
+- **Mistake:** The tentative badge reads `offered_shift.is_published` through the `shift_trades` join. Two staleness holes shipped in sequence. First, publish and unpublish flip the flag on `shifts`, but neither mutation invalidated the trade queries, so the badge changed only after the 30s staleTime. Second, the `TradeCard` memo comparator checked `id`, `status`, and `is_published` only, so a manager edit to `start_time`, `end_time`, or `position` on the offered shift did not re-render the card.
+- **Correction:** Invalidate `shift_trades` and `marketplace_trades` in both mutations' `onSuccess` (commit `ce7c7d83`). Add the three mutable shift fields to the comparator (commit `d109ccf8`). Both fixes carry regression tests.
+- **Rule:** When a render reads a mutable column through a join, list every mutation that writes that column and invalidate the joined query in each one. Then check every memo comparator on the render path: it must compare each rendered mutable field, not only the id and the flag that prompted the feature.
 ## Category: Development Workflow (continued)
 
 ### [2026-08-14] Cite the line that holds the named identifier — call a wrapped consumer indirect (PR #748)

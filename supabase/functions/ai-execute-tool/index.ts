@@ -389,32 +389,25 @@ async function executeGetInventoryStatus(
 ): Promise<any> {
   const { include_low_stock = true, category } = args;
 
-  // Total value, item count, and low-stock count come from the restaurant-wide
-  // valuation RPC. The RPC takes no category filter, so these three numbers
-  // are always restaurant-wide even when `category` is set — only the
-  // low-stock item list below honors the category filter, since it needs
-  // per-item fields (name, supplier) the RPC does not return.
-  const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
-    p_restaurant_id: restaurantId,
-  });
-
-  if (valuationError) {
-    throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
-  }
-
-  const valuation = valuationRows?.[0];
-  const totalItems = Number(valuation?.item_count ?? 0);
-  const totalValue = Number(valuation?.total_value ?? 0);
-  const lowStockCount = Number(valuation?.low_stock_count ?? 0);
-
+  let totalItems: number;
+  let totalValue: number;
+  let lowStockCount: number;
   let lowStockItems: any[] = [];
-  if (include_low_stock) {
-    let query = supabase
+
+  if (category) {
+    // Category path: the valuation RPC takes no category filter, so a
+    // category-scoped call reads the filtered product rows directly and
+    // derives all four fields (total_items, total_value, low_stock_count,
+    // low_stock_items) from that same set. This keeps the counts and the
+    // list consistent. A category-filtered product list is bounded in
+    // practice, so a plain fetch-and-sum is safe here.
+    const { data: products, error } = await supabase
       .from('products')
       .select(`
         id,
         name,
         current_stock,
+        cost_per_unit,
         par_level_min,
         reorder_point,
         product_suppliers (
@@ -424,21 +417,66 @@ async function executeGetInventoryStatus(
           is_preferred
         )
       `)
-      .eq('restaurant_id', restaurantId);
-
-    if (category) {
-      query = query.eq('category', category);
-    }
-
-    const { data: products, error } = await query;
+      .eq('restaurant_id', restaurantId)
+      .eq('category', category);
 
     if (error) {
       throw new Error(`Failed to fetch inventory: ${error.message}`);
     }
 
-    lowStockItems = (products || []).filter((p: any) =>
-      p.current_stock <= (p.par_level_min || 0)
+    const categoryProducts = products || [];
+    totalItems = categoryProducts.length;
+    totalValue = categoryProducts.reduce(
+      (sum: number, p: any) => sum + (Number(p.current_stock) || 0) * (Number(p.cost_per_unit) || 0),
+      0
     );
+    const categoryLowStock = categoryProducts.filter((p: any) =>
+      p.current_stock <= (p.par_level_min ?? 0)
+    );
+    lowStockCount = categoryLowStock.length;
+    lowStockItems = categoryLowStock;
+  } else {
+    // No-category path: the aggregate RPC covers the whole restaurant, so
+    // total_items/total_value/low_stock_count read straight from it.
+    const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+      p_restaurant_id: restaurantId,
+    });
+
+    if (valuationError) {
+      throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+    }
+
+    const valuation = valuationRows?.[0];
+    totalItems = Number(valuation?.item_count ?? 0);
+    totalValue = Number(valuation?.total_value ?? 0);
+    lowStockCount = Number(valuation?.low_stock_count ?? 0);
+
+    if (include_low_stock) {
+      const { data: products, error } = await supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          current_stock,
+          par_level_min,
+          reorder_point,
+          product_suppliers (
+            supplier:suppliers (
+              name
+            ),
+            is_preferred
+          )
+        `)
+        .eq('restaurant_id', restaurantId);
+
+      if (error) {
+        throw new Error(`Failed to fetch inventory: ${error.message}`);
+      }
+
+      lowStockItems = (products || []).filter((p: any) =>
+        p.current_stock <= (p.par_level_min ?? 0)
+      );
+    }
   }
 
   return {

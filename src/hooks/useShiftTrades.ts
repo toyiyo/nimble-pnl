@@ -291,6 +291,18 @@ export const useMyTradeActivity = (
 };
 
 /**
+ * Input for posting a shift trade. Shared by the self-service insert
+ * (useCreateShiftTrade) and the manager RPC (useCreateShiftTradeForEmployee).
+ */
+export type CreateShiftTradeInput = {
+  restaurant_id: string;
+  offered_shift_id: string;
+  offered_by_employee_id: string;
+  target_employee_id?: string | null;
+  reason?: string;
+};
+
+/**
  * Hook to create a new shift trade request
  */
 export const useCreateShiftTrade = () => {
@@ -298,13 +310,7 @@ export const useCreateShiftTrade = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (trade: {
-      restaurant_id: string;
-      offered_shift_id: string;
-      offered_by_employee_id: string;
-      target_employee_id?: string | null;
-      reason?: string;
-    }) => {
+    mutationFn: async (trade: CreateShiftTradeInput) => {
       const { data, error } = await supabase
         .from('shift_trades')
         .insert(trade)
@@ -354,13 +360,7 @@ export const useCreateShiftTradeForEmployee = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (trade: {
-      restaurant_id: string;
-      offered_shift_id: string;
-      offered_by_employee_id: string;
-      target_employee_id?: string | null;
-      reason?: string;
-    }) => {
+    mutationFn: async (trade: CreateShiftTradeInput) => {
       const { data, error } = await supabase.rpc('create_shift_trade_for_employee', {
         p_restaurant_id: trade.restaurant_id,
         p_offered_shift_id: trade.offered_shift_id,

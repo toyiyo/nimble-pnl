@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import {
   Dialog,
@@ -114,6 +114,44 @@ export const TradeRequestDialog = ({
     ? 'Post this shift to the trade marketplace or offer it to a specific coworker.'
     : 'Offer your shift to the trade marketplace or a specific coworker.';
 
+  // Build the coworker-picker body one state at a time (no nested ternary).
+  let targetOptions: ReactNode;
+  if (employeesLoading) {
+    targetOptions = (
+      <div className="p-4 text-center text-sm text-muted-foreground">
+        Loading employees...
+      </div>
+    );
+  } else if (employeesError) {
+    targetOptions = (
+      <div className="p-4 text-center text-sm text-muted-foreground">
+        Couldn't load coworkers. Something went wrong.
+      </div>
+    );
+  } else if (availableEmployees.length === 0) {
+    targetOptions = (
+      <div className="p-4 text-center text-sm text-muted-foreground">
+        No other employees available
+      </div>
+    );
+  } else {
+    targetOptions = availableEmployees.map((employee) => (
+      <SelectItem key={employee.id} value={employee.id}>
+        <div className="flex items-center gap-2">
+          <span>{employee.name}</span>
+          <span className="text-xs text-muted-foreground">
+            ({employee.position})
+          </span>
+          {!employee.user_id && (
+            <span className="text-xs text-yellow-600 dark:text-yellow-500">
+              • No account
+            </span>
+          )}
+        </div>
+      </SelectItem>
+    ));
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -198,37 +236,7 @@ export const TradeRequestDialog = ({
                 <SelectTrigger id="target-employee">
                   <SelectValue placeholder="Choose an employee..." />
                 </SelectTrigger>
-                <SelectContent>
-                  {employeesLoading ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      Loading employees...
-                    </div>
-                  ) : employeesError ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      Couldn't load coworkers. Something went wrong.
-                    </div>
-                  ) : availableEmployees.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      No other employees available
-                    </div>
-                  ) : (
-                    availableEmployees.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        <div className="flex items-center gap-2">
-                          <span>{employee.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            ({employee.position})
-                          </span>
-                          {!employee.user_id && (
-                            <span className="text-xs text-yellow-600 dark:text-yellow-500">
-                              • No account
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
+                <SelectContent>{targetOptions}</SelectContent>
               </Select>
             </div>
           )}

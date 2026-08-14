@@ -10569,16 +10569,6 @@ export type Database = {
         Args: { p_accepting_employee_id: string; p_trade_id: string }
         Returns: Json
       }
-      create_shift_trade_for_employee: {
-        Args: {
-          p_offered_by_employee_id: string
-          p_offered_shift_id: string
-          p_reason?: string
-          p_restaurant_id: string
-          p_target_employee_id?: string
-        }
-        Returns: string
-      }
       advanced_product_search: {
         Args: {
           p_limit?: number
@@ -11072,6 +11062,16 @@ export type Database = {
           restaurant_name: string
           restaurant_phone?: string
           restaurant_timezone?: string
+        }
+        Returns: string
+      }
+      create_shift_trade_for_employee: {
+        Args: {
+          p_offered_by_employee_id: string
+          p_offered_shift_id: string
+          p_reason?: string
+          p_restaurant_id: string
+          p_target_employee_id?: string
         }
         Returns: string
       }

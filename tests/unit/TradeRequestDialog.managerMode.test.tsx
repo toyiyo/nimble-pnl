@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 const createSelf = vi.hoisted(() => vi.fn());
@@ -10,15 +11,29 @@ vi.mock('@/hooks/useShiftTrades', () => ({
   useCreateShiftTradeForEmployee: () => ({ mutate: createForEmployee, isPending: false }),
 }));
 
+// The useEmployees return is mutable per test. This lets one test drive the
+// coworker picker into its loading state and another into its error state.
+type EmployeesReturn = {
+  employees: Array<{
+    id: string;
+    name: string;
+    position: string;
+    is_active: boolean;
+    user_id: string | null;
+  }>;
+  loading: boolean;
+  error: Error | null;
+};
+const employeesMock = vi.hoisted(() => ({ value: null as unknown as EmployeesReturn }));
+
 vi.mock('@/hooks/useEmployees', () => ({
-  useEmployees: () => ({
-    employees: [
-      { id: 'e-a', name: 'Alex Absent', position: 'Server', is_active: true, user_id: 'u-a' },
-      { id: 'e-b', name: 'Bailey Backup', position: 'Server', is_active: true, user_id: 'u-b' },
-    ],
-    loading: false,
-  }),
+  useEmployees: () => employeesMock.value,
 }));
+
+const ACTIVE_EMPLOYEES = [
+  { id: 'e-a', name: 'Alex Absent', position: 'Server', is_active: true, user_id: 'u-a' },
+  { id: 'e-b', name: 'Bailey Backup', position: 'Server', is_active: true, user_id: 'u-b' },
+];
 
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 
@@ -33,6 +48,11 @@ const shift = {
 describe('TradeRequestDialog manager mode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    employeesMock.value = {
+      employees: [...ACTIVE_EMPLOYEES],
+      loading: false,
+      error: null,
+    };
   });
 
   it('shows the employee name in the title when posting on their behalf', () => {
@@ -94,5 +114,44 @@ describe('TradeRequestDialog manager mode', () => {
       expect(createSelf).toHaveBeenCalledTimes(1);
     });
     expect(createForEmployee).not.toHaveBeenCalled();
+  });
+
+  it('shows a loading row in the coworker picker while employees load', async () => {
+    employeesMock.value = { employees: [], loading: true, error: null };
+    const user = userEvent.setup();
+    render(
+      <TradeRequestDialog
+        open
+        onOpenChange={() => {}}
+        shift={shift}
+        restaurantId="r-1"
+        onBehalfOfEmployee={{ id: 'e-a', name: 'Alex Absent' }}
+      />,
+    );
+
+    // The picker only appears after the manager selects a specific coworker.
+    await user.click(screen.getByRole('radio', { name: /specific coworker/i }));
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.getByText(/loading employees/i)).toBeInTheDocument();
+  });
+
+  it('shows an error row in the coworker picker when the employee load fails', async () => {
+    employeesMock.value = { employees: [], loading: false, error: new Error('boom') };
+    const user = userEvent.setup();
+    render(
+      <TradeRequestDialog
+        open
+        onOpenChange={() => {}}
+        shift={shift}
+        restaurantId="r-1"
+        onBehalfOfEmployee={{ id: 'e-a', name: 'Alex Absent' }}
+      />,
+    );
+
+    await user.click(screen.getByRole('radio', { name: /specific coworker/i }));
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.getByText(/couldn't load coworkers/i)).toBeInTheDocument();
   });
 });

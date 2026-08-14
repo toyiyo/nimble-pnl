@@ -217,7 +217,7 @@ export const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: 
           >
             <Edit className="h-3 w-3" />
           </Button>
-          {onOfferTrade && shift.is_published && (shift.status === 'scheduled' || shift.status === 'confirmed') && (
+          {onOfferTrade && (shift.status === 'scheduled' || shift.status === 'confirmed') && (
             <Button
               size="icon"
               variant="ghost"

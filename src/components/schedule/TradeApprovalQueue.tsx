@@ -617,13 +617,15 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                     <span className="text-muted-foreground">{confirmTarget.trade.offered_by?.name ?? 'Unknown'}</span>
                   </p>
                   {confirmTarget.trade.offered_shift && (
-                    <p>
-                      <span className="font-medium text-foreground">Shift date:</span>{' '}
-                      <span className="text-muted-foreground">{format(new Date(confirmTarget.trade.offered_shift.start_time), 'EEEE, MMMM d, yyyy')}</span>
+                    <>
+                      <p>
+                        <span className="font-medium text-foreground">Shift date:</span>{' '}
+                        <span className="text-muted-foreground">{format(new Date(confirmTarget.trade.offered_shift.start_time), 'EEEE, MMMM d, yyyy')}</span>
+                      </p>
                       {confirmTarget.trade.offered_shift.is_published === false && (
                         <TentativeDraftBadge className="mt-1" />
                       )}
-                    </p>
+                    </>
                   )}
                   <p>
                     <span className="font-medium text-foreground">Status:</span>{' '}
@@ -852,10 +854,10 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                     <p>
                       <span className="font-medium text-foreground">Position:</span>{' '}
                       <span className="text-muted-foreground">{selectedTrade.offered_shift?.position}</span>
-                      {selectedTrade.offered_shift?.is_published === false && (
-                        <TentativeDraftBadge className="mt-1" />
-                      )}
                     </p>
+                    {selectedTrade.offered_shift?.is_published === false && (
+                      <TentativeDraftBadge className="mt-1" />
+                    )}
                   </div>
                 </div>
               </div>

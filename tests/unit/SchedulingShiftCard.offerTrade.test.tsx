@@ -67,15 +67,17 @@ describe('ShiftCard offer-trade action', () => {
     expect(screen.queryByLabelText('Offer shift for trade')).toBeNull();
   });
 
-  it('hides the offer action for an unpublished draft shift', () => {
+  it('shows the offer action for an unpublished draft shift', () => {
+    const onOfferTrade = vi.fn();
     render(
       <ShiftCard
         shift={mockShift({ is_published: false })}
         onEdit={() => {}}
         onDelete={() => {}}
-        onOfferTrade={() => {}}
+        onOfferTrade={onOfferTrade}
       />,
     );
-    expect(screen.queryByLabelText('Offer shift for trade')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Offer shift for trade'));
+    expect(onOfferTrade).toHaveBeenCalledTimes(1);
   });
 });

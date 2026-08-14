@@ -220,9 +220,8 @@ function envelope(body, { skillRef = false } = {}) {
     WAIT_DISCIPLINE,
     '',
     `PRIOR STATE: ${PRIOR_STATE}`,
-    WRITING_STANDARD,
     '',
-    'PRIOR STATE: Phases 4-7 are COMPLETE. All reviewers ran (security/performance/maintainability: no findings; ocr-rules + sound-logic minors fixed in c0872b91). One Codex major — tier-2 route-shell boundary had no resetKey — was escalated and has since been resolved by hand in commit ff3776c1, which adds src/components/RouteShellBoundary.tsx, amends the design doc\'s "Reset semantics" section, and adds tests/unit/RouteShellBoundary.test.tsx. Do NOT re-litigate that decision or re-run the reviewers.',
+    WRITING_STANDARD,
     '',
     body,
   ].join('\n')

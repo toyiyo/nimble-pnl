@@ -270,6 +270,10 @@ export const usePublishSchedule = () => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['schedule_publications', restaurantId] });
+      // A draft trade's tentative badge reads offered_shift.is_published. Without
+      // this, the badge clears only after the trade query's own 30s staleTime.
+      queryClient.invalidateQueries({ queryKey: ['shift_trades', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace_trades', restaurantId] });
 
       toast(
         notificationToast(notification, {
@@ -331,6 +335,10 @@ export const useUnpublishSchedule = () => {
       queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['schedule_publications', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['schedule_change_logs', restaurantId] });
+      // Same reason as usePublishSchedule: the tentative badge must reappear as
+      // soon as the shift goes back to a draft, not up to 30s later.
+      queryClient.invalidateQueries({ queryKey: ['shift_trades', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace_trades', restaurantId] });
 
       toast(
         notificationToast(notification, {

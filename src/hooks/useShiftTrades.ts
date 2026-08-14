@@ -24,6 +24,7 @@ export interface ShiftTrade {
     end_time: string;
     position: string;
     break_duration: number;
+    is_published: boolean;
   };
   offered_by?: {
     id: string;
@@ -141,7 +142,8 @@ export const useShiftTrades = (
             start_time,
             end_time,
             position,
-            break_duration
+            break_duration,
+            is_published
           ),
           offered_by:employees!offered_by_employee_id(
             id,
@@ -245,7 +247,8 @@ export const useMyTradeActivity = (
             start_time,
             end_time,
             position,
-            break_duration
+            break_duration,
+            is_published
           ),
           offered_by:employees!offered_by_employee_id(
             id,
@@ -634,7 +637,8 @@ export const useMarketplaceTrades = (
             start_time,
             end_time,
             position,
-            break_duration
+            break_duration,
+            is_published
           ),
           offered_by:employees!offered_by_employee_id(
             id,

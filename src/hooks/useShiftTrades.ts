@@ -291,6 +291,18 @@ export const useMyTradeActivity = (
 };
 
 /**
+ * Input for posting a shift trade. Shared by the self-service insert
+ * (useCreateShiftTrade) and the manager RPC (useCreateShiftTradeForEmployee).
+ */
+export type CreateShiftTradeInput = {
+  restaurant_id: string;
+  offered_shift_id: string;
+  offered_by_employee_id: string;
+  target_employee_id?: string | null;
+  reason?: string;
+};
+
+/**
  * Hook to create a new shift trade request
  */
 export const useCreateShiftTrade = () => {
@@ -298,13 +310,7 @@ export const useCreateShiftTrade = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (trade: {
-      restaurant_id: string;
-      offered_shift_id: string;
-      offered_by_employee_id: string;
-      target_employee_id?: string | null;
-      reason?: string;
-    }) => {
+    mutationFn: async (trade: CreateShiftTradeInput) => {
       const { data, error } = await supabase
         .from('shift_trades')
         .insert(trade)
@@ -328,6 +334,56 @@ export const useCreateShiftTrade = () => {
       toast({
         title: 'Shift trade posted',
         description: 'Your shift has been posted to the trade marketplace.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error posting trade',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+};
+
+/**
+ * Hook for an owner or a manager to post an employee's shift for trade.
+ *
+ * The RLS INSERT policy on shift_trades requires the offerer to be the caller's
+ * own employee, so a manager cannot insert directly. This hook calls the
+ * SECURITY DEFINER RPC create_shift_trade_for_employee, which checks the caller
+ * is an owner or a manager and then does the insert. The trade then follows the
+ * existing accept -> approve flow.
+ */
+export const useCreateShiftTradeForEmployee = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (trade: CreateShiftTradeInput) => {
+      const { data, error } = await supabase.rpc('create_shift_trade_for_employee', {
+        p_restaurant_id: trade.restaurant_id,
+        p_offered_shift_id: trade.offered_shift_id,
+        p_offered_by_employee_id: trade.offered_by_employee_id,
+        p_target_employee_id: trade.target_employee_id ?? null,
+        p_reason: trade.reason ?? null,
+      });
+
+      if (error) throw error;
+
+      const tradeId = data as string;
+
+      // Send notification email (non-blocking for failures)
+      await sendShiftTradeNotification(tradeId, 'created');
+
+      return tradeId;
+    },
+    onSuccess: () => {
+      invalidateShiftTradeQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      toast({
+        title: 'Shift posted for trade',
+        description: 'The shift is now available for a coworker to claim.',
       });
     },
     onError: (error: Error) => {

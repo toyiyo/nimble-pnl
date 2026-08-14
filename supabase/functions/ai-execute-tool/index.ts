@@ -12,6 +12,8 @@ import {
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
+import { fetchNetSales } from "../_shared/financialAggregates.ts";
+// sumMonthlyFoodCost stays unused here until Task 11 rewires the food-cost sites.
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -180,7 +182,7 @@ async function executeGetKpis(
   const { period = 'month', start_date, end_date } = args;
 
   // Import shared calculation module
-  const { calculatePeriodMetrics, redactLaborFields } = await import('../_shared/periodMetrics.ts');
+  const { calculateCostBreakdown, calculateProfitability, calculateBenchmarks, redactLaborFields } = await import('../_shared/periodMetrics.ts');
   const { hasSchedulingOrPayrollCapability } = await import('../_shared/tools-registry.ts');
 
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
@@ -198,24 +200,10 @@ async function executeGetKpis(
   // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
 
-  const [hasLaborAccess, salesResult, adjustmentsResult, foodCostResult] = await Promise.all([
+  const [hasLaborAccess, salesTotals, foodCostResult] = await Promise.all([
     hasSchedulingOrPayrollCapability(restaurantId, supabase),
-    // Fetch sales (excluding adjustments)
-    supabase
-      .from('unified_sales')
-      .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_account:chart_of_accounts!category_id(account_type, account_subtype)')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', startDateStr)
-      .lte('sale_date', endDateStr)
-      .is('adjustment_type', null),
-    // Fetch adjustments separately
-    supabase
-      .from('unified_sales')
-      .select('adjustment_type, total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', startDateStr)
-      .lte('sale_date', endDateStr)
-      .not('adjustment_type', 'is', null),
+    // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+    fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
     // Fetch food costs (COGS)
     supabase
       .from('inventory_transactions')
@@ -225,16 +213,6 @@ async function executeGetKpis(
       .gte('created_at', startDateStr)
       .lte('created_at', endDateStr + 'T23:59:59.999Z'),
   ]);
-
-  const { data: sales, error: salesError } = salesResult;
-  if (salesError) {
-    throw new Error(`Failed to fetch sales: ${salesError.message}`);
-  }
-
-  const { data: adjustments, error: adjustmentsError } = adjustmentsResult;
-  if (adjustmentsError) {
-    throw new Error(`Failed to fetch adjustments: ${adjustmentsError.message}`);
-  }
 
   const { data: foodCostData, error: foodCostError } = foodCostResult;
 
@@ -315,20 +293,37 @@ async function executeGetKpis(
     .lte('transaction_date', endDateStr);
 
   // ====== CALCULATE METRICS USING SHARED MODULE ======
-  
-  const metrics = calculatePeriodMetrics(
-    sales || [],
-    adjustments || [],
-    foodCostData || [],
-    laborCostData || []
-  );
 
-  // laborCostData is [] when !hasLaborAccess, so metrics.costs/profitability/
+  // Revenue now comes from the shared net-sales RPC (gross - discounts -
+  // refunds), so cost/profitability/benchmarks are computed directly against
+  // salesTotals.net instead of going through calculatePeriodMetrics (which
+  // would need the raw sale rows this fetch replaced).
+  const rawCosts = calculateCostBreakdown(foodCostData || [], laborCostData || [], salesTotals.net);
+  const rawProfitability = calculateProfitability(salesTotals.net, rawCosts.prime_cost);
+  const rawBenchmarks = calculateBenchmarks(rawCosts);
+
+  // laborCostData is [] when !hasLaborAccess, so costs/profitability/
   // benchmarks were computed with labor_cost = 0. redactLaborFields strips
   // everything downstream of that (prime_cost, profit_margin, the
   // labor/prime benchmark statuses) rather than let it read as a complete
   // restaurant-wide figure — food-cost-only fields are unaffected and stay in.
-  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(metrics, hasLaborAccess);
+  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(
+    { costs: rawCosts, profitability: rawProfitability, benchmarks: rawBenchmarks },
+    hasLaborAccess
+  );
+
+  // sales_count isn't available from the monthly-aggregate RPC — it needed
+  // the individual sale rows this fetch replaced — so it's dropped here.
+  const revenue = {
+    gross_revenue: salesTotals.gross,
+    discounts: salesTotals.discounts,
+    refunds: salesTotals.refunds,
+    net_revenue: salesTotals.net,
+    total_collected_at_pos: salesTotals.gross + salesTotals.salesTax + salesTotals.tips + salesTotals.otherLiabilities,
+    sales_tax: salesTotals.salesTax,
+    tips: salesTotals.tips,
+    other_liabilities: salesTotals.otherLiabilities,
+  };
 
   return {
     ok: true,
@@ -338,10 +333,10 @@ async function executeGetKpis(
       end_date: endDateStr,
 
       // All metrics from shared calculation module
-      revenue: metrics.revenue,
+      revenue,
       costs,
       profitability,
-      liabilities: metrics.liabilities,
+      liabilities: { sales_tax: salesTotals.salesTax, tips: salesTotals.tips, other_liabilities: salesTotals.otherLiabilities },
       benchmarks,
       labor_omitted: laborOmittedReason ? { reason: laborOmittedReason } : undefined,
 
@@ -929,16 +924,10 @@ async function executeGetFinancialStatement(
   try {
     switch (statement_type) {
       case 'income_statement': {
-        // Fetch revenue from unified_sales
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('total_price')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
-        
-        const revenue = sales?.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0) || 0;
-        
+        // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+        const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
+        const revenue = salesTotals.net;
+
         // Fetch COGS from inventory transactions
         const { data: cogs } = await supabase
           .from('inventory_transactions')
@@ -990,7 +979,7 @@ async function executeGetFinancialStatement(
             net_margin: revenue > 0 ? (netIncome / revenue) * 100 : 0,
           },
           evidence: [
-            { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date} (${sales?.length || 0} sales)` },
+            { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date}` },
             { table: 'inventory_transactions', summary: `COGS from usage transactions ${start_date} to ${end_date}` },
             { table: 'journal_entry_lines', summary: `Operating expenses from journal entries ${start_date} to ${end_date}` },
           ],
@@ -1232,21 +1221,29 @@ async function executeGetSalesSummary(
     }
   }
 
-  // Fetch current period sales (excluding adjustments - only actual revenue)
-  const { data: currentSales, error: currentError } = await supabase
-    .from('unified_sales')
-    .select('total_price, sale_date, item_name')
-    .eq('restaurant_id', restaurantId)
-    .gte('sale_date', startDateStr)
-    .lte('sale_date', endDateStr)
-    .is('adjustment_type', null)
-    .is('parent_sale_id', null);
+  // Fetch current period sales (excluding adjustments - only actual revenue).
+  // Raw rows are still needed for the item breakdown/count below (Task 11
+  // moves that to get_top_sold_items); the period total comes from the
+  // shared net-sales RPC so it uses the same gross - discounts - refunds
+  // definition as every other financial tool.
+  const [salesTotals, currentSalesResult] = await Promise.all([
+    fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
+    supabase
+      .from('unified_sales')
+      .select('total_price, sale_date, item_name')
+      .eq('restaurant_id', restaurantId)
+      .gte('sale_date', startDateStr)
+      .lte('sale_date', endDateStr)
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null),
+  ]);
 
+  const { data: currentSales, error: currentError } = currentSalesResult;
   if (currentError) {
     throw new Error(`Failed to fetch sales: ${currentError.message}`);
   }
 
-  const currentTotal = currentSales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
+  const currentTotal = salesTotals.net;
   const currentCount = currentSales?.length || 0;
 
   // Get items breakdown if requested
@@ -1279,17 +1276,12 @@ async function executeGetSalesSummary(
     const prevStartDateStr = prevStartDate.toISOString().split('T')[0];
     const prevEndDateStr = prevEndDate.toISOString().split('T')[0];
 
-    const { data: prevSales, error: prevError } = await supabase
-      .from('unified_sales')
-      .select('total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', prevStartDateStr)
-      .lte('sale_date', prevEndDateStr)
-      .is('adjustment_type', null)
-      .is('parent_sale_id', null);
-
-    if (!prevError) {
-      const prevTotal = prevSales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
+    // fetchNetSales throws on RPC failure — caught here (rather than left to
+    // propagate) to preserve the original behavior of silently omitting the
+    // comparison instead of failing the whole tool call.
+    try {
+      const prevSalesTotals = await fetchNetSales(supabase, restaurantId, prevStartDateStr, prevEndDateStr);
+      const prevTotal = prevSalesTotals.net;
       const change = prevTotal > 0 ? ((currentTotal - prevTotal) / prevTotal) * 100 : 0;
 
       comparison = {
@@ -1297,6 +1289,8 @@ async function executeGetSalesSummary(
         change_percent: Math.round(change * 10) / 10,
         change_amount: currentTotal - prevTotal,
       };
+    } catch {
+      // Leave comparison as null.
     }
   }
 
@@ -1668,15 +1662,9 @@ async function executeGenerateReport(
   try {
     switch (type) {
       case 'monthly_pnl': {
-        // Get revenue from unified_sales
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('total_price, sale_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
-
-        const totalRevenue = sales?.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0) || 0;
+        // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+        const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
+        const totalRevenue = salesTotals.net;
 
         // Get COGS from inventory transactions
         const { data: inventory } = await supabase
@@ -2609,37 +2597,28 @@ async function executeGetOperatingCosts(
   // Fetch revenue for break-even calculation
   let breakEvenAnalysis = null;
   if (include_break_even) {
-    const { data: sales, error: salesError } = await supabase
-      .from('unified_sales')
-      .select('total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', startDateStr)
-      .lte('sale_date', endDateStr)
-      .is('adjustment_type', null)
-      .is('parent_sale_id', null);
+    // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+    const salesTotals = await fetchNetSales(supabase, restaurantId, startDateStr, endDateStr);
+    const totalRevenue = salesTotals.net;
+    const totalFixedCosts = fixedTotal + semiVariableTotal;
+    const variableCostPercentage = variableTotal > 0 && totalRevenue > 0
+      ? (variableTotal / totalRevenue) * 100
+      : 25; // Default estimate
 
-    if (!salesError && sales) {
-      const totalRevenue = sales.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0);
-      const totalFixedCosts = fixedTotal + semiVariableTotal;
-      const variableCostPercentage = variableTotal > 0 && totalRevenue > 0
-        ? (variableTotal / totalRevenue) * 100
-        : 25; // Default estimate
+    const contributionMargin = 100 - variableCostPercentage;
+    const breakEvenRevenue = contributionMargin > 0
+      ? (totalFixedCosts / (contributionMargin / 100))
+      : 0;
 
-      const contributionMargin = 100 - variableCostPercentage;
-      const breakEvenRevenue = contributionMargin > 0
-        ? (totalFixedCosts / (contributionMargin / 100))
-        : 0;
-
-      breakEvenAnalysis = {
-        total_fixed_costs: totalFixedCosts,
-        variable_cost_percentage: variableCostPercentage,
-        contribution_margin_percentage: contributionMargin,
-        break_even_revenue: breakEvenRevenue,
-        current_revenue: totalRevenue,
-        above_break_even: totalRevenue >= breakEvenRevenue,
-        margin_of_safety: totalRevenue > 0 ? ((totalRevenue - breakEvenRevenue) / totalRevenue) * 100 : 0,
-      };
-    }
+    breakEvenAnalysis = {
+      total_fixed_costs: totalFixedCosts,
+      variable_cost_percentage: variableCostPercentage,
+      contribution_margin_percentage: contributionMargin,
+      break_even_revenue: breakEvenRevenue,
+      current_revenue: totalRevenue,
+      above_break_even: totalRevenue >= breakEvenRevenue,
+      margin_of_safety: totalRevenue > 0 ? ((totalRevenue - breakEvenRevenue) / totalRevenue) * 100 : 0,
+    };
   }
 
   return {
@@ -2716,13 +2695,15 @@ async function executeGetMonthlyTrends(
   if (salesMetrics?.length) {
     salesMetrics.forEach((row: any) => {
       const foodCost = foodCostByMonth[row.period] || 0;
-      const netRevenue = Number(row.gross_revenue) - Number(row.discounts || 0);
+      // Net sales = gross_revenue - discounts - refunds (spec §5.1).
+      const netRevenue = Number(row.gross_revenue) - Number(row.discounts || 0) - Number(row.refunds || 0);
 
       const monthData: any = {
         period: row.period,
         gross_revenue: Number(row.gross_revenue),
         net_revenue: netRevenue,
         discounts: Number(row.discounts || 0),
+        refunds: Number(row.refunds || 0),
         sales_tax: Number(row.sales_tax || 0),
         tips: Number(row.tips || 0),
         food_cost: foodCost,

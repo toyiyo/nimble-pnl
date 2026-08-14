@@ -180,6 +180,7 @@ const TradeCard = memo(function TradeCard({
   return (
     prev.trade?.id === next.trade?.id &&
     prev.trade?.status === next.trade?.status &&
+    prev.trade?.offered_shift?.is_published === next.trade?.offered_shift?.is_published &&
     prev.isAccepting === next.isAccepting &&
     prev.currentEmployeeId === next.currentEmployeeId &&
     prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&

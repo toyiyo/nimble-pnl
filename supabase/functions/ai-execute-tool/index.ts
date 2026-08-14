@@ -223,6 +223,9 @@ async function executeGetKpis(
     // transaction granularity, not revenue-line-item granularity. This
     // differs from the old client-side count (calculateRevenueBreakdown's
     // filterSplitSales), which counted split children instead of their parent.
+    // A second delta: `.or('item_type.is.null,item_type.eq.sale')` counts
+    // sale transactions only. The old count also included discount and
+    // refund line items, since filterSplitSales does not filter by item_type.
     supabase
       .from('unified_sales')
       .select('*', { count: 'exact', head: true })

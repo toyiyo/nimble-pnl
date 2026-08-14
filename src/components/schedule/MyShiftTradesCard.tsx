@@ -15,10 +15,10 @@ import {
 import { ArrowRightLeft, Loader2, Undo2 } from 'lucide-react';
 
 import { useMyTradeActivity, useCancelShiftTrade } from '@/hooks/useShiftTrades';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 import type { ShiftTrade } from '@/hooks/useShiftTrades';
 
-import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 import {
   getPosterTradeProgress,
   getClaimantTradeStatusLine,

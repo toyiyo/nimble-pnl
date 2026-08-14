@@ -14,6 +14,7 @@ import {
 import { useMarketplaceTrades, useAcceptShiftTrade } from '@/hooks/useShiftTrades';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 import {
   Store,
   Clock,
@@ -26,7 +27,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 interface TradeWithConflict {
   id: string;

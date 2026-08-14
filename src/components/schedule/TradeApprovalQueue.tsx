@@ -33,8 +33,8 @@ import {
   useRejectClaimMutation,
   OpenShiftClaimWithJoins,
 } from '@/hooks/useOpenShiftClaims';
-import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { isTradeExpired } from '@/lib/shiftTradeStatus';
 import {

@@ -5,9 +5,9 @@
 - **Status:** Draft for review
 - **Feature area:** AI chat financial tools (`supabase/functions/ai-execute-tool/index.ts`)
 - **Scope:** Replace every raw-row fetch plus JavaScript sum in the AI tool
-  executor with a SQL aggregate. About 32 sites across 12 tools. Add 8 aggregate
-  RPCs and reuse 1. Keep each displayed number correct, and unify the numbers on
-  the app P&L definitions.
+  executor with a SQL aggregate. About 32 sites across 12 tools. Add 9 aggregate
+  RPCs. Modify 1 shared RPC (`get_monthly_sales_metrics`). Add 1 index. Keep each
+  displayed number correct, and unify the numbers on the app P&L definitions.
 
 This document uses STE-aligned Simplified Technical English. Code identifiers,
 SQL, and file paths stay exact.
@@ -44,7 +44,9 @@ inconsistency is a second root cause of the wrong answers.
 ### 1.3 Latent boundary defect — COGS end day
 
 The income-statement COGS fetch filters `created_at` with a bare date string
-([`index.ts:945`](supabase/functions/ai-execute-tool/index.ts:945)). The column
+([`index.ts:945`](supabase/functions/ai-execute-tool/index.ts:945)). The
+generate_report COGS fetch does the same
+([`index.ts:1686`](supabase/functions/ai-execute-tool/index.ts:1686)). The column
 is a `timestamptz`. A bare date string coerces to `00:00:00`. So the fetch drops
 almost all of the last day. The KPIs food-cost fetch already appends
 `'T23:59:59.999Z'`
@@ -69,8 +71,11 @@ tools also disagree on the end boundary.
 ### 2.2 Non-goals
 
 - Do not change the break-even variable-cost math or the margin-of-safety unit
-  ([`index.ts:2622`](supabase/functions/ai-execute-tool/index.ts:2622)). This is
-  a later PR (fix 2).
+  ([`index.ts:2623-2640`](supabase/functions/ai-execute-tool/index.ts:2623)). This
+  is a later PR (fix 2). Note: the revenue sum that feeds this math
+  ([`index.ts:2622`](supabase/functions/ai-execute-tool/index.ts:2622)) IS in
+  scope. This PR replaces that one `reduce()` with the shared revenue RPC. The
+  break-even formula below it stays the same.
 - Do not relabel the operating-costs output as a budget
   ([`index.ts:2565`](supabase/functions/ai-execute-tool/index.ts:2565)). This is
   a later PR (fix 3).
@@ -171,31 +176,85 @@ purpose-built aggregate RPCs (`get_daily_sales_totals`,
 
 ## 5. RPC specifications
 
-Reuse 1 function. Add 8. Every new function follows the `get_daily_sales_totals`
-template ([`ai_operator.sql:678`](supabase/migrations/20260214100000_ai_operator.sql:678)):
+Add 9 functions. Modify 1 (§5.1). Every new function follows the
+`get_daily_sales_totals` template
+([`ai_operator.sql:678`](supabase/migrations/20260214100000_ai_operator.sql:678)):
 
 - `LANGUAGE sql STABLE SECURITY INVOKER` for a scalar or grouped aggregate.
-- `SECURITY INVOKER`, not `DEFINER`. RLS stays in force for a client caller. The
-  `ai-execute-tool` edge function calls with the service role, which bypasses
-  RLS. So the explicit `restaurant_id = p_restaurant_id` filter scopes both
-  callers.
-- `SUM(COALESCE(col, 0))` for every sum. A SQL `SUM` over an all-NULL group
-  returns NULL. `unified_sales.total_price` and other columns are nullable
-  (lesson L1752).
+- `SECURITY INVOKER`, not `DEFINER`. The execution model requires it. The
+  `ai-execute-tool` edge function builds its client with `SUPABASE_ANON_KEY` and
+  the caller's forwarded `Authorization` header
+  ([`index.ts:3652-3656`](supabase/functions/ai-execute-tool/index.ts:3652)). So
+  every query runs under the caller's JWT, and RLS is active. Under `INVOKER`,
+  RLS on the source table scopes the caller to the caller's own restaurants.
+  The explicit `restaurant_id = p_restaurant_id` filter then selects the one
+  restaurant the tool asked for. The edge function also verifies membership
+  before it dispatches a tool
+  ([`index.ts:3671-3676`](supabase/functions/ai-execute-tool/index.ts:3671)).
+- The row cap is an HTTP-layer PostgREST limit, not an RLS limit. RLS does not
+  cap rows. So a `SUM` under RLS sees the complete set. Each source table
+  (`unified_sales`, `inventory_transactions`, `journal_entry_lines`, `products`,
+  `bank_transactions`) is restaurant-scoped in RLS, not capability-scoped. So any
+  restaurant member reads all of the restaurant's rows, and the aggregate is
+  complete.
+- Pin `SET search_path TO 'public'` on every function, new and modified.
+  `INVOKER` does not require the pin for privilege, but the Supabase
+  `function_search_path_mutable` advisor flags any unpinned function, and the pin
+  fixes name resolution to `public`. The `get_daily_sales_totals` template omits
+  the pin because it predates the advisor guidance; the new functions add it. The
+  modified `get_monthly_sales_metrics` already pins it
+  ([`...revenue_filter.sql:29`](supabase/migrations/20260501120000_fix_monthly_sales_metrics_revenue_filter.sql:29));
+  the `INVOKER` conversion keeps it.
+- `COALESCE(SUM(col), 0)` for every sum. A SQL `SUM` over an all-NULL or empty
+  group returns NULL; this wraps the NULL to 0. It matches the
+  `get_daily_sales_totals` template and lesson L1752. `unified_sales.total_price`
+  and other columns are nullable.
 - `GRANT EXECUTE ... TO authenticated`, re-issued after `CREATE OR REPLACE`.
 - A `COMMENT ON FUNCTION` that states the source, the filters, and the exclusions.
 
-### 5.1 Reuse — `get_monthly_sales_metrics` (revenue, cluster 1)
+### 5.1 Modify — `get_monthly_sales_metrics` (revenue, cluster 1)
 
 Signature (existing):
 `get_monthly_sales_metrics(p_restaurant_id UUID, p_date_from DATE, p_date_to DATE)`
 ([`20260501120000_fix_monthly_sales_metrics_revenue_filter.sql:14`](supabase/migrations/20260501120000_fix_monthly_sales_metrics_revenue_filter.sql:14)).
 
-Callers sum `gross_revenue - discounts` across the returned month rows. The
+This function already aggregates net sales. It applies the adjustment guard, the
+split guard, the item-type guard, and the liability-account guard. Callers sum
+its rows across the returned months. The
 `WHERE sale_date BETWEEN p_date_from AND p_date_to` clause bounds the exact
-range. So a partial-month range still sums only the in-range rows. This is the
-app P&L net-sales figure. It applies the adjustment guard, the split guard, the
-item-type guard, and the liability-account guard.
+range. So a partial-month range still sums only the in-range rows.
+
+This design makes it the single revenue source for every cluster-1 site. Two
+changes are required first. Both land in one new migration (`CREATE OR REPLACE`).
+
+**Change A — close a cross-tenant read hole (security).** The function is
+`SECURITY DEFINER` with no `auth.uid()` check, and it grants execute to
+`authenticated`
+([`...revenue_filter.sql:27-30,128`](supabase/migrations/20260501120000_fix_monthly_sales_metrics_revenue_filter.sql:27)).
+Because the edge function runs under the caller's JWT (not the service role, see
+§5 conventions) and `DEFINER` bypasses RLS, any authenticated user can call
+`/rest/v1/rpc/get_monthly_sales_metrics` directly with another restaurant's UUID
+and read that restaurant's revenue, tax, tips, and discounts. This hole exists
+today. This design routes more sites through the function, so it must close the
+hole. **Fix:** convert the function to `SECURITY INVOKER`, so RLS on
+`unified_sales` and `chart_of_accounts` scopes the caller. A pgTAP test proves a
+non-member caller reads zero rows for a foreign restaurant.
+
+**Change B — add a `refunds` column (correctness).** The KPIs breakdown defines
+net sales as `gross_revenue - discounts - refunds`
+([`periodMetrics.ts:193`](supabase/functions/_shared/periodMetrics.ts:193)), and
+it fills `refunds` from `item_type = 'refund'` rows. This function has no
+`refunds` column. So a plain reuse would drop the refund term and overstate KPIs
+revenue. **Fix:** add a `refunds` column (`COALESCE(SUM(ABS(total_price)), 0)`
+over refund rows). Define the unified net sales as
+`gross_revenue - discounts - refunds`. Update the sole other caller,
+`monthly_trends` ([`index.ts:2685`](supabase/functions/ai-execute-tool/index.ts:2685)),
+to subtract `refunds` too, so it stays unified.
+
+**Caller check.** The only callers are the `monthly_trends` tool and this
+design's new cluster-1 sites (verified by grep). The existing pgTAP suite
+(`supabase/tests/36_monthly_sales_metrics_revenue_filter.sql`) still applies and
+extends with the tenancy and refund tests.
 
 ### 5.2 New — `get_sales_by_category` (cluster 2)
 
@@ -219,13 +278,24 @@ sales-summary top-sellers block.
 `get_inventory_usage_by_month(p_restaurant_id UUID, p_start_date DATE, p_end_date DATE)`
 → `TABLE(period TEXT, food_cost NUMERIC)`.
 
-Source `inventory_transactions`. Filter `transaction_type = 'usage'`. Sum
-`ABS(COALESCE(SUM(total_cost), 0))` per month. `ABS(SUM(...))` matches the
-current code and is correct: a reversal row reduces the cost. A scalar caller
-sums the month rows. `monthly_trends` reads the month rows directly.
+Source `inventory_transactions`. Filter `transaction_type = 'usage'`. Compute
+`ABS(COALESCE(SUM(total_cost), 0))` per month. `ABS(SUM(...))` is correct: a
+reversal row (opposite sign) reduces the cost. A scalar caller sums the month
+rows. `monthly_trends` reads the month rows directly.
 
-Boundary: filter `created_at >= p_start_date AND created_at < (p_end_date + 1)`.
-This includes the full end day. It fixes the defect in §1.3.
+Note: three of the four current COGS sites already apply `Math.abs()` after the
+sum (income_statement, generate_report, KPIs), so this matches them.
+`monthly_trends` today applies `Math.abs()` per row
+([`index.ts:2707-2711`](supabase/functions/ai-execute-tool/index.ts:2707)), which
+is `SUM(ABS(...))`. So this unifies `monthly_trends` onto `ABS(SUM(...))`. Its
+food-cost-by-month number changes for any month that has both a usage row and a
+reversal row. §7 surfaces this.
+
+Boundary: filter `created_at >= (p_start_date AT TIME ZONE 'UTC')
+AND created_at < ((p_end_date + 1) AT TIME ZONE 'UTC')`. This form is explicit
+UTC. It does not depend on the session `TimeZone` setting. It matches the
+existing explicit-UTC pattern (`endDateStr + 'T23:59:59.999Z'`). It includes the
+full end day. It fixes the defect in §1.3.
 
 ### 5.5 New — `get_journal_expense_total` (OpEx, cluster 4)
 
@@ -246,9 +316,11 @@ call.
 → `TABLE(total_value NUMERIC, item_count BIGINT, low_stock_count BIGINT)`.
 
 Source `products`. `total_value = COALESCE(SUM(current_stock * cost_per_unit),
-0)`. `low_stock_count` counts rows where the stock is at or under the reorder
-point. The exact low-stock predicate copies the current code
-([`index.ts:427`](supabase/functions/ai-execute-tool/index.ts:427)).
+0)`. `low_stock_count` counts rows where `current_stock <= COALESCE(par_level_min,
+0)`. This copies the current predicate exactly
+([`index.ts:404-406`](supabase/functions/ai-execute-tool/index.ts:404)). The
+threshold column is `par_level_min`, not `reorder_point`. The current code
+selects `reorder_point` but does not use it for the threshold.
 
 ### 5.7 New — `get_bank_transaction_summary` (cluster 6 scalars)
 
@@ -257,11 +329,14 @@ point. The exact low-stock predicate copies the current code
 
 Source `bank_transactions`. `inflow = SUM(amount) FILTER (WHERE amount > 0)`.
 `outflow = ABS(SUM(amount) FILTER (WHERE amount < 0))`. The two optional
-parameters preserve each caller's current filter. `p_bank_account_id` filters
-one account when set. `p_statuses` filters `status = ANY(p_statuses)` when set;
-`NULL` applies no status filter. This one function serves cash_flow,
-revenue_health, spending totals, liquidity, income_statement cash_flow,
-generate_report, and expense_health.
+parameters preserve each caller's current filter. `p_bank_account_id` filters the
+`connected_bank_id` column when set (confirmed at
+[`index.ts:2809`](supabase/functions/ai-execute-tool/index.ts:2809)). `p_statuses`
+filters `status = ANY(p_statuses)` when set; `NULL` applies no status filter. This
+one function serves cash_flow, revenue_health, spending totals, liquidity,
+income_statement cash_flow, generate_report, and the get_bank_transactions
+summary. The expense_health tool uses a dedicated RPC (§5.10), because its six
+sums need per-metric rules a plain summary cannot express.
 
 ### 5.8 New — `get_bank_spending_by_category` (cluster 6 breakdown)
 
@@ -280,6 +355,49 @@ Source `bank_transactions`, grouped by `transaction_date`. The result has at mos
 one row per day. JavaScript keeps the forecast math (predictions) and the
 variance math (cash_flow) over this bounded series.
 
+### 5.10 New — `get_expense_health_metrics` (cluster 6, expense_health)
+
+`get_expense_health_metrics(p_restaurant_id UUID, p_start_date DATE, p_end_date DATE, p_fee_patterns TEXT[], p_bank_account_id UUID DEFAULT NULL)`
+→ `TABLE(revenue NUMERIC, food_cost NUMERIC, labor_cost NUMERIC, processing_fees NUMERIC, total_outflows NUMERIC, uncategorized_spend NUMERIC)`.
+
+The `executeGetExpenseHealth` tool fetches once and derives six sums
+([`index.ts:2818-2853`](supabase/functions/ai-execute-tool/index.ts:2818)). Each
+sum has its own rule, so a plain summary RPC cannot serve it. This RPC computes
+all six with `FILTER` clauses over `bank_transactions` left-joined to
+`chart_of_accounts` on `category_id`. It filters `status IN ('posted', 'pending')`
+and, when set, `connected_bank_id = p_bank_account_id`.
+
+- `revenue`: `SUM(amount) FILTER (WHERE amount > 0)`.
+- `food_cost`: outflow where the account subtype is `cost_of_goods_sold`, or the
+  account name matches `food`/`inventory`.
+- `labor_cost`: outflow where the account subtype is `payroll`, or the account
+  name matches `payroll`/`labor`.
+- `processing_fees`: outflow where `LOWER(description || ' ' || merchant_name)`
+  matches any pattern in `p_fee_patterns`. The `processingFeePatterns` list stays
+  in TypeScript and passes in as the parameter, so TypeScript remains the source
+  of the list.
+- `total_outflows`: `ABS(SUM(amount) FILTER (WHERE amount < 0))`.
+- `uncategorized_spend`: outflow where `category_id IS NULL AND is_split = false`.
+
+JavaScript keeps the percentage math (`foodCostPercentage`, and so on) over these
+six values.
+
+### 5.11 New index — `bank_transactions(restaurant_id, transaction_date)`
+
+Today the 1000-row cap accidentally bounds every bank scan. The new bank RPCs
+remove that cap and aggregate the full date range server-side. `bank_transactions`
+has no composite index that leads on `restaurant_id` and covers a date range.
+The existing indexes are `(restaurant_id, status)`, a single-column
+`transaction_date` index, a `category_id` index, and
+`(connected_bank_id, transaction_date DESC)`
+([`20260723130000_connected_banks_reauth_columns.sql:53`](supabase/migrations/20260723130000_connected_banks_reauth_columns.sql:53)).
+The last one leads on `connected_bank_id`, so it does not serve a
+restaurant-scoped date-range scan. So add:
+`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bank_transactions_restaurant_date ON bank_transactions(restaurant_id, transaction_date);`.
+This follows the `CONCURRENTLY` precedent already in the repo
+(`20260804090200_idx_bank_transactions_rule_candidates_v2.sql`). `CONCURRENTLY`
+cannot run inside a transaction, so this migration must not wrap in `BEGIN`.
+
 ---
 
 ## 6. Rewiring plan
@@ -287,11 +405,14 @@ variance math (cash_flow) over this bounded series.
 Each site swaps its raw fetch for one RPC call. The derived math stays in
 JavaScript, over the complete aggregate.
 
-- **Cluster 1 (revenue).** Call `get_monthly_sales_metrics`. Sum
-  `gross_revenue - discounts`. Sites: income_statement, sales_summary
-  (current + previous), generate_report monthly_pnl, operating_costs. KPIs routes
-  its revenue and adjustment split through the same RPC; the plan confirms the
-  field map against `_shared/periodMetrics.ts`.
+- **Cluster 1 (revenue).** Call `get_monthly_sales_metrics` (modified, §5.1). Sum
+  `gross_revenue - discounts - refunds`. Sites: income_statement, sales_summary
+  (current + previous), generate_report monthly_pnl, operating_costs revenue
+  ([`index.ts:2622`](supabase/functions/ai-execute-tool/index.ts:2622) only, not
+  the break-even formula below it). KPIs replaces the
+  `calculateRevenueBreakdown` raw fetch with the same RPC; its net revenue stays
+  `gross - discounts - refunds`. §7 lists the small definition shift KPIs takes on
+  from the RPC's account-type classification.
 - **Cluster 2 (sales breakdown).** generate_report calls
   `get_sales_by_category`. sales_summary calls `get_top_sold_items`.
 - **Cluster 3 (COGS).** Scalar callers (KPIs, income_statement,
@@ -302,9 +423,13 @@ JavaScript, over the complete aggregate.
   balance_sheet, and generate_report balance_sheet call
   `get_inventory_valuation`.
 - **Cluster 6 (bank).** Scalar sites call `get_bank_transaction_summary` with the
-  right `p_statuses` and `p_bank_account_id`. The spending and expense_health
-  category sums call `get_bank_spending_by_category`. predictions and cash_flow
-  variance call `get_bank_transactions_daily`.
+  right `p_statuses` and `p_bank_account_id`. The spending breakdown calls
+  `get_bank_spending_by_category`. predictions and cash_flow variance call
+  `get_bank_transactions_daily`. expense_health calls `get_expense_health_metrics`
+  (§5.10), one call for all six sums.
+- **monthly_trends.** It reads two modified sources. Its net revenue now
+  subtracts `refunds` (§5.1). Its food cost by month now uses `ABS(SUM(...))`
+  (§5.4). §7 surfaces both.
 - **Listing endpoints.** `get_bank_transactions` keeps its paginated list. Its
   summary totals move to `get_bank_transaction_summary`. So the totals cover the
   whole period, not one page.
@@ -316,36 +441,79 @@ JavaScript, over the complete aggregate.
 ## 7. Behavioral changes to surface to the owner
 
 1. **Every cluster-1 site adopts one net-sales definition.** All six sites now
-   call `get_monthly_sales_metrics` and read `gross_revenue - discounts`. The
-   effect differs per site:
+   call `get_monthly_sales_metrics` and read `gross_revenue - discounts -
+   refunds`. The effect differs per site:
    - income_statement
      ([`index.ts:935`](supabase/functions/ai-execute-tool/index.ts:935)) and
      generate_report ([`index.ts:1674`](supabase/functions/ai-execute-tool/index.ts:1674))
-     had no guards. Their revenue drops refunds, split duplicates, tax, and
-     tips. The number changes the most.
+     had no guards. Their revenue drops split duplicates, tax, and tips. The
+     number changes the most.
    - sales_summary and operating_costs had the adjustment guard and the split
      guard, but not the liability-account guard. Their revenue drops any sale
      mapped to a liability account (a tax or tip item). The number changes a
      little.
    The new number is the app P&L net sales. This is the intended fix.
-2. **The COGS end day is now included** (§1.3, §5.4). The COGS number rises by
+2. **KPIs revenue takes on the RPC classification.** KPIs used
+   `calculateRevenueBreakdown`, which classifies tax and tip accounts with the
+   keyword rules in `tipClassification.ts`. The RPC classifies by the
+   chart-of-accounts `account_type`. So the KPIs tax and tip split can shift for
+   an account where the two rules disagree. The KPIs net revenue (`gross -
+   discounts - refunds`) stays the same by construction, because net does not
+   depend on the tax and tip split.
+3. **monthly_trends net revenue now subtracts refunds** (§5.1). Today it reads
+   `gross - discounts`. A restaurant with refunds sees its trend revenue drop by
+   the refund total. This aligns it with the P&L.
+4. **monthly_trends food cost by month changes** (§5.4). It moves from
+   `SUM(ABS(x))` to `ABS(SUM(x))`. A month with both a usage row and a reversal
+   row changes. `ABS(SUM(x))` is the correct treatment: a reversal reduces the
+   cost.
+5. **The COGS end day is now included** (§1.3, §5.4). The COGS number rises by
    the last day's usage.
-3. **The bank status filter stays per-site.** The `p_statuses` parameter keeps
+6. **The bank status filter stays per-site.** The `p_statuses` parameter keeps
    each caller's current behavior. The design does not unify the status filter,
    because the app does not.
+7. **An account-scoped bank question stops failing.** Six bank sites filter a
+   `bank_account_id` column that does not exist on `bank_transactions` (the real
+   column is `connected_bank_id`, §11). The filter is conditional on an optional
+   argument, so it fires only when the owner scopes a question to one bank
+   account. Today that path errors. The new RPCs filter `connected_bank_id`, so
+   the account-scoped question returns the correct number.
 
 ---
 
 ## 8. Security and tenancy
 
-- Every new RPC is `SECURITY INVOKER`. RLS stays in force for a client caller.
-- Every new RPC filters `restaurant_id = p_restaurant_id`. This scopes the
-  service-role caller, which bypasses RLS.
-- No RPC gates on `auth.uid()`. The `ai-execute-tool` edge function authorizes
-  the user and the restaurant before it dispatches a tool. The
-  `get_daily_sales_totals` sibling uses the same model
+**Execution model.** The `ai-execute-tool` edge function builds its Supabase
+client with `SUPABASE_ANON_KEY` and the caller's forwarded `Authorization` header
+([`index.ts:3652-3656`](supabase/functions/ai-execute-tool/index.ts:3652)). So
+every RPC runs under the caller's JWT, not the service role. RLS stays active.
+This is the correct model to design against.
+
+- **Every new RPC is `SECURITY INVOKER`.** RLS on each source table scopes the
+  caller to the caller's own restaurants. The explicit
+  `restaurant_id = p_restaurant_id` filter then selects the one restaurant the
+  tool asked for. A caller cannot read a restaurant that RLS hides, because
+  `INVOKER` gives the function the caller's privileges.
+- **The modified `get_monthly_sales_metrics` becomes `SECURITY INVOKER`** (§5.1,
+  Change A). Today it is `SECURITY DEFINER` with no `auth.uid()` gate and a grant
+  to `authenticated`. So today any authenticated user can call it directly with a
+  foreign restaurant UUID and read that restaurant's revenue. The conversion to
+  `INVOKER` closes that hole. This design must close it, because it routes more
+  sites through the function.
+- **No RPC gates on `auth.uid()`.** RLS is the tenancy control, not an in-function
+  check. The edge function also verifies restaurant membership before it dispatches
+  a tool ([`index.ts:3671-3676`](supabase/functions/ai-execute-tool/index.ts:3671)).
+  The `get_daily_sales_totals` sibling uses the same pattern — `INVOKER`, no
+  `auth.uid()` gate, grant to `authenticated`
   ([`ai_operator.sql:684`](supabase/migrations/20260214100000_ai_operator.sql:684)).
-- Every RPC grants execute to `authenticated`.
+- **The aggregate is complete under RLS.** The row cap is an HTTP-layer PostgREST
+  limit, not an RLS limit. Each source table (`unified_sales`,
+  `inventory_transactions`, `journal_entry_lines`, `products`, `bank_transactions`)
+  is restaurant-scoped in RLS, not capability-scoped. So any restaurant member
+  reads all of the restaurant's rows, and a `SUM` under RLS sees the complete set.
+- **Every RPC grants execute to `authenticated`.** So each RPC is reachable at
+  `/rest/v1/rpc/<name>`. `INVOKER` plus RLS makes that reach safe: a direct call
+  with a foreign restaurant UUID returns zero rows.
 
 ---
 
@@ -353,19 +521,38 @@ JavaScript, over the complete aggregate.
 
 ### 9.1 pgTAP (`supabase/tests/`)
 
-One test file per new RPC. Each file:
+One test file per new RPC, plus new cases in the existing
+`get_monthly_sales_metrics` suite. Each file:
 
 1. Sums a small fixture correctly.
 2. Returns 0 (not NULL) for an all-NULL-group fixture (lesson L1752).
 3. Excludes the rows the filters must exclude — a refund row, a split child, a
    non-usage transaction, a non-expense account.
-4. Scopes by `restaurant_id`. A second restaurant's rows never contribute.
-5. `get_inventory_usage_by_month`: a usage row on the end day contributes (the
+4. **Filter scope.** The function receives one `restaurant_id`. A second
+   restaurant's rows never contribute to the result.
+5. **RLS tenancy.** Set the session to a non-member `authenticated` user
+   (`set role`, `request.jwt.claims`). The `SECURITY INVOKER` function then
+   returns zero rows for a foreign `restaurant_id`. This proves RLS scopes the
+   caller, not the `p_restaurant_id` filter alone. It is the test that fails
+   today for `get_monthly_sales_metrics` (the `DEFINER` hole, §5.1 Change A).
+6. `get_inventory_usage_by_month`: a usage row on the end day contributes (the
    boundary test, §5.4).
-6. Respects the `unified_sales` and `journal_entry_lines` foreign keys in the
+7. Respects the `unified_sales` and `journal_entry_lines` foreign keys in the
    fixture (per the project lessons).
 
-The pgTAP session identity stays clean between tests (lesson L1759).
+Function-specific cases:
+
+- **`get_monthly_sales_metrics` (modified).** A refund row lands in the new
+  `refunds` column. Net sales equals `gross_revenue - discounts - refunds`. The
+  RLS tenancy test (item 5) is the new guard for the security fix.
+- **`get_expense_health_metrics`.** The six sums split correctly: revenue (amount
+  > 0), food cost, labor cost, processing fees, total outflows, and uncategorized
+  spend. A caller-supplied `p_fee_patterns` value matches a fee row by description
+  or merchant name. An uncategorized row (`category_id IS NULL` and not split)
+  lands only in uncategorized spend.
+
+The pgTAP session identity stays clean between tests (lesson L1759). The RLS
+tenancy test (item 5) resets `role` and `request.jwt.claims` after it runs.
 
 ### 9.2 Unit tests (`tests/unit/`)
 
@@ -384,31 +571,57 @@ number. Record the before-and-after in the PR body.
 
 ## 10. Risks and mitigations
 
-- **Big change.** About 32 sites in 2 files, plus 8 migrations and 8 test files.
-  Mitigation: the plan sequences the work by cluster. Each cluster is one
-  reviewable unit with its own RPC and tests.
+- **Big change.** About 32 sites in 2 files. Add 9 RPCs, modify 1 shared RPC,
+  add 1 index, and add about 10 pgTAP files. Mitigation: the plan sequences the
+  work by cluster. Each cluster is one reviewable unit with its own RPC and tests.
 - **Number shifts.** The unified definitions change some tool outputs.
   Mitigation: §7 lists each change. §9.3 proves each against production.
-- **Column-name reconciliation.** The bank sites use two names for the account
-  filter (`bank_account_id` and `connected_bank_id`) and one status filter.
-  Mitigation: the plan confirms the real column names against the schema before
-  it writes the bank RPCs.
-- **Rollback.** Every RPC is additive. If a client change regresses, revert the
-  edge-function commit; the RPC can stay.
+- **A shared function changes.** `get_monthly_sales_metrics` moves to
+  `SECURITY INVOKER` and gains a `refunds` column. Its one other caller is
+  `monthly_trends` (verified). Mitigation: update `monthly_trends` in the same PR
+  (§5.1). The new pgTAP tenancy and refund tests guard the change.
+- **Migration safety.** The index migration uses `CREATE INDEX CONCURRENTLY`,
+  which cannot run inside a transaction (§5.11). Mitigation: the plan puts the
+  index in its own migration with no `BEGIN` wrapper.
+- **Rollback.** Every new RPC is additive. The `get_monthly_sales_metrics` change
+  is a `CREATE OR REPLACE`, so a revert restores the prior body. If a client
+  change regresses, revert the edge-function commit; the RPCs can stay.
 
 ---
 
 ## 11. Open items to pin in the plan
 
-1. Confirm the exact column names against the live schema: the
-   `bank_transactions` account-filter column and status values (cluster 6), and
-   the `journal_entry_lines` debit and credit columns plus the
-   `chart_of_accounts` expense-account link (cluster 4).
-2. Confirm the `_shared/periodMetrics.ts` field map, so KPIs keeps its
-   breakdown.
-3. Confirm the `products` low-stock predicate and column names.
-4. Decide the PR shape: one PR, or a short stacked series by cluster. The design
-   does not change either way.
+### 11.1 Resolved during design
+
+1. **Bank account-filter column.** The real column is `connected_bank_id`
+   ([`...5da7500b...sql:111`](supabase/migrations/20251018183326_5da7500b-3a17-4a58-af24-d2175258f871.sql:111)).
+   `bank_transactions` has no `bank_account_id` column. Six sites filter
+   `bank_account_id` (lines 509, 567, 626, 704, 741, 858), so an account-scoped
+   bank query errors today. The new RPCs filter `connected_bank_id`, which fixes
+   the latent bug (§7 item 7).
+2. **Cluster-4 journal columns.** The columns are `debit_amount` and
+   `credit_amount`; the parent date is `journal_entries.entry_date`; the expense
+   link is `chart_of_accounts.account_type = 'expense'` scoped by `restaurant_id`
+   ([`...5da7500b...sql:179`](supabase/migrations/20251018183326_5da7500b-3a17-4a58-af24-d2175258f871.sql:179),
+   [`index.ts:955-971`](supabase/functions/ai-execute-tool/index.ts:955)). §5.5 matches.
+3. **Products low-stock predicate.** It is `current_stock <= COALESCE(par_level_min,
+   0)` (§5.6, confirmed at [`index.ts:404-406`](supabase/functions/ai-execute-tool/index.ts:404)).
+4. **KPIs field map.** KPIs reroutes through `get_monthly_sales_metrics` plus the
+   new `refunds` column. Net stays `gross_revenue - discounts - refunds`. The tax
+   and tip split can shift (§7 item 2). The `processingFeePatterns` list stays in
+   TypeScript and passes as the `p_fee_patterns` parameter (§5.10).
+5. **Shared-function caller count.** `get_monthly_sales_metrics` has one other
+   caller, `monthly_trends` (verified by grep). The plan updates it in the same PR.
+
+### 11.2 Still open
+
+1. **Bank status values per site.** Confirm the exact `transaction_status_enum`
+   values each bank caller filters today, so `p_statuses` reproduces per-site
+   behavior (low risk; the default `NULL` applies no status filter).
+2. **PR shape.** Decide one PR, or a short stacked series by cluster. Also decide
+   whether the `get_monthly_sales_metrics` `INVOKER` conversion (§5.1 Change A)
+   ships first as its own small security PR. It fixes a live cross-tenant hole and
+   does not depend on the cap work. The design does not change either way.
 
 ---
 

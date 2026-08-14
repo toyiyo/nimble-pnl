@@ -181,6 +181,9 @@ const TradeCard = memo(function TradeCard({
     prev.trade?.id === next.trade?.id &&
     prev.trade?.status === next.trade?.status &&
     prev.trade?.offered_shift?.is_published === next.trade?.offered_shift?.is_published &&
+    prev.trade?.offered_shift?.start_time === next.trade?.offered_shift?.start_time &&
+    prev.trade?.offered_shift?.end_time === next.trade?.offered_shift?.end_time &&
+    prev.trade?.offered_shift?.position === next.trade?.offered_shift?.position &&
     prev.isAccepting === next.isAccepting &&
     prev.currentEmployeeId === next.currentEmployeeId &&
     prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&

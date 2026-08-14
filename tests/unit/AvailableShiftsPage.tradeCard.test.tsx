@@ -18,6 +18,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { format, parseISO } from 'date-fns';
 
 // ---------------------------------------------------------------------------
 // Hoisted mock — date-fns/parseISO would work without mocking because we only
@@ -375,5 +376,109 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
     });
     renderPage();
     expect(screen.getByText('Tentative — draft')).toBeInTheDocument();
+  });
+
+  it('re-renders the card when a manager edits the offered shift position', async () => {
+    // Regression test for the memo comparator gap: the comparator once checked
+    // only id/status/is_published, so a position edit on the same trade id did
+    // not re-render the card. The claimer would see stale shift details.
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    const buildItems = (position: string) => [
+      {
+        key: 'trade-edited',
+        type: 'trade',
+        date: new Date(DAY_A),
+        trade: {
+          id: 'trade-edited',
+          status: 'open',
+          offered_shift: {
+            id: 'shift-edited',
+            start_time: `${DAY_A}T14:00:00Z`,
+            end_time: `${DAY_A}T20:00:00Z`,
+            position,
+            break_duration: 0,
+            is_published: true,
+          },
+          offered_by: {
+            id: 'emp-poster',
+            name: 'Bob Poster',
+            position,
+            area: 'FOH',
+          },
+          reason: null,
+          target_employee_id: null,
+        },
+        openShift: undefined,
+      },
+    ];
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('Bartender'),
+      loading: false,
+    });
+    const { rerender } = renderPage();
+    expect(screen.getByText('Bartender')).toBeInTheDocument();
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('Server'),
+      loading: false,
+    });
+    rerender(React.createElement(AvailableShiftsPage));
+
+    expect(screen.getByText('Server')).toBeInTheDocument();
+    expect(screen.queryByText('Bartender')).not.toBeInTheDocument();
+  });
+
+  it('re-renders the card when a manager edits the offered shift time', async () => {
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    const buildItems = (startHour: string) => [
+      {
+        key: 'trade-time-edited',
+        type: 'trade',
+        date: new Date(DAY_A),
+        trade: {
+          id: 'trade-time-edited',
+          status: 'open',
+          offered_shift: {
+            id: 'shift-time-edited',
+            start_time: `${DAY_A}T${startHour}:00:00Z`,
+            end_time: `${DAY_A}T20:00:00Z`,
+            position: 'Server',
+            break_duration: 0,
+            is_published: true,
+          },
+          offered_by: {
+            id: 'emp-poster',
+            name: 'Bob Poster',
+            position: 'Server',
+            area: 'FOH',
+          },
+          reason: null,
+          target_employee_id: null,
+        },
+        openShift: undefined,
+      },
+    ];
+
+    // Build the expected label the same way the component does (parseISO +
+    // format), so the assertion holds under any test-runner timezone.
+    const startLabel = (hour: string) =>
+      format(parseISO(`${DAY_A}T${hour}:00:00Z`), 'h:mm a');
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('14'),
+      loading: false,
+    });
+    const { rerender } = renderPage();
+    expect(screen.getByText(new RegExp(startLabel('14')))).toBeInTheDocument();
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('16'),
+      loading: false,
+    });
+    rerender(React.createElement(AvailableShiftsPage));
+
+    expect(screen.getByText(new RegExp(startLabel('16')))).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(startLabel('14')))).not.toBeInTheDocument();
   });
 });

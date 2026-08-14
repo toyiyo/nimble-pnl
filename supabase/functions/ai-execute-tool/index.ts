@@ -664,7 +664,7 @@ async function calculateSpending(
   supabase: any,
   results: any
 ): Promise<void> {
-  const { start_date, end_date } = args;
+  const { start_date, end_date, bank_account_id } = args;
 
   // Category breakdown (get_bank_spending_by_category) replaces the raw
   // amount<0 fetch. Note: this RPC has no p_bank_account_id parameter, so a
@@ -690,8 +690,19 @@ async function calculateSpending(
     expense_count: expenseCount,
     avg_transaction: expenseCount > 0 ? totalExpenses / expenseCount : 0,
     // No vendor-level RPC exists; see note above.
-    top_vendors: [],
+    top_vendors: null,
+    top_vendors_available: false,
     by_category: rows.map((r: any) => ({ name: r.category_name, amount: Number(r.spend ?? 0) })),
+    // The category-breakdown RPC has no account filter; tell the caller
+    // explicitly when their bank_account_id was silently ignored.
+    ...(bank_account_id
+      ? {
+          filters_applied: {
+            bank_account_id: false,
+          },
+          filters_note: 'The spending breakdown covers all connected bank accounts. bank_account_id is not applied to this analysis_type.',
+        }
+      : {}),
   };
 }
 
@@ -895,9 +906,9 @@ async function executeGetBankTransactions(
     .limit(limit);
   
   if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
+    query = query.eq('connected_bank_id', bank_account_id);
   }
-  
+
   if (category_id) {
     query = query.eq('category_id', category_id);
   }
@@ -942,6 +953,14 @@ async function executeGetBankTransactions(
   // page, same as before.
   const categorized = transactions?.filter((t: any) => t.is_categorized).length || 0;
 
+  // The summary RPC only supports p_bank_account_id/p_statuses. When the
+  // caller also sets category_id/min_amount/max_amount/is_categorized, the
+  // list below is narrowed by those filters but the summary above is not.
+  // Flag that mismatch on the response so a caller does not read the
+  // summary as if it matched the filtered list.
+  const hasUnsummarizedFilters =
+    category_id !== undefined || min_amount !== undefined || max_amount !== undefined || is_categorized !== undefined;
+
   return {
     ok: true,
     data: {
@@ -953,6 +972,12 @@ async function executeGetBankTransactions(
         total_outflows: Number(periodSummary.outflow ?? 0),
         categorized_count: categorized,
         categorization_rate: transactions?.length ? (categorized / transactions.length) * 100 : 0,
+        ...(hasUnsummarizedFilters
+          ? {
+              partial: true,
+              note: 'Summary totals cover the whole period without the list filters.',
+            }
+          : {}),
       },
       transactions: transactions?.map((t: any) => ({
         id: t.id,

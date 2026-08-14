@@ -624,7 +624,7 @@ const handler = async (req: Request): Promise<Response> => {
         try {
           await sendWebPushToUser(admin, userId, trade.restaurant_id, {
             title: 'Shift Trade Update',
-            body: content.subject(employeeName),
+            body: tentativePushBody(content.subject(employeeName), shift?.is_published),
             url: EMPLOYEE_SHIFTS_ROUTE,
             tag: `trade-${action}-${tradeId}`,
           });

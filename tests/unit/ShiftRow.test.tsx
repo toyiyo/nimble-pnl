@@ -40,14 +40,16 @@ describe('ShiftRow draft treatment', () => {
     expect(screen.getByText('Draft — not confirmed')).toBeInTheDocument();
   });
 
-  it('does not offer a Trade button on a draft shift', async () => {
+  it('offers a Trade button on a draft shift and marks the row as a draft', async () => {
     const onTrade = vi.fn();
     render(<ShiftRow shift={makeShift({ is_published: false })} onTrade={onTrade} />);
 
-    // Trading a shift that does not officially exist yet produces a request
-    // against a schedule the manager is still editing.
-    expect(screen.queryByRole('button', { name: /trade/i })).not.toBeInTheDocument();
-    expect(onTrade).not.toHaveBeenCalled();
+    // The draft-trade design allows a trade before publication. The row
+    // must still read as a draft next to the button.
+    expect(screen.getByText('Draft — not confirmed')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /trade/i }));
+    expect(onTrade).toHaveBeenCalledTimes(1);
   });
 
   it('shows the normal status badge and Trade button once published', async () => {

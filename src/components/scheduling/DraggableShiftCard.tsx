@@ -34,6 +34,12 @@ export function DraggableShiftCard({
         isDragging && 'opacity-40',
       )}
       aria-roledescription="draggable shift"
+      // dnd-kit's `attributes` set role="button" on this wrapper with no name.
+      // Without an aria-label the browser derives the name from content, which
+      // pulls in every nested button's aria-label (Edit, Offer for trade,
+      // Delete). This label gives the wrapper its own name so those actions
+      // stay individually addressable by assistive tech and tests.
+      aria-label="Drag shift to copy"
     >
       {children}
     </div>

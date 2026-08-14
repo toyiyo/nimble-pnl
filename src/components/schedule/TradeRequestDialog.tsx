@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import {
   Dialog,
@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCreateShiftTrade } from '@/hooks/useShiftTrades';
+import { useCreateShiftTrade, useCreateShiftTradeForEmployee } from '@/hooks/useShiftTrades';
 import { useEmployees } from '@/hooks/useEmployees';
 import { ArrowRightLeft, Users, Loader2 } from 'lucide-react';
 
@@ -35,7 +35,10 @@ interface TradeRequestDialogProps {
   onOpenChange: (open: boolean) => void;
   shift: Shift;
   restaurantId: string;
-  currentEmployeeId: string;
+  /** Set in self-service mode: the signed-in employee posts their own shift. */
+  currentEmployeeId?: string;
+  /** Set in manager mode: an owner or a manager posts this employee's shift. */
+  onBehalfOfEmployee?: { id: string; name: string };
 }
 
 export const TradeRequestDialog = ({
@@ -44,20 +47,34 @@ export const TradeRequestDialog = ({
   shift,
   restaurantId,
   currentEmployeeId,
+  onBehalfOfEmployee,
 }: TradeRequestDialogProps) => {
   const [tradeType, setTradeType] = useState<'marketplace' | 'directed'>('marketplace');
   const [targetEmployeeId, setTargetEmployeeId] = useState<string>('');
   const [reason, setReason] = useState('');
 
-  const { mutate: createTrade, isPending } = useCreateShiftTrade();
-  const { employees } = useEmployees(restaurantId);
+  // Both hooks must run every render (React rule of hooks). The manager mode
+  // uses the SECURITY DEFINER RPC; the self-service mode uses the direct insert.
+  const selfMutation = useCreateShiftTrade();
+  const managerMutation = useCreateShiftTradeForEmployee();
+  const isManagerMode = Boolean(onBehalfOfEmployee);
+  const { mutate: createTrade, isPending } = isManagerMode ? managerMutation : selfMutation;
 
-  // Filter out current employee and inactive employees
+  const { employees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId);
+
+  // The offerer is the on-behalf employee in manager mode, else the signed-in
+  // employee.
+  const offererId = onBehalfOfEmployee?.id ?? currentEmployeeId;
+
+  // Show every other active coworker as a directed-trade target.
   const availableEmployees = employees.filter(
-    (emp) => emp.id !== currentEmployeeId && emp.is_active
+    (emp) => emp.id !== offererId && emp.is_active
   );
 
   const handleSubmit = () => {
+    if (!offererId) {
+      return;
+    }
     if (tradeType === 'directed' && !targetEmployeeId) {
       return;
     }
@@ -66,7 +83,7 @@ export const TradeRequestDialog = ({
       {
         restaurant_id: restaurantId,
         offered_shift_id: shift.id,
-        offered_by_employee_id: currentEmployeeId,
+        offered_by_employee_id: offererId,
         target_employee_id: tradeType === 'directed' ? targetEmployeeId : null,
         reason: reason || undefined,
       },
@@ -82,25 +99,76 @@ export const TradeRequestDialog = ({
     );
   };
 
-  // Early return if shift is null (dialog not yet opened)
-  if (!shift) {
+  // Early return if the shift or the offerer is missing (dialog not ready).
+  if (!shift || !offererId) {
     return null;
   }
 
   const shiftStart = new Date(shift.start_time);
   const shiftEnd = new Date(shift.end_time);
 
+  const title = isManagerMode
+    ? `Post ${onBehalfOfEmployee?.name}'s shift for trade`
+    : 'Trade Shift';
+  const description = isManagerMode
+    ? 'Post this shift to the trade marketplace or offer it to a specific coworker.'
+    : 'Offer your shift to the trade marketplace or a specific coworker.';
+
+  // Build the coworker-picker body one state at a time (no nested ternary).
+  let targetOptions: ReactNode;
+  if (employeesLoading) {
+    targetOptions = (
+      <div className="p-4 text-center text-sm text-muted-foreground">
+        Loading employees...
+      </div>
+    );
+  } else if (employeesError) {
+    targetOptions = (
+      <div className="p-4 text-center text-sm text-muted-foreground">
+        Couldn't load coworkers. Something went wrong.
+      </div>
+    );
+  } else if (availableEmployees.length === 0) {
+    targetOptions = (
+      <div className="p-4 text-center text-sm text-muted-foreground">
+        No other employees available
+      </div>
+    );
+  } else {
+    targetOptions = availableEmployees.map((employee) => (
+      <SelectItem key={employee.id} value={employee.id}>
+        <div className="flex items-center gap-2">
+          <span>{employee.name}</span>
+          <span className="text-xs text-muted-foreground">
+            ({employee.position})
+          </span>
+          {!employee.user_id && (
+            <span className="text-xs text-yellow-600 dark:text-yellow-500">
+              • No account
+            </span>
+          )}
+        </div>
+      </SelectItem>
+    ));
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-2xl">
-            <ArrowRightLeft className="h-6 w-6 text-primary" />
-            Trade Shift
-          </DialogTitle>
-          <DialogDescription>
-            Offer your shift to the trade marketplace or a specific coworker
-          </DialogDescription>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <ArrowRightLeft className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">
+                {title}
+              </DialogTitle>
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                {description}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
         {/* Shift Details Card */}
@@ -168,29 +236,7 @@ export const TradeRequestDialog = ({
                 <SelectTrigger id="target-employee">
                   <SelectValue placeholder="Choose an employee..." />
                 </SelectTrigger>
-                <SelectContent>
-                  {availableEmployees.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      No other employees available
-                    </div>
-                  ) : (
-                    availableEmployees.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        <div className="flex items-center gap-2">
-                          <span>{employee.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            ({employee.position})
-                          </span>
-                          {!employee.user_id && (
-                            <span className="text-xs text-yellow-600 dark:text-yellow-500">
-                              • No account
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
+                <SelectContent>{targetOptions}</SelectContent>
               </Select>
             </div>
           )}
@@ -202,7 +248,7 @@ export const TradeRequestDialog = ({
             </Label>
             <Textarea
               id="reason"
-              placeholder="Why do you need to trade this shift? (e.g., family event, another commitment)"
+              placeholder="Why does this shift need a trade? (e.g., family event, another commitment)"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}

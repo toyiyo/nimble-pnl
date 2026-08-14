@@ -19,6 +19,7 @@ import { ScheduleDayHeaderContent, TODAY_HEADER_CAP_RULE_CLASS } from './Schedul
 import { SchedulingTimeOffCellContent } from './SchedulingTimeOffCellContent';
 import { WeeklyAvailabilityChip } from './SchedulingWeeklyAvailabilityChip';
 import { ShiftCard } from './SchedulingShiftCard';
+import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
@@ -220,6 +221,11 @@ const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  // Only an owner or a manager can post a trade for an employee. This mirrors
+  // the create_shift_trade_for_employee RPC audience, so the offer action never
+  // shows for a role the RPC would reject (e.g. operations_manager).
+  const canOfferTrade =
+    selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
   // `safeTz`, not `|| 'UTC'` — this value now feeds WRITE paths (drag-copy,
   // copy-week, planner create/update) where it decides the UTC instant that
   // gets stored, not just how a cell is labelled. `restaurants.timezone` is
@@ -252,6 +258,8 @@ const Scheduling = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
+  const [tradeShift, setTradeShift] = useState<Shift | null>(null);
+  const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
   const [defaultShiftEmployee, setDefaultShiftEmployee] = useState<DefaultEmployee | undefined>();
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
@@ -688,6 +696,11 @@ const Scheduling = () => {
     } else {
       setShiftToDelete(shift);
     }
+  };
+
+  const handleOfferTrade = (shift: Shift) => {
+    setTradeShift(shift);
+    setTradeDialogOpen(true);
   };
 
   // Handle recurring action dialog confirmation
@@ -1423,6 +1436,7 @@ const Scheduling = () => {
                                             shift={shift}
                                             onEdit={handleEditShift}
                                             onDelete={handleDeleteShift}
+                                            onOfferTrade={canOfferTrade ? handleOfferTrade : undefined}
                                           />
                                         </DraggableShiftCard>
                                       )
@@ -1628,6 +1642,21 @@ const Scheduling = () => {
             defaultDate={defaultShiftDate}
             defaultEmployee={defaultShiftEmployee}
           />
+          {tradeShift && (
+            <TradeRequestDialog
+              open={tradeDialogOpen}
+              onOpenChange={(open) => {
+                setTradeDialogOpen(open);
+                if (!open) setTradeShift(null);
+              }}
+              shift={tradeShift}
+              restaurantId={restaurantId}
+              onBehalfOfEmployee={{
+                id: tradeShift.employee_id,
+                name: allEmployees.find((e) => e.id === tradeShift.employee_id)?.name ?? 'this employee',
+              }}
+            />
+          )}
           <TimeOffRequestDialog
             open={timeOffDialogOpen}
             onOpenChange={setTimeOffDialogOpen}

@@ -11065,6 +11065,16 @@ export type Database = {
         }
         Returns: string
       }
+      create_shift_trade_for_employee: {
+        Args: {
+          p_offered_by_employee_id: string
+          p_offered_shift_id: string
+          p_reason?: string
+          p_restaurant_id: string
+          p_target_employee_id?: string
+        }
+        Returns: string
+      }
       daitch_mokotoff: { Args: { "": string }; Returns: string[] }
       deactivate_employee: {
         Args: {

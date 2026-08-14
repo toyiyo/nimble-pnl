@@ -21,8 +21,11 @@ New Toast source data arrives from two edge functions only:
   It bumps `toast_connections.last_sync_time` after each restaurant
   ([toast-bulk-sync/index.ts:241](../../../supabase/functions/toast-bulk-sync/index.ts)).
 - `toast-sync-data`, user-triggered. Same processor, same stamps. It also
-  bumps `last_sync_time`
-  ([toast-sync-data/index.ts:547](../../../supabase/functions/toast-sync-data/index.ts)).
+  bumps `last_sync_time`, but only when the sync is not a custom range
+  (`if (!isCustomRange)`,
+  [toast-sync-data/index.ts:545-547](../../../supabase/functions/toast-sync-data/index.ts)).
+  A custom-range manual sync still moves `synced_at` on the source rows,
+  so the watermark still moves.
 
 So about 23 of every 24 cron ticks rewrite identical data. Production
 measurement (cron.job_run_details, jobid 4, 2026-08-05 to 2026-08-14):
@@ -62,7 +65,9 @@ ALTER TABLE public.toast_connections
   ADD COLUMN IF NOT EXISTS rollup_source_watermark timestamptz;
 ```
 
-`NULL` means "never rolled up under this scheme" and always triggers a run.
+`NULL` means "never rolled up under this scheme". It triggers a run
+whenever any source input is non-NULL. When every source input is also
+NULL, the tick skips — see invariant 3 in §4.4.
 
 ### 4.2 Indexes
 
@@ -71,20 +76,31 @@ All three tables have `synced_at timestamptz NOT NULL DEFAULT now()`
 ([20251116100100_toast_integration.sql:43](../../../supabase/migrations/20251116100100_toast_integration.sql),
 [:64](../../../supabase/migrations/20251116100100_toast_integration.sql),
 [:82](../../../supabase/migrations/20251116100100_toast_integration.sql)),
-and none has an index on it. Add three:
+and none has an index on it. Add three, one per migration file:
 
 ```sql
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_toast_orders_restaurant_synced_at
   ON public.toast_orders (restaurant_id, synced_at DESC);
+-- second file:
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_toast_order_items_restaurant_synced_at
   ON public.toast_order_items (restaurant_id, synced_at DESC);
+-- third file:
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_toast_payments_restaurant_synced_at
   ON public.toast_payments (restaurant_id, synced_at DESC);
 ```
 
-`CONCURRENTLY` cannot run inside a transaction, so these live in their own
-migration file. Prior art:
+`CONCURRENTLY` cannot run inside a transaction, and the Supabase CLI
+pipelines the statements of one migration file, so each file holds
+exactly one `CREATE INDEX CONCURRENTLY` statement. Prior art:
+[20260524120100_add_file_hash_indexes.sql:1-9](../../../supabase/migrations/20260524120100_add_file_hash_indexes.sql)
+and
+[20260524120200_add_purchase_date_index.sql](../../../supabase/migrations/20260524120200_add_purchase_date_index.sql);
+same one-statement rule in
 [20260804090100_idx_unified_sales_rule_candidates_v2.sql:16-19](../../../supabase/migrations/20260804090100_idx_unified_sales_rule_candidates_v2.sql).
+
+A failed `CONCURRENTLY` build can leave an `INVALID` index under the
+target name, and `IF NOT EXISTS` then skips the retry. The rollout
+runbook (§7) includes the cleanup step.
 
 ### 4.3 Function change
 
@@ -111,13 +127,23 @@ END IF;
 ```
 
 After the existing `SELECT sync_toast_to_unified_sales(...) INTO v_synced`
-returns, and before `RETURN NEXT`:
+returns, and before `RETURN NEXT`, one merged `UPDATE` replaces the
+existing guarded "clear stale failure" `UPDATE`
+([20260804090400_pos_sync_failure_visibility.sql:106-111](../../../supabase/migrations/20260804090400_pos_sync_failure_visibility.sql)):
 
 ```sql
 UPDATE public.toast_connections tc2
-   SET rollup_source_watermark = v_source_max
+   SET rollup_source_watermark = v_source_max,
+       connection_status = 'connected',
+       last_error = NULL,
+       last_error_at = NULL
  WHERE tc2.restaurant_id = v_connection.restaurant_id;
 ```
+
+The old `UPDATE` carried a `WHERE` guard so a 5-minute tick did not churn
+`updated_at` for nothing. The skip now removes that churn at the loop
+level: a successful sync always writes the watermark, so one merged write
+per successful sync replaces two.
 
 The loop cursor gains one column: `rollup_source_watermark`. It already
 selects `last_sync_time`
@@ -159,7 +185,10 @@ set, so no consumer changes.
   so there is nothing new to aggregate from this path. The sweep
   re-aggregates the dates it touches itself.
 - **Manual date-range syncs.** Users call
-  `sync_toast_to_unified_sales(restaurant_id, start, end)` over PostgREST.
+  `sync_toast_to_unified_sales(restaurant_id, start, end)` over PostgREST
+  ([useToastSalesAdapter.tsx:70](../../../src/hooks/adapters/useToastSalesAdapter.tsx);
+  overload defined in
+  [20260529130000_unified_sales_sold_at.sql](../../../supabase/migrations/20260529130000_unified_sales_sold_at.sql)).
   That function is untouched.
 
 ### 4.6 Accepted trade-offs
@@ -201,22 +230,36 @@ Every assertion reads state back. No write-only assertions
 (memory/lessons.md, 2026-08-11: "An UPDATE with no read-back is not a
 test").
 
-Existing suites that call `sync_all_toast_to_unified_sales()` more than
-once must stay green. Risk files:
-[31_toast_incremental_sync.sql](../../../supabase/tests/31_toast_incremental_sync.sql),
-[pos_sync_failure_visibility.test.sql](../../../supabase/tests/pos_sync_failure_visibility.test.sql),
-[29_toast_stale_unified_sales.sql](../../../supabase/tests/29_toast_stale_unified_sales.sql),
-[30_toast_sync_timeout_fix.sql](../../../supabase/tests/30_toast_sync_timeout_fix.sql).
-Where a re-run now skips, the fixture must move the watermark first (bump
-`last_sync_time` or insert a source row). The build phase audits all four.
+One existing suite calls `sync_all_toast_to_unified_sales()` more than
+once: [31_toast_incremental_sync.sql:88,131](../../../supabase/tests/31_toast_incremental_sync.sql)
+(repo-wide grep; the other Toast suites call the per-restaurant
+`sync_toast_to_unified_sales` overloads, which this change does not
+touch). Its test 5 deletes `unified_sales` rows and nulls
+`last_sync_time` between the two calls
+([31_toast_incremental_sync.sql:126-141](../../../supabase/tests/31_toast_incremental_sync.sql)).
+Neither action moves `v_source_max` above the stored watermark, so the
+second call would skip and the count-of-6 assertion would fail. Fix in
+the same commit as migration 3: before the second call, reset
+`rollup_source_watermark` to NULL for the test connection, with a comment
+that names this design doc.
 
 ## 6. Migration files
 
 1. `20260814140000_toast_rollup_watermark_column.sql` — the column.
-2. `20260814140100_idx_toast_source_synced_at.sql` — the three
-   `CONCURRENTLY` indexes, own file, no transaction.
-3. `20260814140200_toast_rollup_watermark_skip.sql` — the wrapper rewrite
-   plus `COMMENT ON FUNCTION` and `COMMENT ON COLUMN`.
+2. `20260814140100_idx_toast_orders_synced_at.sql` — one `CONCURRENTLY`
+   index, one statement, no transaction.
+3. `20260814140200_idx_toast_order_items_synced_at.sql` — same, second
+   index.
+4. `20260814140300_idx_toast_payments_synced_at.sql` — same, third index.
+5. `20260814140400_toast_rollup_watermark_skip.sql` — the wrapper
+   rewrite, `COMMENT ON FUNCTION`, `COMMENT ON COLUMN`, and a restated
+   `REVOKE`/`GRANT` block. `CREATE OR REPLACE` keeps the current ACL, but
+   a replay against a fresh database creates the function with the
+   default public-schema `EXECUTE` grants. The repo pattern restates the
+   grants for exactly this case
+   ([20260804091000_standing_categorization_sweep.sql:201-203](../../../supabase/migrations/20260804091000_standing_categorization_sweep.sql));
+   the current grants sit at
+   [20260804090400_pos_sync_failure_visibility.sql:133-135](../../../supabase/migrations/20260804090400_pos_sync_failure_visibility.sql).
 
 Also run the `sync-types` skill so `src/integrations/supabase/types.ts`
 picks up the new column.
@@ -230,3 +273,8 @@ picks up the new column.
   `SELECT avg(extract(epoch FROM end_time - start_time)) FROM cron.job_run_details WHERE jobid = 4 AND start_time > now() - interval '1 day'`.
   Expected: the average falls from ~1.0 s to well under 0.5 s, because
   most ticks reduce to three index probes per restaurant.
+- If a `CONCURRENTLY` index build fails partway, the index stays under its
+  name in an `INVALID` state, and `IF NOT EXISTS` skips the retry. Cleanup:
+  `DROP INDEX CONCURRENTLY IF EXISTS <name>;` then run the migration
+  again. Check with
+  `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;`.

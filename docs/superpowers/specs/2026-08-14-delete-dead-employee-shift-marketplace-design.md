@@ -33,8 +33,10 @@ Each claim about the current codebase carries a citation.
    `src/hooks/useShiftTrades.ts:618`. Live consumers:
    - `src/hooks/useAvailableShifts.ts:5` (import) and
      `src/hooks/useAvailableShifts.ts:51` (call). `AvailableShiftsPage`
-     consumes this hook at `src/pages/AvailableShiftsPage.tsx:29`
-     (import) and `src/pages/AvailableShiftsPage.tsx:239` (call).
+     consumes `useMarketplaceTrades` indirectly, through
+     `useAvailableShifts`, which it imports at
+     `src/pages/AvailableShiftsPage.tsx:29` and calls at
+     `src/pages/AvailableShiftsPage.tsx:239`.
    - `tests/unit/useShiftTrades.test.ts:27` (unit tests for the hook).
    - `src/components/schedule/TradeMarketplace.tsx:14` — note: this
      component also has zero importers in `src/` and `tests/`. Its

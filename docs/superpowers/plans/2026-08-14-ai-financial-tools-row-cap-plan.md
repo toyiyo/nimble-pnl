@@ -43,7 +43,7 @@ Expected: migrations apply clean; pgTAP all green (including `36_` and `37_`); t
 ### Task 2: `get_monthly_sales_metrics` — add the `refunds` column (spec §5.1 Change B, §13.1)
 
 **Files:**
-- Create: `supabase/migrations/20260814130000_monthly_sales_metrics_refunds.sql`
+- Create: `supabase/migrations/20260814140000_monthly_sales_metrics_refunds.sql`
 - Modify: `supabase/tests/36_monthly_sales_metrics_revenue_filter.sql`
 
 **Interfaces:**
@@ -88,7 +88,7 @@ Expected: FAIL — `column "refunds" does not exist`.
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20260814130000_monthly_sales_metrics_refunds.sql`. The return type changes, so `CREATE OR REPLACE` is not allowed — `DROP` first. Reproduce the FULL body of `20260814120000_secure_monthly_sales_metrics_tenancy.sql` (the membership guard, the `child.restaurant_id` filters, `SECURITY INVOKER`, `SET search_path TO 'public'`), with three additions marked `-- NEW` below:
+Create `supabase/migrations/20260814140000_monthly_sales_metrics_refunds.sql`. The return type changes, so `CREATE OR REPLACE` is not allowed — `DROP` first. Reproduce the FULL body of `20260814120000_secure_monthly_sales_metrics_tenancy.sql` (the membership guard, the `child.restaurant_id` filters, `SECURITY INVOKER`, `SET search_path TO 'public'`), with three additions marked `-- NEW` below:
 
 ```sql
 -- Migration: add a refunds column to get_monthly_sales_metrics
@@ -249,7 +249,7 @@ Expected: `36_` 7/7, `37_` 4/4. `37_` must stay green with no edits — it pins 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260814130000_monthly_sales_metrics_refunds.sql supabase/tests/36_monthly_sales_metrics_revenue_filter.sql
+git add supabase/migrations/20260814140000_monthly_sales_metrics_refunds.sql supabase/tests/36_monthly_sales_metrics_revenue_filter.sql
 git commit -m "feat(rpc): add a refunds column to get_monthly_sales_metrics"
 ```
 
@@ -395,8 +395,8 @@ git commit -m "feat(ai-tools): shared net-sales helper over the monthly metrics 
 ### Task 4: RPCs `get_sales_by_category` + `get_top_sold_items` (cluster 2)
 
 **Files:**
-- Create: `supabase/migrations/20260814131000_get_sales_by_category.sql`
-- Create: `supabase/migrations/20260814132000_get_top_sold_items.sql`
+- Create: `supabase/migrations/20260814141000_get_sales_by_category.sql`
+- Create: `supabase/migrations/20260814142000_get_top_sold_items.sql`
 - Test: `supabase/tests/38_sales_breakdown_rpcs.sql`
 
 **Interfaces:**
@@ -419,7 +419,7 @@ Expected: FAIL — `function get_sales_by_category(...) does not exist`.
 
 - [ ] **Step 3: Write the two migrations**
 
-`20260814131000_get_sales_by_category.sql`:
+`20260814141000_get_sales_by_category.sql`:
 
 ```sql
 -- Sales revenue grouped by category for one restaurant and date range.
@@ -458,7 +458,7 @@ COMMENT ON FUNCTION public.get_sales_by_category IS
 split parents. SECURITY INVOKER; EXECUTE for authenticated only.';
 ```
 
-`20260814132000_get_top_sold_items.sql` — same shell, body:
+`20260814142000_get_top_sold_items.sql` — same shell, body:
 
 ```sql
 CREATE OR REPLACE FUNCTION public.get_top_sold_items(
@@ -503,7 +503,7 @@ Expected: 6/6 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260814131000_get_sales_by_category.sql supabase/migrations/20260814132000_get_top_sold_items.sql supabase/tests/38_sales_breakdown_rpcs.sql
+git add supabase/migrations/20260814141000_get_sales_by_category.sql supabase/migrations/20260814142000_get_top_sold_items.sql supabase/tests/38_sales_breakdown_rpcs.sql
 git commit -m "feat(rpc): sales-by-category and top-items aggregates"
 ```
 
@@ -512,7 +512,7 @@ git commit -m "feat(rpc): sales-by-category and top-items aggregates"
 ### Task 5: RPC `get_inventory_usage_by_month` (cluster 3, COGS)
 
 **Files:**
-- Create: `supabase/migrations/20260814133000_get_inventory_usage_by_month.sql`
+- Create: `supabase/migrations/20260814143000_get_inventory_usage_by_month.sql`
 - Test: `supabase/tests/39_inventory_usage_by_month.sql`
 
 **Interfaces:**
@@ -562,7 +562,7 @@ month, full end day included, explicit UTC bounds. SECURITY INVOKER.';
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260814133000_get_inventory_usage_by_month.sql supabase/tests/39_inventory_usage_by_month.sql
+git add supabase/migrations/20260814143000_get_inventory_usage_by_month.sql supabase/tests/39_inventory_usage_by_month.sql
 git commit -m "feat(rpc): monthly inventory-usage aggregate with a correct end day"
 ```
 
@@ -571,7 +571,7 @@ git commit -m "feat(rpc): monthly inventory-usage aggregate with a correct end d
 ### Task 6: RPC `get_journal_expense_total` (cluster 4, OpEx)
 
 **Files:**
-- Create: `supabase/migrations/20260814134000_get_journal_expense_total.sql`
+- Create: `supabase/migrations/20260814144000_get_journal_expense_total.sql`
 - Test: `supabase/tests/40_journal_expense_total.sql`
 
 **Interfaces:**
@@ -618,7 +618,7 @@ Replaces the expense-account id round-trip. SECURITY INVOKER.';
 ### Task 7: RPC `get_inventory_valuation` (cluster 5)
 
 **Files:**
-- Create: `supabase/migrations/20260814135000_get_inventory_valuation.sql`
+- Create: `supabase/migrations/20260814145000_get_inventory_valuation.sql`
 - Test: `supabase/tests/41_inventory_valuation.sql`
 
 **Interfaces:**
@@ -660,7 +660,7 @@ predicate is current_stock <= COALESCE(par_level_min, 0). SECURITY INVOKER.';
 ### Task 8: Bank RPCs — summary, spending by category, daily series (cluster 6)
 
 **Files:**
-- Create: `supabase/migrations/20260814136000_get_bank_aggregates.sql` (all three functions, one file)
+- Create: `supabase/migrations/20260814146000_get_bank_aggregates.sql` (all three functions, one file)
 - Test: `supabase/tests/42_bank_aggregates.sql`
 
 **Interfaces:**
@@ -751,8 +751,8 @@ Then the six REVOKE/two GRANT lines per function (same pattern as Task 4) and on
 ### Task 9: RPC `get_expense_health_metrics` + the bank index
 
 **Files:**
-- Create: `supabase/migrations/20260814137000_get_expense_health_metrics.sql`
-- Create: `supabase/migrations/20260814138000_idx_bank_transactions_restaurant_date.sql`
+- Create: `supabase/migrations/20260814147000_get_expense_health_metrics.sql`
+- Create: `supabase/migrations/20260814148000_idx_bank_transactions_restaurant_date.sql`
 - Test: `supabase/tests/43_expense_health_metrics.sql`
 
 **Interfaces:**
@@ -801,7 +801,7 @@ $$;
 
 Plus the REVOKE/GRANT/COMMENT block. Before Step 4, check the live keyword rules at `index.ts:2818-2853` and align the `LIKE` terms above with what the TypeScript matches today; adjust the SQL if the code uses different words.
 
-Index migration `20260814138000_...` — **no BEGIN wrapper** (spec §5.11):
+Index migration `20260814148000_...` — **no BEGIN wrapper** (spec §5.11):
 
 ```sql
 -- CONCURRENTLY cannot run inside a transaction. No BEGIN in this file.

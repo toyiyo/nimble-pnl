@@ -12,8 +12,7 @@ import {
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
-import { fetchNetSales } from "../_shared/financialAggregates.ts";
-// sumMonthlyFoodCost stays unused here until Task 11 rewires the food-cost sites.
+import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -200,18 +199,16 @@ async function executeGetKpis(
   // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
 
-  const [hasLaborAccess, salesTotals, foodCostResult, salesCountResult] = await Promise.all([
+  const [hasLaborAccess, salesTotals, usageResult, salesCountResult] = await Promise.all([
     hasSchedulingOrPayrollCapability(restaurantId, supabase),
     // Net sales for the period (gross - discounts - refunds), from the shared RPC.
     fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
-    // Fetch food costs (COGS)
-    supabase
-      .from('inventory_transactions')
-      .select('total_cost')
-      .eq('restaurant_id', restaurantId)
-      .eq('transaction_type', 'usage')
-      .gte('created_at', startDateStr)
-      .lte('created_at', endDateStr + 'T23:59:59.999Z'),
+    // Fetch food costs (COGS) as a monthly-usage aggregate from the SQL side.
+    supabase.rpc('get_inventory_usage_by_month', {
+      p_restaurant_id: restaurantId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr,
+    }),
     // Server-side count of sale transactions in the period (head:true, so it
     // is not subject to the 1000-row cap a normal select would hit). This
     // counts sale transactions, not split-child rows: a split sale's parent
@@ -237,11 +234,13 @@ async function executeGetKpis(
       .or('item_type.is.null,item_type.eq.sale'),
   ]);
 
-  const { data: foodCostData, error: foodCostError } = foodCostResult;
+  const { data: usageRows, error: usageError } = usageResult;
 
-  if (foodCostError) {
-    throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
+  if (usageError) {
+    throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
   }
+
+  const totalCogs = sumMonthlyFoodCost(usageRows);
 
   const salesCount = salesCountResult.count ?? 0;
 
@@ -296,18 +295,18 @@ async function executeGetKpis(
     laborCostData = [{ total_labor_cost: Math.round(laborBreakdown.total * 100) / 100 }];
   }
 
-  // Fetch inventory value
-  const { data: inventory, error: invError } = await supabase
-    .from('products')
-    .select('current_stock, cost_per_unit')
-    .eq('restaurant_id', restaurantId);
+  // Fetch inventory value as a single aggregate row from the SQL side.
+  const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+    p_restaurant_id: restaurantId,
+  });
 
-  if (invError) {
-    throw new Error(`Failed to fetch inventory: ${invError.message}`);
+  if (valuationError) {
+    throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
   }
 
-  const inventoryValue = inventory?.reduce((sum: number, item: any) => 
-    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
+  const inventoryValuation = valuationRows?.[0];
+  const inventoryValue = Number(inventoryValuation?.total_value ?? 0);
+  const inventoryItemCount = Number(inventoryValuation?.item_count ?? 0);
 
   // Get bank transaction count
   const { count: transactionCount } = await supabase
@@ -323,7 +322,7 @@ async function executeGetKpis(
   // refunds), so cost/profitability/benchmarks are computed directly against
   // salesTotals.net instead of going through calculatePeriodMetrics (which
   // would need the raw sale rows this fetch replaced).
-  const rawCosts = calculateCostBreakdown(foodCostData || [], laborCostData || [], salesTotals.net);
+  const rawCosts = calculateCostBreakdown([{ total_cost: totalCogs }], laborCostData || [], salesTotals.net);
   const rawProfitability = calculateProfitability(salesTotals.net, rawCosts.prime_cost);
   const rawBenchmarks = calculateBenchmarks(rawCosts);
 
@@ -375,7 +374,7 @@ async function executeGetKpis(
       ...(hasLaborAccess
         ? [{ table: 'time_punches', date: startDateStr, summary: `Labor from time punches ${startDateStr} to ${endDateStr}` }]
         : []),
-      { table: 'products', summary: `Current inventory snapshot (${inventory?.length || 0} items)` },
+      { table: 'products', summary: `Current inventory snapshot (${inventoryItemCount} items)` },
     ],
   };
 }
@@ -390,49 +389,64 @@ async function executeGetInventoryStatus(
 ): Promise<any> {
   const { include_low_stock = true, category } = args;
 
-  let query = supabase
-    .from('products')
-    .select(`
-      id, 
-      name, 
-      current_stock, 
-      par_level_min, 
-      par_level_max,
-      reorder_point,
-      cost_per_unit, 
-      category,
-      product_suppliers (
-        supplier:suppliers (
-          name
-        ),
-        is_preferred
-      )
-    `)
-    .eq('restaurant_id', restaurantId);
+  // Total value, item count, and low-stock count come from the restaurant-wide
+  // valuation RPC. The RPC takes no category filter, so these three numbers
+  // are always restaurant-wide even when `category` is set — only the
+  // low-stock item list below honors the category filter, since it needs
+  // per-item fields (name, supplier) the RPC does not return.
+  const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+    p_restaurant_id: restaurantId,
+  });
 
-  if (category) {
-    query = query.eq('category', category);
+  if (valuationError) {
+    throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
   }
 
-  const { data: products, error } = await query;
+  const valuation = valuationRows?.[0];
+  const totalItems = Number(valuation?.item_count ?? 0);
+  const totalValue = Number(valuation?.total_value ?? 0);
+  const lowStockCount = Number(valuation?.low_stock_count ?? 0);
 
-  if (error) {
-    throw new Error(`Failed to fetch inventory: ${error.message}`);
+  let lowStockItems: any[] = [];
+  if (include_low_stock) {
+    let query = supabase
+      .from('products')
+      .select(`
+        id,
+        name,
+        current_stock,
+        par_level_min,
+        reorder_point,
+        product_suppliers (
+          supplier:suppliers (
+            name
+          ),
+          is_preferred
+        )
+      `)
+      .eq('restaurant_id', restaurantId);
+
+    if (category) {
+      query = query.eq('category', category);
+    }
+
+    const { data: products, error } = await query;
+
+    if (error) {
+      throw new Error(`Failed to fetch inventory: ${error.message}`);
+    }
+
+    lowStockItems = (products || []).filter((p: any) =>
+      p.current_stock <= (p.par_level_min || 0)
+    );
   }
-
-  const lowStockItems = products?.filter((p: any) => 
-    p.current_stock <= (p.par_level_min || 0)
-  ) || [];
-
-  const totalValue = products?.reduce((sum: number, item: any) => 
-    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
 
   return {
     ok: true,
     data: {
-      total_items: products?.length || 0,
+      total_items: totalItems,
       total_value: totalValue,
-      low_stock_count: lowStockItems.length,
+      low_stock_count: lowStockCount,
       low_stock_items: include_low_stock ? lowStockItems.slice(0, 10).map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -443,7 +457,7 @@ async function executeGetInventoryStatus(
       })) : [],
     },
     evidence: [
-      { table: 'products', summary: `Inventory snapshot: ${products?.length || 0} items, ${lowStockItems.length} low stock` },
+      { table: 'products', summary: `Inventory snapshot: ${totalItems} items, ${lowStockCount} low stock` },
     ],
   };
 }
@@ -952,40 +966,24 @@ async function executeGetFinancialStatement(
         const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
         const revenue = salesTotals.net;
 
-        // Fetch COGS from inventory transactions
-        const { data: cogs } = await supabase
-          .from('inventory_transactions')
-          .select('total_cost')
-          .eq('restaurant_id', restaurantId)
-          .eq('transaction_type', 'usage')
-          .gte('created_at', start_date)
-          .lte('created_at', end_date);
-        
-        const totalCogs = Math.abs(cogs?.reduce((sum: number, c: any) => sum + (c.total_cost || 0), 0) || 0);
-        
-        // Fetch expenses from journal entries
-        const { data: expenseAccounts } = await supabase
-          .from('chart_of_accounts')
-          .select('id')
-          .eq('restaurant_id', restaurantId)
-          .eq('account_type', 'expense');
-        
-        const expenseAccountIds = expenseAccounts?.map((a: any) => a.id) || [];
-        
-        const { data: expenses } = await supabase
-          .from('journal_entry_lines')
-          .select(`
-            debit_amount,
-            credit_amount,
-            journal_entry:journal_entries!inner(entry_date)
-          `)
-          .in('account_id', expenseAccountIds)
-          .gte('journal_entry.entry_date', start_date)
-          .lte('journal_entry.entry_date', end_date);
-        
-        const totalExpenses = expenses?.reduce((sum: number, e: any) => 
-          sum + (e.debit_amount || 0) - (e.credit_amount || 0), 0) || 0;
-        
+        // Fetch COGS from the monthly usage aggregate RPC.
+        const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
+        const totalCogs = sumMonthlyFoodCost(usageRows);
+
+        // Fetch operating expenses from the journal expense aggregate RPC.
+        const { data: expenseTotal, error: expError } = await supabase.rpc('get_journal_expense_total', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (expError) throw new Error(`get_journal_expense_total failed: ${expError.message}`);
+        const totalExpenses = Number(expenseTotal ?? 0);
+
         const grossProfit = revenue - totalCogs;
         const netIncome = grossProfit - totalExpenses;
         
@@ -1026,14 +1024,14 @@ async function executeGetFinancialStatement(
         const cash = cashAccounts?.reduce((sum: number, bank: any) => 
           sum + (bank.bank_account_balances?.[0]?.current_balance || 0), 0) || 0;
         
-        const { data: inventory } = await supabase
-          .from('products')
-          .select('current_stock, cost_per_unit')
-          .eq('restaurant_id', restaurantId);
-        
-        const inventoryValue = inventory?.reduce((sum: number, p: any) => 
-          sum + ((p.current_stock || 0) * (p.cost_per_unit || 0)), 0) || 0;
-        
+        const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+          p_restaurant_id: restaurantId,
+        });
+        if (valuationError) throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+        const balanceSheetValuation = valuationRows?.[0];
+        const inventoryValue = Number(balanceSheetValuation?.total_value ?? 0);
+        const inventoryItemCount = Number(balanceSheetValuation?.item_count ?? 0);
+
         const totalAssets = cash + inventoryValue;
         
         // Simplified - would need accounts payable and other liability tracking
@@ -1068,11 +1066,11 @@ async function executeGetFinancialStatement(
           },
           evidence: [
             { table: 'connected_banks', summary: `Cash balances from connected bank accounts as of ${asOfDate}` },
-            { table: 'products', summary: `Inventory valuation from ${inventory?.length || 0} products` },
+            { table: 'products', summary: `Inventory valuation from ${inventoryItemCount} products` },
           ],
         };
       }
-      
+
       case 'cash_flow': {
         const { data: transactions } = await supabase
           .from('bank_transactions')
@@ -1245,16 +1243,17 @@ async function executeGetSalesSummary(
     }
   }
 
-  // Fetch current period sales (excluding adjustments - only actual revenue).
-  // Raw rows are still needed for the item breakdown/count below (Task 11
-  // moves that to get_top_sold_items); the period total comes from the
-  // shared net-sales RPC so it uses the same gross - discounts - refunds
-  // definition as every other financial tool.
-  const [salesTotals, currentSalesResult] = await Promise.all([
+  // Current period total comes from the shared net-sales RPC so it uses the
+  // same gross - discounts - refunds definition as every other financial
+  // tool. transaction_count is a bounded server-side head-count (Task 11
+  // removes the raw row fetch this used to piggy-back on); the item
+  // breakdown, when requested, comes from get_top_sold_items instead of a
+  // client-side group-by over raw rows.
+  const [salesTotals, currentCountResult] = await Promise.all([
     fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
     supabase
       .from('unified_sales')
-      .select('total_price, sale_date, item_name')
+      .select('*', { count: 'exact', head: true })
       .eq('restaurant_id', restaurantId)
       .gte('sale_date', startDateStr)
       .lte('sale_date', endDateStr)
@@ -1262,36 +1261,32 @@ async function executeGetSalesSummary(
       .is('parent_sale_id', null),
   ]);
 
-  const { data: currentSales, error: currentError } = currentSalesResult;
-  if (currentError) {
-    throw new Error(`Failed to fetch sales: ${currentError.message}`);
-  }
-
   const currentTotal = salesTotals.net;
-  const currentCount = currentSales?.length || 0;
+  const currentCount = currentCountResult.count ?? 0;
 
   // Get items breakdown if requested
   let itemsBreakdown = null;
   if (include_items) {
-    const itemsSummary: Record<string, { count: number; total: number }> = {};
-    currentSales?.forEach((sale: any) => {
-      const item = sale.item_name || 'Unknown';
-      if (!itemsSummary[item]) {
-        itemsSummary[item] = { count: 0, total: 0 };
-      }
-      itemsSummary[item].count += 1;
-      itemsSummary[item].total += sale.total_price || 0;
+    const { data: topItems, error: topItemsError } = await supabase.rpc('get_top_sold_items', {
+      p_restaurant_id: restaurantId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr,
+      p_limit: 10,
     });
-    
-    itemsBreakdown = Object.entries(itemsSummary)
-      .sort(([, a], [, b]) => b.total - a.total)
-      .slice(0, 20)
-      .map(([name, data]) => ({
-        item_name: name,
-        quantity_sold: data.count,
-        total_sales: data.total,
-        avg_price: data.count > 0 ? data.total / data.count : 0,
-      }));
+    if (topItemsError) throw new Error(`get_top_sold_items failed: ${topItemsError.message}`);
+
+    itemsBreakdown = (topItems || []).map((item: any) => {
+      // sale_count preserves the old row-count semantics of quantity_sold
+      // (count of matching sale rows), not the RPC's summed `quantity` field.
+      const count = Number(item.sale_count ?? 0);
+      const total = Number(item.revenue ?? 0);
+      return {
+        item_name: item.item_name,
+        quantity_sold: count,
+        total_sales: total,
+        avg_price: count > 0 ? total / count : 0,
+      };
+    });
   }
 
   let comparison = null;
@@ -1690,16 +1685,14 @@ async function executeGenerateReport(
         const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
         const totalRevenue = salesTotals.net;
 
-        // Get COGS from inventory transactions
-        const { data: inventory } = await supabase
-          .from('inventory_transactions')
-          .select('total_cost, transaction_type')
-          .eq('restaurant_id', restaurantId)
-          .gte('created_at', start_date)
-          .lte('created_at', end_date)
-          .eq('transaction_type', 'usage');
-
-        const totalCOGS = Math.abs(inventory?.reduce((sum: number, i: any) => sum + (i.total_cost || 0), 0) || 0);
+        // Get COGS from the monthly usage aggregate RPC.
+        const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
+        const totalCOGS = sumMonthlyFoodCost(usageRows);
 
         // Get expenses from bank transactions
         const { data: expenses } = await supabase
@@ -1757,32 +1750,23 @@ async function executeGenerateReport(
       }
 
       case 'sales_by_category': {
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('item_name, total_price, pos_category, sale_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
-
-        // Group by category
-        const byCategory: Record<string, { total: number; count: number }> = {};
-        sales?.forEach((s: any) => {
-          const cat = s.pos_category || 'Uncategorized';
-          if (!byCategory[cat]) {
-            byCategory[cat] = { total: 0, count: 0 };
-          }
-          byCategory[cat].total += s.total_price || 0;
-          byCategory[cat].count += 1;
+        const { data: categoryRows, error: catErr } = await supabase.rpc('get_sales_by_category', {
+          p_restaurant_id: restaurantId, p_start_date: start_date, p_end_date: end_date,
         });
+        if (catErr) throw new Error(`get_sales_by_category failed: ${catErr.message}`);
 
         reportData = {
           period: { start_date, end_date },
-          categories: Object.entries(byCategory).map(([name, data]) => ({
-            name,
-            total_sales: data.total,
-            item_count: data.count,
-            average_price: data.count > 0 ? data.total / data.count : 0,
-          })),
+          categories: (categoryRows || []).map((row: any) => {
+            const itemCount = Number(row.item_count ?? 0);
+            const totalSales = Number(row.revenue ?? 0);
+            return {
+              name: row.category_name,
+              total_sales: totalSales,
+              item_count: itemCount,
+              average_price: itemCount > 0 ? totalSales / itemCount : 0,
+            };
+          }),
         };
         break;
       }
@@ -1816,13 +1800,11 @@ async function executeGenerateReport(
 
       case 'balance_sheet': {
         // Simplified balance sheet
-        const { data: inventory } = await supabase
-          .from('products')
-          .select('current_stock, cost_per_unit')
-          .eq('restaurant_id', restaurantId);
-
-        const inventoryValue = inventory?.reduce((sum: number, i: any) => 
-          sum + ((i.current_stock || 0) * (i.cost_per_unit || 0)), 0) || 0;
+        const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+          p_restaurant_id: restaurantId,
+        });
+        if (valuationError) throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+        const inventoryValue = Number(valuationRows?.[0]?.total_value ?? 0);
 
         const { data: bank } = await supabase
           .from('connected_banks')
@@ -2695,22 +2677,20 @@ async function executeGetMonthlyTrends(
     console.warn('RPC not available, using simplified calculation:', salesError);
   }
 
-  // Fetch food costs by month
-  const { data: foodCosts, error: foodError } = await supabase
-    .from('inventory_transactions')
-    .select('created_at, total_cost')
-    .eq('restaurant_id', restaurantId)
-    .eq('transaction_type', 'usage')
-    .gte('created_at', startDateStr)
-    .lte('created_at', endDateStr + 'T23:59:59.999Z');
+  // Fetch food costs by month via the monthly usage aggregate RPC.
+  const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+    p_restaurant_id: restaurantId,
+    p_start_date: startDateStr,
+    p_end_date: endDateStr,
+  });
 
-  if (foodError) throw new Error(`Failed to fetch food costs: ${foodError.message}`);
+  if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
 
-  // Group food costs by month
+  // The RPC already aggregates per month, so its rows map directly into the
+  // lookup — no client-side group-by needed.
   const foodCostByMonth: Record<string, number> = {};
-  foodCosts?.forEach((t: any) => {
-    const monthKey = new Date(t.created_at).toISOString().slice(0, 7);
-    foodCostByMonth[monthKey] = (foodCostByMonth[monthKey] || 0) + Math.abs(t.total_cost || 0);
+  (usageRows || []).forEach((row: any) => {
+    foodCostByMonth[row.period] = Number(row.food_cost ?? 0);
   });
 
   // Build monthly trends

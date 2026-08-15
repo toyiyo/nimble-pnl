@@ -22,6 +22,7 @@ async function seedEmployeeAndShift(
   return page.evaluate(
     async ({ restId, name }) => {
       // `window` has no type declarations for the test-only Supabase client exposeSupabaseHelpers attaches.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const supabase = (window as any).__supabase;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.id) throw new Error('No authenticated user found');
@@ -103,7 +104,9 @@ test.describe('Quiet publish and live edit of a published shift', () => {
     await exposeSupabaseHelpers(page);
 
     // `window` has no type declarations for the test-only helpers exposeSupabaseHelpers attaches.
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    const restaurantId = await page.evaluate(() =>
+      (window as unknown as { __getRestaurantId: () => Promise<string> }).__getRestaurantId()
+    );
     expect(restaurantId).toBeTruthy();
 
     await seedEmployeeAndShift(page, restaurantId, 'Quinn Quietly');
@@ -123,7 +126,9 @@ test.describe('Quiet publish and live edit of a published shift', () => {
     await exposeSupabaseHelpers(page);
 
     // `window` has no type declarations for the test-only helpers exposeSupabaseHelpers attaches.
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    const restaurantId = await page.evaluate(() =>
+      (window as unknown as { __getRestaurantId: () => Promise<string> }).__getRestaurantId()
+    );
     expect(restaurantId).toBeTruthy();
 
     const { employeeName } = await seedEmployeeAndShift(page, restaurantId, 'Casey Editor');

@@ -13,6 +13,8 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 
+import { formatNamesLabel } from '@/lib/scheduling/formatNamesLabel';
+
 interface PublishedShiftChangeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -21,11 +23,6 @@ interface PublishedShiftChangeDialogProps {
   secondEmployeeName?: string;
   isPending: boolean;
   onConfirm: (options: { notify: boolean }) => void;
-}
-
-/** "Alex" or "Alex and Sam" — shared with usePublishedShiftGuard's notify toast. */
-export function formatNamesLabel(employeeName: string, secondEmployeeName?: string): string {
-  return secondEmployeeName ? `${employeeName} and ${secondEmployeeName}` : employeeName;
 }
 
 export function PublishedShiftChangeDialog({

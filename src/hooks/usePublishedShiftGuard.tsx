@@ -1,10 +1,8 @@
 import { useCallback, useState } from 'react';
 
 import { supabase } from '@/integrations/supabase/client';
-import {
-  formatNamesLabel,
-  PublishedShiftChangeDialog,
-} from '@/components/scheduling/PublishedShiftChangeDialog';
+import { PublishedShiftChangeDialog } from '@/components/scheduling/PublishedShiftChangeDialog';
+import { formatNamesLabel } from '@/lib/scheduling/formatNamesLabel';
 import { useToast } from '@/hooks/use-toast';
 import { invokeScheduleNotification, notificationToast } from '@/hooks/useSchedulePublish';
 

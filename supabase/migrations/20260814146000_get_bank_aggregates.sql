@@ -2,7 +2,8 @@
 -- SECURITY INVOKER: RLS on bank_transactions scopes the caller (spec §8).
 CREATE OR REPLACE FUNCTION public.get_bank_transaction_summary(
   p_restaurant_id UUID, p_start_date DATE, p_end_date DATE,
-  p_bank_account_id UUID DEFAULT NULL, p_statuses TEXT[] DEFAULT NULL
+  p_bank_account_id UUID DEFAULT NULL, p_statuses TEXT[] DEFAULT NULL,
+  p_min_inflow NUMERIC DEFAULT NULL
 )
 RETURNS TABLE(inflow NUMERIC, outflow NUMERIC, net NUMERIC, tx_count BIGINT,
               inflow_count BIGINT, outflow_count BIGINT, avg_inflow NUMERIC, max_inflow NUMERIC)
@@ -13,10 +14,10 @@ AS $$
          ABS(COALESCE(SUM(bt.amount) FILTER (WHERE bt.amount < 0), 0))::NUMERIC,
          COALESCE(SUM(bt.amount), 0)::NUMERIC,
          COUNT(*)::BIGINT,
-         COUNT(*) FILTER (WHERE bt.amount > 0)::BIGINT,
+         COUNT(*) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow))::BIGINT,
          COUNT(*) FILTER (WHERE bt.amount < 0)::BIGINT,
-         COALESCE(AVG(bt.amount) FILTER (WHERE bt.amount > 0), 0)::NUMERIC,
-         COALESCE(MAX(bt.amount) FILTER (WHERE bt.amount > 0), 0)::NUMERIC
+         COALESCE(AVG(bt.amount) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow)), 0)::NUMERIC,
+         COALESCE(MAX(bt.amount) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow)), 0)::NUMERIC
   FROM bank_transactions bt
   WHERE bt.restaurant_id = p_restaurant_id
     AND bt.transaction_date >= p_start_date AND bt.transaction_date <= p_end_date
@@ -36,7 +37,7 @@ AS $$
          ABS(COALESCE(SUM(bt.amount), 0))::NUMERIC,
          COUNT(*)::BIGINT
   FROM bank_transactions bt
-  LEFT JOIN chart_of_accounts coa ON coa.id = bt.category_id
+  LEFT JOIN chart_of_accounts coa ON coa.id = bt.category_id AND coa.restaurant_id = p_restaurant_id
   WHERE bt.restaurant_id = p_restaurant_id
     AND bt.transaction_date >= p_start_date AND bt.transaction_date <= p_end_date
     AND bt.amount < 0
@@ -64,9 +65,9 @@ AS $$
   ORDER BY bt.transaction_date;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_bank_transaction_summary(UUID, DATE, DATE, UUID, TEXT[]) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.get_bank_transaction_summary(UUID, DATE, DATE, UUID, TEXT[]) FROM anon;
-GRANT EXECUTE ON FUNCTION public.get_bank_transaction_summary(UUID, DATE, DATE, UUID, TEXT[]) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.get_bank_transaction_summary(UUID, DATE, DATE, UUID, TEXT[], NUMERIC) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_bank_transaction_summary(UUID, DATE, DATE, UUID, TEXT[], NUMERIC) FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_bank_transaction_summary(UUID, DATE, DATE, UUID, TEXT[], NUMERIC) TO authenticated;
 
 REVOKE EXECUTE ON FUNCTION public.get_bank_spending_by_category(UUID, DATE, DATE, TEXT[]) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.get_bank_spending_by_category(UUID, DATE, DATE, TEXT[]) FROM anon;
@@ -78,8 +79,10 @@ GRANT EXECUTE ON FUNCTION public.get_bank_transactions_daily(UUID, DATE, DATE, U
 
 COMMENT ON FUNCTION public.get_bank_transaction_summary IS
 'Inflow/outflow/net summary over bank_transactions, optionally scoped to one
-connected_bank_id and one set of statuses. SECURITY INVOKER; EXECUTE for
-authenticated only.';
+connected_bank_id and one set of statuses. p_min_inflow applies a strictly-
+greater-than floor to the deposit metrics only (inflow_count, avg_inflow,
+max_inflow); inflow, outflow, net, tx_count, and outflow_count stay unfloored.
+SECURITY INVOKER; EXECUTE for authenticated only.';
 
 COMMENT ON FUNCTION public.get_bank_spending_by_category IS
 'Spend by category from negative-amount bank_transactions rows. SECURITY

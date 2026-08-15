@@ -17,9 +17,11 @@
 --   7. Summary returns one all-zero row for an empty range (COALESCE guard).
 --   8. Tenancy: a non-member gets a zero-value row for a foreign restaurant
 --      that holds real transaction data.
+--   9. p_min_inflow => 10 excludes a $5.00 deposit from inflow_count and
+--      avg_inflow (the deposit floor), while inflow still includes it.
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 -- Fixtures insert as the session role (postgres, BYPASSRLS). RLS stays on.
 INSERT INTO auth.users (id, email) VALUES
@@ -71,6 +73,8 @@ ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
 --     (30); day 2 has an inflow only (50); day 3 (05-27) has no rows.
 --   2026-05-01 on the foreign restaurant (assertion 8): a real inflow (999)
 --     the non-member must not see.
+--   2026-05-30 (assertion 9): a small deposit (5.00) and a normal deposit
+--     (50.00), both posted, bank A.
 INSERT INTO bank_transactions
   (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date,
    description, amount, status, category_id)
@@ -125,7 +129,13 @@ VALUES
    'bank-agg-test-311', '2026-05-26', 'Daily Inflow Day 2', 50.00, 'posted', NULL),
   ('00000000-0000-0000-0000-000000000312'::uuid,
    '00000000-0000-0000-0000-000000000291'::uuid, '00000000-0000-0000-0000-000000000295'::uuid,
-   'bank-agg-test-312', '2026-05-01', 'Foreign Restaurant Deposit', 999.00, 'posted', NULL)
+   'bank-agg-test-312', '2026-05-01', 'Foreign Restaurant Deposit', 999.00, 'posted', NULL),
+  ('00000000-0000-0000-0000-000000000313'::uuid,
+   '00000000-0000-0000-0000-000000000290'::uuid, '00000000-0000-0000-0000-000000000293'::uuid,
+   'bank-agg-test-313', '2026-05-30', 'Small Deposit', 5.00, 'posted', NULL),
+  ('00000000-0000-0000-0000-000000000314'::uuid,
+   '00000000-0000-0000-0000-000000000290'::uuid, '00000000-0000-0000-0000-000000000293'::uuid,
+   'bank-agg-test-314', '2026-05-30', 'Normal Deposit', 50.00, 'posted', NULL)
 ON CONFLICT (id) DO UPDATE SET
   amount = EXCLUDED.amount,
   status = EXCLUDED.status,
@@ -230,6 +240,19 @@ SELECT results_eq(
        '2026-05-01'::date, '2026-05-31'::date) $$,
   $$ VALUES (0::numeric, 0::numeric, 0::numeric, 0::bigint, 0::bigint, 0::bigint, 0::numeric, 0::numeric) $$,
   'A non-member gets a zero-value row for a foreign restaurant with real transaction data'
+);
+
+-- Test 9: p_min_inflow => 10 floors the deposit metrics (inflow_count,
+-- avg_inflow) to exclude the $5.00 deposit, while inflow stays unfloored
+-- and still includes it. inflow = 5 + 50 = 55; inflow_count = 1 (only the
+-- 50 passes > 10); avg_inflow = 50.
+SELECT results_eq(
+  $$ SELECT inflow, inflow_count, avg_inflow
+     FROM get_bank_transaction_summary(
+       '00000000-0000-0000-0000-000000000290'::uuid,
+       '2026-05-30'::date, '2026-05-30'::date, NULL, NULL, 10) $$,
+  $$ VALUES (55::numeric, 1::bigint, 50::numeric) $$,
+  'p_min_inflow => 10 excludes the $5.00 deposit from inflow_count/avg_inflow; inflow still includes it'
 );
 
 RESET ROLE;

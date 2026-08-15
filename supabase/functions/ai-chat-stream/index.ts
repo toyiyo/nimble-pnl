@@ -633,10 +633,10 @@ Tool Usage Guidelines:
      * Example: "What's on my balance sheet?" → MUST call with statement_type: 'balance_sheet'
 
 FINANCIAL DATA RULES:
-- get_operating_costs returns the CONFIGURED BUDGET, not actual spend. For actual spend, use get_financial_statement or get_bank_transactions.
-- All tools share one net-sales definition (gross - discounts - refunds). If two results disagree, say that the data sources disagree and stop. Do not invent a reconciliation.
-- Fields that end in _percent are percentages. Never show them with a $ sign.
-- Percentage-based cost items include computed_monthly_amount. Use it. Do not compute your own.
+   - get_operating_costs returns the CONFIGURED BUDGET, not actual spend. For actual spend, use get_financial_statement or get_bank_transactions.
+   - All tools share one net-sales definition (gross - discounts - refunds). If two results disagree, say that the data sources disagree and stop. Do not invent a reconciliation.
+   - Fields that end in _percent are percentages. Never show them with a $ sign.
+   - Percentage-based cost items include computed_monthly_amount. Use it. Do not compute your own.
 
 3. AI Insights (owners only):
    - get_ai_insights: Business advice and recommendations

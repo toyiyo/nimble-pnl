@@ -12,7 +12,7 @@ AS $$
          COALESCE(SUM(us.total_price), 0)::NUMERIC AS revenue,
          COUNT(*)::BIGINT AS item_count
   FROM unified_sales us
-  LEFT JOIN chart_of_accounts coa ON coa.id = us.category_id
+  LEFT JOIN chart_of_accounts coa ON coa.id = us.category_id AND coa.restaurant_id = p_restaurant_id
   WHERE us.restaurant_id = p_restaurant_id
     AND us.sale_date >= p_start_date AND us.sale_date <= p_end_date
     AND us.adjustment_type IS NULL

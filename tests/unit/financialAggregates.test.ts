@@ -11,6 +11,9 @@ describe('sumMonthlyMetrics', () => {
     const t = sumMonthlyMetrics([row(), row({ period: '2026-06', gross_revenue: 50 })]);
     expect(t.gross).toBe(150);
     expect(t.net).toBe(150 - 6 - 4);
+    expect(t.salesTax).toBe(16);
+    expect(t.tips).toBe(10);
+    expect(t.otherLiabilities).toBe(0);
   });
   it('returns zeros for null and for an empty array', () => {
     expect(sumMonthlyMetrics(null).net).toBe(0);

@@ -621,15 +621,15 @@ async function calculateRevenueHealth(
   const { start_date, end_date, bank_account_id } = args;
 
   // Deposit summary (get_bank_transaction_summary) replaces the raw
-  // amount>0 fetch. The RPC has no minimum-amount filter, so it counts
-  // every positive transaction as a deposit. The prior code also required
-  // amount > 10 to exclude small transfers/refunds; that threshold has no
-  // RPC equivalent and is dropped here.
+  // amount>0 fetch. p_min_inflow: 10 restores the prior code's amount > 10
+  // floor, which excludes small transfers/refunds from the deposit metrics
+  // (inflow_count, avg_inflow, max_inflow). inflow itself stays unfloored.
   const { data: summaryRows, error } = await supabase.rpc('get_bank_transaction_summary', {
     p_restaurant_id: restaurantId,
     p_start_date: start_date,
     p_end_date: end_date,
     p_bank_account_id: bank_account_id || null,
+    p_min_inflow: 10,
   });
 
   if (error) throw new Error(`get_bank_transaction_summary failed: ${error.message}`);
@@ -3290,7 +3290,7 @@ async function executeBatchCategorizeTransactions(
   const { transaction_ids, category_id, preview = false, confirmed = false } = args;
 
   if (transaction_ids.length > 1000) {
-    return { error: `Too many ids (${transaction_ids.length}). Send at most 1000 per call.` };
+    return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${transaction_ids.length}). Send at most 1000 per call.` } };
   }
 
   // Fetch the category info
@@ -3384,7 +3384,7 @@ async function executeBatchCategorizePosSales(
   const { sale_ids, category_id, preview = false, confirmed = false } = args;
 
   if (sale_ids.length > 1000) {
-    return { error: `Too many ids (${sale_ids.length}). Send at most 1000 per call.` };
+    return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${sale_ids.length}). Send at most 1000 per call.` } };
   }
 
   const { data: category, error: catError } = await supabase

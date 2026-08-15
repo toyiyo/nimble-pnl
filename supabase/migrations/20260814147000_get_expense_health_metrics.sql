@@ -28,7 +28,7 @@ AS $$
     ABS(COALESCE(SUM(bt.amount) FILTER (WHERE bt.amount < 0
       AND bt.category_id IS NULL AND COALESCE(bt.is_split, false) = false), 0))::NUMERIC
   FROM bank_transactions bt
-  LEFT JOIN chart_of_accounts coa ON coa.id = bt.category_id
+  LEFT JOIN chart_of_accounts coa ON coa.id = bt.category_id AND coa.restaurant_id = p_restaurant_id
   WHERE bt.restaurant_id = p_restaurant_id
     AND bt.transaction_date >= p_start_date AND bt.transaction_date <= p_end_date
     AND bt.status::text IN ('posted', 'pending')

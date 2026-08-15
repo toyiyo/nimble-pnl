@@ -7,17 +7,18 @@
 -- Assertions:
 --   1. total_value sums current_stock * cost_per_unit across a 2-product
 --      fixture.
---   2. low_stock_count uses current_stock <= COALESCE(par_level_min, 0): a
+--   2. item_count counts the rows in the 2-product fixture.
+--   3. low_stock_count uses current_stock <= COALESCE(par_level_min, 0): a
 --      product with par_level_min NULL and current_stock 0 counts as low
 --      stock; a product with stock 5 does not.
---   3. An empty restaurant (no products) returns one row of zeros, not an
+--   4. An empty restaurant (no products) returns one row of zeros, not an
 --      empty result.
---   4. Tenancy: a non-member gets one row of zeros for a foreign restaurant
+--   5. Tenancy: a non-member gets one row of zeros for a foreign restaurant
 --      that holds real product data (RLS hides the rows; the aggregate
 --      still returns a row).
 
 BEGIN;
-SELECT plan(4);
+SELECT plan(5);
 
 -- Fixtures insert as the session role (postgres, BYPASSRLS). RLS stays on.
 INSERT INTO auth.users (id, email) VALUES
@@ -79,7 +80,15 @@ SELECT results_eq(
   'total_value sums current_stock * cost_per_unit across the 2-product fixture'
 );
 
--- Test 2: low_stock_count treats a NULL par_level_min as 0 in the
+-- Test 2: item_count counts the rows in the 2-product fixture.
+SELECT results_eq(
+  $$ SELECT item_count FROM get_inventory_valuation(
+       '00000000-0000-0000-0000-000000000280'::uuid) $$,
+  $$ VALUES (2::bigint) $$,
+  'item_count counts the rows in the 2-product fixture'
+);
+
+-- Test 3: low_stock_count treats a NULL par_level_min as 0 in the
 -- comparison — stock 0 counts as low stock, stock 5 does not.
 SELECT results_eq(
   $$ SELECT low_stock_count FROM get_inventory_valuation(
@@ -88,7 +97,7 @@ SELECT results_eq(
   'low_stock_count counts a NULL-par product at stock 0 but not one at stock 5'
 );
 
--- Test 3: an empty restaurant returns one row of zeros, not an empty result.
+-- Test 4: an empty restaurant returns one row of zeros, not an empty result.
 SELECT results_eq(
   $$ SELECT total_value, item_count, low_stock_count FROM get_inventory_valuation(
        '00000000-0000-0000-0000-000000000282'::uuid) $$,
@@ -96,7 +105,7 @@ SELECT results_eq(
   'An empty restaurant returns one row of zeros, not an empty result'
 );
 
--- Test 4: tenancy. A non-member gets one row of zeros for a foreign
+-- Test 5: tenancy. A non-member gets one row of zeros for a foreign
 -- restaurant that holds real product data — RLS hides the rows, but the
 -- aggregate still returns a row.
 SELECT results_eq(

@@ -19,7 +19,7 @@ RETURNS TABLE (
   tips DECIMAL,
   other_liabilities DECIMAL,
   discounts DECIMAL,
-  refunds DECIMAL          -- NEW
+  refunds DECIMAL
 )
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -61,7 +61,7 @@ BEGIN
       )
     GROUP BY TO_CHAR(us.sale_date, 'YYYY-MM')
   ),
-  monthly_refunds AS (   -- NEW
+  monthly_refunds AS (
     SELECT TO_CHAR(us.sale_date, 'YYYY-MM') as month_period,
       COALESCE(SUM(ABS(us.total_price)), 0)::DECIMAL as amount
     FROM unified_sales us
@@ -129,7 +129,7 @@ BEGIN
     SELECT DISTINCT month_period FROM monthly_revenue
     UNION SELECT DISTINCT month_period FROM monthly_adjustments
     UNION SELECT DISTINCT month_period FROM monthly_categorized_liabilities
-    UNION SELECT DISTINCT month_period FROM monthly_refunds   -- NEW
+    UNION SELECT DISTINCT month_period FROM monthly_refunds
   )
   SELECT
     p.month_period as period,
@@ -141,10 +141,10 @@ BEGIN
     COALESCE((SELECT SUM(a.amount) FROM monthly_adjustments a WHERE a.month_period = p.month_period AND a.adjustment_type IN ('service_charge', 'fee')), 0) +
     COALESCE((SELECT SUM(l.amount) FROM monthly_categorized_liabilities l WHERE l.month_period = p.month_period AND l.liability_type = 'other_liability'), 0) as other_liabilities,
     COALESCE((SELECT SUM(ABS(a.amount)) FROM monthly_adjustments a WHERE a.month_period = p.month_period AND a.adjustment_type = 'discount'), 0) as discounts,
-    COALESCE(rf.amount, 0) as refunds   -- NEW
+    COALESCE(rf.amount, 0) as refunds
   FROM all_periods p
   LEFT JOIN monthly_revenue r ON r.month_period = p.month_period
-  LEFT JOIN monthly_refunds rf ON rf.month_period = p.month_period   -- NEW
+  LEFT JOIN monthly_refunds rf ON rf.month_period = p.month_period
   ORDER BY p.month_period DESC;
 END;
 $function$;

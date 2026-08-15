@@ -147,9 +147,8 @@ export const PublishScheduleDialog = ({
             <AlertDescription className="text-sm">
               <strong>Important:</strong> Once published, the schedule will be:
               <ul className="list-disc list-inside mt-2 space-y-1 text-xs">
-                <li>Locked and cannot be edited without unpublishing</li>
                 <li>Visible to all employees</li>
-                <li>Sent via push notifications to staff</li>
+                <li>Editable — a change to a published shift asks you to confirm first</li>
               </ul>
             </AlertDescription>
           </Alert>

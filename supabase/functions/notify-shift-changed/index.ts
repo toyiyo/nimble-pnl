@@ -119,100 +119,130 @@ serve(async (req) => {
       });
     }
 
-    // Steps 6-7: derive everything else from the row alone, not the request.
-    const recipients = deriveShiftChangeRecipients(row as ShiftChangeLogRow);
-    if (recipients.length === 0) {
-      // An open shift (both sides null) — nothing to tell anyone.
-      return new Response(JSON.stringify({ sent: 0, failed: 0 }), {
+    // The claim above is a lock. From here on, a failure must release it,
+    // or a real change log can never be retried and its notification is
+    // lost for good. `release` clears `notified_at` back to null; only a
+    // send that reaches at least one recipient leaves the claim in place.
+    const release = async () => {
+      const { error } = await serviceClient
+        .from("schedule_change_logs")
+        .update({ notified_at: null })
+        .eq("id", changeLogId);
+      if (error) {
+        console.error(`Failed to release change log ${changeLogId}:`, error);
+      }
+    };
+
+    try {
+      // Steps 6-7: derive everything else from the row alone, not the request.
+      const recipients = deriveShiftChangeRecipients(row as ShiftChangeLogRow);
+      if (recipients.length === 0) {
+        // An open shift (both sides null) — nothing to tell anyone. Not a
+        // failure, so the claim stands; a retry would find the same result.
+        return new Response(JSON.stringify({ sent: 0, failed: 0 }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      const employeeIds = recipients.map((r) => r.employeeId);
+      const [{ data: employees, error: empError }, { data: restaurant, error: restError }] =
+        await Promise.all([
+          serviceClient
+            .from("employees")
+            .select("id, name, email, user_id")
+            .eq("restaurant_id", row.restaurant_id)
+            .in("id", employeeIds),
+          serviceClient
+            .from("restaurants")
+            .select("name, timezone")
+            .eq("id", row.restaurant_id)
+            .maybeSingle(),
+        ]);
+
+      if (empError) {
+        throw new Error(`Failed to fetch employees: ${empError.message}`);
+      }
+      if (restError) {
+        throw new Error(`Failed to fetch restaurant: ${restError.message}`);
+      }
+
+      const timezone = restaurant?.timezone || "UTC";
+      const restaurantName = restaurant?.name ?? "EasyShiftHQ";
+      const employeeById = new Map(
+        ((employees ?? []) as RecipientEmployee[]).map((e) => [e.id, e]),
+      );
+
+      let sent = 0;
+      let failed = 0;
+
+      // Step 8: send one email + push per recipient with the concrete change.
+      for (const recipient of recipients) {
+        const employee = employeeById.get(recipient.employeeId);
+        if (!employee) {
+          failed++;
+          continue;
+        }
+
+        const message = buildShiftChangeMessage(recipient, row as ShiftChangeLogRow, timezone);
+        let recipientReached = false;
+
+        if (employee.email && RESEND_API_KEY) {
+          const emailResult = await sendEmailResult(
+            RESEND_API_KEY,
+            NOTIFICATION_FROM,
+            employee.email,
+            `${message.title} - ${restaurantName}`,
+            `<p>Hi ${escapeHtml(employee.name ?? "there")},</p><p>${escapeHtml(message.body)}</p>`,
+          );
+          if (emailResult.ok) {
+            recipientReached = true;
+          } else {
+            console.error(
+              `notify-shift-changed: email failed for employee ${employee.id}`,
+              emailResult.error,
+            );
+          }
+        }
+
+        if (employee.user_id) {
+          const push = await sendWebPushToUser(serviceClient, employee.user_id, row.restaurant_id, {
+            title: message.title,
+            body: message.body,
+            url: SCHEDULE_PATH,
+            tag: `shift-changed-${row.shift_id}-${employee.id}`,
+          });
+          if (push.sent > 0) {
+            recipientReached = true;
+          }
+        }
+
+        if (recipientReached) {
+          sent++;
+        } else {
+          failed++;
+        }
+      }
+
+      // Reached nobody: release the claim so a retry can try again, and
+      // signal the caller this attempt did not actually deliver anything.
+      if (sent === 0) {
+        await release();
+        return new Response(JSON.stringify({ sent, failed }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 502,
+        });
+      }
+
+      // Step 9.
+      return new Response(JSON.stringify({ sent, failed }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
+    } catch (error) {
+      await release();
+      throw error;
     }
-
-    const employeeIds = recipients.map((r) => r.employeeId);
-    const [{ data: employees, error: empError }, { data: restaurant, error: restError }] =
-      await Promise.all([
-        serviceClient
-          .from("employees")
-          .select("id, name, email, user_id")
-          .eq("restaurant_id", row.restaurant_id)
-          .in("id", employeeIds),
-        serviceClient
-          .from("restaurants")
-          .select("name, timezone")
-          .eq("id", row.restaurant_id)
-          .maybeSingle(),
-      ]);
-
-    if (empError) {
-      throw new Error(`Failed to fetch employees: ${empError.message}`);
-    }
-    if (restError) {
-      throw new Error(`Failed to fetch restaurant: ${restError.message}`);
-    }
-
-    const timezone = restaurant?.timezone || "UTC";
-    const restaurantName = restaurant?.name ?? "EasyShiftHQ";
-    const employeeById = new Map(
-      ((employees ?? []) as RecipientEmployee[]).map((e) => [e.id, e]),
-    );
-
-    let sent = 0;
-    let failed = 0;
-
-    // Step 8: send one email + push per recipient with the concrete change.
-    for (const recipient of recipients) {
-      const employee = employeeById.get(recipient.employeeId);
-      if (!employee) {
-        failed++;
-        continue;
-      }
-
-      const message = buildShiftChangeMessage(recipient, row as ShiftChangeLogRow, timezone);
-      let recipientReached = false;
-
-      if (employee.email && RESEND_API_KEY) {
-        const emailResult = await sendEmailResult(
-          RESEND_API_KEY,
-          NOTIFICATION_FROM,
-          employee.email,
-          `${message.title} - ${restaurantName}`,
-          `<p>Hi ${escapeHtml(employee.name ?? "there")},</p><p>${escapeHtml(message.body)}</p>`,
-        );
-        if (emailResult.ok) {
-          recipientReached = true;
-        } else {
-          console.error(
-            `notify-shift-changed: email failed for employee ${employee.id}`,
-            emailResult.error,
-          );
-        }
-      }
-
-      if (employee.user_id) {
-        const push = await sendWebPushToUser(serviceClient, employee.user_id, row.restaurant_id, {
-          title: message.title,
-          body: message.body,
-          url: SCHEDULE_PATH,
-          tag: `shift-changed-${row.shift_id}-${employee.id}`,
-        });
-        if (push.sent > 0) {
-          recipientReached = true;
-        }
-      }
-
-      if (recipientReached) {
-        sent++;
-      } else {
-        failed++;
-      }
-    }
-
-    // Step 9.
-    return new Response(JSON.stringify({ sent, failed }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
   } catch (error: unknown) {
     console.error("Error in notify-shift-changed:", error);
     const message = error instanceof Error ? error.message : "An error occurred";

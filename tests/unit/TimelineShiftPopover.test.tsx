@@ -82,6 +82,7 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof TimelineShi
     guardShiftChange: vi.fn(async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
       await run({ allowPublished: false });
     }),
+    notifyAfterDeferredCommit: vi.fn(),
     ...overrides,
   };
 }

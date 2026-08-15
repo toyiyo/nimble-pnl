@@ -60,7 +60,10 @@ import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useA
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
-import type { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
+import type {
+  GuardShiftChangeOptions,
+  NotifyAfterDeferredCommitArgs,
+} from '@/hooks/usePublishedShiftGuard';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -72,6 +75,12 @@ interface ShiftPlannerTabProps {
    * shift). Forwarded straight through to the timeline tab.
    */
   guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
+  /**
+   * Same guard instance's deferred-notify step, for a `run` that surfaced a
+   * conflict dialog instead of committing. Forwarded straight through to the
+   * timeline tab.
+   */
+  notifyAfterDeferredCommit: (args: NotifyAfterDeferredCommitArgs) => void | Promise<void>;
 }
 
 /** Format a template's slot label for CoverageDetail headings.
@@ -120,6 +129,7 @@ export function ShiftPlannerTab({
   weekStart: externalWeekStart,
   onWeekStartChange,
   guardShiftChange,
+  notifyAfterDeferredCommit,
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
@@ -819,6 +829,7 @@ export function ShiftPlannerTab({
           error={null}
           availabilityByEmployee={availabilityByEmployee}
           guardShiftChange={guardShiftChange}
+          notifyAfterDeferredCommit={notifyAfterDeferredCommit}
         />
       )}
 

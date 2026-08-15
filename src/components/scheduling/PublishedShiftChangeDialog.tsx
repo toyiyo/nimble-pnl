@@ -48,12 +48,12 @@ export function PublishedShiftChangeDialog({
   const namesLabel = formatNamesLabel(employeeName, secondEmployeeName);
 
   const handleConfirm = (event: MouseEvent) => {
-    // AlertDialogAction closes the dialog on click by default. Block that
-    // while the mutation is in flight so a fast double-click cannot fire twice.
-    if (isPending) {
-      event.preventDefault();
-      return;
-    }
+    // AlertDialogAction closes the dialog on click by default. Always block
+    // that: `onConfirm` is async and the guard clears `pending` itself only
+    // once the change actually commits, so a Radix auto-close here would
+    // race ahead of a failed mutation and leave it unretryable.
+    event.preventDefault();
+    if (isPending) return;
     onConfirm({ notify });
   };
 

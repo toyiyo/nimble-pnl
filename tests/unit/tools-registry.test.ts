@@ -130,6 +130,15 @@ describe('tools-registry: get_labor_costs description signals per-employee field
   });
 });
 
+describe('tools-registry: get_operating_costs description labels the data as a budget', () => {
+  it('opens with a warning that the data is the configured budget, not actual spend', () => {
+    const tools = getTools('rest-1', 'manager');
+    const def = tools.find((t) => t.name === 'get_operating_costs');
+    expect(def).toBeDefined();
+    expect(def!.description).toContain('CONFIGURED cost budget');
+  });
+});
+
 describe('tools-registry: requiredRoleFor / canUseTool invariant', () => {
   // Whatever role requiredRoleFor returns, canUseTool MUST be true for that role
   // and false for the role one tier below it. This guards the dispatcher's

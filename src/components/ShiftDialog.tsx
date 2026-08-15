@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Shift, RecurrencePattern, RecurrenceType, ConflictCheck } from '@/types/scheduling';
 import { formatConflictLine } from '@/lib/conflictFormatUtils';
 import { useCreateShift, useUpdateShift, useUpdateShiftSeries } from '@/hooks/useShifts';
-import { RecurringActionScope } from '@/utils/recurringShiftHelpers';
+import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { format, getDay } from 'date-fns';
@@ -185,6 +185,10 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
       return;
     }
 
+    // No is_published/locked here. An edit must never touch the publish
+    // flags: writing false would silently retract a published shift the
+    // manager only meant to move. The create path adds them below — a new
+    // shift always starts as an unlocked draft.
     const shiftData = {
       restaurant_id: restaurantId,
       employee_id: employeeId,
@@ -196,8 +200,6 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
       notes: notes || undefined,
       recurrence_pattern: recurrencePattern,
       is_recurring: recurrencePattern !== null,
-      is_published: false,
-      locked: false,
     };
 
     if (shift) {
@@ -212,6 +214,18 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
         restaurantId,
         employeeName,
         secondEmployeeName,
+        // A 'following'/'all' edit touches sibling occurrences too. The
+        // guard must warn when ANY shift in scope is locked, not only the
+        // anchor — an unlocked anchor with locked siblings would otherwise
+        // skip the dialog while the RPC touches published shifts.
+        series:
+          editScope && editScope !== 'this'
+            ? {
+                parentId: getSeriesParentId(shift),
+                scope: editScope,
+                fromTime: editScope === 'following' ? shift.start_time : undefined,
+              }
+            : undefined,
         // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`
         // looks up the change-log row right after `run` resolves, and that
         // row only exists once this UPDATE (and its trigger) have committed.
@@ -233,7 +247,8 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
         },
       });
     } else {
-      createShift.mutate(shiftData as any, {
+      // A new shift always starts as an unlocked draft.
+      createShift.mutate({ ...shiftData, is_published: false, locked: false } as any, {
         onSuccess: () => {
           onOpenChange(false);
           resetForm();

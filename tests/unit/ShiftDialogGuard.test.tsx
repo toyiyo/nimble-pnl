@@ -118,6 +118,11 @@ describe('ShiftDialog save through the guard', () => {
     expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'shift-1', allowPublished: true })
     );
+    // The edit payload must never carry the publish flags: is_published:
+    // false in an update silently retracts a published shift.
+    const updatePayload = mockUpdateMutateAsync.mock.calls[0][0];
+    expect(updatePayload).not.toHaveProperty('is_published');
+    expect(updatePayload).not.toHaveProperty('locked');
     expect(mockUpdateMutate).not.toHaveBeenCalled();
   });
 });

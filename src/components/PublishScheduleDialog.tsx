@@ -198,7 +198,7 @@ export const PublishScheduleDialog = ({
           */}
           <span role="status" aria-live="polite" className="sr-only">
             {isPublishing
-              ? employeeCount > 0
+              ? notify && employeeCount > 0
                 ? `Publishing. Notifying ${employeeCount} ${employeeCount === 1 ? 'employee' : 'employees'}.`
                 : 'Publishing.'
               : ''}
@@ -228,7 +228,7 @@ export const PublishScheduleDialog = ({
                 <Clock className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
                 {/* Not a live region: the sr-only one above owns the announcement. */}
                 <span>
-                  {employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
+                  {notify && employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
                 </span>
               </>
             ) : (

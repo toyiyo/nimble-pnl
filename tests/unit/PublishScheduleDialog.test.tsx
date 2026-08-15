@@ -92,4 +92,38 @@ describe('PublishScheduleDialog notify checkbox', () => {
     fireEvent.click(screen.getByRole('button', { name: /Publish Schedule/i }));
     expect(onConfirm).toHaveBeenCalledWith('Big event', true);
   });
+
+  it('shows "Notifying N..." while publishing when the checkbox stays checked', () => {
+    const { rerender } = renderDialog();
+
+    rerender(
+      <PublishScheduleDialog
+        open
+        onOpenChange={onOpenChange}
+        onConfirm={onConfirm}
+        {...defaultProps}
+        isPublishing
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Notifying 5\.\.\./i })).toBeInTheDocument();
+  });
+
+  it('shows plain "Publishing..." while publishing after the checkbox is unchecked', () => {
+    const { rerender } = renderDialog();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Notify employees/i }));
+
+    rerender(
+      <PublishScheduleDialog
+        open
+        onOpenChange={onOpenChange}
+        onConfirm={onConfirm}
+        {...defaultProps}
+        isPublishing
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /^Publishing\.\.\.$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Notifying/i })).not.toBeInTheDocument();
+  });
 });

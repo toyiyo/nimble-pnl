@@ -2679,7 +2679,8 @@ async function executeGetOperatingCosts(
       break_even_revenue: costTotals.breakEvenRevenue,
       current_revenue: totalRevenue,
       above_break_even: totalRevenue >= costTotals.breakEvenRevenue,
-      margin_of_safety: totalRevenue > 0 ? ((totalRevenue - costTotals.breakEvenRevenue) / totalRevenue) * 100 : 0,
+      margin_of_safety_percent: totalRevenue > 0 ? ((totalRevenue - costTotals.breakEvenRevenue) / totalRevenue) * 100 : 0,
+      margin_of_safety_amount: salesTotals.net - costTotals.breakEvenRevenue,
     };
   }
 
@@ -2689,6 +2690,8 @@ async function executeGetOperatingCosts(
       period,
       start_date: startDateStr,
       end_date: endDateStr,
+      source: 'budget_config',
+      note: 'These costs are the configured budget, not period actuals. The period parameter scopes only the revenue used for the break-even.',
       costs_by_type: {
         fixed: { items: byCostType.fixed, total: costTotals.fixedTotal },
         semi_variable: { items: byCostType.semi_variable, total: costTotals.semiVariableTotal },
@@ -3163,7 +3166,7 @@ async function executeGetBreakEvenProgress(
         days_remaining: daysRemaining,
         projected_month_end_revenue: Math.round(projectedMonthEnd),
         projected_above_break_even: projectedAboveBreakEven,
-        margin_of_safety: monthlyBreakEven > 0
+        margin_of_safety_percent: monthlyBreakEven > 0
           ? Math.round(((projectedMonthEnd - monthlyBreakEven) / monthlyBreakEven) * 1000) / 10
           : 0,
       };

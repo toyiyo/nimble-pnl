@@ -246,6 +246,64 @@ describe('useUpdateShift — optimistic cache update', () => {
   });
 });
 
+describe('useUpdateShift — allowPublished', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('allowPublished: true skips the lock check and updates the shift', async () => {
+    let capturedPayload: Record<string, unknown> | null = null;
+    const updateSingle = vi.fn().mockResolvedValue({
+      data: { id: 'shift-1', restaurant_id: 'rest-123' },
+      error: null,
+    });
+    const updateSelect = vi.fn().mockReturnValue({ single: updateSingle });
+    const updateEqRestaurant = vi.fn().mockReturnValue({ select: updateSelect });
+    const updateEqId = vi.fn().mockReturnValue({ eq: updateEqRestaurant });
+    const update = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+      capturedPayload = payload;
+      return { eq: updateEqId };
+    });
+    // No `select` mock provided: if assertShiftNotLocked still ran, calling
+    // `.select()` on this object returns undefined and the next `.eq()` throws.
+    mockSupabase.from.mockReturnValue({ update });
+
+    const { result } = renderHook(() => useUpdateShift(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({
+        id: 'shift-1',
+        restaurant_id: 'rest-123',
+        status: 'confirmed' as const,
+        allowPublished: true,
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(update).toHaveBeenCalled();
+    expect(capturedPayload).not.toHaveProperty('allowPublished');
+  });
+
+  it('allowPublished absent still throws on a locked shift (unchanged)', async () => {
+    const lockCheckSingle = vi.fn().mockResolvedValue({ data: { locked: true }, error: null });
+    const lockCheckEq = vi.fn().mockReturnValue({ single: lockCheckSingle });
+    const lockCheckSelect = vi.fn().mockReturnValue({ eq: lockCheckEq });
+    mockSupabase.from.mockReturnValue({ select: lockCheckSelect });
+
+    const { result } = renderHook(() => useUpdateShift(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({
+        id: 'shift-1',
+        restaurant_id: 'rest-123',
+        status: 'confirmed' as const,
+      });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
 describe('useDeleteShift — explicit restaurant_id filter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -292,6 +350,32 @@ describe('useDeleteShift — explicit restaurant_id filter', () => {
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it('accepts allowPublished: true without changing delete behavior', async () => {
+    const { deleteEqRestaurant } = setupDeleteChain({ error: null });
+
+    const { result } = renderHook(() => useDeleteShift(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({ id: 'shift-1', restaurantId: 'rest-123', allowPublished: true });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(deleteEqRestaurant).toHaveBeenCalledWith('restaurant_id', 'rest-123');
+  });
+
+  it('allowPublished absent deletes as before (unchanged)', async () => {
+    const { deleteEqRestaurant } = setupDeleteChain({ error: null });
+
+    const { result } = renderHook(() => useDeleteShift(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({ id: 'shift-1', restaurantId: 'rest-123' });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(deleteEqRestaurant).toHaveBeenCalledWith('restaurant_id', 'rest-123');
   });
 });
 

@@ -312,9 +312,12 @@ export function useUpdateShift() {
     mutationFn: async ({
       id,
       restaurant_id: restaurantId,
+      allowPublished,
       ...updates
-    }: Partial<Shift> & { id: string; restaurant_id: string }) => {
-      await assertShiftNotLocked(id);
+    }: Partial<Shift> & { id: string; restaurant_id: string; allowPublished?: boolean }) => {
+      if (!allowPublished) {
+        await assertShiftNotLocked(id);
+      }
 
       const { employee: _employee, ...shiftUpdates } = updates;
 
@@ -332,7 +335,7 @@ export function useUpdateShift() {
       if (error) throw error;
       return toTypedShift(data);
     },
-    onMutate: async ({ id, restaurant_id: restaurantId, ...updates }) => {
+    onMutate: async ({ id, restaurant_id: restaurantId, allowPublished: _allowPublished, ...updates }) => {
       await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
       const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
@@ -413,6 +416,13 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
       id: string;
       restaurantId: string;
       shift?: DeletableShift;
+      /**
+       * Accepted for API parity with the other shift mutations (the guard
+       * calls all four the same way). `useDeleteShift` has no lock check to
+       * bypass — a single delete already proceeds against a locked shift —
+       * so this option is a no-op here.
+       */
+      allowPublished?: boolean;
     }) => {
       const { data: deletedRows, error } = await supabase
         .from('shifts')
@@ -475,7 +485,7 @@ interface SeriesOperationParams {
   shift: Shift;
   scope: RecurringActionScope;
   restaurantId: string;
-  includePublished?: boolean;
+  allowPublished?: boolean;
 }
 
 interface SeriesOperationResult {
@@ -496,7 +506,7 @@ export function useDeleteShiftSeries() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ shift, scope, restaurantId, includePublished }: SeriesOperationParams): Promise<SeriesOperationResult> => {
+    mutationFn: async ({ shift, scope, restaurantId, allowPublished }: SeriesOperationParams): Promise<SeriesOperationResult> => {
       if (scope === 'this') {
         const { error } = await supabase
           .from('shifts')
@@ -514,7 +524,7 @@ export function useDeleteShiftSeries() {
         p_restaurant_id: restaurantId,
         p_scope: scope,
         p_from_time: scope === 'following' ? shift.start_time : null,
-        p_include_locked: includePublished ?? false,
+        p_include_locked: allowPublished ?? false,
       });
 
       if (error) throw error;
@@ -526,7 +536,7 @@ export function useDeleteShiftSeries() {
         restaurantId,
       };
     },
-    onMutate: async ({ shift, scope, restaurantId, includePublished }) => {
+    onMutate: async ({ shift, scope, restaurantId, allowPublished }) => {
       await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
       const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
@@ -537,7 +547,7 @@ export function useDeleteShiftSeries() {
         if (!old) return old;
 
         return old.filter((s) => {
-          if (s.locked && !includePublished) return true;
+          if (s.locked && !allowPublished) return true;
 
           const isInSeries = s.id === parentId || s.recurrence_parent_id === parentId;
           if (!isInSeries) return true;
@@ -605,7 +615,7 @@ export function useUpdateShiftSeries() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ shift, scope, updates, restaurantId }: SeriesUpdateParams): Promise<SeriesOperationResult> => {
+    mutationFn: async ({ shift, scope, updates, restaurantId, allowPublished }: SeriesUpdateParams): Promise<SeriesOperationResult> => {
       const {
         employee: _employee,
         recurrence_pattern,
@@ -624,7 +634,7 @@ export function useUpdateShiftSeries() {
       };
 
       if (scope === 'this') {
-        if (shift.locked) {
+        if (shift.locked && !allowPublished) {
           throw new Error('Cannot update a locked shift. The schedule has been published.');
         }
 

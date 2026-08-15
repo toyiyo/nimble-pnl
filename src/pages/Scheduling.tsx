@@ -711,7 +711,7 @@ const Scheduling = () => {
     if (actionType === 'delete') {
       // Delete with scope
       deleteShiftSeries.mutate(
-        { shift, scope, restaurantId, includePublished: true },
+        { shift, scope, restaurantId, allowPublished: true },
         {
           onSuccess: () => {
             setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });

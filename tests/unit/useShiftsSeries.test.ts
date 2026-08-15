@@ -343,6 +343,63 @@ describe('useDeleteShiftSeries', () => {
     });
   });
 
+  describe('allowPublished', () => {
+    it('allowPublished: true maps to p_include_locked: true on the RPC', async () => {
+      let capturedParams: Record<string, unknown> | null = null;
+      mockSupabase.rpc.mockImplementation((fnName: string, params: Record<string, unknown>) => {
+        if (fnName === 'delete_shift_series') {
+          capturedParams = params;
+          return Promise.resolve({ data: [{ deleted_count: 2, locked_count: 0 }], error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      });
+
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useDeleteShiftSeries(), { wrapper: Wrapper });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      const shift = createMockShift({ is_recurring: true, recurrence_parent_id: null });
+
+      await result.current.mutateAsync({
+        shift,
+        scope: 'all',
+        restaurantId: 'rest-123',
+        allowPublished: true,
+      });
+
+      expect(capturedParams).not.toBeNull();
+      expect(capturedParams?.p_include_locked).toBe(true);
+    });
+
+    it('allowPublished absent maps to p_include_locked: false (unchanged)', async () => {
+      let capturedParams: Record<string, unknown> | null = null;
+      mockSupabase.rpc.mockImplementation((fnName: string, params: Record<string, unknown>) => {
+        if (fnName === 'delete_shift_series') {
+          capturedParams = params;
+          return Promise.resolve({ data: [{ deleted_count: 2, locked_count: 1 }], error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      });
+
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useDeleteShiftSeries(), { wrapper: Wrapper });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      const shift = createMockShift({ is_recurring: true, recurrence_parent_id: null });
+
+      await result.current.mutateAsync({
+        shift,
+        scope: 'all',
+        restaurantId: 'rest-123',
+      });
+
+      expect(capturedParams).not.toBeNull();
+      expect(capturedParams?.p_include_locked).toBe(false);
+    });
+  });
+
   describe('Error Handling', () => {
     it('should handle Supabase error and show destructive toast', async () => {
       const dbError = { message: 'Database error' };
@@ -434,6 +491,36 @@ describe('useUpdateShiftSeries', () => {
           restaurantId: 'rest-123',
         })
       ).rejects.toThrow('Cannot update a locked shift');
+    });
+
+    it('allowPublished: true skips the lock throw for scope "this"', async () => {
+      const updatedShift = { id: 'locked-shift' };
+      mockSupabase.from.mockImplementation(() => ({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockResolvedValue({ data: [updatedShift], error: null }),
+            }),
+          }),
+        }),
+      }));
+
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useUpdateShiftSeries(), { wrapper: Wrapper });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      const lockedShift = createMockShift({ id: 'locked-shift', locked: true });
+
+      const response = await result.current.mutateAsync({
+        shift: lockedShift,
+        scope: 'this',
+        updates: { position: 'Cook' },
+        restaurantId: 'rest-123',
+        allowPublished: true,
+      });
+
+      expect(response.updatedCount).toBe(1);
     });
 
     it('should include time changes for scope "this"', async () => {

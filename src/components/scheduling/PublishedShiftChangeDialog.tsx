@@ -23,6 +23,11 @@ interface PublishedShiftChangeDialogProps {
   onConfirm: (options: { notify: boolean }) => void;
 }
 
+/** "Alex" or "Alex and Sam" — shared with usePublishedShiftGuard's notify toast. */
+export function formatNamesLabel(employeeName: string, secondEmployeeName?: string): string {
+  return secondEmployeeName ? `${employeeName} and ${secondEmployeeName}` : employeeName;
+}
+
 export function PublishedShiftChangeDialog({
   open,
   onOpenChange,
@@ -40,9 +45,7 @@ export function PublishedShiftChangeDialog({
     }
   }, [open]);
 
-  const namesLabel = secondEmployeeName
-    ? `${employeeName} and ${secondEmployeeName}`
-    : employeeName;
+  const namesLabel = formatNamesLabel(employeeName, secondEmployeeName);
 
   const handleConfirm = (event: MouseEvent) => {
     // AlertDialogAction closes the dialog on click by default. Block that

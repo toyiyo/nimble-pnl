@@ -1,7 +1,10 @@
 import { useCallback, useState } from 'react';
 
 import { supabase } from '@/integrations/supabase/client';
-import { PublishedShiftChangeDialog } from '@/components/scheduling/PublishedShiftChangeDialog';
+import {
+  formatNamesLabel,
+  PublishedShiftChangeDialog,
+} from '@/components/scheduling/PublishedShiftChangeDialog';
 import { useToast } from '@/hooks/use-toast';
 import { invokeScheduleNotification, notificationToast } from '@/hooks/useSchedulePublish';
 
@@ -38,22 +41,41 @@ export function usePublishedShiftGuard() {
 
   const guardShiftChange = useCallback(
     async ({ shiftId, employeeName, secondEmployeeName, run }: GuardShiftChangeOptions) => {
-      const { data, error } = await supabase
-        .from('shifts')
-        .select('locked, employee_id')
-        .eq('id', shiftId)
-        .single();
+      // None of this function's callers await/catch it (the Save button's
+      // onClick is synchronous), so a rejection here becomes an unhandled
+      // promise rejection with no visible error. Every exit below resolves
+      // instead of throwing.
+      let locked: boolean;
+      try {
+        const { data, error } = await supabase
+          .from('shifts')
+          .select('locked, employee_id')
+          .eq('id', shiftId)
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
+        locked = data.locked;
+      } catch (error) {
+        toast({
+          title: 'Could not check the shift',
+          description: error instanceof Error ? error.message : 'Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
 
-      if (!data.locked) {
-        await run({ allowPublished: false });
+      if (!locked) {
+        try {
+          await run({ allowPublished: false });
+        } catch {
+          // The mutation's own onError toast already told the user.
+        }
         return;
       }
 
       setPending({ shiftId, employeeName, secondEmployeeName, run });
     },
-    []
+    [toast]
   );
 
   const handleOpenChange = useCallback((open: boolean) => {
@@ -107,12 +129,14 @@ export function usePublishedShiftGuard() {
         const startedAt = new Date().toISOString();
         await pending.run({ allowPublished: true });
         if (notify) {
-          const namesLabel = pending.secondEmployeeName
-            ? `${pending.employeeName} and ${pending.secondEmployeeName}`
-            : pending.employeeName;
+          const namesLabel = formatNamesLabel(pending.employeeName, pending.secondEmployeeName);
           await notifyShiftChange(pending.shiftId, startedAt, namesLabel);
         }
         setPending(null);
+      } catch {
+        // The mutation's own onError toast already told the user. Leave
+        // `pending` set so the dialog stays open and the manager can retry
+        // or cancel, instead of the confirm silently going nowhere.
       } finally {
         setIsPending(false);
       }

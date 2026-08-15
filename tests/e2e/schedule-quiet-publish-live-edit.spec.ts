@@ -134,15 +134,16 @@ test.describe('Quiet publish and live edit of a published shift', () => {
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: /^unpublish$/i })).toBeVisible({ timeout: 15000 });
 
-    // Open the shift for edit. The shift is locked (published), but opening the
-    // editor is never blocked — only saving a change is guarded.
+    // Open the shift for edit. The shift is locked (published), but opening
+    // the editor is never blocked — only saving a change is guarded. The
+    // dialog no longer shows a "Shift is Locked" banner (fd7d765b): a
+    // published shift is now editable, so that copy would be false.
     const shiftCard = page.getByTestId('shift-card').first();
     await expect(shiftCard).toBeVisible({ timeout: 15000 });
     await shiftCard.click();
 
     const editDialog = page.getByRole('dialog', { name: /edit shift/i });
     await expect(editDialog).toBeVisible({ timeout: 5000 });
-    await expect(editDialog.getByText(/shift is locked/i)).toBeVisible();
 
     const endTimeInput = editDialog.getByLabel('Shift end time');
     const currentEndTime = await endTimeInput.inputValue();

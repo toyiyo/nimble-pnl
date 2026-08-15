@@ -8,6 +8,14 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { invokeScheduleNotification, notificationToast } from '@/hooks/useSchedulePublish';
 
+/**
+ * A guarded write. `deferred: true` means nothing committed yet (e.g. a
+ * conflict dialog opened instead) — see `GuardShiftChangeOptions.run`.
+ */
+type GuardedRun = (
+  options: { allowPublished: boolean; notify: boolean }
+) => void | Promise<void | { deferred: boolean }>;
+
 export interface GuardShiftChangeOptions {
   shiftId: string;
   /** Scopes the fresh `shifts` read so one tenant never sees another's lock state. */
@@ -25,18 +33,14 @@ export interface GuardShiftChangeOptions {
    * later write actually lands. Omitting `deferred` (the common case) means
    * `run` performed the write itself, and the guard notifies right after.
    */
-  run: (
-    options: { allowPublished: boolean; notify: boolean }
-  ) => void | Promise<void | { deferred: boolean }>;
+  run: GuardedRun;
 }
 
 interface PendingChange {
   shiftId: string;
   employeeName: string;
   secondEmployeeName?: string;
-  run: (
-    options: { allowPublished: boolean; notify: boolean }
-  ) => void | Promise<void | { deferred: boolean }>;
+  run: GuardedRun;
 }
 
 /** Args for {@link usePublishedShiftGuard}'s `notifyAfterDeferredCommit`. */
@@ -123,35 +127,53 @@ export function usePublishedShiftGuard() {
    * notify function. Design:
    * docs/superpowers/specs/2026-08-15-quiet-publish-live-edit-design.md
    * ("Client: after the guarded mutation commits...").
+   *
+   * Never throws. Both callers (`handleConfirm` and
+   * `notifyAfterDeferredCommit`) run after the shift write already
+   * committed, so a rejection here must not read as a failed save. Every
+   * exit resolves; a lookup failure gets its own toast instead of an
+   * unhandled promise rejection.
    */
   const notifyShiftChange = useCallback(
     async (shiftId: string, startedAt: string, namesLabel: string) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
 
-      const { data: rows, error } = await supabase
-        .from('schedule_change_logs')
-        .select('id')
-        .eq('shift_id', shiftId)
-        .eq('changed_by', user.id)
-        .gte('changed_at', startedAt)
-        .order('changed_at', { ascending: false })
-        .limit(1);
+        const { data: rows, error } = await supabase
+          .from('schedule_change_logs')
+          .select('id')
+          .eq('shift_id', shiftId)
+          .eq('changed_by', user.id)
+          .gte('changed_at', startedAt)
+          .order('changed_at', { ascending: false })
+          .limit(1);
 
-      if (error || !rows || rows.length === 0) return;
+        if (error || !rows || rows.length === 0) return;
 
-      const outcome = await invokeScheduleNotification('notify-shift-changed', {
-        changeLogId: rows[0].id,
-      });
+        const outcome = await invokeScheduleNotification('notify-shift-changed', {
+          changeLogId: rows[0].id,
+        });
 
-      toast(
-        notificationToast(outcome, {
-          title: 'Shift updated',
-          successDescription: `${namesLabel} was notified.`,
-        })
-      );
+        toast(
+          notificationToast(outcome, {
+            title: 'Shift updated',
+            successDescription: `${namesLabel} was notified.`,
+          })
+        );
+      } catch (error) {
+        // The shift write already committed. Only the notify step failed —
+        // tell the manager to notify the team by hand, do not imply the
+        // save itself failed.
+        toast({
+          title: 'Shift updated — could not notify',
+          description:
+            error instanceof Error ? error.message : 'Please tell the team directly.',
+          variant: 'destructive',
+        });
+      }
     },
     [toast]
   );

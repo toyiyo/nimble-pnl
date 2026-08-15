@@ -209,6 +209,37 @@ describe('usePublishedShiftGuard', () => {
     );
   });
 
+  it('reports a destructive toast, not an unhandled rejection, when the notify lookup throws', async () => {
+    setupChainWithChangeLog(
+      { data: { locked: true, employee_id: 'emp-1' }, error: null },
+      [{ id: 'log-1' }]
+    );
+    // The commit (`run`) already succeeded by this point — only the
+    // post-commit notify lookup fails here.
+    mockSupabase.auth.getUser.mockRejectedValue(new Error('network down'));
+    const run = vi.fn();
+    render(<TestHarness run={run} shiftId="shift-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger' }));
+    await waitFor(() =>
+      expect(screen.getByText('This shift is published')).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save change' }));
+
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ allowPublished: true, notify: true })
+    );
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Shift updated — could not notify',
+          variant: 'destructive',
+        })
+      )
+    );
+    expect(mockInvokeScheduleNotification).not.toHaveBeenCalled();
+  });
+
   it('skips the lookup and the notify call when the checkbox is unchecked', async () => {
     setupChainWithChangeLog(
       { data: { locked: true, employee_id: 'emp-1' }, error: null },

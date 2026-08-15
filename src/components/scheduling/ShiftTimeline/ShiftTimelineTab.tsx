@@ -41,7 +41,10 @@ import type { GroupByMode } from '@/lib/scheduleGrouping';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
 import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
-import type { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
+import type {
+  GuardShiftChangeOptions,
+  NotifyAfterDeferredCommitArgs,
+} from '@/hooks/usePublishedShiftGuard';
 
 // ─── Constants (Fix 2 — visible "Add shift" button) ────────────────────────────
 
@@ -110,6 +113,15 @@ interface ShiftTimelineTabProps {
    * must run through this so a published shift asks for confirmation first.
    */
   readonly guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
+  /**
+   * Same guard instance's deferred-notify step. A drag-commit or the
+   * popover's edit-save can surface a conflict dialog instead of committing
+   * right away; once that conflict is confirmed and the write actually
+   * lands, this fires the notify the guard itself skipped.
+   */
+  readonly notifyAfterDeferredCommit: (
+    args: NotifyAfterDeferredCommitArgs,
+  ) => void | Promise<void>;
 }
 
 /**
@@ -273,6 +285,7 @@ export function ShiftTimelineTab({
   loading,
   error,
   guardShiftChange,
+  notifyAfterDeferredCommit,
 }: ShiftTimelineTabProps) {
   // ── Local state ────────────────────────────────────────────────────────────
   const [selectedDayState, setSelectedDay] = useState<string>(() => defaultDay(weekDays));
@@ -319,6 +332,10 @@ export function ShiftTimelineTab({
     conflicts: ConflictDialogData['conflicts'];
     warnings: ConflictDialogData['warnings'];
     allowPublished: boolean;
+    // Carried from the guard's `run` call so the deferred-commit notify
+    // below can fire the manager's actual checkbox choice, not a guess.
+    notify: boolean;
+    employeeName: string;
   } | null>(null);
 
   // ── Transient change highlight (Fix 3) ─────────────────────────────────────
@@ -705,8 +722,9 @@ export function ShiftTimelineTab({
 
       await guardShiftChange({
         shiftId: shift.id,
+        restaurantId,
         employeeName,
-        run: async ({ allowPublished }) => {
+        run: async ({ allowPublished, notify }) => {
           const outcome = await validateAndUpdateTime({
             shift,
             startIso,
@@ -729,8 +747,14 @@ export function ShiftTimelineTab({
               conflicts: outcome.pendingConflicts ?? [],
               warnings: outcome.pendingWarnings ?? [],
               allowPublished,
+              notify,
+              employeeName,
             });
-            return;
+            // Nothing has committed yet — the conflict dialog still needs a
+            // confirm. Tell the guard to skip its own notify step; the
+            // confirm path below fires `notifyAfterDeferredCommit` once the
+            // forced write actually lands.
+            return { deferred: true };
           }
 
           // Validation failed outright (e.g. an interval-construction error)
@@ -740,7 +764,16 @@ export function ShiftTimelineTab({
         },
       });
     },
-    [dayShifts, selectedDay, tz, validateAndUpdateTime, flashHighlight, guardShiftChange, employees],
+    [
+      dayShifts,
+      selectedDay,
+      tz,
+      validateAndUpdateTime,
+      flashHighlight,
+      guardShiftChange,
+      employees,
+      restaurantId,
+    ],
   );
 
   const handleDragConflictCancel = useCallback(() => {
@@ -750,14 +783,18 @@ export function ShiftTimelineTab({
 
   const handleDragConflictConfirm = useCallback(async () => {
     if (!dragConflict) return;
-    const { shift, startIso, endIso, allowPublished } = dragConflict;
+    const { shift, startIso, endIso, allowPublished, notify, employeeName } = dragConflict;
+    const startedAt = new Date().toISOString();
     const ok = await forceUpdateTime({ shift, startIso, endIso, businessDate: selectedDay, allowPublished });
     if (ok) {
       setDragConflict(null);
       setDragDraft(null);
       flashHighlight(shift.id);
+      if (notify) {
+        await notifyAfterDeferredCommit({ shiftId: shift.id, employeeName, startedAt });
+      }
     }
-  }, [dragConflict, forceUpdateTime, selectedDay, flashHighlight]);
+  }, [dragConflict, forceUpdateTime, selectedDay, flashHighlight, notifyAfterDeferredCommit]);
 
   const dragConflictData: ConflictDialogData | null = dragConflict
     ? {
@@ -1098,6 +1135,7 @@ export function ShiftTimelineTab({
         validationResult={validationResult}
         clearValidation={clearValidation}
         guardShiftChange={guardShiftChange}
+        notifyAfterDeferredCommit={notifyAfterDeferredCommit}
       />
 
       {/* Drag-commit conflict dialog (Stage D3) — the same AvailabilityConflictDialog

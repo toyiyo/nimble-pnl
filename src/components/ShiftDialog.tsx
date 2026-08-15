@@ -209,6 +209,7 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
 
       guardShiftChange({
         shiftId: shift.id,
+        restaurantId,
         employeeName,
         secondEmployeeName,
         // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`

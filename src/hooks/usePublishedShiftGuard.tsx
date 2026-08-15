@@ -10,18 +10,42 @@ import { invokeScheduleNotification, notificationToast } from '@/hooks/useSchedu
 
 export interface GuardShiftChangeOptions {
   shiftId: string;
+  /** Scopes the fresh `shifts` read so one tenant never sees another's lock state. */
+  restaurantId: string;
   /** Name shown in the dialog. The caller already has it from the edited shift. */
   employeeName: string;
   /** Set on a reassignment. The dialog then names both employees. */
   secondEmployeeName?: string;
-  run: (options: { allowPublished: boolean }) => void | Promise<void>;
+  /**
+   * `notify` carries the checkbox choice through to callers that cannot
+   * commit right away (e.g. a drag/edit that surfaces a conflict dialog
+   * instead of writing). Such a `run` must resolve with `{ deferred: true }`
+   * instead of committing — the guard then skips its own notify step, and
+   * the caller notifies itself via `notifyAfterDeferredCommit` once its own
+   * later write actually lands. Omitting `deferred` (the common case) means
+   * `run` performed the write itself, and the guard notifies right after.
+   */
+  run: (
+    options: { allowPublished: boolean; notify: boolean }
+  ) => void | Promise<void | { deferred: boolean }>;
 }
 
 interface PendingChange {
   shiftId: string;
   employeeName: string;
   secondEmployeeName?: string;
-  run: (options: { allowPublished: boolean }) => void | Promise<void>;
+  run: (
+    options: { allowPublished: boolean; notify: boolean }
+  ) => void | Promise<void | { deferred: boolean }>;
+}
+
+/** Args for {@link usePublishedShiftGuard}'s `notifyAfterDeferredCommit`. */
+export interface NotifyAfterDeferredCommitArgs {
+  shiftId: string;
+  employeeName: string;
+  secondEmployeeName?: string;
+  /** ISO instant captured right before the caller's own deferred write. */
+  startedAt: string;
 }
 
 /**
@@ -40,17 +64,27 @@ export function usePublishedShiftGuard() {
   const { toast } = useToast();
 
   const guardShiftChange = useCallback(
-    async ({ shiftId, employeeName, secondEmployeeName, run }: GuardShiftChangeOptions) => {
+    async ({
+      shiftId,
+      restaurantId,
+      employeeName,
+      secondEmployeeName,
+      run,
+    }: GuardShiftChangeOptions) => {
       // None of this function's callers await/catch it (the Save button's
       // onClick is synchronous), so a rejection here becomes an unhandled
       // promise rejection with no visible error. Every exit below resolves
       // instead of throwing.
       let locked: boolean;
       try {
+        // Scoped to restaurantId too, not just id — RLS already isolates
+        // tenants, but a stray cross-tenant id must read as "not found"
+        // here, not fall through to another restaurant's lock state.
         const { data, error } = await supabase
           .from('shifts')
           .select('locked, employee_id')
           .eq('id', shiftId)
+          .eq('restaurant_id', restaurantId)
           .single();
 
         if (error) throw error;
@@ -66,7 +100,8 @@ export function usePublishedShiftGuard() {
 
       if (!locked) {
         try {
-          await run({ allowPublished: false });
+          // No dialog shown, so no notify choice exists to carry through.
+          await run({ allowPublished: false, notify: false });
         } catch {
           // The mutation's own onError toast already told the user.
         }
@@ -127,8 +162,15 @@ export function usePublishedShiftGuard() {
       setIsPending(true);
       try {
         const startedAt = new Date().toISOString();
-        await pending.run({ allowPublished: true });
-        if (notify) {
+        const result = await pending.run({ allowPublished: true, notify });
+        // A deferred `run` (e.g. it surfaced a conflict dialog instead of
+        // writing) has not committed anything yet — nothing to notify about
+        // here. The caller notifies itself later via
+        // `notifyAfterDeferredCommit`, once its own write actually lands.
+        // `result` can be `void` (most callers) — narrow with a runtime
+        // check instead of `?.`, which does not treat `void` as absent.
+        const deferred = typeof result === 'object' && result !== null && result.deferred === true;
+        if (notify && !deferred) {
           const namesLabel = formatNamesLabel(pending.employeeName, pending.secondEmployeeName);
           await notifyShiftChange(pending.shiftId, startedAt, namesLabel);
         }
@@ -144,6 +186,22 @@ export function usePublishedShiftGuard() {
     [pending, notifyShiftChange]
   );
 
+  /**
+   * For a `run` that deferred instead of committing (returned
+   * `{ deferred: true }`): the caller invokes this itself once its own later
+   * write actually succeeds, so the notify step still reflects a real
+   * commit. `startedAt` must be captured right before that write, not
+   * before the original guard confirm, or the change-log lookup can miss
+   * the row (or pick up an unrelated earlier one).
+   */
+  const notifyAfterDeferredCommit = useCallback(
+    async ({ shiftId, employeeName, secondEmployeeName, startedAt }: NotifyAfterDeferredCommitArgs) => {
+      const namesLabel = formatNamesLabel(employeeName, secondEmployeeName);
+      await notifyShiftChange(shiftId, startedAt, namesLabel);
+    },
+    [notifyShiftChange]
+  );
+
   const dialog = (
     <PublishedShiftChangeDialog
       open={pending !== null}
@@ -155,5 +213,5 @@ export function usePublishedShiftGuard() {
     />
   );
 
-  return { guardShiftChange, dialog };
+  return { guardShiftChange, dialog, notifyAfterDeferredCommit };
 }

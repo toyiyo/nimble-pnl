@@ -38,7 +38,10 @@ vi.mock('@/hooks/useSchedulePublish', async () => {
 
 function setupChain(resolvedValue: { data: unknown; error: unknown }) {
   mockSingle.mockResolvedValue(resolvedValue);
-  mockEq.mockReturnValue({ single: mockSingle });
+  // Chains twice — `.eq('id', ...).eq('restaurant_id', ...).single()` — so
+  // `eq` must keep returning an object that still offers both `eq` and
+  // `single`, not just `single`.
+  mockEq.mockReturnValue({ eq: mockEq, single: mockSingle });
   mockSelect.mockReturnValue({ eq: mockEq });
   mockSupabase.from.mockReturnValue({ select: mockSelect });
 }
@@ -65,7 +68,7 @@ function setupChainWithChangeLog(
   logSelect.mockReturnValue({ eq: logEq });
 
   mockSingle.mockResolvedValue(shiftsResolvedValue);
-  mockEq.mockReturnValue({ single: mockSingle });
+  mockEq.mockReturnValue({ eq: mockEq, single: mockSingle });
   mockSelect.mockReturnValue({ eq: mockEq });
 
   mockSupabase.from.mockImplementation((table: string) => {
@@ -92,7 +95,14 @@ function TestHarness({
   return (
     <>
       <button
-        onClick={() => guardShiftChange({ shiftId, employeeName: 'Alex Rivera', run })}
+        onClick={() =>
+          guardShiftChange({
+            shiftId,
+            restaurantId: 'rest-1',
+            employeeName: 'Alex Rivera',
+            run,
+          })
+        }
       >
         Trigger
       </button>
@@ -113,9 +123,12 @@ describe('usePublishedShiftGuard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Trigger' }));
 
-    await waitFor(() => expect(run).toHaveBeenCalledWith({ allowPublished: false }));
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ allowPublished: false, notify: false })
+    );
     expect(mockSupabase.from).toHaveBeenCalledWith('shifts');
     expect(mockEq).toHaveBeenCalledWith('id', 'shift-1');
+    expect(mockEq).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     expect(screen.queryByText('This shift is published')).not.toBeInTheDocument();
   });
 
@@ -144,7 +157,9 @@ describe('usePublishedShiftGuard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save change' }));
 
-    await waitFor(() => expect(run).toHaveBeenCalledWith({ allowPublished: true }));
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ allowPublished: true, notify: true })
+    );
   });
 
   it('does not run when the manager cancels', async () => {
@@ -211,7 +226,9 @@ describe('usePublishedShiftGuard', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save change' }));
 
-    await waitFor(() => expect(run).toHaveBeenCalledWith({ allowPublished: true }));
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ allowPublished: true, notify: false })
+    );
     expect(mockInvokeScheduleNotification).not.toHaveBeenCalled();
     expect(mockSupabase.from).not.toHaveBeenCalledWith('schedule_change_logs');
   });

@@ -41,7 +41,10 @@ import type {
   CreateAtTimeOutcome,
   CreateAtTimeInput,
 } from '@/hooks/useValidatedShiftMutations';
-import type { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
+import type {
+  GuardShiftChangeOptions,
+  NotifyAfterDeferredCommitArgs,
+} from '@/hooks/usePublishedShiftGuard';
 
 /** Minimal shape needed to anchor the Radix popper to an arbitrary rect. */
 interface VirtualAnchor {
@@ -154,6 +157,15 @@ interface TimelineShiftPopoverProps {
    * confirmation before it applies.
    */
   readonly guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
+  /**
+   * Same guard instance's deferred-notify step. Save (edit mode) can surface
+   * a conflict dialog instead of committing right away; once that conflict
+   * is confirmed and the write actually lands, this fires the notify the
+   * guard itself skipped.
+   */
+  readonly notifyAfterDeferredCommit: (
+    args: NotifyAfterDeferredCommitArgs,
+  ) => void | Promise<void>;
 }
 
 /** Build the initial editor values from a shift + the day's timezone. */
@@ -217,6 +229,7 @@ export function TimelineShiftPopover({
   anchorRect,
   collisionBoundary,
   guardShiftChange,
+  notifyAfterDeferredCommit,
 }: TimelineShiftPopoverProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [editValues, setEditValues] = useState<TimelineShiftEditorValues | null>(null);
@@ -224,14 +237,26 @@ export function TimelineShiftPopover({
     createDraft?.values ?? null,
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  // `allowPublished` is optional: only the edit-mode Save path (below) ever
-  // sets it. The create-mode dialog (`TimelineCreateDialog`) shares this same
-  // state slot but never reads or writes `allowPublished` — a new shift has
-  // no lock to guard against.
+  // Edit-mode's own pending-conflict slot. Carries the guard's `notify`
+  // choice and the employee name(s) so the deferred-commit notify below can
+  // fire the manager's actual checkbox choice, not a guess, once the forced
+  // write lands. A new shift (create mode, below) has no lock to guard
+  // against and no guard-issued `notify`, so it keeps its own separate slot
+  // instead of widening this one.
   const [pendingIssues, setPendingIssues] = useState<{
     conflicts: ConflictCheck[];
     warnings: ValidationIssue[];
     allowPublished?: boolean;
+    notify: boolean;
+    employeeName: string;
+    secondEmployeeName?: string;
+  } | null>(null);
+  // Create-mode's pending-conflict slot (`TimelineCreateDialog` below) — a
+  // brand-new shift has no lock and no guard `run`, so this stays the plain
+  // conflicts/warnings shape rather than sharing `pendingIssues` above.
+  const [createPendingIssues, setCreatePendingIssues] = useState<{
+    conflicts: ConflictCheck[];
+    warnings: ValidationIssue[];
   } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -249,6 +274,7 @@ export function TimelineShiftPopover({
     setEditValues(null);
     setShowDeleteConfirm(false);
     setPendingIssues(null);
+    setCreatePendingIssues(null);
     setSaving(false);
     clearValidation();
   }, [clearValidation]);
@@ -264,7 +290,7 @@ export function TimelineShiftPopover({
   // draft replaces the old one while the popover is open.
   useEffect(() => {
     setCreateValues(createDraft?.values ?? null);
-    setPendingIssues(null);
+    setCreatePendingIssues(null);
   }, [createDraft]);
 
   const isCreateMode = !activeShift && Boolean(createDraft);
@@ -283,8 +309,8 @@ export function TimelineShiftPopover({
         existingShifts={existingShifts}
         validateAndCreateAtTime={validateAndCreateAtTime}
         forceCreateAtTime={forceCreateAtTime}
-        pendingIssues={pendingIssues}
-        setPendingIssues={setPendingIssues}
+        pendingIssues={createPendingIssues}
+        setPendingIssues={setCreatePendingIssues}
         saving={saving}
         setSaving={setSaving}
         onClose={handleClose}
@@ -354,9 +380,10 @@ export function TimelineShiftPopover({
     try {
       await guardShiftChange({
         shiftId: activeShift.id,
+        restaurantId,
         employeeName,
         secondEmployeeName,
-        run: async ({ allowPublished }) => {
+        run: async ({ allowPublished, notify }) => {
           const outcome = await validateAndUpdateShift({
             shift: activeShift,
             startIso,
@@ -379,7 +406,15 @@ export function TimelineShiftPopover({
               conflicts: outcome.pendingConflicts ?? [],
               warnings: outcome.pendingWarnings ?? [],
               allowPublished,
+              notify,
+              employeeName,
+              secondEmployeeName,
             });
+            // Nothing has committed yet — the conflict dialog still needs a
+            // confirm. Tell the guard to skip its own notify step;
+            // handleConfirmConflicts below fires `notifyAfterDeferredCommit`
+            // once the forced write actually lands.
+            return { deferred: true };
           }
         },
       });
@@ -395,6 +430,7 @@ export function TimelineShiftPopover({
 
     const startIso = minutesToIso(dateStr, startMin, tz);
     const endIso = minutesToIso(dateStr, endMinValue, tz);
+    const startedAt = new Date().toISOString();
 
     setSaving(true);
     try {
@@ -413,6 +449,14 @@ export function TimelineShiftPopover({
         setPendingIssues(null);
         onSaved?.(activeShift);
         handleClose();
+        if (pendingIssues.notify) {
+          await notifyAfterDeferredCommit({
+            shiftId: activeShift.id,
+            employeeName: pendingIssues.employeeName,
+            secondEmployeeName: pendingIssues.secondEmployeeName,
+            startedAt,
+          });
+        }
       }
     } finally {
       setSaving(false);

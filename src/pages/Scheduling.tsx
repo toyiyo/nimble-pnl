@@ -245,7 +245,8 @@ const Scheduling = () => {
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
-  const { guardShiftChange, dialog: publishedShiftChangeDialog } = usePublishedShiftGuard();
+  const { guardShiftChange, notifyAfterDeferredCommit, dialog: publishedShiftChangeDialog } =
+    usePublishedShiftGuard();
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
@@ -715,6 +716,7 @@ const Scheduling = () => {
       const employeeName = allEmployees.find((e) => e.id === shift.employee_id)?.name ?? '';
       guardShiftChange({
         shiftId: shift.id,
+        restaurantId,
         employeeName,
         // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`
         // looks up the change-log row right after `run` resolves, and that
@@ -745,6 +747,7 @@ const Scheduling = () => {
       const employeeName = allEmployees.find((e) => e.id === shiftToDelete.employee_id)?.name ?? '';
       guardShiftChange({
         shiftId: shiftToDelete.id,
+        restaurantId,
         employeeName,
         // Awaited, not fire-and-forget `.mutate()` — see the series-delete
         // branch above for why. `skipLegacyNotify: true`: the guard's own
@@ -1641,6 +1644,7 @@ const Scheduling = () => {
               weekStart={currentWeekStart}
               onWeekStartChange={setCurrentWeekStart}
               guardShiftChange={guardShiftChange}
+              notifyAfterDeferredCommit={notifyAfterDeferredCommit}
             />
           )}
         </TabsContent>

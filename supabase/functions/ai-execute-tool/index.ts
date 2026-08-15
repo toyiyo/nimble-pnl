@@ -13,6 +13,7 @@ import {
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
+import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -2629,6 +2630,12 @@ async function executeGetOperatingCosts(
 
   if (costsError) throw new Error(`Failed to fetch operating costs: ${costsError.message}`);
 
+  // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+  // Percentage-based cost rows need net revenue to turn a percent into a dollar
+  // amount, so this runs unconditionally (not gated on include_break_even).
+  const salesTotals = await fetchNetSales(supabase, restaurantId, startDateStr, endDateStr);
+  const totalRevenue = salesTotals.net;
+
   // Group by type
   const byCostType: Record<string, any[]> = {
     fixed: [],
@@ -2639,45 +2646,40 @@ async function executeGetOperatingCosts(
 
   for (const cost of costs || []) {
     if (byCostType[cost.cost_type]) {
-      byCostType[cost.cost_type].push({
+      const item: any = {
         name: cost.name,
         category: cost.category,
         monthly_value: cost.monthly_value / 100,
         percentage_value: cost.percentage_value,
         entry_type: cost.entry_type,
-      });
+      };
+      if (cost.entry_type === 'percentage') {
+        item.computed_monthly_amount = (cost.percentage_value / 100) * totalRevenue;
+      }
+      byCostType[cost.cost_type].push(item);
     }
   }
 
-  // Calculate totals
-  const fixedTotal = byCostType.fixed.reduce((sum, c) => sum + c.monthly_value, 0);
-  const semiVariableTotal = byCostType.semi_variable.reduce((sum, c) => sum + c.monthly_value, 0);
-  const variableTotal = byCostType.variable.reduce((sum, c) => sum + c.monthly_value, 0);
+  // Calculate totals. computeOperatingCostTotals owns all cents-to-dollars
+  // conversion and folds percentage rows (entry_type='percentage',
+  // monthly_value=0) into the variable total — the old reducer summed only
+  // monthly_value, so percentage items (COGS/marketing/processing) contributed
+  // nothing (the July "$82.00" bug).
+  const costTotals = computeOperatingCostTotals(costs || [], totalRevenue);
 
-  // Fetch revenue for break-even calculation
+  // Break-even analysis
   let breakEvenAnalysis = null;
   if (include_break_even) {
-    // Net sales for the period (gross - discounts - refunds), from the shared RPC.
-    const salesTotals = await fetchNetSales(supabase, restaurantId, startDateStr, endDateStr);
-    const totalRevenue = salesTotals.net;
-    const totalFixedCosts = fixedTotal + semiVariableTotal;
-    const variableCostPercentage = variableTotal > 0 && totalRevenue > 0
-      ? (variableTotal / totalRevenue) * 100
-      : 25; // Default estimate
-
-    const contributionMargin = 100 - variableCostPercentage;
-    const breakEvenRevenue = contributionMargin > 0
-      ? (totalFixedCosts / (contributionMargin / 100))
-      : 0;
+    const totalFixedCosts = costTotals.fixedTotal + costTotals.semiVariableTotal;
 
     breakEvenAnalysis = {
       total_fixed_costs: totalFixedCosts,
-      variable_cost_percentage: variableCostPercentage,
-      contribution_margin_percentage: contributionMargin,
-      break_even_revenue: breakEvenRevenue,
+      variable_cost_percentage: costTotals.variableCostPercentage,
+      contribution_margin_percentage: costTotals.contributionMargin,
+      break_even_revenue: costTotals.breakEvenRevenue,
       current_revenue: totalRevenue,
-      above_break_even: totalRevenue >= breakEvenRevenue,
-      margin_of_safety: totalRevenue > 0 ? ((totalRevenue - breakEvenRevenue) / totalRevenue) * 100 : 0,
+      above_break_even: totalRevenue >= costTotals.breakEvenRevenue,
+      margin_of_safety: totalRevenue > 0 ? ((totalRevenue - costTotals.breakEvenRevenue) / totalRevenue) * 100 : 0,
     };
   }
 
@@ -2688,12 +2690,12 @@ async function executeGetOperatingCosts(
       start_date: startDateStr,
       end_date: endDateStr,
       costs_by_type: {
-        fixed: { items: byCostType.fixed, total: fixedTotal },
-        semi_variable: { items: byCostType.semi_variable, total: semiVariableTotal },
-        variable: { items: byCostType.variable, total: variableTotal },
+        fixed: { items: byCostType.fixed, total: costTotals.fixedTotal },
+        semi_variable: { items: byCostType.semi_variable, total: costTotals.semiVariableTotal },
+        variable: { items: byCostType.variable, total: costTotals.variableTotal },
         custom: { items: byCostType.custom, total: byCostType.custom.reduce((sum, c) => sum + c.monthly_value, 0) },
       },
-      total_monthly_costs: fixedTotal + semiVariableTotal + variableTotal,
+      total_monthly_costs: costTotals.totalMonthlyCosts,
       break_even_analysis: breakEvenAnalysis,
     },
     evidence: [

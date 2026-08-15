@@ -39,6 +39,7 @@ import {
 } from '@/lib/scheduleVisibility';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
+import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { TimeOffList } from '@/components/TimeOffList';
 import { AvailabilityDialog } from '@/components/AvailabilityDialog';
@@ -244,6 +245,7 @@ const Scheduling = () => {
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
+  const { guardShiftChange, dialog: publishedShiftChangeDialog } = usePublishedShiftGuard();
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
@@ -1642,7 +1644,9 @@ const Scheduling = () => {
             timezone={restaurantTimezone}
             defaultDate={defaultShiftDate}
             defaultEmployee={defaultShiftEmployee}
+            guardShiftChange={guardShiftChange}
           />
+          {publishedShiftChangeDialog}
           {tradeShift && (
             <TradeRequestDialog
               open={tradeDialogOpen}

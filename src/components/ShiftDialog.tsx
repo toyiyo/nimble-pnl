@@ -16,6 +16,7 @@ import { formatLocalDateInTz, formatLocalHHMMInTz, wallClockToInstant } from '@/
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
 import { AlertTriangle, Repeat } from 'lucide-react';
+import { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -25,6 +26,12 @@ interface ShiftDialogProps {
   timezone?: string; // Restaurant timezone for formatting availability times
   defaultDate?: Date;
   defaultEmployee?: DefaultEmployee;
+  /**
+   * Gate for a save that touches a published shift. The edit path always
+   * routes through it — a create can never target a locked shift. Provided
+   * once per page by `usePublishedShiftGuard`.
+   */
+  guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
 }
 
 export interface DefaultEmployee {
@@ -45,14 +52,13 @@ const POSITIONS = [
   'Other',
 ];
 
-function getSubmitLabel(isSaving: boolean, isLocked: boolean, isEditing: boolean): string {
+function getSubmitLabel(isSaving: boolean, isEditing: boolean): string {
   if (isSaving) return 'Saving...';
-  if (isLocked) return 'Locked';
   if (isEditing) return 'Update Shift';
   return 'Create Shift';
 }
 
-export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee }: ShiftDialogProps) {
+export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee, guardShiftChange }: ShiftDialogProps) {
   const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -195,33 +201,47 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
     };
 
     if (shift) {
-      // If we have an edit scope (from recurring action dialog), use series update
-      if (editScope && editScope !== 'this') {
-        updateShiftSeries.mutate(
-          {
-            shift,
-            scope: editScope,
-            updates: shiftData,
-            restaurantId,
-          },
-          {
-            onSuccess: () => {
-              onOpenChange(false);
-              resetForm();
-            },
+      const employeeName = employees.find((emp) => emp.id === shift.employee_id)?.name ?? '';
+      const isReassignment = employeeId !== shift.employee_id;
+      const secondEmployeeName = isReassignment
+        ? employees.find((emp) => emp.id === employeeId)?.name
+        : undefined;
+
+      guardShiftChange({
+        shiftId: shift.id,
+        employeeName,
+        secondEmployeeName,
+        run: ({ allowPublished }) => {
+          // If we have an edit scope (from recurring action dialog), use series update
+          if (editScope && editScope !== 'this') {
+            updateShiftSeries.mutate(
+              {
+                shift,
+                scope: editScope,
+                updates: shiftData,
+                restaurantId,
+                allowPublished,
+              },
+              {
+                onSuccess: () => {
+                  onOpenChange(false);
+                  resetForm();
+                },
+              }
+            );
+          } else {
+            updateShift.mutate(
+              { id: shift.id, ...shiftData, allowPublished },
+              {
+                onSuccess: () => {
+                  onOpenChange(false);
+                  resetForm();
+                },
+              }
+            );
           }
-        );
-      } else {
-        updateShift.mutate(
-          { id: shift.id, ...shiftData },
-          {
-            onSuccess: () => {
-              onOpenChange(false);
-              resetForm();
-            },
-          }
-        );
-      }
+        },
+      });
     } else {
       createShift.mutate(shiftData as any, {
         onSuccess: () => {
@@ -500,11 +520,10 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
             </Button>
             <Button
               type="submit"
-              disabled={createShift.isPending || updateShift.isPending || updateShiftSeries.isPending || shift?.locked}
+              disabled={createShift.isPending || updateShift.isPending || updateShiftSeries.isPending}
             >
               {getSubmitLabel(
                 createShift.isPending || updateShift.isPending || updateShiftSeries.isPending,
-                shift?.locked ?? false,
                 !!shift,
               )}
             </Button>

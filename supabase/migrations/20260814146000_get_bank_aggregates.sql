@@ -1,12 +1,15 @@
 -- Bank transaction aggregates for one restaurant and date range (cluster 6).
 -- SECURITY INVOKER: RLS on bank_transactions scopes the caller (spec §8).
-CREATE OR REPLACE FUNCTION public.get_bank_transaction_summary(
+DROP FUNCTION IF EXISTS public.get_bank_transaction_summary(UUID, DATE, DATE, UUID, TEXT[], NUMERIC);
+
+CREATE FUNCTION public.get_bank_transaction_summary(
   p_restaurant_id UUID, p_start_date DATE, p_end_date DATE,
   p_bank_account_id UUID DEFAULT NULL, p_statuses TEXT[] DEFAULT NULL,
   p_min_inflow NUMERIC DEFAULT NULL
 )
 RETURNS TABLE(inflow NUMERIC, outflow NUMERIC, net NUMERIC, tx_count BIGINT,
-              inflow_count BIGINT, outflow_count BIGINT, avg_inflow NUMERIC, max_inflow NUMERIC)
+              inflow_count BIGINT, outflow_count BIGINT, avg_inflow NUMERIC, max_inflow NUMERIC,
+              floored_inflow NUMERIC)
 LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path TO 'public'
 AS $$
@@ -17,7 +20,8 @@ AS $$
          COUNT(*) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow))::BIGINT,
          COUNT(*) FILTER (WHERE bt.amount < 0)::BIGINT,
          COALESCE(AVG(bt.amount) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow)), 0)::NUMERIC,
-         COALESCE(MAX(bt.amount) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow)), 0)::NUMERIC
+         COALESCE(MAX(bt.amount) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow)), 0)::NUMERIC,
+         COALESCE(SUM(bt.amount) FILTER (WHERE bt.amount > 0 AND (p_min_inflow IS NULL OR bt.amount > p_min_inflow)), 0)::NUMERIC
   FROM bank_transactions bt
   WHERE bt.restaurant_id = p_restaurant_id
     AND bt.transaction_date >= p_start_date AND bt.transaction_date <= p_end_date
@@ -81,8 +85,11 @@ COMMENT ON FUNCTION public.get_bank_transaction_summary IS
 'Inflow/outflow/net summary over bank_transactions, optionally scoped to one
 connected_bank_id and one set of statuses. p_min_inflow applies a strictly-
 greater-than floor to the deposit metrics only (inflow_count, avg_inflow,
-max_inflow); inflow, outflow, net, tx_count, and outflow_count stay unfloored.
-SECURITY INVOKER; EXECUTE for authenticated only.';
+max_inflow, floored_inflow); inflow, outflow, net, tx_count, and
+outflow_count stay unfloored. floored_inflow is the sum of only the deposits
+that pass the p_min_inflow floor (equal to inflow when p_min_inflow is NULL);
+callers that want a floored revenue total should read floored_inflow instead
+of inflow. SECURITY INVOKER; EXECUTE for authenticated only.';
 
 COMMENT ON FUNCTION public.get_bank_spending_by_category IS
 'Spend by category from negative-amount bank_transactions rows. SECURITY

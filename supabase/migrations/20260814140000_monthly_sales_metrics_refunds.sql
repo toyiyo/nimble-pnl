@@ -65,10 +65,15 @@ BEGIN
     SELECT TO_CHAR(us.sale_date, 'YYYY-MM') as month_period,
       COALESCE(SUM(ABS(us.total_price)), 0)::DECIMAL as amount
     FROM unified_sales us
+    LEFT JOIN chart_of_accounts coa ON us.category_id = coa.id
     WHERE us.restaurant_id = p_restaurant_id
       AND us.sale_date >= p_date_from AND us.sale_date <= p_date_to
       AND us.adjustment_type IS NULL
       AND LOWER(COALESCE(us.item_type, '')) = 'refund'
+      -- Mirror monthly_revenue's liability exclusion: a refund categorized
+      -- against a liability account (e.g. a tax adjustment) is accounted
+      -- for elsewhere and must not also land in refunds.
+      AND (coa.account_type IS NULL OR coa.account_type = 'revenue')
       AND NOT EXISTS (
         SELECT 1 FROM unified_sales child
         WHERE child.parent_sale_id = us.id

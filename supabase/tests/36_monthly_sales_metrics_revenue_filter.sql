@@ -4,7 +4,7 @@
 -- restricts gross_revenue to revenue-categorized + uncategorized sales only.
 
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
 -- get_monthly_sales_metrics now runs as SECURITY INVOKER and checks
 -- user_restaurants membership. The test caller must be an authenticated
@@ -128,6 +128,27 @@ SELECT is(
    WHERE period = '2026-04'),
   150.00::numeric,
   'a refund row does not change gross_revenue'
+);
+
+-- A liability-categorized refund (e.g. a sales-tax reversal) must not land
+-- in refunds, mirroring monthly_revenue's liability exclusion. Without the
+-- chart_of_accounts join on monthly_refunds, this $5 refund would push
+-- refunds to 25.00 instead of staying at 20.00.
+INSERT INTO unified_sales (
+  id, restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+  quantity, unit_price, total_price, sale_date, item_type,
+  is_categorized, category_id, adjustment_type, parent_sale_id
+) VALUES
+  ('00000000-0000-0000-0000-000000000705', :'restaurant_id', 'test', 'ord-rf-2', 'item-rf-2',
+    'Sales Tax Refund', 1, -5, -5, '2026-04-17', 'refund', true,
+    '00000000-0000-0000-0000-000000000602', NULL, NULL);
+
+SELECT is(
+  (SELECT refunds::numeric(10,2)
+   FROM get_monthly_sales_metrics(:'restaurant_id', :'date_from', :'date_to')
+   WHERE period = '2026-04'),
+  20.00::numeric,
+  'a liability-categorized refund does not land in refunds (stays at 20.00, not 25.00)'
 );
 
 -- Cross-restaurant child boundary (defense in depth for the BYPASSRLS path).

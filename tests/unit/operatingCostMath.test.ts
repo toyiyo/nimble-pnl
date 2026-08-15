@@ -30,4 +30,25 @@ describe('computeOperatingCostTotals', () => {
     expect(Number.isFinite(t.breakEvenRevenue)).toBe(true);
     expect(t.variableCostPercentage).toBeCloseTo(32.5, 4);
   });
+  it('returns zero costs and the 25 percent fallback for an empty rows array', () => {
+    const t = computeOperatingCostTotals([], 1000);
+    expect(t.fixedTotal).toBe(0);
+    expect(t.semiVariableTotal).toBe(0);
+    expect(t.variableFlatTotal).toBe(0);
+    expect(t.variablePercentTotal).toBe(0);
+    expect(t.variableTotal).toBe(0);
+    expect(t.totalMonthlyCosts).toBe(0);
+    expect(t.variableCostPercentage).toBe(25);
+    expect(t.breakEvenRevenue).toBe(0);
+  });
+  it('turns percentage costs negative when netSales is negative, and drops the flat-cost ratio term', () => {
+    const t = computeOperatingCostTotals(rows, -1000);
+    // percentage costs scale with netSales, so they go negative too.
+    expect(t.variablePercentTotal).toBeCloseTo(0.325 * -1000, 2);
+    expect(t.variableTotal).toBeCloseTo(82.0 - 325.0, 2);
+    // netSales <= 0 drops the (variableFlatTotal / netSales) ratio term
+    // entirely, so variableCostPercentage is just the percentage-row sum.
+    expect(t.variableCostPercentage).toBeCloseTo(32.5, 4);
+    expect(t.breakEvenRevenue).toBeCloseTo(59813.56, 2);
+  });
 });

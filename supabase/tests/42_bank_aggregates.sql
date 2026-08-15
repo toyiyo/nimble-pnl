@@ -18,7 +18,8 @@
 --   8. Tenancy: a non-member gets a zero-value row for a foreign restaurant
 --      that holds real transaction data.
 --   9. p_min_inflow => 10 excludes a $5.00 deposit from inflow_count and
---      avg_inflow (the deposit floor), while inflow still includes it.
+--      avg_inflow (the deposit floor), while inflow still includes it;
+--      floored_inflow (unlike inflow) also excludes it.
 
 BEGIN;
 SELECT plan(9);
@@ -148,13 +149,14 @@ SET LOCAL request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000292","r
 -- Test 1: summary splits inflow/outflow/net over a mixed fixture.
 -- inflow = 500 + 300 = 800; outflow = |{-100, -50}| = 150; net = 650;
 -- tx_count = 4; inflow_count = 2; outflow_count = 2;
--- avg_inflow = 800/2 = 400; max_inflow = 500.
+-- avg_inflow = 800/2 = 400; max_inflow = 500; floored_inflow = 800 (no
+-- p_min_inflow passed, so it equals inflow).
 SELECT results_eq(
-  $$ SELECT inflow, outflow, net, tx_count, inflow_count, outflow_count, avg_inflow, max_inflow
+  $$ SELECT inflow, outflow, net, tx_count, inflow_count, outflow_count, avg_inflow, max_inflow, floored_inflow
      FROM get_bank_transaction_summary(
        '00000000-0000-0000-0000-000000000290'::uuid,
        '2026-05-01'::date, '2026-05-04'::date) $$,
-  $$ VALUES (800::numeric, 150::numeric, 650::numeric, 4::bigint, 2::bigint, 2::bigint, 400::numeric, 500::numeric) $$,
+  $$ VALUES (800::numeric, 150::numeric, 650::numeric, 4::bigint, 2::bigint, 2::bigint, 400::numeric, 500::numeric, 800::numeric) $$,
   'Summary splits inflow/outflow/net over a mixed 4-row fixture'
 );
 
@@ -223,36 +225,37 @@ SELECT results_eq(
 -- Test 7: an empty date range returns one all-zero row, not an empty
 -- result (COALESCE guard on an aggregate without GROUP BY).
 SELECT results_eq(
-  $$ SELECT inflow, outflow, net, tx_count, inflow_count, outflow_count, avg_inflow, max_inflow
+  $$ SELECT inflow, outflow, net, tx_count, inflow_count, outflow_count, avg_inflow, max_inflow, floored_inflow
      FROM get_bank_transaction_summary(
        '00000000-0000-0000-0000-000000000290'::uuid,
        '2026-06-01'::date, '2026-06-30'::date) $$,
-  $$ VALUES (0::numeric, 0::numeric, 0::numeric, 0::bigint, 0::bigint, 0::bigint, 0::numeric, 0::numeric) $$,
+  $$ VALUES (0::numeric, 0::numeric, 0::numeric, 0::bigint, 0::bigint, 0::bigint, 0::numeric, 0::numeric, 0::numeric) $$,
   'An empty date range returns one all-zero row, not an empty result'
 );
 
 -- Test 8: tenancy. A non-member gets a zero-value row for the foreign
 -- restaurant even though it holds a real transaction (999) — RLS hides it.
 SELECT results_eq(
-  $$ SELECT inflow, outflow, net, tx_count, inflow_count, outflow_count, avg_inflow, max_inflow
+  $$ SELECT inflow, outflow, net, tx_count, inflow_count, outflow_count, avg_inflow, max_inflow, floored_inflow
      FROM get_bank_transaction_summary(
        '00000000-0000-0000-0000-000000000291'::uuid,
        '2026-05-01'::date, '2026-05-31'::date) $$,
-  $$ VALUES (0::numeric, 0::numeric, 0::numeric, 0::bigint, 0::bigint, 0::bigint, 0::numeric, 0::numeric) $$,
+  $$ VALUES (0::numeric, 0::numeric, 0::numeric, 0::bigint, 0::bigint, 0::bigint, 0::numeric, 0::numeric, 0::numeric) $$,
   'A non-member gets a zero-value row for a foreign restaurant with real transaction data'
 );
 
 -- Test 9: p_min_inflow => 10 floors the deposit metrics (inflow_count,
--- avg_inflow) to exclude the $5.00 deposit, while inflow stays unfloored
--- and still includes it. inflow = 5 + 50 = 55; inflow_count = 1 (only the
--- 50 passes > 10); avg_inflow = 50.
+-- avg_inflow, floored_inflow) to exclude the $5.00 deposit, while inflow
+-- stays unfloored and still includes it. inflow = 5 + 50 = 55; inflow_count
+-- = 1 (only the 50 passes > 10); avg_inflow = 50; floored_inflow = 50 (only
+-- the deposit that passes the floor, unlike inflow's 55).
 SELECT results_eq(
-  $$ SELECT inflow, inflow_count, avg_inflow
+  $$ SELECT inflow, inflow_count, avg_inflow, floored_inflow
      FROM get_bank_transaction_summary(
        '00000000-0000-0000-0000-000000000290'::uuid,
        '2026-05-30'::date, '2026-05-30'::date, NULL, NULL, 10) $$,
-  $$ VALUES (55::numeric, 1::bigint, 50::numeric) $$,
-  'p_min_inflow => 10 excludes the $5.00 deposit from inflow_count/avg_inflow; inflow still includes it'
+  $$ VALUES (55::numeric, 1::bigint, 50::numeric, 50::numeric) $$,
+  'p_min_inflow => 10 excludes the $5.00 deposit from inflow_count/avg_inflow/floored_inflow; inflow still includes it'
 );
 
 RESET ROLE;

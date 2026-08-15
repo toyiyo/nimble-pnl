@@ -23,7 +23,10 @@ AS $$
            OR LOWER(COALESCE(coa.account_name, '')) LIKE '%labor%')), 0))::NUMERIC,
     ABS(COALESCE(SUM(bt.amount) FILTER (WHERE bt.amount < 0
       AND LOWER(COALESCE(bt.description, '') || ' ' || COALESCE(bt.merchant_name, ''))
-          LIKE ANY(p_fee_patterns)), 0))::NUMERIC,
+          LIKE ANY(
+            SELECT LOWER(pat)
+            FROM UNNEST(COALESCE(p_fee_patterns, ARRAY[]::TEXT[])) AS pat
+          )), 0))::NUMERIC,
     ABS(COALESCE(SUM(bt.amount) FILTER (WHERE bt.amount < 0), 0))::NUMERIC,
     ABS(COALESCE(SUM(bt.amount) FILTER (WHERE bt.amount < 0
       AND bt.category_id IS NULL AND COALESCE(bt.is_split, false) = false), 0))::NUMERIC

@@ -243,6 +243,9 @@ async function executeGetKpis(
 
   const totalCogs = sumMonthlyFoodCost(usageRows);
 
+  if (salesCountResult.error) {
+    throw new Error(`unified_sales count failed: ${salesCountResult.error.message}`);
+  }
   const salesCount = salesCountResult.count ?? 0;
 
   // Fetch labor costs using time_punches + employees (same as Dashboard) —
@@ -323,7 +326,7 @@ async function executeGetKpis(
   // refunds), so cost/profitability/benchmarks are computed directly against
   // salesTotals.net instead of going through calculatePeriodMetrics (which
   // would need the raw sale rows this fetch replaced).
-  const rawCosts = calculateCostBreakdown([{ total_cost: totalCogs }], laborCostData || [], salesTotals.net);
+  const rawCosts = calculateCostBreakdown([{ total_cost: totalCogs }], laborCostData, salesTotals.net);
   const rawProfitability = calculateProfitability(salesTotals.net, rawCosts.prime_cost);
   const rawBenchmarks = calculateBenchmarks(rawCosts);
 
@@ -572,17 +575,30 @@ async function calculateCashFlow(
   // Daily inflow/outflow/net series (get_bank_transactions_daily) replaces
   // the raw per-transaction fetch. p_bank_account_id filters
   // connected_bank_id, which fixes the prior filter on a bank_account_id
-  // column that bank_transactions does not have.
-  const { data: dailyRows, error } = await supabase.rpc('get_bank_transactions_daily', {
-    p_restaurant_id: restaurantId,
-    p_start_date: start_date,
-    p_end_date: end_date,
-    p_bank_account_id: bank_account_id || null,
-  });
+  // column that bank_transactions does not have. transaction_count reads
+  // tx_count from get_bank_transaction_summary (already used elsewhere in
+  // this file), since the daily RPC emits one row per active day, not per
+  // transaction — days.length would undercount any day with 2+ transactions.
+  const [{ data: dailyRows, error }, { data: summaryRows, error: summaryError }] = await Promise.all([
+    supabase.rpc('get_bank_transactions_daily', {
+      p_restaurant_id: restaurantId,
+      p_start_date: start_date,
+      p_end_date: end_date,
+      p_bank_account_id: bank_account_id || null,
+    }),
+    supabase.rpc('get_bank_transaction_summary', {
+      p_restaurant_id: restaurantId,
+      p_start_date: start_date,
+      p_end_date: end_date,
+      p_bank_account_id: bank_account_id || null,
+    }),
+  ]);
 
   if (error) throw new Error(`get_bank_transactions_daily failed: ${error.message}`);
+  if (summaryError) throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
 
   const days = dailyRows || [];
+  const txCount = Number(summaryRows?.[0]?.tx_count ?? 0);
   const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
   const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
   const netCashFlow = inflows - outflows;
@@ -603,9 +619,7 @@ async function calculateCashFlow(
     net_cash_flow_7d: netCashFlow,
     avg_daily_cash_flow: avgDailyCashFlow,
     volatility: volatility,
-    // Days with at least one transaction. The daily RPC emits one row per
-    // active day, not per transaction, so this counts active days.
-    transaction_count: days.length,
+    transaction_count: txCount,
   };
 }
 
@@ -636,7 +650,11 @@ async function calculateRevenueHealth(
 
   const summary = summaryRows?.[0] ?? {};
   const depositCount = Number(summary.inflow_count ?? 0);
-  const totalRevenue = Number(summary.inflow ?? 0);
+  // total_revenue reads floored_inflow (equal to inflow when p_min_inflow is
+  // NULL), not inflow, so it stays consistent with deposit_count/avg_deposit_size
+  // /largest_deposit: all four exclude the same small transfers/refunds
+  // below the p_min_inflow=10 floor set above.
+  const totalRevenue = Number(summary.floored_inflow ?? 0);
   const avgDeposit = Number(summary.avg_inflow ?? 0);
   const largestDeposit = Number(summary.max_inflow ?? 0);
 
@@ -949,9 +967,11 @@ async function executeGetBankTransactions(
   }
 
   const periodSummary = summaryRows?.[0] ?? {};
-  // categorized_count/categorization_rate have no RPC (the summary RPC has
-  // no categorization awareness), so they stay computed from the fetched
-  // page, same as before.
+  // categorized_count_in_page/categorization_rate_in_page have no RPC (the
+  // summary RPC has no categorization awareness), so they stay computed from
+  // the fetched page, same as before. The _in_page suffix marks them as
+  // page-scoped so a caller does not read them as period-wide, unlike the
+  // total_* fields beside them, which come from the period-wide summary RPC.
   const categorized = transactions?.filter((t: any) => t.is_categorized).length || 0;
 
   // The summary RPC only supports p_bank_account_id/p_statuses. When the
@@ -971,8 +991,8 @@ async function executeGetBankTransactions(
         total_net: Number(periodSummary.net ?? 0),
         total_inflows: Number(periodSummary.inflow ?? 0),
         total_outflows: Number(periodSummary.outflow ?? 0),
-        categorized_count: categorized,
-        categorization_rate: transactions?.length ? (categorized / transactions.length) * 100 : 0,
+        categorized_count_in_page: categorized,
+        categorization_rate_in_page: transactions?.length ? (categorized / transactions.length) * 100 : 0,
         ...(hasUnsummarizedFilters
           ? {
               partial: true,
@@ -1301,6 +1321,10 @@ async function executeGetSalesSummary(
   // client-side group-by over raw rows.
   const [salesTotals, currentCountResult] = await Promise.all([
     fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
+    // .or('item_type.is.null,item_type.eq.sale') matches the same sale-only
+    // count executeGetKpis uses, so this tool and the KPIs tool report the
+    // same transaction_count for the same period instead of this count also
+    // picking up discount/refund line items.
     supabase
       .from('unified_sales')
       .select('*', { count: 'exact', head: true })
@@ -1308,8 +1332,13 @@ async function executeGetSalesSummary(
       .gte('sale_date', startDateStr)
       .lte('sale_date', endDateStr)
       .is('adjustment_type', null)
-      .is('parent_sale_id', null),
+      .is('parent_sale_id', null)
+      .or('item_type.is.null,item_type.eq.sale'),
   ]);
+
+  if (currentCountResult.error) {
+    throw new Error(`unified_sales count failed: ${currentCountResult.error.message}`);
+  }
 
   const currentTotal = salesTotals.net;
   const currentCount = currentCountResult.count ?? 0;
@@ -3289,6 +3318,10 @@ async function executeBatchCategorizeTransactions(
 ): Promise<any> {
   const { transaction_ids, category_id, preview = false, confirmed = false } = args;
 
+  if (!Array.isArray(transaction_ids) || transaction_ids.length === 0) {
+    return { ok: false, error: { code: 'INVALID_REQUEST', message: 'transaction_ids must be a non-empty array.' } };
+  }
+
   if (transaction_ids.length > 1000) {
     return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${transaction_ids.length}). Send at most 1000 per call.` } };
   }
@@ -3382,6 +3415,10 @@ async function executeBatchCategorizePosSales(
   supabase: any
 ): Promise<any> {
   const { sale_ids, category_id, preview = false, confirmed = false } = args;
+
+  if (!Array.isArray(sale_ids) || sale_ids.length === 0) {
+    return { ok: false, error: { code: 'INVALID_REQUEST', message: 'sale_ids must be a non-empty array.' } };
+  }
 
   if (sale_ids.length > 1000) {
     return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${sale_ids.length}). Send at most 1000 per call.` } };

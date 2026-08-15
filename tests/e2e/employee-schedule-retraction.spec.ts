@@ -131,16 +131,17 @@ test.describe('Employee schedule publish states', () => {
 
     await expect(page.getByText(/^Published /)).toBeVisible({ timeout: 15000 });
 
-    // --- State D: pulled back. This is the state the old UI could not express
-    // at all — the employee was left reading a week nobody had told them was
-    // no longer final.
+    // --- State D: pulled back. Managers unpublish as a routine edit cycle.
+    // The old "pulled back for changes" alert told employees their real
+    // shifts were void, and confused people. The rows return to the draft
+    // hue; the banner shows no warning and no stale "Published" line.
     await unpublishCurrentWeek(page);
 
     await page.goto('/employee/schedule');
     await page.waitForLoadState('networkidle');
 
-    const retractedAlert = page.getByRole('alert').filter({ hasText: /pulled back for changes/i });
-    await expect(retractedAlert).toBeVisible({ timeout: 15000 });
-    await expect(retractedAlert).toContainText(/nothing below is final/i);
+    await expect(page.getByText(/upcoming/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/pulled back for changes/i)).not.toBeVisible();
+    await expect(page.getByText(/^Published /)).not.toBeVisible();
   });
 });

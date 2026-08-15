@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMyShifts } from '@/hooks/useShifts';
-import { useWeekScheduleStatus, useWeekRetractionReason } from '@/hooks/useSchedulePublish';
+import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -90,11 +90,6 @@ const EmployeeSchedule = () => {
     currentWeekStart,
     myShifts,
     shiftsLoading || employeeLoading
-  );
-  const retractionReason = useWeekRetractionReason(
-    restaurantId,
-    currentWeekStart,
-    state === 'retracted'
   );
 
   // "Has anything moved since I last looked?" There is no server-side read
@@ -234,14 +229,11 @@ const EmployeeSchedule = () => {
         </Link>
       </div>
 
-      {/* Is this week actually mine? Above everything, because a retracted week
-          contradicts an email the employee may already have acted on. */}
+      {/* One quiet "Published {date}" line, or nothing. Never a warning. */}
       <ScheduleStatusBanner
         state={state}
         publication={publication}
-        weekRange={`${format(currentWeekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`}
         timezone={restaurantTimezone}
-        retractionReason={retractionReason}
       />
 
       {/* My shift trades — poster tracker + claimant status */}

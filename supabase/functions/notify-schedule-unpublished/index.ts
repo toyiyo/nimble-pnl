@@ -175,18 +175,13 @@ serve(async (req) => {
       return noop(`retraction ${retraction.id} has no publication to walk back`);
     }
 
-    const { data: publication, error: publicationError } = await serviceClient
-      .from("schedule_publications")
-      .select("notification_sent")
-      .eq("id", retraction.publication_id)
-      .maybeSingle();
-
-    if (publicationError) {
-      throw new Error(`Failed to read publication: ${publicationError.message}`);
-    }
-    if (!publication?.notification_sent) {
-      return noop(`publication ${retraction.publication_id} was never announced`);
-    }
+    // Gate on the retracted publication row, not on
+    // `schedule_publications.notification_sent` (Phase 2.5 review). A quiet
+    // publish leaves `notification_sent` false, but the week is still live
+    // and visible to employees -- a later retraction of it must still
+    // announce. `retraction.publication_id` already proves that row exists
+    // (checked above), so no further read of `schedule_publications` is
+    // needed here.
 
     // Claim before sending, not after. Two managers unpublishing in quick
     // succession, or a client retry, would otherwise each read notified_at as

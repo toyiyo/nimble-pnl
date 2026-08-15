@@ -119,6 +119,11 @@ const BASE_PROPS = {
   tz: 'America/Chicago',
   loading: false,
   error: null,
+  // Not locked: guardShiftChange runs `run` straight away, mirroring
+  // usePublishedShiftGuard's own real behavior for an unpublished shift.
+  guardShiftChange: vi.fn(async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
+    await run({ allowPublished: false });
+  }),
 } as const;
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

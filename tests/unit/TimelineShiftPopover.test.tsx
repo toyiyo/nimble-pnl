@@ -77,6 +77,11 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof TimelineShi
     onDelete: vi.fn(),
     validationResult: null,
     clearValidation: vi.fn(),
+    // Not locked: guardShiftChange runs `run` straight away, mirroring
+    // usePublishedShiftGuard's own real behavior for an unpublished shift.
+    guardShiftChange: vi.fn(async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
+      await run({ allowPublished: false });
+    }),
     ...overrides,
   };
 }
@@ -118,7 +123,7 @@ describe('TimelineShiftPopover', () => {
     expect(screen.getByRole('button', { name: /^delete$/i })).toBeTruthy();
   });
 
-  it('locked shift shows a lock icon and disables Edit/Delete', () => {
+  it('locked shift shows a lock icon and disables Delete, but not Edit', () => {
     render(
       <TimelineShiftPopover
         {...defaultProps({ activeShift: makeShift({ locked: true }) })}
@@ -126,7 +131,7 @@ describe('TimelineShiftPopover', () => {
     );
 
     expect(screen.getByLabelText(/locked/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^edit$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^edit$/i })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled();
   });
 
@@ -203,6 +208,34 @@ describe('TimelineShiftPopover', () => {
 
     expect(onDelete).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  it('Save on a locked shift routes through guardShiftChange before calling validateAndUpdateShift', async () => {
+    const user = userEvent.setup();
+    const validateAndUpdateShift = vi.fn().mockResolvedValue({ updated: true });
+    const guardShiftChange = vi.fn(
+      async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
+        await run({ allowPublished: true });
+      },
+    );
+
+    render(
+      <TimelineShiftPopover
+        {...defaultProps({
+          activeShift: makeShift({ locked: true }),
+          validateAndUpdateShift,
+          guardShiftChange,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(guardShiftChange).toHaveBeenCalledTimes(1));
+    expect(guardShiftChange.mock.calls[0][0].shiftId).toBe('shift-1');
+    await waitFor(() => expect(validateAndUpdateShift).toHaveBeenCalledTimes(1));
+    expect(validateAndUpdateShift.mock.calls[0][0].allowPublished).toBe(true);
   });
 
   it('Save with no pending issues calls validateAndUpdateShift and closes the popover', async () => {

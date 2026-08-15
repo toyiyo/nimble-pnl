@@ -41,6 +41,7 @@ import type {
   CreateAtTimeOutcome,
   CreateAtTimeInput,
 } from '@/hooks/useValidatedShiftMutations';
+import type { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
 
 /** Minimal shape needed to anchor the Radix popper to an arbitrary rect. */
 interface VirtualAnchor {
@@ -82,6 +83,7 @@ interface TimelineShiftPopoverProps {
     startIso: string;
     endIso: string;
     businessDate: string;
+    allowPublished?: boolean;
   }) => Promise<UpdateTimeOutcome>;
   /** Force-apply a time change after the user confirms the conflict dialog. Used by the DRAG path (time-only). */
   readonly forceUpdateTime: (input: {
@@ -89,6 +91,7 @@ interface TimelineShiftPopoverProps {
     startIso: string;
     endIso: string;
     businessDate: string;
+    allowPublished?: boolean;
   }) => Promise<boolean>;
   /**
    * Validate a full-field edit (time + employee + break + notes); returns
@@ -103,6 +106,7 @@ interface TimelineShiftPopoverProps {
     employeeId: string;
     breakDuration: number;
     notes: string;
+    allowPublished?: boolean;
   }) => Promise<UpdateShiftOutcome>;
   /** Force-apply a full-field edit after the user confirms the conflict dialog. */
   readonly forceUpdateShift: (input: {
@@ -113,6 +117,7 @@ interface TimelineShiftPopoverProps {
     employeeId: string;
     breakDuration: number;
     notes: string;
+    allowPublished?: boolean;
   }) => Promise<UpdateShiftOutcome>;
   /** Validate a create-at-time (quick-add) request; returns pending issues instead of throwing. */
   readonly validateAndCreateAtTime?: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
@@ -143,6 +148,12 @@ interface TimelineShiftPopoverProps {
   readonly anchorRect?: DOMRect | null;
   /** The scrollable plot container, used as the Radix collision boundary. */
   readonly collisionBoundary?: Element | null;
+  /**
+   * The page's single `usePublishedShiftGuard` instance. Save (edit mode)
+   * routes every change through this so a published shift asks for
+   * confirmation before it applies.
+   */
+  readonly guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
 }
 
 /** Build the initial editor values from a shift + the day's timezone. */
@@ -205,6 +216,7 @@ export function TimelineShiftPopover({
   clearValidation,
   anchorRect,
   collisionBoundary,
+  guardShiftChange,
 }: TimelineShiftPopoverProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [editValues, setEditValues] = useState<TimelineShiftEditorValues | null>(null);
@@ -212,9 +224,14 @@ export function TimelineShiftPopover({
     createDraft?.values ?? null,
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // `allowPublished` is optional: only the edit-mode Save path (below) ever
+  // sets it. The create-mode dialog (`TimelineCreateDialog`) shares this same
+  // state slot but never reads or writes `allowPublished` — a new shift has
+  // no lock to guard against.
   const [pendingIssues, setPendingIssues] = useState<{
     conflicts: ConflictCheck[];
     warnings: ValidationIssue[];
+    allowPublished?: boolean;
   } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -327,38 +344,52 @@ export function TimelineShiftPopover({
 
     const startIso = minutesToIso(dateStr, startMin, tz);
     const endIso = minutesToIso(dateStr, endMinValue, tz);
+    const employeeName = employees.find((e) => e.id === activeShift.employee_id)?.name ?? '';
+    const isReassignment = editValues.employeeId !== activeShift.employee_id;
+    const secondEmployeeName = isReassignment
+      ? employees.find((e) => e.id === editValues.employeeId)?.name
+      : undefined;
 
     setSaving(true);
     try {
-      const outcome = await validateAndUpdateShift({
-        shift: activeShift,
-        startIso,
-        endIso,
-        businessDate: dateStr,
-        employeeId: editValues.employeeId,
-        breakDuration: Number(editValues.breakDuration) || 0,
-        notes: editValues.notes,
+      await guardShiftChange({
+        shiftId: activeShift.id,
+        employeeName,
+        secondEmployeeName,
+        run: async ({ allowPublished }) => {
+          const outcome = await validateAndUpdateShift({
+            shift: activeShift,
+            startIso,
+            endIso,
+            businessDate: dateStr,
+            employeeId: editValues.employeeId,
+            breakDuration: Number(editValues.breakDuration) || 0,
+            notes: editValues.notes,
+            allowPublished,
+          });
+
+          if (outcome.updated) {
+            onSaved?.(activeShift);
+            handleClose();
+            return;
+          }
+
+          if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
+            setPendingIssues({
+              conflicts: outcome.pendingConflicts ?? [],
+              warnings: outcome.pendingWarnings ?? [],
+              allowPublished,
+            });
+          }
+        },
       });
-
-      if (outcome.updated) {
-        onSaved?.(activeShift);
-        handleClose();
-        return;
-      }
-
-      if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
-        setPendingIssues({
-          conflicts: outcome.pendingConflicts ?? [],
-          warnings: outcome.pendingWarnings ?? [],
-        });
-      }
     } finally {
       setSaving(false);
     }
   };
 
   const handleConfirmConflicts = async () => {
-    if (!editValues) return;
+    if (!editValues || !pendingIssues) return;
 
     const { startMin, endMin: endMinValue } = resolveOvernightMinutes(editValues.startTime, editValues.endTime);
 
@@ -375,6 +406,7 @@ export function TimelineShiftPopover({
         employeeId: editValues.employeeId,
         breakDuration: Number(editValues.breakDuration) || 0,
         notes: editValues.notes,
+        allowPublished: pendingIssues.allowPublished ?? false,
       });
 
       if (outcome.updated) {
@@ -480,7 +512,6 @@ export function TimelineShiftPopover({
                   Delete
                 </Button>
                 <Button
-                  disabled={isLocked}
                   onClick={handleEditClick}
                   className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
                 >

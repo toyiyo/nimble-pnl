@@ -41,6 +41,7 @@ import type { GroupByMode } from '@/lib/scheduleGrouping';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
 import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
+import type { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
 
 // ─── Constants (Fix 2 — visible "Add shift" button) ────────────────────────────
 
@@ -103,6 +104,12 @@ interface ShiftTimelineTabProps {
   readonly loading: boolean;
   /** Forwarded from the parent's error state; renders an inline message. */
   readonly error: Error | null;
+  /**
+   * The page's single `usePublishedShiftGuard` instance. Every change to an
+   * existing shift — drag-move, drag-resize, and the popover's edit-save —
+   * must run through this so a published shift asks for confirmation first.
+   */
+  readonly guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
 }
 
 /**
@@ -265,6 +272,7 @@ export function ShiftTimelineTab({
   availabilityByEmployee,
   loading,
   error,
+  guardShiftChange,
 }: ShiftTimelineTabProps) {
   // ── Local state ────────────────────────────────────────────────────────────
   const [selectedDayState, setSelectedDay] = useState<string>(() => defaultDay(weekDays));
@@ -310,6 +318,7 @@ export function ShiftTimelineTab({
     endIso: string;
     conflicts: ConflictDialogData['conflicts'];
     warnings: ConflictDialogData['warnings'];
+    allowPublished: boolean;
   } | null>(null);
 
   // ── Transient change highlight (Fix 3) ─────────────────────────────────────
@@ -672,7 +681,9 @@ export function ShiftTimelineTab({
 
   /**
    * Drag/resize release (Stage D3): builds ISO instants via `minutesToIso`
-   * and routes through the same `validateAndUpdateTime` pipeline the edit
+   * and routes through `guardShiftChange`. A published shift shows the
+   * confirm dialog first; an unpublished shift runs straight away. Either
+   * way `run` calls the same `validateAndUpdateTime` pipeline the edit
    * popover's Save uses. On success the draft is cleared (the mutation's own
    * optimistic `setQueriesData` update means the bar never jumps waiting for
    * a refetch). On pending conflicts/warnings, the draft is KEPT (so the bar
@@ -690,37 +701,46 @@ export function ShiftTimelineTab({
 
       const startIso = minutesToIso(selectedDay, range.startMin, tz);
       const endIso = minutesToIso(selectedDay, range.endMin, tz);
+      const employeeName = employees.find((e) => e.id === shift.employee_id)?.name ?? '';
 
-      const outcome = await validateAndUpdateTime({
-        shift,
-        startIso,
-        endIso,
-        businessDate: selectedDay,
+      await guardShiftChange({
+        shiftId: shift.id,
+        employeeName,
+        run: async ({ allowPublished }) => {
+          const outcome = await validateAndUpdateTime({
+            shift,
+            startIso,
+            endIso,
+            businessDate: selectedDay,
+            allowPublished,
+          });
+
+          if (outcome.updated) {
+            setDragDraft(null);
+            flashHighlight(shiftId);
+            return;
+          }
+
+          if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
+            setDragConflict({
+              shift,
+              startIso,
+              endIso,
+              conflicts: outcome.pendingConflicts ?? [],
+              warnings: outcome.pendingWarnings ?? [],
+              allowPublished,
+            });
+            return;
+          }
+
+          // Validation failed outright (e.g. an interval-construction error)
+          // with no pending issues to confirm — snap back rather than leave
+          // a dangling draft.
+          setDragDraft(null);
+        },
       });
-
-      if (outcome.updated) {
-        setDragDraft(null);
-        flashHighlight(shiftId);
-        return;
-      }
-
-      if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
-        setDragConflict({
-          shift,
-          startIso,
-          endIso,
-          conflicts: outcome.pendingConflicts ?? [],
-          warnings: outcome.pendingWarnings ?? [],
-        });
-        return;
-      }
-
-      // Validation failed outright (e.g. a locked shift returns `updated:
-      // false`, or an interval-construction error) with no pending issues to
-      // confirm — snap back rather than leave a dangling draft.
-      setDragDraft(null);
     },
-    [dayShifts, selectedDay, tz, validateAndUpdateTime, flashHighlight],
+    [dayShifts, selectedDay, tz, validateAndUpdateTime, flashHighlight, guardShiftChange, employees],
   );
 
   const handleDragConflictCancel = useCallback(() => {
@@ -730,8 +750,8 @@ export function ShiftTimelineTab({
 
   const handleDragConflictConfirm = useCallback(async () => {
     if (!dragConflict) return;
-    const { shift, startIso, endIso } = dragConflict;
-    const ok = await forceUpdateTime({ shift, startIso, endIso, businessDate: selectedDay });
+    const { shift, startIso, endIso, allowPublished } = dragConflict;
+    const ok = await forceUpdateTime({ shift, startIso, endIso, businessDate: selectedDay, allowPublished });
     if (ok) {
       setDragConflict(null);
       setDragDraft(null);
@@ -1077,6 +1097,7 @@ export function ShiftTimelineTab({
         onSaved={handleShiftSaved}
         validationResult={validationResult}
         clearValidation={clearValidation}
+        guardShiftChange={guardShiftChange}
       />
 
       {/* Drag-commit conflict dialog (Stage D3) — the same AvailabilityConflictDialog

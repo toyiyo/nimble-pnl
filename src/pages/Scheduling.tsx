@@ -1636,6 +1636,7 @@ const Scheduling = () => {
               restaurantId={restaurantId}
               weekStart={currentWeekStart}
               onWeekStartChange={setCurrentWeekStart}
+              guardShiftChange={guardShiftChange}
             />
           )}
         </TabsContent>

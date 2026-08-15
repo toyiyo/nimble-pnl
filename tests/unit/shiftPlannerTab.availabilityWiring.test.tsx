@@ -166,6 +166,9 @@ const DEFAULT_PROPS = {
   restaurantId: 'r1',
   weekStart: WEEK_START,
   onWeekStartChange: vi.fn(),
+  guardShiftChange: vi.fn(async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
+    await run({ allowPublished: false });
+  }),
 } as const;
 
 function renderTab(props = DEFAULT_PROPS) {

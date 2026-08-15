@@ -60,11 +60,18 @@ import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useA
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
+import type { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
   weekStart: Date;
   onWeekStartChange: (next: Date) => void;
+  /**
+   * The page's single `usePublishedShiftGuard` instance (design doc: one
+   * guard per page, threaded down to every surface that can change a
+   * shift). Forwarded straight through to the timeline tab.
+   */
+  guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
 }
 
 /** Format a template's slot label for CoverageDetail headings.
@@ -112,6 +119,7 @@ export function ShiftPlannerTab({
   restaurantId,
   weekStart: externalWeekStart,
   onWeekStartChange,
+  guardShiftChange,
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
@@ -471,7 +479,7 @@ export function ShiftPlannerTab({
       setTimeout(() => setHighlightCellId(null), 600);
       // `day` is a date-only token parsed at local midnight; this reads the
       // weekday of that calendar day, so local fields are correct here.
-      // eslint-disable-next-line no-restricted-syntax
+       
       const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
       toast({ title: `${employee.name} assigned to ${template.name} — ${dayLabel}` });
     } else if (result.pendingConflicts?.length || result.pendingWarnings?.length) {
@@ -810,6 +818,7 @@ export function ShiftPlannerTab({
           loading={false}
           error={null}
           availabilityByEmployee={availabilityByEmployee}
+          guardShiftChange={guardShiftChange}
         />
       )}
 

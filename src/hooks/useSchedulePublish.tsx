@@ -11,6 +11,11 @@ interface PublishScheduleParams {
   weekStart: Date;
   weekEnd: Date;
   notes?: string;
+  /**
+   * Whether to notify employees. Defaults to true when absent, so every
+   * existing caller keeps its current behaviour without a change.
+   */
+  notify?: boolean;
 }
 
 interface UnpublishScheduleParams {
@@ -244,7 +249,7 @@ export const usePublishSchedule = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, weekStart, weekEnd, notes }: PublishScheduleParams) => {
+    mutationFn: async ({ restaurantId, weekStart, weekEnd, notes, notify = true }: PublishScheduleParams) => {
       // Format dates as YYYY-MM-DD (local calendar day, not UTC)
       const weekStartStr = formatLocalDate(weekStart);
       const weekEndStr = formatLocalDate(weekEnd);
@@ -264,12 +269,16 @@ export const usePublishSchedule = () => {
       // Awaited, unlike before. The old call was fire-and-forget with a
       // console.error, so a fan-out that reached nobody still produced a
       // "Employees will be notified" toast and the manager had no way to know.
-      const notification = await invokeScheduleNotification('notify-schedule-published', {
-        publicationId,
-        restaurantId,
-        weekStart: weekStartStr,
-        weekEnd: weekEndStr,
-      });
+      // `notify: false` is a quiet publish -- the caller chose not to tell
+      // employees, so the invoke never happens.
+      const notification: NotificationOutcome = notify
+        ? await invokeScheduleNotification('notify-schedule-published', {
+            publicationId,
+            restaurantId,
+            weekStart: weekStartStr,
+            weekEnd: weekEndStr,
+          })
+        : { status: 'skipped' };
 
       return { publicationId, restaurantId, notification };
     },

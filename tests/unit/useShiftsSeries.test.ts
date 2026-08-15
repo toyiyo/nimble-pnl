@@ -659,6 +659,65 @@ describe('useUpdateShiftSeries', () => {
     });
   });
 
+  describe('allowPublished', () => {
+    it('allowPublished: true maps to p_include_locked: true on the RPC', async () => {
+      let capturedParams: Record<string, unknown> | null = null;
+      mockSupabase.rpc.mockImplementation((fnName: string, params: Record<string, unknown>) => {
+        if (fnName === 'update_shift_series') {
+          capturedParams = params;
+          return Promise.resolve({ data: [{ updated_count: 3, locked_count: 0 }], error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      });
+
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useUpdateShiftSeries(), { wrapper: Wrapper });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      const shift = createMockShift({ is_recurring: true, recurrence_parent_id: null, locked: true });
+
+      await result.current.mutateAsync({
+        shift,
+        scope: 'all',
+        updates: { position: 'Host' },
+        restaurantId: 'rest-123',
+        allowPublished: true,
+      });
+
+      expect(capturedParams).not.toBeNull();
+      expect(capturedParams?.p_include_locked).toBe(true);
+    });
+
+    it('allowPublished absent maps to p_include_locked: false (unchanged)', async () => {
+      let capturedParams: Record<string, unknown> | null = null;
+      mockSupabase.rpc.mockImplementation((fnName: string, params: Record<string, unknown>) => {
+        if (fnName === 'update_shift_series') {
+          capturedParams = params;
+          return Promise.resolve({ data: [{ updated_count: 2, locked_count: 1 }], error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      });
+
+      const { Wrapper } = createWrapper();
+      const { result } = renderHook(() => useUpdateShiftSeries(), { wrapper: Wrapper });
+
+      await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
+
+      const shift = createMockShift({ is_recurring: true, recurrence_parent_id: null });
+
+      await result.current.mutateAsync({
+        shift,
+        scope: 'all',
+        updates: { position: 'Host' },
+        restaurantId: 'rest-123',
+      });
+
+      expect(capturedParams).not.toBeNull();
+      expect(capturedParams?.p_include_locked).toBe(false);
+    });
+  });
+
   describe('Error Handling', () => {
     it('should handle Supabase error and show destructive toast', async () => {
       mockSupabase.from.mockImplementation(() => ({

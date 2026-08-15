@@ -681,6 +681,7 @@ export function useUpdateShiftSeries() {
         p_from_time: scope === 'following' ? shift.start_time : null,
         p_start_time_delta: startTimeDelta,
         p_end_time_delta: endTimeDelta,
+        p_include_locked: allowPublished ?? false,
       });
 
       if (error) throw error;

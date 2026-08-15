@@ -4,9 +4,9 @@ import { computeOperatingCostTotals } from '../../supabase/functions/_shared/ope
 const rows = [
   { cost_type: 'fixed', entry_type: 'value', monthly_value: 4037415, percentage_value: null },
   { cost_type: 'variable', entry_type: 'value', monthly_value: 8200, percentage_value: null },
-  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 27 },
-  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 3 },
-  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 2.5 },
+  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 0.27 },
+  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 0.03 },
+  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 0.025 },
 ];
 
 describe('computeOperatingCostTotals', () => {

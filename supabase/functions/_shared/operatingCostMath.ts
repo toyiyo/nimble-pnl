@@ -1,6 +1,7 @@
 // supabase/functions/_shared/operatingCostMath.ts
 // Spec §13.2. monthly_value is cents and is 0 for percentage rows;
 // percentage rows carry percentage_value instead.
+// percentage_value is a fraction of net sales (0.27 = 27%).
 
 export interface CostRow { cost_type: string; entry_type: string; monthly_value: number; percentage_value: number | null; }
 export interface OperatingCostTotals {
@@ -22,14 +23,14 @@ export function computeOperatingCostTotals(rows: CostRow[], netSales: number): O
   const variableRows = by('variable');
   const variableFlatTotal = flat(variableRows);
   const variablePctSum = pct(variableRows);
-  const variablePercentTotal = (variablePctSum / 100) * netSales;
+  const variablePercentTotal = variablePctSum * netSales;
   const variableTotal = variableFlatTotal + variablePercentTotal;
 
   let variableCostPercentage: number;
   if (variableRows.length === 0) {
     variableCostPercentage = 25; // keep the historical fallback estimate
   } else {
-    variableCostPercentage = variablePctSum + (netSales > 0 ? (variableFlatTotal / netSales) * 100 : 0);
+    variableCostPercentage = variablePctSum * 100 + (netSales > 0 ? (variableFlatTotal / netSales) * 100 : 0);
   }
   const contributionMargin = 100 - variableCostPercentage;
   const totalFixedCosts = fixedTotal + semiVariableTotal;

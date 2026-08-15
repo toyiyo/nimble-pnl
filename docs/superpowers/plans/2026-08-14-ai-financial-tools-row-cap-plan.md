@@ -964,9 +964,9 @@ import { computeOperatingCostTotals } from '../../supabase/functions/_shared/ope
 const rows = [
   { cost_type: 'fixed', entry_type: 'value', monthly_value: 4037415, percentage_value: null },
   { cost_type: 'variable', entry_type: 'value', monthly_value: 8200, percentage_value: null },
-  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 27 },
-  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 3 },
-  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 2.5 },
+  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 0.27 },
+  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 0.03 },
+  { cost_type: 'variable', entry_type: 'percentage', monthly_value: 0, percentage_value: 0.025 },
 ];
 
 describe('computeOperatingCostTotals', () => {
@@ -1001,6 +1001,7 @@ describe('computeOperatingCostTotals', () => {
 // supabase/functions/_shared/operatingCostMath.ts
 // Spec §13.2. monthly_value is cents and is 0 for percentage rows;
 // percentage rows carry percentage_value instead.
+// percentage_value is a fraction of net sales (0.27 = 27%).
 export function computeOperatingCostTotals(rows: CostRow[], netSales: number): OperatingCostTotals {
   const by = (t: string) => rows.filter((r) => r.cost_type === t);
   const flat = (rs: CostRow[]) => rs.filter((r) => r.entry_type !== 'percentage')
@@ -1013,14 +1014,14 @@ export function computeOperatingCostTotals(rows: CostRow[], netSales: number): O
   const variableRows = by('variable');
   const variableFlatTotal = flat(variableRows);
   const variablePctSum = pct(variableRows);
-  const variablePercentTotal = (variablePctSum / 100) * netSales;
+  const variablePercentTotal = variablePctSum * netSales;
   const variableTotal = variableFlatTotal + variablePercentTotal;
 
   let variableCostPercentage: number;
   if (variableRows.length === 0) {
     variableCostPercentage = 25; // keep the historical fallback estimate
   } else {
-    variableCostPercentage = variablePctSum + (netSales > 0 ? (variableFlatTotal / netSales) * 100 : 0);
+    variableCostPercentage = variablePctSum * 100 + (netSales > 0 ? (variableFlatTotal / netSales) * 100 : 0);
   }
   const contributionMargin = 100 - variableCostPercentage;
   const totalFixedCosts = fixedTotal + semiVariableTotal;
@@ -1038,7 +1039,7 @@ export function computeOperatingCostTotals(rows: CostRow[], netSales: number): O
 
 - [ ] **Step 4: Run tests — PASS.**
 
-- [ ] **Step 5: Rewire `executeGetOperatingCosts`.** Delete the sums at 2605-2607 and the formulas at 2623-2631. Call `computeOperatingCostTotals(costs, salesTotals.net)` (with `salesTotals` from Task 10 Step 2). Each `entry_type === 'percentage'` item in the response gains `computed_monthly_amount: (item.percentage_value / 100) * salesTotals.net`. Wire the break_even_analysis fields from the returned totals.
+- [ ] **Step 5: Rewire `executeGetOperatingCosts`.** Delete the sums at 2605-2607 and the formulas at 2623-2631. Call `computeOperatingCostTotals(costs, salesTotals.net)` (with `salesTotals` from Task 10 Step 2). Each `entry_type === 'percentage'` item in the response gains `computed_monthly_amount: item.percentage_value * salesTotals.net`. Wire the break_even_analysis fields from the returned totals.
 
 - [ ] **Step 6: Typecheck + full unit suite; commit** (`fix(ai-tools): include percentage items in the variable-cost and break-even math`).
 

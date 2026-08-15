@@ -666,22 +666,24 @@ items (COGS 27%, marketing 3%, processing 2.5%) contribute nothing. July output:
 `Variable Costs: $82.00` against an itemized list of `$1,199.52`, and a
 break-even of `$40,964.12` from a 1.44% variable ratio.
 
-New math, over the net sales the cluster-1 RPC returns (`netSales`):
+New math, over the net sales the cluster-1 RPC returns (`netSales`). Note:
+`percentage_value` is a fraction of net sales (0.27 = 27%); the earlier text
+in this section assumed a whole-number percent.
 
 - `variableFlatTotal` = Σ `monthly_value / 100` over `cost_type = 'variable'`
   AND `entry_type = 'value'`.
-- `variablePercentTotal` = Σ `(percentage_value / 100) * netSales` over
+- `variablePercentTotal` = Σ `percentage_value * netSales` over
   `cost_type = 'variable'` AND `entry_type = 'percentage'`.
 - `variableTotal = variableFlatTotal + variablePercentTotal`. This is the
   displayed "Variable Costs" dollar figure.
-- `variableCostPercentage` = Σ `percentage_value` + (`netSales > 0` ?
+- `variableCostPercentage` = Σ `percentage_value * 100` + (`netSales > 0` ?
   `variableFlatTotal / netSales * 100` : 0). Keep the existing fallback: when
   the restaurant has no variable rows at all, use the hardcoded 25.
 - `contributionMargin = 100 - variableCostPercentage` and
   `breakEvenRevenue = totalFixedCosts / (contributionMargin / 100)` stay as
   today ([`index.ts:2628-2631`](supabase/functions/ai-execute-tool/index.ts:2628)).
 - Each `entry_type = 'percentage'` item in the response gains
-  `computed_monthly_amount = (percentage_value / 100) * netSales`, so the model
+  `computed_monthly_amount = percentage_value * netSales`, so the model
   does not do its own arithmetic on a stale revenue figure.
 - `total_monthly_costs` becomes `fixedTotal + semiVariableTotal +
   variableTotal` with the corrected `variableTotal`.

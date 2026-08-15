@@ -2654,7 +2654,7 @@ async function executeGetOperatingCosts(
         entry_type: cost.entry_type,
       };
       if (cost.entry_type === 'percentage') {
-        item.computed_monthly_amount = (cost.percentage_value / 100) * totalRevenue;
+        item.computed_monthly_amount = cost.percentage_value * totalRevenue;
       }
       byCostType[cost.cost_type].push(item);
     }

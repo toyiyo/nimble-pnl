@@ -1,10 +1,9 @@
 import { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Clock } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { WeekScheduleState } from '@/hooks/useSchedulePublish';
 import { SchedulePublication } from '@/types/scheduling';
-import { pluralize } from '@/lib/scheduling/deletionCopy';
 import { formatDayLabel, formatLocalDateInTz, formatLocalHHMMInTz } from '@/lib/shiftInterval';
 
 /** The fixed-height slot every state renders into; see the banner's own doc comment. */
@@ -15,8 +14,6 @@ function slot(children: ReactNode): JSX.Element {
 interface ScheduleStatusBannerProps {
   state: WeekScheduleState | null;
   publication: SchedulePublication | null;
-  publishedCount: number;
-  draftCount: number;
   weekRange: string;
   timezone: string;
   /** `schedule_retractions.reason`, set only when a manager wrote one. */
@@ -26,25 +23,27 @@ interface ScheduleStatusBannerProps {
 /**
  * Owns a fixed-height slot at the top of the page.
  *
- * The height is constant across all four states on purpose. If the slot
- * collapsed while the publication lookup was in flight, the banner's arrival
- * would push `MyShiftTradesCard` and everything under it down on an
- * already-painted page — a layout shift, and on mobile a live mis-tap hazard
- * for anyone who started tapping during that beat. State B, which has no
- * banner, fills the slot with the same information in one quiet line.
+ * The height is constant across all states on purpose. If the slot collapsed
+ * while the publication lookup was in flight, the banner's arrival would push
+ * `MyShiftTradesCard` and everything under it down on an already-painted page —
+ * a layout shift, and on mobile a live mis-tap hazard for anyone who started
+ * tapping during that beat.
+ *
+ * Draft states say nothing here. Many restaurants never publish a schedule, so
+ * a "not published yet" alert told their employees every week that their real
+ * shifts were tentative — and caused a no-show. The muted row treatment in
+ * `ShiftRow` is now the only draft signal. Only a retraction gets an alert:
+ * that state exists only after a real publish, and it corrects a belief the
+ * employee may already hold.
  */
 export function ScheduleStatusBanner({
   state,
   publication,
-  publishedCount,
-  draftCount,
   weekRange,
   timezone,
   retractionReason,
 }: ScheduleStatusBannerProps): JSX.Element {
-  // Loading, or the lookup failed. A wrong banner is worse than no banner:
-  // telling someone their week is "not published yet" when it is would have
-  // them ignore real shifts.
+  // Loading, or the lookup failed. A wrong banner is worse than no banner.
   if (!state) return slot(null);
 
   // Restaurant timezone, not the browser's. An employee travelling, or a
@@ -54,52 +53,17 @@ export function ScheduleStatusBanner({
     ? `${formatDayLabel(formatLocalDateInTz(new Date(publication.published_at), timezone))} at ${formatLocalHHMMInTz(publication.published_at, timezone)}`
     : null;
 
-  if (state === 'published') {
+  if (state === 'not_published') {
+    return slot(null);
+  }
+
+  // 'published' and 'published_revising' both reduce to the same quiet line.
+  // A revised week still was published; the draft rows carry their own hue.
+  if (state === 'published' || state === 'published_revising') {
     return slot(
       publishedOn ? (
         <p className="text-[13px] text-muted-foreground">Published {publishedOn}</p>
       ) : null
-    );
-  }
-
-  if (state === 'not_published') {
-    return slot(
-      <Alert role="status" className="bg-muted/30 border-border/40">
-        <Clock className="h-4 w-4" />
-        <AlertTitle className="text-[14px] font-semibold text-foreground">
-          Schedule not published yet
-        </AlertTitle>
-        <AlertDescription className="text-[13px] text-muted-foreground">
-          Your manager hasn't finalized the week of {weekRange}.{' '}
-          {draftCount > 0 && (
-            <>
-              The {draftCount} {pluralize(draftCount, 'shift', 'shifts')} below{' '}
-              {pluralize(draftCount, 'is', 'are')} still {pluralize(draftCount, 'a draft', 'drafts')} —
-              nothing is confirmed yet.{' '}
-            </>
-          )}
-          Check back soon.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
-  if (state === 'published_revising') {
-    return slot(
-      <Alert role="status" className="bg-warning/10 border-warning/20 text-foreground">
-        <AlertTriangle className="h-4 w-4 text-warning" />
-        <AlertTitle className="text-[14px] font-semibold text-foreground">
-          Some shifts are still being finalized
-        </AlertTitle>
-        <AlertDescription className="text-[13px] text-muted-foreground">
-          {publishedCount} of your {publishedCount + draftCount}{' '}
-          {pluralize(publishedCount + draftCount, 'shift', 'shifts')} this week{' '}
-          {pluralize(publishedCount, 'is', 'are')} confirmed. {draftCount} more{' '}
-          {pluralize(draftCount, 'is a draft', 'are drafts')} your manager hasn't published yet —
-          treat {pluralize(draftCount, 'it', 'them')} as tentative until{' '}
-          {pluralize(draftCount, 'it shows', 'they show')} a "Confirmed" badge.
-        </AlertDescription>
-      </Alert>
     );
   }
 

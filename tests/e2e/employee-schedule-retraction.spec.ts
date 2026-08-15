@@ -113,12 +113,15 @@ test.describe('Employee schedule publish states', () => {
 
     await seedSelfAsEmployeeWithShift(page, restaurantId);
 
-    // --- State A: nothing published yet. The shift is visible but tentative.
+    // --- State A: nothing published yet. The shift is visible, with a quiet
+    // draft hue and no warning copy — many restaurants never publish, and the
+    // old "not published yet" alert caused a real no-show.
     await page.goto('/employee/schedule');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText(/schedule not published yet/i)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/draft — not confirmed/i).first()).toBeVisible();
+    await expect(page.getByText(/upcoming/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/schedule not published yet/i)).not.toBeVisible();
+    await expect(page.getByText(/draft — not confirmed/i)).not.toBeVisible();
 
     // --- State B: published. The draft badge is gone and the banner steps aside.
     await publishCurrentWeek(page);
@@ -127,8 +130,6 @@ test.describe('Employee schedule publish states', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByText(/^Published /)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/schedule not published yet/i)).not.toBeVisible();
-    await expect(page.getByText(/draft — not confirmed/i)).not.toBeVisible();
 
     // --- State D: pulled back. This is the state the old UI could not express
     // at all — the employee was left reading a week nobody had told them was
@@ -141,8 +142,5 @@ test.describe('Employee schedule publish states', () => {
     const retractedAlert = page.getByRole('alert').filter({ hasText: /pulled back for changes/i });
     await expect(retractedAlert).toBeVisible({ timeout: 15000 });
     await expect(retractedAlert).toContainText(/nothing below is final/i);
-
-    // The shifts themselves are drafts again, so they read as tentative too.
-    await expect(page.getByText(/draft — not confirmed/i).first()).toBeVisible();
   });
 });

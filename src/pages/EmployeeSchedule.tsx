@@ -80,8 +80,6 @@ const EmployeeSchedule = () => {
   const {
     state,
     publication,
-    publishedCount,
-    draftCount,
     loading: statusLoading,
     // `employeeLoading` too, not just `shiftsLoading`: `useMyShifts` stays
     // disabled until `employeeId` resolves, and a disabled query reports
@@ -241,8 +239,6 @@ const EmployeeSchedule = () => {
       <ScheduleStatusBanner
         state={state}
         publication={publication}
-        publishedCount={publishedCount}
-        draftCount={draftCount}
         weekRange={`${format(currentWeekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`}
         timezone={restaurantTimezone}
         retractionReason={retractionReason}

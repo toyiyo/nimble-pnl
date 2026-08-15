@@ -32,8 +32,6 @@ function renderBanner(props: Partial<React.ComponentProps<typeof ScheduleStatusB
     <ScheduleStatusBanner
       state="published"
       publication={publication()}
-      publishedCount={4}
-      draftCount={0}
       weekRange={WEEK_RANGE}
       timezone={TZ}
       {...props}
@@ -60,42 +58,29 @@ describe('ScheduleStatusBanner', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('tells an employee a draft-only week is not theirs yet', () => {
-    renderBanner({ state: 'not_published', publication: null, publishedCount: 0, draftCount: 3 });
+  it('says nothing about an unpublished week', () => {
+    const { container } = renderBanner({ state: 'not_published', publication: null });
 
-    const banner = screen.getByRole('status');
-    expect(banner).toHaveTextContent('Schedule not published yet');
-    expect(banner).toHaveTextContent(`Your manager hasn't finalized the week of ${WEEK_RANGE}`);
-    // The count is the part that connects the banner to the rows below it.
-    expect(banner).toHaveTextContent('The 3 shifts below are still drafts');
+    // Many restaurants never publish a schedule. A weekly "not published yet"
+    // alert told their employees that real shifts were tentative — and caused
+    // a no-show. The draft hue on each row is now the only draft signal.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(container.querySelector('.min-h-\\[76px\\]')).toBeInTheDocument();
   });
 
-  it('omits the shift-count sentence when there is nothing on the grid to explain', () => {
-    renderBanner({ state: 'not_published', publication: null, publishedCount: 0, draftCount: 0 });
+  it('shows only the quiet published line while a week is being revised', () => {
+    renderBanner({ state: 'published_revising' });
 
-    expect(screen.getByRole('status')).not.toHaveTextContent('shifts below');
-  });
-
-  it('singularizes the draft sentence for a lone shift', () => {
-    renderBanner({ state: 'not_published', publication: null, publishedCount: 0, draftCount: 1 });
-
-    expect(screen.getByRole('status')).toHaveTextContent('The 1 shift below is still a draft');
-  });
-
-  it('splits confirmed from unconfirmed while a week is being revised', () => {
-    renderBanner({ state: 'published_revising', publishedCount: 3, draftCount: 2 });
-
-    const banner = screen.getByRole('status');
-    expect(banner).toHaveTextContent('Some shifts are still being finalized');
-    // "3 of your shifts" leaves the denominator to the reader, and the number
-    // they reach for is the one they can see -- five rows on the page. Naming
-    // the total is what makes the sentence answer "how many are left?".
-    expect(banner).toHaveTextContent('3 of your 5 shifts this week are confirmed');
-    expect(banner).toHaveTextContent('2 more are drafts');
+    // A revised week still was published. The draft rows carry their own hue;
+    // the banner does not lecture about them.
+    expect(screen.getByText(/Published Sat, Aug 1 at 10:00/)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('announces a retraction assertively, naming when the week had been published', () => {
-    renderBanner({ state: 'retracted', publishedCount: 0, draftCount: 5 });
+    renderBanner({ state: 'retracted' });
 
     // role="alert", not "status": this is correcting a belief the employee may
     // already hold from a "New Schedule Published" email in their inbox.
@@ -108,8 +93,6 @@ describe('ScheduleStatusBanner', () => {
   it('passes along a reason a manager actually wrote', () => {
     renderBanner({
       state: 'retracted',
-      publishedCount: 0,
-      draftCount: 5,
       retractionReason: 'Two callouts, rebuilding the weekend',
     });
 
@@ -125,8 +108,6 @@ describe('ScheduleStatusBanner', () => {
     // for a manager who opened the box and typed nothing.
     renderBanner({
       state: 'retracted',
-      publishedCount: 0,
-      draftCount: 5,
       retractionReason: '   ',
     });
 
@@ -134,7 +115,7 @@ describe('ScheduleStatusBanner', () => {
   });
 
   it('still renders the retraction when the publication row is missing', () => {
-    renderBanner({ state: 'retracted', publication: null, publishedCount: 0, draftCount: 5 });
+    renderBanner({ state: 'retracted', publication: null });
 
     const banner = screen.getByRole('alert');
     expect(banner).toHaveTextContent('This schedule was pulled back for changes');

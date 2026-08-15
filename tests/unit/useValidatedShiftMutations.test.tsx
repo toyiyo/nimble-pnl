@@ -385,6 +385,24 @@ describe('useValidatedShiftMutations — validateAndUpdateTime', () => {
     );
   });
 
+  it('updates a locked shift when allowPublished is true', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const outcome = await result.current.validateAndUpdateTime({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      allowPublished: true,
+    });
+
+    expect(outcome.updated).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'shift-locked' }),
+    );
+  });
+
   it('TZ regression: builds the interval via ShiftInterval.fromTimestamps (restaurant-local wall clock preserved), not host-TZ split+create', async () => {
     // Restaurant TZ is America/Los_Angeles; host test-runner TZ is whatever CI uses (unpinned) —
     // fromTimestamps operates purely on the ISO instant, so the wall-clock components of the
@@ -523,6 +541,27 @@ describe('useValidatedShiftMutations — validateAndUpdateShift (persists employ
     expect(outcome).toEqual({ updated: false });
     expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
   });
+
+  it('updates a locked shift when allowPublished is true', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const outcome = await result.current.validateAndUpdateShift({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: lockedShift.employee_id,
+      breakDuration: 0,
+      notes: '',
+      allowPublished: true,
+    });
+
+    expect(outcome.updated).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'shift-locked' }),
+    );
+  });
 });
 
 describe('useValidatedShiftMutations — forceUpdateShift', () => {
@@ -573,6 +612,27 @@ describe('useValidatedShiftMutations — forceUpdateShift', () => {
     expect(outcome.updated).toBe(false);
     expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
   });
+
+  it('updates a locked shift when allowPublished is true', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const outcome = await result.current.forceUpdateShift({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: lockedShift.employee_id,
+      breakDuration: 0,
+      notes: '',
+      allowPublished: true,
+    });
+
+    expect(outcome.updated).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'shift-locked' }),
+    );
+  });
 });
 
 describe('useValidatedShiftMutations — forceUpdateTime', () => {
@@ -617,6 +677,24 @@ describe('useValidatedShiftMutations — forceUpdateTime', () => {
       ),
     );
   });
+
+  it('updates a locked shift when allowPublished is true', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const updated = await result.current.forceUpdateTime({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      allowPublished: true,
+    });
+
+    expect(updated).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'shift-locked' }),
+    );
+  });
 });
 
 describe('useValidatedShiftMutations — validateAndReassign', () => {
@@ -659,6 +737,22 @@ describe('useValidatedShiftMutations — validateAndReassign', () => {
     ).rejects.toBeInstanceOf(LockedShiftError);
     expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
   });
+
+  it('reassigns a locked shift when allowPublished is true', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const outcome = await result.current.validateAndReassign({
+      shift: lockedShift,
+      newEmployeeId: 'emp-2',
+      allowPublished: true,
+    });
+
+    expect(outcome.reassigned).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'shift-locked', employee_id: 'emp-2' }),
+    );
+  });
 });
 
 describe('useValidatedShiftMutations — forceReassign', () => {
@@ -685,6 +779,22 @@ describe('useValidatedShiftMutations — forceReassign', () => {
     ).rejects.toBeInstanceOf(LockedShiftError);
     expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
   });
+
+  it('reassigns a locked shift when allowPublished is true', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const reassigned = await result.current.forceReassign({
+      shift: lockedShift,
+      newEmployeeId: 'emp-2',
+      allowPublished: true,
+    });
+
+    expect(reassigned).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'shift-locked', employee_id: 'emp-2' }),
+    );
+  });
 });
 
 describe('useValidatedShiftMutations — deleteShift', () => {
@@ -704,6 +814,15 @@ describe('useValidatedShiftMutations — deleteShift', () => {
     expect(() => result.current.deleteShift('shift-locked')).toThrow(LockedShiftError);
     expect(mockDeleteMutate).not.toHaveBeenCalled();
   });
+
+  it('deletes a locked shift when allowPublished is true', () => {
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+    const { result } = renderPipeline([lockedShift]);
+
+    result.current.deleteShift('shift-locked', true);
+
+    expect(mockDeleteMutate).toHaveBeenCalledWith({ id: 'shift-locked', restaurantId: 'rest-1' });
+  });
 });
 
 describe('useValidatedShiftMutations — deleteShiftAsync (awaitable, lock-guarded)', () => {
@@ -722,6 +841,15 @@ describe('useValidatedShiftMutations — deleteShiftAsync (awaitable, lock-guard
 
     await expect(result.current.deleteShiftAsync('shift-locked')).rejects.toBeInstanceOf(LockedShiftError);
     expect(mockDeleteMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('deletes a locked shift when allowPublished is true', async () => {
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+    const { result } = renderPipeline([lockedShift]);
+
+    await expect(result.current.deleteShiftAsync('shift-locked', true)).resolves.toBeUndefined();
+
+    expect(mockDeleteMutateAsync).toHaveBeenCalledWith({ id: 'shift-locked', restaurantId: 'rest-1' });
   });
 
   it('rejects when the underlying mutateAsync rejects', async () => {

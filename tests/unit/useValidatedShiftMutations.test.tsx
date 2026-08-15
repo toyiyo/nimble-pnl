@@ -399,7 +399,7 @@ describe('useValidatedShiftMutations — validateAndUpdateTime', () => {
 
     expect(outcome.updated).toBe(true);
     expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'shift-locked' }),
+      expect.objectContaining({ id: 'shift-locked', allowPublished: true }),
     );
   });
 
@@ -559,7 +559,7 @@ describe('useValidatedShiftMutations — validateAndUpdateShift (persists employ
 
     expect(outcome.updated).toBe(true);
     expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'shift-locked' }),
+      expect.objectContaining({ id: 'shift-locked', allowPublished: true }),
     );
   });
 });
@@ -630,7 +630,7 @@ describe('useValidatedShiftMutations — forceUpdateShift', () => {
 
     expect(outcome.updated).toBe(true);
     expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'shift-locked' }),
+      expect.objectContaining({ id: 'shift-locked', allowPublished: true }),
     );
   });
 });
@@ -692,7 +692,7 @@ describe('useValidatedShiftMutations — forceUpdateTime', () => {
 
     expect(updated).toBe(true);
     expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'shift-locked' }),
+      expect.objectContaining({ id: 'shift-locked', allowPublished: true }),
     );
   });
 });
@@ -750,7 +750,7 @@ describe('useValidatedShiftMutations — validateAndReassign', () => {
 
     expect(outcome.reassigned).toBe(true);
     expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'shift-locked', employee_id: 'emp-2' }),
+      expect.objectContaining({ id: 'shift-locked', employee_id: 'emp-2', allowPublished: true }),
     );
   });
 });
@@ -792,7 +792,7 @@ describe('useValidatedShiftMutations — forceReassign', () => {
 
     expect(reassigned).toBe(true);
     expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'shift-locked', employee_id: 'emp-2' }),
+      expect.objectContaining({ id: 'shift-locked', employee_id: 'emp-2', allowPublished: true }),
     );
   });
 });

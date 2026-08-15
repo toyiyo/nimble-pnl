@@ -394,6 +394,7 @@ export function useValidatedShiftMutations(
           restaurant_id: restaurantId,
           start_time: interval.startAt.toISOString(),
           end_time: interval.endAt.toISOString(),
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -424,6 +425,7 @@ export function useValidatedShiftMutations(
           restaurant_id: restaurantId,
           start_time: interval.startAt.toISOString(),
           end_time: interval.endAt.toISOString(),
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -480,6 +482,7 @@ export function useValidatedShiftMutations(
           employee_id: input.employeeId,
           break_duration: input.breakDuration,
           notes: input.notes,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -513,6 +516,7 @@ export function useValidatedShiftMutations(
           employee_id: input.employeeId,
           break_duration: input.breakDuration,
           notes: input.notes,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -561,6 +565,7 @@ export function useValidatedShiftMutations(
           id: input.shift.id,
           restaurant_id: restaurantId,
           employee_id: input.newEmployeeId,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -584,6 +589,7 @@ export function useValidatedShiftMutations(
           id: input.shift.id,
           restaurant_id: restaurantId,
           employee_id: input.newEmployeeId,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);

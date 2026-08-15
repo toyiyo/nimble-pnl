@@ -71,10 +71,11 @@ interface TimelineBarProps {
  * A locked (published) shift drags the same as any other — the guard at the
  * commit call site asks for confirmation before the change lands. Touch
  * pointers never drag — `touch-action: none` is scoped to the body + handles
- * only so the lane's own pan-to-scroll behavior is unaffected. After a real drag, the browser still dispatches a trailing
- * `click` on the bar; `handleTap` consults `consumeJustDragged()` and skips
- * `onSelect` for exactly that one click (Codex P2 fix) so a drag never also
- * reopens the edit popover.
+ * only so the lane's own pan-to-scroll behavior is unaffected. After a real
+ * drag, the browser still dispatches a trailing `click` on the bar;
+ * `handleTap` consults `consumeJustDragged()` and skips `onSelect` for
+ * exactly that one click (Codex P2 fix) so a drag never also reopens the
+ * edit popover.
  *
  * Memoized (Stage D1b): re-renders only when this bar's identity/geometry/
  * label/color actually changes, so a drag frame only re-renders the dragged

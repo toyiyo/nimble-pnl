@@ -423,6 +423,17 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
        * so this option is a no-op here.
        */
       allowPublished?: boolean;
+      /**
+       * True when the caller already owns the employee notification via
+       * `usePublishedShiftGuard` (the manager's "Notify" checkbox and
+       * `notify-shift-changed`, which also handles `change_type: 'deleted'`).
+       * Skips the legacy `send-shift-notification` invoke below so a
+       * published delete is never notified twice, and so an unchecked
+       * "Notify" box is honored instead of ignored. Defaults to false —
+       * every caller outside the guarded flow keeps today's unconditional
+       * send.
+       */
+      skipLegacyNotify?: boolean;
     }) => {
       const { data: deletedRows, error } = await supabase
         .from('shifts')
@@ -440,13 +451,17 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
       const deletedCount = deletedRows?.length ?? 0;
       return { id, restaurantId, shift: deletedCount > 0 ? shift : undefined };
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
 
       // Notify FIRST, unconditionally on snapshot presence — fire-and-forget,
       // must sit above the `if (silent) return` below. `silent` (suppress
       // toast) and "should notify" are orthogonal concerns.
-      const notifyBody = data.shift ? buildShiftDeletedInvoke(data.shift) : null;
+      const notifyBody = variables.skipLegacyNotify
+        ? null
+        : data.shift
+          ? buildShiftDeletedInvoke(data.shift)
+          : null;
       if (notifyBody) {
         // supabase.functions.invoke resolves with { data, error } on HTTP
         // failures (it does NOT reject), so both branches must be handled —
@@ -677,7 +692,7 @@ export function useUpdateShiftSeries() {
         restaurantId,
       };
     },
-    onMutate: async ({ shift, scope, updates, restaurantId }) => {
+    onMutate: async ({ shift, scope, updates, restaurantId, allowPublished }) => {
       await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
       const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
@@ -702,7 +717,9 @@ export function useUpdateShiftSeries() {
         if (!old) return old;
 
         return old.map((s) => {
-          if (s.locked) return s;
+          // Matches useDeleteShiftSeries.onMutate: a locked shift is only
+          // skipped when the guard did not confirm `allowPublished`.
+          if (s.locked && !allowPublished) return s;
 
           const isInSeries = s.id === parentId || s.recurrence_parent_id === parentId;
           if (!isInSeries) return s;

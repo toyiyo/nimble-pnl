@@ -716,15 +716,12 @@ const Scheduling = () => {
       guardShiftChange({
         shiftId: shift.id,
         employeeName,
-        run: ({ allowPublished }) => {
-          deleteShiftSeries.mutate(
-            { shift, scope, restaurantId, allowPublished },
-            {
-              onSuccess: () => {
-                setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
-              },
-            }
-          );
+        // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`
+        // looks up the change-log row right after `run` resolves, and that
+        // row only exists once this DELETE (and its trigger) have committed.
+        run: async ({ allowPublished }) => {
+          await deleteShiftSeries.mutateAsync({ shift, scope, restaurantId, allowPublished });
+          setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
         },
       });
     } else {
@@ -749,15 +746,22 @@ const Scheduling = () => {
       guardShiftChange({
         shiftId: shiftToDelete.id,
         employeeName,
-        run: ({ allowPublished }) => {
-          deleteShift.mutate(
-            { id: shiftToDelete.id, restaurantId, shift: shiftToDelete, allowPublished },
-            {
-              onSuccess: () => {
-                setShiftToDelete(null);
-              },
-            }
-          );
+        // Awaited, not fire-and-forget `.mutate()` — see the series-delete
+        // branch above for why. `skipLegacyNotify: true`: the guard's own
+        // notify step (the "Notify" checkbox, `notify-shift-changed`) now
+        // owns the employee notification for this guarded delete, so the
+        // unconditional legacy `send-shift-notification` invoke in
+        // `useDeleteShift` must not also fire — that would ignore an
+        // unchecked box and could double-notify when checked.
+        run: async ({ allowPublished }) => {
+          await deleteShift.mutateAsync({
+            id: shiftToDelete.id,
+            restaurantId,
+            shift: shiftToDelete,
+            allowPublished,
+            skipLegacyNotify: true,
+          });
+          setShiftToDelete(null);
         },
       });
     }

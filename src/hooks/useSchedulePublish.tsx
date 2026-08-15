@@ -38,7 +38,8 @@ export type NotificationOutcome =
   | { status: 'partial'; sent: number; failed: number }
   | { status: 'failed'; failed: number }
   | { status: 'error' }
-  | { status: 'unknown'; message: string };
+  | { status: 'unknown'; message: string }
+  | { status: 'skipped' };
 
 interface InvokeError {
   context?: { json?: () => Promise<unknown> };
@@ -163,13 +164,19 @@ interface ToastPayload {
  * varies — and a manager who knows three people weren't emailed can go tell
  * them, which is the entire point.
  */
-function notificationToast(
+export function notificationToast(
   outcome: NotificationOutcome,
   { title, successDescription }: NotificationToastCopy,
 ): ToastPayload {
   switch (outcome.status) {
     case 'sent':
       return { title, description: successDescription };
+    // The caller chose not to notify (a quiet publish). This is not a
+    // failure -- the title stays the plain success title, not the
+    // '-- some/nobody notified' destructive copy used for a fan-out that
+    // tried and fell short.
+    case 'skipped':
+      return { title, description: 'No notifications were sent.' };
     case 'partial':
       return {
         title: `${title} — some employees not notified`,

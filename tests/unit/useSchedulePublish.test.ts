@@ -17,6 +17,7 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }))
 
 import {
   invokeScheduleNotification,
+  notificationToast,
   usePublishSchedule,
   useUnpublishSchedule,
 } from '@/hooks/useSchedulePublish';
@@ -171,6 +172,21 @@ describe('publish notification outcomes', () => {
     // get through.
     expect(result.current.isError).toBe(false);
     expect(lastToast().title).toMatch(/^Schedule Published/);
+  });
+});
+
+describe('notificationToast copy per outcome', () => {
+  it('reports no notifications were sent for a skipped outcome', () => {
+    const toasted = notificationToast(
+      { status: 'skipped' },
+      { title: 'Schedule Published', successDescription: 'The schedule has been published.' },
+    );
+
+    // Title stays the plain success title -- 'skipped' is not a failure, so it
+    // must not read like the '-- some/nobody notified' destructive branches.
+    expect(toasted.title).toBe('Schedule Published');
+    expect(toasted.description).toBe('No notifications were sent.');
+    expect(toasted.variant).toBeUndefined();
   });
 });
 

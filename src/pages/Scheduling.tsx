@@ -711,15 +711,22 @@ const Scheduling = () => {
     if (!shift || !restaurantId) return;
 
     if (actionType === 'delete') {
-      // Delete with scope
-      deleteShiftSeries.mutate(
-        { shift, scope, restaurantId, allowPublished: true },
-        {
-          onSuccess: () => {
-            setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
-          },
-        }
-      );
+      // Delete with scope, guarded when the series holds a published shift
+      const employeeName = allEmployees.find((e) => e.id === shift.employee_id)?.name ?? '';
+      guardShiftChange({
+        shiftId: shift.id,
+        employeeName,
+        run: ({ allowPublished }) => {
+          deleteShiftSeries.mutate(
+            { shift, scope, restaurantId, allowPublished },
+            {
+              onSuccess: () => {
+                setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
+              },
+            }
+          );
+        },
+      });
     } else {
       // For edit, close the dialog and open the shift editor
       // The scope will be handled by the ShiftDialog
@@ -738,14 +745,21 @@ const Scheduling = () => {
 
   const confirmDeleteShift = () => {
     if (shiftToDelete && restaurantId) {
-      deleteShift.mutate(
-        { id: shiftToDelete.id, restaurantId, shift: shiftToDelete },
-        {
-          onSuccess: () => {
-            setShiftToDelete(null);
-          },
-        }
-      );
+      const employeeName = allEmployees.find((e) => e.id === shiftToDelete.employee_id)?.name ?? '';
+      guardShiftChange({
+        shiftId: shiftToDelete.id,
+        employeeName,
+        run: ({ allowPublished }) => {
+          deleteShift.mutate(
+            { id: shiftToDelete.id, restaurantId, shift: shiftToDelete, allowPublished },
+            {
+              onSuccess: () => {
+                setShiftToDelete(null);
+              },
+            }
+          );
+        },
+      });
     }
   };
 

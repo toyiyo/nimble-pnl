@@ -18,6 +18,7 @@ import {
   sendEmailResult,
 } from "../_shared/notificationHelpers.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
+import { escapeHtml } from "../_shared/emailTemplates.ts";
 import {
   checkShiftChangeValidity,
   deriveShiftChangeRecipients,
@@ -176,7 +177,7 @@ serve(async (req) => {
           NOTIFICATION_FROM,
           employee.email,
           `${message.title} - ${restaurantName}`,
-          `<p>Hi ${employee.name ?? "there"},</p><p>${message.body}</p>`,
+          `<p>Hi ${escapeHtml(employee.name ?? "there")},</p><p>${escapeHtml(message.body)}</p>`,
         );
         if (emailResult.ok) {
           recipientReached = true;

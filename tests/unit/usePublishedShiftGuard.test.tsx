@@ -13,10 +13,12 @@ import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 const mockSingle = vi.fn();
 const mockEq = vi.fn();
 const mockSelect = vi.fn();
-const mockGetUser = vi.fn();
-const mockSupabase = vi.hoisted(() => ({ from: vi.fn(), auth: { getUser: vi.fn() } }));
+const mockSupabase = vi.hoisted(() => ({
+  from: vi.fn(),
+  auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) },
+}));
 const mockToast = vi.fn();
-const mockInvokeScheduleNotification = vi.fn();
+const mockInvokeScheduleNotification = vi.hoisted(() => vi.fn());
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
@@ -71,8 +73,10 @@ function setupChainWithChangeLog(
     return { select: mockSelect };
   });
 
-  mockGetUser.mockResolvedValue({ data: { user: { id: 'manager-1' } }, error: null });
-  mockSupabase.auth.getUser = mockGetUser;
+  mockSupabase.auth.getUser.mockResolvedValue({
+    data: { user: { id: 'manager-1' } },
+    error: null,
+  });
 
   return { logEq, logGte, logOrder, logLimit, logSelect };
 }

@@ -138,10 +138,12 @@ test.describe('Quiet publish and live edit of a published shift', () => {
     // the editor is never blocked — only saving a change is guarded. The
     // dialog no longer shows a "Shift is Locked" banner (fd7d765b): a
     // published shift is now editable, so that copy would be false.
-    // TimelineBar renders each shift as a `<button>` with an accessible name
-    // built from the employee, position, and time (src/lib/timelineModel.ts) —
-    // no `data-testid` exists on it, so match by that name instead.
-    const shiftCard = page.getByRole('button', { name: new RegExp(employeeName) }).first();
+    // The week grid (src/pages/SchedulingShiftCard.tsx) marks the shift
+    // surface with data-testid="shift-card". Its accessible name carries
+    // only the time and position, not the employee name — a name-based
+    // query instead matches the row's "Edit {employee}" button and opens
+    // the wrong dialog.
+    const shiftCard = page.getByTestId('shift-card').first();
     await expect(shiftCard).toBeVisible({ timeout: 15000 });
     await shiftCard.click();
 

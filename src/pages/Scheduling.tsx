@@ -747,7 +747,7 @@ const Scheduling = () => {
     }
   };
 
-  const handlePublishSchedule = (notes?: string) => {
+  const handlePublishSchedule = (notes: string | undefined, notify: boolean) => {
     if (restaurantId) {
       publishSchedule.mutate(
         {
@@ -755,6 +755,7 @@ const Scheduling = () => {
           weekStart: currentWeekStart,
           weekEnd,
           notes,
+          notify,
         },
         {
           onSuccess: () => {

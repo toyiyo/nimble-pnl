@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -31,7 +32,7 @@ interface PublishScheduleDialogProps {
   openShiftCount: number;
   openShiftsEnabled: boolean;
   broadcastDate?: string | null;
-  onConfirm: (notes?: string) => void;
+  onConfirm: (notes: string | undefined, notify: boolean) => void;
   onNavigateToSettings?: () => void;
   isPublishing: boolean;
 }
@@ -52,9 +53,18 @@ export const PublishScheduleDialog = ({
   isPublishing,
 }: PublishScheduleDialogProps) => {
   const [notes, setNotes] = useState('');
+  const [notify, setNotify] = useState(true);
+
+  // Every time the dialog opens, it starts clean: notify checked, notes empty.
+  useEffect(() => {
+    if (open) {
+      setNotify(true);
+      setNotes('');
+    }
+  }, [open]);
 
   const handleConfirm = () => {
-    onConfirm(notes.trim() || undefined);
+    onConfirm(notes.trim() || undefined, notify);
     setNotes('');
   };
 
@@ -160,6 +170,22 @@ export const PublishScheduleDialog = ({
               className="min-h-[80px]"
               disabled={isPublishing}
             />
+          </div>
+
+          {/* Notify Employees Checkbox */}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="publish-notify-employees"
+              checked={notify}
+              onCheckedChange={(checked) => setNotify(checked === true)}
+              disabled={isPublishing}
+            />
+            <Label
+              htmlFor="publish-notify-employees"
+              className="text-[13px] font-normal text-foreground"
+            >
+              Notify employees about this schedule
+            </Label>
           </div>
         </div>
 

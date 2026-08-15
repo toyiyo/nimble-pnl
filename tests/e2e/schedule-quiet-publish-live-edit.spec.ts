@@ -180,7 +180,7 @@ test.describe('Quiet publish and live edit of a published shift', () => {
     await expect(page.getByRole('button', { name: /^unpublish$/i })).toBeVisible({ timeout: 10000 });
 
     // The shift actually changed: reopening the editor shows the new end time.
-    await shiftCard.click();
+    await editShiftButton.click();
     const reopenedDialog = page.getByRole('dialog', { name: /edit shift/i });
     await expect(reopenedDialog).toBeVisible({ timeout: 5000 });
     await expect(reopenedDialog.getByLabel('Shift end time')).toHaveValue(newEndTime);

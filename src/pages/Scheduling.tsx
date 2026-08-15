@@ -22,6 +22,7 @@ import { ShiftCard } from './SchedulingShiftCard';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
+import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
 import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
@@ -39,7 +40,6 @@ import {
 } from '@/lib/scheduleVisibility';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
-import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { TimeOffList } from '@/components/TimeOffList';
 import { AvailabilityDialog } from '@/components/AvailabilityDialog';

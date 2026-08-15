@@ -133,4 +133,42 @@ describe('buildShiftChangeMessage', () => {
     expect(msg.title).toBe('Shift Updated');
     expect(msg.body).toContain('changed to');
   });
+
+  it('names the new end time when only the end time changed', () => {
+    const msg = buildShiftChangeMessage(
+      { employeeId: 'emp-1', role: 'updated' },
+      {
+        ...baseRow,
+        before_data: {
+          employee_id: 'emp-1',
+          start_time: '2026-08-11T17:00:00.000Z',
+          end_time: '2026-08-11T21:00:00.000Z',
+        },
+        after_data: {
+          employee_id: 'emp-1',
+          start_time: '2026-08-11T17:00:00.000Z',
+          end_time: '2026-08-11T23:00:00.000Z',
+        },
+      },
+      'UTC',
+    );
+    // "changed to <same start time>" reads as no change at all.
+    expect(msg.body).not.toContain('changed to');
+    expect(msg.body).toContain('now ends at');
+    expect(msg.body).toContain('11:00 PM');
+  });
+
+  it('falls back to a generic update when the times are unchanged', () => {
+    const msg = buildShiftChangeMessage(
+      { employeeId: 'emp-1', role: 'updated' },
+      {
+        ...baseRow,
+        after_data: { employee_id: 'emp-1', start_time: '2026-08-11T17:00:00.000Z' },
+        before_data: { employee_id: 'emp-1', start_time: '2026-08-11T17:00:00.000Z' },
+      },
+      'UTC',
+    );
+    expect(msg.body).not.toContain('changed to');
+    expect(msg.body).toContain('was updated');
+  });
 });

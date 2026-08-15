@@ -84,12 +84,27 @@ function setupChainWithChangeLog(
   return { logEq, logGte, logOrder, logLimit, logSelect };
 }
 
+/** Mocks the series count query: `select(..., {head:true})` ending in an awaited chain. */
+function setupSeriesCountChain(count: number) {
+  const chain: Record<string, unknown> = {};
+  chain.eq = vi.fn().mockReturnValue(chain);
+  chain.or = vi.fn().mockReturnValue(chain);
+  chain.gte = vi.fn().mockReturnValue(chain);
+  chain.then = (resolve: (value: { count: number; error: null }) => void) =>
+    resolve({ count, error: null });
+  const seriesSelect = vi.fn().mockReturnValue(chain);
+  mockSupabase.from.mockReturnValue({ select: seriesSelect });
+  return { chain, seriesSelect };
+}
+
 function TestHarness({
   run,
   shiftId = 'shift-1',
+  series,
 }: {
   run: (options: { allowPublished: boolean }) => void;
   shiftId?: string;
+  series?: { parentId: string; scope: 'following' | 'all'; fromTime?: string };
 }) {
   const { guardShiftChange, dialog } = usePublishedShiftGuard();
   return (
@@ -101,6 +116,7 @@ function TestHarness({
             restaurantId: 'rest-1',
             employeeName: 'Alex Rivera',
             run,
+            series,
           })
         }
       >
@@ -129,6 +145,40 @@ describe('usePublishedShiftGuard', () => {
     expect(mockSupabase.from).toHaveBeenCalledWith('shifts');
     expect(mockEq).toHaveBeenCalledWith('id', 'shift-1');
     expect(mockEq).toHaveBeenCalledWith('restaurant_id', 'rest-1');
+    expect(screen.queryByText('This shift is published')).not.toBeInTheDocument();
+  });
+
+  it('opens the dialog when any shift in the series scope is locked', async () => {
+    // The anchor itself is not read: the series count query decides.
+    const { chain } = setupSeriesCountChain(2);
+    const run = vi.fn();
+    render(
+      <TestHarness
+        run={run}
+        series={{ parentId: 'parent-1', scope: 'following', fromTime: '2026-08-12T00:00:00Z' }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('This shift is published')).toBeInTheDocument()
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(chain.or).toHaveBeenCalledWith('id.eq.parent-1,recurrence_parent_id.eq.parent-1');
+    expect(chain.gte).toHaveBeenCalledWith('start_time', '2026-08-12T00:00:00Z');
+  });
+
+  it('runs directly when no shift in the series scope is locked', async () => {
+    setupSeriesCountChain(0);
+    const run = vi.fn();
+    render(<TestHarness run={run} series={{ parentId: 'parent-1', scope: 'all' }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger' }));
+
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ allowPublished: false, notify: false })
+    );
     expect(screen.queryByText('This shift is published')).not.toBeInTheDocument();
   });
 

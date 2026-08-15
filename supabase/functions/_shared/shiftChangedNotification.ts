@@ -130,10 +130,21 @@ export function buildShiftChangeMessage(
   // updated
   const oldStart = row.before_data?.start_time;
   const newStart = row.after_data?.start_time;
+  const oldEnd = row.before_data?.end_time;
+  const newEnd = row.after_data?.end_time;
   if (typeof oldStart === 'string' && typeof newStart === 'string') {
     const oldWhen = formatWeekdayTime(oldStart, timeZone);
-    const newWhen = formatTimeOnly(newStart, timeZone);
-    return { title: 'Shift Updated', body: `Your ${oldWhen} shift changed to ${newWhen}.` };
+    if (oldStart !== newStart) {
+      const newWhen = formatTimeOnly(newStart, timeZone);
+      return { title: 'Shift Updated', body: `Your ${oldWhen} shift changed to ${newWhen}.` };
+    }
+    // Start unchanged. "changed to <same time>" would read as no change,
+    // so name the part that moved.
+    if (typeof oldEnd === 'string' && typeof newEnd === 'string' && oldEnd !== newEnd) {
+      const newEndWhen = formatTimeOnly(newEnd, timeZone);
+      return { title: 'Shift Updated', body: `Your ${oldWhen} shift now ends at ${newEndWhen}.` };
+    }
+    return { title: 'Shift Updated', body: `Your ${oldWhen} shift was updated.` };
   }
   return { title: 'Shift Updated', body: 'Your shift changed.' };
 }

@@ -32,6 +32,18 @@ export interface GuardShiftChangeOptions {
    * `run` performed the write itself, and the guard notifies right after.
    */
   run: GuardedRun;
+  /**
+   * Set for a 'following'/'all' series edit. The lock check then covers
+   * every shift in scope, not only `shiftId` — an unlocked anchor with
+   * locked siblings must still warn, because the series RPC touches the
+   * locked rows when `allowPublished` is true.
+   */
+  series?: {
+    parentId: string;
+    scope: 'following' | 'all';
+    /** Required for the 'following' scope: only shifts at or after this instant. */
+    fromTime?: string;
+  };
 }
 
 interface PendingChange {
@@ -72,6 +84,7 @@ export function usePublishedShiftGuard() {
       employeeName,
       secondEmployeeName,
       run,
+      series,
     }: GuardShiftChangeOptions) => {
       // None of this function's callers await/catch it (the Save button's
       // onClick is synchronous), so a rejection here becomes an unhandled
@@ -79,18 +92,34 @@ export function usePublishedShiftGuard() {
       // instead of throwing.
       let locked: boolean;
       try {
-        // Scoped to restaurantId too, not just id — RLS already isolates
-        // tenants, but a stray cross-tenant id must read as "not found"
-        // here, not fall through to another restaurant's lock state.
-        const { data, error } = await supabase
-          .from('shifts')
-          .select('locked, employee_id')
-          .eq('id', shiftId)
-          .eq('restaurant_id', restaurantId)
-          .single();
+        if (series) {
+          // Any locked shift in scope means the warning must show.
+          let query = supabase
+            .from('shifts')
+            .select('id', { count: 'exact', head: true })
+            .eq('restaurant_id', restaurantId)
+            .eq('locked', true)
+            .or(`id.eq.${series.parentId},recurrence_parent_id.eq.${series.parentId}`);
+          if (series.scope === 'following' && series.fromTime) {
+            query = query.gte('start_time', series.fromTime);
+          }
+          const { count, error } = await query;
+          if (error) throw error;
+          locked = (count ?? 0) > 0;
+        } else {
+          // Scoped to restaurantId too, not just id — RLS already isolates
+          // tenants, but a stray cross-tenant id must read as "not found"
+          // here, not fall through to another restaurant's lock state.
+          const { data, error } = await supabase
+            .from('shifts')
+            .select('locked, employee_id')
+            .eq('id', shiftId)
+            .eq('restaurant_id', restaurantId)
+            .single();
 
-        if (error) throw error;
-        locked = data.locked;
+          if (error) throw error;
+          locked = data.locked;
+        }
       } catch (error) {
         toast({
           title: 'Could not check the shift',
@@ -149,7 +178,17 @@ export function usePublishedShiftGuard() {
           .order('changed_at', { ascending: false })
           .limit(1);
 
-        if (error || !rows || rows.length === 0) return;
+        if (error || !rows || rows.length === 0) {
+          // The shift write committed; only the notification cannot go out.
+          // Silence here would break the manager's expectation that the
+          // employee was told.
+          toast({
+            title: 'Shift updated — notification not sent',
+            description: `We could not find the change record. Please tell ${namesLabel} directly.`,
+            variant: 'destructive',
+          });
+          return;
+        }
 
         const outcome = await invokeScheduleNotification('notify-shift-changed', {
           changeLogId: rows[0].id,

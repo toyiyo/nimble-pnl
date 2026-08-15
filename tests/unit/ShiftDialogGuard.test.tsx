@@ -12,12 +12,25 @@ import { Shift } from '@/types/scheduling';
 
 const mockCreateMutate = vi.fn();
 const mockUpdateMutate = vi.fn();
+const mockUpdateMutateAsync = vi.fn().mockResolvedValue(undefined);
 const mockUpdateSeriesMutate = vi.fn();
+const mockUpdateSeriesMutateAsync = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/hooks/useShifts', () => ({
   useCreateShift: () => ({ mutate: mockCreateMutate, isPending: false }),
-  useUpdateShift: () => ({ mutate: mockUpdateMutate, isPending: false }),
-  useUpdateShiftSeries: () => ({ mutate: mockUpdateSeriesMutate, isPending: false }),
+  // ShiftDialog awaits `mutateAsync` on the guarded edit path (a fresh
+  // SELECT for the change-log row follows right after `run` resolves), so
+  // both the sync and async forms need a mock here.
+  useUpdateShift: () => ({
+    mutate: mockUpdateMutate,
+    mutateAsync: mockUpdateMutateAsync,
+    isPending: false,
+  }),
+  useUpdateShiftSeries: () => ({
+    mutate: mockUpdateSeriesMutate,
+    mutateAsync: mockUpdateSeriesMutateAsync,
+    isPending: false,
+  }),
 }));
 
 vi.mock('@/hooks/useEmployees', () => ({
@@ -99,9 +112,12 @@ describe('ShiftDialog save through the guard', () => {
     const { run } = guardShiftChange.mock.calls[0][0];
     await run({ allowPublished: true });
 
-    expect(mockUpdateMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'shift-1', allowPublished: true }),
-      expect.anything()
+    // `run` awaits `mutateAsync`, not the fire-and-forget `mutate` — the
+    // guard's post-save change-log lookup depends on the UPDATE having
+    // actually committed by the time `run` resolves.
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'shift-1', allowPublished: true })
     );
+    expect(mockUpdateMutate).not.toHaveBeenCalled();
   });
 });

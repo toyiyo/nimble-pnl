@@ -211,35 +211,24 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
         shiftId: shift.id,
         employeeName,
         secondEmployeeName,
-        run: ({ allowPublished }) => {
+        // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`
+        // looks up the change-log row right after `run` resolves, and that
+        // row only exists once this UPDATE (and its trigger) have committed.
+        run: async ({ allowPublished }) => {
           // If we have an edit scope (from recurring action dialog), use series update
           if (editScope && editScope !== 'this') {
-            updateShiftSeries.mutate(
-              {
-                shift,
-                scope: editScope,
-                updates: shiftData,
-                restaurantId,
-                allowPublished,
-              },
-              {
-                onSuccess: () => {
-                  onOpenChange(false);
-                  resetForm();
-                },
-              }
-            );
+            await updateShiftSeries.mutateAsync({
+              shift,
+              scope: editScope,
+              updates: shiftData,
+              restaurantId,
+              allowPublished,
+            });
           } else {
-            updateShift.mutate(
-              { id: shift.id, ...shiftData, allowPublished },
-              {
-                onSuccess: () => {
-                  onOpenChange(false);
-                  resetForm();
-                },
-              }
-            );
+            await updateShift.mutateAsync({ id: shift.id, ...shiftData, allowPublished });
           }
+          onOpenChange(false);
+          resetForm();
         },
       });
     } else {

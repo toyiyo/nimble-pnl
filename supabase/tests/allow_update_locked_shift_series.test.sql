@@ -3,7 +3,7 @@
 
 BEGIN;
 
-SELECT plan(5);
+SELECT plan(7);
 
 -- Setup: Create test restaurant, user, and employee
 INSERT INTO restaurants (id, name, address, phone)
@@ -22,6 +22,15 @@ ON CONFLICT (id) DO NOTHING;
 
 \set rest_id '''00000000-0000-0000-0000-000000000901'''
 \set emp_id '''00000000-0000-0000-0000-000000000903'''
+
+-- The function is SECURITY DEFINER and checks user_has_capability itself,
+-- so every call below needs an authenticated owner of the restaurant.
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
+VALUES ('00000000-0000-0000-0000-000000000902'::uuid,
+        '00000000-0000-0000-0000-000000000901'::uuid, 'owner')
+ON CONFLICT DO NOTHING;
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000902","role":"authenticated"}', true);
 
 -- ============================================================
 -- Test Group 1: Default behavior (p_include_locked = false)
@@ -134,6 +143,31 @@ SELECT results_eq(
   )$$,
   $$VALUES (2, 0)$$,
   'p_include_locked=true scope=following: updates 2, locked_count=0'
+);
+
+-- ============================================================
+-- Test Group 3: tenancy gate
+-- ============================================================
+
+-- Test 6: the function pins search_path (SECURITY DEFINER hardening)
+SELECT ok(
+  pg_get_functiondef('update_shift_series(UUID, UUID, TEXT, JSONB, TIMESTAMPTZ, INTERVAL, INTERVAL, BOOLEAN)'::regprocedure)
+    LIKE '%search_path%',
+  'update_shift_series pins search_path'
+);
+
+-- Test 7: a caller with no membership in the restaurant is refused
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000999","role":"authenticated"}', true);
+
+SELECT throws_ok(
+  $$SELECT * FROM update_shift_series(
+    '00000000-0000-0000-0000-000000000910'::uuid,
+    '00000000-0000-0000-0000-000000000901'::uuid,
+    'all',
+    '{"position": "Host"}'::jsonb
+  )$$,
+  'Access denied: you cannot edit shifts for this restaurant',
+  'update_shift_series refuses a caller outside the restaurant'
 );
 
 SELECT * FROM finish();

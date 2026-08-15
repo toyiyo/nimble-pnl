@@ -23,11 +23,18 @@ CREATE OR REPLACE FUNCTION update_shift_series(
 RETURNS TABLE(updated_count INT, locked_count INT)
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_updated_count INT := 0;
   v_locked_count INT := 0;
 BEGIN
+  -- SECURITY DEFINER bypasses RLS, so the function must check tenancy
+  -- itself. Same gate as the shifts UPDATE policy.
+  IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN
+    RAISE EXCEPTION 'Access denied: you cannot edit shifts for this restaurant';
+  END IF;
+
   IF p_scope = 'following' THEN
     -- Count locked shifts that will NOT be updated (only when not force-updating)
     IF NOT p_include_locked THEN

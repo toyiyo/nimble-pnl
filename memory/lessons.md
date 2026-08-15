@@ -2831,3 +2831,39 @@
 - **Mistake:** The design doc for the dead-page deletion said `AvailableShiftsPage` "consumes this hook" and cited `src/pages/AvailableShiftsPage.tsx:29` and `:239`. The claim named `useMarketplaceTrades`. Those two lines import and call `useAvailableShifts`. The call to `useMarketplaceTrades` sits one layer down, at `src/hooks/useAvailableShifts.ts:51`. The sound-logic reviewer flagged the gap as `logic:minor`.
 - **Correction:** Commit c35784ba reworded the claim: `AvailableShiftsPage` consumes `useMarketplaceTrades` indirectly, through `useAvailableShifts`, with a citation for each hop. The reviewer confirmed the fix.
 - **Rule:** A `file:line` citation must land on the identifier the sentence names. When the use is transitive, write "indirect, through X" and cite each hop in the chain. A citation that lands on a wrapper sends the next reader to a line that does not contain the named identifier. This extends the mandatory-citation rule in `development-workflow.md` Phase 2: the lookup exposes a false claim only when the cited line must hold the exact identifier.
+
+## Category: Security (continued)
+
+### [2026-08-15] A CREATE OR REPLACE from an old template reverted the security fix that sat between (PR #743)
+- **Mistake:** Migration `20260501120000` fixed a revenue double-count in `get_monthly_sales_metrics`. It started from the December body, which is `SECURITY DEFINER` with no guard. The March fix (`20260302120000`) — `SECURITY INVOKER` plus a `user_restaurants` guard — sat between and vanished. Postgres grants EXECUTE to PUBLIC on creation, so any holder of the anon key could read any restaurant's monthly financials for three months.
+- **Correction:** Migration `20260814120000` restores `INVOKER`, the guard, and revokes PUBLIC and anon. pgTAP `37_` pins `prosecdef = false` and `has_function_privilege('anon', ...) = false`, so a future replace that drops either fails the suite.
+- **Rule:** Before you `CREATE OR REPLACE` a function, read the LATEST migration that defines it, not the version you remember. Carry the security mode, the guard, and the grants forward. Pin `prosecdef` and the grants in pgTAP; catalog assertions survive body rewrites.
+
+### [2026-08-15] SECURITY INVOKER makes result correctness depend on the caller's RLS for every table in the body (PR #743)
+- **Mistake:** I judged the `INVOKER` flip safe because the membership guard passed for every member. The body reads three tables. `chart_of_accounts` SELECT is gated on `user_has_capability(restaurant_id, 'view:chart_of_accounts')`, which chef and staff do not hold.
+- **Diagnosis:** A per-role probe showed the failure shape: a caller without the capability gets `gross_revenue = 160`, `sales_tax = 0` against a truth of 150/10. The LEFT JOIN turns invisible liability accounts into NULL `account_type`, so tax lands in gross revenue. That is wrong data, not an error. The only app path admits manager and owner; a prod query showed all 73 owner/manager memberships hold the capability, so no live caller degrades.
+- **Rule:** When you flip a function to `SECURITY INVOKER`, list every table the body reads and read each SELECT policy. Probe the function per reachable role against a BYPASSRLS truth run. A role can pass the membership guard and still fail one table's policy; the result is silently wrong numbers, not a denial.
+
+### [2026-08-15] Filter every NOT EXISTS on a multi-tenant table by restaurant_id, and test on the path where the bug is visible (PR #743)
+- **Mistake:** Both child-sale checks read `WHERE child.parent_sale_id = us.id` with no restaurant filter. Under authenticated plus RLS the hole is invisible: RLS hides a cross-restaurant child, and the probe returned the correct 70.
+- **Diagnosis:** On a BYPASSRLS path (service_role, cron, pgTAP as postgres) the same query returned 0 rows — the cross-restaurant child suppressed the in-tenant parent.
+- **Correction:** `AND child.restaurant_id = p_restaurant_id` in both subqueries. The boundary test went into `36_`, which runs RLS-disabled — the only path where the regression is observable.
+- **Rule:** Filter every subquery on a multi-tenant table by `restaurant_id`, `NOT EXISTS` included. Place the regression test on the execution path where the bug can appear; a test under RLS proves nothing about the BYPASSRLS path.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-15] PostgREST max_rows truncates silently — never fetch rows and sum them in JavaScript (PR #752)
+- **Mistake:** Ten AI-tool sites fetched raw rows with `.select()` and summed with `.reduce()`. PostgREST caps every response at 1000 rows (`max_rows = 1000`) and returns success. A restaurant with 22,366 July sale rows got `$3,647.22` as revenue instead of `$68,038.11`. Three displayed numbers replicated to the cent as first-1000-row slices.
+- **Correction:** Nine aggregate RPCs plus a modified shared RPC compute every period-bound sum in SQL. `GROUP BY` collapses any volume into a bounded set. A `head:true` + `count:'exact'` query is not row-capped and serves counts.
+- **Rule:** Never fetch rows and sum them client-side for a period-bound financial metric. Aggregate in SQL. If a raw fetch must remain, bound it explicitly and check `data.length` against the cap. The failure is silent: the sum looks plausible and carries no error.
+
+### [2026-08-15] Read the column's precision and seed data before you write math on it — a fixture that mirrors the plan cannot catch the plan's unit error (PR #752)
+- **Mistake:** The plan's break-even formula treated `percentage_value` as a whole-number percent (27) and divided by 100. The column is `NUMERIC(6,5)` — it cannot store 27. Seeds store `0.28`; the form divides user input by 100 on save; the sibling function multiplies the raw value. The unit tests passed 4/4 because their fixture used the plan's wrong unit.
+- **Diagnosis:** A task reviewer checked the schema instead of the tests and caught a x100 error that would have shipped plausible, silently wrong break-even numbers for every restaurant on default costs.
+- **Rule:** Before you write math on a column, read its type, precision, seed values, and one existing consumer. Build test fixtures from real stored values, not from the plan's description. A green test proves internal consistency, not unit correctness.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-15] Verify a reviewer's factual claim in both directions before you act on it (PR #752)
+- **Mistake risk, avoided twice:** A triage agent reported "7 pre-existing pgTAP failures" — false; a fresh `db reset` showed 2879/2879 green, and the failures were artifacts of its stale local DB. A bot reviewer claimed the old `total_revenue` honored the `>$10` deposit floor — true; `git show <merge-base>` proved the old code computed the total from the floored set, and an earlier internal review had stated the floor's scope incompletely.
+- **Rule:** A reviewer's factual claim about baseline behavior is an input, not a verdict. Check "pre-existing failure" claims against a fresh baseline run. Check "the old code did X" claims against the merge-base source, not against a summary of it. Accept or refute with the artifact, in either direction.

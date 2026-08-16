@@ -537,13 +537,13 @@ Expected: at least one match (Row/Insert/Update types of `toast_connections`).
 
 In the Toast section, change the line:
 
-```
+```text
 - **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts
 ```
 
 to:
 
-```
+```text
 - **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts. The cron skips a restaurant when `rollup_source_watermark` on `toast_connections` shows no source change since the last successful rollup.
 ```
 

@@ -113,6 +113,10 @@ const BASE_PROPS = {
   tz: 'America/Chicago',
   loading: false,
   error: null,
+  guardShiftChange: vi.fn(async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
+    await run({ allowPublished: false });
+  }),
+  notifyAfterDeferredCommit: vi.fn(),
 } as const;
 
 // A shift on Mon 2026-01-05 (16:00Z = 10:00 CST, UTC-6 in January)

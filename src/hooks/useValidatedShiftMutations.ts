@@ -49,6 +49,8 @@ export interface UpdateTimeInput {
   startIso: string;
   endIso: string;
   businessDate: string;
+  /** Skip the lock assertion for a shift the caller already confirmed the change against. */
+  allowPublished?: boolean;
 }
 
 /**
@@ -66,11 +68,15 @@ export interface UpdateShiftInput {
   employeeId: string;
   breakDuration: number;
   notes: string;
+  /** Skip the lock assertion for a shift the caller already confirmed the change against. */
+  allowPublished?: boolean;
 }
 
 export interface ReassignInput {
   shift: Shift;
   newEmployeeId: string;
+  /** Skip the lock assertion for a shift the caller already confirmed the change against. */
+  allowPublished?: boolean;
 }
 
 export interface CreateOutcome {
@@ -137,7 +143,7 @@ export interface UseValidatedShiftMutationsReturn {
   forceUpdateShift: (input: UpdateShiftInput) => Promise<UpdateShiftOutcome>;
   validateAndReassign: (input: ReassignInput) => Promise<ReassignOutcome>;
   forceReassign: (input: ReassignInput) => Promise<boolean>;
-  deleteShift: (shiftId: string) => void;
+  deleteShift: (shiftId: string, allowPublished?: boolean) => void;
   /**
    * Awaitable, lock-guarded delete: runs the same `assertNotLockedClient` guard
    * as `deleteShift`, then awaits the underlying mutation and resolves only
@@ -147,7 +153,7 @@ export interface UseValidatedShiftMutationsReturn {
    * `deleteShift` above can't provide that guarantee, so it's kept for callers
    * (e.g. the planner) that don't need to await/react to the outcome.
    */
-  deleteShiftAsync: (shiftId: string) => Promise<void>;
+  deleteShiftAsync: (shiftId: string, allowPublished?: boolean) => Promise<void>;
   validationResult: ValidationResult | null;
   clearValidation: () => void;
 }
@@ -360,7 +366,7 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return { updated: false };
 
       try {
-        assertNotLockedClient(input.shift);
+        assertNotLockedClient(input.shift, input.allowPublished);
 
         const interval = ShiftInterval.fromTimestamps(
           input.startIso,
@@ -388,6 +394,7 @@ export function useValidatedShiftMutations(
           restaurant_id: restaurantId,
           start_time: interval.startAt.toISOString(),
           end_time: interval.endAt.toISOString(),
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -405,7 +412,7 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return false;
 
       try {
-        assertNotLockedClient(input.shift);
+        assertNotLockedClient(input.shift, input.allowPublished);
 
         const interval = ShiftInterval.fromTimestamps(
           input.startIso,
@@ -418,6 +425,7 @@ export function useValidatedShiftMutations(
           restaurant_id: restaurantId,
           start_time: interval.startAt.toISOString(),
           end_time: interval.endAt.toISOString(),
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -443,7 +451,7 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return { updated: false };
 
       try {
-        assertNotLockedClient(input.shift);
+        assertNotLockedClient(input.shift, input.allowPublished);
 
         const interval = ShiftInterval.fromTimestamps(
           input.startIso,
@@ -474,6 +482,7 @@ export function useValidatedShiftMutations(
           employee_id: input.employeeId,
           break_duration: input.breakDuration,
           notes: input.notes,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -491,7 +500,7 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return { updated: false };
 
       try {
-        assertNotLockedClient(input.shift);
+        assertNotLockedClient(input.shift, input.allowPublished);
 
         const interval = ShiftInterval.fromTimestamps(
           input.startIso,
@@ -507,6 +516,7 @@ export function useValidatedShiftMutations(
           employee_id: input.employeeId,
           break_duration: input.breakDuration,
           notes: input.notes,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -527,7 +537,7 @@ export function useValidatedShiftMutations(
     async (input: ReassignInput): Promise<ReassignOutcome> => {
       if (!restaurantId) return { reassigned: false };
 
-      assertNotLockedClient(input.shift);
+      assertNotLockedClient(input.shift, input.allowPublished);
 
       try {
         const interval = ShiftInterval.fromTimestamps(
@@ -555,6 +565,7 @@ export function useValidatedShiftMutations(
           id: input.shift.id,
           restaurant_id: restaurantId,
           employee_id: input.newEmployeeId,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -571,13 +582,14 @@ export function useValidatedShiftMutations(
     async (input: ReassignInput): Promise<boolean> => {
       if (!restaurantId) return false;
 
-      assertNotLockedClient(input.shift);
+      assertNotLockedClient(input.shift, input.allowPublished);
 
       try {
         await updateShift.mutateAsync({
           id: input.shift.id,
           restaurant_id: restaurantId,
           employee_id: input.newEmployeeId,
+          allowPublished: input.allowPublished,
         });
 
         setValidationResult(null);
@@ -595,11 +607,11 @@ export function useValidatedShiftMutations(
   // ---------------------------------------------------------------------------
 
   const handleDeleteShift = useCallback(
-    (shiftId: string) => {
+    (shiftId: string, allowPublished?: boolean) => {
       if (!restaurantId) return;
 
       const shift = findShiftOrThrow(shifts, shiftId);
-      assertNotLockedClient(shift);
+      assertNotLockedClient(shift, allowPublished);
 
       deleteShiftMutation.mutate({ id: shiftId, restaurantId });
     },
@@ -607,11 +619,11 @@ export function useValidatedShiftMutations(
   );
 
   const deleteShiftAsync = useCallback(
-    async (shiftId: string): Promise<void> => {
+    async (shiftId: string, allowPublished?: boolean): Promise<void> => {
       if (!restaurantId) return;
 
       const shift = findShiftOrThrow(shifts, shiftId);
-      assertNotLockedClient(shift);
+      assertNotLockedClient(shift, allowPublished);
 
       await deleteShiftMutation.mutateAsync({ id: shiftId, restaurantId });
     },

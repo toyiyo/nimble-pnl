@@ -16,8 +16,6 @@ export interface BarDragState {
 interface UseTimelineBarDragOptions {
   /** The bar's current (committed) minute range — the drag's baseline. */
   original: ShiftMinuteRange;
-  /** True when the shift is locked; disables all drag/resize gestures. */
-  locked: boolean;
   /** Returns the plot region's bounding rect, read fresh on every pointer event. */
   getPlotRect: () => DOMRect | null;
   /** Returns the current visible window, read fresh on every pointer event (never a stale closure). */
@@ -71,7 +69,6 @@ const DRAG_THRESHOLD_PX = 5;
  */
 export function useTimelineBarDrag({
   original,
-  locked,
   getPlotRect,
   getWindow,
   onDraftChange,
@@ -195,7 +192,6 @@ export function useTimelineBarDrag({
       // never fired (e.g. the bar relaid out under the pointer), the flag would
       // stay `true` forever and silently eat the next legitimate click.
       justDraggedRef.current = false;
-      if (locked) return;
       // Touch never drags — a tap opens the popover via the bar's own onClick;
       // every drag outcome is reachable through the popover's time fields.
       if (event.pointerType === 'touch') return;
@@ -220,7 +216,7 @@ export function useTimelineBarDrag({
       (event.currentTarget as unknown as { setPointerCapture?: (id: number) => void })
         .setPointerCapture?.(event.pointerId);
     },
-    [locked, getPlotRect, getWindow],
+    [getPlotRect, getWindow],
   );
 
   const handlePointerMove = useCallback(

@@ -17,6 +17,7 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }))
 
 import {
   invokeScheduleNotification,
+  notificationToast,
   usePublishSchedule,
   useUnpublishSchedule,
 } from '@/hooks/useSchedulePublish';
@@ -171,6 +172,58 @@ describe('publish notification outcomes', () => {
     // get through.
     expect(result.current.isError).toBe(false);
     expect(lastToast().title).toMatch(/^Schedule Published/);
+  });
+
+  it('skips the notification invoke when notify is false', async () => {
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => usePublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
+    });
+
+    expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
+    expect(result.current.isError).toBe(false);
+    expect(lastToast().description).toBe('No notifications were sent.');
+  });
+
+  it('calls the notification invoke once when notify is true', async () => {
+    mockSupabase.functions.invoke.mockResolvedValue({ data: { sent: 11, failed: 0 }, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => usePublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: true });
+    });
+
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults notify to true when the param is absent', async () => {
+    mockSupabase.functions.invoke.mockResolvedValue({ data: { sent: 11, failed: 0 }, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => usePublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('notificationToast copy per outcome', () => {
+  it('reports no notifications were sent for a skipped outcome', () => {
+    const toasted = notificationToast(
+      { status: 'skipped' },
+      { title: 'Schedule Published', successDescription: 'The schedule has been published.' },
+    );
+
+    // Title stays the plain success title -- 'skipped' is not a failure, so it
+    // must not read like the '-- some/nobody notified' destructive branches.
+    expect(toasted.title).toBe('Schedule Published');
+    expect(toasted.description).toBe('No notifications were sent.');
+    expect(toasted.variant).toBeUndefined();
   });
 });
 

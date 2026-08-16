@@ -312,9 +312,12 @@ export function useUpdateShift() {
     mutationFn: async ({
       id,
       restaurant_id: restaurantId,
+      allowPublished,
       ...updates
-    }: Partial<Shift> & { id: string; restaurant_id: string }) => {
-      await assertShiftNotLocked(id);
+    }: Partial<Shift> & { id: string; restaurant_id: string; allowPublished?: boolean }) => {
+      if (!allowPublished) {
+        await assertShiftNotLocked(id);
+      }
 
       const { employee: _employee, ...shiftUpdates } = updates;
 
@@ -332,7 +335,7 @@ export function useUpdateShift() {
       if (error) throw error;
       return toTypedShift(data);
     },
-    onMutate: async ({ id, restaurant_id: restaurantId, ...updates }) => {
+    onMutate: async ({ id, restaurant_id: restaurantId, allowPublished: _allowPublished, ...updates }) => {
       await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
       const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
@@ -413,6 +416,24 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
       id: string;
       restaurantId: string;
       shift?: DeletableShift;
+      /**
+       * Accepted for API parity with the other shift mutations (the guard
+       * calls all four the same way). `useDeleteShift` has no lock check to
+       * bypass — a single delete already proceeds against a locked shift —
+       * so this option is a no-op here.
+       */
+      allowPublished?: boolean;
+      /**
+       * True when the caller already owns the employee notification via
+       * `usePublishedShiftGuard` (the manager's "Notify" checkbox and
+       * `notify-shift-changed`, which also handles `change_type: 'deleted'`).
+       * Skips the legacy `send-shift-notification` invoke below so a
+       * published delete is never notified twice, and so an unchecked
+       * "Notify" box is honored instead of ignored. Defaults to false —
+       * every caller outside the guarded flow keeps today's unconditional
+       * send.
+       */
+      skipLegacyNotify?: boolean;
     }) => {
       const { data: deletedRows, error } = await supabase
         .from('shifts')
@@ -430,13 +451,17 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
       const deletedCount = deletedRows?.length ?? 0;
       return { id, restaurantId, shift: deletedCount > 0 ? shift : undefined };
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
 
       // Notify FIRST, unconditionally on snapshot presence — fire-and-forget,
       // must sit above the `if (silent) return` below. `silent` (suppress
       // toast) and "should notify" are orthogonal concerns.
-      const notifyBody = data.shift ? buildShiftDeletedInvoke(data.shift) : null;
+      const notifyBody = variables.skipLegacyNotify
+        ? null
+        : data.shift
+          ? buildShiftDeletedInvoke(data.shift)
+          : null;
       if (notifyBody) {
         // supabase.functions.invoke resolves with { data, error } on HTTP
         // failures (it does NOT reject), so both branches must be handled —
@@ -475,7 +500,7 @@ interface SeriesOperationParams {
   shift: Shift;
   scope: RecurringActionScope;
   restaurantId: string;
-  includePublished?: boolean;
+  allowPublished?: boolean;
 }
 
 interface SeriesOperationResult {
@@ -496,7 +521,7 @@ export function useDeleteShiftSeries() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ shift, scope, restaurantId, includePublished }: SeriesOperationParams): Promise<SeriesOperationResult> => {
+    mutationFn: async ({ shift, scope, restaurantId, allowPublished }: SeriesOperationParams): Promise<SeriesOperationResult> => {
       if (scope === 'this') {
         const { error } = await supabase
           .from('shifts')
@@ -514,7 +539,7 @@ export function useDeleteShiftSeries() {
         p_restaurant_id: restaurantId,
         p_scope: scope,
         p_from_time: scope === 'following' ? shift.start_time : null,
-        p_include_locked: includePublished ?? false,
+        p_include_locked: allowPublished ?? false,
       });
 
       if (error) throw error;
@@ -526,7 +551,7 @@ export function useDeleteShiftSeries() {
         restaurantId,
       };
     },
-    onMutate: async ({ shift, scope, restaurantId, includePublished }) => {
+    onMutate: async ({ shift, scope, restaurantId, allowPublished }) => {
       await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
       const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
@@ -537,7 +562,7 @@ export function useDeleteShiftSeries() {
         if (!old) return old;
 
         return old.filter((s) => {
-          if (s.locked && !includePublished) return true;
+          if (s.locked && !allowPublished) return true;
 
           const isInSeries = s.id === parentId || s.recurrence_parent_id === parentId;
           if (!isInSeries) return true;
@@ -605,7 +630,7 @@ export function useUpdateShiftSeries() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ shift, scope, updates, restaurantId }: SeriesUpdateParams): Promise<SeriesOperationResult> => {
+    mutationFn: async ({ shift, scope, updates, restaurantId, allowPublished }: SeriesUpdateParams): Promise<SeriesOperationResult> => {
       const {
         employee: _employee,
         recurrence_pattern,
@@ -624,7 +649,7 @@ export function useUpdateShiftSeries() {
       };
 
       if (scope === 'this') {
-        if (shift.locked) {
+        if (shift.locked && !allowPublished) {
           throw new Error('Cannot update a locked shift. The schedule has been published.');
         }
 
@@ -656,6 +681,7 @@ export function useUpdateShiftSeries() {
         p_from_time: scope === 'following' ? shift.start_time : null,
         p_start_time_delta: startTimeDelta,
         p_end_time_delta: endTimeDelta,
+        p_include_locked: allowPublished ?? false,
       });
 
       if (error) throw error;
@@ -667,7 +693,7 @@ export function useUpdateShiftSeries() {
         restaurantId,
       };
     },
-    onMutate: async ({ shift, scope, updates, restaurantId }) => {
+    onMutate: async ({ shift, scope, updates, restaurantId, allowPublished }) => {
       await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
       const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
@@ -692,7 +718,9 @@ export function useUpdateShiftSeries() {
         if (!old) return old;
 
         return old.map((s) => {
-          if (s.locked) return s;
+          // Matches useDeleteShiftSeries.onMutate: a locked shift is only
+          // skipped when the guard did not confirm `allowPublished`.
+          if (s.locked && !allowPublished) return s;
 
           const isInSeries = s.id === parentId || s.recurrence_parent_id === parentId;
           if (!isInSeries) return s;

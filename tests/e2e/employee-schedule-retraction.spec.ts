@@ -119,7 +119,9 @@ test.describe('Employee schedule publish states', () => {
     await page.goto('/employee/schedule');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText(/upcoming/i).first()).toBeVisible({ timeout: 15000 });
+    // The seeded 10:00 AM shift row, not a status badge: the badge text
+    // depends on the day the suite runs (past shifts wear "Completed").
+    await expect(page.getByText(/10:00 AM/).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/schedule not published yet/i)).not.toBeVisible();
     await expect(page.getByText(/draft — not confirmed/i)).not.toBeVisible();
 
@@ -140,7 +142,9 @@ test.describe('Employee schedule publish states', () => {
     await page.goto('/employee/schedule');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText(/upcoming/i).first()).toBeVisible({ timeout: 15000 });
+    // The seeded 10:00 AM shift row, not a status badge: the badge text
+    // depends on the day the suite runs (past shifts wear "Completed").
+    await expect(page.getByText(/10:00 AM/).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/pulled back for changes/i)).not.toBeVisible();
     await expect(page.getByText(/^Published /)).not.toBeVisible();
   });

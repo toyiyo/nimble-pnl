@@ -252,7 +252,7 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 - Track via `initial_sync_done` and `sync_cursor` columns on connection
 - Edge functions use service role key - remove `auth.uid()` checks from RPC functions
 - **CPU Limits**: Edge functions have strict CPU limits (~10s). Batch processing and skip per-order RPC calls
-- **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts
+- **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts. The cron skips a restaurant when `rollup_source_watermark` on `toast_connections` shows no source change since the last successful rollup.
 - Use `skipUnifiedSalesSync: true` in processOrder during bulk imports
 
 **Key Files:**

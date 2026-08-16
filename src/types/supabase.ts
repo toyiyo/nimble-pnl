@@ -69,7 +69,6 @@ export type Database = {
           {
             foreignKeyName: "ai_chat_messages_session_id_fkey"
             columns: ["session_id"]
-            isOneToOne: false
             referencedRelation: "ai_chat_sessions"
             referencedColumns: ["id"]
           },
@@ -107,11 +106,34 @@ export type Database = {
           {
             foreignKeyName: "ai_chat_sessions_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
+      }
+      area_catalog: {
+        Row: {
+          area_key: string
+          band: string
+          max_level_collaborator: string | null
+          sort_order: number
+          ui_group: string
+        }
+        Insert: {
+          area_key: string
+          band: string
+          max_level_collaborator?: string | null
+          sort_order: number
+          ui_group: string
+        }
+        Update: {
+          area_key?: string
+          band?: string
+          max_level_collaborator?: string | null
+          sort_order?: number
+          ui_group?: string
+        }
+        Relationships: []
       }
       asset_depreciation_schedule: {
         Row: {
@@ -157,21 +179,18 @@ export type Database = {
           {
             foreignKeyName: "asset_depreciation_schedule_asset_id_fkey"
             columns: ["asset_id"]
-            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "asset_depreciation_schedule_journal_entry_id_fkey"
             columns: ["journal_entry_id"]
-            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "asset_depreciation_schedule_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -218,14 +237,12 @@ export type Database = {
           {
             foreignKeyName: "asset_photos_asset_id_fkey"
             columns: ["asset_id"]
-            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "asset_photos_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -317,35 +334,30 @@ export type Database = {
           {
             foreignKeyName: "assets_accumulated_depreciation_account_id_fkey"
             columns: ["accumulated_depreciation_account_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_asset_account_id_fkey"
             columns: ["asset_account_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_depreciation_expense_account_id_fkey"
             columns: ["depreciation_expense_account_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_location_id_fkey"
             columns: ["location_id"]
-            isOneToOne: false
             referencedRelation: "inventory_locations"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -383,28 +395,30 @@ export type Database = {
           {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "auth_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "auth_audit_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -436,7 +450,6 @@ export type Database = {
           {
             foreignKeyName: "auto_deduction_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -483,28 +496,30 @@ export type Database = {
           {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_exceptions_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "availability_exceptions_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -560,8 +575,47 @@ export type Database = {
           {
             foreignKeyName: "bank_account_balances_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
-            isOneToOne: false
             referencedRelation: "connected_banks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_reauth_notices: {
+        Row: {
+          connected_bank_id: string
+          deactivated_at: string
+          id: string
+          restaurant_id: string
+          sent_at: string
+          stage: string
+        }
+        Insert: {
+          connected_bank_id: string
+          deactivated_at: string
+          id?: string
+          restaurant_id: string
+          sent_at?: string
+          stage: string
+        }
+        Update: {
+          connected_bank_id?: string
+          deactivated_at?: string
+          id?: string
+          restaurant_id?: string
+          sent_at?: string
+          stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_reauth_notices_bank_restaurant_fk"
+            columns: ["connected_bank_id", "restaurant_id"]
+            referencedRelation: "connected_banks"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+          {
+            foreignKeyName: "bank_reauth_notices_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -643,21 +697,18 @@ export type Database = {
           {
             foreignKeyName: "bank_statement_lines_duplicate_transaction_id_fkey"
             columns: ["duplicate_transaction_id"]
-            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_statement_lines_imported_transaction_id_fkey"
             columns: ["imported_transaction_id"]
-            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_statement_lines_statement_upload_id_fkey"
             columns: ["statement_upload_id"]
-            isOneToOne: false
             referencedRelation: "bank_statement_uploads"
             referencedColumns: ["id"]
           },
@@ -743,14 +794,12 @@ export type Database = {
           {
             foreignKeyName: "bank_statement_uploads_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
-            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_statement_uploads_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -785,14 +834,12 @@ export type Database = {
           {
             foreignKeyName: "bank_transaction_splits_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transaction_splits_transaction_id_fkey"
             columns: ["transaction_id"]
-            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
@@ -828,6 +875,7 @@ export type Database = {
           reconciled_at: string | null
           reconciled_by: string | null
           restaurant_id: string
+          rules_evaluated_at: string
           source: string | null
           statement_upload_id: string | null
           status: Database["public"]["Enums"]["transaction_status_enum"]
@@ -869,6 +917,7 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id: string
+          rules_evaluated_at?: string
           source?: string | null
           statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
@@ -910,6 +959,7 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id?: string
+          rules_evaluated_at?: string
           source?: string | null
           statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
@@ -926,70 +976,60 @@ export type Database = {
           {
             foreignKeyName: "bank_transactions_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
-            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_expense_invoice_upload_id_fkey"
             columns: ["expense_invoice_upload_id"]
-            isOneToOne: false
             referencedRelation: "expense_invoice_uploads"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_inventory_transaction_id_fkey"
             columns: ["inventory_transaction_id"]
-            isOneToOne: false
             referencedRelation: "inventory_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_receipt_id_fkey"
             columns: ["receipt_id"]
-            isOneToOne: false
             referencedRelation: "receipt_imports"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_statement_upload_id_fkey"
             columns: ["statement_upload_id"]
-            isOneToOne: false
             referencedRelation: "bank_statement_uploads"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_suggested_category_id_fkey"
             columns: ["suggested_category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_transfer_pair_id_fkey"
             columns: ["transfer_pair_id"]
-            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
@@ -1075,21 +1115,18 @@ export type Database = {
           {
             foreignKeyName: "categorization_rules_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "categorization_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "categorization_rules_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -1157,14 +1194,12 @@ export type Database = {
           {
             foreignKeyName: "chart_of_accounts_parent_account_id_fkey"
             columns: ["parent_account_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "chart_of_accounts_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1174,6 +1209,7 @@ export type Database = {
         Row: {
           action: string
           amount: number
+          check_bank_account_id: string | null
           check_number: number
           created_at: string
           id: string
@@ -1189,6 +1225,7 @@ export type Database = {
         Insert: {
           action: string
           amount: number
+          check_bank_account_id?: string | null
           check_number: number
           created_at?: string
           id?: string
@@ -1204,6 +1241,7 @@ export type Database = {
         Update: {
           action?: string
           amount?: number
+          check_bank_account_id?: string | null
           check_number?: number
           created_at?: string
           id?: string
@@ -1218,16 +1256,84 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "check_audit_log_check_bank_account_id_fkey"
+            columns: ["check_bank_account_id"]
+            referencedRelation: "check_bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "check_audit_log_pending_outflow_id_fkey"
             columns: ["pending_outflow_id"]
-            isOneToOne: false
             referencedRelation: "pending_outflows"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "check_audit_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      check_bank_accounts: {
+        Row: {
+          account_name: string
+          account_number_encrypted: string | null
+          account_number_last4: string | null
+          bank_name: string | null
+          connected_bank_id: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          next_check_number: number
+          print_bank_info: boolean
+          restaurant_id: string
+          routing_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_name: string
+          account_number_encrypted?: string | null
+          account_number_last4?: string | null
+          bank_name?: string | null
+          connected_bank_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          next_check_number?: number
+          print_bank_info?: boolean
+          restaurant_id: string
+          routing_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_name?: string
+          account_number_encrypted?: string | null
+          account_number_last4?: string | null
+          bank_name?: string | null
+          connected_bank_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          next_check_number?: number
+          print_bank_info?: boolean
+          restaurant_id?: string
+          routing_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "check_bank_accounts_connected_bank_id_fkey"
+            columns: ["connected_bank_id"]
+            referencedRelation: "connected_banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "check_bank_accounts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1235,7 +1341,6 @@ export type Database = {
       }
       check_settings: {
         Row: {
-          bank_name: string | null
           business_address_line1: string | null
           business_address_line2: string | null
           business_city: string | null
@@ -1244,12 +1349,10 @@ export type Database = {
           business_zip: string | null
           created_at: string
           id: string
-          next_check_number: number
           restaurant_id: string
           updated_at: string
         }
         Insert: {
-          bank_name?: string | null
           business_address_line1?: string | null
           business_address_line2?: string | null
           business_city?: string | null
@@ -1258,12 +1361,10 @@ export type Database = {
           business_zip?: string | null
           created_at?: string
           id?: string
-          next_check_number?: number
           restaurant_id: string
           updated_at?: string
         }
         Update: {
-          bank_name?: string | null
           business_address_line1?: string | null
           business_address_line2?: string | null
           business_city?: string | null
@@ -1272,7 +1373,6 @@ export type Database = {
           business_zip?: string | null
           created_at?: string
           id?: string
-          next_check_number?: number
           restaurant_id?: string
           updated_at?: string
         }
@@ -1280,7 +1380,6 @@ export type Database = {
           {
             foreignKeyName: "check_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1333,7 +1432,6 @@ export type Database = {
           {
             foreignKeyName: "clover_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1380,14 +1478,12 @@ export type Database = {
           {
             foreignKeyName: "clover_locations_connection_id_fkey"
             columns: ["connection_id"]
-            isOneToOne: false
             referencedRelation: "clover_connections"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "clover_locations_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1452,7 +1548,6 @@ export type Database = {
           {
             foreignKeyName: "clover_order_line_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1526,7 +1621,6 @@ export type Database = {
           {
             foreignKeyName: "clover_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1534,8 +1628,11 @@ export type Database = {
       }
       connected_banks: {
         Row: {
+          account_mask: string | null
           connected_at: string
           created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
           disconnected_at: string | null
           id: string
           institution_logo_url: string | null
@@ -1548,8 +1645,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_mask?: string | null
           connected_at?: string
           created_at?: string
+          data_current_through?: string | null
+          deactivated_at?: string | null
           disconnected_at?: string | null
           id?: string
           institution_logo_url?: string | null
@@ -1562,8 +1662,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_mask?: string | null
           connected_at?: string
           created_at?: string
+          data_current_through?: string | null
+          deactivated_at?: string | null
           disconnected_at?: string | null
           id?: string
           institution_logo_url?: string | null
@@ -1579,7 +1682,6 @@ export type Database = {
           {
             foreignKeyName: "connected_banks_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1617,7 +1719,6 @@ export type Database = {
           {
             foreignKeyName: "csv_mapping_templates_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1685,7 +1786,6 @@ export type Database = {
           {
             foreignKeyName: "customers_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1729,7 +1829,6 @@ export type Database = {
           {
             foreignKeyName: "daily_food_costs_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1776,28 +1875,30 @@ export type Database = {
           {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_labor_allocations_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "daily_labor_allocations_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1847,7 +1948,6 @@ export type Database = {
           {
             foreignKeyName: "daily_labor_costs_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1903,7 +2003,6 @@ export type Database = {
           {
             foreignKeyName: "daily_pnl_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1953,7 +2052,6 @@ export type Database = {
           {
             foreignKeyName: "daily_sales_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2012,11 +2110,71 @@ export type Database = {
           {
             foreignKeyName: "deleted_bank_transactions_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
+      }
+      device_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          platform: string
+          restaurant_id: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          platform: string
+          restaurant_id: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          platform?: string
+          restaurant_id?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_tokens_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_unsubscribes: {
+        Row: {
+          id: string
+          list: string
+          source: string | null
+          unsubscribed_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          list: string
+          source?: string | null
+          unsubscribed_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          list?: string
+          source?: string | null
+          unsubscribed_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       employee_availability: {
         Row: {
@@ -2059,28 +2217,30 @@ export type Database = {
           {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_availability_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_availability_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2121,28 +2281,30 @@ export type Database = {
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_compensation_history_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2186,28 +2348,30 @@ export type Database = {
           {
             foreignKeyName: "employee_integration_mappings_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_integration_mappings_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_integration_mappings_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_integration_mappings_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_integration_mappings_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2257,28 +2421,30 @@ export type Database = {
           {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_pins_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_pins_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2331,35 +2497,36 @@ export type Database = {
           {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_tips_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_shift_id_fkey"
             columns: ["shift_id"]
-            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
@@ -2368,6 +2535,7 @@ export type Database = {
       employees: {
         Row: {
           allocate_daily: boolean | null
+          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -2375,10 +2543,12 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -2405,6 +2575,7 @@ export type Database = {
         }
         Insert: {
           allocate_daily?: boolean | null
+          area?: string | null
           compensation_type?: string
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
@@ -2412,10 +2583,12 @@ export type Database = {
           daily_rate_amount?: number | null
           daily_rate_reference_days?: number | null
           daily_rate_reference_weekly?: number | null
+          date_of_birth?: string | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
+          employment_type?: string
           exempt_changed_at?: string | null
           exempt_changed_by?: string | null
           hire_date?: string | null
@@ -2442,6 +2615,7 @@ export type Database = {
         }
         Update: {
           allocate_daily?: boolean | null
+          area?: string | null
           compensation_type?: string
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
@@ -2449,10 +2623,12 @@ export type Database = {
           daily_rate_amount?: number | null
           daily_rate_reference_days?: number | null
           daily_rate_reference_weekly?: number | null
+          date_of_birth?: string | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
+          employment_type?: string
           exempt_changed_at?: string | null
           exempt_changed_by?: string | null
           hire_date?: string | null
@@ -2481,7 +2657,6 @@ export type Database = {
           {
             foreignKeyName: "employees_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2600,14 +2775,12 @@ export type Database = {
           {
             foreignKeyName: "expense_invoice_uploads_pending_outflow_id_fkey"
             columns: ["pending_outflow_id"]
-            isOneToOne: false
             referencedRelation: "pending_outflows"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "expense_invoice_uploads_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2645,7 +2818,6 @@ export type Database = {
           {
             foreignKeyName: "expense_suggestion_dismissals_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2683,7 +2855,6 @@ export type Database = {
           {
             foreignKeyName: "financial_statement_cache_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2727,7 +2898,401 @@ export type Database = {
           {
             foreignKeyName: "fiscal_periods_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_connections: {
+        Row: {
+          api_key: string | null
+          api_secret_encrypted: string | null
+          connection_status: string
+          consecutive_failures: number
+          created_at: string
+          db_catalog: string | null
+          db_server: string | null
+          environment: string
+          id: string
+          initial_sync_done: boolean
+          is_active: boolean
+          last_error: string | null
+          last_error_at: string | null
+          last_sync_time: string | null
+          mid: string | null
+          next_attempt_at: string | null
+          password_encrypted: string | null
+          report_base_url: string | null
+          report_path: string | null
+          report_user_id: string | null
+          restaurant_id: string
+          revenue_center: string | null
+          store_id: string
+          sync_cursor: number
+          sync_interval_minutes: number
+          timezone: string
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          api_secret_encrypted?: string | null
+          connection_status?: string
+          consecutive_failures?: number
+          created_at?: string
+          db_catalog?: string | null
+          db_server?: string | null
+          environment?: string
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          mid?: string | null
+          next_attempt_at?: string | null
+          password_encrypted?: string | null
+          report_base_url?: string | null
+          report_path?: string | null
+          report_user_id?: string | null
+          restaurant_id: string
+          revenue_center?: string | null
+          store_id: string
+          sync_cursor?: number
+          sync_interval_minutes?: number
+          timezone?: string
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          api_secret_encrypted?: string | null
+          connection_status?: string
+          consecutive_failures?: number
+          created_at?: string
+          db_catalog?: string | null
+          db_server?: string | null
+          environment?: string
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          mid?: string | null
+          next_attempt_at?: string | null
+          password_encrypted?: string | null
+          report_base_url?: string | null
+          report_path?: string | null
+          report_user_id?: string | null
+          restaurant_id?: string
+          revenue_center?: string | null
+          store_id?: string
+          sync_cursor?: number
+          sync_interval_minutes?: number
+          timezone?: string
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_daily_reports: {
+        Row: {
+          business_date: string
+          fetched_at: string
+          id: string
+          items_json: Json
+          net_sales: number | null
+          order_types_json: Json
+          payments_json: Json
+          raw_totals_json: Json
+          refunds: number | null
+          restaurant_id: string
+          retained_tips: number | null
+          revenue_center: string
+          subtotal_discounts: number | null
+          total_payments: number | null
+          total_sales: number | null
+          total_tax: number | null
+        }
+        Insert: {
+          business_date: string
+          fetched_at?: string
+          id?: string
+          items_json?: Json
+          net_sales?: number | null
+          order_types_json?: Json
+          payments_json?: Json
+          raw_totals_json?: Json
+          refunds?: number | null
+          restaurant_id: string
+          retained_tips?: number | null
+          revenue_center?: string
+          subtotal_discounts?: number | null
+          total_payments?: number | null
+          total_sales?: number | null
+          total_tax?: number | null
+        }
+        Update: {
+          business_date?: string
+          fetched_at?: string
+          id?: string
+          items_json?: Json
+          net_sales?: number | null
+          order_types_json?: Json
+          payments_json?: Json
+          raw_totals_json?: Json
+          refunds?: number | null
+          restaurant_id?: string
+          retained_tips?: number | null
+          revenue_center?: string
+          subtotal_discounts?: number | null
+          total_payments?: number | null
+          total_sales?: number | null
+          total_tax?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_daily_reports_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_datafeed_state: {
+        Row: {
+          business_date: string
+          checks_bytes: number
+          checks_sha256: string
+          fetched_at: string
+          restaurant_id: string
+        }
+        Insert: {
+          business_date: string
+          checks_bytes: number
+          checks_sha256: string
+          fetched_at?: string
+          restaurant_id: string
+        }
+        Update: {
+          business_date?: string
+          checks_bytes?: number
+          checks_sha256?: string
+          fetched_at?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_datafeed_state_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_order_items: {
+        Row: {
+          business_date: string
+          created_at: string
+          discount_amount: number
+          focus_check_id: string
+          id: string
+          is_modifier: boolean
+          item_code: string | null
+          item_key: string
+          name: string | null
+          parent_key: string | null
+          price: number | null
+          record_number: string | null
+          report_group_id: string | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          business_date: string
+          created_at?: string
+          discount_amount?: number
+          focus_check_id: string
+          id?: string
+          is_modifier?: boolean
+          item_code?: string | null
+          item_key: string
+          name?: string | null
+          parent_key?: string | null
+          price?: number | null
+          record_number?: string | null
+          report_group_id?: string | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          business_date?: string
+          created_at?: string
+          discount_amount?: number
+          focus_check_id?: string
+          id?: string
+          is_modifier?: boolean
+          item_code?: string | null
+          item_key?: string
+          name?: string | null
+          parent_key?: string | null
+          price?: number | null
+          record_number?: string | null
+          report_group_id?: string | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_order_items_order_fk"
+            columns: ["restaurant_id", "business_date", "focus_check_id"]
+            referencedRelation: "focus_orders"
+            referencedColumns: [
+              "restaurant_id",
+              "business_date",
+              "focus_check_id",
+            ]
+          },
+          {
+            foreignKeyName: "focus_order_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_orders: {
+        Row: {
+          business_date: string
+          closed_at_local: string | null
+          created_at: string
+          discount_total: number
+          focus_check_id: string
+          guests: number | null
+          id: string
+          is_voided: boolean
+          opened_at_local: string | null
+          order_type_id: string | null
+          restaurant_id: string
+          revenue_center_id: string | null
+          tax_amount: number
+          taxable_sales: number
+          total: number
+          updated_at: string
+          voided_at: string | null
+        }
+        Insert: {
+          business_date: string
+          closed_at_local?: string | null
+          created_at?: string
+          discount_total?: number
+          focus_check_id: string
+          guests?: number | null
+          id?: string
+          is_voided?: boolean
+          opened_at_local?: string | null
+          order_type_id?: string | null
+          restaurant_id: string
+          revenue_center_id?: string | null
+          tax_amount?: number
+          taxable_sales?: number
+          total?: number
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Update: {
+          business_date?: string
+          closed_at_local?: string | null
+          created_at?: string
+          discount_total?: number
+          focus_check_id?: string
+          guests?: number | null
+          id?: string
+          is_voided?: boolean
+          opened_at_local?: string | null
+          order_type_id?: string | null
+          restaurant_id?: string
+          revenue_center_id?: string | null
+          tax_amount?: number
+          taxable_sales?: number
+          total?: number
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_payments: {
+        Row: {
+          amount: number
+          business_date: string
+          card_last4: string | null
+          created_at: string
+          focus_check_id: string
+          id: string
+          name: string | null
+          payment_id: string | null
+          payment_key: string
+          restaurant_id: string
+          tip: number
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          business_date: string
+          card_last4?: string | null
+          created_at?: string
+          focus_check_id: string
+          id?: string
+          name?: string | null
+          payment_id?: string | null
+          payment_key: string
+          restaurant_id: string
+          tip?: number
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          business_date?: string
+          card_last4?: string | null
+          created_at?: string
+          focus_check_id?: string
+          id?: string
+          name?: string | null
+          payment_id?: string | null
+          payment_key?: string
+          restaurant_id?: string
+          tip?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_payments_order_fk"
+            columns: ["restaurant_id", "business_date", "focus_check_id"]
+            referencedRelation: "focus_orders"
+            referencedColumns: [
+              "restaurant_id",
+              "business_date",
+              "focus_check_id",
+            ]
+          },
+          {
+            foreignKeyName: "focus_payments_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2756,7 +3321,6 @@ export type Database = {
           {
             foreignKeyName: "inventory_locations_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2812,7 +3376,6 @@ export type Database = {
           {
             foreignKeyName: "inventory_reconciliations_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2877,14 +3440,12 @@ export type Database = {
           {
             foreignKeyName: "inventory_transactions_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "inventory_transactions_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -2903,6 +3464,7 @@ export type Database = {
           invited_by: string
           restaurant_id: string
           role: string
+          role_id: string | null
           status: string
           token: string
           updated_at: string
@@ -2919,6 +3481,7 @@ export type Database = {
           invited_by: string
           restaurant_id: string
           role?: string
+          role_id?: string | null
           status?: string
           token: string
           updated_at?: string
@@ -2935,6 +3498,7 @@ export type Database = {
           invited_by?: string
           restaurant_id?: string
           role?: string
+          role_id?: string | null
           status?: string
           token?: string
           updated_at?: string
@@ -2943,22 +3507,31 @@ export type Database = {
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_role_id_fkey"
+            columns: ["role_id"]
+            referencedRelation: "roles"
             referencedColumns: ["id"]
           },
         ]
@@ -3010,7 +3583,6 @@ export type Database = {
           {
             foreignKeyName: "invoice_line_items_invoice_id_fkey"
             columns: ["invoice_id"]
-            isOneToOne: false
             referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
@@ -3060,7 +3632,6 @@ export type Database = {
           {
             foreignKeyName: "invoice_payments_invoice_id_fkey"
             columns: ["invoice_id"]
-            isOneToOne: false
             referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
@@ -3164,14 +3735,12 @@ export type Database = {
           {
             foreignKeyName: "invoices_customer_id_fkey"
             columns: ["customer_id"]
-            isOneToOne: false
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invoices_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3227,7 +3796,6 @@ export type Database = {
           {
             foreignKeyName: "journal_entries_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3265,14 +3833,12 @@ export type Database = {
           {
             foreignKeyName: "journal_entry_lines_account_id_fkey"
             columns: ["account_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
             columns: ["journal_entry_id"]
-            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
@@ -3307,7 +3873,6 @@ export type Database = {
           {
             foreignKeyName: "kiosk_service_accounts_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3348,7 +3913,43 @@ export type Database = {
           {
             foreignKeyName: "manager_pins_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_channel_settings: {
+        Row: {
+          created_at: string
+          email_enabled: boolean
+          id: string
+          notification_type: string
+          push_enabled: boolean
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          notification_type: string
+          push_enabled?: boolean
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          notification_type?: string
+          push_enabled?: boolean
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_channel_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3389,7 +3990,6 @@ export type Database = {
           {
             foreignKeyName: "notification_preferences_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3511,8 +4111,95 @@ export type Database = {
           {
             foreignKeyName: "notification_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      open_shift_claims: {
+        Row: {
+          claimed_by_employee_id: string
+          created_at: string
+          id: string
+          restaurant_id: string
+          resulting_shift_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          shift_date: string
+          shift_template_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          claimed_by_employee_id: string
+          created_at?: string
+          id?: string
+          restaurant_id: string
+          resulting_shift_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          shift_date: string
+          shift_template_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          claimed_by_employee_id?: string
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          resulting_shift_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          shift_date?: string
+          shift_template_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_resulting_shift_id_fkey"
+            columns: ["resulting_shift_id"]
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_shift_template_id_fkey"
+            columns: ["shift_template_id"]
+            referencedRelation: "shift_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -3579,7 +4266,6 @@ export type Database = {
           {
             foreignKeyName: "ops_inbox_item_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3623,28 +4309,30 @@ export type Database = {
           {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_adjustments_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "overtime_adjustments_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3694,7 +4382,6 @@ export type Database = {
           {
             foreignKeyName: "overtime_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3704,6 +4391,7 @@ export type Database = {
         Row: {
           amount: number
           category_id: string | null
+          check_bank_account_id: string | null
           cleared_at: string | null
           created_at: string
           due_date: string | null
@@ -3723,6 +4411,7 @@ export type Database = {
         Insert: {
           amount: number
           category_id?: string | null
+          check_bank_account_id?: string | null
           cleared_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -3742,6 +4431,7 @@ export type Database = {
         Update: {
           amount?: number
           category_id?: string | null
+          check_bank_account_id?: string | null
           cleared_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -3762,21 +4452,24 @@ export type Database = {
           {
             foreignKeyName: "pending_outflows_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_outflows_check_bank_account_id_fkey"
+            columns: ["check_bank_account_id"]
+            referencedRelation: "check_bank_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "pending_outflows_linked_bank_transaction_id_fkey"
             columns: ["linked_bank_transaction_id"]
-            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "pending_outflows_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3847,7 +4540,6 @@ export type Database = {
           {
             foreignKeyName: "pos_sales_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3891,14 +4583,12 @@ export type Database = {
           {
             foreignKeyName: "prep_recipe_ingredients_prep_recipe_id_fkey"
             columns: ["prep_recipe_id"]
-            isOneToOne: false
             referencedRelation: "prep_recipes"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "prep_recipe_ingredients_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
@@ -3939,7 +4629,6 @@ export type Database = {
           {
             foreignKeyName: "prep_recipe_procedure_steps_prep_recipe_id_fkey"
             columns: ["prep_recipe_id"]
-            isOneToOne: false
             referencedRelation: "prep_recipes"
             referencedColumns: ["id"]
           },
@@ -4010,21 +4699,18 @@ export type Database = {
           {
             foreignKeyName: "prep_recipes_output_product_id_fkey"
             columns: ["output_product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "prep_recipes_recipe_id_fkey"
             columns: ["recipe_id"]
-            isOneToOne: false
             referencedRelation: "recipes"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "prep_recipes_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4116,21 +4802,18 @@ export type Database = {
           {
             foreignKeyName: "product_suppliers_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "product_suppliers_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "product_suppliers_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -4180,14 +4863,12 @@ export type Database = {
           {
             foreignKeyName: "production_run_ingredients_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "production_run_ingredients_production_run_id_fkey"
             columns: ["production_run_id"]
-            isOneToOne: false
             referencedRelation: "production_runs"
             referencedColumns: ["id"]
           },
@@ -4276,14 +4957,12 @@ export type Database = {
           {
             foreignKeyName: "production_runs_prep_recipe_id_fkey"
             columns: ["prep_recipe_id"]
-            isOneToOne: false
             referencedRelation: "prep_recipes"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "production_runs_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4390,7 +5069,6 @@ export type Database = {
           {
             foreignKeyName: "products_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -4485,21 +5163,18 @@ export type Database = {
           {
             foreignKeyName: "purchase_order_lines_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_order_lines_purchase_order_id_fkey"
             columns: ["purchase_order_id"]
-            isOneToOne: false
             referencedRelation: "purchase_orders"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_order_lines_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -4558,21 +5233,18 @@ export type Database = {
           {
             foreignKeyName: "purchase_orders_location_id_fkey"
             columns: ["location_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -4605,6 +5277,7 @@ export type Database = {
       receipt_imports: {
         Row: {
           created_at: string
+          file_hash: string | null
           file_name: string | null
           file_size: number | null
           id: string
@@ -4623,6 +5296,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          file_hash?: string | null
           file_name?: string | null
           file_size?: number | null
           id?: string
@@ -4641,6 +5315,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          file_hash?: string | null
           file_name?: string | null
           file_size?: number | null
           id?: string
@@ -4661,7 +5336,6 @@ export type Database = {
           {
             foreignKeyName: "receipt_imports_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -4735,14 +5409,12 @@ export type Database = {
           {
             foreignKeyName: "receipt_line_items_matched_product_id_fkey"
             columns: ["matched_product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "receipt_line_items_receipt_id_fkey"
             columns: ["receipt_id"]
-            isOneToOne: false
             referencedRelation: "receipt_imports"
             referencedColumns: ["id"]
           },
@@ -4783,14 +5455,12 @@ export type Database = {
           {
             foreignKeyName: "recipe_ingredients_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "recipe_ingredients_recipe_id_fkey"
             columns: ["recipe_id"]
-            isOneToOne: false
             referencedRelation: "recipes"
             referencedColumns: ["id"]
           },
@@ -4843,7 +5513,6 @@ export type Database = {
           {
             foreignKeyName: "recipes_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4884,14 +5553,12 @@ export type Database = {
           {
             foreignKeyName: "reconciliation_boundaries_opening_balance_journal_entry_id_fkey"
             columns: ["opening_balance_journal_entry_id"]
-            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "reconciliation_boundaries_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4932,7 +5599,6 @@ export type Database = {
           {
             foreignKeyName: "reconciliation_item_finds_reconciliation_item_id_fkey"
             columns: ["reconciliation_item_id"]
-            isOneToOne: false
             referencedRelation: "reconciliation_items"
             referencedColumns: ["id"]
           },
@@ -4985,14 +5651,12 @@ export type Database = {
           {
             foreignKeyName: "reconciliation_items_product_id_fkey"
             columns: ["product_id"]
-            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "reconciliation_items_reconciliation_id_fkey"
             columns: ["reconciliation_id"]
-            isOneToOne: false
             referencedRelation: "inventory_reconciliations"
             referencedColumns: ["id"]
           },
@@ -5024,7 +5688,6 @@ export type Database = {
           {
             foreignKeyName: "restaurant_financial_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5059,7 +5722,6 @@ export type Database = {
           {
             foreignKeyName: "restaurant_inventory_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5121,7 +5783,6 @@ export type Database = {
           {
             foreignKeyName: "restaurant_operating_costs_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5140,9 +5801,13 @@ export type Database = {
           cuisine_type: string | null
           ein: string | null
           entity_type: string | null
+          geofence_enforcement: string
+          geofence_radius_meters: number
           grandfathered_until: string | null
           id: string
+          latitude: number | null
           legal_name: string | null
+          longitude: number | null
           name: string
           phone: string | null
           state: string | null
@@ -5171,9 +5836,13 @@ export type Database = {
           cuisine_type?: string | null
           ein?: string | null
           entity_type?: string | null
+          geofence_enforcement?: string
+          geofence_radius_meters?: number
           grandfathered_until?: string | null
           id?: string
+          latitude?: number | null
           legal_name?: string | null
+          longitude?: number | null
           name: string
           phone?: string | null
           state?: string | null
@@ -5202,9 +5871,13 @@ export type Database = {
           cuisine_type?: string | null
           ein?: string | null
           entity_type?: string | null
+          geofence_enforcement?: string
+          geofence_radius_meters?: number
           grandfathered_until?: string | null
           id?: string
+          latitude?: number | null
           legal_name?: string | null
+          longitude?: number | null
           name?: string
           phone?: string | null
           state?: string | null
@@ -5222,6 +5895,551 @@ export type Database = {
           zip?: string | null
         }
         Relationships: []
+      }
+      revel_connections: {
+        Row: {
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
+          connection_status: string
+          consecutive_failures: number
+          created_at: string
+          establishment_id: string
+          id: string
+          initial_sync_done: boolean
+          is_active: boolean
+          last_error: string | null
+          last_error_at: string | null
+          last_sync_time: string | null
+          next_attempt_at: string | null
+          restaurant_id: string
+          revel_instance: string
+          sync_cursor: string | null
+          sync_interval_minutes: number
+          sync_page: number | null
+          updated_at: string
+          webhook_active: boolean
+        }
+        Insert: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          connection_status?: string
+          consecutive_failures?: number
+          created_at?: string
+          establishment_id?: string
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          next_attempt_at?: string | null
+          restaurant_id: string
+          revel_instance: string
+          sync_cursor?: string | null
+          sync_interval_minutes?: number
+          sync_page?: number | null
+          updated_at?: string
+          webhook_active?: boolean
+        }
+        Update: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          connection_status?: string
+          consecutive_failures?: number
+          created_at?: string
+          establishment_id?: string
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          next_attempt_at?: string | null
+          restaurant_id?: string
+          revel_instance?: string
+          sync_cursor?: string | null
+          sync_interval_minutes?: number
+          sync_page?: number | null
+          updated_at?: string
+          webhook_active?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_order_items: {
+        Row: {
+          created_at: string
+          discount_amount: number | null
+          id: string
+          is_voided: boolean
+          item_name: string
+          menu_category: string | null
+          modifiers: Json | null
+          quantity: number
+          raw_json: Json | null
+          restaurant_id: string
+          revel_item_id: string
+          revel_order_id: string
+          revel_order_id_fk: string
+          synced_at: string
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          discount_amount?: number | null
+          id?: string
+          is_voided?: boolean
+          item_name: string
+          menu_category?: string | null
+          modifiers?: Json | null
+          quantity?: number
+          raw_json?: Json | null
+          restaurant_id: string
+          revel_item_id: string
+          revel_order_id: string
+          revel_order_id_fk: string
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          discount_amount?: number | null
+          id?: string
+          is_voided?: boolean
+          item_name?: string
+          menu_category?: string | null
+          modifiers?: Json | null
+          quantity?: number
+          raw_json?: Json | null
+          restaurant_id?: string
+          revel_item_id?: string
+          revel_order_id?: string
+          revel_order_id_fk?: string
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_order_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revel_order_items_revel_order_id_fk_fkey"
+            columns: ["revel_order_id_fk"]
+            referencedRelation: "revel_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_orders: {
+        Row: {
+          created_at: string
+          dining_option: string | null
+          discount_amount: number | null
+          establishment_id: string | null
+          id: string
+          order_date: string
+          order_number: string | null
+          order_time: string | null
+          payment_status: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          service_charge_amount: number | null
+          sold_at: string | null
+          subtotal_amount: number | null
+          synced_at: string
+          tax_amount: number | null
+          tip_amount: number | null
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dining_option?: string | null
+          discount_amount?: number | null
+          establishment_id?: string | null
+          id?: string
+          order_date: string
+          order_number?: string | null
+          order_time?: string | null
+          payment_status?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          service_charge_amount?: number | null
+          sold_at?: string | null
+          subtotal_amount?: number | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dining_option?: string | null
+          discount_amount?: number | null
+          establishment_id?: string | null
+          id?: string
+          order_date?: string
+          order_number?: string | null
+          order_time?: string | null
+          payment_status?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          revel_order_id?: string
+          service_charge_amount?: number | null
+          sold_at?: string | null
+          subtotal_amount?: number | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          payment_date: string | null
+          payment_status: string | null
+          payment_type: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          revel_payment_id: string
+          synced_at: string
+          tip_amount: number | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          payment_date?: string | null
+          payment_status?: string | null
+          payment_type?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          revel_payment_id: string
+          synced_at?: string
+          tip_amount?: number | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          payment_date?: string | null
+          payment_status?: string | null
+          payment_type?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          revel_order_id?: string
+          revel_payment_id?: string
+          synced_at?: string
+          tip_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_payments_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_webhook_events: {
+        Row: {
+          event_id: string
+          event_type: string
+          id: string
+          processed_at: string
+          raw_json: Json | null
+          restaurant_id: string
+        }
+        Insert: {
+          event_id: string
+          event_type: string
+          id?: string
+          processed_at?: string
+          raw_json?: Json | null
+          restaurant_id: string
+        }
+        Update: {
+          event_id?: string
+          event_type?: string
+          id?: string
+          processed_at?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_webhook_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_pages: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          destination_url: string | null
+          headline: string
+          id: string
+          is_active: boolean
+          logo_path: string | null
+          name: string
+          promoter_threshold: number
+          restaurant_id: string
+          slug: string
+          subheadline: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          destination_url?: string | null
+          headline?: string
+          id?: string
+          is_active?: boolean
+          logo_path?: string | null
+          name: string
+          promoter_threshold?: number
+          restaurant_id: string
+          slug: string
+          subheadline?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          destination_url?: string | null
+          headline?: string
+          id?: string
+          is_active?: boolean
+          logo_path?: string | null
+          name?: string
+          promoter_threshold?: number
+          restaurant_id?: string
+          slug?: string
+          subheadline?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_pages_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_response_contacts: {
+        Row: {
+          contact_email: string | null
+          contact_name: string | null
+          restaurant_id: string
+          review_response_id: string
+        }
+        Insert: {
+          contact_email?: string | null
+          contact_name?: string | null
+          restaurant_id: string
+          review_response_id: string
+        }
+        Update: {
+          contact_email?: string | null
+          contact_name?: string | null
+          restaurant_id?: string
+          review_response_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_response_contacts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_response_contacts_review_response_id_fkey"
+            columns: ["review_response_id"]
+            referencedRelation: "review_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_responses: {
+        Row: {
+          comment: string | null
+          commented_at: string | null
+          contact_consent: boolean
+          id: string
+          ip_hash: string | null
+          rating: number
+          restaurant_id: string
+          review_page_id: string
+          routed_to: string
+          status: string
+          submitted_at: string
+        }
+        Insert: {
+          comment?: string | null
+          commented_at?: string | null
+          contact_consent?: boolean
+          id?: string
+          ip_hash?: string | null
+          rating: number
+          restaurant_id: string
+          review_page_id: string
+          routed_to: string
+          status?: string
+          submitted_at?: string
+        }
+        Update: {
+          comment?: string | null
+          commented_at?: string | null
+          contact_consent?: boolean
+          id?: string
+          ip_hash?: string | null
+          rating?: number
+          restaurant_id?: string
+          review_page_id?: string
+          routed_to?: string
+          status?: string
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_responses_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_responses_review_page_id_fkey"
+            columns: ["review_page_id"]
+            referencedRelation: "review_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_areas: {
+        Row: {
+          area_key: string
+          level: string
+          role_id: string
+        }
+        Insert: {
+          area_key: string
+          level: string
+          role_id: string
+        }
+        Update: {
+          area_key?: string
+          level?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_areas_area_key_fkey"
+            columns: ["area_key"]
+            referencedRelation: "area_catalog"
+            referencedColumns: ["area_key"]
+          },
+          {
+            foreignKeyName: "role_areas_role_id_fkey"
+            columns: ["role_id"]
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_flags: {
+        Row: {
+          flag: string
+          role_id: string
+        }
+        Insert: {
+          flag: string
+          role_id: string
+        }
+        Update: {
+          flag?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_flags_role_id_fkey"
+            columns: ["role_id"]
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roles: {
+        Row: {
+          builtin: boolean
+          created_at: string
+          description: string | null
+          flavor: string
+          id: string
+          legacy_role: string | null
+          name: string
+          restaurant_id: string | null
+        }
+        Insert: {
+          builtin?: boolean
+          created_at?: string
+          description?: string | null
+          flavor: string
+          id?: string
+          legacy_role?: string | null
+          name: string
+          restaurant_id?: string | null
+        }
+        Update: {
+          builtin?: boolean
+          created_at?: string
+          description?: string | null
+          flavor?: string
+          id?: string
+          legacy_role?: string | null
+          name?: string
+          restaurant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roles_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rule_application_log: {
         Row: {
@@ -5264,21 +6482,18 @@ export type Database = {
           {
             foreignKeyName: "rule_application_log_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "rule_application_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "rule_application_log_rule_id_fkey"
             columns: ["rule_id"]
-            isOneToOne: false
             referencedRelation: "categorization_rules"
             referencedColumns: ["id"]
           },
@@ -5288,6 +6503,7 @@ export type Database = {
         Row: {
           after_data: Json | null
           before_data: Json | null
+          cascade_batch_id: string | null
           change_type: string
           changed_at: string
           changed_by: string
@@ -5301,6 +6517,7 @@ export type Database = {
         Insert: {
           after_data?: Json | null
           before_data?: Json | null
+          cascade_batch_id?: string | null
           change_type: string
           changed_at?: string
           changed_by: string
@@ -5314,6 +6531,7 @@ export type Database = {
         Update: {
           after_data?: Json | null
           before_data?: Json | null
+          cascade_batch_id?: string | null
           change_type?: string
           changed_at?: string
           changed_by?: string
@@ -5328,36 +6546,68 @@ export type Database = {
           {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_change_logs_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      schedule_plan_templates: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          restaurant_id: string
+          shift_count: number
+          shifts: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          restaurant_id: string
+          shift_count: number
+          shifts: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          restaurant_id?: string
+          shift_count?: number
+          shifts?: Json
+          updated_at?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "schedule_change_logs_shift_id_fkey"
-            columns: ["shift_id"]
-            isOneToOne: false
-            referencedRelation: "shifts"
+            foreignKeyName: "schedule_plan_templates_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -5368,6 +6618,8 @@ export type Database = {
           id: string
           notes: string | null
           notification_sent: boolean
+          open_shifts_broadcast_at: string | null
+          open_shifts_broadcast_by: string | null
           published_at: string
           published_by: string
           restaurant_id: string
@@ -5380,6 +6632,8 @@ export type Database = {
           id?: string
           notes?: string | null
           notification_sent?: boolean
+          open_shifts_broadcast_at?: string | null
+          open_shifts_broadcast_by?: string | null
           published_at?: string
           published_by: string
           restaurant_id: string
@@ -5392,6 +6646,8 @@ export type Database = {
           id?: string
           notes?: string | null
           notification_sent?: boolean
+          open_shifts_broadcast_at?: string | null
+          open_shifts_broadcast_by?: string | null
           published_at?: string
           published_by?: string
           restaurant_id?: string
@@ -5403,7 +6659,61 @@ export type Database = {
           {
             foreignKeyName: "schedule_publications_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_retractions: {
+        Row: {
+          employee_ids: string[]
+          id: string
+          notified_at: string | null
+          publication_id: string | null
+          reason: string | null
+          restaurant_id: string
+          retracted_at: string
+          retracted_by: string | null
+          shift_count: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Insert: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Update: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id?: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date?: string
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_retractions_publication_id_fkey"
+            columns: ["publication_id"]
+            referencedRelation: "schedule_publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_retractions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5432,14 +6742,12 @@ export type Database = {
           {
             foreignKeyName: "scim_group_members_group_id_fkey"
             columns: ["group_id"]
-            isOneToOne: false
             referencedRelation: "scim_groups"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "scim_group_members_user_id_fkey"
             columns: ["user_id"]
-            isOneToOne: false
             referencedRelation: "scim_users"
             referencedColumns: ["id"]
           },
@@ -5555,7 +6863,6 @@ export type Database = {
           {
             foreignKeyName: "security_audit_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5599,7 +6906,9 @@ export type Database = {
       }
       shift_templates: {
         Row: {
+          area: string | null
           break_duration: number
+          capacity: number
           created_at: string | null
           days: number[]
           end_time: string
@@ -5612,7 +6921,9 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          area?: string | null
           break_duration?: number
+          capacity?: number
           created_at?: string | null
           days?: number[]
           end_time: string
@@ -5625,7 +6936,9 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          area?: string | null
           break_duration?: number
+          capacity?: number
           created_at?: string | null
           days?: number[]
           end_time?: string
@@ -5641,7 +6954,6 @@ export type Database = {
           {
             foreignKeyName: "shift_templates_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5700,84 +7012,90 @@ export type Database = {
           {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
+            columns: ["accepted_by_employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
             columns: ["offered_by_employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
             columns: ["offered_by_employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
             columns: ["offered_by_employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
+            columns: ["offered_by_employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_shift_id_fkey"
             columns: ["offered_shift_id"]
-            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_requested_shift_id_fkey"
             columns: ["requested_shift_id"]
-            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_target_employee_id_fkey"
             columns: ["target_employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_target_employee_id_fkey"
             columns: ["target_employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_target_employee_id_fkey"
             columns: ["target_employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_target_employee_id_fkey"
+            columns: ["target_employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -5851,7 +7169,6 @@ export type Database = {
           {
             foreignKeyName: "shift4_charges_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5931,7 +7248,6 @@ export type Database = {
           {
             foreignKeyName: "shift4_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5996,7 +7312,6 @@ export type Database = {
           {
             foreignKeyName: "shift4_refunds_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6040,7 +7355,6 @@ export type Database = {
           {
             foreignKeyName: "shift4_webhook_events_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6063,6 +7377,8 @@ export type Database = {
           recurrence_parent_id: string | null
           recurrence_pattern: Json | null
           restaurant_id: string
+          shift_template_id: string | null
+          source: string
           source_id: string | null
           source_type: string | null
           start_time: string
@@ -6085,6 +7401,8 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id: string
+          shift_template_id?: string | null
+          source?: string
           source_id?: string | null
           source_type?: string | null
           start_time: string
@@ -6107,6 +7425,8 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id?: string
+          shift_template_id?: string | null
+          source?: string
           source_id?: string | null
           source_type?: string | null
           start_time?: string
@@ -6117,36 +7437,43 @@ export type Database = {
           {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_recurrence_parent_id_fkey"
             columns: ["recurrence_parent_id"]
-            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_shift_template_id_fkey"
+            columns: ["shift_template_id"]
+            referencedRelation: "shift_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -6213,7 +7540,6 @@ export type Database = {
           {
             foreignKeyName: "sling_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6272,7 +7598,6 @@ export type Database = {
           {
             foreignKeyName: "sling_shifts_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6319,7 +7644,6 @@ export type Database = {
           {
             foreignKeyName: "sling_timesheets_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6369,7 +7693,6 @@ export type Database = {
           {
             foreignKeyName: "sling_users_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6425,7 +7748,6 @@ export type Database = {
           {
             foreignKeyName: "square_catalog_objects_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6475,7 +7797,6 @@ export type Database = {
           {
             foreignKeyName: "square_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6522,14 +7843,12 @@ export type Database = {
           {
             foreignKeyName: "square_locations_connection_id_fkey"
             columns: ["connection_id"]
-            isOneToOne: false
             referencedRelation: "square_connections"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "square_locations_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6585,21 +7904,18 @@ export type Database = {
           {
             foreignKeyName: "square_order_line_items_order_fkey"
             columns: ["order_id", "restaurant_id"]
-            isOneToOne: false
             referencedRelation: "square_orders"
             referencedColumns: ["order_id", "restaurant_id"]
           },
           {
             foreignKeyName: "square_order_line_items_order_id_restaurant_id_fkey"
             columns: ["order_id", "restaurant_id"]
-            isOneToOne: false
             referencedRelation: "square_orders"
             referencedColumns: ["order_id", "restaurant_id"]
           },
           {
             foreignKeyName: "square_order_line_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6670,7 +7986,6 @@ export type Database = {
           {
             foreignKeyName: "square_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6723,7 +8038,6 @@ export type Database = {
           {
             foreignKeyName: "square_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6770,7 +8084,6 @@ export type Database = {
           {
             foreignKeyName: "square_refunds_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6829,7 +8142,6 @@ export type Database = {
           {
             foreignKeyName: "square_shifts_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6873,7 +8185,61 @@ export type Database = {
           {
             foreignKeyName: "square_team_members_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staffing_settings: {
+        Row: {
+          avg_ticket_size: number
+          created_at: string
+          id: string
+          lookback_weeks: number
+          manual_projections: Json | null
+          min_crew: Json | null
+          min_staff: number
+          open_shifts_enabled: boolean
+          require_shift_claim_approval: boolean
+          restaurant_id: string
+          target_labor_pct: number
+          target_splh: number
+          updated_at: string
+        }
+        Insert: {
+          avg_ticket_size?: number
+          created_at?: string
+          id?: string
+          lookback_weeks?: number
+          manual_projections?: Json | null
+          min_crew?: Json | null
+          min_staff?: number
+          open_shifts_enabled?: boolean
+          require_shift_claim_approval?: boolean
+          restaurant_id: string
+          target_labor_pct?: number
+          target_splh?: number
+          updated_at?: string
+        }
+        Update: {
+          avg_ticket_size?: number
+          created_at?: string
+          id?: string
+          lookback_weeks?: number
+          manual_projections?: Json | null
+          min_crew?: Json | null
+          min_staff?: number
+          open_shifts_enabled?: boolean
+          require_shift_claim_approval?: boolean
+          restaurant_id?: string
+          target_labor_pct?: number
+          target_splh?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staffing_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6920,7 +8286,6 @@ export type Database = {
           {
             foreignKeyName: "stripe_connected_accounts_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6982,21 +8347,18 @@ export type Database = {
           {
             foreignKeyName: "supplier_categorization_rules_default_category_id_fkey"
             columns: ["default_category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "supplier_categorization_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "supplier_categorization_rules_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -7031,14 +8393,12 @@ export type Database = {
           {
             foreignKeyName: "supplier_name_variations_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "supplier_name_variations_supplier_id_fkey"
             columns: ["supplier_id"]
-            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -7085,6 +8445,55 @@ export type Database = {
           website?: string | null
         }
         Relationships: []
+      }
+      template_hours_cascade_batches: {
+        Row: {
+          after_end_time: string
+          after_start_time: string
+          before_end_time: string
+          before_start_time: string
+          changed_by: string | null
+          created_at: string
+          id: string
+          restaurant_id: string
+          shift_template_id: string
+        }
+        Insert: {
+          after_end_time: string
+          after_start_time: string
+          before_end_time: string
+          before_start_time: string
+          changed_by?: string | null
+          created_at?: string
+          id: string
+          restaurant_id: string
+          shift_template_id: string
+        }
+        Update: {
+          after_end_time?: string
+          after_start_time?: string
+          before_end_time?: string
+          before_start_time?: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          shift_template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_hours_cascade_batches_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "template_hours_cascade_batches_shift_template_id_fkey"
+            columns: ["shift_template_id"]
+            referencedRelation: "shift_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       time_off_requests: {
         Row: {
@@ -7133,28 +8542,30 @@ export type Database = {
           {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_off_requests_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_off_requests_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7219,35 +8630,36 @@ export type Database = {
           {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_punches_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_shift_id_fkey"
             columns: ["shift_id"]
-            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
@@ -7300,14 +8712,12 @@ export type Database = {
           {
             foreignKeyName: "tip_contribution_pools_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_contribution_pools_settings_id_fkey"
             columns: ["settings_id"]
-            isOneToOne: false
             referencedRelation: "tip_pool_settings"
             referencedColumns: ["id"]
           },
@@ -7360,35 +8770,36 @@ export type Database = {
           {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_disputes_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_tip_split_id_fkey"
             columns: ["tip_split_id"]
-            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -7435,35 +8846,36 @@ export type Database = {
           {
             foreignKeyName: "tip_payouts_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_payouts_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_tip_split_id_fkey"
             columns: ["tip_split_id"]
-            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -7501,14 +8913,12 @@ export type Database = {
           {
             foreignKeyName: "tip_pool_allocations_pool_id_fkey"
             columns: ["pool_id"]
-            isOneToOne: false
             referencedRelation: "tip_contribution_pools"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_pool_allocations_tip_split_id_fkey"
             columns: ["tip_split_id"]
-            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -7523,6 +8933,7 @@ export type Database = {
           id: string
           pooling_model: string
           restaurant_id: string
+          role_percentages: Json
           role_weights: Json | null
           share_method: string | null
           split_cadence: string | null
@@ -7537,6 +8948,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -7551,6 +8963,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id?: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -7561,7 +8974,6 @@ export type Database = {
           {
             foreignKeyName: "tip_pool_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7599,28 +9011,30 @@ export type Database = {
           {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_server_earnings_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_server_earnings_tip_split_id_fkey"
             columns: ["tip_split_id"]
-            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -7661,7 +9075,6 @@ export type Database = {
           {
             foreignKeyName: "tip_split_audit_tip_split_id_fkey"
             columns: ["tip_split_id"]
-            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -7670,6 +9083,7 @@ export type Database = {
       tip_split_items: {
         Row: {
           amount: number
+          applied_rule: Json | null
           created_at: string | null
           employee_id: string
           hours_worked: number | null
@@ -7681,6 +9095,7 @@ export type Database = {
         }
         Insert: {
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id: string
           hours_worked?: number | null
@@ -7692,6 +9107,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id?: string
           hours_worked?: number | null
@@ -7705,28 +9121,30 @@ export type Database = {
           {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
-            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_split_items_employee_id_fkey"
+            columns: ["employee_id"]
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_split_items_tip_split_id_fkey"
             columns: ["tip_split_id"]
-            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -7782,7 +9200,6 @@ export type Database = {
           {
             foreignKeyName: "tip_splits_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7802,6 +9219,7 @@ export type Database = {
           last_error_at: string | null
           last_sync_time: string | null
           restaurant_id: string
+          rollup_source_watermark: string | null
           sync_cursor: number | null
           sync_page: number | null
           toast_restaurant_guid: string
@@ -7825,6 +9243,7 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id: string
+          rollup_source_watermark?: string | null
           sync_cursor?: number | null
           sync_page?: number | null
           toast_restaurant_guid: string
@@ -7848,6 +9267,7 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id?: string
+          rollup_source_watermark?: string | null
           sync_cursor?: number | null
           sync_page?: number | null
           toast_restaurant_guid?: string
@@ -7862,7 +9282,6 @@ export type Database = {
           {
             foreignKeyName: "toast_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7918,7 +9337,6 @@ export type Database = {
           {
             foreignKeyName: "toast_menu_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7983,14 +9401,12 @@ export type Database = {
           {
             foreignKeyName: "toast_order_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "toast_order_items_toast_order_id_fkey"
             columns: ["toast_order_id"]
-            isOneToOne: false
             referencedRelation: "toast_orders"
             referencedColumns: ["id"]
           },
@@ -8064,7 +9480,6 @@ export type Database = {
           {
             foreignKeyName: "toast_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8117,7 +9532,6 @@ export type Database = {
           {
             foreignKeyName: "toast_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8152,7 +9566,6 @@ export type Database = {
           {
             foreignKeyName: "toast_webhook_events_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8205,14 +9618,12 @@ export type Database = {
           {
             foreignKeyName: "transaction_categorization_rules_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_categorization_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8259,42 +9670,76 @@ export type Database = {
           {
             foreignKeyName: "transaction_reclassifications_bank_transaction_id_fkey"
             columns: ["bank_transaction_id"]
-            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_new_category_id_fkey"
             columns: ["new_category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_original_category_id_fkey"
             columns: ["original_category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_original_journal_entry_id_fkey"
             columns: ["original_journal_entry_id"]
-            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_reclass_journal_entry_id_fkey"
             columns: ["reclass_journal_entry_id"]
-            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trial_emails_sent: {
+        Row: {
+          email_type: string
+          id: string
+          resend_message_id: string | null
+          restaurant_id: string
+          sent_at: string
+          trial_day_at_send: number
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          email_type: string
+          id?: string
+          resend_message_id?: string | null
+          restaurant_id: string
+          sent_at?: string
+          trial_day_at_send: number
+          user_id: string
+          variant: string
+        }
+        Update: {
+          email_type?: string
+          id?: string
+          resend_message_id?: string | null
+          restaurant_id?: string
+          sent_at?: string
+          trial_day_at_send?: number
+          user_id?: string
+          variant?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trial_emails_sent_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8320,6 +9765,7 @@ export type Database = {
           quantity: number
           raw_data: Json | null
           restaurant_id: string
+          rules_evaluated_at: string
           sale_date: string
           sale_time: string | null
           sold_at: string | null
@@ -8348,6 +9794,7 @@ export type Database = {
           quantity?: number
           raw_data?: Json | null
           restaurant_id: string
+          rules_evaluated_at?: string
           sale_date: string
           sale_time?: string | null
           sold_at?: string | null
@@ -8376,6 +9823,7 @@ export type Database = {
           quantity?: number
           raw_data?: Json | null
           restaurant_id?: string
+          rules_evaluated_at?: string
           sale_date?: string
           sale_time?: string | null
           sold_at?: string | null
@@ -8389,28 +9837,24 @@ export type Database = {
           {
             foreignKeyName: "fk_parent_sale"
             columns: ["parent_sale_id"]
-            isOneToOne: false
             referencedRelation: "unified_sales"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_parent_sale_id_fkey"
             columns: ["parent_sale_id"]
-            isOneToOne: false
             referencedRelation: "unified_sales"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_suggested_category_id_fkey"
             columns: ["suggested_category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
@@ -8445,14 +9889,12 @@ export type Database = {
           {
             foreignKeyName: "unified_sales_splits_category_id_fkey"
             columns: ["category_id"]
-            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_splits_sale_id_fkey"
             columns: ["sale_id"]
-            isOneToOne: false
             referencedRelation: "unified_sales"
             referencedColumns: ["id"]
           },
@@ -8488,6 +9930,7 @@ export type Database = {
           id: string
           restaurant_id: string
           role: string | null
+          role_id: string | null
           user_id: string
         }
         Insert: {
@@ -8495,6 +9938,7 @@ export type Database = {
           id?: string
           restaurant_id: string
           role?: string | null
+          role_id?: string | null
           user_id: string
         }
         Update: {
@@ -8502,13 +9946,56 @@ export type Database = {
           id?: string
           restaurant_id?: string
           role?: string | null
+          role_id?: string | null
           user_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "user_restaurants_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_restaurants_role_id_fkey"
+            columns: ["role_id"]
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      web_push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          restaurant_id: string
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          restaurant_id: string
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          restaurant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "web_push_subscriptions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8558,7 +10045,6 @@ export type Database = {
           {
             foreignKeyName: "weekly_brief_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8602,7 +10088,6 @@ export type Database = {
           {
             foreignKeyName: "weekly_brief_job_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8708,7 +10193,57 @@ export type Database = {
           {
             foreignKeyName: "employees_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees_secure: {
+        Row: {
+          allocate_daily: boolean | null
+          area: string | null
+          compensation_type: string | null
+          contractor_payment_amount: number | null
+          contractor_payment_interval: string | null
+          created_at: string | null
+          daily_rate_amount: number | null
+          daily_rate_reference_days: number | null
+          daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          email: string | null
+          employment_type: string | null
+          exempt_changed_at: string | null
+          exempt_changed_by: string | null
+          hire_date: string | null
+          hourly_rate: number | null
+          id: string | null
+          is_active: boolean | null
+          is_exempt: boolean | null
+          is_minor: boolean | null
+          last_active_date: string | null
+          name: string | null
+          notes: string | null
+          pay_period_type: string | null
+          phone: string | null
+          position: string | null
+          reactivated_at: string | null
+          reactivated_by: string | null
+          requires_time_punch: boolean | null
+          restaurant_id: string | null
+          salary_amount: number | null
+          status: string | null
+          termination_date: string | null
+          tip_eligible: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8752,7 +10287,6 @@ export type Database = {
           {
             foreignKeyName: "employees_restaurant_id_fkey"
             columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8799,11 +10333,18 @@ export type Database = {
       }
     }
     Functions: {
+      _check_account_encryption_key: { Args: never; Returns: string }
       _cleanup: { Args: never; Returns: boolean }
       _contract_on: { Args: { "": string }; Returns: unknown }
       _currtest: { Args: never; Returns: number }
       _db_privs: { Args: never; Returns: unknown[] }
       _extensions: { Args: never; Returns: unknown[] }
+      _focus_connection_is_due: {
+        Args: { fc: Database["public"]["Tables"]["focus_connections"]["Row"] }
+        Returns: boolean
+      }
+      _focus_is_fee_item: { Args: { p_name: string }; Returns: boolean }
+      _focus_parse_local_time: { Args: { p_raw: string }; Returns: string }
       _get: { Args: { "": string }; Returns: number }
       _get_latest: { Args: { "": string }; Returns: number[] }
       _get_note: { Args: { "": string }; Returns: string }
@@ -8812,6 +10353,26 @@ export type Database = {
       _query: { Args: { "": string }; Returns: string }
       _refine_vol: { Args: { "": string }; Returns: string }
       _retval: { Args: { "": string }; Returns: string }
+      _revel_connection_is_due: {
+        Args: { rc: Database["public"]["Tables"]["revel_connections"]["Row"] }
+        Returns: boolean
+      }
+      _sync_focus_to_unified_sales_impl: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: number
+      }
+      _sync_focus_transactions_to_unified_sales_impl: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: number
+      }
       _table_privs: { Args: never; Returns: unknown[] }
       _temptypes: { Args: { "": string }; Returns: string }
       _todo: { Args: never; Returns: string }
@@ -8860,12 +10421,44 @@ export type Database = {
           total_count: number
         }[]
       }
+      apply_rules_to_bank_transactions_internal: {
+        Args: {
+          p_batch_limit?: number
+          p_restaurant_id: string
+          p_skip_rebuild?: boolean
+        }
+        Returns: {
+          applied_count: number
+          total_count: number
+        }[]
+      }
       apply_rules_to_pos_sales: {
         Args: { p_batch_limit?: number; p_restaurant_id: string }
         Returns: {
           applied_count: number
           total_count: number
         }[]
+      }
+      apply_rules_to_pos_sales_internal: {
+        Args: { p_batch_limit?: number; p_restaurant_id: string }
+        Returns: {
+          applied_count: number
+          total_count: number
+        }[]
+      }
+      apply_schedule_plan_template: {
+        Args: {
+          p_merge_mode?: string
+          p_restaurant_id: string
+          p_shifts: Json
+          p_target_end: string
+          p_target_start: string
+        }
+        Returns: Json
+      }
+      approve_open_shift_claim: {
+        Args: { p_claim_id: string; p_reviewer_note?: string }
+        Returns: Json
       }
       approve_shift_trade: {
         Args: {
@@ -8879,17 +10472,72 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: number
       }
+      assign_membership_role: {
+        Args: { p_membership_id: string; p_role: string; p_role_id?: string }
+        Returns: undefined
+      }
+      backfill_user_restaurants_role_id: { Args: never; Returns: undefined }
+      bank_reauth_cohort_a_candidates: {
+        Args: never
+        Returns: {
+          account_mask: string
+          connected_bank_id: string
+          deactivated_at: string
+          elapsed_days: number
+          institution_name: string
+          restaurant_id: string
+          restaurant_timezone: string
+          sent_stages: string[]
+        }[]
+      }
+      bank_reauth_cohort_b_recovered: {
+        Args: never
+        Returns: {
+          account_mask: string
+          connected_bank_id: string
+          data_current_through: string
+          deactivated_at: string
+          institution_name: string
+          restaurant_id: string
+          restaurant_timezone: string
+        }[]
+      }
+      bank_reauth_notice_recipients: {
+        Args: { p_restaurant_id: string; p_roles: string[] }
+        Returns: {
+          email: string
+          full_name: string
+          role: string
+          user_id: string
+        }[]
+      }
+      builtin_role_id_for: { Args: { p_role: string }; Returns: string }
       bulk_delete_bank_transactions: {
         Args: { p_restaurant_id: string; p_transaction_ids: string[] }
         Returns: Json
       }
       bulk_process_historical_sales: {
         Args: {
+          p_after_created_at?: string
+          p_after_id?: string
+          p_after_sale_date?: string
+          p_batch_size?: number
           p_end_date: string
           p_restaurant_id: string
           p_start_date: string
         }
         Returns: Json
+      }
+      bulk_set_employee_availability: {
+        Args: {
+          p_availability: Json
+          p_employee_ids: string[]
+          p_restaurant_id: string
+        }
+        Returns: {
+          employees_updated: number
+          rows_inserted: number
+        }[]
       }
       calculate_asset_depreciation: {
         Args: {
@@ -8936,9 +10584,14 @@ export type Database = {
           total_hours: number
         }[]
       }
+      can_invite_custom_role: { Args: { p_inviter: string }; Returns: boolean }
       cancel_shift_trade: {
         Args: { p_employee_id: string; p_trade_id: string }
         Returns: Json
+      }
+      categorization_rules_watermark: {
+        Args: { p_restaurant_id: string; p_scope: string }
+        Returns: string
       }
       categorize_bank_transaction:
         | {
@@ -8979,6 +10632,8 @@ export type Database = {
           p_start_time: string
         }
         Returns: {
+          available_end: string
+          available_start: string
           conflict_type: string
           has_conflict: boolean
           message: string
@@ -9012,13 +10667,96 @@ export type Database = {
           time_off_id: string
         }[]
       }
-      claim_check_numbers: {
-        Args: { p_count?: number; p_restaurant_id: string }
+      claim_check_numbers_for_account: {
+        Args: { p_account_id: string; p_count?: number }
         Returns: number
+      }
+      claim_focus_sync_batch: {
+        Args: { p_limit?: number }
+        Returns: {
+          api_key: string | null
+          api_secret_encrypted: string | null
+          connection_status: string
+          consecutive_failures: number
+          created_at: string
+          db_catalog: string | null
+          db_server: string | null
+          environment: string
+          id: string
+          initial_sync_done: boolean
+          is_active: boolean
+          last_error: string | null
+          last_error_at: string | null
+          last_sync_time: string | null
+          mid: string | null
+          next_attempt_at: string | null
+          password_encrypted: string | null
+          report_base_url: string | null
+          report_path: string | null
+          report_user_id: string | null
+          restaurant_id: string
+          revenue_center: string | null
+          store_id: string
+          sync_cursor: number
+          sync_interval_minutes: number
+          timezone: string
+          updated_at: string
+          username: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "focus_connections"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_open_shift: {
+        Args: {
+          p_employee_id: string
+          p_restaurant_id: string
+          p_shift_date: string
+          p_template_id: string
+        }
+        Returns: Json
+      }
+      claim_revel_sync_batch: {
+        Args: { p_limit?: number }
+        Returns: {
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
+          connection_status: string
+          consecutive_failures: number
+          created_at: string
+          establishment_id: string
+          id: string
+          initial_sync_done: boolean
+          is_active: boolean
+          last_error: string | null
+          last_error_at: string | null
+          last_sync_time: string | null
+          next_attempt_at: string | null
+          restaurant_id: string
+          revel_instance: string
+          sync_cursor: string | null
+          sync_interval_minutes: number
+          sync_page: number | null
+          updated_at: string
+          webhook_active: boolean
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "revel_connections"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_rate_limit_logs: { Args: never; Returns: undefined }
+      clear_check_bank_account_secrets: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
       col_is_null:
         | {
             Args: {
@@ -9115,6 +10853,19 @@ export type Database = {
         Args: { p_restaurant_id: string; p_week_end: string }
         Returns: Json
       }
+      copy_role_to_restaurants: {
+        Args: { p_role_id: string; p_target_restaurant_ids: string[] }
+        Returns: Json
+      }
+      copy_week_shifts: {
+        Args: {
+          p_restaurant_id: string
+          p_shifts: Json
+          p_target_end: string
+          p_target_start: string
+        }
+        Returns: Json
+      }
       create_restaurant_with_owner: {
         Args: {
           restaurant_address?: string
@@ -9122,6 +10873,16 @@ export type Database = {
           restaurant_name: string
           restaurant_phone?: string
           restaurant_timezone?: string
+        }
+        Returns: string
+      }
+      create_shift_trade_for_employee: {
+        Args: {
+          p_offered_by_employee_id: string
+          p_offered_shift_id: string
+          p_reason?: string
+          p_restaurant_id: string
+          p_target_employee_id?: string
         }
         Returns: string
       }
@@ -9136,6 +10897,7 @@ export type Database = {
         }
         Returns: {
           allocate_daily: boolean | null
+          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -9143,10 +10905,12 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -9182,9 +10946,14 @@ export type Database = {
         Args: { p_restaurant_id: string; p_transaction_id: string }
         Returns: Json
       }
+      delete_schedule_plan_template: {
+        Args: { p_restaurant_id: string; p_template_id: string }
+        Returns: undefined
+      }
       delete_shift_series: {
         Args: {
           p_from_time?: string
+          p_include_locked?: boolean
           p_parent_id: string
           p_restaurant_id: string
           p_scope: string
@@ -9225,6 +10994,7 @@ export type Database = {
       do_tap:
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }
+      drain_categorization_backlog: { Args: never; Returns: number }
       enqueue_weekly_brief_jobs: { Args: never; Returns: Json }
       exclude_bank_transaction: {
         Args: { p_reason?: string; p_transaction_id: string }
@@ -9242,6 +11012,7 @@ export type Database = {
           rule_id: string
           rule_name: string
           split_categories: Json
+          supplier_id: string
         }[]
       }
       find_matching_rules_for_pos_sale: {
@@ -9267,6 +11038,17 @@ export type Database = {
       }
       findfuncs: { Args: { "": string }; Returns: string[] }
       finish: { Args: { exception_on_failure?: boolean }; Returns: string[] }
+      focus_due_sync_count: { Args: never; Returns: number }
+      focus_http_request: {
+        Args: {
+          p_body?: string
+          p_headers?: Json
+          p_method?: string
+          p_url: string
+        }
+        Returns: Json
+      }
+      focus_slug: { Args: { p_text: string }; Returns: string }
       format_type_string: { Args: { "": string }; Returns: string }
       fulltext_product_search: {
         Args: {
@@ -9289,6 +11071,13 @@ export type Database = {
       }
       generate_po_number: { Args: { p_restaurant_id: string }; Returns: string }
       get_account_subtypes: { Args: never; Returns: Json }
+      get_check_bank_account_secrets: {
+        Args: { p_id: string }
+        Returns: {
+          account_number: string
+          routing_number: string
+        }[]
+      }
       get_current_employee_id: {
         Args: { p_restaurant_id: string }
         Returns: string
@@ -9318,6 +11107,15 @@ export type Database = {
           on_break: boolean
         }[]
       }
+      get_labor_sales_analytics: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+          p_time_zone?: string
+        }
+        Returns: Json
+      }
       get_monthly_sales_metrics: {
         Args: {
           p_date_from: string
@@ -9331,6 +11129,26 @@ export type Database = {
           period: string
           sales_tax: number
           tips: number
+        }[]
+      }
+      get_open_shifts: {
+        Args: {
+          p_restaurant_id: string
+          p_week_end: string
+          p_week_start: string
+        }
+        Returns: {
+          area: string
+          assigned_count: number
+          capacity: number
+          end_time: string
+          open_spots: number
+          pending_claims: number
+          position: string
+          shift_date: string
+          start_time: string
+          template_id: string
+          template_name: string
         }[]
       }
       get_owner_restaurant_count: {
@@ -9366,6 +11184,13 @@ export type Database = {
         Args: { product_id: string }
         Returns: number
       }
+      get_recipe_sales_stats: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          avg_sale_price: number
+          item_name: string
+        }[]
+      }
       get_revenue_by_account: {
         Args: {
           p_date_from: string
@@ -9382,6 +11207,15 @@ export type Database = {
           total_amount: number
           transaction_count: number
         }[]
+      }
+      get_sales_trends: {
+        Args: {
+          p_end_date?: string
+          p_restaurant_id: string
+          p_start_date?: string
+          p_time_zone?: string
+        }
+        Returns: Json
       }
       get_shift_series_info: {
         Args: { p_parent_id: string; p_restaurant_id: string }
@@ -9416,6 +11250,24 @@ export type Database = {
           typical_price: number
         }[]
       }
+      get_unified_sales_grouped_by_item: {
+        Args: {
+          p_categorization_filter?: string
+          p_end_date?: string
+          p_recipe_filter?: string
+          p_restaurant_id: string
+          p_search_term?: string
+          p_sort_by?: string
+          p_sort_direction?: string
+          p_start_date?: string
+        }
+        Returns: {
+          item_name: string
+          sale_count: number
+          total_quantity: number
+          total_revenue: number
+        }[]
+      }
       get_unified_sales_totals: {
         Args: {
           p_end_date?: string
@@ -9427,10 +11279,18 @@ export type Database = {
           collected_at_pos: number
           discounts: number
           pass_through_amount: number
+          pending_review_count: number
           revenue: number
           total_count: number
+          uncategorized_count: number
           unique_items: number
           voids: number
+        }[]
+      }
+      get_unmapped_sale_item_names: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: {
+          item_name: string
         }[]
       }
       get_users_by_ids: {
@@ -9452,6 +11312,7 @@ export type Database = {
       has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       in_todo: { Args: never; Returns: boolean }
+      invitable_roles: { Args: { p_inviter: string }; Returns: string[] }
       is_current_user_employee: {
         Args: { p_employee_id: string }
         Returns: boolean
@@ -9471,6 +11332,19 @@ export type Database = {
           success: boolean
         }[]
       }
+      link_invited_employee: {
+        Args: {
+          p_email?: string
+          p_employee_id?: string
+          p_restaurant_id: string
+          p_user_id: string
+        }
+        Returns: {
+          employee_id: string
+          linked: boolean
+          reason: string
+        }[]
+      }
       lives_ok: { Args: { "": string }; Returns: string }
       log_security_event: {
         Args: {
@@ -9484,6 +11358,58 @@ export type Database = {
       mark_as_transfer: {
         Args: { p_transaction_id_1: string; p_transaction_id_2: string }
         Returns: Json
+      }
+      mark_connected_bank_deactivated: {
+        Args: { p_stripe_financial_account_id: string; p_sync_error: string }
+        Returns: {
+          account_mask: string | null
+          connected_at: string
+          created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
+          disconnected_at: string | null
+          id: string
+          institution_logo_url: string | null
+          institution_name: string
+          last_sync_at: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "connected_banks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mark_connected_bank_reactivated: {
+        Args: { p_stripe_financial_account_id: string }
+        Returns: {
+          account_mask: string | null
+          connected_at: string
+          created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
+          disconnected_at: string | null
+          id: string
+          institution_logo_url: string | null
+          institution_name: string
+          last_sync_at: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "connected_banks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       mark_stale_pending_outflows: { Args: never; Returns: undefined }
       matches_bank_transaction_rule: {
@@ -9534,6 +11460,7 @@ export type Database = {
           p_pos_item_name: string
           p_quantity_sold: number
           p_reason_prefix?: string
+          p_recipe_id?: string
           p_restaurant_id: string
           p_restaurant_timezone?: string
           p_sale_date: string
@@ -9560,6 +11487,7 @@ export type Database = {
         }
         Returns: {
           allocate_daily: boolean | null
+          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -9567,10 +11495,12 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -9606,6 +11536,46 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
+      reconnect_connected_bank: {
+        Args: {
+          p_account_mask: string
+          p_institution_logo_url: string
+          p_institution_name: string
+          p_restaurant_id: string
+          p_stripe_financial_account_id: string
+        }
+        Returns: {
+          account_mask: string | null
+          connected_at: string
+          created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
+          disconnected_at: string | null
+          id: string
+          institution_logo_url: string | null
+          institution_name: string
+          last_sync_at: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "connected_banks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_pos_sync_error: {
+        Args: { p_message: string; p_pos: string; p_restaurant_id: string }
+        Returns: undefined
+      }
+      reject_open_shift_claim: {
+        Args: { p_claim_id: string; p_reviewer_note?: string }
+        Returns: Json
+      }
       reject_shift_trade: {
         Args: {
           p_manager_note?: string
@@ -9614,13 +11584,95 @@ export type Database = {
         }
         Returns: Json
       }
+      replace_role_grants: {
+        Args: { p_areas: Json; p_flags: string[]; p_role_id: string }
+        Returns: undefined
+      }
       restore_deleted_transaction: {
         Args: { p_restaurant_id: string; p_tombstone_id: string }
         Returns: Json
       }
+      revel_backfill_invalid_tz_restaurants: {
+        Args: never
+        Returns: {
+          restaurant_id: string
+          restaurant_name: string
+          timezone: string
+        }[]
+      }
+      revel_backfill_pending_count: { Args: never; Returns: number }
+      revel_backfill_sold_at_for_restaurant: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          dates_reaggregated: number
+          orders_updated: number
+          unified_sales_updated: number
+        }[]
+      }
+      revel_created_date_to_utc: {
+        Args: { p_raw: string; p_tz: string }
+        Returns: string
+      }
+      revel_due_sync_count: { Args: never; Returns: number }
+      revel_raw_created_date: { Args: { p_raw_json: Json }; Returns: string }
+      revel_sync_financial_breakdown: {
+        Args: { p_order_id: string; p_restaurant_id: string }
+        Returns: number
+      }
+      revel_valid_tz: { Args: { p_tz: string }; Returns: string }
+      review_page_stats: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          average_rating: number
+          comment_count: number
+          rating_count: number
+          review_page_id: string
+        }[]
+      }
+      review_response_metrics: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          average_rating: number
+          comment_count: number
+          total_ratings: number
+          unread_count: number
+        }[]
+      }
+      review_response_submit_followup: {
+        Args: {
+          p_comment: string
+          p_consent: boolean
+          p_email: string
+          p_name: string
+          p_response_id: string
+        }
+        Returns: boolean
+      }
+      role_member_counts: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          member_count: number
+          role_id: string
+        }[]
+      }
       runtests:
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }
+      safe_cast_timestamptz: { Args: { p_text: string }; Returns: string }
+      save_schedule_plan_template: {
+        Args: { p_name: string; p_restaurant_id: string; p_shifts: Json }
+        Returns: Json
+      }
+      search_pos_items: {
+        Args: { p_limit?: number; p_restaurant_id: string; p_search?: string }
+        Returns: {
+          item_id: string
+          item_name: string
+          last_sold: string
+          sales_count: number
+          source: string
+        }[]
+      }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }
         Returns: {
@@ -9632,6 +11684,10 @@ export type Database = {
           uom_purchase: string
         }[]
       }
+      set_check_bank_account_secrets: {
+        Args: { p_account: string; p_id: string; p_routing: string }
+        Returns: undefined
+      }
       set_preferred_product_supplier: {
         Args: {
           p_product_id: string
@@ -9639,6 +11695,15 @@ export type Database = {
           p_restaurant_id: string
         }
         Returns: undefined
+      }
+      shift_template_assigned_count: {
+        Args: {
+          p_date: string
+          p_restaurant_id: string
+          p_template_id: string
+          p_tz: string
+        }
+        Returns: number
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -9685,6 +11750,20 @@ export type Database = {
           supplier_name: string
         }[]
       }
+      sync_all_focus_to_unified_sales: {
+        Args: never
+        Returns: {
+          restaurant_id: string
+          rows_synced: number
+        }[]
+      }
+      sync_all_focus_transactions_to_unified_sales: {
+        Args: never
+        Returns: {
+          restaurant_id: string
+          rows_synced: number
+        }[]
+      }
       sync_all_shift4_to_unified_sales: {
         Args: never
         Returns: {
@@ -9701,6 +11780,34 @@ export type Database = {
       }
       sync_clover_to_unified_sales: {
         Args: { p_restaurant_id: string }
+        Returns: number
+      }
+      sync_focus_to_unified_sales:
+        | { Args: { p_restaurant_id: string }; Returns: number }
+        | {
+            Args: {
+              p_end_date: string
+              p_restaurant_id: string
+              p_start_date: string
+            }
+            Returns: number
+          }
+      sync_focus_transactions_to_unified_sales:
+        | { Args: { p_restaurant_id: string }; Returns: number }
+        | {
+            Args: {
+              p_end_date: string
+              p_restaurant_id: string
+              p_start_date: string
+            }
+            Returns: number
+          }
+      sync_revel_to_unified_sales: {
+        Args: {
+          p_end_date?: string
+          p_restaurant_id: string
+          p_start_date?: string
+        }
         Returns: number
       }
       sync_shift4_to_unified_sales: {
@@ -9731,6 +11838,15 @@ export type Database = {
           }
       text_soundex: { Args: { "": string }; Returns: string }
       throws_ok: { Args: { "": string }; Returns: string }
+      time_within_window: {
+        Args: {
+          p_shift_end: string
+          p_shift_start: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: boolean
+      }
       toast_sync_financial_breakdown: {
         Args: { p_order_guid: string; p_restaurant_id: string }
         Returns: number
@@ -9739,12 +11855,17 @@ export type Database = {
         | { Args: { how_many: number }; Returns: boolean[] }
         | { Args: { how_many: number; why: string }; Returns: boolean[] }
         | { Args: { why: string }; Returns: boolean[] }
+        | { Args: { how_many: number; why: string }; Returns: boolean[] }
       todo_end: { Args: never; Returns: boolean[] }
       todo_start:
         | { Args: never; Returns: boolean[] }
         | { Args: { "": string }; Returns: boolean[] }
       trigger_square_periodic_sync: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
+      undo_template_hours_cascade: {
+        Args: { p_batch_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
       unpublish_schedule: {
         Args: {
           p_reason?: string
@@ -9753,6 +11874,10 @@ export type Database = {
           p_week_start: string
         }
         Returns: number
+      }
+      update_check_bank_account_routing: {
+        Args: { p_id: string; p_routing: string }
+        Returns: undefined
       }
       update_prep_recipe_ingredients: {
         Args: { p_ingredients?: Json; p_prep_recipe_id: string }
@@ -9773,6 +11898,23 @@ export type Database = {
           updated_count: number
         }[]
       }
+      update_shift_template_with_cascade: {
+        Args: {
+          p_area: string
+          p_break_duration: number
+          p_capacity: number
+          p_cascade: boolean
+          p_days: number[]
+          p_drifted_shift_ids: string[]
+          p_end_time: string
+          p_name: string
+          p_position: string
+          p_restaurant_id: string
+          p_start_time: string
+          p_template_id: string
+        }
+        Returns: Json
+      }
       upsert_product_supplier: {
         Args: {
           p_product_id: string
@@ -9782,6 +11924,41 @@ export type Database = {
           p_unit_cost: number
         }
         Returns: undefined
+      }
+      upsert_stripe_bank_balance: {
+        Args: {
+          p_account_mask: string
+          p_account_name: string
+          p_account_type: string
+          p_as_of_date?: string
+          p_available_balance: number
+          p_connected_bank_id: string
+          p_currency: string
+          p_current_balance: number
+          p_is_active: boolean
+          p_stripe_financial_account_id: string
+        }
+        Returns: {
+          account_mask: string | null
+          account_name: string
+          account_type: string | null
+          as_of_date: string
+          available_balance: number | null
+          connected_bank_id: string
+          created_at: string
+          currency: string
+          current_balance: number
+          id: string
+          is_active: boolean
+          stripe_financial_account_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "bank_account_balances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       user_has_capability: {
         Args: { p_capability: string; p_restaurant_id: string }
@@ -9802,6 +11979,18 @@ export type Database = {
       user_is_internal_team: {
         Args: { p_restaurant_id: string }
         Returns: boolean
+      }
+      users_in_trial_email_window: {
+        Args: never
+        Returns: {
+          activated: boolean
+          email: string
+          email_type: string
+          full_name: string
+          restaurant_id: string
+          trial_day: number
+          user_id: string
+        }[]
       }
       verify_employee_can_login: {
         Args: { p_user_id?: string }
@@ -10165,4 +12354,3 @@ export const Constants = {
     },
   },
 } as const
-

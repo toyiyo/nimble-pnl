@@ -31,30 +31,38 @@ function makeShift(overrides: Partial<Shift> = {}): Shift {
 }
 
 describe('ShiftRow draft treatment', () => {
-  it('labels an unpublished shift as an unconfirmed draft', () => {
+  it('shows no explanatory draft copy on an unpublished shift', () => {
     render(<ShiftRow shift={makeShift({ is_published: false })} />);
 
-    // The badge text is the signal that survives a screen reader, a
-    // colour-blind viewer and a greyscale phone -- the dashed border alone
-    // would not.
-    expect(screen.getByText('Draft — not confirmed')).toBeInTheDocument();
+    // Many restaurants never publish. Words like "not confirmed" on a real
+    // shift caused a no-show. The draft state is a hue, not a warning.
+    expect(screen.queryByText('Draft — not confirmed')).not.toBeInTheDocument();
+    expect(screen.getByText('Upcoming')).toBeInTheDocument();
   });
 
-  it('does not offer a Trade button on a draft shift', async () => {
+  it('keeps a screen-reader-only Draft label on an unpublished shift', () => {
+    render(<ShiftRow shift={makeShift({ is_published: false })} />);
+
+    // The hue alone would fail a screen reader and WCAG 1.4.1. The label is
+    // sr-only, so sighted users see no extra copy.
+    const label = screen.getByText('Draft');
+    expect(label).toHaveClass('sr-only');
+  });
+
+  it('offers a Trade button on a draft shift', async () => {
     const onTrade = vi.fn();
     render(<ShiftRow shift={makeShift({ is_published: false })} onTrade={onTrade} />);
 
-    // Trading a shift that does not officially exist yet produces a request
-    // against a schedule the manager is still editing.
-    expect(screen.queryByRole('button', { name: /trade/i })).not.toBeInTheDocument();
-    expect(onTrade).not.toHaveBeenCalled();
+    // The draft-trade design allows a trade before publication.
+    await userEvent.click(screen.getByRole('button', { name: /trade/i }));
+    expect(onTrade).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the normal status badge and Trade button once published', async () => {
+  it('shows the normal status badge and no Draft label once published', async () => {
     const onTrade = vi.fn();
     render(<ShiftRow shift={makeShift()} onTrade={onTrade} />);
 
-    expect(screen.queryByText('Draft — not confirmed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
     expect(screen.getByText('Upcoming')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /trade/i }));
@@ -62,17 +70,20 @@ describe('ShiftRow draft treatment', () => {
   });
 
   it('keeps a cancelled shift reading as cancelled, not as a draft', () => {
-    render(<ShiftRow shift={makeShift({ status: 'cancelled' })} onTrade={vi.fn()} />);
+    render(
+      <ShiftRow shift={makeShift({ status: 'cancelled', is_published: false })} onTrade={vi.fn()} />
+    );
 
     expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    // "It's cancelled" is the fact the employee has to leave with.
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /trade/i })).not.toBeInTheDocument();
   });
 
   it('takes the same draft branch in the Upcoming card as in the day grid', () => {
     render(<ShiftRow shift={makeShift({ is_published: false })} variant="upcoming" />);
 
-    // The Upcoming card is the one an employee reads first on mobile; a draft
-    // that looked confirmed there is the exact reported confusion.
-    expect(screen.getByText('Draft — not confirmed')).toBeInTheDocument();
+    expect(screen.queryByText('Draft — not confirmed')).not.toBeInTheDocument();
+    expect(screen.getByText('Draft')).toHaveClass('sr-only');
   });
 });

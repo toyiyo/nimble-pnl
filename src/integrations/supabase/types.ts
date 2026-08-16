@@ -12066,6 +12066,7 @@ export type Database = {
         Args: {
           p_end_time_delta?: string
           p_from_time?: string
+          p_include_locked?: boolean
           p_parent_id: string
           p_restaurant_id: string
           p_scope: string

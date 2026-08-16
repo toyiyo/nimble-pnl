@@ -12,6 +12,8 @@ import {
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
+import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
+import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -180,7 +182,7 @@ async function executeGetKpis(
   const { period = 'month', start_date, end_date } = args;
 
   // Import shared calculation module
-  const { calculatePeriodMetrics, redactLaborFields } = await import('../_shared/periodMetrics.ts');
+  const { calculateCostBreakdown, calculateProfitability, calculateBenchmarks, redactLaborFields } = await import('../_shared/periodMetrics.ts');
   const { hasSchedulingOrPayrollCapability } = await import('../_shared/tools-registry.ts');
 
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
@@ -198,49 +200,53 @@ async function executeGetKpis(
   // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
 
-  const [hasLaborAccess, salesResult, adjustmentsResult, foodCostResult] = await Promise.all([
+  const [hasLaborAccess, salesTotals, usageResult, salesCountResult] = await Promise.all([
     hasSchedulingOrPayrollCapability(restaurantId, supabase),
-    // Fetch sales (excluding adjustments)
+    // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+    fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
+    // Fetch food costs (COGS) as a monthly-usage aggregate from the SQL side.
+    supabase.rpc('get_inventory_usage_by_month', {
+      p_restaurant_id: restaurantId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr,
+    }),
+    // Server-side count of sale transactions in the period (head:true, so it
+    // is not subject to the 1000-row cap a normal select would hit). This
+    // counts sale transactions, not split-child rows: a split sale's parent
+    // row represents the one transaction, so its children (rows carrying a
+    // parent_sale_id) do not count separately here. That is the opposite
+    // exclusion direction from fetchNetSales/get_monthly_sales_metrics, which
+    // sums the children and drops the pre-split parent so a categorized
+    // transaction's dollar amount is not counted twice — this count works at
+    // transaction granularity, not revenue-line-item granularity. This
+    // differs from the old client-side count (calculateRevenueBreakdown's
+    // filterSplitSales), which counted split children instead of their parent.
+    // A second delta: `.or('item_type.is.null,item_type.eq.sale')` counts
+    // sale transactions only. The old count also included discount and
+    // refund line items, since filterSplitSales does not filter by item_type.
     supabase
       .from('unified_sales')
-      .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_account:chart_of_accounts!category_id(account_type, account_subtype)')
+      .select('*', { count: 'exact', head: true })
       .eq('restaurant_id', restaurantId)
       .gte('sale_date', startDateStr)
       .lte('sale_date', endDateStr)
-      .is('adjustment_type', null),
-    // Fetch adjustments separately
-    supabase
-      .from('unified_sales')
-      .select('adjustment_type, total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', startDateStr)
-      .lte('sale_date', endDateStr)
-      .not('adjustment_type', 'is', null),
-    // Fetch food costs (COGS)
-    supabase
-      .from('inventory_transactions')
-      .select('total_cost')
-      .eq('restaurant_id', restaurantId)
-      .eq('transaction_type', 'usage')
-      .gte('created_at', startDateStr)
-      .lte('created_at', endDateStr + 'T23:59:59.999Z'),
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null)
+      .or('item_type.is.null,item_type.eq.sale'),
   ]);
 
-  const { data: sales, error: salesError } = salesResult;
-  if (salesError) {
-    throw new Error(`Failed to fetch sales: ${salesError.message}`);
+  const { data: usageRows, error: usageError } = usageResult;
+
+  if (usageError) {
+    throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
   }
 
-  const { data: adjustments, error: adjustmentsError } = adjustmentsResult;
-  if (adjustmentsError) {
-    throw new Error(`Failed to fetch adjustments: ${adjustmentsError.message}`);
-  }
+  const totalCogs = sumMonthlyFoodCost(usageRows);
 
-  const { data: foodCostData, error: foodCostError } = foodCostResult;
-
-  if (foodCostError) {
-    throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
+  if (salesCountResult.error) {
+    throw new Error(`unified_sales count failed: ${salesCountResult.error.message}`);
   }
+  const salesCount = salesCountResult.count ?? 0;
 
   // Fetch labor costs using time_punches + employees (same as Dashboard) —
   // only when the caller can actually see restaurant-wide punches. Skipping
@@ -293,18 +299,18 @@ async function executeGetKpis(
     laborCostData = [{ total_labor_cost: Math.round(laborBreakdown.total * 100) / 100 }];
   }
 
-  // Fetch inventory value
-  const { data: inventory, error: invError } = await supabase
-    .from('products')
-    .select('current_stock, cost_per_unit')
-    .eq('restaurant_id', restaurantId);
+  // Fetch inventory value as a single aggregate row from the SQL side.
+  const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+    p_restaurant_id: restaurantId,
+  });
 
-  if (invError) {
-    throw new Error(`Failed to fetch inventory: ${invError.message}`);
+  if (valuationError) {
+    throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
   }
 
-  const inventoryValue = inventory?.reduce((sum: number, item: any) => 
-    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
+  const inventoryValuation = valuationRows?.[0];
+  const inventoryValue = Number(inventoryValuation?.total_value ?? 0);
+  const inventoryItemCount = Number(inventoryValuation?.item_count ?? 0);
 
   // Get bank transaction count
   const { count: transactionCount } = await supabase
@@ -315,20 +321,36 @@ async function executeGetKpis(
     .lte('transaction_date', endDateStr);
 
   // ====== CALCULATE METRICS USING SHARED MODULE ======
-  
-  const metrics = calculatePeriodMetrics(
-    sales || [],
-    adjustments || [],
-    foodCostData || [],
-    laborCostData || []
-  );
 
-  // laborCostData is [] when !hasLaborAccess, so metrics.costs/profitability/
+  // Revenue now comes from the shared net-sales RPC (gross - discounts -
+  // refunds), so cost/profitability/benchmarks are computed directly against
+  // salesTotals.net instead of going through calculatePeriodMetrics (which
+  // would need the raw sale rows this fetch replaced).
+  const rawCosts = calculateCostBreakdown([{ total_cost: totalCogs }], laborCostData, salesTotals.net);
+  const rawProfitability = calculateProfitability(salesTotals.net, rawCosts.prime_cost);
+  const rawBenchmarks = calculateBenchmarks(rawCosts);
+
+  // laborCostData is [] when !hasLaborAccess, so costs/profitability/
   // benchmarks were computed with labor_cost = 0. redactLaborFields strips
   // everything downstream of that (prime_cost, profit_margin, the
   // labor/prime benchmark statuses) rather than let it read as a complete
   // restaurant-wide figure — food-cost-only fields are unaffected and stay in.
-  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(metrics, hasLaborAccess);
+  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(
+    { costs: rawCosts, profitability: rawProfitability, benchmarks: rawBenchmarks },
+    hasLaborAccess
+  );
+
+  const revenue = {
+    gross_revenue: salesTotals.gross,
+    discounts: salesTotals.discounts,
+    refunds: salesTotals.refunds,
+    net_revenue: salesTotals.net,
+    total_collected_at_pos: salesTotals.gross + salesTotals.salesTax + salesTotals.tips + salesTotals.otherLiabilities,
+    sales_tax: salesTotals.salesTax,
+    tips: salesTotals.tips,
+    other_liabilities: salesTotals.otherLiabilities,
+    sales_count: salesCount,
+  };
 
   return {
     ok: true,
@@ -338,10 +360,10 @@ async function executeGetKpis(
       end_date: endDateStr,
 
       // All metrics from shared calculation module
-      revenue: metrics.revenue,
+      revenue,
       costs,
       profitability,
-      liabilities: metrics.liabilities,
+      liabilities: { sales_tax: salesTotals.salesTax, tips: salesTotals.tips, other_liabilities: salesTotals.otherLiabilities },
       benchmarks,
       labor_omitted: laborOmittedReason ? { reason: laborOmittedReason } : undefined,
 
@@ -356,7 +378,7 @@ async function executeGetKpis(
       ...(hasLaborAccess
         ? [{ table: 'time_punches', date: startDateStr, summary: `Labor from time punches ${startDateStr} to ${endDateStr}` }]
         : []),
-      { table: 'products', summary: `Current inventory snapshot (${inventory?.length || 0} items)` },
+      { table: 'products', summary: `Current inventory snapshot (${inventoryItemCount} items)` },
     ],
   };
 }
@@ -371,49 +393,102 @@ async function executeGetInventoryStatus(
 ): Promise<any> {
   const { include_low_stock = true, category } = args;
 
-  let query = supabase
-    .from('products')
-    .select(`
-      id, 
-      name, 
-      current_stock, 
-      par_level_min, 
-      par_level_max,
-      reorder_point,
-      cost_per_unit, 
-      category,
-      product_suppliers (
-        supplier:suppliers (
-          name
-        ),
-        is_preferred
-      )
-    `)
-    .eq('restaurant_id', restaurantId);
+  let totalItems: number;
+  let totalValue: number;
+  let lowStockCount: number;
+  let lowStockItems: any[] = [];
 
   if (category) {
-    query = query.eq('category', category);
+    // Category path: the valuation RPC takes no category filter, so a
+    // category-scoped call reads the filtered product rows directly and
+    // derives all four fields (total_items, total_value, low_stock_count,
+    // low_stock_items) from that same set. This keeps the counts and the
+    // list consistent. A category-filtered product list is bounded in
+    // practice, so a plain fetch-and-sum is safe here.
+    const { data: products, error } = await supabase
+      .from('products')
+      .select(`
+        id,
+        name,
+        current_stock,
+        cost_per_unit,
+        par_level_min,
+        reorder_point,
+        product_suppliers (
+          supplier:suppliers (
+            name
+          ),
+          is_preferred
+        )
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('category', category);
+
+    if (error) {
+      throw new Error(`Failed to fetch inventory: ${error.message}`);
+    }
+
+    const categoryProducts = products || [];
+    totalItems = categoryProducts.length;
+    totalValue = categoryProducts.reduce(
+      (sum: number, p: any) => sum + (Number(p.current_stock) || 0) * (Number(p.cost_per_unit) || 0),
+      0
+    );
+    const categoryLowStock = categoryProducts.filter((p: any) =>
+      p.current_stock <= (p.par_level_min ?? 0)
+    );
+    lowStockCount = categoryLowStock.length;
+    lowStockItems = categoryLowStock;
+  } else {
+    // No-category path: the aggregate RPC covers the whole restaurant, so
+    // total_items/total_value/low_stock_count read straight from it.
+    const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+      p_restaurant_id: restaurantId,
+    });
+
+    if (valuationError) {
+      throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+    }
+
+    const valuation = valuationRows?.[0];
+    totalItems = Number(valuation?.item_count ?? 0);
+    totalValue = Number(valuation?.total_value ?? 0);
+    lowStockCount = Number(valuation?.low_stock_count ?? 0);
+
+    if (include_low_stock) {
+      const { data: products, error } = await supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          current_stock,
+          par_level_min,
+          reorder_point,
+          product_suppliers (
+            supplier:suppliers (
+              name
+            ),
+            is_preferred
+          )
+        `)
+        .eq('restaurant_id', restaurantId);
+
+      if (error) {
+        throw new Error(`Failed to fetch inventory: ${error.message}`);
+      }
+
+      lowStockItems = (products || []).filter((p: any) =>
+        p.current_stock <= (p.par_level_min ?? 0)
+      );
+    }
   }
-
-  const { data: products, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to fetch inventory: ${error.message}`);
-  }
-
-  const lowStockItems = products?.filter((p: any) => 
-    p.current_stock <= (p.par_level_min || 0)
-  ) || [];
-
-  const totalValue = products?.reduce((sum: number, item: any) => 
-    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
 
   return {
     ok: true,
     data: {
-      total_items: products?.length || 0,
+      total_items: totalItems,
       total_value: totalValue,
-      low_stock_count: lowStockItems.length,
+      low_stock_count: lowStockCount,
       low_stock_items: include_low_stock ? lowStockItems.slice(0, 10).map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -424,7 +499,7 @@ async function executeGetInventoryStatus(
       })) : [],
     },
     evidence: [
-      { table: 'products', summary: `Inventory snapshot: ${products?.length || 0} items, ${lowStockItems.length} low stock` },
+      { table: 'products', summary: `Inventory snapshot: ${totalItems} items, ${lowStockCount} low stock` },
     ],
   };
 }
@@ -496,50 +571,55 @@ async function calculateCashFlow(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch bank transactions
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, category_id')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: transactions, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch transactions: ${error.message}`);
-  
-  const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+
+  // Daily inflow/outflow/net series (get_bank_transactions_daily) replaces
+  // the raw per-transaction fetch. p_bank_account_id filters
+  // connected_bank_id, which fixes the prior filter on a bank_account_id
+  // column that bank_transactions does not have. transaction_count reads
+  // tx_count from get_bank_transaction_summary (already used elsewhere in
+  // this file), since the daily RPC emits one row per active day, not per
+  // transaction — days.length would undercount any day with 2+ transactions.
+  const [{ data: dailyRows, error }, { data: summaryRows, error: summaryError }] = await Promise.all([
+    supabase.rpc('get_bank_transactions_daily', {
+      p_restaurant_id: restaurantId,
+      p_start_date: start_date,
+      p_end_date: end_date,
+      p_bank_account_id: bank_account_id || null,
+    }),
+    supabase.rpc('get_bank_transaction_summary', {
+      p_restaurant_id: restaurantId,
+      p_start_date: start_date,
+      p_end_date: end_date,
+      p_bank_account_id: bank_account_id || null,
+    }),
+  ]);
+
+  if (error) throw new Error(`get_bank_transactions_daily failed: ${error.message}`);
+  if (summaryError) throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+
+  const days = dailyRows || [];
+  const txCount = Number(summaryRows?.[0]?.tx_count ?? 0);
+  const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
+  const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
   const netCashFlow = inflows - outflows;
-  
-  // Calculate daily average
-  const days = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
-  const avgDailyCashFlow = days > 0 ? netCashFlow / days : 0;
-  
-  // Calculate volatility (standard deviation)
-  const dailyFlows: Record<string, number> = {};
-  transactions?.forEach((t: any) => {
-    const date = t.transaction_date;
-    dailyFlows[date] = (dailyFlows[date] || 0) + t.amount;
-  });
-  
-  const flowValues = Object.values(dailyFlows);
+
+  // Calculate daily average over the full requested period
+  const periodDays = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
+  const avgDailyCashFlow = periodDays > 0 ? netCashFlow / periodDays : 0;
+
+  // Calculate volatility (standard deviation) over each day's net flow
+  const flowValues = days.map((d: any) => Number(d.net ?? 0));
   const mean = flowValues.reduce((sum: number, val: number) => sum + val, 0) / (flowValues.length || 1);
   const variance = flowValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (flowValues.length || 1);
   const volatility = Math.sqrt(variance);
-  
+
   results.cash_flow = {
     inflows_7d: inflows,
     outflows_7d: outflows,
     net_cash_flow_7d: netCashFlow,
     avg_daily_cash_flow: avgDailyCashFlow,
     volatility: volatility,
-    transaction_count: transactions?.length || 0,
+    transaction_count: txCount,
   };
 }
 
@@ -553,41 +633,39 @@ async function calculateRevenueHealth(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch bank transactions that look like revenue deposits
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, description')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date)
-    .gt('amount', 0);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: deposits, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch deposits: ${error.message}`);
-  
-  // Filter for likely revenue deposits (excluding small transfers/refunds)
-  const revenueDeposits = deposits?.filter((d: any) => d.amount > 10) || [];
-  
-  const totalRevenue = revenueDeposits.reduce((sum: number, d: any) => sum + d.amount, 0);
-  const avgDeposit = revenueDeposits.length > 0 ? totalRevenue / revenueDeposits.length : 0;
-  const largestDeposit = revenueDeposits.reduce((max: number, d: any) => Math.max(max, d.amount), 0);
-  
-  // Calculate deposit frequency
-  const dates = revenueDeposits.map((d: any) => new Date(d.transaction_date).getTime()).sort((a: number, b: number) => a - b);
-  let totalGap = 0;
-  for (let i = 1; i < dates.length; i++) {
-    totalGap += (dates[i] - dates[i-1]) / (1000 * 60 * 60 * 24); // Convert to days
-  }
-  const avgDaysBetweenDeposits = dates.length > 1 ? totalGap / (dates.length - 1) : 0;
-  
+
+  // Deposit summary (get_bank_transaction_summary) replaces the raw
+  // amount>0 fetch. p_min_inflow: 10 restores the prior code's amount > 10
+  // floor, which excludes small transfers/refunds from the deposit metrics
+  // (inflow_count, avg_inflow, max_inflow). inflow itself stays unfloored.
+  const { data: summaryRows, error } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_bank_account_id: bank_account_id || null,
+    p_min_inflow: 10,
+  });
+
+  if (error) throw new Error(`get_bank_transaction_summary failed: ${error.message}`);
+
+  const summary = summaryRows?.[0] ?? {};
+  const depositCount = Number(summary.inflow_count ?? 0);
+  // total_revenue reads floored_inflow (equal to inflow when p_min_inflow is
+  // NULL), not inflow, so it stays consistent with deposit_count/avg_deposit_size
+  // /largest_deposit: all four exclude the same small transfers/refunds
+  // below the p_min_inflow=10 floor set above.
+  const totalRevenue = Number(summary.floored_inflow ?? 0);
+  const avgDeposit = Number(summary.avg_inflow ?? 0);
+  const largestDeposit = Number(summary.max_inflow ?? 0);
+
+  // Days between deposits: the summary has no per-transaction dates, so this
+  // approximates the average gap from the period length and deposit count
+  // instead of walking individual transaction dates.
+  const periodDays = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const avgDaysBetweenDeposits = depositCount > 1 ? periodDays / (depositCount - 1) : 0;
+
   results.revenue_health = {
-    deposit_count: revenueDeposits.length,
+    deposit_count: depositCount,
     avg_deposit_size: avgDeposit,
     largest_deposit: largestDeposit,
     total_revenue: totalRevenue,
@@ -606,57 +684,44 @@ async function calculateSpending(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch expense transactions
-  let query = supabase
-    .from('bank_transactions')
-    .select(`
-      amount, 
-      transaction_date, 
-      description,
-      merchant_name,
-      category:chart_of_accounts!category_id(id, account_name, account_code)
-    `)
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date)
-    .lt('amount', 0);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: expenses, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch expenses: ${error.message}`);
-  
-  const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + e.amount, 0) || 0);
-  
-  // Group by merchant/vendor
-  const byVendor: Record<string, number> = {};
-  expenses?.forEach((e: any) => {
-    const vendor = e.merchant_name || e.description || 'Unknown';
-    byVendor[vendor] = (byVendor[vendor] || 0) + Math.abs(e.amount);
+
+  // Category breakdown (get_bank_spending_by_category) replaces the raw
+  // amount<0 fetch. Note: this RPC has no p_bank_account_id parameter, so a
+  // bank_account_id filter on this analysis_type is not applied (a known
+  // gap in the Task 8 RPC surface, out of scope to add here). Per-vendor
+  // grouping also has no RPC (only category-level breakdown exists), so
+  // top_vendors is dropped rather than reintroducing an unbounded
+  // per-transaction fetch to compute it.
+  const { data: categoryRows, error } = await supabase.rpc('get_bank_spending_by_category', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
   });
-  
-  const topVendors = Object.entries(byVendor)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10)
-    .map(([name, amount]) => ({ name, amount }));
-  
-  // Group by category
-  const byCategory: Record<string, number> = {};
-  expenses?.forEach((e: any) => {
-    const category = e.category?.account_name || 'Uncategorized';
-    byCategory[category] = (byCategory[category] || 0) + Math.abs(e.amount);
-  });
-  
+
+  if (error) throw new Error(`get_bank_spending_by_category failed: ${error.message}`);
+
+  const rows = categoryRows || [];
+  const totalExpenses = rows.reduce((sum: number, r: any) => sum + Number(r.spend ?? 0), 0);
+  const expenseCount = rows.reduce((sum: number, r: any) => sum + Number(r.tx_count ?? 0), 0);
+
   results.spending = {
     total_expenses: totalExpenses,
-    expense_count: expenses?.length || 0,
-    avg_transaction: expenses?.length ? totalExpenses / expenses.length : 0,
-    top_vendors: topVendors,
-    by_category: Object.entries(byCategory).map(([name, amount]) => ({ name, amount })),
+    expense_count: expenseCount,
+    avg_transaction: expenseCount > 0 ? totalExpenses / expenseCount : 0,
+    // No vendor-level RPC exists; see note above.
+    top_vendors: null,
+    top_vendors_available: false,
+    by_category: rows.map((r: any) => ({ name: r.category_name, amount: Number(r.spend ?? 0) })),
+    // The category-breakdown RPC has no account filter; tell the caller
+    // explicitly when their bank_account_id was silently ignored.
+    ...(bank_account_id
+      ? {
+          filters_applied: {
+            bank_account_id: false,
+          },
+          filters_note: 'The spending breakdown covers all connected bank accounts. bank_account_id is not applied to this analysis_type.',
+        }
+      : {}),
   };
 }
 
@@ -692,21 +757,22 @@ async function calculateLiquidity(
     return sum + balance;
   }, 0) || 0;
   
-  // Calculate burn rate from recent outflows
-  let outflowQuery = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date')
-    .eq('restaurant_id', restaurantId)
-    .lt('amount', 0)
-    .gte('transaction_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  
-  if (bank_account_id) {
-    outflowQuery = outflowQuery.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: recentOutflows } = await outflowQuery;
-  
-  const totalOutflows = Math.abs(recentOutflows?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+  // Calculate burn rate from recent outflows (get_bank_transaction_summary),
+  // a 30-day trailing window. p_bank_account_id filters connected_bank_id,
+  // which fixes the prior filter on a bank_account_id column that
+  // bank_transactions does not have.
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { data: outflowSummaryRows, error: outflowSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: thirtyDaysAgo,
+    p_end_date: todayStr,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (outflowSummaryError) throw new Error(`get_bank_transaction_summary failed: ${outflowSummaryError.message}`);
+
+  const totalOutflows = Number(outflowSummaryRows?.[0]?.outflow ?? 0);
   const avgDailyOutflow = totalOutflows / 30;
   const daysOfCash = avgDailyOutflow > 0 ? totalCash / avgDailyOutflow : 999;
   
@@ -729,36 +795,40 @@ async function calculatePredictions(
   results: any
 ): Promise<void> {
   const { bank_account_id } = args;
-  
-  // Simple predictions based on historical patterns
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, description, merchant_name')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: historical } = await query;
-  
-  // Find recurring patterns
-  const depositPattern = historical?.filter((t: any) => t.amount > 100);
-  const avgDepositSize = depositPattern?.reduce((sum: number, t: any) => sum + t.amount, 0) / (depositPattern?.length || 1);
-  
-  // Calculate days since last deposit
-  const lastDepositDate = depositPattern?.reduce((latest: string, t: any) => {
-    return t.transaction_date > latest ? t.transaction_date : latest;
+
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Daily inflow series (get_bank_transactions_daily) replaces the raw
+  // per-transaction fetch. "Recurring deposit" detection now looks at days
+  // whose total inflow exceeds $100 rather than individual transactions
+  // above that amount, since the daily RPC has no per-transaction
+  // granularity. The forecast math below stays in TypeScript over these
+  // bounded daily rows.
+  const { data: dailyRows, error } = await supabase.rpc('get_bank_transactions_daily', {
+    p_restaurant_id: restaurantId,
+    p_start_date: sixtyDaysAgo,
+    p_end_date: todayStr,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (error) throw new Error(`get_bank_transactions_daily failed: ${error.message}`);
+
+  const depositDays = (dailyRows || []).filter((d: any) => Number(d.inflow ?? 0) > 100);
+  const avgDepositSize = depositDays.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0) / (depositDays.length || 1);
+
+  // Calculate days since last deposit day
+  const lastDepositDate = depositDays.reduce((latest: string, d: any) => {
+    return d.day > latest ? d.day : latest;
   }, '1970-01-01');
-  
+
   const daysSinceDeposit = Math.floor((Date.now() - new Date(lastDepositDate).getTime()) / (1000 * 60 * 60 * 24));
-  
+
   results.predictions = {
     next_deposit_prediction: {
       expected_days_from_now: Math.max(0, 7 - daysSinceDeposit), // Assume weekly deposits
       expected_amount: avgDepositSize,
-      confidence: depositPattern?.length > 4 ? 'high' : depositPattern?.length > 2 ? 'medium' : 'low',
+      confidence: depositDays.length > 4 ? 'high' : depositDays.length > 2 ? 'medium' : 'low',
     },
   };
 }
@@ -855,9 +925,9 @@ async function executeGetBankTransactions(
     .limit(limit);
   
   if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
+    query = query.eq('connected_bank_id', bank_account_id);
   }
-  
+
   if (category_id) {
     query = query.eq('category_id', category_id);
   }
@@ -875,28 +945,60 @@ async function executeGetBankTransactions(
   }
   
   const { data: transactions, error } = await query;
-  
+
   if (error) {
     throw new Error(`Failed to fetch transactions: ${error.message}`);
   }
-  
-  // Calculate summary stats
-  const total = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+
+  // Period summary totals (get_bank_transaction_summary) cover the whole
+  // date range for this bank account, not just the current page returned
+  // above. The RPC has no category_id/min_amount/max_amount/is_categorized
+  // parameters, so those filters (when set) narrow the transaction list
+  // below but do not narrow this summary.
+  const { data: summaryRows, error: summaryError } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (summaryError) {
+    throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+  }
+
+  const periodSummary = summaryRows?.[0] ?? {};
+  // categorized_count_in_page/categorization_rate_in_page have no RPC (the
+  // summary RPC has no categorization awareness), so they stay computed from
+  // the fetched page, same as before. The _in_page suffix marks them as
+  // page-scoped so a caller does not read them as period-wide, unlike the
+  // total_* fields beside them, which come from the period-wide summary RPC.
   const categorized = transactions?.filter((t: any) => t.is_categorized).length || 0;
-  
+
+  // The summary RPC only supports p_bank_account_id/p_statuses. When the
+  // caller also sets category_id/min_amount/max_amount/is_categorized, the
+  // list below is narrowed by those filters but the summary above is not.
+  // Flag that mismatch on the response so a caller does not read the
+  // summary as if it matched the filtered list.
+  const hasUnsummarizedFilters =
+    category_id !== undefined || min_amount !== undefined || max_amount !== undefined || is_categorized !== undefined;
+
   return {
     ok: true,
     data: {
       period: { start_date, end_date },
       summary: {
-        total_transactions: transactions?.length || 0,
-        total_net: total,
-        total_inflows: inflows,
-        total_outflows: outflows,
-        categorized_count: categorized,
-        categorization_rate: transactions?.length ? (categorized / transactions.length) * 100 : 0,
+        total_transactions: Number(periodSummary.tx_count ?? 0),
+        total_net: Number(periodSummary.net ?? 0),
+        total_inflows: Number(periodSummary.inflow ?? 0),
+        total_outflows: Number(periodSummary.outflow ?? 0),
+        categorized_count_in_page: categorized,
+        categorization_rate_in_page: transactions?.length ? (categorized / transactions.length) * 100 : 0,
+        ...(hasUnsummarizedFilters
+          ? {
+              partial: true,
+              note: 'Summary totals cover the whole period without the list filters.',
+            }
+          : {}),
       },
       transactions: transactions?.map((t: any) => ({
         id: t.id,
@@ -929,50 +1031,28 @@ async function executeGetFinancialStatement(
   try {
     switch (statement_type) {
       case 'income_statement': {
-        // Fetch revenue from unified_sales
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('total_price')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
-        
-        const revenue = sales?.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0) || 0;
-        
-        // Fetch COGS from inventory transactions
-        const { data: cogs } = await supabase
-          .from('inventory_transactions')
-          .select('total_cost')
-          .eq('restaurant_id', restaurantId)
-          .eq('transaction_type', 'usage')
-          .gte('created_at', start_date)
-          .lte('created_at', end_date);
-        
-        const totalCogs = Math.abs(cogs?.reduce((sum: number, c: any) => sum + (c.total_cost || 0), 0) || 0);
-        
-        // Fetch expenses from journal entries
-        const { data: expenseAccounts } = await supabase
-          .from('chart_of_accounts')
-          .select('id')
-          .eq('restaurant_id', restaurantId)
-          .eq('account_type', 'expense');
-        
-        const expenseAccountIds = expenseAccounts?.map((a: any) => a.id) || [];
-        
-        const { data: expenses } = await supabase
-          .from('journal_entry_lines')
-          .select(`
-            debit_amount,
-            credit_amount,
-            journal_entry:journal_entries!inner(entry_date)
-          `)
-          .in('account_id', expenseAccountIds)
-          .gte('journal_entry.entry_date', start_date)
-          .lte('journal_entry.entry_date', end_date);
-        
-        const totalExpenses = expenses?.reduce((sum: number, e: any) => 
-          sum + (e.debit_amount || 0) - (e.credit_amount || 0), 0) || 0;
-        
+        // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+        const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
+        const revenue = salesTotals.net;
+
+        // Fetch COGS from the monthly usage aggregate RPC.
+        const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
+        const totalCogs = sumMonthlyFoodCost(usageRows);
+
+        // Fetch operating expenses from the journal expense aggregate RPC.
+        const { data: expenseTotal, error: expError } = await supabase.rpc('get_journal_expense_total', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (expError) throw new Error(`get_journal_expense_total failed: ${expError.message}`);
+        const totalExpenses = Number(expenseTotal ?? 0);
+
         const grossProfit = revenue - totalCogs;
         const netIncome = grossProfit - totalExpenses;
         
@@ -990,7 +1070,7 @@ async function executeGetFinancialStatement(
             net_margin: revenue > 0 ? (netIncome / revenue) * 100 : 0,
           },
           evidence: [
-            { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date} (${sales?.length || 0} sales)` },
+            { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date}` },
             { table: 'inventory_transactions', summary: `COGS from usage transactions ${start_date} to ${end_date}` },
             { table: 'journal_entry_lines', summary: `Operating expenses from journal entries ${start_date} to ${end_date}` },
           ],
@@ -1013,14 +1093,14 @@ async function executeGetFinancialStatement(
         const cash = cashAccounts?.reduce((sum: number, bank: any) => 
           sum + (bank.bank_account_balances?.[0]?.current_balance || 0), 0) || 0;
         
-        const { data: inventory } = await supabase
-          .from('products')
-          .select('current_stock, cost_per_unit')
-          .eq('restaurant_id', restaurantId);
-        
-        const inventoryValue = inventory?.reduce((sum: number, p: any) => 
-          sum + ((p.current_stock || 0) * (p.cost_per_unit || 0)), 0) || 0;
-        
+        const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+          p_restaurant_id: restaurantId,
+        });
+        if (valuationError) throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+        const balanceSheetValuation = valuationRows?.[0];
+        const inventoryValue = Number(balanceSheetValuation?.total_value ?? 0);
+        const inventoryItemCount = Number(balanceSheetValuation?.item_count ?? 0);
+
         const totalAssets = cash + inventoryValue;
         
         // Simplified - would need accounts payable and other liability tracking
@@ -1055,23 +1135,24 @@ async function executeGetFinancialStatement(
           },
           evidence: [
             { table: 'connected_banks', summary: `Cash balances from connected bank accounts as of ${asOfDate}` },
-            { table: 'products', summary: `Inventory valuation from ${inventory?.length || 0} products` },
+            { table: 'products', summary: `Inventory valuation from ${inventoryItemCount} products` },
           ],
         };
       }
-      
+
       case 'cash_flow': {
-        const { data: transactions } = await supabase
-          .from('bank_transactions')
-          .select('amount, transaction_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .order('transaction_date', { ascending: true });
-        
-        const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-        const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
-        
+        // Scalar summary (get_bank_transaction_summary) replaces the raw
+        // per-transaction fetch.
+        const { data: summaryRows, error: summaryError } = await supabase.rpc('get_bank_transaction_summary', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (summaryError) throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+        const cfSummary = summaryRows?.[0] ?? {};
+        const inflows = Number(cfSummary.inflow ?? 0);
+        const outflows = Number(cfSummary.outflow ?? 0);
+
         return {
           ok: true,
           data: {
@@ -1091,7 +1172,7 @@ async function executeGetFinancialStatement(
             net_change_in_cash: inflows - outflows,
           },
           evidence: [
-            { table: 'bank_transactions', summary: `Cash flow from ${transactions?.length || 0} transactions ${start_date} to ${end_date}` },
+            { table: 'bank_transactions', summary: `Cash flow from ${Number(cfSummary.tx_count ?? 0)} transactions ${start_date} to ${end_date}` },
           ],
         };
       }
@@ -1232,45 +1313,59 @@ async function executeGetSalesSummary(
     }
   }
 
-  // Fetch current period sales (excluding adjustments - only actual revenue)
-  const { data: currentSales, error: currentError } = await supabase
-    .from('unified_sales')
-    .select('total_price, sale_date, item_name')
-    .eq('restaurant_id', restaurantId)
-    .gte('sale_date', startDateStr)
-    .lte('sale_date', endDateStr)
-    .is('adjustment_type', null)
-    .is('parent_sale_id', null);
+  // Current period total comes from the shared net-sales RPC so it uses the
+  // same gross - discounts - refunds definition as every other financial
+  // tool. transaction_count is a bounded server-side head-count (Task 11
+  // removes the raw row fetch this used to piggy-back on); the item
+  // breakdown, when requested, comes from get_top_sold_items instead of a
+  // client-side group-by over raw rows.
+  const [salesTotals, currentCountResult] = await Promise.all([
+    fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
+    // .or('item_type.is.null,item_type.eq.sale') matches the same sale-only
+    // count executeGetKpis uses, so this tool and the KPIs tool report the
+    // same transaction_count for the same period instead of this count also
+    // picking up discount/refund line items.
+    supabase
+      .from('unified_sales')
+      .select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .gte('sale_date', startDateStr)
+      .lte('sale_date', endDateStr)
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null)
+      .or('item_type.is.null,item_type.eq.sale'),
+  ]);
 
-  if (currentError) {
-    throw new Error(`Failed to fetch sales: ${currentError.message}`);
+  if (currentCountResult.error) {
+    throw new Error(`unified_sales count failed: ${currentCountResult.error.message}`);
   }
 
-  const currentTotal = currentSales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
-  const currentCount = currentSales?.length || 0;
+  const currentTotal = salesTotals.net;
+  const currentCount = currentCountResult.count ?? 0;
 
   // Get items breakdown if requested
   let itemsBreakdown = null;
   if (include_items) {
-    const itemsSummary: Record<string, { count: number; total: number }> = {};
-    currentSales?.forEach((sale: any) => {
-      const item = sale.item_name || 'Unknown';
-      if (!itemsSummary[item]) {
-        itemsSummary[item] = { count: 0, total: 0 };
-      }
-      itemsSummary[item].count += 1;
-      itemsSummary[item].total += sale.total_price || 0;
+    const { data: topItems, error: topItemsError } = await supabase.rpc('get_top_sold_items', {
+      p_restaurant_id: restaurantId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr,
+      p_limit: 10,
     });
-    
-    itemsBreakdown = Object.entries(itemsSummary)
-      .sort(([, a], [, b]) => b.total - a.total)
-      .slice(0, 20)
-      .map(([name, data]) => ({
-        item_name: name,
-        quantity_sold: data.count,
-        total_sales: data.total,
-        avg_price: data.count > 0 ? data.total / data.count : 0,
-      }));
+    if (topItemsError) throw new Error(`get_top_sold_items failed: ${topItemsError.message}`);
+
+    itemsBreakdown = (topItems || []).map((item: any) => {
+      // sale_count preserves the old row-count semantics of quantity_sold
+      // (count of matching sale rows), not the RPC's summed `quantity` field.
+      const count = Number(item.sale_count ?? 0);
+      const total = Number(item.revenue ?? 0);
+      return {
+        item_name: item.item_name,
+        quantity_sold: count,
+        total_sales: total,
+        avg_price: count > 0 ? total / count : 0,
+      };
+    });
   }
 
   let comparison = null;
@@ -1279,17 +1374,12 @@ async function executeGetSalesSummary(
     const prevStartDateStr = prevStartDate.toISOString().split('T')[0];
     const prevEndDateStr = prevEndDate.toISOString().split('T')[0];
 
-    const { data: prevSales, error: prevError } = await supabase
-      .from('unified_sales')
-      .select('total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', prevStartDateStr)
-      .lte('sale_date', prevEndDateStr)
-      .is('adjustment_type', null)
-      .is('parent_sale_id', null);
-
-    if (!prevError) {
-      const prevTotal = prevSales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
+    // fetchNetSales throws on RPC failure — caught here (rather than left to
+    // propagate) to preserve the original behavior of silently omitting the
+    // comparison instead of failing the whole tool call.
+    try {
+      const prevSalesTotals = await fetchNetSales(supabase, restaurantId, prevStartDateStr, prevEndDateStr);
+      const prevTotal = prevSalesTotals.net;
       const change = prevTotal > 0 ? ((currentTotal - prevTotal) / prevTotal) * 100 : 0;
 
       comparison = {
@@ -1297,6 +1387,8 @@ async function executeGetSalesSummary(
         change_percent: Math.round(change * 10) / 10,
         change_amount: currentTotal - prevTotal,
       };
+    } catch {
+      // Leave comparison as null.
     }
   }
 
@@ -1668,37 +1760,28 @@ async function executeGenerateReport(
   try {
     switch (type) {
       case 'monthly_pnl': {
-        // Get revenue from unified_sales
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('total_price, sale_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
+        // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+        const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
+        const totalRevenue = salesTotals.net;
 
-        const totalRevenue = sales?.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0) || 0;
+        // Get COGS from the monthly usage aggregate RPC.
+        const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
+        const totalCOGS = sumMonthlyFoodCost(usageRows);
 
-        // Get COGS from inventory transactions
-        const { data: inventory } = await supabase
-          .from('inventory_transactions')
-          .select('total_cost, transaction_type')
-          .eq('restaurant_id', restaurantId)
-          .gte('created_at', start_date)
-          .lte('created_at', end_date)
-          .eq('transaction_type', 'usage');
-
-        const totalCOGS = Math.abs(inventory?.reduce((sum: number, i: any) => sum + (i.total_cost || 0), 0) || 0);
-
-        // Get expenses from bank transactions
-        const { data: expenses } = await supabase
-          .from('bank_transactions')
-          .select('amount, description')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .lt('amount', 0);
-
-        const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + (e.amount || 0), 0) || 0);
+        // Get expenses from bank transactions (get_bank_transaction_summary).
+        // outflow is already positive, so no Math.abs() is needed here.
+        const { data: expenseSummaryRows, error: expenseSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (expenseSummaryError) throw new Error(`get_bank_transaction_summary failed: ${expenseSummaryError.message}`);
+        const totalExpenses = Number(expenseSummaryRows?.[0]?.outflow ?? 0);
 
         reportData = {
           period: { start_date, end_date },
@@ -1745,72 +1828,67 @@ async function executeGenerateReport(
       }
 
       case 'sales_by_category': {
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('item_name, total_price, pos_category, sale_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
-
-        // Group by category
-        const byCategory: Record<string, { total: number; count: number }> = {};
-        sales?.forEach((s: any) => {
-          const cat = s.pos_category || 'Uncategorized';
-          if (!byCategory[cat]) {
-            byCategory[cat] = { total: 0, count: 0 };
-          }
-          byCategory[cat].total += s.total_price || 0;
-          byCategory[cat].count += 1;
+        const { data: categoryRows, error: catErr } = await supabase.rpc('get_sales_by_category', {
+          p_restaurant_id: restaurantId, p_start_date: start_date, p_end_date: end_date,
         });
+        if (catErr) throw new Error(`get_sales_by_category failed: ${catErr.message}`);
 
         reportData = {
           period: { start_date, end_date },
-          categories: Object.entries(byCategory).map(([name, data]) => ({
-            name,
-            total_sales: data.total,
-            item_count: data.count,
-            average_price: data.count > 0 ? data.total / data.count : 0,
-          })),
+          categories: (categoryRows || []).map((row: any) => {
+            const itemCount = Number(row.item_count ?? 0);
+            const totalSales = Number(row.revenue ?? 0);
+            return {
+              name: row.category_name,
+              total_sales: totalSales,
+              item_count: itemCount,
+              average_price: itemCount > 0 ? totalSales / itemCount : 0,
+            };
+          }),
         };
         break;
       }
 
       case 'cash_flow': {
-        const { data: transactions } = await supabase
-          .from('bank_transactions')
-          .select('amount, description, transaction_date, category:chart_of_accounts!category_id(account_name)')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .order('transaction_date', { ascending: true });
+        // Daily inflow/outflow/net series (get_bank_transactions_daily)
+        // replaces the raw per-transaction fetch. The per-transaction
+        // `transactions` list this report used to return (with
+        // description/category) is replaced by `daily_breakdown`, one row
+        // per day - the daily RPC has no per-transaction detail, and a raw
+        // fetch here would reintroduce the unbounded read this branch fixes.
+        const { data: dailyRows, error: dailyError } = await supabase.rpc('get_bank_transactions_daily', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (dailyError) throw new Error(`get_bank_transactions_daily failed: ${dailyError.message}`);
 
-        const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-        const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+        const days = dailyRows || [];
+        const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
+        const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
 
         reportData = {
           period: { start_date, end_date },
           cash_inflows: inflows,
           cash_outflows: outflows,
           net_cash_flow: inflows - outflows,
-          transactions: transactions?.map((t: any) => ({
-            date: t.transaction_date,
-            description: t.description,
-            amount: t.amount,
-            category: t.category?.account_name || 'Uncategorized',
-          })) || [],
+          daily_breakdown: days.map((d: any) => ({
+            date: d.day,
+            inflow: Number(d.inflow ?? 0),
+            outflow: Number(d.outflow ?? 0),
+            net: Number(d.net ?? 0),
+          })),
         };
         break;
       }
 
       case 'balance_sheet': {
         // Simplified balance sheet
-        const { data: inventory } = await supabase
-          .from('products')
-          .select('current_stock, cost_per_unit')
-          .eq('restaurant_id', restaurantId);
-
-        const inventoryValue = inventory?.reduce((sum: number, i: any) => 
-          sum + ((i.current_stock || 0) * (i.cost_per_unit || 0)), 0) || 0;
+        const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+          p_restaurant_id: restaurantId,
+        });
+        if (valuationError) throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+        const inventoryValue = Number(valuationRows?.[0]?.total_value ?? 0);
 
         const { data: bank } = await supabase
           .from('connected_banks')
@@ -2581,6 +2659,12 @@ async function executeGetOperatingCosts(
 
   if (costsError) throw new Error(`Failed to fetch operating costs: ${costsError.message}`);
 
+  // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+  // Percentage-based cost rows need net revenue to turn a percent into a dollar
+  // amount, so this runs unconditionally (not gated on include_break_even).
+  const salesTotals = await fetchNetSales(supabase, restaurantId, startDateStr, endDateStr);
+  const totalRevenue = salesTotals.net;
+
   // Group by type
   const byCostType: Record<string, any[]> = {
     fixed: [],
@@ -2591,55 +2675,42 @@ async function executeGetOperatingCosts(
 
   for (const cost of costs || []) {
     if (byCostType[cost.cost_type]) {
-      byCostType[cost.cost_type].push({
+      const item: any = {
         name: cost.name,
         category: cost.category,
         monthly_value: cost.monthly_value / 100,
         percentage_value: cost.percentage_value,
         entry_type: cost.entry_type,
-      });
+      };
+      if (cost.entry_type === 'percentage') {
+        item.computed_monthly_amount = cost.percentage_value * totalRevenue;
+      }
+      byCostType[cost.cost_type].push(item);
     }
   }
 
-  // Calculate totals
-  const fixedTotal = byCostType.fixed.reduce((sum, c) => sum + c.monthly_value, 0);
-  const semiVariableTotal = byCostType.semi_variable.reduce((sum, c) => sum + c.monthly_value, 0);
-  const variableTotal = byCostType.variable.reduce((sum, c) => sum + c.monthly_value, 0);
+  // Calculate totals. computeOperatingCostTotals owns all cents-to-dollars
+  // conversion and folds percentage rows (entry_type='percentage',
+  // monthly_value=0) into the variable total — the old reducer summed only
+  // monthly_value, so percentage items (COGS/marketing/processing) contributed
+  // nothing (the July "$82.00" bug).
+  const costTotals = computeOperatingCostTotals(costs || [], totalRevenue);
 
-  // Fetch revenue for break-even calculation
+  // Break-even analysis
   let breakEvenAnalysis = null;
   if (include_break_even) {
-    const { data: sales, error: salesError } = await supabase
-      .from('unified_sales')
-      .select('total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', startDateStr)
-      .lte('sale_date', endDateStr)
-      .is('adjustment_type', null)
-      .is('parent_sale_id', null);
+    const totalFixedCosts = costTotals.fixedTotal + costTotals.semiVariableTotal;
 
-    if (!salesError && sales) {
-      const totalRevenue = sales.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0);
-      const totalFixedCosts = fixedTotal + semiVariableTotal;
-      const variableCostPercentage = variableTotal > 0 && totalRevenue > 0
-        ? (variableTotal / totalRevenue) * 100
-        : 25; // Default estimate
-
-      const contributionMargin = 100 - variableCostPercentage;
-      const breakEvenRevenue = contributionMargin > 0
-        ? (totalFixedCosts / (contributionMargin / 100))
-        : 0;
-
-      breakEvenAnalysis = {
-        total_fixed_costs: totalFixedCosts,
-        variable_cost_percentage: variableCostPercentage,
-        contribution_margin_percentage: contributionMargin,
-        break_even_revenue: breakEvenRevenue,
-        current_revenue: totalRevenue,
-        above_break_even: totalRevenue >= breakEvenRevenue,
-        margin_of_safety: totalRevenue > 0 ? ((totalRevenue - breakEvenRevenue) / totalRevenue) * 100 : 0,
-      };
-    }
+    breakEvenAnalysis = {
+      total_fixed_costs: totalFixedCosts,
+      variable_cost_percentage: costTotals.variableCostPercentage,
+      contribution_margin_percentage: costTotals.contributionMargin,
+      break_even_revenue: costTotals.breakEvenRevenue,
+      current_revenue: totalRevenue,
+      above_break_even: totalRevenue >= costTotals.breakEvenRevenue,
+      margin_of_safety_percent: totalRevenue > 0 ? ((totalRevenue - costTotals.breakEvenRevenue) / totalRevenue) * 100 : 0,
+      margin_of_safety_amount: salesTotals.net - costTotals.breakEvenRevenue,
+    };
   }
 
   return {
@@ -2648,13 +2719,15 @@ async function executeGetOperatingCosts(
       period,
       start_date: startDateStr,
       end_date: endDateStr,
+      source: 'budget_config',
+      note: 'These costs are the configured budget, not period actuals. The period parameter scopes only the revenue used for the break-even.',
       costs_by_type: {
-        fixed: { items: byCostType.fixed, total: fixedTotal },
-        semi_variable: { items: byCostType.semi_variable, total: semiVariableTotal },
-        variable: { items: byCostType.variable, total: variableTotal },
+        fixed: { items: byCostType.fixed, total: costTotals.fixedTotal },
+        semi_variable: { items: byCostType.semi_variable, total: costTotals.semiVariableTotal },
+        variable: { items: byCostType.variable, total: costTotals.variableTotal },
         custom: { items: byCostType.custom, total: byCostType.custom.reduce((sum, c) => sum + c.monthly_value, 0) },
       },
-      total_monthly_costs: fixedTotal + semiVariableTotal + variableTotal,
+      total_monthly_costs: costTotals.totalMonthlyCosts,
       break_even_analysis: breakEvenAnalysis,
     },
     evidence: [
@@ -2692,22 +2765,20 @@ async function executeGetMonthlyTrends(
     console.warn('RPC not available, using simplified calculation:', salesError);
   }
 
-  // Fetch food costs by month
-  const { data: foodCosts, error: foodError } = await supabase
-    .from('inventory_transactions')
-    .select('created_at, total_cost')
-    .eq('restaurant_id', restaurantId)
-    .eq('transaction_type', 'usage')
-    .gte('created_at', startDateStr)
-    .lte('created_at', endDateStr + 'T23:59:59.999Z');
+  // Fetch food costs by month via the monthly usage aggregate RPC.
+  const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+    p_restaurant_id: restaurantId,
+    p_start_date: startDateStr,
+    p_end_date: endDateStr,
+  });
 
-  if (foodError) throw new Error(`Failed to fetch food costs: ${foodError.message}`);
+  if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
 
-  // Group food costs by month
+  // The RPC already aggregates per month, so its rows map directly into the
+  // lookup — no client-side group-by needed.
   const foodCostByMonth: Record<string, number> = {};
-  foodCosts?.forEach((t: any) => {
-    const monthKey = new Date(t.created_at).toISOString().slice(0, 7);
-    foodCostByMonth[monthKey] = (foodCostByMonth[monthKey] || 0) + Math.abs(t.total_cost || 0);
+  (usageRows || []).forEach((row: any) => {
+    foodCostByMonth[row.period] = Number(row.food_cost ?? 0);
   });
 
   // Build monthly trends
@@ -2716,13 +2787,15 @@ async function executeGetMonthlyTrends(
   if (salesMetrics?.length) {
     salesMetrics.forEach((row: any) => {
       const foodCost = foodCostByMonth[row.period] || 0;
-      const netRevenue = Number(row.gross_revenue) - Number(row.discounts || 0);
+      // Net sales = gross_revenue - discounts - refunds (spec §5.1).
+      const netRevenue = Number(row.gross_revenue) - Number(row.discounts || 0) - Number(row.refunds || 0);
 
       const monthData: any = {
         period: row.period,
         gross_revenue: Number(row.gross_revenue),
         net_revenue: netRevenue,
         discounts: Number(row.discounts || 0),
+        refunds: Number(row.refunds || 0),
         sales_tax: Number(row.sales_tax || 0),
         tips: Number(row.tips || 0),
         food_cost: foodCost,
@@ -2789,68 +2862,29 @@ async function executeGetExpenseHealth(
     'card fee', 'payment fee', 'square', 'stripe', 'clover fee', 'toast fee',
   ];
 
-  // Fetch bank transactions
-  let txQuery = supabase
-    .from('bank_transactions')
-    .select(`
-      amount,
-      description,
-      merchant_name,
-      category_id,
-      is_split,
-      chart_of_accounts!category_id(account_name, account_subtype)
-    `)
-    .eq('restaurant_id', restaurantId)
-    .in('status', ['posted', 'pending'])
-    .gte('transaction_date', startDateStr)
-    .lte('transaction_date', endDateStr);
+  // One aggregate call (get_expense_health_metrics) replaces the raw fetch
+  // and the six filter/reduce passes over it. The RPC hardcodes the same
+  // status IN ('posted', 'pending') filter as the prior query, so no
+  // p_statuses argument is needed. p_bank_account_id filters
+  // connected_bank_id, the same column the prior query already used.
+  const feePatterns = processingFeePatterns.map((p) => `%${p.toLowerCase()}%`);
+  const { data: healthRows, error: healthError } = await supabase.rpc('get_expense_health_metrics', {
+    p_restaurant_id: restaurantId,
+    p_start_date: startDateStr,
+    p_end_date: endDateStr,
+    p_fee_patterns: feePatterns,
+    p_bank_account_id: bank_account_id || null,
+  });
 
-  if (bank_account_id) {
-    txQuery = txQuery.eq('connected_bank_id', bank_account_id);
-  }
+  if (healthError) throw new Error(`get_expense_health_metrics failed: ${healthError.message}`);
 
-  const { data: transactions, error: txError } = await txQuery;
-
-  if (txError) throw new Error(`Failed to fetch transactions: ${txError.message}`);
-
-  const txns = transactions || [];
-
-  // Calculate metrics
-  const revenue = txns.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0);
-
-  const foodCost = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      if (!t.category_id || !t.chart_of_accounts) return false;
-      const subtype = t.chart_of_accounts.account_subtype;
-      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
-      return subtype === 'cost_of_goods_sold' || name.includes('food') || name.includes('inventory');
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const laborCost = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      if (!t.category_id || !t.chart_of_accounts) return false;
-      const subtype = t.chart_of_accounts.account_subtype;
-      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
-      return subtype === 'payroll' || name.includes('payroll') || name.includes('labor');
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const processingFees = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      const desc = ((t.description || '') + ' ' + (t.merchant_name || '')).toLowerCase();
-      return processingFeePatterns.some(pattern => desc.includes(pattern));
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const outflows = txns.filter((t: any) => t.amount < 0);
-  const totalOutflows = Math.abs(outflows.reduce((sum: number, t: any) => sum + t.amount, 0));
-  const uncategorizedSpend = Math.abs(
-    outflows.filter((t: any) => !t.category_id && !t.is_split).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
+  const health = healthRows?.[0] ?? {};
+  const revenue = Number(health.revenue ?? 0);
+  const foodCost = Number(health.food_cost ?? 0);
+  const laborCost = Number(health.labor_cost ?? 0);
+  const processingFees = Number(health.processing_fees ?? 0);
+  const totalOutflows = Number(health.total_outflows ?? 0);
+  const uncategorizedSpend = Number(health.uncategorized_spend ?? 0);
 
   // Calculate percentages
   const foodCostPercentage = revenue > 0 ? (foodCost / revenue) * 100 : 0;
@@ -2935,7 +2969,7 @@ async function executeGetExpenseHealth(
       alerts: alerts,
     },
     evidence: [
-      { table: 'bank_transactions', summary: `${txns.length} transactions from ${startDateStr} to ${endDateStr} for expense health analysis` },
+      { table: 'bank_transactions', summary: `Expense health metrics ${startDateStr} to ${endDateStr}` },
     ],
   };
 }
@@ -3161,7 +3195,7 @@ async function executeGetBreakEvenProgress(
         days_remaining: daysRemaining,
         projected_month_end_revenue: Math.round(projectedMonthEnd),
         projected_above_break_even: projectedAboveBreakEven,
-        margin_of_safety: monthlyBreakEven > 0
+        margin_of_safety_percent: monthlyBreakEven > 0
           ? Math.round(((projectedMonthEnd - monthlyBreakEven) / monthlyBreakEven) * 1000) / 10
           : 0,
       };
@@ -3284,6 +3318,14 @@ async function executeBatchCategorizeTransactions(
 ): Promise<any> {
   const { transaction_ids, category_id, preview = false, confirmed = false } = args;
 
+  if (!Array.isArray(transaction_ids) || transaction_ids.length === 0) {
+    return { ok: false, error: { code: 'INVALID_REQUEST', message: 'transaction_ids must be a non-empty array.' } };
+  }
+
+  if (transaction_ids.length > 1000) {
+    return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${transaction_ids.length}). Send at most 1000 per call.` } };
+  }
+
   // Fetch the category info
   const { data: category, error: catError } = await supabase
     .from('chart_of_accounts')
@@ -3373,6 +3415,14 @@ async function executeBatchCategorizePosSales(
   supabase: any
 ): Promise<any> {
   const { sale_ids, category_id, preview = false, confirmed = false } = args;
+
+  if (!Array.isArray(sale_ids) || sale_ids.length === 0) {
+    return { ok: false, error: { code: 'INVALID_REQUEST', message: 'sale_ids must be a non-empty array.' } };
+  }
+
+  if (sale_ids.length > 1000) {
+    return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${sale_ids.length}). Send at most 1000 per call.` } };
+  }
 
   const { data: category, error: catError } = await supabase
     .from('chart_of_accounts')

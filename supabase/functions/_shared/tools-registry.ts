@@ -504,7 +504,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_operating_costs',
-        description: 'Get fixed, semi-variable, and variable operating cost breakdown. Includes break-even analysis showing required revenue to cover all costs.',
+        description: 'Get the CONFIGURED cost budget (not actual period spend). Fixed, semi-variable, and variable items with a break-even analysis against actual net sales for the period. All *_percent fields are percentages.',
         parameters: {
           type: 'object',
           properties: {

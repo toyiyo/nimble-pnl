@@ -11,6 +11,11 @@ interface PublishScheduleParams {
   weekStart: Date;
   weekEnd: Date;
   notes?: string;
+  /**
+   * Whether to notify employees. Defaults to true when absent, so every
+   * existing caller keeps its current behaviour without a change.
+   */
+  notify?: boolean;
 }
 
 interface UnpublishScheduleParams {
@@ -38,7 +43,8 @@ export type NotificationOutcome =
   | { status: 'partial'; sent: number; failed: number }
   | { status: 'failed'; failed: number }
   | { status: 'error' }
-  | { status: 'unknown'; message: string };
+  | { status: 'unknown'; message: string }
+  | { status: 'skipped' };
 
 interface InvokeError {
   context?: { json?: () => Promise<unknown> };
@@ -163,13 +169,19 @@ interface ToastPayload {
  * varies — and a manager who knows three people weren't emailed can go tell
  * them, which is the entire point.
  */
-function notificationToast(
+export function notificationToast(
   outcome: NotificationOutcome,
   { title, successDescription }: NotificationToastCopy,
 ): ToastPayload {
   switch (outcome.status) {
     case 'sent':
       return { title, description: successDescription };
+    // The caller chose not to notify (a quiet publish). This is not a
+    // failure -- the title stays the plain success title, not the
+    // '-- some/nobody notified' destructive copy used for a fan-out that
+    // tried and fell short.
+    case 'skipped':
+      return { title, description: 'No notifications were sent.' };
     case 'partial':
       return {
         title: `${title} — some employees not notified`,
@@ -237,7 +249,7 @@ export const usePublishSchedule = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, weekStart, weekEnd, notes }: PublishScheduleParams) => {
+    mutationFn: async ({ restaurantId, weekStart, weekEnd, notes, notify = true }: PublishScheduleParams) => {
       // Format dates as YYYY-MM-DD (local calendar day, not UTC)
       const weekStartStr = formatLocalDate(weekStart);
       const weekEndStr = formatLocalDate(weekEnd);
@@ -257,12 +269,16 @@ export const usePublishSchedule = () => {
       // Awaited, unlike before. The old call was fire-and-forget with a
       // console.error, so a fan-out that reached nobody still produced a
       // "Employees will be notified" toast and the manager had no way to know.
-      const notification = await invokeScheduleNotification('notify-schedule-published', {
-        publicationId,
-        restaurantId,
-        weekStart: weekStartStr,
-        weekEnd: weekEndStr,
-      });
+      // `notify: false` is a quiet publish -- the caller chose not to tell
+      // employees, so the invoke never happens.
+      const notification: NotificationOutcome = notify
+        ? await invokeScheduleNotification('notify-schedule-published', {
+            publicationId,
+            restaurantId,
+            weekStart: weekStartStr,
+            weekEnd: weekEndStr,
+          })
+        : { status: 'skipped' };
 
       return { publicationId, restaurantId, notification };
     },
@@ -270,6 +286,10 @@ export const usePublishSchedule = () => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['schedule_publications', restaurantId] });
+      // A draft trade's tentative badge reads offered_shift.is_published. Without
+      // this, the badge clears only after the trade query's own 30s staleTime.
+      queryClient.invalidateQueries({ queryKey: ['shift_trades', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace_trades', restaurantId] });
 
       toast(
         notificationToast(notification, {
@@ -331,6 +351,10 @@ export const useUnpublishSchedule = () => {
       queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['schedule_publications', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['schedule_change_logs', restaurantId] });
+      // Same reason as usePublishSchedule: the tentative badge must reappear as
+      // soon as the shift goes back to a draft, not up to 30s later.
+      queryClient.invalidateQueries({ queryKey: ['shift_trades', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace_trades', restaurantId] });
 
       toast(
         notificationToast(notification, {
@@ -467,46 +491,6 @@ export const useWeekScheduleStatus = (
     loading,
     error,
   };
-};
-
-/**
- * The reason a manager gave when pulling a week back, if they gave one.
- *
- * Gated on `enabled` so the overwhelmingly common case — a published week —
- * costs nothing. `schedule_retractions` is the right source rather than
- * `schedule_change_logs`: it is scoped to the week, carries the SELECT policy
- * and grant employees actually have, and stores the reason verbatim instead of
- * the RPC's `COALESCE(...)` boilerplate.
- */
-export const useWeekRetractionReason = (
-  restaurantId: string | null,
-  weekStart: Date,
-  enabled: boolean
-): string | null => {
-  const weekStartStr = formatLocalDate(weekStart);
-
-  const { data } = useQuery({
-    queryKey: ['week_retraction_reason', restaurantId, weekStartStr],
-    queryFn: async () => {
-      if (!restaurantId) return null;
-
-      const { data, error } = await supabase
-        .from('schedule_retractions')
-        .select('reason')
-        .eq('restaurant_id', restaurantId)
-        .eq('week_start_date', weekStartStr)
-        .order('retracted_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data?.reason ?? null;
-    },
-    enabled: !!restaurantId && enabled,
-    staleTime: 30000,
-  });
-
-  return data ?? null;
 };
 
 export const useWeekPublicationStatus = (

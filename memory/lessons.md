@@ -2701,6 +2701,7 @@
 - **Mistake:** PR #744 added `create_shift_trade_for_employee`, a SECURITY DEFINER function. The RLS INSERT policy on `shift_trades` blocks a manager, so the function does the insert. It checked the caller role, the shift owner, the status allow-list (`scheduled`/`confirmed`), and the offerer-active state. It did not check `is_published`. The employee self-service flow gates on `is_published`: `src/components/employee/ShiftRow.tsx` offers a trade only for a published shift. So a manager, or a direct RPC call, could post a draft shift for trade. That trade would notify a coworker about a shift that can still change or disappear. The status allow-list looked complete, so the gap was invisible in the diff. Codex flagged it P1 on the open PR. No Phase 7a reviewer and no other bot caught it.
 - **Correction:** Added `IF NOT v_shift.is_published THEN RAISE EXCEPTION 'Only a published shift can be traded'` in the function, after the status check and before the offerer-active check (commit `ecbfb8ba`). Added the same gate to the UI: `SchedulingShiftCard.tsx` renders the offer button only when `shift.is_published` is true. Added a pgTAP rejection scenario (a `scheduled` draft shift is denied) and a unit test (an unpublished shift hides the offer button).
 - **Rule:** Before you add a privileged path that parallels a self-service path, read the self-service path end to end — UI gate, hook, RLS, RPC — and list every precondition it applies. Mirror each precondition in the new path. A SECURITY DEFINER function bypasses RLS, so it is the last line of defense. A precondition the UI enforced but the function omits is a real hole. The status allow-list is not the whole contract: `is_published`, `is_active`, and tenant scope are separate invariants, and each one needs its own check.
+- **Update [2026-08-14] (PR #747):** The `is_published` precondition is lifted on purpose. A draft shift can now be traded, marked tentative in the UI and the notification (design: `docs/superpowers/specs/2026-08-14-draft-shift-trade-design.md`). Do not read the missing guard in `create_shift_trade_for_employee` as a regression. The rule stands, in both directions: when you add a privileged path, mirror every precondition; when a product decision deletes a precondition, delete it from every parallel path in one change — UI gate, RPC, and tests.
 
 ## Category: Database Tests (pgTAP) (continued)
 
@@ -2796,3 +2797,110 @@
 - **Diagnosis:** CodeRabbit found the hole. TypeScript checks excess properties only on an object literal at the assignment site. A pre-built variable is checked by structural assignability, which permits extra properties. So `const p = { name: 'X', subscription_tier: 'pro' }; const u: RestaurantUpdate = p;` compiled, and the guarded column reached the database. The literal-only tests could not see this.
 - **Correction:** `RestaurantUpdate` now intersects the `Omit` with `{ [K in GuardedBillingColumn]?: never }`. `string` is not assignable to `never`, so the variable form is rejected too. The `never` half also reaches `subscription_cancel_at` and `stripe_customer_id`, which the `Restaurant` interface does not declare, so `Omit` could not name them.
 - **Rule:** To forbid a key, declare it as `?: never`; do not only `Omit` it. `Omit` removes a key from the target type, which makes it an *excess* property, and excess-property checking fires on literals alone. Test both forms: a literal and a variable assigned to the same type. A type that passes only the literal case gives false assurance for every call site that builds the payload first.
+
+## Category: Security (continued)
+
+### [2026-08-14] A tenant check after a load-by-id is a cross-tenant existence oracle (PR #747)
+- **Mistake:** `create_shift_trade_for_employee` loaded the shift by `id` alone, then raised `Shift does not belong to this restaurant` when `restaurant_id` did not match. `Shift not found` and the mismatch error were distinct. A manager in restaurant A could probe shift ids from restaurant B: a different error means the id exists. The pattern came from the PR #744 migration; the draft-trade migration copied the body forward, and CodeRabbit flagged it major on the copy.
+- **Correction:** Fold the tenant filter into the load: `WHERE id = p_offered_shift_id AND restaurant_id = p_restaurant_id`. A missing id and a foreign id now raise the same `Shift not found` (commit `68358ec0`). The pgTAP scenario asserts only the SQLSTATE, so it needed no change.
+- **Rule:** Filter by tenant inside the load query. Do not load by id and check the tenant after. Warning: a `CREATE OR REPLACE` migration re-submits the whole old body to review. Read the copied body as new code, because its defects are now yours.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-14] The plan may not narrow a spec sentence silently (PR #747)
+- **Mistake:** The design doc said add the tentative line to "the email body and to the push body". The plan narrowed the push change to the created-broadcast body and stated the reason only in the plan text. The per-user push for accepted/approved/rejected/cancelled kept the plain body. The sound-logic reviewer and Codex both flagged the gap as a real deviation from the design doc.
+- **Correction:** Applied `tentativePushBody` to the per-user push loop too (commit `97ae4c1f`). The email needed no change: the shared template already covered every action.
+- **Rule:** Reviewers check the diff against the spec, not against the plan. When the plan narrows a spec sentence, change the spec sentence in the same commit, or implement the full sentence. A narrowing that lives only in the plan reads as a bug to every reviewer.
+
+## Category: UI Patterns (continued)
+
+### [2026-08-14] shadcn `Badge` renders a `div`; a `div` may not sit inside `<p>` (PR #747)
+- **Mistake:** `TentativeDraftBadge` (a shadcn `Badge`, root element `div`) sat inside a `<p>` in two dialogs of `TradeApprovalQueue.tsx`. The HTML parser closes a `<p>` at a block element, so the browser re-parents the markup and React logs a DOM-nesting error. No unit test asserts markup validity, so the tests stayed green; the Phase 5 UI review caught it.
+- **Correction:** Moved the badge to a sibling position after the `<p>` in both spots (commit `f0b61b41`). `Badge` inside `CardTitle` (an `h3`) is valid and has precedent at `SubscriptionPlans.tsx:53-56`.
+- **Rule:** Before you place a component inside a text element, check the component's root element. `Badge` renders a `div`. Flow content inside `<p>` is invalid HTML, and React only warns at runtime.
+
+## Category: React Query (continued)
+
+### [2026-08-14] A badge derived from a joined column needs the mutation invalidation AND the memo comparator (PR #747)
+- **Mistake:** The tentative badge reads `offered_shift.is_published` through the `shift_trades` join. Two staleness holes shipped in sequence. First, publish and unpublish flip the flag on `shifts`, but neither mutation invalidated the trade queries, so the badge changed only after the 30s staleTime. Second, the `TradeCard` memo comparator checked `id`, `status`, and `is_published` only, so a manager edit to `start_time`, `end_time`, or `position` on the offered shift did not re-render the card.
+- **Correction:** Invalidate `shift_trades` and `marketplace_trades` in both mutations' `onSuccess` (commit `ce7c7d83`). Add the three mutable shift fields to the comparator (commit `d109ccf8`). Both fixes carry regression tests.
+- **Rule:** When a render reads a mutable column through a join, list every mutation that writes that column and invalidate the joined query in each one. Then check every memo comparator on the render path: it must compare each rendered mutable field, not only the id and the flag that prompted the feature.
+## Category: Development Workflow (continued)
+
+### [2026-08-14] Cite the line that holds the named identifier — call a wrapped consumer indirect (PR #748)
+- **Mistake:** The design doc for the dead-page deletion said `AvailableShiftsPage` "consumes this hook" and cited `src/pages/AvailableShiftsPage.tsx:29` and `:239`. The claim named `useMarketplaceTrades`. Those two lines import and call `useAvailableShifts`. The call to `useMarketplaceTrades` sits one layer down, at `src/hooks/useAvailableShifts.ts:51`. The sound-logic reviewer flagged the gap as `logic:minor`.
+- **Correction:** Commit c35784ba reworded the claim: `AvailableShiftsPage` consumes `useMarketplaceTrades` indirectly, through `useAvailableShifts`, with a citation for each hop. The reviewer confirmed the fix.
+- **Rule:** A `file:line` citation must land on the identifier the sentence names. When the use is transitive, write "indirect, through X" and cite each hop in the chain. A citation that lands on a wrapper sends the next reader to a line that does not contain the named identifier. This extends the mandatory-citation rule in `development-workflow.md` Phase 2: the lookup exposes a false claim only when the cited line must hold the exact identifier.
+
+## Category: Security (continued)
+
+### [2026-08-15] A CREATE OR REPLACE from an old template reverted the security fix that sat between (PR #743)
+- **Mistake:** Migration `20260501120000` fixed a revenue double-count in `get_monthly_sales_metrics`. It started from the December body, which is `SECURITY DEFINER` with no guard. The March fix (`20260302120000`) — `SECURITY INVOKER` plus a `user_restaurants` guard — sat between and vanished. Postgres grants EXECUTE to PUBLIC on creation, so any holder of the anon key could read any restaurant's monthly financials for three months.
+- **Correction:** Migration `20260814120000` restores `INVOKER`, the guard, and revokes PUBLIC and anon. pgTAP `37_` pins `prosecdef = false` and `has_function_privilege('anon', ...) = false`, so a future replace that drops either fails the suite.
+- **Rule:** Before you `CREATE OR REPLACE` a function, read the LATEST migration that defines it, not the version you remember. Carry the security mode, the guard, and the grants forward. Pin `prosecdef` and the grants in pgTAP; catalog assertions survive body rewrites.
+
+### [2026-08-15] SECURITY INVOKER makes result correctness depend on the caller's RLS for every table in the body (PR #743)
+- **Mistake:** I judged the `INVOKER` flip safe because the membership guard passed for every member. The body reads three tables. `chart_of_accounts` SELECT is gated on `user_has_capability(restaurant_id, 'view:chart_of_accounts')`, which chef and staff do not hold.
+- **Diagnosis:** A per-role probe showed the failure shape: a caller without the capability gets `gross_revenue = 160`, `sales_tax = 0` against a truth of 150/10. The LEFT JOIN turns invisible liability accounts into NULL `account_type`, so tax lands in gross revenue. That is wrong data, not an error. The only app path admits manager and owner; a prod query showed all 73 owner/manager memberships hold the capability, so no live caller degrades.
+- **Rule:** When you flip a function to `SECURITY INVOKER`, list every table the body reads and read each SELECT policy. Probe the function per reachable role against a BYPASSRLS truth run. A role can pass the membership guard and still fail one table's policy; the result is silently wrong numbers, not a denial.
+
+### [2026-08-15] Filter every NOT EXISTS on a multi-tenant table by restaurant_id, and test on the path where the bug is visible (PR #743)
+- **Mistake:** Both child-sale checks read `WHERE child.parent_sale_id = us.id` with no restaurant filter. Under authenticated plus RLS the hole is invisible: RLS hides a cross-restaurant child, and the probe returned the correct 70.
+- **Diagnosis:** On a BYPASSRLS path (service_role, cron, pgTAP as postgres) the same query returned 0 rows — the cross-restaurant child suppressed the in-tenant parent.
+- **Correction:** `AND child.restaurant_id = p_restaurant_id` in both subqueries. The boundary test went into `36_`, which runs RLS-disabled — the only path where the regression is observable.
+- **Rule:** Filter every subquery on a multi-tenant table by `restaurant_id`, `NOT EXISTS` included. Place the regression test on the execution path where the bug can appear; a test under RLS proves nothing about the BYPASSRLS path.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-15] PostgREST max_rows truncates silently — never fetch rows and sum them in JavaScript (PR #752)
+- **Mistake:** Ten AI-tool sites fetched raw rows with `.select()` and summed with `.reduce()`. PostgREST caps every response at 1000 rows (`max_rows = 1000`) and returns success. A restaurant with 22,366 July sale rows got `$3,647.22` as revenue instead of `$68,038.11`. Three displayed numbers replicated to the cent as first-1000-row slices.
+- **Correction:** Nine aggregate RPCs plus a modified shared RPC compute every period-bound sum in SQL. `GROUP BY` collapses any volume into a bounded set. A `head:true` + `count:'exact'` query is not row-capped and serves counts.
+- **Rule:** Never fetch rows and sum them client-side for a period-bound financial metric. Aggregate in SQL. If a raw fetch must remain, bound it explicitly and check `data.length` against the cap. The failure is silent: the sum looks plausible and carries no error.
+
+### [2026-08-15] Read the column's precision and seed data before you write math on it — a fixture that mirrors the plan cannot catch the plan's unit error (PR #752)
+- **Mistake:** The plan's break-even formula treated `percentage_value` as a whole-number percent (27) and divided by 100. The column is `NUMERIC(6,5)` — it cannot store 27. Seeds store `0.28`; the form divides user input by 100 on save; the sibling function multiplies the raw value. The unit tests passed 4/4 because their fixture used the plan's wrong unit.
+- **Diagnosis:** A task reviewer checked the schema instead of the tests and caught a x100 error that would have shipped plausible, silently wrong break-even numbers for every restaurant on default costs.
+- **Rule:** Before you write math on a column, read its type, precision, seed values, and one existing consumer. Build test fixtures from real stored values, not from the plan's description. A green test proves internal consistency, not unit correctness.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-15] Verify a reviewer's factual claim in both directions before you act on it (PR #752)
+- **Mistake risk, avoided twice:** A triage agent reported "7 pre-existing pgTAP failures" — false; a fresh `db reset` showed 2879/2879 green, and the failures were artifacts of its stale local DB. A bot reviewer claimed the old `total_revenue` honored the `>$10` deposit floor — true; `git show <merge-base>` proved the old code computed the total from the floored set, and an earlier internal review had stated the floor's scope incompletely.
+- **Rule:** A reviewer's factual claim about baseline behavior is an input, not a verdict. Check "pre-existing failure" claims against a fresh baseline run. Check "the old code did X" claims against the merge-base source, not against a summary of it. Accept or refute with the artifact, in either direction.
+
+## Category: Testing (E2E / Playwright) (continued)
+
+### [2026-08-15] Do not assert a status badge whose text ages with the calendar (PR #753 → #756)
+- **Mistake:** The retraction E2E spec seeded a Wednesday shift and asserted `getByText(/upcoming/i)`. A shift in the past wears "Completed", so the assertion failed on every Thursday–Sunday CI run. The flaw shipped in PR #753 and broke PR #756's CI on a Saturday.
+- **Correction:** Assert the seeded shift's time text (`/10:00 AM/`), which does not age. Commit b4404750.
+- **Rule:** In an E2E spec, never assert badge or status copy that depends on the run date (Upcoming/Today/Completed). Assert seed-controlled facts: the time text, the position, or a count.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-15] A create-shaped payload reused for an update writes state-machine fields backward (PR #756)
+- **Mistake:** `ShiftDialog` built one `shiftData` with `is_published: false, locked: false` and reused it for both create and update. Every guarded edit of a published shift silently retracted the publication. Unit and E2E tests passed because none asserted the flags.
+- **Correction:** The base payload carries no publish flags; only the create path adds them. A unit test now asserts the update payload excludes both. Commit d905eb50.
+- **Rule:** When one payload serves create and update, strip every state-machine field (publish flags, status latches, counters) from the shared shape. Add them only where the state transition is intended, and test their absence on the other path.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-15] A resumed workflow replays a halted phase's cached needs_human verbatim (PR #756)
+- **Mistake:** Phase 7c halted on a stale CodeRabbit file. After the file was replaced, a plain resume returned the same needs_human in 37 ms — the phase's (prompt, opts) were unchanged, so the cache replayed the old answer and never read the new file.
+- **Correction:** Passed `coderabbitOutDir` (embedded in the 7c prompt) to a session-private path. The prompt changed, the cache missed, the phase ran live.
+- **Rule:** To re-run a halted workflow phase after you fix its input, change something the phase's prompt embeds (a path, an iteration marker). Fixing the input file alone changes nothing the cache can see. Prefer session-private paths over shared /tmp for any file a phase reads — two concurrent sessions collide there.
+
+### [2026-08-15] Cleanup chained with `;` dies with the first zsh error — and `status` is read-only (PR #756)
+- **Mistake:** A background command ran tests, then `status=$?`, then reverted two temporarily edited migrations. zsh aborted at `status=$?` ("read-only variable: status"), so the revert never ran and the two out-of-branch migrations sat modified in the worktree.
+- **Rule:** On zsh, never assign to `status`. Put cleanup in a `trap ... EXIT`, not after a `;` — cleanup that only runs when everything before it succeeds is not cleanup. After any background command, re-check `git status` before staging.
+
+### [2026-08-15] Judge a full-repo lint gate by the branch delta, with hunk evidence (PR #756)
+- **Mistake risk, avoided:** Phase 8 halted because `npm run lint` (full repo) exits 1 with 1,721 pre-existing problems. Blindly "fixing lint" would have meant a repo-wide cleanup inside a feature PR; blindly overriding would have shipped 4 genuinely new findings.
+- **Correction:** Linted only `git diff --name-only origin/main...HEAD` files, then mapped each finding to the branch's hunks (`git diff -U0`). 12 findings sat outside the hunks (pre-existing, line-shifted); 4 were new and got fixed. CI does not run full-repo lint, so the gate was local-only.
+- **Rule:** When a full-repo check fails on known debt, produce the delta evidence: run the check on changed files and map findings to added hunks. Fix what the branch introduced. State the pre-existing remainder in the PR body — never silently override and never widen the PR into a cleanup.
+
+## Category: Security (continued)
+
+### [2026-08-15] A SECURITY DEFINER RPC that takes p_restaurant_id must gate on the caller's membership (PR #756)
+- **Mistake:** The new `update_shift_series` re-declaration took `p_restaurant_id` from the caller, filtered rows by it, and checked nothing about the caller. SECURITY DEFINER bypasses RLS, and the function was granted to `authenticated` — any signed-in user could update another restaurant's series. Codex flagged it P1; five Claude reviewers and CodeRabbit local missed it.
+- **Correction:** Added `IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN RAISE EXCEPTION` plus `SET search_path = public, pg_temp`, with two pgTAP tests (refusal + pin). Commit 4a2756c5. The sibling `delete_shift_series` has the same pre-existing hole — flagged as a separate task.
+- **Rule:** Every SECURITY DEFINER function that accepts a tenant id as a parameter must verify the caller's capability for that tenant inside the function, first, before any read or write. Confirms the 2026-07-20 search_path lesson; extends it: the pin alone is not the hardening — the tenancy gate is.

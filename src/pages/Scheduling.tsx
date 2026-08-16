@@ -22,6 +22,7 @@ import { ShiftCard } from './SchedulingShiftCard';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
+import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
 import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
@@ -244,6 +245,8 @@ const Scheduling = () => {
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
+  const { guardShiftChange, notifyAfterDeferredCommit, dialog: publishedShiftChangeDialog } =
+    usePublishedShiftGuard();
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
@@ -709,15 +712,20 @@ const Scheduling = () => {
     if (!shift || !restaurantId) return;
 
     if (actionType === 'delete') {
-      // Delete with scope
-      deleteShiftSeries.mutate(
-        { shift, scope, restaurantId, includePublished: true },
-        {
-          onSuccess: () => {
-            setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
-          },
-        }
-      );
+      // Delete with scope, guarded when the series holds a published shift
+      const employeeName = allEmployees.find((e) => e.id === shift.employee_id)?.name ?? '';
+      guardShiftChange({
+        shiftId: shift.id,
+        restaurantId,
+        employeeName,
+        // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`
+        // looks up the change-log row right after `run` resolves, and that
+        // row only exists once this DELETE (and its trigger) have committed.
+        run: async ({ allowPublished }) => {
+          await deleteShiftSeries.mutateAsync({ shift, scope, restaurantId, allowPublished });
+          setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
+        },
+      });
     } else {
       // For edit, close the dialog and open the shift editor
       // The scope will be handled by the ShiftDialog
@@ -736,18 +744,33 @@ const Scheduling = () => {
 
   const confirmDeleteShift = () => {
     if (shiftToDelete && restaurantId) {
-      deleteShift.mutate(
-        { id: shiftToDelete.id, restaurantId, shift: shiftToDelete },
-        {
-          onSuccess: () => {
-            setShiftToDelete(null);
-          },
-        }
-      );
+      const employeeName = allEmployees.find((e) => e.id === shiftToDelete.employee_id)?.name ?? '';
+      guardShiftChange({
+        shiftId: shiftToDelete.id,
+        restaurantId,
+        employeeName,
+        // Awaited, not fire-and-forget `.mutate()` — see the series-delete
+        // branch above for why. `skipLegacyNotify: true`: the guard's own
+        // notify step (the "Notify" checkbox, `notify-shift-changed`) now
+        // owns the employee notification for this guarded delete, so the
+        // unconditional legacy `send-shift-notification` invoke in
+        // `useDeleteShift` must not also fire — that would ignore an
+        // unchecked box and could double-notify when checked.
+        run: async ({ allowPublished }) => {
+          await deleteShift.mutateAsync({
+            id: shiftToDelete.id,
+            restaurantId,
+            shift: shiftToDelete,
+            allowPublished,
+            skipLegacyNotify: true,
+          });
+          setShiftToDelete(null);
+        },
+      });
     }
   };
 
-  const handlePublishSchedule = (notes?: string) => {
+  const handlePublishSchedule = (notes: string | undefined, notify: boolean) => {
     if (restaurantId) {
       publishSchedule.mutate(
         {
@@ -755,6 +778,7 @@ const Scheduling = () => {
           weekStart: currentWeekStart,
           weekEnd,
           notes,
+          notify,
         },
         {
           onSuccess: () => {
@@ -1619,6 +1643,8 @@ const Scheduling = () => {
               restaurantId={restaurantId}
               weekStart={currentWeekStart}
               onWeekStartChange={setCurrentWeekStart}
+              guardShiftChange={guardShiftChange}
+              notifyAfterDeferredCommit={notifyAfterDeferredCommit}
             />
           )}
         </TabsContent>
@@ -1641,7 +1667,9 @@ const Scheduling = () => {
             timezone={restaurantTimezone}
             defaultDate={defaultShiftDate}
             defaultEmployee={defaultShiftEmployee}
+            guardShiftChange={guardShiftChange}
           />
+          {publishedShiftChangeDialog}
           {tradeShift && (
             <TradeRequestDialog
               open={tradeDialogOpen}

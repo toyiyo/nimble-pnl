@@ -2867,3 +2867,40 @@
 ### [2026-08-15] Verify a reviewer's factual claim in both directions before you act on it (PR #752)
 - **Mistake risk, avoided twice:** A triage agent reported "7 pre-existing pgTAP failures" — false; a fresh `db reset` showed 2879/2879 green, and the failures were artifacts of its stale local DB. A bot reviewer claimed the old `total_revenue` honored the `>$10` deposit floor — true; `git show <merge-base>` proved the old code computed the total from the floored set, and an earlier internal review had stated the floor's scope incompletely.
 - **Rule:** A reviewer's factual claim about baseline behavior is an input, not a verdict. Check "pre-existing failure" claims against a fresh baseline run. Check "the old code did X" claims against the merge-base source, not against a summary of it. Accept or refute with the artifact, in either direction.
+
+## Category: Testing (E2E / Playwright) (continued)
+
+### [2026-08-15] Do not assert a status badge whose text ages with the calendar (PR #753 → #756)
+- **Mistake:** The retraction E2E spec seeded a Wednesday shift and asserted `getByText(/upcoming/i)`. A shift in the past wears "Completed", so the assertion failed on every Thursday–Sunday CI run. The flaw shipped in PR #753 and broke PR #756's CI on a Saturday.
+- **Correction:** Assert the seeded shift's time text (`/10:00 AM/`), which does not age. Commit b4404750.
+- **Rule:** In an E2E spec, never assert badge or status copy that depends on the run date (Upcoming/Today/Completed). Assert seed-controlled facts: the time text, the position, or a count.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-15] A create-shaped payload reused for an update writes state-machine fields backward (PR #756)
+- **Mistake:** `ShiftDialog` built one `shiftData` with `is_published: false, locked: false` and reused it for both create and update. Every guarded edit of a published shift silently retracted the publication. Unit and E2E tests passed because none asserted the flags.
+- **Correction:** The base payload carries no publish flags; only the create path adds them. A unit test now asserts the update payload excludes both. Commit d905eb50.
+- **Rule:** When one payload serves create and update, strip every state-machine field (publish flags, status latches, counters) from the shared shape. Add them only where the state transition is intended, and test their absence on the other path.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-15] A resumed workflow replays a halted phase's cached needs_human verbatim (PR #756)
+- **Mistake:** Phase 7c halted on a stale CodeRabbit file. After the file was replaced, a plain resume returned the same needs_human in 37 ms — the phase's (prompt, opts) were unchanged, so the cache replayed the old answer and never read the new file.
+- **Correction:** Passed `coderabbitOutDir` (embedded in the 7c prompt) to a session-private path. The prompt changed, the cache missed, the phase ran live.
+- **Rule:** To re-run a halted workflow phase after you fix its input, change something the phase's prompt embeds (a path, an iteration marker). Fixing the input file alone changes nothing the cache can see. Prefer session-private paths over shared /tmp for any file a phase reads — two concurrent sessions collide there.
+
+### [2026-08-15] Cleanup chained with `;` dies with the first zsh error — and `status` is read-only (PR #756)
+- **Mistake:** A background command ran tests, then `status=$?`, then reverted two temporarily edited migrations. zsh aborted at `status=$?` ("read-only variable: status"), so the revert never ran and the two out-of-branch migrations sat modified in the worktree.
+- **Rule:** On zsh, never assign to `status`. Put cleanup in a `trap ... EXIT`, not after a `;` — cleanup that only runs when everything before it succeeds is not cleanup. After any background command, re-check `git status` before staging.
+
+### [2026-08-15] Judge a full-repo lint gate by the branch delta, with hunk evidence (PR #756)
+- **Mistake risk, avoided:** Phase 8 halted because `npm run lint` (full repo) exits 1 with 1,721 pre-existing problems. Blindly "fixing lint" would have meant a repo-wide cleanup inside a feature PR; blindly overriding would have shipped 4 genuinely new findings.
+- **Correction:** Linted only `git diff --name-only origin/main...HEAD` files, then mapped each finding to the branch's hunks (`git diff -U0`). 12 findings sat outside the hunks (pre-existing, line-shifted); 4 were new and got fixed. CI does not run full-repo lint, so the gate was local-only.
+- **Rule:** When a full-repo check fails on known debt, produce the delta evidence: run the check on changed files and map findings to added hunks. Fix what the branch introduced. State the pre-existing remainder in the PR body — never silently override and never widen the PR into a cleanup.
+
+## Category: Security (continued)
+
+### [2026-08-15] A SECURITY DEFINER RPC that takes p_restaurant_id must gate on the caller's membership (PR #756)
+- **Mistake:** The new `update_shift_series` re-declaration took `p_restaurant_id` from the caller, filtered rows by it, and checked nothing about the caller. SECURITY DEFINER bypasses RLS, and the function was granted to `authenticated` — any signed-in user could update another restaurant's series. Codex flagged it P1; five Claude reviewers and CodeRabbit local missed it.
+- **Correction:** Added `IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN RAISE EXCEPTION` plus `SET search_path = public, pg_temp`, with two pgTAP tests (refusal + pin). Commit 4a2756c5. The sibling `delete_shift_series` has the same pre-existing hole — flagged as a separate task.
+- **Rule:** Every SECURITY DEFINER function that accepts a tenant id as a parameter must verify the caller's capability for that tenant inside the function, first, before any read or write. Confirms the 2026-07-20 search_path lesson; extends it: the pin alone is not the hardening — the tenancy gate is.

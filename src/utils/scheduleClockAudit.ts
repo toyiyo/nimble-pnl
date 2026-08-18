@@ -204,6 +204,7 @@ export function auditScheduleAgainstClocks(
 
   const activeShifts = shifts
     .filter((shift) => shift.status !== 'cancelled')
+    .filter((shift) => shift.is_published !== false)
     .filter((shift) => new Date(shift.start_time).getTime() <= now.getTime())
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 

@@ -174,6 +174,17 @@ describe('auditScheduleAgainstClocks', () => {
     expect(result.rows).toHaveLength(0);
   });
 
+  it('ignores a draft shift (is_published: false) with no punches', () => {
+    const result = audit([shift({ id: 's1', is_published: false })], []);
+    expect(result.rows).toHaveLength(0);
+  });
+
+  it('still audits a legacy shift with is_published: null', () => {
+    const result = audit([shift({ id: 's1', is_published: null })], []);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].status).toBe('missing_clock');
+  });
+
   it('does not match one session to two shifts', () => {
     const result = audit(
       [

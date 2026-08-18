@@ -73,7 +73,10 @@ If the employee has a time-off request or availability conflict for the chosen t
 **To delete:**
 - Click the **trash icon** that appears when you hover over a shift card. Confirm the deletion in the alert that appears.
 
-> **Note:** If a shift belongs to a published schedule, it is locked. The dialog shows a "Shift is Locked" warning and the save button is disabled. You must unpublish the schedule first (see [Unpublish the schedule](#unpublish-the-schedule-to-make-corrections) below).
+> **Note:** A published shift stays editable. When you save a change to a
+> published shift, a confirm dialog opens. The dialog names the employee
+> who can see the shift. It also carries a **Notify employees** checkbox.
+> Clear the checkbox to save the change with no email and no push.
 
 ---
 
@@ -148,30 +151,40 @@ Use **Import** to bulk-add shifts from a spreadsheet export.
 
 ## Publish the schedule
 
-Publishing makes the schedule visible to all employees and sends push notifications to staff.
+Publishing makes the schedule visible to all employees. It also notifies
+staff, unless you clear the **Notify employees** checkbox.
 
 1. Click **Publish** in the toolbar. The button is disabled if there are no shifts on the current week.
 2. The **Publish Schedule** dialog shows a summary: the number of shifts, employees scheduled, and total hours for the week.
 3. If any open shift slots still need staff, a warning appears in the dialog.
 4. Optionally add notes in the **Notes** field (for example, "Holiday weekend — extra coverage needed").
-5. Click **Publish Schedule** to confirm.
+5. Clear **Notify employees about this schedule** to publish with no
+   notification. The box is checked each time the dialog opens.
+6. Click **Publish Schedule** to confirm.
 
 Once published:
-- All shifts are locked and cannot be edited without unpublishing.
 - The schedule is visible to your entire team.
-- Staff receive a push notification.
-- A status badge appears next to the week range showing the schedule is published.
+- Shifts stay editable. A change to a published shift asks you to
+  confirm first.
+- Staff receive a notification, unless you cleared the checkbox.
+- A status badge appears next to the week range showing the schedule is
+  published.
 
 ---
 
-## Unpublish the schedule to make corrections
+## Unpublish the schedule to withdraw the week
 
-If you need to edit shifts after publishing:
+Unpublish takes the week back from your team. Use it when the whole week
+is wrong. To fix one shift, edit the shift in place — see
+[Edit or delete a single shift](#edit-or-delete-a-single-shift).
 
-1. Click **Unpublish** in the toolbar (visible only when the current week is published).
-2. Confirm the action in the alert dialog.
+1. Click **Unpublish** in the toolbar. It shows only when the current
+   week is published.
+2. Clear **Notify employees** to withdraw the week with no notification.
+3. Confirm the action in the alert dialog.
 
-All shifts for that week are unlocked. Make your corrections, then publish again when ready.
+The week is no longer visible to your team. Publish again when it is
+ready.
 
 ---
 

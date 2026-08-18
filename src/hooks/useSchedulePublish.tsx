@@ -393,7 +393,7 @@ export const useUnpublishSchedule = () => {
           // for `notify: false` instead of the fan-out having nobody to reach.
           skippedDescription:
             shiftCount > 0
-              ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} are unlocked for editing. Nobody was notified.`
+              ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} ${shiftCount !== 1 ? 'are' : 'is'} unlocked for editing. Nobody was notified.`
               : 'Nothing was published for this week, so nothing changed.',
         }),
       );

@@ -321,6 +321,19 @@ describe('unpublish notification outcomes', () => {
     expect(lastToast().description).toBe('63 shifts are unlocked for editing. Nobody was notified.');
   });
 
+  it('matches singular grammar in the skipped copy for exactly one shift', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 1, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
+    });
+
+    expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
+    expect(lastToast().description).toBe('1 shift is unlocked for editing. Nobody was notified.');
+  });
+
   it('reports the zero-shift skipped copy when notify is false and nothing was retracted', async () => {
     mockSupabase.rpc.mockResolvedValue({ data: 0, error: null });
     const { weekStart, weekEnd } = makeWeek();

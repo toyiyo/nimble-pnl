@@ -174,6 +174,39 @@ describe('auditScheduleAgainstClocks', () => {
     expect(result.rows).toHaveLength(0);
   });
 
+  it('audits an overnight shift that starts before the range but overlaps into it', () => {
+    // The shift starts before RANGE_START (2026-08-10T00:00:00Z) but ends
+    // inside the range, so it must still produce a row.
+    const result = audit(
+      [
+        shift({
+          id: 's1',
+          start_time: '2026-08-09T22:00:00Z',
+          end_time: '2026-08-10T06:00:00Z',
+        }),
+      ],
+      [],
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].status).toBe('missing_clock');
+  });
+
+  it('ignores a shift that ends before the range starts', () => {
+    // The whole shift sits before RANGE_START, so it does not overlap the
+    // range and must not count, even though it is not cancelled or draft.
+    const result = audit(
+      [
+        shift({
+          id: 's1',
+          start_time: '2026-08-08T15:00:00Z',
+          end_time: '2026-08-08T23:00:00Z',
+        }),
+      ],
+      [],
+    );
+    expect(result.rows).toHaveLength(0);
+  });
+
   it('ignores a draft shift (is_published: false) with no punches', () => {
     const result = audit([shift({ id: 's1', is_published: false })], []);
     expect(result.rows).toHaveLength(0);

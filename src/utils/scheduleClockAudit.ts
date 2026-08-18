@@ -208,6 +208,12 @@ export function auditScheduleAgainstClocks(
     .filter((shift) => shift.status !== 'cancelled')
     .filter((shift) => shift.is_published !== false)
     .filter((shift) => new Date(shift.start_time).getTime() <= now.getTime())
+    // Only shifts that overlap [rangeStart, rangeEnd] count (inclusive bounds,
+    // matching Supabase .gte/.lte semantics). This also guards a shift the
+    // caller over-fetched from a widened query window (e.g. an overnight
+    // shift that starts the day before the period).
+    .filter((shift) => new Date(shift.start_time).getTime() <= rangeEnd.getTime())
+    .filter((shift) => new Date(shift.end_time).getTime() >= rangeStart.getTime())
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
   const matchedSessions = new Set<WorkSession>();

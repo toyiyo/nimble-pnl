@@ -218,6 +218,42 @@ describe('ScheduleClockAudit', () => {
     expect(screen.getByText(/8\.07 h/)).toBeInTheDocument();
   });
 
+  it('blocks saving a clock-out that lands before the real clock-in on an open_clock row', () => {
+    // The employee clocked in late, after the scheduled shift end, and never
+    // clocked out. The dialog's clock-out input defaults to the scheduled
+    // end time, which is now before the real clock-in already on record.
+    const openRow: AuditRow = {
+      ...missingRow,
+      key: 'shift-s3',
+      status: 'open_clock',
+      session: {
+        employeeId: 'emp1',
+        clockIn: '2026-08-12T23:30:00Z',
+        clockOut: null,
+        breakMinutes: 0,
+        punchIds: ['p1'],
+      },
+      inDeltaMinutes: 510,
+    };
+    useScheduleClockAuditMock.mockReturnValue({
+      rows: [openRow],
+      summary: { ...emptySummary, openClock: 1 },
+      loading: false,
+      error: null,
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enter clock data for Maria Lopez' }));
+
+    expect(
+      screen.getByText('The clock-out time must be after the actual clock-in time.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save clock data' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save clock data' }));
+    expect(bulkMutateMock).not.toHaveBeenCalled();
+  });
+
   it('virtualizes a long row list and renders only a subset of the DOM', () => {
     const manyEmployees: Employee[] = Array.from({ length: 150 }, (_, i) => ({
       id: `emp${i}`,

@@ -22,12 +22,32 @@ export function useScheduleClockAudit(
   end: Date,
   toleranceMinutes: number,
 ) {
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  // The memo dependencies below are the primitive `startMs`/`endMs`, not the
+  // `start`/`end` Date objects: the caller (Payroll.tsx's `getDateRange`)
+  // rebuilds `start`/`end` as new Date instances on every render, which
+  // would otherwise bust every memo below on every unrelated page re-render.
+  const { fetchStart, fetchEnd } = useMemo(
+    () => bufferPunchFetchRange(start, end),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on primitives, not the Date objects
+    [startMs, endMs],
+  );
+
   const {
     data: shifts,
     isLoading: shiftsLoading,
     error: shiftsError,
   } = useQuery({
-    queryKey: ['shifts', 'clock-audit', restaurantId, start.toISOString(), end.toISOString()],
+    // Widen the lower bound by the overnight buffer so a shift that starts
+    // the day before the period, but overlaps into it, is still fetched. No
+    // need to widen the upper bound: a shift starting after `end` cannot
+    // overlap the period. `auditScheduleAgainstClocks` then applies the real
+    // overlap rule (start_time <= rangeEnd, end_time >= rangeStart) so a
+    // shift that only got fetched because of this widened window, but does
+    // not actually overlap the period, is excluded.
+    queryKey: ['shifts', 'clock-audit', restaurantId, fetchStart.toISOString(), end.toISOString()],
     queryFn: async () => {
       if (!restaurantId) return [];
       const { data, error } = await supabase
@@ -36,7 +56,7 @@ export function useScheduleClockAudit(
           'id, restaurant_id, employee_id, start_time, end_time, break_duration, position, status, is_published',
         )
         .eq('restaurant_id', restaurantId)
-        .gte('start_time', start.toISOString())
+        .gte('start_time', fetchStart.toISOString())
         .lte('start_time', end.toISOString());
       if (error) throw error;
       return (data ?? []) as AuditShift[];
@@ -45,11 +65,6 @@ export function useScheduleClockAudit(
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });
-
-  const { fetchStart, fetchEnd } = useMemo(
-    () => bufferPunchFetchRange(start, end),
-    [start, end],
-  );
 
   const {
     punches,
@@ -62,7 +77,8 @@ export function useScheduleClockAudit(
       auditScheduleAgainstClocks(shifts ?? [], punches, start, end, {
         toleranceMinutes,
       }),
-    [shifts, punches, start, end, toleranceMinutes],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- start/end keyed on primitives (startMs/endMs), not the Date objects
+    [shifts, punches, startMs, endMs, toleranceMinutes],
   );
 
   return {

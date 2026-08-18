@@ -222,7 +222,11 @@ export function ScheduleClockAuditView({
     const canEnterClock = row.status === 'missing_clock' || row.status === 'open_clock';
 
     return (
-      <div className="group flex items-start justify-between gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors">
+      <div
+        role="listitem"
+        aria-label={`${employeeName} — ${STATUS_LABEL[row.status]}`}
+        className="group flex items-start justify-between gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+      >
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span
@@ -241,11 +245,6 @@ export function ScheduleClockAuditView({
             >
               {STATUS_LABEL[row.status]}
             </span>
-            {row.shift && row.shift.is_published === false && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-                Draft shift
-              </span>
-            )}
           </div>
           {renderTimes(row)}
         </div>
@@ -357,6 +356,8 @@ export function ScheduleClockAuditView({
             ) : (
               <div ref={parentRef} className="max-h-[600px] overflow-y-auto">
                 <div
+                  role="list"
+                  aria-label="Schedule vs. clock check results"
                   style={{
                     height: `${virtualizer.getTotalSize()}px`,
                     position: 'relative',

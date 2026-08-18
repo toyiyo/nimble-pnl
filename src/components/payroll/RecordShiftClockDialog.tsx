@@ -74,6 +74,15 @@ export function RecordShiftClockDialog({
   const validationError = useMemo(() => {
     if (outOnly) {
       if (!clockOut) return 'Enter the clock-out time.';
+      // `row.session.clockIn` is the real punch already on record, not the
+      // scheduled start time. The clock-out must land after it, or the
+      // saved punch pair goes clock_out-before-clock_in and corrupts
+      // payroll's chronological pairing.
+      const realClockInMs = row.session ? new Date(row.session.clockIn).getTime() : null;
+      const outMs = new Date(parseWallClock(clockOut)).getTime();
+      if (realClockInMs !== null && outMs <= realClockInMs) {
+        return 'The clock-out time must be after the actual clock-in time.';
+      }
       return null;
     }
     if (!clockIn || !clockOut) return 'Enter the clock-in and the clock-out times.';
@@ -84,7 +93,7 @@ export function RecordShiftClockDialog({
       return 'The shift is too short for the scheduled break.';
     }
     return null;
-  }, [outOnly, clockIn, clockOut, includeBreak, breakMinutes, parseWallClock]);
+  }, [outOnly, clockIn, clockOut, includeBreak, breakMinutes, parseWallClock, row.session]);
 
   if (!shift) return null;
 
@@ -185,6 +194,16 @@ export function RecordShiftClockDialog({
                 className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
               />
             </div>
+          )}
+
+          {outOnly && row.session && (
+            <p className="text-[13px] text-muted-foreground">
+              Actual clock-in on record:{' '}
+              <span className="text-foreground font-medium">
+                {formatInstant(row.session.clockIn, 'h:mm a')}
+              </span>
+              {viewerTzDiffers ? ` (${tzAbbrev})` : ''}
+            </p>
           )}
 
           <div className="space-y-1.5">

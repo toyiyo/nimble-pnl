@@ -156,8 +156,8 @@ test.describe('Schedule vs. clock audit', () => {
     });
     await expect(enterClockButton).toBeVisible({ timeout: 10000 });
 
-    const auditRow = page.locator('div.group.items-start', { hasText: employeeName });
-    await expect(auditRow.getByText('No clock data')).toBeVisible();
+    const auditRow = page.getByRole('listitem', { name: new RegExp(`${escapedName}.*No clock data`) });
+    await expect(auditRow).toBeVisible();
 
     // Step 6: fill the clock data from the scheduled shift.
     await enterClockButton.click();
@@ -172,8 +172,8 @@ test.describe('Schedule vs. clock audit', () => {
 
     // Step 7: the row moves to Matched, and payroll hours are above zero.
     await page.getByRole('tab', { name: /matched/i }).click();
-    const matchedRow = page.locator('div.group.items-start', { hasText: employeeName });
-    await expect(matchedRow.getByText('Matched')).toBeVisible({ timeout: 10000 });
+    const matchedRow = page.getByRole('listitem', { name: new RegExp(`${escapedName}.*Matched`) });
+    await expect(matchedRow).toBeVisible({ timeout: 10000 });
 
     const payrollRow = page.getByRole('row', { name: new RegExp(escapedName) });
     await expect(payrollRow).toBeVisible({ timeout: 10000 });

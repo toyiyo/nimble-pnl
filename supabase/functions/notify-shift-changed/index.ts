@@ -183,17 +183,19 @@ serve(async (req) => {
       // the shift's business day, then find the publication that covers it.
       // A missing business day or a missing publication both mean no header
       // — never throw for either (design doc, "Gap 2 — Thread schedule
-      // email").
-      const shiftDataForDay =
-        (row.after_data as Record<string, unknown> | null) ??
-        (row.before_data as Record<string, unknown> | null);
-      const businessDay = shiftBusinessDay(
-        shiftDataForDay?.start_time as string | null | undefined,
-        timezone,
-      );
-
-      let emailThreadHeaders: Record<string, string> | undefined;
-      if (businessDay) {
+      // email"). Resolved per recipient, not once per row: a reassignment
+      // across a week boundary sends a "removed" email to the old employee
+      // and an "assigned" email to the new one, and each belongs in the
+      // thread for its own week — "removed" uses before_data's business
+      // day, "assigned"/"updated" use after_data's (falling back to
+      // before_data when after_data carries no start_time).
+      const resolveEmailThreadHeaders = async (
+        startTime: string | null | undefined,
+      ): Promise<Record<string, string> | undefined> => {
+        const businessDay = shiftBusinessDay(startTime, timezone);
+        if (!businessDay) {
+          return undefined;
+        }
         const minWeekStart = new Date(`${businessDay}T00:00:00Z`);
         minWeekStart.setUTCDate(minWeekStart.getUTCDate() - 6);
         const minWeekStartStr = minWeekStart.toISOString().slice(0, 10);
@@ -211,10 +213,12 @@ serve(async (req) => {
 
         if (pubError) {
           console.error("notify-shift-changed: covering publication lookup failed", pubError);
-        } else if (publication) {
-          emailThreadHeaders = scheduleThreadHeaders(row.restaurant_id, publication.week_start_date);
+          return undefined;
         }
-      }
+        return publication
+          ? scheduleThreadHeaders(row.restaurant_id, publication.week_start_date)
+          : undefined;
+      };
 
       let sent = 0;
       let failed = 0;
@@ -228,6 +232,15 @@ serve(async (req) => {
         }
 
         const message = buildShiftChangeMessage(recipient, row as ShiftChangeLogRow, timezone);
+        const beforeStartTime = (row.before_data as Record<string, unknown> | null)?.start_time as
+          | string
+          | undefined;
+        const afterStartTime = (row.after_data as Record<string, unknown> | null)?.start_time as
+          | string
+          | undefined;
+        const recipientStartTime =
+          recipient.role === "removed" ? beforeStartTime : afterStartTime ?? beforeStartTime;
+        const emailThreadHeaders = await resolveEmailThreadHeaders(recipientStartTime);
         let recipientReached = false;
 
         if (employee.email && RESEND_API_KEY) {

@@ -180,7 +180,8 @@ is wrong. To fix one shift, edit the shift in place — see
 
 1. Click **Unpublish** in the toolbar. It shows only when the current
    week is published.
-2. Clear **Notify employees** to withdraw the week with no notification.
+2. Clear **Notify scheduled employees** to withdraw the week with no
+   notification.
 3. Confirm the action in the alert dialog.
 
 The week is no longer visible to your team. Publish again when it is
@@ -223,8 +224,10 @@ After publishing, every shift creation, edit, and deletion is recorded.
 **The Publish button is grayed out.**
 There are no shifts on the current week. Add at least one shift before publishing.
 
-**A shift card shows "Shift is Locked" when I try to edit it.**
-The schedule for that week has already been published. Click **Unpublish** in the toolbar, make your edits, then publish again.
+**A "This shift is published" dialog appears when I save an edit.**
+This is expected — a published shift stays editable. Click **Save
+change** to confirm. Clear the notify checkbox first if you do not want
+to email or push-notify the employee about this one change.
 
 **Copy Week is grayed out.**
 The current week has no shifts to copy. Build the schedule first, then use Copy Week.

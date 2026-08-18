@@ -31,22 +31,24 @@ describe('shiftBusinessDay', () => {
   });
 
   it('falls back to the default timezone for an invalid IANA string instead of throwing', () => {
-    expect(() =>
-      shiftBusinessDay('2026-08-18T03:30:00.000Z', 'Not/A_Real_Zone'),
-    ).not.toThrow();
-    const result = shiftBusinessDay(
-      '2026-08-18T03:30:00.000Z',
-      'Not/A_Real_Zone',
+    const startTime = '2026-08-18T03:30:00.000Z';
+    expect(() => shiftBusinessDay(startTime, 'Not/A_Real_Zone')).not.toThrow();
+    // The invalid zone must resolve through the same default the missing
+    // (`undefined`) case uses, not merely some valid-looking date string.
+    expect(shiftBusinessDay(startTime, 'Not/A_Real_Zone')).toBe(
+      shiftBusinessDay(startTime, undefined),
     );
-    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('returns null for a missing start_time', () => {
+    expect(shiftBusinessDay('', 'America/New_York')).toBeNull();
     expect(shiftBusinessDay(undefined, 'America/New_York')).toBeNull();
     expect(shiftBusinessDay(null, 'America/New_York')).toBeNull();
   });
 
   it('returns null for a non-string start_time', () => {
+    expect(shiftBusinessDay(0 as unknown as string, 'America/New_York')).toBeNull();
+    expect(shiftBusinessDay(-1 as unknown as string, 'America/New_York')).toBeNull();
     expect(shiftBusinessDay(12345 as unknown as string, 'America/New_York')).toBeNull();
   });
 

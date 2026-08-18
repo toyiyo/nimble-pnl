@@ -19,6 +19,8 @@ import {
 } from "../_shared/notificationHelpers.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
 import { escapeHtml } from "../_shared/emailTemplates.ts";
+import { safeTz } from "../_shared/timezone.ts";
+import { scheduleThreadHeaders, shiftBusinessDay } from "../_shared/scheduleEmailThread.ts";
 import {
   checkShiftChangeValidity,
   deriveShiftChangeRecipients,
@@ -167,11 +169,52 @@ serve(async (req) => {
         throw new Error(`Failed to fetch restaurant: ${restError.message}`);
       }
 
-      const timezone = restaurant?.timezone || "UTC";
+      // safeTz guards an invalid stored value, not just an empty one — a bad
+      // IANA string here used to throw inside buildShiftChangeMessage and
+      // kill the whole invocation (design doc, "Timezone safety").
+      const timezone = safeTz(restaurant?.timezone);
       const restaurantName = restaurant?.name ?? "EasyShiftHQ";
       const employeeById = new Map(
         ((employees ?? []) as RecipientEmployee[]).map((e) => [e.id, e]),
       );
+
+      // Thread this email into the same conversation as the publish/unpublish
+      // emails for its week. The change log has no week column, so resolve
+      // the shift's business day, then find the publication that covers it.
+      // A missing business day or a missing publication both mean no header
+      // — never throw for either (design doc, "Gap 2 — Thread schedule
+      // email").
+      const shiftDataForDay =
+        (row.after_data as Record<string, unknown> | null) ??
+        (row.before_data as Record<string, unknown> | null);
+      const businessDay = shiftBusinessDay(
+        shiftDataForDay?.start_time as string | null | undefined,
+        timezone,
+      );
+
+      let emailThreadHeaders: Record<string, string> | undefined;
+      if (businessDay) {
+        const minWeekStart = new Date(`${businessDay}T00:00:00Z`);
+        minWeekStart.setUTCDate(minWeekStart.getUTCDate() - 6);
+        const minWeekStartStr = minWeekStart.toISOString().slice(0, 10);
+
+        const { data: publication, error: pubError } = await serviceClient
+          .from("schedule_publications")
+          .select("week_start_date")
+          .eq("restaurant_id", row.restaurant_id)
+          .gte("week_start_date", minWeekStartStr)
+          .lte("week_start_date", businessDay)
+          .gte("week_end_date", businessDay)
+          .order("published_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (pubError) {
+          console.error("notify-shift-changed: covering publication lookup failed", pubError);
+        } else if (publication) {
+          emailThreadHeaders = scheduleThreadHeaders(row.restaurant_id, publication.week_start_date);
+        }
+      }
 
       let sent = 0;
       let failed = 0;
@@ -194,6 +237,7 @@ serve(async (req) => {
             employee.email,
             `${message.title} - ${restaurantName}`,
             `<p>Hi ${escapeHtml(employee.name ?? "there")},</p><p>${escapeHtml(message.body)}</p>`,
+            emailThreadHeaders,
           );
           if (emailResult.ok) {
             recipientReached = true;

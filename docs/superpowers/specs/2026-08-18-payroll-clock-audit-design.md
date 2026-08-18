@@ -53,7 +53,7 @@ missed clock data from a scheduled shift.
 
 - Shifts query key: `['shifts', 'clock-audit', restaurantId, start, end]`
   (src/hooks/useScheduleClockAudit.ts:30) with a direct `.from('shifts')`
-  select (:34). This mirrors the pattern in src/hooks/useShifts.tsx:84.
+  select (:33). This mirrors the pattern in src/hooks/useShifts.tsx:84.
 - Punches come from the existing `useTimePunches` hook (:58) with a widened
   fetch window from `bufferPunchFetchRange` (src/utils/punchWindow.ts:17) so an
   overnight session near the range edge is not cut.
@@ -99,8 +99,40 @@ missed clock data from a scheduled shift.
 ### 6. Page integration — `src/pages/Payroll.tsx`
 
 - The panel renders between the incomplete-punches alert and the payroll table
-  (src/pages/Payroll.tsx:722-729). It receives the same `start`, `end`, and
-  `employees` that the payroll table uses, so both views cover one period.
+  (src/pages/Payroll.tsx:722-729). It receives the same `start` and `end` that
+  the payroll table uses, so both views cover one period.
+- Employee names: the container fetches its own list with
+  `useEmployees(restaurantId, { status: 'all' })`. The payroll table also uses
+  `status: 'all'` (src/hooks/usePayroll.tsx:152-154) so a deactivated employee
+  keeps a real name in both views. The page-level `employees` variable
+  (src/pages/Payroll.tsx:178) is active-only and must not feed the panel.
+
+## Design review findings (Phase 2.5, folded in)
+
+Both reviewers confirmed the premises: payroll pays only from `time_punches`,
+and `time_punches` has `shift_id`
+(supabase/migrations/20251114100100_create_time_tracking_tables.sql:8). RLS,
+the write path, query keys, dialog structure, states, and timezone handling
+passed. The build phase must close these findings:
+
+1. CRITICAL (both reviewers): exclude draft shifts
+   (`is_published === false`) in `auditScheduleAgainstClocks`
+   (src/utils/scheduleClockAudit.ts:205-208). Without the filter a manager can
+   write real punches for a shift the employee never saw. Add unit tests.
+2. CRITICAL (frontend): the container must fetch employees with
+   `{ status: 'all' }`. The active-only list shows `Unknown employee` for a
+   deactivated employee with period activity.
+3. MAJOR (frontend): use the semantic tokens `warning`, `info`, `success`
+   (tailwind.config.ts:43-53, src/index.css:32-39) in `STATUS_DOT`,
+   `STATUS_BADGE`, `renderTimes`, and the dialog delta text. Delete the
+   hardcoded amber/blue/emerald classes and the manual `dark:` overrides.
+4. MAJOR (frontend): virtualize the row list with `@tanstack/react-virtual`
+   inside a max-height scroll container. A two-week period at a large
+   restaurant can pass 100 rows, the CLAUDE.md threshold.
+5. MINOR (frontend): make the break-switch text a `Label htmlFor` wired to the
+   `Switch` in RecordShiftClockDialog.tsx:207-222.
+6. MINOR (frontend, accepted as-is): the tab list matches the CLAUDE.md
+   Apple-tabs convention, which omits `aria-controls`. No change.
 
 ## Security
 

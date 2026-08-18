@@ -9,7 +9,7 @@
  *   - Save creates a clock_in/clock_out pair tagged with the shift id.
  *   - An empty issues list shows the all-clear message.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
@@ -100,10 +100,24 @@ const renderPanel = () => {
   );
 };
 
+// jsdom never runs layout, so every element's offsetHeight is 0.
+// @tanstack/react-virtual measures its scroll container via `element.offsetHeight`
+// and only computes a visible range when that size is > 0 — without this stub,
+// `getVirtualItems()` always returns `[]` and no rows render at all. Same
+// pattern already used in tests/unit/VirtualizedProductGrid.test.tsx.
+let offsetHeightSpy: ReturnType<typeof vi.spyOn>;
+
 describe('ScheduleClockAudit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useEmployeesMock.mockReturnValue({ employees, loading: false, error: null });
+    offsetHeightSpy = vi
+      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockReturnValue(600);
+  });
+
+  afterEach(() => {
+    offsetHeightSpy.mockRestore();
   });
 
   it('shows a missed shift with the employee name and an action', () => {
@@ -202,5 +216,36 @@ describe('ScheduleClockAudit', () => {
     expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
     // Worked 484 minutes shows as hours on the row.
     expect(screen.getByText(/8\.07 h/)).toBeInTheDocument();
+  });
+
+  it('virtualizes a long row list and renders only a subset of the DOM', () => {
+    const manyEmployees: Employee[] = Array.from({ length: 150 }, (_, i) => ({
+      id: `emp${i}`,
+      name: `Employee ${i}`,
+      position: 'Server',
+    } as Employee));
+    useEmployeesMock.mockReturnValue({ employees: manyEmployees, loading: false, error: null });
+
+    const manyRows: AuditRow[] = Array.from({ length: 150 }, (_, i) => ({
+      ...missingRow,
+      key: `shift-s${i}`,
+      employeeId: `emp${i}`,
+      shift: {
+        ...missingRow.shift!,
+        id: `s${i}`,
+        employee_id: `emp${i}`,
+      },
+    }));
+    useScheduleClockAuditMock.mockReturnValue({
+      rows: manyRows,
+      summary: { ...emptySummary, missingClock: 150 },
+      loading: false,
+      error: null,
+    });
+    renderPanel();
+
+    const renderedNames = screen.getAllByText(/^Employee \d+$/);
+    expect(renderedNames.length).toBeGreaterThan(0);
+    expect(renderedNames.length).toBeLessThan(150);
   });
 });

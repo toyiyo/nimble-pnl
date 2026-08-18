@@ -9,6 +9,8 @@
  * shows the result.
  */
 
+import { differenceInMinutes } from 'date-fns';
+
 export interface AuditShift {
   id: string;
   employee_id: string;
@@ -96,7 +98,7 @@ const MATCH_PAD_MINUTES = 4 * 60;
 const MINUTE_MS = 60_000;
 
 const minutesBetween = (fromIso: string, toIso: string): number =>
-  Math.round((new Date(toIso).getTime() - new Date(fromIso).getTime()) / MINUTE_MS);
+  differenceInMinutes(toIso, fromIso, { roundingMethod: 'round' });
 
 /**
  * Fold an employee's punches into clock_in..clock_out sessions.

@@ -164,7 +164,10 @@ export function ScheduleClockAuditView({
     { key: 'matched', label: 'Matched', count: summary.matched },
   ];
 
-  const visibleRows = rows.filter((row) => rowMatchesTab(row, tab));
+  const visibleRows = useMemo(
+    () => rows.filter((row) => rowMatchesTab(row, tab)),
+    [rows, tab],
+  );
 
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({

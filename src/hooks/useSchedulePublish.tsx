@@ -155,6 +155,11 @@ async function invokeAndInterpret(
 interface NotificationToastCopy {
   title: string;
   successDescription: string;
+  /**
+   * Description for the 'skipped' outcome. When absent, the toast uses
+   * "No notifications were sent."
+   */
+  skippedDescription?: string;
 }
 
 interface ToastPayload {
@@ -171,7 +176,7 @@ interface ToastPayload {
  */
 export function notificationToast(
   outcome: NotificationOutcome,
-  { title, successDescription }: NotificationToastCopy,
+  { title, successDescription, skippedDescription }: NotificationToastCopy,
 ): ToastPayload {
   switch (outcome.status) {
     case 'sent':
@@ -181,7 +186,7 @@ export function notificationToast(
     // '-- some/nobody notified' destructive copy used for a fan-out that
     // tried and fell short.
     case 'skipped':
-      return { title, description: 'No notifications were sent.' };
+      return { title, description: skippedDescription ?? 'No notifications were sent.' };
     case 'partial':
       return {
         title: `${title} — some employees not notified`,

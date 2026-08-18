@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -164,6 +166,14 @@ export function ScheduleClockAuditView({
 
   const visibleRows = rows.filter((row) => rowMatchesTab(row, tab));
 
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: visibleRows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 88,
+    overscan: 10,
+  });
+
   const openDialog = (row: AuditRow) => {
     setActiveRow(row);
     setDialogOpen(true);
@@ -209,10 +219,7 @@ export function ScheduleClockAuditView({
     const canEnterClock = row.status === 'missing_clock' || row.status === 'open_clock';
 
     return (
-      <div
-        key={row.key}
-        className="group flex items-start justify-between gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
-      >
+      <div className="group flex items-start justify-between gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span
@@ -345,7 +352,36 @@ export function ScheduleClockAuditView({
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">{visibleRows.map(renderRow)}</div>
+              <div ref={parentRef} className="max-h-[600px] overflow-y-auto">
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    position: 'relative',
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const row = visibleRows[virtualRow.index];
+                    if (!row) return null;
+                    return (
+                      <div
+                        key={row.key}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
+                        className="pb-2"
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        {renderRow(row)}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </>
         )}

@@ -44,7 +44,7 @@ whenever `shiftCount > 0`. There is no flag to stop it.
 four fields. `notify` is not one of them.
 
 Publish got the choice at `src/components/PublishScheduleDialog.tsx:176`.
-Unpublish did not. The unpublish dialog at `src/pages/Scheduling.tsx:1787`
+Unpublish did not. The unpublish dialog at `src/pages/Scheduling.tsx:1786`
 promises "and notify employees that the schedule has changed" with no way to
 decline.
 
@@ -110,18 +110,59 @@ This copies the publish pattern at `src/hooks/useSchedulePublish.tsx:274`.
 That description drops the shift count the manager needs. Add an optional
 `skippedDescription` to `NotificationToastCopy`, next to `successDescription`.
 The `skipped` branch uses it when present, and keeps the current string when
-absent. The unpublish call site at `src/hooks/useSchedulePublish.tsx:367`
-passes "N shifts have been unlocked for editing. Nobody was notified."
+absent.
+
+The `skipped` status wins before the code reads `shiftCount`, so
+`skippedDescription` needs its own zero case. This matches the two-branch
+`successDescription` at `src/hooks/useSchedulePublish.tsx:367`. The call site
+passes:
+
+```ts
+skippedDescription: shiftCount > 0
+  ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} are unlocked for editing. Nobody was notified.`
+  : 'Nothing was published for this week, so nothing changed.',
+```
 
 **UI.** Add a checkbox to the unpublish `AlertDialog` at
-`src/pages/Scheduling.tsx:1776`. Mirror `src/components/PublishScheduleDialog.tsx:174`:
-`Checkbox` plus `Label`, checked by default.
+`src/pages/Scheduling.tsx:1776`.
 
-Reset it to `true` when the dialog opens, the same as
+Copy the `AlertDialog` precedent, not the `Dialog` one.
+`src/components/PublishScheduleDialog.tsx:176` sits in a plain `Dialog`.
+`src/components/scheduling/PublishedShiftChangeDialog.tsx` is the correct
+model: it is an `AlertDialog` with a `Checkbox`, from the same #756 change.
+Copy three details from it:
+
+1. `event.preventDefault()` in the confirm handler
+   (`src/components/scheduling/PublishedShiftChangeDialog.tsx:52`). Radix
+   closes an `AlertDialogAction` on click. The unpublish mutation waits up to
+   `NOTIFICATION_TIMEOUT_MS` (`src/hooks/useSchedulePublish.tsx:72`), so an
+   auto-close hides the work in progress.
+2. `disabled={unpublishSchedule.isPending}` on the action, the cancel, and the
+   checkbox (`PublishedShiftChangeDialog.tsx:74`, `:85`, `:86`). The current
+   action at `src/pages/Scheduling.tsx:1792` has no such guard.
+3. A distinct checkbox `id`. Use `unpublish-notify-employees`, next to the
+   existing `published-shift-change-notify`
+   (`PublishedShiftChangeDialog.tsx:71`) and `publish-notify-employees`
+   (`src/components/PublishScheduleDialog.tsx:177`).
+
+Reset the checkbox to `true` when the dialog opens, the same as
 `PublishScheduleDialog` does for its own checkbox.
 
-Make the description at `src/pages/Scheduling.tsx:1787` conditional. It must
-not promise a notification the manager declined.
+**Handler.** `handleUnpublishSchedule` at `src/pages/Scheduling.tsx:793` calls
+`unpublishSchedule.mutate` with four fields. Pass the new checkbox value as a
+fifth field, `notify`. Without this step the checkbox changes nothing.
+
+**Dialog copy.** The description at `src/pages/Scheduling.tsx:1786` promises a
+notification. Make it conditional. Use these two exact strings:
+
+- Notify checked: "This unlocks every shift in the week and tells the
+  scheduled employees that the week is being revised."
+- Notify clear: "This unlocks every shift in the week. Nobody is notified."
+
+**Typography.** The block already breaks the CLAUDE.md scale:
+`src/pages/Scheduling.tsx:1783` uses `text-lg` for the title and `:1785` uses
+`text-sm` for the description. Change them to `text-[17px]` and `text-[13px]`
+while this block is open.
 
 **No RPC change.** `unpublish_schedule` still runs on both paths. The flag
 gates the edge-function invoke only, in the client. No pgTAP test applies.
@@ -131,6 +172,12 @@ gates the edge-function invoke only, in the client. No pgTAP test applies.
 **Mechanism.** RFC 5322 `References` and `In-Reply-To` headers. A mail client
 groups messages that share a `References` chain. This is the email equal of
 the push `tag`.
+
+Resend supports this. The `POST /emails` body accepts a `headers` object,
+described as "Custom headers to add to the email"
+(https://resend.com/docs/api-reference/emails/send-email). The Resend
+changelog names `In-Reply-To` and `References` as the threading use for that
+field (https://resend.com/changelog/custom-email-headers).
 
 **New shared module** `supabase/functions/_shared/scheduleEmailThread.ts`:
 
@@ -155,7 +202,9 @@ arguments and keeps its behavior.
 **Call sites.**
 
 1. `supabase/functions/notify-schedule-published/index.ts:261` — the function
-   already holds `restaurantId` and the publication row.
+   destructures `restaurantId` and `weekStart` from the request payload at
+   `supabase/functions/notify-schedule-published/index.ts:55`. Both values are
+   in scope. The function reads no publication row.
 2. `supabase/functions/notify-schedule-unpublished/index.ts:267` — use
    `retraction.week_start_date`, read at
    `supabase/functions/notify-schedule-unpublished/index.ts:260`.
@@ -167,28 +216,71 @@ column. `supabase/migrations/20251123000000_schedule_publishing.sql:23` lists
 its columns.
 
 Do not re-derive the week from the shift date. The codebase holds two week
-conventions: `src/pages/Scheduling.tsx:291` uses `weekStartsOn: 1`, and
-`src/hooks/usePeriodNavigation.ts:32` uses a `WEEK_STARTS_ON` constant. A
-re-derived week can miss the stored one.
+constants: `src/pages/Scheduling.tsx:291` uses a literal `weekStartsOn: 1`, and
+`src/hooks/usePeriodNavigation.ts:32` uses `WEEK_STARTS_ON`. Both resolve to
+`1` today (`src/lib/dateConfig.ts:8`), so a re-derived week is correct now. A
+change to the constant would break it silently. Read the stored value instead.
 
-Read the stored value instead. `publish_schedule` buckets a shift into a week
-with `(s.start_time AT TIME ZONE v_tz)::date` between `p_week_start` and
+`publish_schedule` buckets a shift into a week with
+`(s.start_time AT TIME ZONE v_tz)::date` between `p_week_start` and
 `p_week_end`, at
 `supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql:101`.
 
 So:
 
 1. Take the shift start from `after_data.start_time`, or `before_data.start_time`
-   for a delete. `supabase/migrations/20251123000000_schedule_publishing.sql:114`
-   writes `row_to_json(OLD)` and `row_to_json(NEW)` into those columns.
+   for a delete. `supabase/migrations/20251123000000_schedule_publishing.sql:134`
+   and `:153` write both `row_to_json(OLD)` and `row_to_json(NEW)` for an
+   update. `:114` writes only `row_to_json(OLD)`, because a delete has no NEW.
 2. Convert it to the restaurant business day with `Intl.DateTimeFormat` and the
-   `en-CA` locale, which gives `YYYY-MM-DD`. The function already reads
-   `restaurant.timezone` at
-   `supabase/functions/notify-shift-changed/index.ts:170`.
-3. Select the covering publication:
-   `.eq('restaurant_id', ...).lte('week_start_date', day).gte('week_end_date', day)`,
-   ordered by `published_at` descending, limit 1.
+   `en-CA` locale, which gives `YYYY-MM-DD`.
+3. Select the covering publication.
 4. No row found means no thread header. Send the email with no header.
+5. A missing or non-string `start_time` also means no thread header. Send the
+   email with no header. Never throw.
+
+**Timezone safety.** `supabase/functions/notify-shift-changed/index.ts:170`
+reads `restaurant?.timezone || "UTC"`. This guards an empty value, not an
+invalid one. `supabase/functions/_shared/timezone.ts:22` records the lesson: an
+invalid IANA string makes `Intl.DateTimeFormat` throw a `RangeError`.
+
+This is a live defect, not a new one. `buildShiftChangeMessage` already passes
+that value to `toLocaleString` at
+`supabase/functions/_shared/shiftChangedNotification.ts:95` and `:103`. A bad
+stored timezone therefore aborts the whole invocation today, and kills the push
+as well as the email.
+
+Fix it. Route the value through `safeTz` from
+`supabase/functions/_shared/timezone.ts:25`, the same way
+`supabase/functions/notify-schedule-published/index.ts:120` does. The new
+business-day conversion then reuses the validated value.
+
+**Index cost.** The lookup query is:
+
+```ts
+.eq('restaurant_id', restaurantId)
+.gte('week_start_date', minWeekStart)   // day minus 6 days
+.lte('week_start_date', day)
+.gte('week_end_date', day)
+.order('published_at', { ascending: false })
+.limit(1)
+```
+
+The lower bound on `week_start_date` is the important part. Without it,
+Postgres scans every publication of that restaurant with
+`week_start_date <= day`, which grows one row per published week forever.
+
+The bound is safe by a database rule, not by convention. A trigger rejects any
+`schedule_publications` row whose span is negative or longer than 6 days
+(`supabase/migrations/20260727180000_schedule_publication_range_check.sql:29`).
+A publication that covers `day` therefore always has
+`week_start_date >= day - 6 days`.
+
+With the bound, the existing composite index
+`idx_schedule_publications_week_lookup (restaurant_id, week_start_date, published_at DESC)`
+(`supabase/migrations/20260802120000_schedule_retractions.sql:44`) serves the
+query as a range scan over at most 7 days of publications. No new
+index and no migration are needed.
 
 The lookup runs once per invocation, before the per-recipient loop, not once
 per recipient.
@@ -206,6 +298,9 @@ Rewrite four places in
   unpublishing" with the confirm-dialog behavior.
 - **Lines 167 to 175** — rewrite the unpublish section. Unpublish now means
   "withdraw the week", not "the way to edit". Add the new Notify checkbox.
+
+The plan holds the exact replacement text. This file is manager-only: its front
+matter sets `audience: ["owner", "manager"]` at line 5, so no employee reads it.
 
 ## 4. Employee-facing copy
 
@@ -250,14 +345,51 @@ a republish follows soon after. That fallback applied only if the lock stayed.
 The lock is gone, so unpublish is now rare. A defer timer would need a queue and
 a cron drain for one rare event. Rejected as cost without benefit.
 
+**A bounded range scan, not a GiST containment index.** The Supabase reviewer
+offered a GiST index on `daterange(week_start_date, week_end_date, '[]')` as the
+stronger fix. That is rejected for this change. It needs a migration and a pgTAP
+test for one lookup that runs once per shift edit, over at most 7 days of one
+restaurant's rows. The `week_start_date` lower bound gives the same bounded scan
+with no schema change. Revisit the GiST index if this lookup ever runs per
+recipient or per row of a batch.
+
 ## 6. Tests
 
 | Change | Test | File |
 |---|---|---|
 | `notify` flag on unpublish | Vitest | `tests/unit/useSchedulePublish.test.ts` |
-| `skippedDescription` in `notificationToast` | Vitest | `tests/unit/useSchedulePublish.test.ts` |
+| `skippedDescription`, both shift-count cases | Vitest | `tests/unit/useSchedulePublish.test.ts` |
 | `scheduleThreadHeaders` key format | Vitest | `tests/unit/scheduleEmailThread.test.ts` |
-| `sendEmailResult` forwards headers | Vitest | `tests/unit/scheduleEmailThread.test.ts` |
+| `sendEmailResult` forwards headers, and omits an empty object | Vitest | `tests/unit/emailQueue.test.ts` |
+| Business day from an invalid timezone falls back, never throws | Vitest | `tests/unit/scheduleEmailThread.test.ts` |
+| Missing `start_time` returns no header | Vitest | `tests/unit/scheduleEmailThread.test.ts` |
 | Unpublish notify checkbox | Playwright | `tests/e2e/schedule-quiet-publish-live-edit.spec.ts` |
 
 No pgTAP test. No RPC and no migration changes in this work.
+
+## 7. Review record
+
+Phase 2.5 ran two reviewers. Both passed the premise check with no critical
+finding. Every major concern is fixed in the text above.
+
+**`supabase-design-reviewer`**
+
+- major, week lookup had no covering index — fixed. See "Index cost".
+- major, no timezone validation — fixed. See "Timezone safety".
+- minor, `schedule_publishing.sql:114` citation named the wrong branch — fixed.
+- minor, `Scheduling.tsx:1787` was one line off — fixed to `:1786`.
+- minor, `notify-schedule-published` holds no publication row — fixed.
+- minor, missing `start_time` case was undefined — fixed.
+- minor, Resend `headers` support was unverified — fixed with two citations.
+
+**`frontend-design-reviewer`**
+
+- major, `handleUnpublishSchedule` was not named — fixed. See "Handler".
+- major, the conditional dialog copy was not written out — fixed. See
+  "Dialog copy".
+- major, the design pointed at a `Dialog` precedent for an `AlertDialog` —
+  fixed. See "UI", which now copies `PublishedShiftChangeDialog`.
+- minor, no checkbox `id` — fixed to `unpublish-notify-employees`.
+- minor, `text-lg` and `text-sm` break the CLAUDE.md scale — fixed.
+- minor, `skippedDescription` had no zero-shift case — fixed.
+- minor, Gap 3 gave no replacement text — deferred to the plan, and stated.

@@ -49,7 +49,7 @@ async function createHourlyEmployee(page: Page): Promise<string> {
   await page.getByRole('button', { name: /employee/i }).first().click();
   const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
 
-  const employeeName = `Audit Employee ${Date.now()}`;
+  const employeeName = `Audit Employee ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await dialog.getByLabel(/name/i).first().fill(employeeName);
 
   const positionCombobox = dialog.getByRole('combobox').filter({ hasText: /position|select/i });
@@ -92,6 +92,13 @@ test.describe('Schedule vs. clock audit', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
+    // Navigate to the app first before clearing storage (can't access
+    // localStorage on about:blank).
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     testUser = generateTestUser('audit');
     await signUpAndCreateRestaurant(page, testUser);
   });

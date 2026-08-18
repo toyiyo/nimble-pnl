@@ -80,6 +80,7 @@ export function RecordShiftClockDialog({
       // payroll's chronological pairing.
       const realClockInMs = row.session ? new Date(row.session.clockIn).getTime() : null;
       const outMs = new Date(parseWallClock(clockOut)).getTime();
+      if (!Number.isFinite(outMs)) return 'Enter a valid clock-out time.';
       if (realClockInMs !== null && outMs <= realClockInMs) {
         return 'The clock-out time must be after the actual clock-in time.';
       }
@@ -88,6 +89,9 @@ export function RecordShiftClockDialog({
     if (!clockIn || !clockOut) return 'Enter the clock-in and the clock-out times.';
     const inMs = new Date(parseWallClock(clockIn)).getTime();
     const outMs = new Date(parseWallClock(clockOut)).getTime();
+    if (!Number.isFinite(inMs) || !Number.isFinite(outMs)) {
+      return 'Enter valid clock-in and clock-out times.';
+    }
     if (outMs <= inMs) return 'The clock-out time must be after the clock-in time.';
     if (includeBreak && breakMinutes > 0 && outMs - inMs <= breakMinutes * MINUTE_MS) {
       return 'The shift is too short for the scheduled break.';

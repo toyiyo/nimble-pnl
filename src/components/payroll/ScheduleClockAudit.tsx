@@ -177,6 +177,13 @@ export function ScheduleClockAuditView({
     overscan: 10,
   });
 
+  const changeTab = (nextTab: FilterTab) => {
+    setTab(nextTab);
+    // A tab switch shows a new, unrelated row set. Reset the scroll
+    // position, or a short tab opened after a long one starts mid-list.
+    if (parentRef.current) parentRef.current.scrollTop = 0;
+  };
+
   const openDialog = (row: AuditRow) => {
     setActiveRow(row);
     setDialogOpen(true);
@@ -304,13 +311,14 @@ export function ScheduleClockAuditView({
       </CardHeader>
       <CardContent>
         {loading ? (
-          <div className="space-y-2">
+          <div className="space-y-2" aria-live="polite" aria-busy="true">
+            <span className="sr-only">Loading the schedule vs. clock check</span>
             {[...Array(3)].map((_, i) => (
               <Skeleton key={i} className="h-16 w-full rounded-xl" />
             ))}
           </div>
         ) : error ? (
-          <p className="text-[13px] text-destructive">
+          <p className="text-[13px] text-destructive" role="alert">
             Error loading the check: {error instanceof Error ? error.message : 'unknown error'}
           </p>
         ) : (
@@ -322,7 +330,7 @@ export function ScheduleClockAuditView({
                   key={t.key}
                   role="tab"
                   aria-selected={tab === t.key}
-                  onClick={() => setTab(t.key)}
+                  onClick={() => changeTab(t.key)}
                   className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
                     tab === t.key ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
                   }`}

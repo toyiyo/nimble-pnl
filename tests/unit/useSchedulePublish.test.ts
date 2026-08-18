@@ -225,6 +225,30 @@ describe('notificationToast copy per outcome', () => {
     expect(toasted.description).toBe('No notifications were sent.');
     expect(toasted.variant).toBeUndefined();
   });
+
+  it('uses skippedDescription for a skipped outcome when the caller sets it', () => {
+    const toasted = notificationToast(
+      { status: 'skipped' },
+      {
+        title: 'Schedule Updated',
+        successDescription: 'The schedule has been updated.',
+        skippedDescription: 'Shift times changed. No new notifications were sent.',
+      },
+    );
+
+    expect(toasted.title).toBe('Schedule Updated');
+    expect(toasted.description).toBe('Shift times changed. No new notifications were sent.');
+    expect(toasted.variant).toBeUndefined();
+  });
+
+  it('falls back to the plain skipped copy when skippedDescription is absent', () => {
+    const toasted = notificationToast(
+      { status: 'skipped' },
+      { title: 'Schedule Updated', successDescription: 'The schedule has been updated.' },
+    );
+
+    expect(toasted.description).toBe('No notifications were sent.');
+  });
 });
 
 describe('unpublish notification outcomes', () => {

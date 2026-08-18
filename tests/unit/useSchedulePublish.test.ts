@@ -307,6 +307,58 @@ describe('unpublish notification outcomes', () => {
     expect(toasted.variant).toBe('destructive');
     expect(toasted.title).toContain('nobody was notified');
   });
+
+  it('skips the notification invoke when notify is false, even with retracted shifts', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 63, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
+    });
+
+    expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
+    expect(lastToast().description).toBe('63 shifts are unlocked for editing. Nobody was notified.');
+  });
+
+  it('reports the zero-shift skipped copy when notify is false and nothing was retracted', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 0, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
+    });
+
+    expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
+    expect(lastToast().description).toBe('Nothing was published for this week, so nothing changed.');
+  });
+
+  it('calls the notification invoke once when notify is true and shifts were retracted', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 63, error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: { sent: 12, failed: 0 }, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: true });
+    });
+
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults notify to true when the param is absent', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 63, error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: { sent: 12, failed: 0 }, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('notification timeout', () => {

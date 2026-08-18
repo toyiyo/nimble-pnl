@@ -157,7 +157,12 @@ test.describe('Schedule vs. clock audit', () => {
     await setWidePayrollPeriod(page);
 
     // Step 5: the audit panel flags the shift as missing clock data.
-    await expect(page.getByText('Schedule vs. clock check')).toBeVisible({ timeout: 10000 });
+    // Use the heading role, not getByText: the loading state also renders an
+    // sr-only "Loading the schedule vs. clock check" label, and a plain text
+    // match resolves to both nodes (Playwright strict-mode violation).
+    await expect(page.getByRole('heading', { name: 'Schedule vs. clock check' })).toBeVisible({
+      timeout: 10000,
+    });
     const enterClockButton = page.getByRole('button', {
       name: new RegExp(`Enter clock data for ${escapedName}`),
     });

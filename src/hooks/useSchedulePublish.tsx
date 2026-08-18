@@ -5,6 +5,7 @@ import { SchedulePublication, Shift } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import { safeTz } from '@/lib/restaurantClock';
+import { pluralize } from '@/lib/scheduling/deletionCopy';
 
 interface PublishScheduleParams {
   restaurantId: string;
@@ -393,7 +394,7 @@ export const useUnpublishSchedule = () => {
           // for `notify: false` instead of the fan-out having nobody to reach.
           skippedDescription:
             shiftCount > 0
-              ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} ${shiftCount !== 1 ? 'are' : 'is'} unlocked for editing. Nobody was notified.`
+              ? `${shiftCount} ${pluralize(shiftCount, 'shift is', 'shifts are')} unlocked for editing. Nobody was notified.`
               : 'Nothing was published for this week, so nothing changed.',
         }),
       );

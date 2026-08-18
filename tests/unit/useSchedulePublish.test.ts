@@ -308,44 +308,25 @@ describe('unpublish notification outcomes', () => {
     expect(toasted.title).toContain('nobody was notified');
   });
 
-  it('skips the notification invoke when notify is false, even with retracted shifts', async () => {
-    mockSupabase.rpc.mockResolvedValue({ data: 63, error: null });
-    const { weekStart, weekEnd } = makeWeek();
+  it.each([
+    [63, '63 shifts are unlocked for editing. Nobody was notified.'],
+    [1, '1 shift is unlocked for editing. Nobody was notified.'],
+    [0, 'Nothing was published for this week, so nothing changed.'],
+  ])(
+    'skips the notification invoke when notify is false (%i shifts)',
+    async (shiftCount, expectedDescription) => {
+      mockSupabase.rpc.mockResolvedValue({ data: shiftCount, error: null });
+      const { weekStart, weekEnd } = makeWeek();
 
-    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
-    await act(async () => {
-      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
-    });
+      const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+      await act(async () => {
+        await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
+      });
 
-    expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
-    expect(lastToast().description).toBe('63 shifts are unlocked for editing. Nobody was notified.');
-  });
-
-  it('matches singular grammar in the skipped copy for exactly one shift', async () => {
-    mockSupabase.rpc.mockResolvedValue({ data: 1, error: null });
-    const { weekStart, weekEnd } = makeWeek();
-
-    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
-    await act(async () => {
-      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
-    });
-
-    expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
-    expect(lastToast().description).toBe('1 shift is unlocked for editing. Nobody was notified.');
-  });
-
-  it('reports the zero-shift skipped copy when notify is false and nothing was retracted', async () => {
-    mockSupabase.rpc.mockResolvedValue({ data: 0, error: null });
-    const { weekStart, weekEnd } = makeWeek();
-
-    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
-    await act(async () => {
-      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
-    });
-
-    expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
-    expect(lastToast().description).toBe('Nothing was published for this week, so nothing changed.');
-  });
+      expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
+      expect(lastToast().description).toBe(expectedDescription);
+    },
+  );
 
   it('calls the notification invoke once when notify is true and shifts were retracted', async () => {
     mockSupabase.rpc.mockResolvedValue({ data: 63, error: null });

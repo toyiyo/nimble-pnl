@@ -33,6 +33,18 @@ interface RecordShiftClockDialogProps {
 const MINUTE_MS = 60_000;
 
 /**
+ * Parse a wall-clock input string to epoch milliseconds.
+ * Returns `null` when the parsed value is not a finite timestamp.
+ */
+function parseWallClockMs(
+  wallClockInput: string,
+  parseWallClock: (wallClock: string) => string,
+): number | null {
+  const ms = new Date(parseWallClock(wallClockInput)).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
  * Enter clock data for a scheduled shift.
  *
  * Two cases share this dialog:
@@ -79,17 +91,17 @@ export function RecordShiftClockDialog({
       // saved punch pair goes clock_out-before-clock_in and corrupts
       // payroll's chronological pairing.
       const realClockInMs = row.session ? new Date(row.session.clockIn).getTime() : null;
-      const outMs = new Date(parseWallClock(clockOut)).getTime();
-      if (!Number.isFinite(outMs)) return 'Enter a valid clock-out time.';
+      const outMs = parseWallClockMs(clockOut, parseWallClock);
+      if (outMs === null) return 'Enter a valid clock-out time.';
       if (realClockInMs !== null && outMs <= realClockInMs) {
         return 'The clock-out time must be after the actual clock-in time.';
       }
       return null;
     }
     if (!clockIn || !clockOut) return 'Enter the clock-in and the clock-out times.';
-    const inMs = new Date(parseWallClock(clockIn)).getTime();
-    const outMs = new Date(parseWallClock(clockOut)).getTime();
-    if (!Number.isFinite(inMs) || !Number.isFinite(outMs)) {
+    const inMs = parseWallClockMs(clockIn, parseWallClock);
+    const outMs = parseWallClockMs(clockOut, parseWallClock);
+    if (inMs === null || outMs === null) {
       return 'Enter valid clock-in and clock-out times.';
     }
     if (outMs <= inMs) return 'The clock-out time must be after the clock-in time.';

@@ -111,6 +111,7 @@ export interface TimePunchInsert {
   employee_id: string;
   punch_type: 'clock_in' | 'clock_out' | 'break_start' | 'break_end';
   punch_time: string;
+  shift_id?: string | null;
   notes?: string | null;
   device_info?: string | null;
 }

@@ -308,6 +308,48 @@ publishes nothing today, so its employees still see every shift dashed. Change 3
 also self-corrects: when such a restaurant publishes again, the rule sees the
 new row and the draft hue returns with a meaning.
 
+## The feature flag
+
+All four changes sit behind one PostHog flag, `employee_schedule_clarity`.
+
+| Question | Answer |
+|---|---|
+| Scope | The whole page treatment. One key, not four. |
+| Default when off | The current page, unchanged. |
+| Default when PostHog is unconfigured | The current page. `useFeatureFlagEnabled` returns `undefined`. Treat that as off. |
+| Targeting | Named restaurants, by PostHog group. |
+
+### Change 4 becomes a deferral
+
+The flag keeps both paths alive. Do not delete `upcomingShifts`
+(`src/pages/EmployeeSchedule.tsx:165`) or `allUpcomingAreDrafts`
+(`src/pages/EmployeeSchedule.tsx:176`) while the flag runs. A later change
+deletes the old path after the rollout ends.
+
+Warning: a flag left forever is worse than no flag. Record the cleanup change
+before the rollout starts.
+
+### PostHog cannot target a restaurant today
+
+`posthog.identify` at `src/lib/analytics.ts:225` sends `signup_source`,
+`is_internal`, and the signup classification. It sends no restaurant id. The
+code calls `posthog.group()` nowhere.
+
+Add the group call where the restaurant is selected, in
+`src/contexts/RestaurantContext.tsx`. Do not add it to `recordAuthEvents`. A
+user can hold several restaurants, and `recordAuthEvents` runs before any
+selection.
+
+```
+posthog.group('restaurant', restaurantId)
+```
+
+Send the restaurant id only. Do not send the restaurant name. The comment at
+`src/lib/analytics.ts:223` states the rule: "PII minimization".
+
+Group analytics needs a paid PostHog plan. If the plan does not carry it, set a
+`restaurant_ids` person property instead, and target the flag on that.
+
 ## Out of scope
 
 - **`week_start_date` records the manager's device day.** The trace is in

@@ -23,6 +23,11 @@ interface UnpublishScheduleParams {
   weekStart: Date;
   weekEnd: Date;
   reason?: string;
+  /**
+   * Whether to notify employees. Defaults to true when absent, so every
+   * existing caller keeps its current behaviour without a change.
+   */
+  notify?: boolean;
 }
 
 /**
@@ -319,7 +324,13 @@ export const useUnpublishSchedule = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, weekStart, weekEnd, reason }: UnpublishScheduleParams) => {
+    mutationFn: async ({
+      restaurantId,
+      weekStart,
+      weekEnd,
+      reason,
+      notify = true,
+    }: UnpublishScheduleParams) => {
       // Format dates as YYYY-MM-DD (local calendar day, not UTC)
       const weekStartStr = formatLocalDate(weekStart);
       const weekEndStr = formatLocalDate(weekEnd);
@@ -341,8 +352,11 @@ export const useUnpublishSchedule = () => {
 
       // Nothing was actually retracted, so there is nobody to tell. Skipping
       // the invoke keeps a double-tap on Unpublish off the error path.
-      const notification: NotificationOutcome =
-        shiftCount > 0
+      // `notify: false` is a quiet unpublish -- the caller chose not to tell
+      // employees, so the invoke never happens, same as usePublishSchedule.
+      const notification: NotificationOutcome = !notify
+        ? { status: 'skipped' }
+        : shiftCount > 0
           ? await invokeScheduleNotification('notify-schedule-unpublished', {
               restaurantId,
               weekStart: weekStartStr,
@@ -371,6 +385,13 @@ export const useUnpublishSchedule = () => {
             shiftCount > 0
               ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} have been unlocked for editing. Affected employees have been told the week is being revised.`
               : 'Nothing was published for this week, so no shifts changed and nobody was notified.',
+          // The 'skipped' status wins before shiftCount is read, so this needs
+          // its own zero case -- same reason as successDescription above, but
+          // for `notify: false` instead of the fan-out having nobody to reach.
+          skippedDescription:
+            shiftCount > 0
+              ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} are unlocked for editing. Nobody was notified.`
+              : 'Nothing was published for this week, so nothing changed.',
         }),
       );
     },

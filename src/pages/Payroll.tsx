@@ -22,6 +22,7 @@ import {
 import { sortPayrollRows, groupPayrollRows, computePayrollTotals, regularPayDisplayValue, type PayrollSortKey, type SortDirection, type PayrollGroupMode } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
+import { ScheduleClockAudit } from '@/components/payroll/ScheduleClockAudit';
 import { AdjustOvertimeDialog } from '@/components/payroll/AdjustOvertimeDialog';
 import { PayrollExportMenu } from '@/components/payroll/PayrollExportMenu';
 import {
@@ -715,6 +716,15 @@ const Payroll = () => {
             </p>
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Schedule vs. clock check */}
+      {restaurantId && (
+        <ScheduleClockAudit
+          restaurantId={restaurantId}
+          start={start}
+          end={end}
+        />
       )}
 
       {/* Payroll Table */}

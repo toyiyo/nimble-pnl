@@ -354,14 +354,17 @@ export const useUnpublishSchedule = () => {
       // the invoke keeps a double-tap on Unpublish off the error path.
       // `notify: false` is a quiet unpublish -- the caller chose not to tell
       // employees, so the invoke never happens, same as usePublishSchedule.
-      const notification: NotificationOutcome = !notify
-        ? { status: 'skipped' }
-        : shiftCount > 0
-          ? await invokeScheduleNotification('notify-schedule-unpublished', {
-              restaurantId,
-              weekStart: weekStartStr,
-            })
-          : { status: 'sent', sent: 0 };
+      let notification: NotificationOutcome;
+      if (!notify) {
+        notification = { status: 'skipped' };
+      } else if (shiftCount > 0) {
+        notification = await invokeScheduleNotification('notify-schedule-unpublished', {
+          restaurantId,
+          weekStart: weekStartStr,
+        });
+      } else {
+        notification = { status: 'sent', sent: 0 };
+      }
 
       return { shiftCount, restaurantId, notification };
     },

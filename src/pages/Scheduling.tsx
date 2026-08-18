@@ -820,6 +820,15 @@ const Scheduling = () => {
     }
   };
 
+  // AlertDialogAction closes the dialog on click by default. Block that: the
+  // unpublish mutation is async, so an auto-close would hide the work in
+  // progress.
+  const handleUnpublishConfirmClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    if (unpublishSchedule.isPending) return;
+    handleUnpublishSchedule();
+  };
+
   // Get unique employees scheduled this week (respecting position filter, including inactive)
   const scheduledEmployeeIds = new Set(
     shifts
@@ -1818,14 +1827,7 @@ const Scheduling = () => {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={(event) => {
-                // AlertDialogAction closes the dialog on click by default.
-                // Block that: the unpublish mutation is async, so an
-                // auto-close would hide the work in progress.
-                event.preventDefault();
-                if (unpublishSchedule.isPending) return;
-                handleUnpublishSchedule();
-              }}
+              onClick={handleUnpublishConfirmClick}
               disabled={unpublishSchedule.isPending}
               className="bg-warning text-warning-foreground hover:bg-warning/90 text-sm shadow-sm"
             >

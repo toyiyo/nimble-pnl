@@ -37,7 +37,7 @@ week has started.
 ### The query is already self-scoped
 
 `src/hooks/useShifts.tsx:88` adds `.eq('employee_id', employeeId)` when an
-employee id is given, and `useMyShifts` at `src/hooks/useShifts.tsx:136` always
+employee id is given, and `useMyShifts` at `src/hooks/useShifts.tsx:142` always
 passes one. `src/hooks/useShifts.tsx:105` disables the query until the id
 resolves. A wider date range therefore reads one employee's rows, not the
 restaurant's.
@@ -76,12 +76,25 @@ placeholder. A signal that never varies is not a signal.
 ### Change 1: a next-shift anchor
 
 Add a block at the top of the page, above the week grid. It states the next
-shift, or states that none is scheduled.
+shift, or states that none is scheduled. Below the next shift, list up to 4
+more shifts as small rows.
 
 The anchor never depends on the week the employee views. A new query reads from
 the start of today, in the restaurant timezone, to 21 days ahead.
 
 The anchor states no publish status. A shift that exists gets stated.
+
+**The anchor replaces the "Upcoming Shifts" card** at
+`src/pages/EmployeeSchedule.tsx:247`. Delete that card. It reads from the
+week-bounded array, so it holds the defect this design fixes: it goes empty on
+Sunday night. It also holds the "Upcoming (tentative)" copy that Change 4
+deletes. Two cards for near-term shifts would stack and repeat each other.
+
+**Build the date range once per calendar day, not once per render.** The query
+key at `src/hooks/useShifts.tsx:76` contains `startDate?.toISOString()`. A
+`Date` built fresh in the render body makes a new key every render, and every
+key is a new fetch. Derive both bounds from one `useMemo`, keyed on the
+restaurant-local date string from `formatLocalDateInTz`.
 
 ### Change 2: a relative week label
 
@@ -119,22 +132,69 @@ The rule is schedule-shaped, not calendar-shaped. A restaurant that publishes
 each week always passes. A restaurant that tried the publish flow and stopped
 fails 2 weeks later.
 
-`useSchedulePublications` at `src/hooks/useSchedulePublish.tsx:221` already
-reads every publication row for the restaurant. The rule needs no new schema and
-no new query. Publish invalidates that key at
-`src/hooks/useSchedulePublish.tsx:288`, and unpublish invalidates it at
-`src/hooks/useSchedulePublish.tsx:352`, so the flag stays fresh.
+#### The query is new, and it must stay bounded
 
-While the publication query loads, treat the restaurant as a non-publisher and
-show shifts solid. A false draft hue caused a no-show. A late draft hue did not.
+`useSchedulePublications` at `src/hooks/useSchedulePublish.tsx:219` has **zero
+call sites today**. Change 3 is its first consumer. Do not reuse it as written:
+`src/hooks/useSchedulePublish.tsx:225` selects `*` with no week filter and no
+`.limit()`, so it reads the restaurant's whole publish history on every employee
+page load.
+
+Add a bounded query instead. Read only rows at or after the current week start
+minus 8 days:
+
+```
+.eq('restaurant_id', restaurantId)
+.gte('week_start_date', <thisWeekStart minus 8 days>)
+```
+
+This range scan uses `idx_schedule_publications_week_lookup`
+(`supabase/migrations/20260802120000_schedule_retractions.sql:44`).
+
+Keep `['schedule_publications', restaurantId]` as the key prefix. Publish
+invalidates that key at `src/hooks/useSchedulePublish.tsx:288`, and unpublish
+invalidates it at `src/hooks/useSchedulePublish.tsx:352`. React Query matches an
+invalidation by prefix, so a longer key still gets invalidated. A different
+first element would break that, and the flag would go stale.
+
+#### Why 8 days, and not an exact Monday match
+
+`week_start_date` is written in the manager's device timezone, not the
+restaurant's. `usePublishSchedule` calls `formatLocalDate(weekStart)` at
+`src/hooks/useSchedulePublish.tsx:253`, and `weekStart` comes from
+`getMondayOfWeek` (`src/hooks/useShiftPlanner.ts:360`), which uses `getDay()`
+and `setDate()`. A manager in a different timezone from the restaurant can
+therefore write a Monday one day away from the restaurant's Monday.
+
+An exact Monday match would miss that row and show a false draft hue. The 8-day
+window absorbs a 1-day skew. The rule asks "did this restaurant publish
+recently?", so it needs no week alignment.
+
+#### The loading state
+
+While the publication query loads, show shifts solid. A shift row must render
+something, so it cannot wait. Solid is the safe default: a false draft hue
+caused a no-show, and a late draft hue did not.
 `src/components/employee/ScheduleStatusBanner.tsx:39` states the same principle
-for the banner: "A wrong line is worse than no line."
+for the banner: "A wrong line is worse than no line." The banner renders
+nothing, because a banner can be absent. A row cannot.
 
 ### Change 4: delete the tentative heading
 
-Delete the conditional at `src/pages/EmployeeSchedule.tsx:261` and
-`src/pages/EmployeeSchedule.tsx:259`. The card is always "Upcoming shifts".
-Delete `allUpcomingAreDrafts` at `src/pages/EmployeeSchedule.tsx:176`.
+`allUpcomingAreDrafts` has three uses, not two:
+
+| Line | Use |
+|---|---|
+| `src/pages/EmployeeSchedule.tsx:251` | the Card background |
+| `src/pages/EmployeeSchedule.tsx:259` | the icon colour |
+| `src/pages/EmployeeSchedule.tsx:261` | the title, `'Upcoming (tentative)'` |
+
+Change 1 deletes the whole card at `src/pages/EmployeeSchedule.tsx:247`, so all
+three go together. Delete `allUpcomingAreDrafts` at
+`src/pages/EmployeeSchedule.tsx:176` and `upcomingShifts` at
+`src/pages/EmployeeSchedule.tsx:165`.
+
+Delete the variable and one of the three uses, and the build fails.
 
 ## Timezone rule
 
@@ -142,12 +202,18 @@ Delete `allUpcomingAreDrafts` at `src/pages/EmployeeSchedule.tsx:176`.
 `src/pages/EmployeeSchedule.tsx:58` calls `startOfWeek(new Date(), …)`. That
 call uses the host timezone.
 
-Lesson `memory/lessons.md:274` records a $2,246 wage error from exactly this.
+Lesson `memory/lessons.md:272` records a $2,246 wage error from exactly this.
 Every comparison in this design therefore takes an explicit IANA timezone:
 
 - Today's week start comes from `formatLocalDateInTz`
   (`src/lib/shiftInterval.ts:207`), then `startOfWeek`.
 - The anchor's lower bound is the start of today in the restaurant timezone.
+- `currentWeekStart` at `src/pages/EmployeeSchedule.tsx:57` uses the same rule.
+- `handleToday` at `src/pages/EmployeeSchedule.tsx:192` uses the same rule.
+
+The last two matter most. `currentWeekStart` decides which week the query loads.
+A host-timezone week start there sends the employee to the wrong week, which is
+the failure this design fixes.
 
 The page already reads `restaurantTimezone` at
 `src/pages/EmployeeSchedule.tsx:75`.
@@ -163,14 +229,18 @@ alone.
 | `src/lib/scheduleWeekLabel.ts` | `getRelativeWeekLabel(viewedWeekStart, now, tz)` | The Change 2 label |
 | `src/lib/nextShift.ts` | `selectNextShift(shifts, now)` | The Change 1 selection |
 | `src/components/employee/NextShiftCard.tsx` | `NextShiftCard` | The Change 1 view |
+| `src/hooks/useRestaurantPublishes.tsx` | `useRestaurantPublishes(restaurantId, tz)` | The Change 3 bounded query |
 
 ## Changed files
 
 | File | Change |
 |---|---|
-| `src/pages/EmployeeSchedule.tsx` | anchor query, relative label, footer row, delete Change 4 |
+| `src/pages/EmployeeSchedule.tsx` | anchor query, relative label, footer row, restaurant-tz week start, call `useRestaurantPublishes`, thread `restaurantPublishes` into `ShiftRow` at `:367`, delete the card at `:247` |
 | `src/components/employee/ShiftRow.tsx` | add a `restaurantPublishes` prop that gates the draft branch |
-| `src/hooks/useSchedulePublish.tsx` | add a thin hook over the existing query |
+
+`src/hooks/useSchedulePublish.tsx` stays unchanged. An earlier draft added the
+hook there. A parallel branch changes `useUnpublishSchedule` in that file, so the
+new hook goes in its own file and imports `useSchedulePublications`' type only.
 
 ## States
 
@@ -189,8 +259,13 @@ push the grid down on an already-painted page.
 ## Accessibility
 
 - The dot on the forward chevron is colour alone, so it fails WCAG 1.4.1 by
-  itself. The chevron's `aria-label` becomes "Next week, 2 shifts".
-- The footer row is a `button`, reachable by keyboard.
+  itself. Two fixes, not one:
+  - The chevron's `aria-label` becomes "Next week, 2 shifts". This serves a
+    screen reader.
+  - The footer row states the count as visible text. This serves a sighted
+    user who cannot see the dot. An `aria-label` alone does not.
+- The dot meets WCAG 1.4.11. Its contrast against the surface is 3:1 or more.
+- The footer row is a `button`, reachable by keyboard. It keeps `min-h-[44px]`.
 - The nav buttons keep `min-h-[44px]`.
 - A shadcn `Badge` renders a `div`. Never put one inside a `<p>`.
   `memory/lessons.md:2818` records a DOM-nesting error from that mistake.
@@ -235,6 +310,12 @@ new row and the draft hue returns with a meaning.
 
 ## Out of scope
 
+- **`week_start_date` records the manager's device day.** The trace is in
+  Change 3. This design absorbs a 1-day skew with the 8-day window. A full fix
+  changes `getMondayOfWeek` (`src/hooks/useShiftPlanner.ts:360`) and every
+  manager page that calls it. That is a separate change on a separate branch.
+- **The `select('*')` in `useShiftsQuery`** at `src/hooks/useShifts.tsx:85`.
+  CLAUDE.md asks for explicit fields. The anchor adds a caller, not the debt.
 - The missing audit trail. `shifts` has no `created_by`, and
   `schedule_change_logs` records no `created` or `published` row. The only proof
   of who created a shift was a PostHog autocapture label, which expires after 30

@@ -11,9 +11,9 @@ import {
   MapPin,
   XCircle,
 } from 'lucide-react';
+import { RestaurantClock } from '@/hooks/useRestaurantClock';
 import { Shift } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
-import { RestaurantClock } from '@/hooks/useRestaurantClock';
 
 function formatShiftDuration(startTime: string, endTime: string, breakMinutes: number): string {
   const start = new Date(startTime);

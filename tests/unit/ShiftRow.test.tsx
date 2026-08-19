@@ -5,8 +5,7 @@ import userEvent from '@testing-library/user-event';
 
 import { ShiftRow } from '@/components/employee/ShiftRow';
 import { Shift } from '@/types/scheduling';
-import { formatInstant, toBusinessDay } from '@/lib/restaurantClock';
-import type { RestaurantClock } from '@/hooks/useRestaurantClock';
+import { makeClock } from '../helpers/restaurantClock';
 
 /** Far enough out that `isFuture` stays true whatever day the suite runs. */
 const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -14,25 +13,6 @@ const futureAt = (hoursOffset: number) =>
   new Date(FUTURE.getTime() + hoursOffset * 60 * 60 * 1000).toISOString();
 const nowAt = (hoursOffset: number) =>
   new Date(Date.now() + hoursOffset * 60 * 60 * 1000).toISOString();
-
-/**
- * Builds a real clock from the production library functions
- * (`src/lib/restaurantClock.ts`), so the fake cannot drift from production
- * behaviour. `tz` fixes the restaurant zone; `today` follows it so the far-
- * future shift in `makeShift` never lands on the Today branch by accident.
- */
-function makeClock(tz = 'UTC'): RestaurantClock {
-  return {
-    tz,
-    tzAbbrev: '',
-    viewerTzDiffers: false,
-    today: toBusinessDay(new Date(), tz),
-    formatInstant: (value, pattern) => formatInstant(value, tz, pattern),
-    toBusinessDay: (value) => toBusinessDay(value, tz),
-    toWallClockInput: (value) => formatInstant(value, tz, "yyyy-MM-dd'T'HH:mm"),
-    parseWallClock: (wallClock) => wallClock,
-  };
-}
 
 function makeShift(overrides: Partial<Shift> = {}): Shift {
   return {

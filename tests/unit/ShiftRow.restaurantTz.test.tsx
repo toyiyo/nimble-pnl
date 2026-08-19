@@ -4,8 +4,7 @@ import { render, screen } from '@testing-library/react';
 
 import { ShiftRow } from '@/components/employee/ShiftRow';
 import { Shift } from '@/types/scheduling';
-import { formatInstant, toBusinessDay } from '@/lib/restaurantClock';
-import type { RestaurantClock } from '@/hooks/useRestaurantClock';
+import { makeClock } from '../helpers/restaurantClock';
 
 /**
  * Regression guard: `ShiftRow` must read every wall-clock date from the
@@ -23,26 +22,6 @@ import type { RestaurantClock } from '@/hooks/useRestaurantClock';
 function pinHostTzToPhoenix(): void {
   process.env.TZ = 'America/Phoenix';
   expect(new Date('2026-01-31T12:00:00Z').getTimezoneOffset()).toBe(420);
-}
-
-/**
- * Builds a real clock from the production library functions
- * (`src/lib/restaurantClock.ts`), so the fake cannot drift from production
- * behaviour. Only `formatInstant` and `toBusinessDay` are exercised by
- * `ShiftRow`; the other two fields exist to satisfy the `RestaurantClock`
- * shape.
- */
-function makeClock(tz: string, today: string): RestaurantClock {
-  return {
-    tz,
-    tzAbbrev: '',
-    viewerTzDiffers: false,
-    today,
-    formatInstant: (value, pattern) => formatInstant(value, tz, pattern),
-    toBusinessDay: (value) => toBusinessDay(value, tz),
-    toWallClockInput: (value) => formatInstant(value, tz, "yyyy-MM-dd'T'HH:mm"),
-    parseWallClock: (wallClock) => wallClock,
-  };
 }
 
 /**

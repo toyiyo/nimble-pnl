@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 import { canUserCreateRestaurant } from '@/lib/restaurantPermissions';
@@ -68,6 +69,21 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
       (restaurants.length === 1 ? restaurants[0] : null)
     );
   }, [storageKey, restaurants, chosenRestaurantId]);
+
+  const posthog = usePostHog();
+
+  // Tell PostHog which restaurant the user works in, so a feature flag can
+  // target named customers.
+  //
+  // The group call belongs here, not in `recordAuthEvents`. A user can hold
+  // several restaurants, and `recordAuthEvents` runs before any selection.
+  //
+  // Send the restaurant id only. Never send the restaurant name. See the
+  // "PII minimization" rule at `src/lib/analytics.ts:223`.
+  useEffect(() => {
+    if (!posthog || !selectedRestaurant?.restaurant_id) return;
+    posthog.group('restaurant', selectedRestaurant.restaurant_id);
+  }, [posthog, selectedRestaurant?.restaurant_id]);
 
   // Clear selection when user changes
   useEffect(() => {

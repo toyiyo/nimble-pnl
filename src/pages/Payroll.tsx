@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Tooltip,
   TooltipContent,
@@ -13,6 +12,7 @@ import {
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePayroll } from '@/hooks/usePayroll';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useScheduleClockAudit } from '@/hooks/useScheduleClockAudit';
 import { FeatureGate } from '@/components/subscription';
 import {
   formatCurrency,
@@ -21,8 +21,16 @@ import {
 } from '@/utils/payrollCalculations';
 import { sortPayrollRows, groupPayrollRows, computePayrollTotals, regularPayDisplayValue, type PayrollSortKey, type SortDirection, type PayrollGroupMode } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
+import {
+  rollupAuditRowsByEmployee,
+  formatMinutesAsHours,
+  type AuditRow,
+  type EmployeeAuditRollup,
+} from '@/utils/scheduleClockAudit';
 import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
-import { ScheduleClockAudit } from '@/components/payroll/ScheduleClockAudit';
+import { ClockAuditBar, type ClockAuditFilterClass } from '@/components/payroll/ClockAuditBar';
+import { EmployeeAuditDetail } from '@/components/payroll/EmployeeAuditDetail';
+import { RecordShiftClockDialog } from '@/components/payroll/RecordShiftClockDialog';
 import { AdjustOvertimeDialog } from '@/components/payroll/AdjustOvertimeDialog';
 import { PayrollExportMenu } from '@/components/payroll/PayrollExportMenu';
 import {
@@ -70,6 +78,44 @@ const SORT_LABELS: Record<PayrollSortKey, string> = {
   regularPay: 'Regular Pay', overtimePay: 'Overtime Pay',
   totalTips: 'Tips Earned', tipsPaidOut: 'Tips Paid', tipsOwed: 'Tips Owed', totalPay: 'Total Pay',
 };
+
+/** Does this employee's audit rollup belong to the given chip filter class? */
+function employeeMatchesAuditFilter(
+  rollup: EmployeeAuditRollup | undefined,
+  filterClass: ClockAuditFilterClass,
+): boolean {
+  if (!rollup) return false;
+  switch (filterClass) {
+    case 'to_fix':
+      return rollup.toFix > 0;
+    case 'no_clock_out':
+      return rollup.open > 0;
+    case 'info':
+      return rollup.info > 0;
+    case 'matched':
+      return rollup.rows.some((row) => row.status === 'matched');
+  }
+}
+
+interface AuditChip {
+  label: string;
+  className: string;
+}
+
+/** The row chip for one employee, by precedence: to fix, no clock-out, info. */
+function auditChipForRollup(rollup: EmployeeAuditRollup | undefined): AuditChip | null {
+  if (!rollup) return null;
+  if (rollup.toFix > 0) {
+    return { label: `${rollup.toFix} to fix`, className: 'bg-warning/10 text-warning border-warning/20' };
+  }
+  if (rollup.open > 0) {
+    return { label: 'No clock-out', className: 'bg-info/10 text-info border-info/20' };
+  }
+  if (rollup.info > 0) {
+    return { label: `${rollup.info} info`, className: 'bg-muted text-muted-foreground border-border/40' };
+  }
+  return null;
+}
 
 function SortableHeader({
   columnKey, label, align = 'left', sortKey, sortDir, onSort,
@@ -176,7 +222,39 @@ const Payroll = () => {
   } = usePayroll(restaurantId, start, end);
   
   const { employees } = useEmployees(restaurantId);
-  
+
+  // Schedule-vs-clock audit state
+  const [auditTolerance, setAuditTolerance] = useState(10);
+  const [auditFilter, setAuditFilter] = useState<ClockAuditFilterClass | null>(null);
+  const [expandedAuditEmployees, setExpandedAuditEmployees] = useState<Set<string>>(new Set());
+  const [auditDialogOpen, setAuditDialogOpen] = useState(false);
+  const [activeAuditEntry, setActiveAuditEntry] = useState<{
+    row: AuditRow;
+    employeeName: string;
+  } | null>(null);
+
+  const {
+    rows: auditRows,
+    summary: auditSummary,
+    loading: auditLoading,
+    error: auditError,
+  } = useScheduleClockAudit(restaurantId, start, end, auditTolerance);
+
+  const auditRollup = useMemo(() => rollupAuditRowsByEmployee(auditRows), [auditRows]);
+
+  const toggleAuditRow = (employeeId: string) => {
+    setExpandedAuditEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(employeeId)) next.delete(employeeId); else next.add(employeeId);
+      return next;
+    });
+  };
+
+  const openAuditDialog = (row: AuditRow, employeeName: string) => {
+    setActiveAuditEntry({ row, employeeName });
+    setAuditDialogOpen(true);
+  };
+
   // State for manual payment dialog
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<{
@@ -267,12 +345,40 @@ const Payroll = () => {
   const formatRegularPayDisplay = (employee: EmployeePayroll): string =>
     formatCurrency(regularPayDisplayValue(employee));
 
-  const renderEmployeeRow = (employee: EmployeePayroll) => (
-    <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
+  const renderEmployeeRow = (employee: EmployeePayroll) => {
+    const rollup = auditRollup.get(employee.employeeId);
+    const hasAuditRows = !!rollup && rollup.rows.length > 0;
+    const isAuditExpanded = expandedAuditEmployees.has(employee.employeeId);
+    const auditChip = auditChipForRollup(rollup);
+
+    return (
+    <Fragment key={employee.employeeId}>
+    <TableRow className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
       <TableCell className="font-medium">
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Fixed-width leading slot, chevron or blank, so names align. */}
+          <span className="w-4 shrink-0 flex items-center justify-center">
+            {hasAuditRows && (
+              <button
+                type="button"
+                onClick={() => toggleAuditRow(employee.employeeId)}
+                aria-expanded={isAuditExpanded}
+                aria-label={`Show clock detail for ${employee.employeeName}`}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {isAuditExpanded
+                  ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
+              </button>
+            )}
+          </span>
           <span>{employee.employeeName}</span>
           {getCompensationBadge(employee)}
+          {auditChip && (
+            <span className={`text-[11px] px-1.5 py-0.5 rounded-md border font-medium ${auditChip.className}`}>
+              {auditChip.label}
+            </span>
+          )}
           {employee.incompleteShifts && employee.incompleteShifts.length > 0 && (
             <TooltipProvider>
               <Tooltip>
@@ -329,6 +435,11 @@ const Payroll = () => {
       </TableCell>
       <TableCell className="text-right">
         {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
+        {rollup && rollup.missingMinutes > 0 && (
+          <div className="text-[11px] text-warning">
+            {formatMinutesAsHours(rollup.missingMinutes)} scheduled, not clocked
+          </div>
+        )}
       </TableCell>
       <TableCell className="text-right">
         {employee.compensationType !== 'hourly' ? '-' : (
@@ -387,7 +498,20 @@ const Payroll = () => {
         )}
       </TableCell>
     </TableRow>
-  );
+    {rollup && hasAuditRows && isAuditExpanded && (
+      <TableRow>
+        <TableCell colSpan={PAYROLL_COLUMN_COUNT}>
+          <EmployeeAuditDetail
+            rows={rollup.rows}
+            employeeName={employee.employeeName}
+            onEnterClock={(row) => openAuditDialog(row, employee.employeeName)}
+          />
+        </TableCell>
+      </TableRow>
+    )}
+    </Fragment>
+    );
+  };
 
   const handleAddPayment = (employeeId: string, employeeName: string) => {
     setSelectedEmployee({ id: employeeId, name: employeeName });
@@ -438,6 +562,27 @@ const Payroll = () => {
   );
 
   const isGrouped = groupBy !== 'none';
+
+  // Groups reduced by the clock-check chip filter. Each group keeps its
+  // original row count so the header can show "N of M" while the filter
+  // is active. A group with zero visible rows hides completely.
+  const filteredGroups = useMemo(() => {
+    if (!auditFilter) {
+      return payrollGroups.map((group) => ({ ...group, totalCount: group.rows.length }));
+    }
+    return payrollGroups
+      .map((group) => ({
+        ...group,
+        rows: group.rows.filter((row) => employeeMatchesAuditFilter(auditRollup.get(row.employeeId), auditFilter)),
+        totalCount: group.rows.length,
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [payrollGroups, auditFilter, auditRollup]);
+
+  const filteredEmployeeCount = auditFilter
+    ? filteredGroups.reduce((sum, group) => sum + group.rows.length, 0)
+    : 0;
+  const totalEmployeeCount = payrollPeriod?.employees.length ?? 0;
 
   const sortAnnouncement = `Sorted by ${SORT_LABELS[sortKey]}, ${sortDir === 'asc' ? 'ascending' : 'descending'}`;
 
@@ -685,48 +830,6 @@ const Payroll = () => {
         </Card>
       )}
 
-      {/* Incomplete Shifts Warning */}
-      {payrollPeriod && payrollPeriod.employees.some(e => e.incompleteShifts && e.incompleteShifts.length > 0) && (
-        <Alert variant="destructive" className="border-amber-500/50 bg-amber-500/10">
-          <AlertTriangle className="h-4 w-4 text-amber-500" />
-          <AlertTitle className="text-amber-600">Incomplete Time Punches Detected</AlertTitle>
-          <AlertDescription className="text-amber-600/90">
-            <p className="mb-2">
-              The following employees have missing or problematic time punches that may affect payroll accuracy:
-            </p>
-            <ul className="list-disc pl-4 space-y-1 text-sm">
-              {payrollPeriod.employees
-                .filter(e => e.incompleteShifts && e.incompleteShifts.length > 0)
-                .map(e => (
-                  <li key={e.employeeId}>
-                    <span className="font-medium">{e.employeeName}</span>: {e.incompleteShifts!.length} issue(s)
-                    <ul className="list-none pl-4 text-xs text-amber-600/80">
-                      {e.incompleteShifts!.slice(0, 3).map((shift, idx) => (
-                        <li key={idx}>• {shift.message}</li>
-                      ))}
-                      {e.incompleteShifts!.length > 3 && (
-                        <li>• ...and {e.incompleteShifts!.length - 3} more</li>
-                      )}
-                    </ul>
-                  </li>
-                ))}
-            </ul>
-            <p className="mt-2 text-sm font-medium">
-              Please review and fix time punches before processing payroll.
-            </p>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Schedule vs. clock check */}
-      {restaurantId && (
-        <ScheduleClockAudit
-          restaurantId={restaurantId}
-          start={start}
-          end={end}
-        />
-      )}
-
       {/* Payroll Table */}
       <Card>
         <CardHeader>
@@ -754,6 +857,17 @@ const Payroll = () => {
               />
             </div>
           </div>
+          <div className="border-t border-border/40 mt-3">
+            <ClockAuditBar
+              summary={auditSummary}
+              loading={auditLoading}
+              error={auditError}
+              tolerance={auditTolerance}
+              onToleranceChange={setAuditTolerance}
+              activeFilter={auditFilter}
+              onFilterChange={setAuditFilter}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -765,6 +879,11 @@ const Payroll = () => {
           ) : payrollPeriod && payrollPeriod.employees.length > 0 ? (
             <div className="rounded-md border">
               <span className="sr-only" aria-live="polite">{hasSorted ? sortAnnouncement : ''}</span>
+              <p className="text-[13px] text-muted-foreground px-3 pt-2" aria-live="polite">
+                {auditFilter
+                  ? `Clock filter active: ${filteredEmployeeCount} of ${totalEmployeeCount} employees`
+                  : ''}
+              </p>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -783,8 +902,11 @@ const Payroll = () => {
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                {payrollGroups.map((group) => {
-                  const collapsed = collapsedGroups.has(group.key);
+                {filteredGroups.map((group) => {
+                  // The filter forces every group open — a match inside a
+                  // collapsed group must stay visible. Collapse state
+                  // returns once the filter clears.
+                  const collapsed = auditFilter ? false : collapsedGroups.has(group.key);
                   return (
                     <TableBody key={group.key}>
                       {isGrouped && (
@@ -792,23 +914,24 @@ const Payroll = () => {
                           <TableHead colSpan={PAYROLL_COLUMN_COUNT} scope="colgroup" className="py-2">
                             <button
                               type="button"
-                              onClick={() => toggleGroup(group.key)}
+                              onClick={() => { if (!auditFilter) toggleGroup(group.key); }}
                               aria-expanded={!collapsed}
-                              className="inline-flex items-center gap-2 min-h-[24px] font-semibold text-foreground"
+                              disabled={!!auditFilter}
+                              className="inline-flex items-center gap-2 min-h-[24px] font-semibold text-foreground disabled:cursor-default"
                             >
                               {collapsed
                                 ? <ChevronRight className="h-4 w-4" aria-hidden="true" />
                                 : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
                               <span>{group.label}</span>
                               <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted font-normal text-muted-foreground">
-                                {group.rows.length}
+                                {auditFilter ? `${group.rows.length} of ${group.totalCount}` : group.rows.length}
                               </span>
                             </button>
                           </TableHead>
                         </TableRow>
                       )}
                       {!collapsed && group.rows.map(renderEmployeeRow)}
-                      {isGrouped && !collapsed && renderTotalsRow(
+                      {isGrouped && !collapsed && !auditFilter && renderTotalsRow(
                         computePayrollTotals(group.rows),
                         `${group.label} subtotal`,
                         { labelClassName: 'text-[12px] font-medium uppercase tracking-wider text-muted-foreground' },
@@ -816,10 +939,14 @@ const Payroll = () => {
                     </TableBody>
                   );
                 })}
-                {/* Grand total row — always visible */}
-                <TableBody>
-                  {grandTotals && renderTotalsRow(grandTotals, 'TOTAL')}
-                </TableBody>
+                {/* Grand total row — hidden while the clock filter is active,
+                    since a total over a filtered subset reads as a wrong
+                    pay total. */}
+                {!auditFilter && (
+                  <TableBody>
+                    {grandTotals && renderTotalsRow(grandTotals, 'TOTAL')}
+                  </TableBody>
+                )}
               </Table>
             </div>
           ) : (
@@ -892,6 +1019,17 @@ const Payroll = () => {
           periodEnd={format(end, 'yyyy-MM-dd')}
           onSubmit={handleOtSubmit}
           isSubmitting={isAdjustingOvertime}
+        />
+      )}
+
+      {/* Clock audit repair dialog — one instance serves every detail row */}
+      {activeAuditEntry?.row.shift && restaurantId && (
+        <RecordShiftClockDialog
+          open={auditDialogOpen}
+          onOpenChange={setAuditDialogOpen}
+          row={activeAuditEntry.row}
+          employeeName={activeAuditEntry.employeeName}
+          restaurantId={restaurantId}
         />
       )}
     </div>

@@ -93,6 +93,13 @@ vi.mock('@/hooks/useSchedulePublish', () => ({
   }),
 }));
 
+// PR #761 added this hook to the page. It runs its own React Query query, and
+// these tests render without a QueryClientProvider. It has no part in day
+// bucketing or in the query bounds.
+vi.mock('@/hooks/useRestaurantPublishes', () => ({
+  useRestaurantPublishes: () => ({ publishes: true, isLoading: false }),
+}));
+
 // Both pull their own Supabase data and neither takes part in day bucketing.
 vi.mock('@/components/schedule/MyShiftTradesCard', () => ({
   MyShiftTradesCard: () => null,

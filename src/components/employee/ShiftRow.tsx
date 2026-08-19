@@ -98,6 +98,13 @@ interface ShiftRowProps {
   variant?: ShiftRowVariant;
   onTrade?: (shift: Shift) => void;
   clock: RestaurantClock;
+  /**
+   * Does the restaurant publish its schedule? A restaurant that never
+   * publishes has `is_published = false` on every shift, so the draft
+   * treatment would mark every row and mean nothing. Defaults to `true`, so a
+   * call site that does not know keeps the current behaviour.
+   */
+  restaurantPublishes?: boolean;
 }
 
 /** Cancelled outranks draft, which outranks the per-variant default. */
@@ -108,8 +115,14 @@ function getSurfaceClass(isCancelled: boolean, isDraft: boolean, variant: ShiftR
   return 'bg-muted/50';
 }
 
-export function ShiftRow({ shift, variant = 'day', onTrade, clock }: ShiftRowProps): JSX.Element {
-  const isDraft = !shift.is_published;
+export function ShiftRow({
+  shift,
+  variant = 'day',
+  onTrade,
+  clock,
+  restaurantPublishes = true,
+}: ShiftRowProps): JSX.Element {
+  const isDraft = restaurantPublishes && !shift.is_published;
   const isCancelled = shift.status === 'cancelled';
 
   // Drafts get a visual treatment only, no explanatory copy: many restaurants

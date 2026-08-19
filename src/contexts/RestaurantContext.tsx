@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import { usePostHog } from 'posthog-js/react';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 import { canUserCreateRestaurant } from '@/lib/restaurantPermissions';
@@ -69,6 +70,21 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     );
   }, [storageKey, restaurants, chosenRestaurantId]);
 
+  const posthog = usePostHog();
+
+  // Tell PostHog which restaurant the user works in, so a feature flag can
+  // target named customers.
+  //
+  // The group call belongs here, not in `recordAuthEvents`. A user can hold
+  // several restaurants, and `recordAuthEvents` runs before any selection.
+  //
+  // Send the restaurant id only. Never send the restaurant name. See the
+  // "PII minimization" rule at `src/lib/analytics.ts:223`.
+  useEffect(() => {
+    if (!posthog || !selectedRestaurant?.restaurant_id) return;
+    posthog.group('restaurant', selectedRestaurant.restaurant_id);
+  }, [posthog, selectedRestaurant?.restaurant_id]);
+
   // Clear selection when user changes
   useEffect(() => {
     if (!user) {
@@ -79,8 +95,11 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
           localStorage.removeItem(key);
         }
       });
+      // Drop the PostHog restaurant group too, or it stays in persisted
+      // storage and can carry over to the next login on the same browser.
+      posthog?.resetGroups();
     }
-  }, [user]);
+  }, [user, posthog]);
 
   // Enhanced setSelectedRestaurant that persists to localStorage
   const handleSetSelectedRestaurant = useCallback((restaurant: UserRestaurant | null) => {

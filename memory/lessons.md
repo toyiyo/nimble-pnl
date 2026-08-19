@@ -2931,3 +2931,34 @@
 - **Mistake:** The rewritten help doc paraphrased the unpublish checkbox as "Notify employees"; the component renders "Notify scheduled employees." A troubleshooting entry elsewhere in the same doc still taught the deleted unpublish-edit-republish workflow. The plan named specific lines to replace; both defects sat outside them. CodeRabbit caught both.
 - **Correction:** The doc now quotes the label from the component source, and the troubleshooting entry teaches the live-edit flow. Fix commits on PR #758, confirmed by the reviewer.
 - **Rule:** In a help doc, copy UI labels from the component source, not from the plan or from memory. When you change a workflow, grep the whole doc — and sibling docs — for the old workflow's words. The plan's named lines are not the full blast radius.
+
+## Category: Feature Flags
+
+### [2026-08-19] A flag turns a deletion into a deferral, and the plan must say so (PR #761)
+- **Mistake:** The design doc's Change 4 said "delete `allUpcomingAreDrafts` and the Upcoming (tentative) heading". The user then asked for a feature flag. A deletion and a flag contradict each other: a flag needs both code paths alive to compare them.
+- **Correction:** The design doc gained a "The feature flag" section that restates Change 4 as a deferral. `upcomingShifts` and `allUpcomingAreDrafts` stay. `EmployeeSchedule.tsx` carries both branches behind `showClarity`. The section also records the cleanup change that deletes the old path after the rollout ends.
+- **Rule:** When a user adds a flag to an approved design, re-read every "delete" in that design. Each one becomes a deferral. State the cleanup change in the same commit, before the rollout starts.
+
+### [2026-08-19] PostHog cannot target a customer that it never learns about (PR #761)
+- **Mistake:** The user asked to target named restaurants. I planned the flag before I checked what PostHog knows. `posthog.identify` at `src/lib/analytics.ts:225` sends `signup_source`, `is_internal`, and the signup classification. It sends no restaurant id, and the code called `posthog.group()` nowhere. The flag had no attribute to target.
+- **Correction:** Task 7 added `posthog.group('restaurant', restaurantId)` in `src/contexts/RestaurantContext.tsx`, where the restaurant is selected. It sends the id only, never the name, per the "PII minimization" rule at `src/lib/analytics.ts:223`. A reviewer then found a second half: sign-out must reset the group, or it carries to the next login on the same browser.
+- **Rule:** Before you promise per-customer targeting, grep for the identify and group calls and read what they send. The group call belongs where the tenant is selected, not in the auth event recorder — a user can hold several restaurants. Pair every group call with a reset on sign-out.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-19] A helper name I remembered did not exist (PR #761)
+- **Mistake:** The plan's Task 6 called `formatInRestaurantTz(value, tz, pattern)` in five places. That function does not exist. The real one is `formatInstant` at `src/lib/restaurantClock.ts:122`. The plan also destructured `isLoading` from `useMyShifts`; `UseShiftsResult` at `src/hooks/useShifts.tsx:49` names the field `loading`.
+- **Correction:** The self-review pass caught both before any code ran. One `grep -n "^export" src/lib/restaurantClock.ts` and one read of `UseShiftsResult` fixed them.
+- **Rule:** Before you write a helper call into a plan, print the module's exports. A plan that names a function which does not exist fails at the first task, and the executing agent then invents a replacement instead of finding the real one.
+
+### [2026-08-19] A timezone test can pass by coincidence on the author's machine (PR #761)
+- **Mistake:** `tests/unit/scheduleWeek.test.ts` compared restaurant-timezone output against a host-local `new Date(2026, 7, 17)`. My host sits in the same offset as the fixture timezone, so a bug that read the host clock would still pass here and fail in CI on another host.
+- **Correction:** A reviewer on PR #761 added a host-timezone pin to those tests. The CI Timezone Matrix runs UTC, America/Chicago, and Pacific/Auckland, and all three pass.
+- **Rule:** Pin the host timezone in any test that asserts restaurant-timezone behaviour. Never let the assertion and the code under test read the same ambient clock — a shared default hides the exact bug the test exists to catch.
+
+## Category: Dev workflow / Worktree hygiene (continued)
+
+### [2026-08-19] A shared append-only JSON file conflicts on every parallel branch (PR #761)
+- **Mistake:** `dev-tools/review_queue.json` conflicted with `main` after the workflow finished. Two branches each appended review findings to the same 6000-item file. `gh pr view` reported `mergeStateStatus: DIRTY` after every check had already passed.
+- **Correction:** A three-way compare showed pure additions on both sides, and zero changed items. The fix took the union by `id`: every item from `main`, then the 34 items this branch adds. The serialization had to match `main` exactly — `json.dumps(d, indent=2, ensure_ascii=False)` with no trailing newline — or the diff read as 1401 changed lines instead of 580 added ones.
+- **Rule:** Before you fix a conflict in a machine-written JSON file, compare base, ours, and theirs as parsed objects, not as text. Check whether either side changed an existing record. Then reproduce the writer's exact serialization, and confirm the diff against `main` is additions only.

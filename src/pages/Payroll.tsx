@@ -592,12 +592,21 @@ const Payroll = () => {
   // is active, which removes every chip from the DOM. Both cases would
   // leave the table stuck on "0 of N employees" with no control left to
   // clear it, so drop the filter here instead of waiting on a click.
+  //
+  // Skip this check while `loading` or `auditLoading` is true. A period
+  // navigation (Previous/Next Period) changes the usePayroll and
+  // useScheduleClockAudit query keys, and neither query keeps
+  // placeholderData, so payrollPeriod and auditRows both go empty for one
+  // render. filteredEmployeeCount reads 0 in that render for a reason
+  // unrelated to the filtered class being empty, and clearing the filter
+  // here would silently drop it on every ordinary period change.
   useEffect(() => {
     if (!auditFilter) return;
+    if (loading || auditLoading) return;
     if (auditError || filteredEmployeeCount === 0) {
       setAuditFilter(null);
     }
-  }, [auditFilter, auditError, filteredEmployeeCount]);
+  }, [auditFilter, auditError, filteredEmployeeCount, loading, auditLoading]);
 
   const sortAnnouncement = `Sorted by ${SORT_LABELS[sortKey]}, ${sortDir === 'asc' ? 'ascending' : 'descending'}`;
 

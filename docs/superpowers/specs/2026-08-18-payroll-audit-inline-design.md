@@ -109,11 +109,17 @@ Type changes in the same file:
 - Add `inProgress: number` to `AuditSummary`
   ([scheduleClockAudit.ts:70-76](src/utils/scheduleClockAudit.ts:70)).
 
-Add a pure grouping helper in the same module:
+Add `'in_progress'` to the `SUMMARY_KEY` record
+([scheduleClockAudit.ts:334-340](src/utils/scheduleClockAudit.ts:334)).
+The `Record<AuditRowStatus, ...>` type fails to compile without it.
+
+Add a pure rollup helper in the same module. The name avoids the word
+"group": the payroll table already uses "group" for the area/position
+grouping ([Payroll.tsx:425-428](src/pages/Payroll.tsx:425)).
 
 ```ts
-groupAuditRowsByEmployee(rows: AuditRow[]): Map<string, EmployeeAuditGroup>
-// EmployeeAuditGroup = { rows; toFix; open; info; missingMinutes }
+rollupAuditRowsByEmployee(rows: AuditRow[]): Map<string, EmployeeAuditRollup>
+// EmployeeAuditRollup = { rows; toFix; open; info; missingMinutes }
 // toFix   = missing_clock + time_mismatch count
 // open    = open_clock count
 // info    = unscheduled_clock + in_progress count
@@ -172,17 +178,25 @@ amber `N to fix` → blue `No clock-out` → gray `N info`. A clean employee
 gets no chip. Chips use the semantic token classes already proven in the
 panel (`bg-warning/10 text-warning`, `bg-info/10 text-info`;
 [ScheduleClockAudit.tsx:66-72](src/components/payroll/ScheduleClockAudit.tsx:66)).
-The chip is a `span`, not a shadcn `Badge`: `Badge` renders a `div` and
-the name cell content must stay flow-safe (lesson from PR #747).
+The chip is a `span`, sized like the panel's status badge. The name
+cell wraps its content in a `div`
+([Payroll.tsx:273](src/pages/Payroll.tsx:273)), so a `Badge` would be
+valid HTML here; the `span` is a style choice, not a flow-content
+requirement.
 
 **Chevron and detail row.** When an employee has audit rows, the name
 cell starts with a chevron toggle (`aria-expanded`,
-`aria-label="Show clock detail for {name}"`). Expansion state is a
-`Set<employeeId>` on the page. The detail renders as an extra
-`<TableRow>` with one `<TableCell colSpan={PAYROLL_COLUMN_COUNT}>`
-(precedent: the group header row,
-[Payroll.tsx:790-809](src/pages/Payroll.tsx:790);
+`aria-label="Show clock detail for {name}"`). Reserve a fixed-width
+leading slot in every name cell, with or without a chevron, so the
+names align vertically. Expansion state is a `Set<employeeId>` on the
+page. The detail renders as an extra `<TableRow>` with one
+`<TableCell colSpan={PAYROLL_COLUMN_COUNT}>` (precedent: the group
+header row, [Payroll.tsx:790-809](src/pages/Payroll.tsx:790);
 `PAYROLL_COLUMN_COUNT` at [Payroll.tsx:65](src/pages/Payroll.tsx:65)).
+`renderEmployeeRow` returns one `<TableRow>` today and the caller maps
+it into a `TableBody` ([Payroll.tsx:810](src/pages/Payroll.tsx:810)).
+Wrap the pair in `<React.Fragment key={employee.employeeId}>` — a
+`tbody` accepts only `tr` children, so the two rows must be siblings.
 
 **New component `EmployeeAuditDetail`**
 (`src/components/payroll/EmployeeAuditDetail.tsx`) renders inside that
@@ -210,11 +224,26 @@ second line: `5.5 h scheduled, not clocked` (`text-warning`,
 `text-[11px]`).
 
 **Filter semantics.** A chip filter reduces the visible employee rows
-inside each group. While a filter is active, the subtotal and grand
-total rows hide, and a note above the table reads
-`Clock filter active: N of M employees`. Totals over a filtered subset
-would read as wrong pay totals. Clearing the chip restores the full
-table.
+inside each area/position group. Rules for the filtered state:
+
+- The subtotal and grand total rows hide. Totals over a filtered subset
+  would read as wrong pay totals.
+- A note above the table reads `Clock filter active: N of M employees`.
+  The note sits in an `aria-live="polite"` region, so a screen reader
+  announces the change.
+- Every area/position group shows expanded while the filter is active.
+  The filter ignores `collapsedGroups`
+  ([Payroll.tsx:213-221](src/pages/Payroll.tsx:213)) and does not
+  mutate it. A match inside a collapsed group must be visible. The
+  collapse state returns when the filter clears.
+- The group header count shows `N of M` while the filter is active
+  (visible count of total count;
+  [Payroll.tsx:803-805](src/pages/Payroll.tsx:803) shows the total
+  today).
+- A group with zero visible employees hides completely, header
+  included. An empty header with no rows reads as a defect.
+
+Clearing the chip restores the full table.
 
 **Edge case.** An audit row can belong to an employee that the payroll
 period excludes (deactivated long before;
@@ -239,7 +268,7 @@ Unit (`tests/unit/scheduleClockAudit.test.ts`, extend the 24 tests):
 - Closed sessions, shift end in the future → `in_progress`.
 - Back-to-back boundary regression (PR #760 lesson) still passes with
   the multi-assign change.
-- `groupAuditRowsByEmployee`: counts, precedence inputs,
+- `rollupAuditRowsByEmployee`: counts, precedence inputs,
   `missingMinutes`.
 
 Unit (new `tests/unit/ClockAuditBar.test.tsx`,

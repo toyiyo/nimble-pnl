@@ -65,14 +65,14 @@ const EmployeeSchedule = () => {
   const restaurantToday = clock.today;
 
   // The week itself must start from the restaurant's calendar day, not the
-  // host's. `shiftsByDay` below keys every shift by `clock.toBusinessDay` --
-  // if the week anchor came from the host's `new Date()` instead, the two
-  // clocks could disagree about which week "now" falls in near a week
-  // boundary (host America/Phoenix, restaurant Pacific/Auckland is ~19-20h
-  // apart), and a shift for the restaurant's actual current day would match
-  // no column here and silently vanish from the grid.
+  // host's. `shiftsByDay` below keys every shift by the `toBusinessDay`
+  // helper -- if the week anchor came from the host's `new Date()` instead,
+  // the two clocks could disagree about which week "now" falls in near a
+  // week boundary (host America/Phoenix, restaurant Pacific/Auckland is
+  // ~19-20h apart), and a shift for the restaurant's actual current day
+  // would match no column here and silently vanish from the grid.
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
-    startOfWeek(parseDateOnly(clock.today), { weekStartsOn: WEEK_STARTS_ON })
+    startOfWeek(parseDateOnly(restaurantToday), { weekStartsOn: WEEK_STARTS_ON })
   );
   const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
   const pageHeaderRef = useRef<HTMLDivElement>(null);

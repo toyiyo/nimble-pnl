@@ -109,60 +109,65 @@ const minutesBetween = (fromIso: string, toIso: string): number =>
  * clock_out / break punches without an open session are dropped — the
  * payroll pairing engine already reports those as incomplete punches.
  */
+interface SessionBuildState {
+  sessions: WorkSession[];
+  current: WorkSession | null;
+  breakStart: string | null;
+}
+
+const closeSession = (state: SessionBuildState): void => {
+  if (state.current) state.sessions.push(state.current);
+  state.current = null;
+  state.breakStart = null;
+};
+
+const applyPunch = (state: SessionBuildState, punch: AuditPunch): void => {
+  switch (punch.punch_type) {
+    case 'clock_in':
+      closeSession(state);
+      state.current = {
+        employeeId: punch.employee_id,
+        clockIn: punch.punch_time,
+        clockOut: null,
+        breakMinutes: 0,
+        punchIds: [punch.id],
+      };
+      break;
+    case 'break_start':
+      if (state.current) {
+        state.current.punchIds.push(punch.id);
+        state.breakStart = punch.punch_time;
+      }
+      break;
+    case 'break_end':
+      if (state.current && state.breakStart) {
+        state.current.punchIds.push(punch.id);
+        state.current.breakMinutes += minutesBetween(state.breakStart, punch.punch_time);
+        state.breakStart = null;
+      }
+      break;
+    case 'clock_out':
+      if (state.current) {
+        state.current.punchIds.push(punch.id);
+        state.current.clockOut = punch.punch_time;
+        closeSession(state);
+      }
+      break;
+    default:
+      break;
+  }
+};
+
 export function buildWorkSessions(punches: AuditPunch[]): WorkSession[] {
   const ordered = [...punches].sort(
     (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime(),
   );
 
-  const sessions: WorkSession[] = [];
-  let current: WorkSession | null = null;
-  let breakStart: string | null = null;
+  const state: SessionBuildState = { sessions: [], current: null, breakStart: null };
+  for (const punch of ordered) applyPunch(state, punch);
+  closeSession(state);
 
-  const close = () => {
-    if (current) sessions.push(current);
-    current = null;
-    breakStart = null;
-  };
-
-  for (const punch of ordered) {
-    switch (punch.punch_type) {
-      case 'clock_in':
-        if (current) close();
-        current = {
-          employeeId: punch.employee_id,
-          clockIn: punch.punch_time,
-          clockOut: null,
-          breakMinutes: 0,
-          punchIds: [punch.id],
-        };
-        break;
-      case 'break_start':
-        if (current) {
-          current.punchIds.push(punch.id);
-          breakStart = punch.punch_time;
-        }
-        break;
-      case 'break_end':
-        if (current && breakStart) {
-          current.punchIds.push(punch.id);
-          current.breakMinutes += minutesBetween(breakStart, punch.punch_time);
-          breakStart = null;
-        }
-        break;
-      case 'clock_out':
-        if (current) {
-          current.punchIds.push(punch.id);
-          current.clockOut = punch.punch_time;
-          close();
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  close();
-
-  return sessions;
+  return state.sessions;
 }
 
 const sessionOverlapsShift = (session: WorkSession, shift: AuditShift, now: Date): boolean => {
@@ -192,16 +197,7 @@ const sessionOverlapsShift = (session: WorkSession, shift: AuditShift, now: Date
  * and shifts that did not start yet are ignored. Sessions that start outside
  * [rangeStart, rangeEnd] are ignored on the unscheduled side.
  */
-export function auditScheduleAgainstClocks(
-  shifts: AuditShift[],
-  punches: AuditPunch[],
-  rangeStart: Date,
-  rangeEnd: Date,
-  options: AuditOptions = {},
-): AuditResult {
-  const tolerance = options.toleranceMinutes ?? DEFAULT_TOLERANCE_MINUTES;
-  const now = options.now ?? new Date();
-
+const groupSessionsByEmployee = (punches: AuditPunch[]): Map<string, WorkSession[]> => {
   const punchesByEmployee = new Map<string, AuditPunch[]>();
   for (const punch of punches) {
     const list = punchesByEmployee.get(punch.employee_id) ?? [];
@@ -213,8 +209,16 @@ export function auditScheduleAgainstClocks(
   for (const [employeeId, list] of punchesByEmployee) {
     sessionsByEmployee.set(employeeId, buildWorkSessions(list));
   }
+  return sessionsByEmployee;
+};
 
-  const activeShifts = shifts
+const filterAuditableShifts = (
+  shifts: AuditShift[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  now: Date,
+): AuditShift[] =>
+  shifts
     .filter((shift) => shift.status !== 'cancelled')
     .filter((shift) => shift.is_published !== false)
     .filter((shift) => new Date(shift.start_time).getTime() <= now.getTime())
@@ -226,77 +230,74 @@ export function auditScheduleAgainstClocks(
     .filter((shift) => new Date(shift.end_time).getTime() >= rangeStart.getTime())
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-  const matchedSessions = new Set<WorkSession>();
-  const rows: AuditRow[] = [];
+const pickSessionForShift = (
+  shift: AuditShift,
+  sessions: WorkSession[],
+  matchedSessions: Set<WorkSession>,
+  now: Date,
+): WorkSession | undefined => {
+  const candidates = sessions.filter(
+    (session) => !matchedSessions.has(session) && sessionOverlapsShift(session, shift, now),
+  );
 
-  for (const shift of activeShifts) {
-    const candidates = (sessionsByEmployee.get(shift.employee_id) ?? []).filter(
-      (session) => !matchedSessions.has(session) && sessionOverlapsShift(session, shift, now),
-    );
+  // Nearest clock_in to the scheduled start wins.
+  candidates.sort(
+    (a, b) =>
+      Math.abs(minutesBetween(shift.start_time, a.clockIn)) -
+      Math.abs(minutesBetween(shift.start_time, b.clockIn)),
+  );
+  return candidates[0];
+};
 
-    // Nearest clock_in to the scheduled start wins.
-    candidates.sort(
-      (a, b) =>
-        Math.abs(minutesBetween(shift.start_time, a.clockIn)) -
-        Math.abs(minutesBetween(shift.start_time, b.clockIn)),
-    );
-    const session = candidates[0];
+const buildShiftRow = (
+  shift: AuditShift,
+  session: WorkSession | undefined,
+  tolerance: number,
+  now: Date,
+): AuditRow | null => {
+  const scheduledMinutes =
+    minutesBetween(shift.start_time, shift.end_time) - (shift.break_duration ?? 0);
+  const base = { key: `shift-${shift.id}`, employeeId: shift.employee_id, shift, scheduledMinutes };
 
-    const scheduledMinutes =
-      minutesBetween(shift.start_time, shift.end_time) - (shift.break_duration ?? 0);
-
-    if (!session) {
-      // A shift that has not ended yet is still in progress -- the employee
-      // may simply not have clocked in yet. Only a shift whose scheduled end
-      // is already in the past, with no punches at all, counts as a missed
-      // clock-in.
-      if (new Date(shift.end_time).getTime() > now.getTime()) continue;
-      rows.push({
-        key: `shift-${shift.id}`,
-        status: 'missing_clock',
-        employeeId: shift.employee_id,
-        shift,
-        scheduledMinutes,
-      });
-      continue;
-    }
-
-    matchedSessions.add(session);
-    const inDeltaMinutes = minutesBetween(shift.start_time, session.clockIn);
-
-    if (!session.clockOut) {
-      rows.push({
-        key: `shift-${shift.id}`,
-        status: 'open_clock',
-        employeeId: shift.employee_id,
-        shift,
-        session,
-        scheduledMinutes,
-        inDeltaMinutes,
-      });
-      continue;
-    }
-
-    const outDeltaMinutes = minutesBetween(shift.end_time, session.clockOut);
-    const workedMinutes =
-      minutesBetween(session.clockIn, session.clockOut) - session.breakMinutes;
-    const mismatch =
-      Math.abs(inDeltaMinutes) > tolerance || Math.abs(outDeltaMinutes) > tolerance;
-
-    rows.push({
-      key: `shift-${shift.id}`,
-      status: mismatch ? 'time_mismatch' : 'matched',
-      employeeId: shift.employee_id,
-      shift,
-      session,
-      scheduledMinutes,
-      workedMinutes,
-      inDeltaMinutes,
-      outDeltaMinutes,
-    });
+  if (!session) {
+    // A shift that has not ended yet is still in progress -- the employee
+    // may simply not have clocked in yet. Only a shift whose scheduled end
+    // is already in the past, with no punches at all, counts as a missed
+    // clock-in.
+    if (new Date(shift.end_time).getTime() > now.getTime()) return null;
+    return { ...base, status: 'missing_clock' };
   }
 
-  // Sessions with no shift: report only the ones that start inside the range.
+  const inDeltaMinutes = minutesBetween(shift.start_time, session.clockIn);
+
+  if (!session.clockOut) {
+    return { ...base, status: 'open_clock', session, inDeltaMinutes };
+  }
+
+  const outDeltaMinutes = minutesBetween(shift.end_time, session.clockOut);
+  const workedMinutes =
+    minutesBetween(session.clockIn, session.clockOut) - session.breakMinutes;
+  const mismatch =
+    Math.abs(inDeltaMinutes) > tolerance || Math.abs(outDeltaMinutes) > tolerance;
+
+  return {
+    ...base,
+    status: mismatch ? 'time_mismatch' : 'matched',
+    session,
+    workedMinutes,
+    inDeltaMinutes,
+    outDeltaMinutes,
+  };
+};
+
+/** Sessions with no shift: report only the ones that start inside the range. */
+const buildUnscheduledRows = (
+  sessionsByEmployee: Map<string, WorkSession[]>,
+  matchedSessions: Set<WorkSession>,
+  rangeStart: Date,
+  rangeEnd: Date,
+): AuditRow[] => {
+  const rows: AuditRow[] = [];
   for (const sessions of sessionsByEmployee.values()) {
     for (const session of sessions) {
       if (matchedSessions.has(session)) continue;
@@ -313,13 +314,18 @@ export function auditScheduleAgainstClocks(
       });
     }
   }
+  return rows;
+};
 
-  rows.sort((a, b) => {
-    const aTime = a.shift?.start_time ?? a.session?.clockIn ?? '';
-    const bTime = b.shift?.start_time ?? b.session?.clockIn ?? '';
-    return new Date(aTime).getTime() - new Date(bTime).getTime();
-  });
+const SUMMARY_KEY: Record<AuditRowStatus, keyof AuditSummary> = {
+  missing_clock: 'missingClock',
+  open_clock: 'openClock',
+  time_mismatch: 'timeMismatch',
+  unscheduled_clock: 'unscheduledClock',
+  matched: 'matched',
+};
 
+const summarizeRows = (rows: AuditRow[]): AuditSummary => {
   const summary: AuditSummary = {
     missingClock: 0,
     openClock: 0,
@@ -327,15 +333,48 @@ export function auditScheduleAgainstClocks(
     unscheduledClock: 0,
     matched: 0,
   };
-  for (const row of rows) {
-    if (row.status === 'missing_clock') summary.missingClock += 1;
-    else if (row.status === 'open_clock') summary.openClock += 1;
-    else if (row.status === 'time_mismatch') summary.timeMismatch += 1;
-    else if (row.status === 'unscheduled_clock') summary.unscheduledClock += 1;
-    else summary.matched += 1;
+  for (const row of rows) summary[SUMMARY_KEY[row.status]] += 1;
+  return summary;
+};
+
+export function auditScheduleAgainstClocks(
+  shifts: AuditShift[],
+  punches: AuditPunch[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  options: AuditOptions = {},
+): AuditResult {
+  const tolerance = options.toleranceMinutes ?? DEFAULT_TOLERANCE_MINUTES;
+  const now = options.now ?? new Date();
+
+  const sessionsByEmployee = groupSessionsByEmployee(punches);
+  const activeShifts = filterAuditableShifts(shifts, rangeStart, rangeEnd, now);
+
+  const matchedSessions = new Set<WorkSession>();
+  const rows: AuditRow[] = [];
+
+  for (const shift of activeShifts) {
+    const session = pickSessionForShift(
+      shift,
+      sessionsByEmployee.get(shift.employee_id) ?? [],
+      matchedSessions,
+      now,
+    );
+    if (session) matchedSessions.add(session);
+
+    const row = buildShiftRow(shift, session, tolerance, now);
+    if (row) rows.push(row);
   }
 
-  return { rows, summary };
+  rows.push(...buildUnscheduledRows(sessionsByEmployee, matchedSessions, rangeStart, rangeEnd));
+
+  rows.sort((a, b) => {
+    const aTime = a.shift?.start_time ?? a.session?.clockIn ?? '';
+    const bTime = b.shift?.start_time ?? b.session?.clockIn ?? '';
+    return new Date(aTime).getTime() - new Date(bTime).getTime();
+  });
+
+  return { rows, summary: summarizeRows(rows) };
 }
 
 /** Format a signed minute delta: "+12 min" / "-5 min" / "on time". */
@@ -355,5 +394,5 @@ export function formatDeltaMinutes(delta: number | undefined): string {
 /** Format minutes as "7.5 h". */
 export function formatMinutesAsHours(minutes: number | undefined): string {
   if (minutes === undefined) return '—';
-  return `${(minutes / 60).toFixed(2).replace(/\.?0+$/, '')} h`;
+  return `${parseFloat((minutes / 60).toFixed(2))} h`;
 }

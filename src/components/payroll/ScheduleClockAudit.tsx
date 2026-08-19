@@ -71,12 +71,12 @@ const STATUS_BADGE: Record<AuditRowStatus, string> = {
   matched: 'bg-success/10 text-success border-success/20',
 };
 
-const ISSUE_STATUSES: AuditRowStatus[] = ['missing_clock', 'open_clock', 'time_mismatch'];
+const ISSUE_STATUSES = new Set<AuditRowStatus>(['missing_clock', 'open_clock', 'time_mismatch']);
 
 const rowMatchesTab = (row: AuditRow, tab: FilterTab): boolean => {
   switch (tab) {
     case 'issues':
-      return ISSUE_STATUSES.includes(row.status);
+      return ISSUE_STATUSES.has(row.status);
     case 'missing':
       return row.status === 'missing_clock' || row.status === 'open_clock';
     case 'mismatch':
@@ -99,7 +99,7 @@ export function ScheduleClockAudit({
   restaurantId,
   start,
   end,
-}: ScheduleClockAuditProps) {
+}: Readonly<ScheduleClockAuditProps>) {
   const [tolerance, setTolerance] = useState(10);
 
   const { employees } = useEmployees(restaurantId, { status: 'all' });
@@ -141,7 +141,7 @@ export function ScheduleClockAuditView({
   error,
   tolerance,
   onToleranceChange,
-}: ScheduleClockAuditViewProps) {
+}: Readonly<ScheduleClockAuditViewProps>) {
   const [tab, setTab] = useState<FilterTab>('issues');
   const [activeRow, setActiveRow] = useState<AuditRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -229,11 +229,7 @@ export function ScheduleClockAuditView({
     const canEnterClock = row.status === 'missing_clock' || row.status === 'open_clock';
 
     return (
-      <div
-        role="listitem"
-        aria-label={`${employeeName} — ${STATUS_LABEL[row.status]}`}
-        className="group flex items-start justify-between gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
-      >
+      <div className="group flex items-start justify-between gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span
@@ -267,6 +263,109 @@ export function ScheduleClockAuditView({
           </Button>
         )}
       </div>
+    );
+  };
+
+  const renderBody = () => {
+    if (loading) {
+      return (
+        <div className="space-y-2" aria-live="polite" aria-busy="true">
+          <span className="sr-only">Loading the schedule vs. clock check</span>
+          {['skeleton-1', 'skeleton-2', 'skeleton-3'].map((key) => (
+            <Skeleton key={key} className="h-16 w-full rounded-xl" />
+          ))}
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <p className="text-[13px] text-destructive" role="alert">
+          Error loading the check: {error instanceof Error ? error.message : 'unknown error'}
+        </p>
+      );
+    }
+    return (
+      <>
+        {/* Apple-style underline filter buttons. Plain buttons, not
+            `role="tab"`: there is no `tabpanel` per filter, just a
+            re-filtered list, so the full ARIA tab keyboard model
+            (arrow/home/end navigation, roving tabIndex) does not apply
+            here. `aria-pressed` marks the active filter instead. */}
+        <div className="border-b border-border/40 mb-4">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              aria-pressed={tab === t.key}
+              onClick={() => changeTab(t.key)}
+              className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
+                tab === t.key ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.label}
+              <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                {t.count}
+              </span>
+              {tab === t.key && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {visibleRows.length === 0 ? (
+          <div className="text-center py-10">
+            <CheckCircle2
+              className="h-10 w-10 text-success mx-auto mb-3"
+              aria-hidden="true"
+            />
+            <p className="text-[14px] font-medium text-foreground">
+              {tab === 'issues'
+                ? 'Every scheduled shift has matching clock data.'
+                : 'No entries in this view.'}
+            </p>
+            <p className="text-[13px] text-muted-foreground mt-1">
+              Period {formatInstant(start, 'MMM d')} – {formatInstant(end, 'MMM d')}
+            </p>
+          </div>
+        ) : (
+          <div ref={parentRef} className="max-h-[600px] overflow-y-auto">
+            <ul
+              aria-label="Schedule vs. clock check results"
+              className="list-none m-0 p-0"
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                position: 'relative',
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const row = visibleRows[virtualRow.index];
+                if (!row) return null;
+                const employeeName =
+                  employeeNames.get(row.employeeId) ?? 'Unknown employee';
+                return (
+                  <li
+                    key={row.key}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    aria-label={`${employeeName} — ${STATUS_LABEL[row.status]}`}
+                    className="pb-2"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    {renderRow(row)}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -309,99 +408,7 @@ export function ScheduleClockAuditView({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="space-y-2" aria-live="polite" aria-busy="true">
-            <span className="sr-only">Loading the schedule vs. clock check</span>
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-xl" />
-            ))}
-          </div>
-        ) : error ? (
-          <p className="text-[13px] text-destructive" role="alert">
-            Error loading the check: {error instanceof Error ? error.message : 'unknown error'}
-          </p>
-        ) : (
-          <>
-            {/* Apple-style underline filter buttons. Plain buttons, not
-                `role="tab"`: there is no `tabpanel` per filter, just a
-                re-filtered list, so the full ARIA tab keyboard model
-                (arrow/home/end navigation, roving tabIndex) does not apply
-                here. `aria-pressed` marks the active filter instead. */}
-            <div className="border-b border-border/40 mb-4" role="group" aria-label="Filter check results">
-              {tabs.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  aria-pressed={tab === t.key}
-                  onClick={() => changeTab(t.key)}
-                  className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
-                    tab === t.key ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {t.label}
-                  <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-                    {t.count}
-                  </span>
-                  {tab === t.key && (
-                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {visibleRows.length === 0 ? (
-              <div className="text-center py-10">
-                <CheckCircle2
-                  className="h-10 w-10 text-success mx-auto mb-3"
-                  aria-hidden="true"
-                />
-                <p className="text-[14px] font-medium text-foreground">
-                  {tab === 'issues'
-                    ? 'Every scheduled shift has matching clock data.'
-                    : 'No entries in this view.'}
-                </p>
-                <p className="text-[13px] text-muted-foreground mt-1">
-                  Period {formatInstant(start, 'MMM d')} – {formatInstant(end, 'MMM d')}
-                </p>
-              </div>
-            ) : (
-              <div ref={parentRef} className="max-h-[600px] overflow-y-auto">
-                <div
-                  role="list"
-                  aria-label="Schedule vs. clock check results"
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    position: 'relative',
-                  }}
-                >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const row = visibleRows[virtualRow.index];
-                    if (!row) return null;
-                    return (
-                      <div
-                        key={row.key}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        className="pb-2"
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        {renderRow(row)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
+      <CardContent>{renderBody()}</CardContent>
 
       {/* Single dialog for the whole list */}
       {activeRow?.shift && (

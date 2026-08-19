@@ -58,7 +58,7 @@ export function RecordShiftClockDialog({
   row,
   employeeName,
   restaurantId,
-}: RecordShiftClockDialogProps) {
+}: Readonly<RecordShiftClockDialogProps>) {
   const shift = row.shift;
   const outOnly = row.status === 'open_clock';
 

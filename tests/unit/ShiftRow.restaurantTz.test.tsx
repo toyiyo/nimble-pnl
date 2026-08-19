@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react';
 import { ShiftRow } from '@/components/employee/ShiftRow';
 import { Shift } from '@/types/scheduling';
 import { makeClock } from '../helpers/restaurantClock';
+import { pinHostTzToPhoenix } from '../helpers/timezone';
 
 /**
  * Regression guard: `ShiftRow` must read every wall-clock date from the
@@ -13,16 +14,7 @@ import { makeClock } from '../helpers/restaurantClock';
  * Pacific/Auckland (UTC+13 in January, NZDT). The two zones name a
  * different calendar day and a different hour for the same instant, so a
  * host-clock leak shows up as the wrong string on screen.
- *
- * The `process.env.TZ` assignment can fail SILENTLY. A Node worker caches
- * the host offset table on first `Date` use, so an earlier `Date` call in
- * the same worker can freeze it. Assert the offset instead of trusting the
- * assignment (copied from tests/unit/useShiftsRecurringCreateTz.test.ts:92).
  */
-function pinHostTzToPhoenix(): void {
-  process.env.TZ = 'America/Phoenix';
-  expect(new Date('2026-01-31T12:00:00Z').getTimezoneOffset()).toBe(420);
-}
 
 /**
  * `2026-01-31T20:00:00Z`: Phoenix reads Sat, Jan 31, 1:00 PM. Auckland reads

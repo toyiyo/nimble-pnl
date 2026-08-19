@@ -23,6 +23,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCreateShift } from '@/hooks/useShifts';
+import { pinHostTzToPhoenix } from '../helpers/timezone';
 
 const mockToast = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/use-toast', () => ({
@@ -68,30 +69,6 @@ function setupSupabaseMock(insertCalls: unknown[]) {
       });
     },
   }));
-}
-
-/**
- * Pin the HOST zone to Phoenix and prove the pin took effect.
- *
- * Every test here is a differential one: it distinguishes a correct
- * restaurant-anchored implementation from a host-anchored one purely by the
- * two zones disagreeing. Assigning `process.env.TZ` is the only lever we
- * have, and it is not guaranteed to be honoured — Node caches the zone on
- * first use, so an earlier `Date` in the same worker can freeze it, and a
- * runner that pre-sets TZ differently would leave the assignment inert. In
- * every one of those cases the assignment fails SILENTLY: if the host then
- * happens to be America/Chicago, a host-local implementation and a
- * restaurant-local one produce identical output and the test passes while
- * proving nothing.
- *
- * So assert the offset rather than trusting the assignment. Phoenix is a
- * fixed UTC-7 (never observes DST), and 2026-03-09 is inside Chicago's DST
- * window — so a Chicago host would report 300, not 420, and this throws
- * instead of quietly going vacuous.
- */
-function pinHostTzToPhoenix(): void {
-  process.env.TZ = 'America/Phoenix';
-  expect(new Date('2026-03-09T12:00:00Z').getTimezoneOffset()).toBe(420);
 }
 
 describe('useCreateShift — recurring children anchor to the restaurant timezone', () => {

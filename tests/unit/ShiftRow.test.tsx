@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { ShiftRow } from '@/components/employee/ShiftRow';
 import { Shift } from '@/types/scheduling';
 import { makeClock } from '../helpers/restaurantClock';
+import { pinHostTzToPhoenix } from '../helpers/timezone';
 
 /** Far enough out that `isFuture` stays true whatever day the suite runs. */
 const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -137,12 +138,7 @@ describe('ShiftRow draft treatment', () => {
   it('keeps the Completed and In Progress badges unchanged with the host zone pinned to America/Phoenix', () => {
     const originalTz = process.env.TZ;
 
-    // `America/Phoenix` is a fixed UTC-7, no DST. Assert the offset instead
-    // of trusting the assignment: a Node worker caches the host offset table
-    // on first `Date` use, so an earlier `Date` call in the same worker can
-    // freeze it silently (see tests/unit/ShiftRow.restaurantTz.test.tsx).
-    process.env.TZ = 'America/Phoenix';
-    expect(new Date('2026-01-31T12:00:00Z').getTimezoneOffset()).toBe(420);
+    pinHostTzToPhoenix();
 
     try {
       assertCompletedAndInProgressBadges();

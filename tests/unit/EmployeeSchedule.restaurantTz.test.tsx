@@ -1,6 +1,4 @@
 /**
- * Regression test for CodeRabbit comment 3814790876 on PR #761.
- *
  * `EmployeeSchedule.tsx` used to bucket a shift with
  *   format(parseISO(shift.start_time), 'yyyy-MM-dd')
  * and to mark a column with date-fns `isToday(day)`. Both read the HOST
@@ -21,6 +19,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Shift } from '@/types/scheduling';
+import { pinHostTzToPhoenix } from '../helpers/timezone';
 
 const RESTAURANT_TZ = 'Pacific/Auckland';
 
@@ -103,24 +102,6 @@ vi.mock('@/components/schedule/TradeRequestDialog', () => ({
 }));
 
 import EmployeeSchedule from '@/pages/EmployeeSchedule';
-
-/**
- * Pin the HOST zone to Phoenix and prove the pin took effect.
- *
- * Assigning `process.env.TZ` is the only lever available, and it can fail
- * SILENTLY: Node caches the zone on first use, so an earlier `Date` in the
- * same worker can freeze it, and a runner that pre-sets TZ would leave the
- * assignment inert. If the host then happens to match the restaurant, a
- * host-anchored implementation and a restaurant-anchored one agree, and the
- * test passes while proving nothing.
- *
- * So assert the offset instead of trusting the assignment. Phoenix is a fixed
- * UTC-7 and never observes DST, so `getTimezoneOffset()` must report 420.
- */
-function pinHostTzToPhoenix(): void {
-  process.env.TZ = 'America/Phoenix';
-  expect(new Date(NOW_UTC).getTimezoneOffset()).toBe(420);
-}
 
 /**
  * The day row's header strip -- the row's first child, which holds the weekday

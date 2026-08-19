@@ -35,12 +35,12 @@ import {
   subWeeks,
   addWeeks,
   eachDayOfInterval,
-  parseISO,
-  isToday,
   differenceInMinutes,
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
-import { safeTz } from '@/lib/restaurantClock';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { toBusinessDay } from '@/lib/restaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import {
   computeScheduleFingerprint,
@@ -72,7 +72,15 @@ const EmployeeSchedule = () => {
     refetch: refetchShifts,
   } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
 
-  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+  // The restaurant's clock, never the host browser's. Two questions on this
+  // page are calendar-day questions -- "which day column does this shift belong
+  // to" and "which day is today" -- and only the restaurant's calendar answers
+  // them. An employee who opens the page from another zone (travel, a remote
+  // manager, a phone that never left the last airport) otherwise reads a
+  // different week than the one the restaurant published.
+  const clock = useRestaurantClock();
+  const restaurantTimezone = clock.tz;
+  const restaurantToday = clock.today;
 
   // What this week actually IS, as opposed to what the rows look like: a week
   // that was announced and then pulled back is otherwise indistinguishable
@@ -129,19 +137,26 @@ const EmployeeSchedule = () => {
   // Group shifts by day
   const shiftsByDay = useMemo(() => {
     const grouped = new Map<string, Shift[]>();
+    // `weekDays` are calendar days the user navigated to, held as host-local
+    // midnight `Date`s -- `toDateOnlyString` reads their fields, it does not
+    // convert an instant.
     weekDays.forEach((day) => {
-      grouped.set(format(day, 'yyyy-MM-dd'), []);
+      grouped.set(toDateOnlyString(day), []);
     });
 
     myShifts.forEach((shift) => {
-      const dayKey = format(parseISO(shift.start_time), 'yyyy-MM-dd');
+      // `start_time` IS an instant, so it needs the restaurant's zone to name
+      // a day. The old `format(parseISO(...))` read it in the viewer's zone:
+      // a 9 p.m. shift seen from a zone one day ahead landed in the next day's
+      // column, and on the week's last day it matched no column and vanished.
+      const dayKey = toBusinessDay(shift.start_time, restaurantTimezone);
       if (grouped.has(dayKey)) {
         grouped.get(dayKey)!.push(shift);
       }
     });
 
     return grouped;
-  }, [myShifts, weekDays]);
+  }, [myShifts, weekDays, restaurantTimezone]);
 
   // Calculate weekly totals
   const weeklyStats = useMemo(() => {
@@ -336,13 +351,14 @@ const EmployeeSchedule = () => {
           ) : (
             <div className="space-y-3">
               {weekDays.map((day) => {
-                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayKey = toDateOnlyString(day);
                 const dayShifts = shiftsByDay.get(dayKey) || [];
-                const isDayToday = isToday(day);
+                const isDayToday = dayKey === restaurantToday;
 
                 return (
                   <div
                     key={dayKey}
+                    data-testid={`schedule-day-${dayKey}`}
                     className={`p-4 rounded-lg border ${
                       isDayToday ? 'bg-primary/5 border-primary/20' : 'bg-card'
                     }`}

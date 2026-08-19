@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useFeatureFlagEnabled } from 'posthog-js/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +9,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMyShifts } from '@/hooks/useShifts';
 import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
+import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -20,6 +22,7 @@ import {
   ScheduleUpdatedPill,
   ShiftRow,
 } from '@/components/employee';
+import { NextShiftCard } from '@/components/employee/NextShiftCard';
 import {
   Clock,
   ChevronLeft,
@@ -30,10 +33,10 @@ import {
 } from 'lucide-react';
 import {
   format,
-  startOfWeek,
   endOfWeek,
   subWeeks,
   addWeeks,
+  addDays,
   eachDayOfInterval,
   parseISO,
   isToday,
@@ -41,21 +44,30 @@ import {
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { safeTz } from '@/lib/restaurantClock';
-import { formatLocalDate } from '@/lib/shiftInterval';
+import { formatLocalDate, wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
 import {
   computeScheduleFingerprint,
   hasScheduleChangedSinceSeen,
   readSeenFingerprint,
   writeSeenFingerprint,
 } from '@/lib/scheduleSeenFingerprint';
+import { getRelativeWeekLabel, getRestaurantWeekStart } from '@/lib/scheduleWeek';
+import { selectUpcomingShifts, countShiftsInWeek } from '@/lib/nextShift';
 import { Shift } from '@/types/scheduling';
 
 const EmployeeSchedule = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
+  // One key for the whole page treatment. `useFeatureFlagEnabled` returns
+  // `undefined` when PostHog is unconfigured, so compare to `true`. The
+  // default is the current page.
+  const showClarity = useFeatureFlagEnabled('employee_schedule_clarity') === true;
+
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    getRestaurantWeekStart(new Date(), restaurantTimezone)
   );
   const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
   const pageHeaderRef = useRef<HTMLDivElement>(null);
@@ -72,7 +84,37 @@ const EmployeeSchedule = () => {
     refetch: refetchShifts,
   } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
 
-  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+  // The anchor never depends on the viewed week. Both bounds come from one
+  // value that changes once per restaurant calendar day. A `Date` built in the
+  // render body would make a new query key on every render, because the key at
+  // `src/hooks/useShifts.tsx:76` holds `startDate?.toISOString()`.
+  const todayStr = formatLocalDateInTz(new Date(), restaurantTimezone);
+
+  const anchorRange = useMemo(() => {
+    const start = wallClockToInstant(todayStr, '00:00', restaurantTimezone);
+    return { start, end: addDays(start, 21) };
+  }, [todayStr, restaurantTimezone]);
+
+  const {
+    shifts: anchorShifts,
+    loading: anchorLoading,
+    error: anchorError,
+  } = useMyShifts(
+    restaurantId,
+    currentEmployee?.id ?? null,
+    anchorRange.start,
+    anchorRange.end
+  );
+
+  const upcomingAnchorShifts = useMemo(
+    () => selectUpcomingShifts(anchorShifts ?? [], new Date(), 5),
+    [anchorShifts]
+  );
+
+  const { publishes: restaurantPublishes } = useRestaurantPublishes(
+    restaurantId,
+    restaurantTimezone
+  );
 
   // What this week actually IS, as opposed to what the rows look like: a week
   // that was announced and then pulled back is otherwise indistinguishable
@@ -176,6 +218,22 @@ const EmployeeSchedule = () => {
   const allUpcomingAreDrafts =
     upcomingShifts.length > 0 && upcomingShifts.every((shift) => !shift.is_published);
 
+  // The anchor query covers today to +21 days, so next week sits inside it.
+  const nextWeekShiftCount = useMemo(
+    () =>
+      countShiftsInWeek(
+        anchorShifts ?? [],
+        addDays(getRestaurantWeekStart(new Date(), restaurantTimezone), 7),
+        restaurantTimezone
+      ),
+    [anchorShifts, restaurantTimezone]
+  );
+
+  const viewsCurrentWeek =
+    getRelativeWeekLabel(currentWeekStart, new Date(), restaurantTimezone) === 'This week';
+
+  const showNextWeekHint = showClarity && viewsCurrentWeek && nextWeekShiftCount > 0;
+
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
   };
@@ -190,7 +248,7 @@ const EmployeeSchedule = () => {
   };
 
   const handleToday = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON }));
+    setCurrentWeekStart(getRestaurantWeekStart(new Date(), restaurantTimezone));
   };
 
   if (!restaurantId) {
@@ -243,9 +301,18 @@ const EmployeeSchedule = () => {
         fallbackFocusRef={pageHeaderRef}
       />
 
+      {showClarity && (
+        <NextShiftCard
+          shifts={upcomingAnchorShifts}
+          isLoading={anchorLoading}
+          isError={!!anchorError}
+          timezone={restaurantTimezone}
+        />
+      )}
+
       {/* Upcoming Shifts. The green celebratory chrome is a claim that these
           are locked in, so it only survives while at least one of them is. */}
-      {upcomingShifts.length > 0 && (
+      {!showClarity && upcomingShifts.length > 0 && (
         <Card
           className={
             allUpcomingAreDrafts
@@ -293,19 +360,46 @@ const EmployeeSchedule = () => {
                 <Button variant="outline" size="sm" onClick={handleToday} className="min-h-[44px]">
                   Today
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextWeek}
-                  aria-label="Next week"
-                  className="min-h-[44px] min-w-[44px]"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNextWeek}
+                    aria-label={
+                      showNextWeekHint
+                        ? `Next week, ${nextWeekShiftCount} ${nextWeekShiftCount === 1 ? 'shift' : 'shifts'}`
+                        : 'Next week'
+                    }
+                    className="min-h-[44px] min-w-[44px]"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  {showNextWeekHint && (
+                    // A dot alone would fail WCAG 1.4.1. The footer row below
+                    // carries the same fact in words, and the aria-label
+                    // carries it for a screen reader. `border-background`
+                    // holds the 3:1 non-text contrast of WCAG 1.4.11.
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background"
+                    />
+                  )}
+                </div>
               </div>
-              <Badge variant="outline" className="px-3 py-1">
-                {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
-              </Badge>
+              {showClarity ? (
+                <div className="text-center">
+                  <p className="text-[15px] font-semibold text-foreground">
+                    {getRelativeWeekLabel(currentWeekStart, new Date(), restaurantTimezone)}
+                  </p>
+                  <p className="text-[13px] text-muted-foreground">
+                    {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+                  </p>
+                </div>
+              ) : (
+                <Badge variant="outline" className="px-3 py-1">
+                  {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+                </Badge>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -364,7 +458,12 @@ const EmployeeSchedule = () => {
                     ) : (
                       <div className="space-y-2">
                         {dayShifts.map((shift) => (
-                          <ShiftRow key={shift.id} shift={shift} onTrade={handleTradeShift} />
+                          <ShiftRow
+                            key={shift.id}
+                            shift={shift}
+                            onTrade={handleTradeShift}
+                            restaurantPublishes={showClarity ? restaurantPublishes : true}
+                          />
                         ))}
                       </div>
                     )}
@@ -374,6 +473,21 @@ const EmployeeSchedule = () => {
             </div>
           )}
         </CardContent>
+        {showNextWeekHint && (
+          <div className="px-6 pb-4">
+            <button
+              type="button"
+              onClick={handleNextWeek}
+              className="w-full min-h-[44px] flex items-center justify-between px-3 rounded-lg border border-border/40 text-[13px] text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+            >
+              <span>
+                Next week: {nextWeekShiftCount}{' '}
+                {nextWeekShiftCount === 1 ? 'shift' : 'shifts'}
+              </span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </Card>
 
       {/* Weekly Summary */}

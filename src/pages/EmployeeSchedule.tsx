@@ -8,6 +8,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMyShifts } from '@/hooks/useShifts';
 import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -38,9 +39,8 @@ import {
   differenceInMinutes,
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
-import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { toBusinessDay } from '@/lib/restaurantClock';
-import { toDateOnlyString } from '@/lib/dateOnly';
+import { toDateOnlyString, parseDateOnly } from '@/lib/dateOnly';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import {
   computeScheduleFingerprint,
@@ -54,8 +54,25 @@ const EmployeeSchedule = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
+  // The restaurant's clock, never the host browser's. Two questions on this
+  // page are calendar-day questions -- "which day column does this shift belong
+  // to" and "which day is today" -- and only the restaurant's calendar answers
+  // them. An employee who opens the page from another zone (travel, a remote
+  // manager, a phone that never left the last airport) otherwise reads a
+  // different week than the one the restaurant published.
+  const clock = useRestaurantClock();
+  const restaurantTimezone = clock.tz;
+  const restaurantToday = clock.today;
+
+  // The week itself must start from the restaurant's calendar day, not the
+  // host's. `shiftsByDay` below keys every shift by `clock.toBusinessDay` --
+  // if the week anchor came from the host's `new Date()` instead, the two
+  // clocks could disagree about which week "now" falls in near a week
+  // boundary (host America/Phoenix, restaurant Pacific/Auckland is ~19-20h
+  // apart), and a shift for the restaurant's actual current day would match
+  // no column here and silently vanish from the grid.
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    startOfWeek(parseDateOnly(clock.today), { weekStartsOn: WEEK_STARTS_ON })
   );
   const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
   const pageHeaderRef = useRef<HTMLDivElement>(null);
@@ -71,16 +88,6 @@ const EmployeeSchedule = () => {
     error: shiftsError,
     refetch: refetchShifts,
   } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
-
-  // The restaurant's clock, never the host browser's. Two questions on this
-  // page are calendar-day questions -- "which day column does this shift belong
-  // to" and "which day is today" -- and only the restaurant's calendar answers
-  // them. An employee who opens the page from another zone (travel, a remote
-  // manager, a phone that never left the last airport) otherwise reads a
-  // different week than the one the restaurant published.
-  const clock = useRestaurantClock();
-  const restaurantTimezone = clock.tz;
-  const restaurantToday = clock.today;
 
   // What this week actually IS, as opposed to what the rows look like: a week
   // that was announced and then pulled back is otherwise indistinguishable
@@ -205,7 +212,7 @@ const EmployeeSchedule = () => {
   };
 
   const handleToday = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON }));
+    setCurrentWeekStart(startOfWeek(parseDateOnly(restaurantToday), { weekStartsOn: WEEK_STARTS_ON }));
   };
 
   if (!restaurantId) {

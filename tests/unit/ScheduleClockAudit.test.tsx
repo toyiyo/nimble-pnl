@@ -190,13 +190,15 @@ describe('ScheduleClockAudit', () => {
       ...missingRow,
       key: 'shift-s2',
       status: 'matched',
-      session: {
-        employeeId: 'emp1',
-        clockIn: '2026-08-12T14:58:00Z',
-        clockOut: '2026-08-12T23:02:00Z',
-        breakMinutes: 0,
-        punchIds: ['p1', 'p2'],
-      },
+      sessions: [
+        {
+          employeeId: 'emp1',
+          clockIn: '2026-08-12T14:58:00Z',
+          clockOut: '2026-08-12T23:02:00Z',
+          breakMinutes: 0,
+          punchIds: ['p1', 'p2'],
+        },
+      ],
       workedMinutes: 484,
       inDeltaMinutes: -2,
       outDeltaMinutes: 2,
@@ -226,13 +228,15 @@ describe('ScheduleClockAudit', () => {
       ...missingRow,
       key: 'shift-s3',
       status: 'open_clock',
-      session: {
-        employeeId: 'emp1',
-        clockIn: '2026-08-12T23:30:00Z',
-        clockOut: null,
-        breakMinutes: 0,
-        punchIds: ['p1'],
-      },
+      sessions: [
+        {
+          employeeId: 'emp1',
+          clockIn: '2026-08-12T23:30:00Z',
+          clockOut: null,
+          breakMinutes: 0,
+          punchIds: ['p1'],
+        },
+      ],
       inDeltaMinutes: 510,
     };
     useScheduleClockAuditMock.mockReturnValue({

@@ -86,11 +86,12 @@ export function RecordShiftClockDialog({
   const validationError = useMemo(() => {
     if (outOnly) {
       if (!clockOut) return 'Enter the clock-out time.';
-      // `row.session.clockIn` is the real punch already on record, not the
-      // scheduled start time. The clock-out must land after it, or the
-      // saved punch pair goes clock_out-before-clock_in and corrupts
+      // The last session's `clockIn` is the real punch already on record,
+      // not the scheduled start time. The clock-out must land after it, or
+      // the saved punch pair goes clock_out-before-clock_in and corrupts
       // payroll's chronological pairing.
-      const realClockInMs = row.session ? new Date(row.session.clockIn).getTime() : null;
+      const lastSession = row.sessions?.[row.sessions.length - 1];
+      const realClockInMs = lastSession ? new Date(lastSession.clockIn).getTime() : null;
       const outMs = parseWallClockMs(clockOut, parseWallClock);
       if (outMs === null) return 'Enter a valid clock-out time.';
       if (realClockInMs !== null && outMs <= realClockInMs) {
@@ -109,9 +110,11 @@ export function RecordShiftClockDialog({
       return 'The shift is too short for the scheduled break.';
     }
     return null;
-  }, [outOnly, clockIn, clockOut, includeBreak, breakMinutes, parseWallClock, row.session]);
+  }, [outOnly, clockIn, clockOut, includeBreak, breakMinutes, parseWallClock, row.sessions]);
 
   if (!shift) return null;
+
+  const lastSession = row.sessions?.[row.sessions.length - 1];
 
   const handleSave = () => {
     if (validationError) return;
@@ -212,11 +215,11 @@ export function RecordShiftClockDialog({
             </div>
           )}
 
-          {outOnly && row.session && (
+          {outOnly && lastSession && (
             <p className="text-[13px] text-muted-foreground">
               Actual clock-in on record:{' '}
               <span className="text-foreground font-medium">
-                {formatInstant(row.session.clockIn, 'h:mm a')}
+                {formatInstant(lastSession.clockIn, 'h:mm a')}
               </span>
               {viewerTzDiffers ? ` (${tzAbbrev})` : ''}
             </p>

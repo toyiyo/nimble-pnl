@@ -5,13 +5,14 @@ import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supa
 import { wallClockToInstant, formatLocalDateInTz } from '../../src/lib/shiftInterval';
 
 /**
- * E2E test for the schedule-vs-clock audit panel on `/payroll`.
+ * E2E test for the in-row schedule-vs-clock audit on `/payroll`.
  *
  * Walks the full manager journey: an hourly employee has a published shift
- * for yesterday with no punches, the audit panel flags it as
- * `No clock data`, the manager fills the clock data from the scheduled
- * shift, and the row moves to Matched with hours flowing into the payroll
- * table.
+ * for yesterday with no punches. The audit bar shows `1 to fix` and the
+ * employee's row carries the same chip. The manager filters the table down
+ * to that one chip, then clears the filter, expands the row, and fills the
+ * clock data from the scheduled shift. The chip clears and the hours flow
+ * into the payroll table.
  *
  * Restaurants default to `America/Chicago` (see the `restaurants` table
  * migrations), so the seeded shift is anchored to that zone with
@@ -105,11 +106,11 @@ test.describe('Schedule vs. clock audit', () => {
     await signUpAndCreateRestaurant(page, testUser);
   });
 
-  test('flags a shift with no clock data, then matches it once the manager enters the punches', async ({ page }) => {
+  test('flags a shift with no clock data, filters by it, then matches it once the manager enters the punches', async ({ page }) => {
     const employeeName = await createHourlyEmployee(page);
     const escapedName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Step 3: seed one published shift for yesterday (restaurant timezone).
+    // Step 3: seed one published shift for yesterday (restaurant timezone), no punches.
     const restaurantId: string = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
@@ -158,23 +159,38 @@ test.describe('Schedule vs. clock audit', () => {
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
     await setWidePayrollPeriod(page);
 
-    // Step 5: the audit panel flags the shift as missing clock data.
-    // Use the heading role, not getByText: the loading state also renders an
-    // sr-only "Loading the schedule vs. clock check" label, and a plain text
-    // match resolves to both nodes (Playwright strict-mode violation).
-    await expect(page.getByRole('heading', { name: 'Schedule vs. clock check' })).toBeVisible({
-      timeout: 10000,
-    });
+    // Step 5: the bar shows `1 to fix`, and the row carries the same chip.
+    const toFixChip = page.getByRole('button', { name: '1 to fix' });
+    await expect(toFixChip).toBeVisible({ timeout: 10000 });
+
+    const employeeRow = page.getByRole('row', { name: new RegExp(escapedName) });
+    await expect(employeeRow).toBeVisible();
+    await expect(employeeRow.getByText('1 to fix')).toBeVisible();
+
+    // Step 6: activate the amber chip — the table shows only the flagged
+    // employee, and the totals row hides (a total over a filtered subset
+    // reads as a wrong pay total).
+    const totalRow = page.getByRole('rowheader', { name: 'TOTAL' });
+    await expect(totalRow).toBeVisible();
+    await toFixChip.click();
+    await expect(page.getByText('Clock filter active: 1 of 1 employees')).toBeVisible();
+    await expect(employeeRow).toBeVisible();
+    await expect(totalRow).toHaveCount(0);
+
+    // Clear the filter before repairing the punches.
+    await toFixChip.click();
+    await expect(totalRow).toBeVisible();
+
+    // Step 7: expand the row, open the dialog from the row chip's action.
+    const expandButton = page.getByRole('button', { name: `Show clock detail for ${employeeName}` });
+    await expandButton.click();
+
     const enterClockButton = page.getByRole('button', {
       name: new RegExp(`Enter clock data for ${escapedName}`),
     });
-    await expect(enterClockButton).toBeVisible({ timeout: 10000 });
-
-    const auditRow = page.getByRole('listitem', { name: new RegExp(`${escapedName}.*No clock data`) });
-    await expect(auditRow).toBeVisible();
-
-    // Step 6: fill the clock data from the scheduled shift.
+    await expect(enterClockButton).toBeVisible();
     await enterClockButton.click();
+
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
@@ -184,14 +200,9 @@ test.describe('Schedule vs. clock audit', () => {
     await dialog.getByRole('button', { name: /save clock data/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
-    // Step 7: the row moves to Matched, and payroll hours are above zero.
-    await page.getByRole('button', { name: /matched/i }).click();
-    const matchedRow = page.getByRole('listitem', { name: new RegExp(`${escapedName}.*Matched`) });
-    await expect(matchedRow).toBeVisible({ timeout: 10000 });
-
-    const payrollRow = page.getByRole('row', { name: new RegExp(escapedName) });
-    await expect(payrollRow).toBeVisible({ timeout: 10000 });
-    const hoursCellText = await payrollRow.getByRole('cell').nth(4).innerText();
+    // Step 8: the chip clears and the hours appear.
+    await expect(employeeRow.getByText('1 to fix')).toHaveCount(0);
+    const hoursCellText = await employeeRow.getByRole('cell').nth(4).innerText();
     expect(parseFloat(hoursCellText)).toBeGreaterThan(0);
   });
 });

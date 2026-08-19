@@ -2,11 +2,14 @@ import { test, expect, Page } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
 /**
- * Task 15 (design: docs/superpowers/specs/2026-08-15-quiet-publish-live-edit-design.md).
- * Covers the two flows the plan calls out:
+ * Task 15 (design: docs/superpowers/specs/2026-08-15-quiet-publish-live-edit-design.md)
+ * and task 9 (design: docs/superpowers/specs/2026-08-18-schedule-notification-residue-design.md).
+ * Covers the flows those plans call out:
  *   - a manager publishes with "Notify employees" unchecked and the week still publishes;
  *   - a manager edits a shift that is already published, sees one warning dialog, saves
- *     the change, and the week stays published (no forced unpublish).
+ *     the change, and the week stays published (no forced unpublish);
+ *   - a manager unpublishes with "Notify employees" unchecked, the week still unpublishes,
+ *     and the toast names the shift count and says nobody was notified.
  *
  * Timezone is pinned for the same reason as the sibling scheduling specs: CI runs UTC,
  * and week-bucketing bugs are invisible there.
@@ -184,5 +187,53 @@ test.describe('Quiet publish and live edit of a published shift', () => {
     const reopenedDialog = page.getByRole('dialog', { name: /edit shift/i });
     await expect(reopenedDialog).toBeVisible({ timeout: 5000 });
     await expect(reopenedDialog.getByLabel('Shift end time')).toHaveValue(newEndTime);
+  });
+
+  test('unpublishing with "Notify employees" unchecked still unpublishes and reports the count', async ({ page }) => {
+    const testUser = generateTestUser('quietunpub');
+    await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
+
+    // `window` has no type declarations for the test-only helpers exposeSupabaseHelpers attaches.
+    const restaurantId = await page.evaluate(() =>
+      (window as unknown as { __getRestaurantId: () => Promise<string> }).__getRestaurantId()
+    );
+    expect(restaurantId).toBeTruthy();
+
+    await seedEmployeeAndShift(page, restaurantId, 'Uma Unpublisher');
+
+    await publishWeek(page, { notify: true });
+
+    await page.goto('/scheduling');
+    await page.waitForLoadState('networkidle');
+    const unpublishBtn = page.getByRole('button', { name: /^unpublish$/i });
+    await expect(unpublishBtn).toBeVisible({ timeout: 15000 });
+    await unpublishBtn.click();
+
+    const dialog = page.getByRole('alertdialog', { name: /unpublish schedule/i });
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+
+    // Checked by default on every open — same pattern as the publish dialog.
+    const notifyCheckbox = dialog.getByRole('checkbox', { name: /notify scheduled employees/i });
+    await expect(notifyCheckbox).toBeChecked();
+    await notifyCheckbox.click();
+    await expect(notifyCheckbox).not.toBeChecked();
+
+    const responsePromise = page.waitForResponse(
+      (resp) => resp.url().includes('unpublish_schedule') && resp.status() === 200,
+      { timeout: 20000 },
+    );
+    await dialog.getByRole('button', { name: /^unpublish schedule$/i }).click();
+    await responsePromise;
+
+    // The toast names the shift count and says nobody was notified.
+    await expect(page.getByText(/^schedule unpublished$/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/1 shift.*unlocked for editing\.\s*nobody was notified\./i)).toBeVisible();
+
+    // The week actually returns to the unpublished state: a fresh load shows
+    // the action button flip back from Unpublish to Publish.
+    await page.goto('/scheduling');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('button', { name: 'Publish', exact: true })).toBeEnabled({ timeout: 15000 });
   });
 });

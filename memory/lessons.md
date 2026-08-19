@@ -2888,6 +2888,7 @@
 - **Mistake:** Phase 7c halted on a stale CodeRabbit file. After the file was replaced, a plain resume returned the same needs_human in 37 ms — the phase's (prompt, opts) were unchanged, so the cache replayed the old answer and never read the new file.
 - **Correction:** Passed `coderabbitOutDir` (embedded in the 7c prompt) to a session-private path. The prompt changed, the cache missed, the phase ran live.
 - **Rule:** To re-run a halted workflow phase after you fix its input, change something the phase's prompt embeds (a path, an iteration marker). Fixing the input file alone changes nothing the cache can see. Prefer session-private paths over shared /tmp for any file a phase reads — two concurrent sessions collide there.
+- **Confirmed [2026-08-18] (PR #758):** the halted Verify phase replayed its cached needs_human on resume. A scratchpad copy of the workflow script, with only the Verify prompt edited, forced the live re-run. Edit a session-private copy of the script; never edit the shared repo script for one resume.
 
 ### [2026-08-15] Cleanup chained with `;` dies with the first zsh error — and `status` is read-only (PR #756)
 - **Mistake:** A background command ran tests, then `status=$?`, then reverted two temporarily edited migrations. zsh aborted at `status=$?` ("read-only variable: status"), so the revert never ran and the two out-of-branch migrations sat modified in the worktree.
@@ -2904,3 +2905,29 @@
 - **Mistake:** The new `update_shift_series` re-declaration took `p_restaurant_id` from the caller, filtered rows by it, and checked nothing about the caller. SECURITY DEFINER bypasses RLS, and the function was granted to `authenticated` — any signed-in user could update another restaurant's series. Codex flagged it P1; five Claude reviewers and CodeRabbit local missed it.
 - **Correction:** Added `IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN RAISE EXCEPTION` plus `SET search_path = public, pg_temp`, with two pgTAP tests (refusal + pin). Commit 4a2756c5. The sibling `delete_shift_series` has the same pre-existing hole — flagged as a separate task.
 - **Rule:** Every SECURITY DEFINER function that accepts a tenant id as a parameter must verify the caller's capability for that tenant inside the function, first, before any read or write. Confirms the 2026-07-20 search_path lesson; extends it: the pin alone is not the hardening — the tenancy gate is.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-18] Verify the task brief's premise against main before you design (PR #758)
+- **Mistake risk, avoided:** The task brief asked for the removal of the published-week lock. Commit 26e9e296 (PR #756, merged 3 days earlier) had already removed it. A design for the brief as written would have rebuilt a shipped feature.
+- **Correction:** Phase 0 checked every file:line the brief cited against current main and found the shipped fix. The scope became the three residual gaps: no notify choice on unpublish, no email collapse, and a help doc that taught the deleted workflow. The user approved the reduced scope before design started. The Phase 2.5 reviewers then re-verified every citation in the design and found 3 wrong ones.
+- **Rule:** Before you design, verify each claim in the task brief against current main. Cite the commit that confirms or refutes each claim. A brief goes stale whenever the backlog is older than the branch. Treat every file:line citation as a testable claim, not as context.
+
+### [2026-08-18] Run gate-deciding tests in the foreground; a background run dies with its agent (PR #758)
+- **Mistake:** The Verify agent started `npm run test:e2e` as a background task, then halted the workflow to wait for it. When the agent's shell exited, the run died silently at test 59 of 227 with 0 failures: the log froze, no Playwright process remained, and the task id resolved to "Task not found."
+- **Correction:** A bounded watcher (240 iterations x 15 s, with stall/summary/cap exits) detected the stall. The two branch-affected specs then ran in the foreground under the Bash tool's 600 s timeout and passed in 36 s. CI's four E2E shards covered the full suite.
+- **Rule:** Never leave gate evidence in a background process — the process dies with the agent that started it. Run the deciding tests in the foreground, bounded by the tool's timeout. When the full suite does not fit one foreground run, run the branch-affected specs in the foreground and let CI run the rest. Confirms the "No Unbounded Waits" rules in CLAUDE.md.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-18] Derive a shared context value per recipient role when one edit fans out (PR #758)
+- **Mistake:** `notify-shift-changed` resolved one email-thread header from `after_data` and reused it for every recipient. One edit can move a shift to a new employee and a new week at the same time. The removed employee's email then threaded into the destination week — a week that employee never received.
+- **Correction:** Codex flagged it P2. The header now resolves per recipient: `removed` uses `before_data`'s business day; `assigned` and `updated` use `after_data`'s, with a fallback to `before_data`. Commit 2e03317e.
+- **Rule:** When one change produces messages for recipients in different roles, derive each context value (week, date, thread key) from the data that belongs to that role. One shared value is correct only while every recipient shares the same before/after context. Same shape as the 2026-08-15 create/update payload lesson: one value, two states.
+
+## Category: Documentation (Help Content)
+
+### [2026-08-18] Quote the exact UI label, and sweep the whole doc for the old workflow (PR #758)
+- **Mistake:** The rewritten help doc paraphrased the unpublish checkbox as "Notify employees"; the component renders "Notify scheduled employees." A troubleshooting entry elsewhere in the same doc still taught the deleted unpublish-edit-republish workflow. The plan named specific lines to replace; both defects sat outside them. CodeRabbit caught both.
+- **Correction:** The doc now quotes the label from the component source, and the troubleshooting entry teaches the live-edit flow. Fix commits on PR #758, confirmed by the reviewer.
+- **Rule:** In a help doc, copy UI labels from the component source, not from the plan or from memory. When you change a workflow, grep the whole doc — and sibling docs — for the old workflow's words. The plan's named lines are not the full blast radius.

@@ -30,6 +30,7 @@ import {
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 import { sendWebPushToUsers } from "../_shared/webPushHelper.ts";
 import { runBounded } from "../_shared/webPushFanout.ts";
+import { scheduleThreadHeaders } from "../_shared/scheduleEmailThread.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -261,6 +262,12 @@ serve(async (req) => {
       const scheduleUrl = `${APP_URL}${SCHEDULE_PATH}`;
 
       const emailRecipients = (ch.email ? audience : []).filter((emp) => emp.email);
+
+      // Built once, outside the loop: every recipient in one retraction
+      // shares the same restaurant and week, so the thread id matches the
+      // one the publish notifier used for the same schedule.
+      const emailThreadHeaders = scheduleThreadHeaders(restaurantId, retraction.week_start_date);
+
       const emailResults = await sendPaced(
         emailRecipients,
         (employee) =>
@@ -270,6 +277,7 @@ serve(async (req) => {
             employee.email as string,
             `Schedule update: ${weekRange} at ${restaurant.name} is being revised`,
             buildEmailHtml(employee.name, restaurant.name, weekRange, scheduleUrl),
+            emailThreadHeaders,
           ),
         { label: `schedule-unpublished ${retraction.id}` },
       );

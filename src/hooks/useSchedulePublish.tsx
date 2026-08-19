@@ -5,6 +5,7 @@ import { SchedulePublication, Shift } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import { safeTz } from '@/lib/restaurantClock';
+import { pluralize } from '@/lib/scheduling/deletionCopy';
 
 interface PublishScheduleParams {
   restaurantId: string;
@@ -23,6 +24,11 @@ interface UnpublishScheduleParams {
   weekStart: Date;
   weekEnd: Date;
   reason?: string;
+  /**
+   * Whether to notify employees. Defaults to true when absent, so every
+   * existing caller keeps its current behaviour without a change.
+   */
+  notify?: boolean;
 }
 
 /**
@@ -155,6 +161,11 @@ async function invokeAndInterpret(
 interface NotificationToastCopy {
   title: string;
   successDescription: string;
+  /**
+   * Description for the 'skipped' outcome. When absent, the toast uses
+   * "No notifications were sent."
+   */
+  skippedDescription?: string;
 }
 
 interface ToastPayload {
@@ -171,7 +182,7 @@ interface ToastPayload {
  */
 export function notificationToast(
   outcome: NotificationOutcome,
-  { title, successDescription }: NotificationToastCopy,
+  { title, successDescription, skippedDescription }: NotificationToastCopy,
 ): ToastPayload {
   switch (outcome.status) {
     case 'sent':
@@ -181,7 +192,7 @@ export function notificationToast(
     // '-- some/nobody notified' destructive copy used for a fan-out that
     // tried and fell short.
     case 'skipped':
-      return { title, description: 'No notifications were sent.' };
+      return { title, description: skippedDescription ?? 'No notifications were sent.' };
     case 'partial':
       return {
         title: `${title} — some employees not notified`,
@@ -314,7 +325,13 @@ export const useUnpublishSchedule = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, weekStart, weekEnd, reason }: UnpublishScheduleParams) => {
+    mutationFn: async ({
+      restaurantId,
+      weekStart,
+      weekEnd,
+      reason,
+      notify = true,
+    }: UnpublishScheduleParams) => {
       // Format dates as YYYY-MM-DD (local calendar day, not UTC)
       const weekStartStr = formatLocalDate(weekStart);
       const weekEndStr = formatLocalDate(weekEnd);
@@ -336,13 +353,19 @@ export const useUnpublishSchedule = () => {
 
       // Nothing was actually retracted, so there is nobody to tell. Skipping
       // the invoke keeps a double-tap on Unpublish off the error path.
-      const notification: NotificationOutcome =
-        shiftCount > 0
-          ? await invokeScheduleNotification('notify-schedule-unpublished', {
-              restaurantId,
-              weekStart: weekStartStr,
-            })
-          : { status: 'sent', sent: 0 };
+      // `notify: false` is a quiet unpublish -- the caller chose not to tell
+      // employees, so the invoke never happens, same as usePublishSchedule.
+      let notification: NotificationOutcome;
+      if (!notify) {
+        notification = { status: 'skipped' };
+      } else if (shiftCount > 0) {
+        notification = await invokeScheduleNotification('notify-schedule-unpublished', {
+          restaurantId,
+          weekStart: weekStartStr,
+        });
+      } else {
+        notification = { status: 'sent', sent: 0 };
+      }
 
       return { shiftCount, restaurantId, notification };
     },
@@ -366,6 +389,13 @@ export const useUnpublishSchedule = () => {
             shiftCount > 0
               ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} have been unlocked for editing. Affected employees have been told the week is being revised.`
               : 'Nothing was published for this week, so no shifts changed and nobody was notified.',
+          // The 'skipped' status wins before shiftCount is read, so this needs
+          // its own zero case -- same reason as successDescription above, but
+          // for `notify: false` instead of the fan-out having nobody to reach.
+          skippedDescription:
+            shiftCount > 0
+              ? `${shiftCount} ${pluralize(shiftCount, 'shift is', 'shifts are')} unlocked for editing. Nobody was notified.`
+              : 'Nothing was published for this week, so nothing changed.',
         }),
       );
     },

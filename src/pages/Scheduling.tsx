@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -268,6 +270,7 @@ const Scheduling = () => {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
+  const [unpublishNotify, setUnpublishNotify] = useState(true);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [broadcastDialogOpen, setBroadcastDialogOpen] = useState(false);
   const [shiftImportOpen, setShiftImportOpen] = useState(false);
@@ -284,6 +287,13 @@ const Scheduling = () => {
   const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [isBulkOperating, setIsBulkOperating] = useState(false);
+
+  // The unpublish notify checkbox starts checked every time the dialog opens.
+  useEffect(() => {
+    if (unpublishDialogOpen) {
+      setUnpublishNotify(true);
+    }
+  }, [unpublishDialogOpen]);
 
   // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
   // and weekDayKeys/weekTimeOff memos are stable across drag/hover/selection re-renders.
@@ -798,6 +808,7 @@ const Scheduling = () => {
           weekStart: currentWeekStart,
           weekEnd,
           reason: 'Schedule unpublished for corrections',
+          notify: unpublishNotify,
         },
         {
           onSuccess: () => {
@@ -807,6 +818,15 @@ const Scheduling = () => {
         }
       );
     }
+  };
+
+  // AlertDialogAction closes the dialog on click by default. Block that: the
+  // unpublish mutation is async, so an auto-close would hide the work in
+  // progress.
+  const handleUnpublishConfirmClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    if (unpublishSchedule.isPending) return;
+    handleUnpublishSchedule();
   };
 
   // Get unique employees scheduled this week (respecting position filter, including inactive)
@@ -1780,17 +1800,35 @@ const Scheduling = () => {
               <div className="p-2 rounded-lg bg-warning/10">
                 <Unlock className="h-5 w-5 text-warning" />
               </div>
-              <AlertDialogTitle className="text-lg">Unpublish Schedule</AlertDialogTitle>
+              <AlertDialogTitle className="text-[17px]">Unpublish Schedule</AlertDialogTitle>
             </div>
-            <AlertDialogDescription className="text-sm leading-relaxed">
-              Are you sure you want to unpublish this schedule? This will unlock all shifts for editing
-              and notify employees that the schedule has changed.
+            <AlertDialogDescription className="text-[13px] leading-relaxed">
+              {unpublishNotify
+                ? 'This unlocks every shift in the week and tells the scheduled employees that the week is being revised.'
+                : 'This unlocks every shift in the week. Nobody is notified.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="unpublish-notify-employees"
+              checked={unpublishNotify}
+              onCheckedChange={(checked) => setUnpublishNotify(checked === true)}
+              disabled={unpublishSchedule.isPending}
+            />
+            <Label
+              htmlFor="unpublish-notify-employees"
+              className="text-[13px] font-normal text-foreground"
+            >
+              Notify scheduled employees
+            </Label>
+          </div>
           <AlertDialogFooter className="gap-2 sm:gap-0">
-            <AlertDialogCancel className="text-sm">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="text-sm" disabled={unpublishSchedule.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleUnpublishSchedule}
+              onClick={handleUnpublishConfirmClick}
+              disabled={unpublishSchedule.isPending}
               className="bg-warning text-warning-foreground hover:bg-warning/90 text-sm shadow-sm"
             >
               <Unlock className="h-4 w-4 mr-2" />

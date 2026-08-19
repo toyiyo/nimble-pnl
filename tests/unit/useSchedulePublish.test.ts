@@ -225,6 +225,30 @@ describe('notificationToast copy per outcome', () => {
     expect(toasted.description).toBe('No notifications were sent.');
     expect(toasted.variant).toBeUndefined();
   });
+
+  it('uses skippedDescription for a skipped outcome when the caller sets it', () => {
+    const toasted = notificationToast(
+      { status: 'skipped' },
+      {
+        title: 'Schedule Updated',
+        successDescription: 'The schedule has been updated.',
+        skippedDescription: 'Shift times changed. No new notifications were sent.',
+      },
+    );
+
+    expect(toasted.title).toBe('Schedule Updated');
+    expect(toasted.description).toBe('Shift times changed. No new notifications were sent.');
+    expect(toasted.variant).toBeUndefined();
+  });
+
+  it('falls back to the plain skipped copy when skippedDescription is absent', () => {
+    const toasted = notificationToast(
+      { status: 'skipped' },
+      { title: 'Schedule Updated', successDescription: 'The schedule has been updated.' },
+    );
+
+    expect(toasted.description).toBe('No notifications were sent.');
+  });
 });
 
 describe('unpublish notification outcomes', () => {
@@ -282,6 +306,52 @@ describe('unpublish notification outcomes', () => {
     const toasted = lastToast();
     expect(toasted.variant).toBe('destructive');
     expect(toasted.title).toContain('nobody was notified');
+  });
+
+  it.each([
+    [63, '63 shifts are unlocked for editing. Nobody was notified.'],
+    [1, '1 shift is unlocked for editing. Nobody was notified.'],
+    [0, 'Nothing was published for this week, so nothing changed.'],
+  ])(
+    'skips the notification invoke when notify is false (%i shifts)',
+    async (shiftCount, expectedDescription) => {
+      mockSupabase.rpc.mockResolvedValue({ data: shiftCount, error: null });
+      const { weekStart, weekEnd } = makeWeek();
+
+      const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+      await act(async () => {
+        await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: false });
+      });
+
+      expect(mockSupabase.functions.invoke).not.toHaveBeenCalled();
+      expect(lastToast().description).toBe(expectedDescription);
+    },
+  );
+
+  it('calls the notification invoke once when notify is true and shifts were retracted', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 63, error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: { sent: 12, failed: 0 }, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd, notify: true });
+    });
+
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults notify to true when the param is absent', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 63, error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: { sent: 12, failed: 0 }, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledTimes(1);
   });
 });
 

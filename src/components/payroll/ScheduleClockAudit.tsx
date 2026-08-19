@@ -323,13 +323,17 @@ export function ScheduleClockAuditView({
           </p>
         ) : (
           <>
-            {/* Apple-style underline tabs */}
-            <div className="border-b border-border/40 mb-4" role="tablist" aria-label="Filter check results">
+            {/* Apple-style underline filter buttons. Plain buttons, not
+                `role="tab"`: there is no `tabpanel` per filter, just a
+                re-filtered list, so the full ARIA tab keyboard model
+                (arrow/home/end navigation, roving tabIndex) does not apply
+                here. `aria-pressed` marks the active filter instead. */}
+            <div className="border-b border-border/40 mb-4" role="group" aria-label="Filter check results">
               {tabs.map((t) => (
                 <button
                   key={t.key}
-                  role="tab"
-                  aria-selected={tab === t.key}
+                  type="button"
+                  aria-pressed={tab === t.key}
                   onClick={() => changeTab(t.key)}
                   className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
                     tab === t.key ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'

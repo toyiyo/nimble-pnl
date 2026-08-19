@@ -170,7 +170,17 @@ const sessionOverlapsShift = (session: WorkSession, shift: AuditShift, now: Date
   const shiftStart = new Date(shift.start_time).getTime() - padMs;
   const shiftEnd = new Date(shift.end_time).getTime() + padMs;
   const sessionStart = new Date(session.clockIn).getTime();
-  const sessionEnd = session.clockOut ? new Date(session.clockOut).getTime() : now.getTime();
+
+  if (!session.clockOut) {
+    // An open session's true end is unknown. Do not treat it as reaching to
+    // `now` for overlap purposes -- that would let a stale, unrelated open
+    // clock-in from an earlier day "reach forward" and swallow every later
+    // shift up to the present. Require the clock-in itself to land inside
+    // the shift's padded window instead.
+    return sessionStart >= shiftStart && sessionStart <= shiftEnd;
+  }
+
+  const sessionEnd = new Date(session.clockOut).getTime();
   return sessionStart <= shiftEnd && sessionEnd >= shiftStart;
 };
 
@@ -236,7 +246,11 @@ export function auditScheduleAgainstClocks(
       minutesBetween(shift.start_time, shift.end_time) - (shift.break_duration ?? 0);
 
     if (!session) {
-      // A shift that runs now with no punches is already a missed clock-in.
+      // A shift that has not ended yet is still in progress -- the employee
+      // may simply not have clocked in yet. Only a shift whose scheduled end
+      // is already in the past, with no punches at all, counts as a missed
+      // clock-in.
+      if (new Date(shift.end_time).getTime() > now.getTime()) continue;
       rows.push({
         key: `shift-${shift.id}`,
         status: 'missing_clock',

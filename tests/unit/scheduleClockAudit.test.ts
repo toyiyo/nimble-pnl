@@ -265,6 +265,37 @@ describe('auditScheduleAgainstClocks', () => {
     const statuses = result.rows.map((r) => r.status).sort();
     expect(statuses).toEqual(['missing_clock', 'unscheduled_clock']);
   });
+
+  it('does not let a stale open clock-in from an earlier day reach forward and match a later, unrelated shift', () => {
+    // The employee clocked in on 2026-08-11 and never clocked out. The shift
+    // is the default fixture, 2026-08-12T15:00-23:00Z. The stale clock-in
+    // sits more than the 4-hour match pad before the shift start, so it must
+    // not match -- an open session's unknown true end must not "reach
+    // forward" to now and swallow this later shift.
+    const result = audit(
+      [shift({ id: 's1' })],
+      [punch('emp1', 'clock_in', '2026-08-11T08:00:00Z')],
+    );
+    const statuses = result.rows.map((r) => r.status).sort();
+    expect(statuses).toEqual(['missing_clock', 'unscheduled_clock']);
+  });
+
+  it('does not report an in-progress shift (started, not yet ended) with no punches as missing_clock', () => {
+    // NOW is 2026-08-15T12:00:00Z. The shift starts before NOW and ends
+    // after NOW, so it is still in progress -- the employee may simply not
+    // have clocked in yet. This must not surface as a missed clock-in.
+    const result = audit(
+      [
+        shift({
+          id: 's1',
+          start_time: '2026-08-15T08:00:00Z',
+          end_time: '2026-08-15T20:00:00Z',
+        }),
+      ],
+      [],
+    );
+    expect(result.rows).toHaveLength(0);
+  });
 });
 
 describe('formatters', () => {

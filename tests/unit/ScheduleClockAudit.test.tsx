@@ -212,7 +212,7 @@ describe('ScheduleClockAudit', () => {
     // The issues tab hides matched rows.
     expect(screen.queryByText('Maria Lopez')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: /Matched/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Matched/ }));
     expect(screen.getByText('Maria Lopez')).toBeInTheDocument();
     // Worked 484 minutes shows as hours on the row.
     expect(screen.getByText(/8\.07 h/)).toBeInTheDocument();

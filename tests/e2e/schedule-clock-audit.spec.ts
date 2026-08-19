@@ -2,7 +2,7 @@
    helpers (exposeSupabaseHelpers) carry no type declarations, same as every other E2E spec. */
 import { test, expect, Page } from '@playwright/test';
 import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
-import { wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
+import { wallClockToInstant, formatLocalDateInTz } from '../../src/lib/shiftInterval';
 
 /**
  * E2E test for the schedule-vs-clock audit panel on `/payroll`.
@@ -49,7 +49,9 @@ async function createHourlyEmployee(page: Page): Promise<string> {
   await page.getByRole('button', { name: /employee/i }).first().click();
   const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
 
-  const employeeName = `Audit Employee ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // crypto.randomUUID (not Math.random) so this unique name doesn't trip
+  // CodeQL's js/insecure-randomness rule.
+  const employeeName = `Audit Employee ${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
   await dialog.getByLabel(/name/i).first().fill(employeeName);
 
   const positionCombobox = dialog.getByRole('combobox').filter({ hasText: /position|select/i });
@@ -183,7 +185,7 @@ test.describe('Schedule vs. clock audit', () => {
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
     // Step 7: the row moves to Matched, and payroll hours are above zero.
-    await page.getByRole('tab', { name: /matched/i }).click();
+    await page.getByRole('button', { name: /matched/i }).click();
     const matchedRow = page.getByRole('listitem', { name: new RegExp(`${escapedName}.*Matched`) });
     await expect(matchedRow).toBeVisible({ timeout: 10000 });
 

@@ -126,10 +126,13 @@ function pinHostTzToPhoenix(): void {
  * The day row's header strip -- the row's first child, which holds the weekday
  * name, the date and the "Today" badge.
  *
- * The badge query must stay inside this strip. A `ShiftRow` renders a "Today"
- * badge of its own from date-fns `isToday(start_time)`, which still reads the
- * HOST clock. That badge is a separate defect in `ShiftRow.tsx`, outside this
- * fix, and a row-wide query would match it and hide a regression here.
+ * The badge query must stay inside this strip. `ShiftRow` now reads the same
+ * restaurant clock as this page (see ShiftRow.tsx), so it renders its own
+ * "Today" badge on a shift that falls on the restaurant's current business
+ * day. On the restaurant day row, that badge is correct and expected, not a
+ * defect -- it sits next to the header's "Today" badge in the same row. A
+ * row-wide query would find both and fail with "multiple elements", so the
+ * query must stay scoped to the header strip.
  */
 function dayHeader(dayKey: string): HTMLElement {
   const row = screen.getByTestId(`schedule-day-${dayKey}`);

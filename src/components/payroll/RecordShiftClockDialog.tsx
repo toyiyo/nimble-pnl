@@ -74,6 +74,7 @@ export function RecordShiftClockDialog({
   const [note, setNote] = useState('Manager entry from the scheduled shift');
 
   const breakMinutes = shift?.break_duration ?? 0;
+  const lastSession = row.sessions?.[row.sessions.length - 1];
 
   useEffect(() => {
     if (!open || !shift) return;
@@ -90,7 +91,6 @@ export function RecordShiftClockDialog({
       // not the scheduled start time. The clock-out must land after it, or
       // the saved punch pair goes clock_out-before-clock_in and corrupts
       // payroll's chronological pairing.
-      const lastSession = row.sessions?.[row.sessions.length - 1];
       const realClockInMs = lastSession ? new Date(lastSession.clockIn).getTime() : null;
       const outMs = parseWallClockMs(clockOut, parseWallClock);
       if (outMs === null) return 'Enter a valid clock-out time.';
@@ -110,11 +110,9 @@ export function RecordShiftClockDialog({
       return 'The shift is too short for the scheduled break.';
     }
     return null;
-  }, [outOnly, clockIn, clockOut, includeBreak, breakMinutes, parseWallClock, row.sessions]);
+  }, [outOnly, clockIn, clockOut, includeBreak, breakMinutes, parseWallClock, lastSession]);
 
   if (!shift) return null;
-
-  const lastSession = row.sessions?.[row.sessions.length - 1];
 
   const handleSave = () => {
     if (validationError) return;

@@ -10,6 +10,7 @@ import {
 import { ClipboardCheck } from 'lucide-react';
 
 import type { AuditSummary } from '@/utils/scheduleClockAudit';
+import { AUDIT_TONE_CLASS } from './auditChipTone';
 
 /** Which chip class filters the payroll table. `null` means no filter. */
 export type ClockAuditFilterClass = 'to_fix' | 'no_clock_out' | 'info' | 'matched';
@@ -55,25 +56,25 @@ export function ClockAuditBar({
       filterClass: 'to_fix',
       count: toFix,
       label: `${toFix} to fix`,
-      toneClass: 'bg-warning/10 text-warning border-warning/20',
+      toneClass: AUDIT_TONE_CLASS.to_fix,
     },
     {
       filterClass: 'no_clock_out',
       count: summary.openClock,
       label: `${summary.openClock} no clock-out`,
-      toneClass: 'bg-info/10 text-info border-info/20',
+      toneClass: AUDIT_TONE_CLASS.no_clock_out,
     },
     {
       filterClass: 'info',
       count: info,
       label: `${info} info`,
-      toneClass: 'bg-muted text-muted-foreground border-border/40',
+      toneClass: AUDIT_TONE_CLASS.info,
     },
     {
       filterClass: 'matched',
       count: summary.matched,
       label: `${summary.matched} matched`,
-      toneClass: 'bg-success/10 text-success border-success/20',
+      toneClass: AUDIT_TONE_CLASS.matched,
     },
   ];
 

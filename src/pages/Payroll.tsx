@@ -29,6 +29,7 @@ import {
 } from '@/utils/scheduleClockAudit';
 import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
 import { ClockAuditBar, type ClockAuditFilterClass } from '@/components/payroll/ClockAuditBar';
+import { AUDIT_TONE_CLASS } from '@/components/payroll/auditChipTone';
 import { EmployeeAuditDetail } from '@/components/payroll/EmployeeAuditDetail';
 import { RecordShiftClockDialog } from '@/components/payroll/RecordShiftClockDialog';
 import { AdjustOvertimeDialog } from '@/components/payroll/AdjustOvertimeDialog';
@@ -106,13 +107,13 @@ interface AuditChip {
 function auditChipForRollup(rollup: EmployeeAuditRollup | undefined): AuditChip | null {
   if (!rollup) return null;
   if (rollup.toFix > 0) {
-    return { label: `${rollup.toFix} to fix`, className: 'bg-warning/10 text-warning border-warning/20' };
+    return { label: `${rollup.toFix} to fix`, className: AUDIT_TONE_CLASS.to_fix };
   }
   if (rollup.open > 0) {
-    return { label: 'No clock-out', className: 'bg-info/10 text-info border-info/20' };
+    return { label: 'No clock-out', className: AUDIT_TONE_CLASS.no_clock_out };
   }
   if (rollup.info > 0) {
-    return { label: `${rollup.info} info`, className: 'bg-muted text-muted-foreground border-border/40' };
+    return { label: `${rollup.info} info`, className: AUDIT_TONE_CLASS.info };
   }
   return null;
 }

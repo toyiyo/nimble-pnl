@@ -279,7 +279,7 @@ const EmployeeSchedule = () => {
           <CardContent>
             <div className="space-y-3">
               {upcomingShifts.map((shift) => (
-                <ShiftRow key={shift.id} shift={shift} variant="upcoming" />
+                <ShiftRow key={shift.id} shift={shift} variant="upcoming" clock={clock} />
               ))}
             </div>
           </CardContent>
@@ -380,7 +380,7 @@ const EmployeeSchedule = () => {
                     ) : (
                       <div className="space-y-2">
                         {dayShifts.map((shift) => (
-                          <ShiftRow key={shift.id} shift={shift} onTrade={handleTradeShift} />
+                          <ShiftRow key={shift.id} shift={shift} onTrade={handleTradeShift} clock={clock} />
                         ))}
                       </div>
                     )}

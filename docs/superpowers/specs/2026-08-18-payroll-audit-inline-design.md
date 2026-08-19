@@ -70,9 +70,15 @@ Change `assignSessionsToShifts`
 
 - Score each candidate (session, shift) pair by the overlap, in
   minutes, between the session interval and the unpadded shift window.
-  For an open session, use `now` as the session end for this score
-  only; candidacy keeps the clock-in-inside-padded-window rule
+  An open session has no known end, so it earns an overlap score of
+  zero for every candidate; the clock-in delta tie-break then decides,
+  which keeps the PR #760 behavior for open sessions. Candidacy keeps
+  the clock-in-inside-padded-window rule
   ([scheduleClockAudit.ts:181-198](src/utils/scheduleClockAudit.ts:181)).
+  Do not extend an open session to `now` for this score: a later
+  shift's full window would then outscore the true shift (a 12:30
+  open clock-in on a 12:00–12:35 shift must not land on a 16:00–22:00
+  shift).
 - Each session lands on exactly one shift: the candidate with the
   largest overlap. On a tie (including all-zero overlap), take the
   smallest absolute clock-in delta. A shift can hold many sessions,

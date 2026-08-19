@@ -239,15 +239,14 @@ const filterAuditableShifts = (
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
 /** Minutes the session interval shares with the unpadded shift window.
- * An open session ends at `now` for this score only -- candidacy still
- * comes from sessionOverlapsShift, which bounds a stale open clock-in. */
-const sessionShiftOverlapMinutes = (
-  session: WorkSession,
-  shift: AuditShift,
-  now: Date,
-): number => {
+ * An open session has no known end, so it earns ZERO overlap for every
+ * candidate -- the clock-in delta tie-break then decides. A score that
+ * extends an open session to `now` would credit a later shift with its
+ * full window and steal the session from the true shift. */
+const sessionShiftOverlapMinutes = (session: WorkSession, shift: AuditShift): number => {
+  if (!session.clockOut) return 0;
   const sessionStart = new Date(session.clockIn).getTime();
-  const sessionEnd = session.clockOut ? new Date(session.clockOut).getTime() : now.getTime();
+  const sessionEnd = new Date(session.clockOut).getTime();
   const shiftStart = new Date(shift.start_time).getTime();
   const shiftEnd = new Date(shift.end_time).getTime();
   const overlapMs = Math.min(sessionEnd, shiftEnd) - Math.max(sessionStart, shiftStart);
@@ -259,9 +258,10 @@ const sessionShiftOverlapMinutes = (
  * rule misassigns the late half of a split shift -- a lunch return can
  * sit nearer to the NEXT shift's start than to its own. Overlap breaks
  * that: the session lies inside its own shift and outside the neighbor.
- * On an overlap tie (or all-zero overlap, for a session fully outside
- * every window), the smallest absolute clock-in delta wins, which keeps
- * the back-to-back boundary rule. A shift can hold many sessions. */
+ * On an overlap tie (or all-zero overlap: a session fully outside every
+ * window, or any OPEN session), the smallest absolute clock-in delta
+ * wins, which keeps the back-to-back boundary rule and the PR #760
+ * open-session behavior. A shift can hold many sessions. */
 const assignSessionsToShifts = (
   activeShifts: AuditShift[],
   sessionsByEmployee: Map<string, WorkSession[]>,
@@ -282,7 +282,7 @@ const assignSessionsToShifts = (
       let best: { shift: AuditShift; overlapMinutes: number; deltaMinutes: number } | null = null;
       for (const shift of shifts) {
         if (!sessionOverlapsShift(session, shift, now)) continue;
-        const overlapMinutes = sessionShiftOverlapMinutes(session, shift, now);
+        const overlapMinutes = sessionShiftOverlapMinutes(session, shift);
         const deltaMinutes = Math.abs(minutesBetween(shift.start_time, session.clockIn));
         if (
           !best ||

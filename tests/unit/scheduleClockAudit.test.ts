@@ -162,6 +162,25 @@ describe('auditScheduleAgainstClocks', () => {
     expect(byKey.get('shift-b')?.status).toBe('missing_clock');
   });
 
+  it('assigns an open session by clock-in delta, not by a reach to now', () => {
+    // Sound-logic review case: a 12:30 open clock-in on a short
+    // 12:00-12:35 shift, with a later 16:00-22:00 shift the same day.
+    // A score that extends the open session to `now` credits the later
+    // shift with its full 360-minute window and steals the session.
+    // An open session must earn zero overlap; the clock-in delta
+    // (30 min against 210 min) keeps it on the short shift.
+    const result = audit(
+      [
+        shift({ id: 'a', start_time: '2026-08-12T12:00:00Z', end_time: '2026-08-12T12:35:00Z' }),
+        shift({ id: 'b', start_time: '2026-08-12T16:00:00Z', end_time: '2026-08-12T22:00:00Z' }),
+      ],
+      [punch('emp1', 'clock_in', '2026-08-12T12:30:00Z')],
+    );
+    const byKey = new Map(result.rows.map((row) => [row.key, row]));
+    expect(byKey.get('shift-a')?.status).toBe('open_clock');
+    expect(byKey.get('shift-b')?.status).toBe('missing_clock');
+  });
+
   it('respects a custom tolerance', () => {
     const result = audit(
       [shift({ id: 's1' })],

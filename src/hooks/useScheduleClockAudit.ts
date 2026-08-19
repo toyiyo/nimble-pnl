@@ -76,7 +76,7 @@ export function useScheduleClockAudit(
       // that threshold — the exact condition this audit exists to catch.
       // The `.order('id')` tiebreaker makes each page boundary deterministic
       // when multiple shifts share a `start_time`.
-      const { rows } = await fetchAllRows<AuditShift>((from, to) =>
+      const { rows, capped } = await fetchAllRows<AuditShift>((from, to) =>
         supabase
           .from('shifts')
           .select(
@@ -89,6 +89,13 @@ export function useScheduleClockAudit(
           .order('id')
           .range(from, to),
       );
+      // A capped result is a truncated shift list. An audit on a truncated
+      // list reports real shifts as absent. Fail loudly instead.
+      if (capped) {
+        throw new Error(
+          'The shift list is incomplete: the query hit the page cap. Select a shorter date range.',
+        );
+      }
       return rows;
     },
     enabled: !!restaurantId,

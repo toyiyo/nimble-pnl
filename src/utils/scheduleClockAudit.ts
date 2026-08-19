@@ -230,23 +230,37 @@ const filterAuditableShifts = (
     .filter((shift) => new Date(shift.end_time).getTime() >= rangeStart.getTime())
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-const pickSessionForShift = (
-  shift: AuditShift,
-  sessions: WorkSession[],
-  matchedSessions: Set<WorkSession>,
+/** Pair shifts with sessions. The pair with the smallest clock-in delta
+ * wins first, across ALL shifts. A first-come pick per shift would let an
+ * earlier shift take a session that belongs to the next shift at a shared
+ * boundary, and the next shift would then show a false missing_clock. */
+const assignSessionsToShifts = (
+  activeShifts: AuditShift[],
+  sessionsByEmployee: Map<string, WorkSession[]>,
   now: Date,
-): WorkSession | undefined => {
-  const candidates = sessions.filter(
-    (session) => !matchedSessions.has(session) && sessionOverlapsShift(session, shift, now),
-  );
+): { sessionByShift: Map<string, WorkSession>; matchedSessions: Set<WorkSession> } => {
+  const pairs: Array<{ shift: AuditShift; session: WorkSession; deltaMinutes: number }> = [];
+  for (const shift of activeShifts) {
+    for (const session of sessionsByEmployee.get(shift.employee_id) ?? []) {
+      if (sessionOverlapsShift(session, shift, now)) {
+        pairs.push({
+          shift,
+          session,
+          deltaMinutes: Math.abs(minutesBetween(shift.start_time, session.clockIn)),
+        });
+      }
+    }
+  }
+  pairs.sort((a, b) => a.deltaMinutes - b.deltaMinutes);
 
-  // Nearest clock_in to the scheduled start wins.
-  candidates.sort(
-    (a, b) =>
-      Math.abs(minutesBetween(shift.start_time, a.clockIn)) -
-      Math.abs(minutesBetween(shift.start_time, b.clockIn)),
-  );
-  return candidates[0];
+  const sessionByShift = new Map<string, WorkSession>();
+  const matchedSessions = new Set<WorkSession>();
+  for (const pair of pairs) {
+    if (sessionByShift.has(pair.shift.id) || matchedSessions.has(pair.session)) continue;
+    sessionByShift.set(pair.shift.id, pair.session);
+    matchedSessions.add(pair.session);
+  }
+  return { sessionByShift, matchedSessions };
 };
 
 const buildShiftRow = (
@@ -350,19 +364,15 @@ export function auditScheduleAgainstClocks(
   const sessionsByEmployee = groupSessionsByEmployee(punches);
   const activeShifts = filterAuditableShifts(shifts, rangeStart, rangeEnd, now);
 
-  const matchedSessions = new Set<WorkSession>();
+  const { sessionByShift, matchedSessions } = assignSessionsToShifts(
+    activeShifts,
+    sessionsByEmployee,
+    now,
+  );
   const rows: AuditRow[] = [];
 
   for (const shift of activeShifts) {
-    const session = pickSessionForShift(
-      shift,
-      sessionsByEmployee.get(shift.employee_id) ?? [],
-      matchedSessions,
-      now,
-    );
-    if (session) matchedSessions.add(session);
-
-    const row = buildShiftRow(shift, session, tolerance, now);
+    const row = buildShiftRow(shift, sessionByShift.get(shift.id), tolerance, now);
     if (row) rows.push(row);
   }
 

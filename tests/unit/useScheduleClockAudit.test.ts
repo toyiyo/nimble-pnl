@@ -192,6 +192,33 @@ describe('useScheduleClockAudit', () => {
     ]);
   });
 
+  it('returns an error when the shift query hits the page cap', async () => {
+    useTimePunchesMock.mockReturnValue({ punches: [], loading: false, error: null });
+
+    // 20 full pages hit the fetchAllRows page cap. The hook must not audit
+    // the truncated prefix as if it were the complete shift list.
+    const fullPage = Array.from({ length: 1000 }, (_, i) =>
+      toDbShift(`s${i}`, '2026-08-11T14:00:00.000Z', '2026-08-11T22:00:00.000Z'));
+    const pages = Array.from({ length: 20 }, () => fullPage);
+
+    const { chain } = makeShiftsChain(pages);
+    const fromMock = vi.fn((table: string) => {
+      if (table === 'shifts') return chain;
+      throw new Error(`unexpected table ${table}`);
+    });
+    vi.doMock('@/integrations/supabase/client', () => ({
+      supabase: { from: (...args: [string]) => fromMock(...args) },
+    }));
+
+    const { useScheduleClockAudit } = await import('@/hooks/useScheduleClockAudit');
+    const { result } = renderHook(() => useScheduleClockAudit('rest-1', START, END, 10), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(String(result.current.error)).toMatch(/incomplete/);
+  });
+
   it('reports loading while either the shifts query or the punches hook is still loading', async () => {
     useTimePunchesMock.mockReturnValue({ punches: [], loading: true, error: null });
 

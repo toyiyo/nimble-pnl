@@ -115,6 +115,26 @@ describe('auditScheduleAgainstClocks', () => {
     expect(result.summary.timeMismatch).toBe(1);
   });
 
+  it('assigns a boundary session to the shift with the closest clock-in, not the first shift in time order', () => {
+    // Back-to-back shifts. The session covers the second shift exactly.
+    // A first-come pick would give the session to the first shift and
+    // report the second shift as missing_clock — a double-pay trap when
+    // the manager then enters punches for the second shift.
+    const result = audit(
+      [
+        shift({ id: 'a', start_time: '2026-08-12T14:00:00Z', end_time: '2026-08-12T15:00:00Z' }),
+        shift({ id: 'b', start_time: '2026-08-12T15:00:00Z', end_time: '2026-08-12T16:00:00Z' }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T16:00:00Z'),
+      ],
+    );
+    const byKey = new Map(result.rows.map((row) => [row.key, row]));
+    expect(byKey.get('shift-b')?.status).toBe('matched');
+    expect(byKey.get('shift-a')?.status).toBe('missing_clock');
+  });
+
   it('respects a custom tolerance', () => {
     const result = audit(
       [shift({ id: 's1' })],

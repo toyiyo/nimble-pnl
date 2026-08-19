@@ -16,18 +16,27 @@ import { ClockAuditBar } from '@/components/payroll/ClockAuditBar';
 import type { AuditSummary } from '@/utils/scheduleClockAudit';
 
 vi.mock('@/components/ui/select', () => ({
-  Select: ({ value, onValueChange, children }: any) =>
+  Select: ({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value: string;
+    onValueChange: (value: string) => void;
+    children: React.ReactNode;
+  }) =>
     React.createElement(
       'select',
       {
         'data-testid': 'tolerance-select',
         value,
-        onChange: (e: any) => onValueChange(e.target.value),
+        onChange: (e: React.ChangeEvent<HTMLSelectElement>) => onValueChange(e.target.value),
       },
       children,
     ),
-  SelectContent: ({ children }: any) => children,
-  SelectItem: ({ value, children }: any) => React.createElement('option', { value }, children),
+  SelectContent: ({ children }: { children: React.ReactNode }) => children,
+  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) =>
+    React.createElement('option', { value }, children),
   SelectTrigger: () => null,
   SelectValue: () => null,
 }));

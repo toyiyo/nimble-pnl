@@ -73,6 +73,20 @@ const EmployeeSchedule = () => {
   const pageHeaderRef = useRef<HTMLDivElement>(null);
   const [selectedShiftForTrade, setSelectedShiftForTrade] = useState<Shift | null>(null);
 
+  // `restaurantTimezone` starts at `DEFAULT_TIMEZONE` (see `safeTz`) while
+  // `selectedRestaurant` is still loading, so the lazy initializer above can
+  // compute `currentWeekStart` from the wrong clock. Once the real timezone
+  // arrives, resync -- unless the employee already navigated to a different
+  // week on purpose, which the ref below tracks.
+  const hasNavigatedRef = useRef(false);
+  const restaurantTimezoneRef = useRef(restaurantTimezone);
+  useEffect(() => {
+    if (restaurantTimezoneRef.current === restaurantTimezone) return;
+    restaurantTimezoneRef.current = restaurantTimezone;
+    if (hasNavigatedRef.current) return;
+    setCurrentWeekStart(getRestaurantWeekStart(new Date(), restaurantTimezone));
+  }, [restaurantTimezone]);
+
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: WEEK_STARTS_ON });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
@@ -106,10 +120,13 @@ const EmployeeSchedule = () => {
     anchorRange.end
   );
 
-  const upcomingAnchorShifts = useMemo(
-    () => selectUpcomingShifts(anchorShifts ?? [], new Date(), 5),
-    [anchorShifts]
-  );
+  // Not memoized on purpose. `selectUpcomingShifts` filters on `new Date()`,
+  // and the anchor list is capped at a handful of shifts, so recomputing on
+  // every render is cheap. A memo keyed only on `anchorShifts` would freeze
+  // the "You work next" card on an already-ended shift until the next
+  // refetch, because nothing else forces a recompute as wall-clock time
+  // passes.
+  const upcomingAnchorShifts = selectUpcomingShifts(anchorShifts ?? [], new Date(), 5);
 
   const { publishes: restaurantPublishes } = useRestaurantPublishes(
     restaurantId,
@@ -233,12 +250,15 @@ const EmployeeSchedule = () => {
   const viewsCurrentWeek = weekLabel === 'This week';
 
   const showNextWeekHint = showClarity && viewsCurrentWeek && nextWeekShiftCount > 0;
+  const nextWeekShiftWord = nextWeekShiftCount === 1 ? 'shift' : 'shifts';
 
   const handlePreviousWeek = () => {
+    hasNavigatedRef.current = true;
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
   };
 
   const handleNextWeek = () => {
+    hasNavigatedRef.current = true;
     setCurrentWeekStart(addWeeks(currentWeekStart, 1));
   };
 
@@ -248,6 +268,9 @@ const EmployeeSchedule = () => {
   };
 
   const handleToday = () => {
+    // Back to "current week" -- so a later timezone resolution may resync
+    // again, the same as right after mount.
+    hasNavigatedRef.current = false;
     setCurrentWeekStart(getRestaurantWeekStart(new Date(), restaurantTimezone));
   };
 
@@ -367,7 +390,7 @@ const EmployeeSchedule = () => {
                     onClick={handleNextWeek}
                     aria-label={
                       showNextWeekHint
-                        ? `Next week, ${nextWeekShiftCount} ${nextWeekShiftCount === 1 ? 'shift' : 'shifts'}`
+                        ? `Next week, ${nextWeekShiftCount} ${nextWeekShiftWord}`
                         : 'Next week'
                     }
                     className="min-h-[44px] min-w-[44px]"
@@ -479,8 +502,7 @@ const EmployeeSchedule = () => {
               className="w-full min-h-[44px] flex items-center justify-between px-3 rounded-lg border border-border/40 text-[13px] text-muted-foreground hover:text-foreground hover:border-border transition-colors"
             >
               <span>
-                Next week: {nextWeekShiftCount}{' '}
-                {nextWeekShiftCount === 1 ? 'shift' : 'shifts'}
+                Next week: {nextWeekShiftCount} {nextWeekShiftWord}
               </span>
               <ChevronRight className="h-4 w-4" />
             </button>

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { formatLocalDateInTz } from '@/lib/shiftInterval';
 import {
   isPublishingRestaurant,
   publishWindowStart,
@@ -23,9 +24,15 @@ export function useRestaurantPublishes(
   restaurantId: string | null,
   tz: string
 ): { publishes: boolean; isLoading: boolean } {
-  // Recomputed once per calendar day, not once per render. An unstable value
-  // here would make a new query key on every render.
-  const windowStart = useMemo(() => publishWindowStart(new Date(), tz), [tz]);
+  // Recomputed once per calendar day, not once per render. `todayStr` is the
+  // day dependency: a `Date` built inside the factory would freeze at mount
+  // and never move forward for a tab left open across a day boundary. The
+  // factory still calls `new Date()` itself, at day precision that makes no
+  // observable difference, because `publishWindowStart` wants an instant, not
+  // a pre-formatted string.
+  const todayStr = formatLocalDateInTz(new Date(), tz);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- todayStr drives the recompute; publishWindowStart takes an instant, not the string itself.
+  const windowStart = useMemo(() => publishWindowStart(new Date(), tz), [todayStr, tz]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['schedule_publications', restaurantId, 'window', windowStart],

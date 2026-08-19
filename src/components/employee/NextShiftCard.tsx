@@ -31,52 +31,60 @@ export function NextShiftCard({
   const [next, ...following] = shifts;
   const nextStartTime = next ? formatInstant(next.start_time, timezone, 'h:mm a') : '';
 
+  let body: JSX.Element;
+  if (isLoading) {
+    body = (
+      <div data-testid="next-shift-loading" className="space-y-2">
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-4 w-64" />
+      </div>
+    );
+  } else if (isError) {
+    // Never state that no shift exists when the read failed. A wrong line is
+    // worse than no line.
+    body = (
+      <p className="text-[14px] text-muted-foreground">We couldn't load your next shift.</p>
+    );
+  } else if (!next) {
+    body = (
+      <p className="text-[14px] text-muted-foreground">
+        No shift scheduled in the next 3 weeks.
+      </p>
+    );
+  } else {
+    body = (
+      <>
+        <p className="text-[22px] font-semibold text-foreground">
+          {formatInstant(next.start_time, timezone, 'EEEE')} {nextStartTime}
+        </p>
+        <p className="text-[14px] text-muted-foreground mt-0.5">
+          {formatInstant(next.start_time, timezone, 'MMM d')} · {nextStartTime} –{' '}
+          {formatInstant(next.end_time, timezone, 'h:mm a')}
+        </p>
+
+        {following.length > 0 && (
+          <div
+            data-testid="next-shift-following"
+            className="mt-3 pt-3 border-t border-border/40 space-y-1"
+          >
+            {following.map((s) => (
+              <p key={s.id} className="text-[13px] text-muted-foreground">
+                {formatInstant(s.start_time, timezone, 'EEE MMM d')} ·{' '}
+                {formatInstant(s.start_time, timezone, 'h:mm a')} –{' '}
+                {formatInstant(s.end_time, timezone, 'h:mm a')}
+              </p>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <Card className="min-h-[132px]">
       <CardContent className="p-5">
         <p className="text-[13px] text-muted-foreground mb-2">You work next</p>
-
-        {isLoading ? (
-          <div data-testid="next-shift-loading" className="space-y-2">
-            <Skeleton className="h-7 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-        ) : isError ? (
-          // Never state that no shift exists when the read failed. A wrong
-          // line is worse than no line.
-          <p className="text-[14px] text-muted-foreground">
-            We couldn't load your next shift.
-          </p>
-        ) : !next ? (
-          <p className="text-[14px] text-muted-foreground">
-            No shift scheduled in the next 3 weeks.
-          </p>
-        ) : (
-          <>
-            <p className="text-[22px] font-semibold text-foreground">
-              {formatInstant(next.start_time, timezone, 'EEEE')} {nextStartTime}
-            </p>
-            <p className="text-[14px] text-muted-foreground mt-0.5">
-              {formatInstant(next.start_time, timezone, 'MMM d')} · {nextStartTime} –{' '}
-              {formatInstant(next.end_time, timezone, 'h:mm a')}
-            </p>
-
-            {following.length > 0 && (
-              <div
-                data-testid="next-shift-following"
-                className="mt-3 pt-3 border-t border-border/40 space-y-1"
-              >
-                {following.map((s) => (
-                  <p key={s.id} className="text-[13px] text-muted-foreground">
-                    {formatInstant(s.start_time, timezone, 'EEE MMM d')} ·{' '}
-                    {formatInstant(s.start_time, timezone, 'h:mm a')} –{' '}
-                    {formatInstant(s.end_time, timezone, 'h:mm a')}
-                  </p>
-                ))}
-              </div>
-            )}
-          </>
-        )}
+        {body}
       </CardContent>
     </Card>
   );

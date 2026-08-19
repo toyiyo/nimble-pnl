@@ -110,6 +110,13 @@ test.describe('Schedule vs. clock audit', () => {
     const employeeName = await createHourlyEmployee(page);
     const escapedName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+    // A second employee with no shift and no punches. The audit gives it no
+    // rollup entry, so no chip filter ever matches it — it must stay out of
+    // the "to fix" count and disappear from the table while that filter is
+    // active, then reappear once the filter clears.
+    const unflaggedEmployeeName = await createHourlyEmployee(page);
+    const escapedUnflaggedName = unflaggedEmployeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     // Step 3: seed one published shift for yesterday (restaurant timezone), no punches.
     const restaurantId: string = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
@@ -167,19 +174,25 @@ test.describe('Schedule vs. clock audit', () => {
     await expect(employeeRow).toBeVisible();
     await expect(employeeRow.getByText('1 to fix')).toBeVisible();
 
+    const unflaggedRow = page.getByRole('row', { name: new RegExp(escapedUnflaggedName) });
+    await expect(unflaggedRow).toBeVisible();
+
     // Step 6: activate the amber chip — the table shows only the flagged
-    // employee, and the totals row hides (a total over a filtered subset
-    // reads as a wrong pay total).
+    // employee, the unflagged employee drops out, and the totals row hides
+    // (a total over a filtered subset reads as a wrong pay total).
     const totalRow = page.getByRole('rowheader', { name: 'TOTAL' });
     await expect(totalRow).toBeVisible();
     await toFixChip.click();
-    await expect(page.getByText('Clock filter active: 1 of 1 employees')).toBeVisible();
+    await expect(page.getByText('Clock filter active: 1 of 2 employees')).toBeVisible();
     await expect(employeeRow).toBeVisible();
+    await expect(unflaggedRow).toHaveCount(0);
     await expect(totalRow).toHaveCount(0);
 
-    // Clear the filter before repairing the punches.
+    // Clear the filter before repairing the punches. The unflagged employee
+    // returns to the table.
     await toFixChip.click();
     await expect(totalRow).toBeVisible();
+    await expect(unflaggedRow).toBeVisible();
 
     // Step 7: expand the row, open the dialog from the row chip's action.
     const expandButton = page.getByRole('button', { name: `Show clock detail for ${employeeName}` });

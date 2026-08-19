@@ -42,6 +42,9 @@ export interface WorkSession {
   clockOut: string | null;
   breakMinutes: number;
   punchIds: string[];
+  /** The shift the clock-in punch names, from a manager repair punch.
+   * Null when the punch carries no link. */
+  shiftId: string | null;
 }
 
 export type AuditRowStatus =
@@ -139,6 +142,7 @@ const applyPunch = (state: SessionBuildState, punch: AuditPunch): void => {
         clockOut: null,
         breakMinutes: 0,
         punchIds: [punch.id],
+        shiftId: punch.shift_id ?? null,
       };
       break;
     case 'break_start':
@@ -253,15 +257,36 @@ const sessionShiftOverlapMinutes = (session: WorkSession, shift: AuditShift): nu
   return Math.max(0, overlapMs / MINUTE_MS);
 };
 
-/** Assign each session to one shift: the candidate with the largest
- * overlap between the session and the shift window. A clock-in delta
- * rule misassigns the late half of a split shift -- a lunch return can
- * sit nearer to the NEXT shift's start than to its own. Overlap breaks
- * that: the session lies inside its own shift and outside the neighbor.
- * On an overlap tie (or all-zero overlap: a session fully outside every
- * window, or any OPEN session), the smallest absolute clock-in delta
- * wins, which keeps the back-to-back boundary rule and the PR #760
- * open-session behavior. A shift can hold many sessions. */
+const assignSessionToShift = (
+  sessionsByShift: Map<string, WorkSession[]>,
+  matchedSessions: Set<WorkSession>,
+  shiftId: string,
+  session: WorkSession,
+): void => {
+  const list = sessionsByShift.get(shiftId) ?? [];
+  list.push(session);
+  sessionsByShift.set(shiftId, list);
+  matchedSessions.add(session);
+};
+
+/** Assign each session to one shift.
+ *
+ * A manager repair punch (`RecordShiftClockDialog`) can name the shift it
+ * belongs to. Honor that link first -- overlapping shifts with close start
+ * times would otherwise let the overlap/delta rule below send a linked
+ * session to the wrong neighbor, leaving the linked shift `missing_clock`
+ * and inviting a duplicate repair.
+ *
+ * A session with no link, or whose linked shift is not in this employee's
+ * active list, falls back to the candidate with the largest overlap
+ * between the session and the shift window. A clock-in delta rule
+ * misassigns the late half of a split shift -- a lunch return can sit
+ * nearer to the NEXT shift's start than to its own. Overlap breaks that:
+ * the session lies inside its own shift and outside the neighbor. On an
+ * overlap tie (or all-zero overlap: a session fully outside every window,
+ * or any OPEN session), the smallest absolute clock-in delta wins, which
+ * keeps the back-to-back boundary rule and the PR #760 open-session
+ * behavior. A shift can hold many sessions. */
 const assignSessionsToShifts = (
   activeShifts: AuditShift[],
   sessionsByEmployee: Map<string, WorkSession[]>,
@@ -279,6 +304,14 @@ const assignSessionsToShifts = (
   for (const [employeeId, sessions] of sessionsByEmployee) {
     const shifts = shiftsByEmployee.get(employeeId) ?? [];
     for (const session of sessions) {
+      const linkedShift = session.shiftId
+        ? shifts.find((shift) => shift.id === session.shiftId)
+        : undefined;
+      if (linkedShift) {
+        assignSessionToShift(sessionsByShift, matchedSessions, linkedShift.id, session);
+        continue;
+      }
+
       let best: { shift: AuditShift; overlapMinutes: number; deltaMinutes: number } | null = null;
       for (const shift of shifts) {
         if (!sessionOverlapsShift(session, shift, now)) continue;
@@ -293,10 +326,7 @@ const assignSessionsToShifts = (
         }
       }
       if (best) {
-        const list = sessionsByShift.get(best.shift.id) ?? [];
-        list.push(session);
-        sessionsByShift.set(best.shift.id, list);
-        matchedSessions.add(session);
+        assignSessionToShift(sessionsByShift, matchedSessions, best.shift.id, session);
       }
     }
   }

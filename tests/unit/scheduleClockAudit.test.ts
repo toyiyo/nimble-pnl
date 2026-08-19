@@ -19,11 +19,13 @@ const punch = (
   employeeId: string,
   type: AuditPunch['punch_type'],
   time: string,
+  shiftId?: string,
 ): AuditPunch => ({
   id: `p${++punchSeq}`,
   employee_id: employeeId,
   punch_type: type,
   punch_time: time,
+  shift_id: shiftId ?? null,
 });
 
 const shift = (overrides: Partial<AuditShift> & { id: string }): AuditShift => ({
@@ -137,7 +139,7 @@ describe('auditScheduleAgainstClocks', () => {
     expect(byKey.get('shift-a')?.status).toBe('missing_clock');
   });
 
-  it('assigns a split-shift session by overlap, not by clock-in delta', () => {
+  it('should assign a split-shift session by overlap when the clock-in delta favors the wrong shift', () => {
     // Codex review case: punches exist only for the first of two
     // back-to-back shifts, split by an unpaid lunch. The 13:30 clock-in
     // sits nearer to the 17:00 start (210 min) than to its own 09:00
@@ -162,7 +164,30 @@ describe('auditScheduleAgainstClocks', () => {
     expect(byKey.get('shift-b')?.status).toBe('missing_clock');
   });
 
-  it('assigns an open session by clock-in delta, not by a reach to now', () => {
+  it('should assign a session to its linked shift when overlapping shifts start close together', () => {
+    // CodeRabbit review case: RecordShiftClockDialog can stamp a manager
+    // repair punch with the shift it was entered for. Two shifts overlap
+    // with start times one minute apart, so overlap/delta alone would send
+    // the session to shift 'a' (a full 480-minute overlap beats b's
+    // 479-minute overlap). The clock_in punch links to shift 'b' instead,
+    // and that link must win: a stolen session would leave 'b' a false
+    // missing_clock and invite a duplicate repair for the same shift.
+    const result = audit(
+      [
+        shift({ id: 'a', start_time: '2026-08-12T15:00:00Z', end_time: '2026-08-12T23:00:00Z' }),
+        shift({ id: 'b', start_time: '2026-08-12T15:01:00Z', end_time: '2026-08-12T23:01:00Z' }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z', 'b'),
+        punch('emp1', 'clock_out', '2026-08-12T23:00:00Z'),
+      ],
+    );
+    const byKey = new Map(result.rows.map((row) => [row.key, row]));
+    expect(byKey.get('shift-b')?.status).toBe('matched');
+    expect(byKey.get('shift-a')?.status).toBe('missing_clock');
+  });
+
+  it('should assign an open session by clock-in delta when the session has no clock-out', () => {
     // Sound-logic review case: a 12:30 open clock-in on a short
     // 12:00-12:35 shift, with a later 16:00-22:00 shift the same day.
     // A score that extends the open session to `now` credits the later

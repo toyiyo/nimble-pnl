@@ -243,6 +243,17 @@ const Payroll = () => {
 
   const auditRollup = useMemo(() => rollupAuditRowsByEmployee(auditRows), [auditRows]);
 
+  // The filter to actually apply to the payroll table. Null while the audit
+  // query is loading or has an error, even if the user picked a chip: the
+  // audit rows behind `auditRollup` come from `shifts ?? []` and whatever
+  // punches have resolved so far, so a period or tolerance refetch can
+  // classify an employee under the wrong class for one transient render.
+  // Filtering payroll rows on that partial rollup could hide or misclassify
+  // employees. `auditFilter` (the chip the user picked) stays the source of
+  // truth for the ClockAuditBar toggle; only the table's filtering,
+  // counts, announcement, and group expansion read `appliedAuditFilter`.
+  const appliedAuditFilter = auditLoading || auditError ? null : auditFilter;
+
   const toggleAuditRow = (employeeId: string) => {
     setExpandedAuditEmployees((prev) => {
       const next = new Set(prev);
@@ -567,20 +578,26 @@ const Payroll = () => {
   // Groups reduced by the clock-check chip filter. Each group keeps its
   // original row count so the header can show "N of M" while the filter
   // is active. A group with zero visible rows hides completely.
+  //
+  // Reads `appliedAuditFilter`, not the raw `auditFilter` state: while the
+  // audit query is loading or erroring, `appliedAuditFilter` is null, so
+  // the table shows every row instead of filtering on a partial rollup.
   const filteredGroups = useMemo(() => {
-    if (!auditFilter) {
+    if (!appliedAuditFilter) {
       return payrollGroups.map((group) => ({ ...group, totalCount: group.rows.length }));
     }
     return payrollGroups
       .map((group) => ({
         ...group,
-        rows: group.rows.filter((row) => employeeMatchesAuditFilter(auditRollup.get(row.employeeId), auditFilter)),
+        rows: group.rows.filter((row) =>
+          employeeMatchesAuditFilter(auditRollup.get(row.employeeId), appliedAuditFilter),
+        ),
         totalCount: group.rows.length,
       }))
       .filter((group) => group.rows.length > 0);
-  }, [payrollGroups, auditFilter, auditRollup]);
+  }, [payrollGroups, appliedAuditFilter, auditRollup]);
 
-  const filteredEmployeeCount = auditFilter
+  const filteredEmployeeCount = appliedAuditFilter
     ? filteredGroups.reduce((sum, group) => sum + group.rows.length, 0)
     : 0;
   const totalEmployeeCount = payrollPeriod?.employees.length ?? 0;
@@ -593,13 +610,11 @@ const Payroll = () => {
   // leave the table stuck on "0 of N employees" with no control left to
   // clear it, so drop the filter here instead of waiting on a click.
   //
-  // Skip this check while `loading` or `auditLoading` is true. A period
-  // navigation (Previous/Next Period) changes the usePayroll and
-  // useScheduleClockAudit query keys, and neither query keeps
-  // placeholderData, so payrollPeriod and auditRows both go empty for one
-  // render. filteredEmployeeCount reads 0 in that render for a reason
-  // unrelated to the filtered class being empty, and clearing the filter
-  // here would silently drop it on every ordinary period change.
+  // Skip this check while `loading` or `auditLoading` is true.
+  // `appliedAuditFilter` is null for the whole loading window (by design,
+  // above), so `filteredEmployeeCount` reads 0 for a reason unrelated to
+  // the filtered class being empty, and clearing the filter here would
+  // silently drop it on every ordinary period change.
   useEffect(() => {
     if (!auditFilter) return;
     if (loading || auditLoading) return;
@@ -904,7 +919,7 @@ const Payroll = () => {
             <div className="rounded-md border">
               <span className="sr-only" aria-live="polite">{hasSorted ? sortAnnouncement : ''}</span>
               <p className="text-[13px] text-muted-foreground px-3 pt-2" aria-live="polite">
-                {auditFilter
+                {appliedAuditFilter
                   ? `Clock filter active: ${filteredEmployeeCount} of ${totalEmployeeCount} employees`
                   : ''}
               </p>
@@ -930,7 +945,7 @@ const Payroll = () => {
                   // The filter forces every group open — a match inside a
                   // collapsed group must stay visible. Collapse state
                   // returns once the filter clears.
-                  const collapsed = auditFilter ? false : collapsedGroups.has(group.key);
+                  const collapsed = appliedAuditFilter ? false : collapsedGroups.has(group.key);
                   return (
                     <TableBody key={group.key}>
                       {isGrouped && (
@@ -938,9 +953,9 @@ const Payroll = () => {
                           <TableHead colSpan={PAYROLL_COLUMN_COUNT} scope="colgroup" className="py-2">
                             <button
                               type="button"
-                              onClick={() => { if (!auditFilter) toggleGroup(group.key); }}
+                              onClick={() => { if (!appliedAuditFilter) toggleGroup(group.key); }}
                               aria-expanded={!collapsed}
-                              disabled={!!auditFilter}
+                              disabled={!!appliedAuditFilter}
                               className="inline-flex items-center gap-2 min-h-[24px] font-semibold text-foreground disabled:cursor-default"
                             >
                               {collapsed
@@ -948,14 +963,14 @@ const Payroll = () => {
                                 : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
                               <span>{group.label}</span>
                               <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted font-normal text-muted-foreground">
-                                {auditFilter ? `${group.rows.length} of ${group.totalCount}` : group.rows.length}
+                                {appliedAuditFilter ? `${group.rows.length} of ${group.totalCount}` : group.rows.length}
                               </span>
                             </button>
                           </TableHead>
                         </TableRow>
                       )}
                       {!collapsed && group.rows.map(renderEmployeeRow)}
-                      {isGrouped && !collapsed && !auditFilter && renderTotalsRow(
+                      {isGrouped && !collapsed && !appliedAuditFilter && renderTotalsRow(
                         computePayrollTotals(group.rows),
                         `${group.label} subtotal`,
                         { labelClassName: 'text-[12px] font-medium uppercase tracking-wider text-muted-foreground' },
@@ -966,7 +981,7 @@ const Payroll = () => {
                 {/* Grand total row — hidden while the clock filter is active,
                     since a total over a filtered subset reads as a wrong
                     pay total. */}
-                {!auditFilter && (
+                {!appliedAuditFilter && (
                   <TableBody>
                     {grandTotals && renderTotalsRow(grandTotals, 'TOTAL')}
                   </TableBody>

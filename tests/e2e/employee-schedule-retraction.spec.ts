@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser, E2EHelperWindow } from '../helpers/e2e-supabase';
 
 /**
  * The whole point of the banner is that an employee can tell a draft week from
@@ -26,8 +26,7 @@ test.use({ timezoneId: 'America/New_York' });
 async function setRestaurantTimezone(page: Page, restaurantId: string, timezone: string): Promise<void> {
   const result = await page.evaluate(
     async ({ restId, tz }) => {
-      // `window` has no type declarations for the test-only Supabase client exposeSupabaseHelpers attaches.
-      const supabase = (window as any).__supabase;
+      const supabase = (window as unknown as E2EHelperWindow).__supabase;
       const { error } = await supabase.from('restaurants').update({ timezone: tz }).eq('id', restId);
       if (error) return { ok: false, message: error.message };
       return { ok: true };

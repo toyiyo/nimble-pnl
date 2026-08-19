@@ -1,4 +1,4 @@
-import { format, parseISO, isToday, isFuture, isPast, differenceInMinutes } from 'date-fns';
+import { isFuture, isPast, differenceInMinutes } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Shift } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
+import { RestaurantClock } from '@/hooks/useRestaurantClock';
 
 function formatShiftDuration(startTime: string, endTime: string, breakMinutes: number): string {
   const start = new Date(startTime);
@@ -26,7 +27,13 @@ function formatShiftDuration(startTime: string, endTime: string, breakMinutes: n
   return `${hours}h ${minutes}m`;
 }
 
-function getShiftStatusBadge(shift: Shift): JSX.Element | null {
+// Two kinds of question live here. "Is this shift today?" is a calendar-day
+// question: it must use the restaurant's business day (`clock.toBusinessDay`
+// vs `clock.today`), not the viewer's. "Is this shift over, in progress, or
+// not yet started?" is an instant question: an instant compares the same way
+// in every timezone, so `isPast`, `isFuture` and the `now` range check stay
+// exactly as they are — do not route them through the clock.
+function getShiftStatusBadge(shift: Shift, clock: RestaurantClock): JSX.Element | null {
   const startTime = new Date(shift.start_time);
   const endTime = new Date(shift.end_time);
   const now = new Date();
@@ -58,7 +65,7 @@ function getShiftStatusBadge(shift: Shift): JSX.Element | null {
     );
   }
 
-  if (isToday(startTime)) {
+  if (clock.toBusinessDay(shift.start_time) === clock.today) {
     return (
       <Badge variant="default" className="flex items-center gap-1">
         <Clock className="h-3 w-3" />
@@ -90,6 +97,7 @@ interface ShiftRowProps {
    */
   variant?: ShiftRowVariant;
   onTrade?: (shift: Shift) => void;
+  clock: RestaurantClock;
 }
 
 /** Cancelled outranks draft, which outranks the per-variant default. */
@@ -100,7 +108,7 @@ function getSurfaceClass(isCancelled: boolean, isDraft: boolean, variant: ShiftR
   return 'bg-muted/50';
 }
 
-export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JSX.Element {
+export function ShiftRow({ shift, variant = 'day', onTrade, clock }: ShiftRowProps): JSX.Element {
   const isDraft = !shift.is_published;
   const isCancelled = shift.status === 'cancelled';
 
@@ -114,7 +122,7 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
   const surface = getSurfaceClass(isCancelled, isDraft, variant);
   const timeText = isDraft ? 'font-normal text-muted-foreground' : 'font-medium';
 
-  const canTrade = !!onTrade && !isCancelled && isFuture(parseISO(shift.start_time));
+  const canTrade = !!onTrade && !isCancelled && isFuture(new Date(shift.start_time));
 
   const tradeButton = canTrade ? (
     <Button
@@ -128,7 +136,7 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
     </Button>
   ) : null;
 
-  const statusBadge = getShiftStatusBadge(shift);
+  const statusBadge = getShiftStatusBadge(shift, clock);
 
   // Color and border alone would fail a screen reader and WCAG 1.4.1.
   const draftSrLabel =
@@ -140,19 +148,19 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
         <div className="flex items-center gap-4">
           <div className="text-center">
             <div className="text-sm font-medium text-muted-foreground">
-              {format(parseISO(shift.start_time), 'EEE')}
+              {clock.formatInstant(shift.start_time, 'EEE')}
             </div>
             <div className={cn('text-2xl', isDraft ? 'font-normal text-muted-foreground' : 'font-bold')}>
-              {format(parseISO(shift.start_time), 'd')}
+              {clock.formatInstant(shift.start_time, 'd')}
             </div>
             <div className="text-xs text-muted-foreground">
-              {format(parseISO(shift.start_time), 'MMM')}
+              {clock.formatInstant(shift.start_time, 'MMM')}
             </div>
           </div>
           <div>
             <div className={timeText}>
-              {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-              {format(parseISO(shift.end_time), 'h:mm a')}
+              {clock.formatInstant(shift.start_time, 'h:mm a')} -{' '}
+              {clock.formatInstant(shift.end_time, 'h:mm a')}
             </div>
             <div className="text-sm text-muted-foreground flex items-center gap-2">
               <MapPin className="h-3 w-3" />
@@ -184,8 +192,8 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
       <div className="flex items-center gap-4">
         <div>
           <div className={timeText}>
-            {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-            {format(parseISO(shift.end_time), 'h:mm a')}
+            {clock.formatInstant(shift.start_time, 'h:mm a')} -{' '}
+            {clock.formatInstant(shift.end_time, 'h:mm a')}
           </div>
           <div className="text-sm text-muted-foreground">{shift.position}</div>
         </div>

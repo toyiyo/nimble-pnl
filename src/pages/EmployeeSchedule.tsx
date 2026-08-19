@@ -39,7 +39,7 @@ import {
   differenceInMinutes,
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
-import { toBusinessDay } from '@/lib/restaurantClock';
+import { toBusinessDay, businessDayRangeToInstants } from '@/lib/restaurantClock';
 import { toDateOnlyString, parseDateOnly } from '@/lib/dateOnly';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import {
@@ -81,13 +81,31 @@ const EmployeeSchedule = () => {
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: WEEK_STARTS_ON });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
+  // Calendar-day strings for the visible week, read from host-local `Date`
+  // fields. `currentWeekStart` was itself seeded from the restaurant's
+  // calendar day (`restaurantToday`), so these strings already name the
+  // restaurant's week, not the host's.
+  const weekStartStr = formatLocalDate(currentWeekStart);
+  const weekEndStr = formatLocalDate(weekEnd);
+
+  // The shift query needs UTC instants, not host-local `Date`s. Calling
+  // `.toISOString()` on `currentWeekStart`/`weekEnd` would bound the query in
+  // the HOST's zone: for a Phoenix viewer and an Auckland restaurant the two
+  // windows sit ~19h apart, so most of Auckland's Monday shifts would fall
+  // outside the query and never load. `businessDayRangeToInstants` resolves
+  // restaurant-local midnight for both ends instead.
+  const { start: queryStart, end: queryEnd } = useMemo(
+    () => businessDayRangeToInstants(weekStartStr, weekEndStr, restaurantTimezone),
+    [weekStartStr, weekEndStr, restaurantTimezone]
+  );
+
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const {
     shifts: myShifts,
     loading: shiftsLoading,
     error: shiftsError,
     refetch: refetchShifts,
-  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
+  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, queryStart, queryEnd);
 
   // What this week actually IS, as opposed to what the rows look like: a week
   // that was announced and then pulled back is otherwise indistinguishable
@@ -118,7 +136,6 @@ const EmployeeSchedule = () => {
     [publication?.published_at, myShifts]
   );
 
-  const weekStartStr = formatLocalDate(currentWeekStart);
   const employeeId = currentEmployee?.id ?? null;
 
   const [seenFingerprint, setSeenFingerprint] = useState<string | null>(null);

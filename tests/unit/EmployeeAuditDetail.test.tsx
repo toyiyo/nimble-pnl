@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
 import { formatInTimeZone } from 'date-fns-tz';
 
 import { EmployeeAuditDetail } from '@/components/payroll/EmployeeAuditDetail';
@@ -110,8 +111,9 @@ describe('EmployeeAuditDetail', () => {
       <EmployeeAuditDetail rows={[missingRow]} employeeName="Maria Lopez" onEnterClock={vi.fn()} />,
     );
     expect(screen.getByText(/Scheduled/)).toBeInTheDocument();
-    expect(screen.getByText(/5:30.*PM.*3:00.*AM/)).toBeInTheDocument();
-    expect(screen.getByText('No clock data')).toBeInTheDocument();
+    expect(screen.getByText(/9:30.*PM.*3:00.*AM/)).toBeInTheDocument();
+    // "No clock data" appears twice: the status label and the Clocked line.
+    expect(screen.getAllByText('No clock data')).toHaveLength(2);
   });
 
   it('shows the open clock-out line with a partial clock reading', () => {

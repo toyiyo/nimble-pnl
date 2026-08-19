@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -584,6 +584,20 @@ const Payroll = () => {
     ? filteredGroups.reduce((sum, group) => sum + group.rows.length, 0)
     : 0;
   const totalEmployeeCount = payrollPeriod?.employees.length ?? 0;
+
+  // A chip filter can go stale: the manager fixes the one flagged employee
+  // while filtered, the class count drops to zero, and the disabled chip
+  // (design: "A chip with count 0 renders disabled") can no longer be
+  // clicked to clear itself. The audit query can also error while a filter
+  // is active, which removes every chip from the DOM. Both cases would
+  // leave the table stuck on "0 of N employees" with no control left to
+  // clear it, so drop the filter here instead of waiting on a click.
+  useEffect(() => {
+    if (!auditFilter) return;
+    if (auditError || filteredEmployeeCount === 0) {
+      setAuditFilter(null);
+    }
+  }, [auditFilter, auditError, filteredEmployeeCount]);
 
   const sortAnnouncement = `Sorted by ${SORT_LABELS[sortKey]}, ${sortDir === 'asc' ? 'ascending' : 'descending'}`;
 

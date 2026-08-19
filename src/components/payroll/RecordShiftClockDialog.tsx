@@ -75,6 +75,9 @@ export function RecordShiftClockDialog({
 
   const breakMinutes = shift?.break_duration ?? 0;
   const lastSession = row.sessions?.[row.sessions.length - 1];
+  /** Time-zone abbreviation suffix, shown only when the viewer's zone
+   * differs from the restaurant's. Reused on every time label below. */
+  const tzSuffix = viewerTzDiffers ? ` (${tzAbbrev})` : '';
 
   useEffect(() => {
     if (!open || !shift) return;
@@ -184,7 +187,7 @@ export function RecordShiftClockDialog({
               </DialogTitle>
               <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 {employeeName} · {shiftDay} · scheduled {scheduledRange}
-                {viewerTzDiffers ? ` (${tzAbbrev})` : ''}
+                {tzSuffix}
               </DialogDescription>
             </div>
           </div>
@@ -201,7 +204,7 @@ export function RecordShiftClockDialog({
                 htmlFor="record-clock-in"
                 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
               >
-                Clock in{viewerTzDiffers ? ` (${tzAbbrev})` : ''}
+                Clock in{tzSuffix}
               </Label>
               <Input
                 id="record-clock-in"
@@ -219,7 +222,7 @@ export function RecordShiftClockDialog({
               <span className="text-foreground font-medium">
                 {formatInstant(lastSession.clockIn, 'h:mm a')}
               </span>
-              {viewerTzDiffers ? ` (${tzAbbrev})` : ''}
+              {tzSuffix}
             </p>
           )}
 
@@ -228,7 +231,7 @@ export function RecordShiftClockDialog({
               htmlFor="record-clock-out"
               className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
             >
-              Clock out{viewerTzDiffers ? ` (${tzAbbrev})` : ''}
+              Clock out{tzSuffix}
             </Label>
             <Input
               id="record-clock-out"

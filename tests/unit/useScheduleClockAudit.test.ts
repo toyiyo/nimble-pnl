@@ -37,6 +37,8 @@ vi.mock('@/hooks/useRestaurantClock', () => ({
   useRestaurantClock: (...args: unknown[]) => useRestaurantClockMock(...args),
 }));
 
+// `any` here: the return value stands in for a raw Supabase row, which
+// carries no exported row type in this test file.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toDbShift(id: string, start_time: string, end_time: string): any {
   return {
@@ -80,6 +82,8 @@ function expectedRange() {
   return { dayStart, dayEnd, fetchStart, fetchEnd };
 }
 
+// `any` here: `pages` holds raw Supabase rows built by `toDbShift`, which
+// itself returns `any` for the same reason.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeShiftsChain(pages: any[][]) {
   const rangeCalls: Array<[number, number]> = [];
@@ -87,6 +91,8 @@ function makeShiftsChain(pages: any[][]) {
   const lteCalls: unknown[][] = [];
   const orderCalls: unknown[][] = [];
 
+  // `any` here: `chain` is a mock Supabase query builder, assembled one
+  // method at a time below, so no single builder type covers it mid-build.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain: any = {};
   chain.select = vi.fn(() => chain);
@@ -245,6 +251,8 @@ describe('useScheduleClockAudit', () => {
   it('surfaces the shifts query error even when the punches hook has none', async () => {
     useTimePunchesMock.mockReturnValue({ punches: [], loading: false, error: null });
 
+    // `any` here: `chain` is a mock Supabase query builder, assembled one
+    // method at a time below, so no single builder type covers it mid-build.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const chain: any = {};
     chain.select = vi.fn(() => chain);

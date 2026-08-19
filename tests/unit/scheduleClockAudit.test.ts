@@ -4,7 +4,9 @@ import {
   buildWorkSessions,
   formatDeltaMinutes,
   formatMinutesAsHours,
+  rollupAuditRowsByEmployee,
   type AuditPunch,
+  type AuditRow,
   type AuditShift,
 } from '@/utils/scheduleClockAudit';
 
@@ -315,6 +317,127 @@ describe('auditScheduleAgainstClocks', () => {
       [],
     );
     expect(result.rows).toHaveLength(0);
+  });
+
+  it('rolls up two closed sessions into one row: first-in, last-out, zero unscheduled rows', () => {
+    // Oscar case: the employee clocked out for a break and back in. Both
+    // punches belong to the same shift.
+    const result = audit(
+      [
+        shift({
+          id: 's1',
+          start_time: '2026-08-12T17:30:00Z',
+          end_time: '2026-08-12T23:00:00Z',
+        }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T17:29:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T19:32:00Z'),
+        punch('emp1', 'clock_in', '2026-08-12T20:03:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T23:02:00Z'),
+      ],
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].status).toBe('matched');
+    expect(result.rows[0].sessions).toHaveLength(2);
+    expect(result.rows[0].inDeltaMinutes).toBe(-1);
+    expect(result.rows[0].outDeltaMinutes).toBe(2);
+    expect(result.summary.unscheduledClock).toBe(0);
+  });
+
+  it('computes gapMinutes as the gap between sessions and excludes it, and the break punches, from workedMinutes', () => {
+    const result = audit(
+      [shift({ id: 's1' })],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z'),
+        punch('emp1', 'break_start', '2026-08-12T16:00:00Z'),
+        punch('emp1', 'break_end', '2026-08-12T16:15:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T18:00:00Z'),
+        punch('emp1', 'clock_in', '2026-08-12T18:30:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T23:00:00Z'),
+      ],
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].gapMinutes).toBe(30);
+    expect(result.rows[0].workedMinutes).toBe(435);
+  });
+
+  it('reports an open last session as in_progress when the shift end is still in the future', () => {
+    const result = audit(
+      [
+        shift({
+          id: 's1',
+          start_time: '2026-08-15T08:00:00Z',
+          end_time: '2026-08-15T20:00:00Z',
+        }),
+      ],
+      [punch('emp1', 'clock_in', '2026-08-15T08:05:00Z')],
+    );
+    expect(result.rows[0].status).toBe('in_progress');
+    expect(result.summary.inProgress).toBe(1);
+  });
+
+  it('reports an open last session as open_clock when the shift end is in the past', () => {
+    const result = audit(
+      [shift({ id: 's1' })],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T18:00:00Z'),
+        punch('emp1', 'clock_in', '2026-08-12T18:30:00Z'),
+      ],
+    );
+    expect(result.rows[0].status).toBe('open_clock');
+    expect(result.summary.openClock).toBe(1);
+  });
+
+  it('reports closed sessions as in_progress when the shift end is still in the future', () => {
+    const result = audit(
+      [
+        shift({
+          id: 's1',
+          start_time: '2026-08-15T08:00:00Z',
+          end_time: '2026-08-15T20:00:00Z',
+        }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-15T08:00:00Z'),
+        punch('emp1', 'clock_out', '2026-08-15T10:00:00Z'),
+      ],
+    );
+    expect(result.rows[0].status).toBe('in_progress');
+    expect(result.summary.inProgress).toBe(1);
+  });
+});
+
+describe('rollupAuditRowsByEmployee', () => {
+  const row = (overrides: Partial<AuditRow> & { employeeId: string }): AuditRow => ({
+    key: `row-${overrides.employeeId}-${Math.random()}`,
+    status: 'matched',
+    ...overrides,
+  });
+
+  it('counts toFix, open, info, and sums missingMinutes per employee', () => {
+    const rows: AuditRow[] = [
+      row({ employeeId: 'emp1', status: 'missing_clock', scheduledMinutes: 480 }),
+      row({ employeeId: 'emp1', status: 'time_mismatch' }),
+      row({ employeeId: 'emp1', status: 'open_clock' }),
+      row({ employeeId: 'emp1', status: 'unscheduled_clock' }),
+      row({ employeeId: 'emp1', status: 'in_progress' }),
+      row({ employeeId: 'emp1', status: 'matched' }),
+      row({ employeeId: 'emp2', status: 'missing_clock', scheduledMinutes: 300 }),
+    ];
+    const rollup = rollupAuditRowsByEmployee(rows);
+
+    const emp1 = rollup.get('emp1');
+    expect(emp1?.toFix).toBe(2);
+    expect(emp1?.open).toBe(1);
+    expect(emp1?.info).toBe(2);
+    expect(emp1?.missingMinutes).toBe(480);
+    expect(emp1?.rows).toHaveLength(6);
+
+    const emp2 = rollup.get('emp2');
+    expect(emp2?.toFix).toBe(1);
+    expect(emp2?.missingMinutes).toBe(300);
   });
 });
 

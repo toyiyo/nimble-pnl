@@ -37,6 +37,7 @@ import {
   subWeeks,
   addWeeks,
   addDays,
+  subDays,
   eachDayOfInterval,
   parseISO,
   isToday,
@@ -45,6 +46,7 @@ import {
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { safeTz } from '@/lib/restaurantClock';
 import { formatLocalDate, wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
+import { useNowTick } from '@/hooks/useNowTick';
 import {
   computeScheduleFingerprint,
   hasScheduleChangedSinceSeen,
@@ -105,8 +107,13 @@ const EmployeeSchedule = () => {
   const todayStr = formatLocalDateInTz(new Date(), restaurantTimezone);
 
   const anchorRange = useMemo(() => {
-    const start = wallClockToInstant(todayStr, '00:00', restaurantTimezone);
-    return { start, end: addDays(start, 21) };
+    // `useMyShifts` filters `start_time >= start`. Anchoring exactly at
+    // today's midnight would drop a shift that began yesterday and is still
+    // running past midnight -- `selectUpcomingShifts` keeps an in-progress
+    // shift, but only once the query actually returns it. Start the window 1
+    // day earlier, and keep the far end at today + 21 days as before.
+    const start = subDays(wallClockToInstant(todayStr, '00:00', restaurantTimezone), 1);
+    return { start, end: addDays(start, 22) };
   }, [todayStr, restaurantTimezone]);
 
   const {
@@ -120,13 +127,15 @@ const EmployeeSchedule = () => {
     anchorRange.end
   );
 
-  // Not memoized on purpose. `selectUpcomingShifts` filters on `new Date()`,
-  // and the anchor list is capped at a handful of shifts, so recomputing on
-  // every render is cheap. A memo keyed only on `anchorShifts` would freeze
-  // the "You work next" card on an already-ended shift until the next
-  // refetch, because nothing else forces a recompute as wall-clock time
-  // passes.
-  const upcomingAnchorShifts = selectUpcomingShifts(anchorShifts ?? [], new Date(), 5);
+  // `nowTick` (from `useNowTick`) advances every 60s on its own, so this memo
+  // recomputes as wall-clock time passes, not only when `anchorShifts`
+  // changes. Without it, a shift that ends while the page stays open would
+  // keep reading as "next" until an unrelated refetch happened to run.
+  const nowTick = useNowTick();
+  const upcomingAnchorShifts = useMemo(
+    () => selectUpcomingShifts(anchorShifts ?? [], new Date(nowTick), 5),
+    [anchorShifts, nowTick]
+  );
 
   const { publishes: restaurantPublishes } = useRestaurantPublishes(
     restaurantId,

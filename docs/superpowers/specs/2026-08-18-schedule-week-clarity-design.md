@@ -143,7 +143,7 @@ page load.
 Add a bounded query instead. Read only rows at or after the current week start
 minus 8 days:
 
-```
+```ts
 .eq('restaurant_id', restaurantId)
 .gte('week_start_date', <thisWeekStart minus 8 days>)
 ```
@@ -340,7 +340,7 @@ Add the group call where the restaurant is selected, in
 user can hold several restaurants, and `recordAuthEvents` runs before any
 selection.
 
-```
+```ts
 posthog.group('restaurant', restaurantId)
 ```
 

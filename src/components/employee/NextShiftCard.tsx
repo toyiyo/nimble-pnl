@@ -34,7 +34,8 @@ export function NextShiftCard({
   let body: JSX.Element;
   if (isLoading) {
     body = (
-      <div data-testid="next-shift-loading" className="space-y-2">
+      <div data-testid="next-shift-loading" className="space-y-2" role="status">
+        <span className="sr-only">Loading your next shift.</span>
         <Skeleton className="h-7 w-48" />
         <Skeleton className="h-4 w-64" />
       </div>

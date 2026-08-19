@@ -95,8 +95,11 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
           localStorage.removeItem(key);
         }
       });
+      // Drop the PostHog restaurant group too, or it stays in persisted
+      // storage and can carry over to the next login on the same browser.
+      posthog?.resetGroups();
     }
-  }, [user]);
+  }, [user, posthog]);
 
   // Enhanced setSelectedRestaurant that persists to localStorage
   const handleSetSelectedRestaurant = useCallback((restaurant: UserRestaurant | null) => {

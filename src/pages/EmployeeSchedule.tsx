@@ -343,7 +343,11 @@ const EmployeeSchedule = () => {
       )}
 
       {/* Upcoming Shifts. The green celebratory chrome is a claim that these
-          are locked in, so it only survives while at least one of them is. */}
+          are locked in, so it only survives while at least one of them is.
+
+          The title never states a publish status. Many restaurants never
+          publish, so a draft is the only status their staff ever see. The
+          word "tentative" told those staff their real shift was optional. */}
       {!showClarity && upcomingShifts.length > 0 && (
         <Card
           className={
@@ -357,7 +361,7 @@ const EmployeeSchedule = () => {
               <Clock
                 className={`h-5 w-5 ${allUpcomingAreDrafts ? 'text-muted-foreground' : 'text-green-600'}`}
               />
-              {allUpcomingAreDrafts ? 'Upcoming (tentative)' : 'Upcoming Shifts'}
+              Upcoming Shifts
             </CardTitle>
           </CardHeader>
           <CardContent>

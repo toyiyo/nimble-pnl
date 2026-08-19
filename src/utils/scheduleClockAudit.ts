@@ -238,39 +238,67 @@ const filterAuditableShifts = (
     .filter((shift) => new Date(shift.end_time).getTime() >= rangeStart.getTime())
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-/** Pair shifts with sessions. The pair with the smallest clock-in delta
- * wins first, across ALL shifts. A first-come pick per shift would let an
- * earlier shift take a session that belongs to the next shift at a shared
- * boundary, and the next shift would then show a false missing_clock. A
- * shift can hold many sessions -- only "session already assigned" blocks a
- * pair, not "shift already has a session". */
+/** Minutes the session interval shares with the unpadded shift window.
+ * An open session ends at `now` for this score only -- candidacy still
+ * comes from sessionOverlapsShift, which bounds a stale open clock-in. */
+const sessionShiftOverlapMinutes = (
+  session: WorkSession,
+  shift: AuditShift,
+  now: Date,
+): number => {
+  const sessionStart = new Date(session.clockIn).getTime();
+  const sessionEnd = session.clockOut ? new Date(session.clockOut).getTime() : now.getTime();
+  const shiftStart = new Date(shift.start_time).getTime();
+  const shiftEnd = new Date(shift.end_time).getTime();
+  const overlapMs = Math.min(sessionEnd, shiftEnd) - Math.max(sessionStart, shiftStart);
+  return Math.max(0, overlapMs / MINUTE_MS);
+};
+
+/** Assign each session to one shift: the candidate with the largest
+ * overlap between the session and the shift window. A clock-in delta
+ * rule misassigns the late half of a split shift -- a lunch return can
+ * sit nearer to the NEXT shift's start than to its own. Overlap breaks
+ * that: the session lies inside its own shift and outside the neighbor.
+ * On an overlap tie (or all-zero overlap, for a session fully outside
+ * every window), the smallest absolute clock-in delta wins, which keeps
+ * the back-to-back boundary rule. A shift can hold many sessions. */
 const assignSessionsToShifts = (
   activeShifts: AuditShift[],
   sessionsByEmployee: Map<string, WorkSession[]>,
   now: Date,
 ): { sessionsByShift: Map<string, WorkSession[]>; matchedSessions: Set<WorkSession> } => {
-  const pairs: Array<{ shift: AuditShift; session: WorkSession; deltaMinutes: number }> = [];
+  const shiftsByEmployee = new Map<string, AuditShift[]>();
   for (const shift of activeShifts) {
-    for (const session of sessionsByEmployee.get(shift.employee_id) ?? []) {
-      if (sessionOverlapsShift(session, shift, now)) {
-        pairs.push({
-          shift,
-          session,
-          deltaMinutes: Math.abs(minutesBetween(shift.start_time, session.clockIn)),
-        });
-      }
-    }
+    const list = shiftsByEmployee.get(shift.employee_id) ?? [];
+    list.push(shift);
+    shiftsByEmployee.set(shift.employee_id, list);
   }
-  pairs.sort((a, b) => a.deltaMinutes - b.deltaMinutes);
 
   const sessionsByShift = new Map<string, WorkSession[]>();
   const matchedSessions = new Set<WorkSession>();
-  for (const pair of pairs) {
-    if (matchedSessions.has(pair.session)) continue;
-    const list = sessionsByShift.get(pair.shift.id) ?? [];
-    list.push(pair.session);
-    sessionsByShift.set(pair.shift.id, list);
-    matchedSessions.add(pair.session);
+  for (const [employeeId, sessions] of sessionsByEmployee) {
+    const shifts = shiftsByEmployee.get(employeeId) ?? [];
+    for (const session of sessions) {
+      let best: { shift: AuditShift; overlapMinutes: number; deltaMinutes: number } | null = null;
+      for (const shift of shifts) {
+        if (!sessionOverlapsShift(session, shift, now)) continue;
+        const overlapMinutes = sessionShiftOverlapMinutes(session, shift, now);
+        const deltaMinutes = Math.abs(minutesBetween(shift.start_time, session.clockIn));
+        if (
+          !best ||
+          overlapMinutes > best.overlapMinutes ||
+          (overlapMinutes === best.overlapMinutes && deltaMinutes < best.deltaMinutes)
+        ) {
+          best = { shift, overlapMinutes, deltaMinutes };
+        }
+      }
+      if (best) {
+        const list = sessionsByShift.get(best.shift.id) ?? [];
+        list.push(session);
+        sessionsByShift.set(best.shift.id, list);
+        matchedSessions.add(session);
+      }
+    }
   }
   return { sessionsByShift, matchedSessions };
 };

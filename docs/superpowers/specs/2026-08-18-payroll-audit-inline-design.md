@@ -68,14 +68,24 @@ PR #760 added. The user confirmed each one on screen.
 Change `assignSessionsToShifts`
 ([scheduleClockAudit.ts:237-264](src/utils/scheduleClockAudit.ts:237)):
 
-- Keep the global pair build and the sort by absolute clock-in delta.
-  This preserves the PR #760 boundary rule: at a back-to-back boundary,
-  the session goes to the shift with the closest start.
-- Change the assignment target from `Map<string, WorkSession>` to
-  `Map<string, WorkSession[]>`. Drop the "shift already has a session"
-  skip. Keep the "session already assigned" skip. Each session lands on
-  exactly one shift — the shift with the smallest clock-in delta among
-  its overlapping shifts. A shift can hold many sessions.
+- Score each candidate (session, shift) pair by the overlap, in
+  minutes, between the session interval and the unpadded shift window.
+  For an open session, use `now` as the session end for this score
+  only; candidacy keeps the clock-in-inside-padded-window rule
+  ([scheduleClockAudit.ts:181-198](src/utils/scheduleClockAudit.ts:181)).
+- Each session lands on exactly one shift: the candidate with the
+  largest overlap. On a tie (including all-zero overlap), take the
+  smallest absolute clock-in delta. A shift can hold many sessions,
+  as `Map<string, WorkSession[]>`.
+- Rationale. The old rule — smallest clock-in delta across all
+  overlapping shifts — misassigns a late session of a split shift.
+  Example (Codex review): shifts 09:00–17:00 and 17:00–21:00; sessions
+  09:00–12:00 and 13:30–17:00. The 13:30 clock-in sits 270 min from
+  09:00 but 210 min from 17:00, so the delta rule sends the second
+  session to the wrong shift. The overlap rule sends it to the first
+  shift (210 min overlap against zero). The PR #760 boundary rule
+  still holds: a session that starts minutes before a back-to-back
+  shift overlaps that shift almost fully and its neighbor barely.
 
 Change `buildShiftRow`
 ([scheduleClockAudit.ts:266-305](src/utils/scheduleClockAudit.ts:266))

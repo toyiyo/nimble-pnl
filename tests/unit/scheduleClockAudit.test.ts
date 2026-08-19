@@ -137,6 +137,31 @@ describe('auditScheduleAgainstClocks', () => {
     expect(byKey.get('shift-a')?.status).toBe('missing_clock');
   });
 
+  it('assigns a split-shift session by overlap, not by clock-in delta', () => {
+    // Codex review case: punches exist only for the first of two
+    // back-to-back shifts, split by an unpaid lunch. The 13:30 clock-in
+    // sits nearer to the 17:00 start (210 min) than to its own 09:00
+    // start (270 min). A delta rule sends the lunch-return session to
+    // the wrong shift and hides the second shift's real missing_clock.
+    const result = audit(
+      [
+        shift({ id: 'a', start_time: '2026-08-12T09:00:00Z', end_time: '2026-08-12T17:00:00Z' }),
+        shift({ id: 'b', start_time: '2026-08-12T17:00:00Z', end_time: '2026-08-12T21:00:00Z' }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T09:00:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T12:00:00Z'),
+        punch('emp1', 'clock_in', '2026-08-12T13:30:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T17:00:00Z'),
+      ],
+    );
+    const byKey = new Map(result.rows.map((row) => [row.key, row]));
+    expect(byKey.get('shift-a')?.status).toBe('matched');
+    expect(byKey.get('shift-a')?.workedMinutes).toBe(390);
+    expect(byKey.get('shift-a')?.gapMinutes).toBe(90);
+    expect(byKey.get('shift-b')?.status).toBe('missing_clock');
+  });
+
   it('respects a custom tolerance', () => {
     const result = audit(
       [shift({ id: 's1' })],

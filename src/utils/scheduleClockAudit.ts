@@ -287,6 +287,34 @@ const assignSessionToShift = (
  * or any OPEN session), the smallest absolute clock-in delta wins, which
  * keeps the back-to-back boundary rule and the PR #760 open-session
  * behavior. A shift can hold many sessions. */
+/** Candidate shift for an unlinked session, with its match strength. */
+type SessionShiftMatch = { shift: AuditShift; overlapMinutes: number; deltaMinutes: number };
+
+/**
+ * Find the best-matching shift for a session with no `shiftId` link.
+ * The largest overlap wins; a tie (including all-zero overlap) falls back
+ * to the smallest absolute clock-in delta. Returns `null` when the session
+ * overlaps no shift for this employee.
+ */
+const findBestShiftForSession = (
+  session: WorkSession,
+  candidateShifts: AuditShift[],
+  now: Date,
+): SessionShiftMatch | null => {
+  let best: SessionShiftMatch | null = null;
+  for (const shift of candidateShifts) {
+    if (!sessionOverlapsShift(session, shift, now)) continue;
+    const overlapMinutes = sessionShiftOverlapMinutes(session, shift);
+    const deltaMinutes = Math.abs(minutesBetween(shift.start_time, session.clockIn));
+    const better =
+      !best ||
+      overlapMinutes > best.overlapMinutes ||
+      (overlapMinutes === best.overlapMinutes && deltaMinutes < best.deltaMinutes);
+    if (better) best = { shift, overlapMinutes, deltaMinutes };
+  }
+  return best;
+};
+
 const assignSessionsToShifts = (
   activeShifts: AuditShift[],
   sessionsByEmployee: Map<string, WorkSession[]>,
@@ -307,26 +335,9 @@ const assignSessionsToShifts = (
       const linkedShift = session.shiftId
         ? shifts.find((shift) => shift.id === session.shiftId)
         : undefined;
-      if (linkedShift) {
-        assignSessionToShift(sessionsByShift, matchedSessions, linkedShift.id, session);
-        continue;
-      }
-
-      let best: { shift: AuditShift; overlapMinutes: number; deltaMinutes: number } | null = null;
-      for (const shift of shifts) {
-        if (!sessionOverlapsShift(session, shift, now)) continue;
-        const overlapMinutes = sessionShiftOverlapMinutes(session, shift);
-        const deltaMinutes = Math.abs(minutesBetween(shift.start_time, session.clockIn));
-        if (
-          !best ||
-          overlapMinutes > best.overlapMinutes ||
-          (overlapMinutes === best.overlapMinutes && deltaMinutes < best.deltaMinutes)
-        ) {
-          best = { shift, overlapMinutes, deltaMinutes };
-        }
-      }
-      if (best) {
-        assignSessionToShift(sessionsByShift, matchedSessions, best.shift.id, session);
+      const target = linkedShift ?? findBestShiftForSession(session, shifts, now)?.shift;
+      if (target) {
+        assignSessionToShift(sessionsByShift, matchedSessions, target.id, session);
       }
     }
   }
@@ -536,5 +547,5 @@ export function formatDeltaMinutes(delta: number | undefined): string {
 /** Format minutes as "7.5 h". */
 export function formatMinutesAsHours(minutes: number | undefined): string {
   if (minutes === undefined) return '—';
-  return `${parseFloat((minutes / 60).toFixed(2))} h`;
+  return `${Number.parseFloat((minutes / 60).toFixed(2))} h`;
 }

@@ -229,8 +229,8 @@ const EmployeeSchedule = () => {
     [anchorShifts, restaurantTimezone]
   );
 
-  const viewsCurrentWeek =
-    getRelativeWeekLabel(currentWeekStart, new Date(), restaurantTimezone) === 'This week';
+  const weekLabel = getRelativeWeekLabel(currentWeekStart, new Date(), restaurantTimezone);
+  const viewsCurrentWeek = weekLabel === 'This week';
 
   const showNextWeekHint = showClarity && viewsCurrentWeek && nextWeekShiftCount > 0;
 
@@ -388,9 +388,7 @@ const EmployeeSchedule = () => {
               </div>
               {showClarity ? (
                 <div className="text-center">
-                  <p className="text-[15px] font-semibold text-foreground">
-                    {getRelativeWeekLabel(currentWeekStart, new Date(), restaurantTimezone)}
-                  </p>
+                  <p className="text-[15px] font-semibold text-foreground">{weekLabel}</p>
                   <p className="text-[13px] text-muted-foreground">
                     {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
                   </p>

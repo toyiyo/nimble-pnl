@@ -29,6 +29,7 @@ export function NextShiftCard({
   timezone,
 }: NextShiftCardProps): JSX.Element {
   const [next, ...following] = shifts;
+  const nextStartTime = next ? formatInstant(next.start_time, timezone, 'h:mm a') : '';
 
   return (
     <Card className="min-h-[132px]">
@@ -53,12 +54,10 @@ export function NextShiftCard({
         ) : (
           <>
             <p className="text-[22px] font-semibold text-foreground">
-              {formatInstant(next.start_time, timezone, 'EEEE')}{' '}
-              {formatInstant(next.start_time, timezone, 'h:mm a')}
+              {formatInstant(next.start_time, timezone, 'EEEE')} {nextStartTime}
             </p>
             <p className="text-[14px] text-muted-foreground mt-0.5">
-              {formatInstant(next.start_time, timezone, 'MMM d')} ·{' '}
-              {formatInstant(next.start_time, timezone, 'h:mm a')} –{' '}
+              {formatInstant(next.start_time, timezone, 'MMM d')} · {nextStartTime} –{' '}
               {formatInstant(next.end_time, timezone, 'h:mm a')}
             </p>
 

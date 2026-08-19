@@ -21,7 +21,7 @@ describe('NextShiftCard', () => {
 
   it('states an error, and does not claim that no shift exists', () => {
     render(<NextShiftCard {...base} shifts={[]} isError />);
-    expect(screen.getByText("We couldn't load your next shift.")).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent("We couldn't load your next shift.");
     expect(screen.queryByText(/No shift scheduled/)).toBeNull();
   });
 

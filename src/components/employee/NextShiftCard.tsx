@@ -44,7 +44,9 @@ export function NextShiftCard({
     // Never state that no shift exists when the read failed. A wrong line is
     // worse than no line.
     body = (
-      <p className="text-[14px] text-muted-foreground">We couldn't load your next shift.</p>
+      <p role="alert" className="text-[14px] text-muted-foreground">
+        We couldn't load your next shift.
+      </p>
     );
   } else if (!next) {
     body = (

@@ -11622,6 +11622,10 @@ export type Database = {
         Args: { p_rule_id: string; p_sale: Json }
         Returns: boolean
       }
+      min_bank_txn_entry_day: {
+        Args: { p_restaurant_id: string }
+        Returns: string
+      }
       no_plan: { Args: never; Returns: boolean[] }
       num_failed: { Args: never; Returns: number }
       os_name: { Args: never; Returns: string }

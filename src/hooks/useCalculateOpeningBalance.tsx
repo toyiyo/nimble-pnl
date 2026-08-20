@@ -65,34 +65,19 @@ export const useCalculateOpeningBalance = () => {
 
       if (equityError) throw equityError;
 
-      // Step 6: Get earliest transaction date for the journal entry date.
-      // bank_txn_entry_day holds the entry-day convention (date anchors keep
-      // the UTC day; real instants take the restaurant-local day). The
-      // client never derives the day itself.
-      const { data: earliestTxn } = await supabase
-        .from('bank_transactions')
-        .select('transaction_date')
-        .eq('restaurant_id', restaurantId)
-        .order('transaction_date', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      let openingDate = new Date().toISOString().split('T')[0];
-      if (earliestTxn?.transaction_date) {
-        const { data: restaurant, error: tzError } = await supabase
-          .from('restaurants')
-          .select('timezone')
-          .eq('id', restaurantId)
-          .single();
-        if (tzError) throw tzError;
-
-        const { data: entryDay, error: entryDayError } = await supabase.rpc(
-          'bank_txn_entry_day',
-          { p_ts: earliestTxn.transaction_date, p_tz: restaurant.timezone },
-        );
-        if (entryDayError) throw entryDayError;
-        openingDate = entryDay ?? openingDate;
-      }
+      // Step 6: Get the entry day for the opening balance.
+      // min_bank_txn_entry_day returns the minimum derived entry day
+      // across the restaurant's transactions. The minimum raw timestamp
+      // is not enough: a date anchor keeps its UTC day while a later
+      // instant can land one local day earlier. The server derives the
+      // day; the client never does. NULL means no readable transaction:
+      // fall back to the current UTC day.
+      const { data: minEntryDay, error: minEntryDayError } = await supabase.rpc(
+        'min_bank_txn_entry_day',
+        { p_restaurant_id: restaurantId },
+      );
+      if (minEntryDayError) throw minEntryDayError;
+      const openingDate = minEntryDay ?? new Date().toISOString().split('T')[0];
 
       // Step 7: Check if opening balance already exists
       const { data: existingEntry } = await supabase

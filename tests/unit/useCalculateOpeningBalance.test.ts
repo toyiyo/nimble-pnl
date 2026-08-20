@@ -37,8 +37,6 @@ function chain(response: unknown) {
   return proxy;
 }
 
-const EARLIEST_TS = '2026-02-02T03:30:00+00:00';
-
 function wrapper({ children }: { children: React.ReactNode }) {
   return React.createElement(
     QueryClientProvider,
@@ -52,12 +50,11 @@ describe('useCalculateOpeningBalance entry day', () => {
   let upsertedBoundary: Record<string, unknown> | null;
   let tableCalls: Record<string, number>;
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    insertedEntry = null;
-    upsertedBoundary = null;
+  // The from-mock throws on any table or extra call the hook must not
+  // make. bank_transactions may be queried exactly once (the net-change
+  // sum); the entry day comes from the min_bank_txn_entry_day RPC.
+  function installFromMock() {
     tableCalls = {};
-
     mocks.from.mockImplementation((table: string) => {
       tableCalls[table] = (tableCalls[table] ?? 0) + 1;
       const n = tableCalls[table];
@@ -69,26 +66,20 @@ describe('useCalculateOpeningBalance entry day', () => {
       }
       if (table === 'bank_transactions' && n === 1) {
         return chain({
-          data: [{ amount: 200, transaction_date: EARLIEST_TS }],
+          data: [{ amount: 200, transaction_date: '2026-02-01T00:00:00+00:00' }],
           error: null,
         });
-      }
-      if (table === 'bank_transactions') {
-        return chain({ data: { transaction_date: EARLIEST_TS }, error: null });
       }
       if (table === 'chart_of_accounts' && n === 1) {
         return chain({ data: { id: 'cash-id', account_name: 'Cash' }, error: null });
       }
-      if (table === 'chart_of_accounts') {
+      if (table === 'chart_of_accounts' && n === 2) {
         return chain({ data: { id: 'equity-id', account_name: 'Equity' }, error: null });
-      }
-      if (table === 'restaurants') {
-        return chain({ data: { timezone: 'America/New_York' }, error: null });
       }
       if (table === 'journal_entries' && n === 1) {
         return chain({ data: null, error: null });
       }
-      if (table === 'journal_entries') {
+      if (table === 'journal_entries' && n === 2) {
         return {
           insert: (payload: Record<string, unknown>) => {
             insertedEntry = payload;
@@ -96,10 +87,10 @@ describe('useCalculateOpeningBalance entry day', () => {
           },
         };
       }
-      if (table === 'journal_entry_lines') {
+      if (table === 'journal_entry_lines' && n === 1) {
         return { insert: () => chain({ error: null }) };
       }
-      if (table === 'reconciliation_boundaries') {
+      if (table === 'reconciliation_boundaries' && n === 1) {
         return {
           upsert: (payload: Record<string, unknown>) => {
             upsertedBoundary = payload;
@@ -107,94 +98,71 @@ describe('useCalculateOpeningBalance entry day', () => {
           },
         };
       }
-      throw new Error(`unexpected table: ${table}`);
+      throw new Error(`unexpected query: ${table} call ${n}`);
     });
+  }
 
+  function installRpcMock(minEntryDayResponse: unknown) {
     mocks.rpc.mockImplementation((fnName: string) => {
-      if (fnName === 'bank_txn_entry_day') {
-        return chain({ data: '2026-02-01', error: null });
+      if (fnName === 'min_bank_txn_entry_day') {
+        return chain(minEntryDayResponse);
       }
       if (fnName === 'rebuild_account_balances') {
         return chain({ data: null, error: null });
       }
       throw new Error(`unexpected rpc: ${fnName}`);
     });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    insertedEntry = null;
+    upsertedBoundary = null;
+    installFromMock();
+    installRpcMock({ data: '2026-01-31', error: null });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('derives the opening date from the bank_txn_entry_day RPC', async () => {
+  it('derives the opening date from the min_bank_txn_entry_day RPC', async () => {
     const { result } = renderHook(() => useCalculateOpeningBalance(), { wrapper });
 
     await result.current.mutateAsync('rest-1');
 
-    expect(mocks.rpc).toHaveBeenCalledWith('bank_txn_entry_day', {
-      p_ts: EARLIEST_TS,
-      p_tz: 'America/New_York',
+    // The RPC returns the minimum DERIVED day (2026-01-31), one local
+    // day before the minimum raw timestamp's UTC day (2026-02-01). The
+    // hook must use the RPC value, not order raw timestamps itself.
+    expect(mocks.rpc).toHaveBeenCalledWith('min_bank_txn_entry_day', {
+      p_restaurant_id: 'rest-1',
     });
-    expect(insertedEntry?.entry_date).toBe('2026-02-01');
-    expect(upsertedBoundary?.balance_start_date).toBe('2026-02-01');
+    expect(insertedEntry?.entry_date).toBe('2026-01-31');
+    expect(upsertedBoundary?.balance_start_date).toBe('2026-01-31');
   });
 
-  it('falls back to today when no transaction exists', async () => {
+  it('falls back to today when the restaurant has no transaction', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-20T15:00:00Z'));
-
-    tableCalls = {};
-    mocks.from.mockImplementation((table: string) => {
-      tableCalls[table] = (tableCalls[table] ?? 0) + 1;
-      const n = tableCalls[table];
-      if (table === 'bank_account_balances') {
-        return chain({
-          data: [{ current_balance: 1000, as_of_date: '2026-08-01' }],
-          error: null,
-        });
-      }
-      if (table === 'bank_transactions' && n === 1) {
-        return chain({ data: [], error: null });
-      }
-      if (table === 'bank_transactions') {
-        return chain({ data: null, error: null });
-      }
-      if (table === 'chart_of_accounts' && n === 1) {
-        return chain({ data: { id: 'cash-id', account_name: 'Cash' }, error: null });
-      }
-      if (table === 'chart_of_accounts') {
-        return chain({ data: { id: 'equity-id', account_name: 'Equity' }, error: null });
-      }
-      if (table === 'journal_entries' && n === 1) {
-        return chain({ data: null, error: null });
-      }
-      if (table === 'journal_entries') {
-        return {
-          insert: (payload: Record<string, unknown>) => {
-            insertedEntry = payload;
-            return chain({ data: { id: 'je-id' }, error: null });
-          },
-        };
-      }
-      if (table === 'journal_entry_lines') {
-        return { insert: () => chain({ error: null }) };
-      }
-      if (table === 'reconciliation_boundaries') {
-        return {
-          upsert: (payload: Record<string, unknown>) => {
-            upsertedBoundary = payload;
-            return chain({ error: null });
-          },
-        };
-      }
-      throw new Error(`unexpected table: ${table}`);
-    });
+    installRpcMock({ data: null, error: null });
 
     const { result } = renderHook(() => useCalculateOpeningBalance(), { wrapper });
 
     await result.current.mutateAsync('rest-1');
 
-    const rpcCallNames = mocks.rpc.mock.calls.map((call) => call[0]);
-    expect(rpcCallNames).not.toContain('bank_txn_entry_day');
+    expect(mocks.rpc).toHaveBeenCalledWith('min_bank_txn_entry_day', {
+      p_restaurant_id: 'rest-1',
+    });
     expect(insertedEntry?.entry_date).toBe('2026-08-20');
+  });
+
+  it('throws when the entry-day RPC fails and writes nothing', async () => {
+    installRpcMock({ data: null, error: new Error('rpc down') });
+
+    const { result } = renderHook(() => useCalculateOpeningBalance(), { wrapper });
+
+    await expect(result.current.mutateAsync('rest-1')).rejects.toThrow('rpc down');
+    expect(insertedEntry).toBeNull();
+    expect(upsertedBoundary).toBeNull();
   });
 });

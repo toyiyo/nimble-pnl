@@ -106,6 +106,21 @@ The `BEGIN … EXCEPTION` guard follows the lesson from `check_timeoff_conflict`
 fallback for a garbage timezone is the UTC day — today's behavior. The
 `COALESCE` default matches the column default `'America/Chicago'`.
 
+Performance note (reviewed 2026-08-20, decision: accept). The
+`BEGIN … EXCEPTION` block opens a subtransaction on each entry, also when
+no exception fires. A Phase 7b reviewer flagged this as a per-row cost
+inside the loops (500 rows per bulk call, 1000 rows per sweep run). The
+cost is bounded and small: a no-write subtransaction entry costs single-digit
+microseconds, so a full 1000-row sweep pays ~10 ms against its 40-second
+budget. A local benchmark of 100k calls showed the helper within 1% of a
+bare inline cast. Two more facts lower the real cost: 79% of production
+rows are date anchors and return before the exception block, and
+`restaurants.timezone` is an app-controlled column, so the exception path
+is a safety net, not a hot path. The alternative — a pre-validated-timezone
+parameter — moves validation to five call sites and reintroduces the
+multi-site duplication this design exists to delete. Keep the signature
+and the body as written.
+
 Every caller passes `restaurants.timezone` for the transaction's restaurant.
 Each SQL function loads that timezone once, with one `restaurants` lookup,
 into a local variable. The migration also grants `EXECUTE` on the helper to

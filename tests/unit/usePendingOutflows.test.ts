@@ -623,6 +623,67 @@ describe('usePendingOutflowMutations', () => {
       expect(toast.success).toHaveBeenCalledWith('Expense matched and cleared');
     });
 
+    it('invalidates the ledger queries on success', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: null,
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: null,
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
+
+      const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.confirmMatch.mutateAsync({
+          pendingOutflowId: 'po-123',
+          bankTransactionId: 'bt-456',
+        });
+      });
+
+      const invalidatedKeys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey);
+      expect(invalidatedKeys).toContainEqual(['pending-outflows']);
+      expect(invalidatedKeys).toContainEqual(['bank-transactions']);
+      expect(invalidatedKeys).toContainEqual(['pending-outflow-matches']);
+      expect(invalidatedKeys).toContainEqual(['income-statement']);
+      expect(invalidatedKeys).toContainEqual(['balance-sheet']);
+      expect(invalidatedKeys).toContainEqual(['chart-of-accounts']);
+
+      invalidateSpy.mockRestore();
+    });
+
     it('should handle errors gracefully', async () => {
       const pendingOutflowQuery = {
         select: vi.fn().mockReturnThis(),

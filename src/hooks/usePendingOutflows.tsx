@@ -238,6 +238,9 @@ export function usePendingOutflowMutations() {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
+      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
       toast.success(
         data.categorized
           ? 'Expense matched and cleared'

@@ -1,11 +1,33 @@
-import { test, expect } from '@playwright/test';
-import { exposeSupabaseHelpers, generateTestUser, signUpAndCreateRestaurant } from '../helpers/e2e-supabase';
+import { test, expect, type Page } from '@playwright/test';
+import {
+  exposeSupabaseHelpers,
+  generateTestUser,
+  signUpAndCreateRestaurant,
+  type E2EHelperWindow,
+} from '../helpers/e2e-supabase';
 
 /**
  * E2E: `bulk_delete_bank_transactions` must reject a caller who does not
  * belong to the target restaurant, and must still work for a caller who
  * does. Guards supabase/migrations/20260820120000_bank_delete_rpcs_membership_guard.sql.
  */
+
+// True when a `bank_transactions` row with `txnId` still exists. Shared by
+// both the pre-attack and post-delete checks below, so the two assertions
+// stay in sync with each other.
+async function transactionExists(page: Page, txnId: string): Promise<boolean> {
+  return page.evaluate(async (id: string) => {
+    const supabase = (window as E2EHelperWindow).__supabase;
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data);
+  }, txnId);
+}
+
 test('bulk_delete_bank_transactions rejects a caller from another restaurant', async ({
   page,
   browser,
@@ -15,11 +37,11 @@ test('bulk_delete_bank_transactions rejects a caller from another restaurant', a
   await signUpAndCreateRestaurant(page, userA);
   await exposeSupabaseHelpers(page);
 
-  const restaurantIdA = await page.evaluate(() => (window as any).__getRestaurantId()); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const restaurantIdA = await page.evaluate(() => (window as E2EHelperWindow).__getRestaurantId());
   expect(restaurantIdA).toBeTruthy();
 
   const transactionId = await page.evaluate(async (restaurantId: string) => {
-    const supabase = (window as any).__supabase; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const supabase = (window as E2EHelperWindow).__supabase;
 
     const stripeAccountId = `test-bank-${crypto.randomUUID()}`;
     const { data: bank, error: bankError } = await supabase
@@ -62,7 +84,7 @@ test('bulk_delete_bank_transactions rejects a caller from another restaurant', a
 
   const attackResult = await userBPage.evaluate(
     async ({ txnId, restaurantId }: { txnId: string; restaurantId: string }) => {
-      const supabase = (window as any).__supabase; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const supabase = (window as E2EHelperWindow).__supabase;
       const { data, error } = await supabase.rpc('bulk_delete_bank_transactions', {
         p_transaction_ids: [txnId],
         p_restaurant_id: restaurantId,
@@ -78,23 +100,14 @@ test('bulk_delete_bank_transactions rejects a caller from another restaurant', a
   await userBContext.close();
 
   // User A's transaction survived the attack.
-  const stillExists = await page.evaluate(async (txnId: string) => {
-    const supabase = (window as any).__supabase; // eslint-disable-line @typescript-eslint/no-explicit-any
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .select('id')
-      .eq('id', txnId)
-      .maybeSingle();
-    if (error) throw error;
-    return Boolean(data);
-  }, transactionId);
+  const stillExists = await transactionExists(page, transactionId);
   expect(stillExists).toBe(true);
 
   // User A deletes their own transaction through the same RPC: this must
   // still succeed, so the guard does not block the legitimate owner.
   const ownResult = await page.evaluate(
     async ({ txnId, restaurantId }: { txnId: string; restaurantId: string }) => {
-      const supabase = (window as any).__supabase; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const supabase = (window as E2EHelperWindow).__supabase;
       const { data, error } = await supabase.rpc('bulk_delete_bank_transactions', {
         p_transaction_ids: [txnId],
         p_restaurant_id: restaurantId,
@@ -108,15 +121,6 @@ test('bulk_delete_bank_transactions rejects a caller from another restaurant', a
   expect(ownResult.data?.success).toBe(true);
   expect(ownResult.data?.deleted_count).toBe(1);
 
-  const goneAfterOwnerDelete = await page.evaluate(async (txnId: string) => {
-    const supabase = (window as any).__supabase; // eslint-disable-line @typescript-eslint/no-explicit-any
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .select('id')
-      .eq('id', txnId)
-      .maybeSingle();
-    if (error) throw error;
-    return Boolean(data);
-  }, transactionId);
+  const goneAfterOwnerDelete = await transactionExists(page, transactionId);
   expect(goneAfterOwnerDelete).toBe(false);
 });

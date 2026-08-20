@@ -1,11 +1,13 @@
 -- File: supabase/tests/65_bank_delete_rpcs_membership_guard.sql
--- Description: RED-phase pgTAP tests for the missing membership guard on the
--- four bank-delete RPCs (delete_bank_transaction, bulk_delete_bank_transactions,
--- restore_deleted_transaction, permanently_delete_tombstone). Today none of
--- these functions check that the caller belongs to p_restaurant_id, so a user
--- from a different restaurant can delete, bulk-delete, restore, or purge
--- another tenant's bank data. Every throws_ok test below must fail against
--- the current schema (the attacker calls succeed today). See
+-- Description: pgTAP tests for the membership guard on the four bank-delete
+-- RPCs (delete_bank_transaction, bulk_delete_bank_transactions,
+-- restore_deleted_transaction, permanently_delete_tombstone). Each function
+-- must check caller membership on p_restaurant_id before it deletes,
+-- bulk-deletes, restores, or purges bank data. Without the check, a user
+-- from a different restaurant could do each of these to another tenant's
+-- bank data. The guard lives in
+-- supabase/migrations/20260820120000_bank_delete_rpcs_membership_guard.sql.
+-- These throws_ok tests pass against the current schema. See
 -- docs/superpowers/specs/2026-08-20-bank-delete-rpcs-membership-guard-design.md.
 
 BEGIN;

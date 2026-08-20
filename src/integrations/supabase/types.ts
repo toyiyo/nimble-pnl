@@ -10701,6 +10701,14 @@ export type Database = {
         }[]
       }
       builtin_role_id_for: { Args: { p_role: string }; Returns: string }
+      bulk_categorize_bank_transactions: {
+        Args: {
+          p_category_id: string
+          p_restaurant_id: string
+          p_transaction_ids: string[]
+        }
+        Returns: Json
+      }
       bulk_delete_bank_transactions: {
         Args: { p_restaurant_id: string; p_transaction_ids: string[] }
         Returns: Json

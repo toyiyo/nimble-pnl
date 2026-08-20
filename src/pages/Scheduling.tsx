@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useEmployees } from '@/hooks/useEmployees';
 import { FeatureGate } from '@/components/subscription';
@@ -224,6 +225,13 @@ const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const { hasCapability, isResolved } = usePermissions();
+  // Gate for the manager trade surfaces (tab + approval queue). Matches the
+  // server-side capability the widened trade-visibility RLS policy checks
+  // (docs/superpowers/specs/2026-08-20-trade-approval-area-grant-design.md
+  // §3), so a chef with only `view:scheduling` no longer sees a tab that
+  // leads to a queue the server would reject their actions on anyway.
+  const canManageSchedule = isResolved && hasCapability('edit:scheduling');
   // Only an owner or a manager can post a trade for an employee. This mirrors
   // the create_shift_trade_for_employee RPC audience, so the offer action never
   // shows for a role the RPC would reject (e.g. operations_manager).
@@ -249,6 +257,7 @@ const Scheduling = () => {
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
   const { guardShiftChange, notifyAfterDeferredCommit, dialog: publishedShiftChangeDialog } =
     usePublishedShiftGuard();
+  const [activeTab, setActiveTab] = useState('schedule');
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
@@ -294,6 +303,16 @@ const Scheduling = () => {
       setUnpublishNotify(true);
     }
   }, [unpublishDialogOpen]);
+
+  // The trades tab hides for a viewer without edit:scheduling. If that
+  // viewer is on the trades tab when the gate closes (role change, or the
+  // capability resolves after first paint), fall back to the schedule tab
+  // instead of showing a blank panel.
+  useEffect(() => {
+    if (activeTab === 'trades' && !canManageSchedule) {
+      setActiveTab('schedule');
+    }
+  }, [activeTab, canManageSchedule]);
 
   // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
   // and weekDayKeys/weekTimeOff memos are stable across drag/hover/selection re-renders.
@@ -878,7 +897,7 @@ const Scheduling = () => {
       />
 
       {/* Tabs for Schedule, Time-Off, and Availability */}
-      <Tabs defaultValue="schedule" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="bg-muted/50 p-1 h-auto gap-1">
           <TabsTrigger
             value="schedule"
@@ -902,18 +921,20 @@ const Scheduling = () => {
             <CalendarClock className="h-4 w-4" />
             <span className="hidden sm:inline">Availability</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="trades"
-            className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2 relative"
-          >
-            <ArrowLeftRight className="h-4 w-4" />
-            <span className="hidden sm:inline">Shift Trades</span>
-            {pendingTradeCount > 0 && (
-              <Badge className="ml-1 h-5 min-w-5 px-1.5 bg-warning text-warning-foreground text-[10px] font-bold animate-pulse">
-                {pendingTradeCount}
-              </Badge>
-            )}
-          </TabsTrigger>
+          {canManageSchedule && (
+            <TabsTrigger
+              value="trades"
+              className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2 relative"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+              <span className="hidden sm:inline">Shift Trades</span>
+              {pendingTradeCount > 0 && (
+                <Badge className="ml-1 h-5 min-w-5 px-1.5 bg-warning text-warning-foreground text-[10px] font-bold animate-pulse">
+                  {pendingTradeCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="planner"
             aria-label="Planner"
@@ -1629,33 +1650,35 @@ const Scheduling = () => {
         </TabsContent>
 
         {/* Shift Trades Tab */}
-        <TabsContent value="trades">
-          <Card className="border-border/50 overflow-hidden">
-            <CardHeader className="bg-gradient-to-r from-muted/30 via-muted/50 to-muted/30 border-b border-border/50 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-warning/10">
-                  <ArrowLeftRight className="h-5 w-5 text-warning" />
+        {canManageSchedule && (
+          <TabsContent value="trades">
+            <Card className="border-border/50 overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-muted/30 via-muted/50 to-muted/30 border-b border-border/50 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-warning/10">
+                    <ArrowLeftRight className="h-5 w-5 text-warning" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      Shift Trade Requests
+                      {pendingTradeCount > 0 && (
+                        <Badge className="bg-warning/15 text-warning border border-warning/30 text-xs">
+                          {pendingTradeCount} pending
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-sm">
+                      Review and approve shift swap requests from your team
+                    </CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    Shift Trade Requests
-                    {pendingTradeCount > 0 && (
-                      <Badge className="bg-warning/15 text-warning border border-warning/30 text-xs">
-                        {pendingTradeCount} pending
-                      </Badge>
-                    )}
-                  </CardTitle>
-                  <CardDescription className="text-sm">
-                    Review and approve shift swap requests from your team
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <TradeApprovalQueue />
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </CardHeader>
+              <CardContent className="p-0">
+                <TradeApprovalQueue />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="planner">
           {restaurantId && (

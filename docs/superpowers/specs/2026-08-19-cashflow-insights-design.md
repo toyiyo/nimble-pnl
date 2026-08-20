@@ -62,7 +62,11 @@ style. The user must:
   `--destructive` tokens exist (src/index.css:32 and src/index.css:29).
 - An E2E pattern for the seed of `connected_banks`, `bank_account_balances`,
   and `bank_transactions` exists
-  (tests/e2e/bank-transaction-filtering.spec.ts:36-90).
+  (tests/e2e/bank-transaction-filtering.spec.ts:36-176). The
+  `bank_transactions` insert sits at
+  tests/e2e/bank-transaction-filtering.spec.ts:111-176.
+- Sibling hooks page long reads with `.range()`
+  (src/hooks/useBankTransactions.tsx:286).
 
 ## Lessons applied (Phase 0)
 
@@ -123,6 +127,16 @@ One query per (restaurant, from, to, bankAccount) key:
 - Date window: from `min(period.from, startOfMonth(subMonths(period.to, 4)))`
   to `period.to`. The wide window feeds the three-month comparison in the
   narrative. The visual aggregates use only rows inside the period.
+- **Paging**: PostgREST caps a response at 1000 rows. The query orders by
+  `transaction_date` ascending and pages with `.range()` in 1000-row pages,
+  the same pattern as src/hooks/useBankTransactions.tsx:286. Hard stop at
+  20 pages (20,000 rows); above the stop, the hook sets a `truncated` flag
+  and the view shows a notice.
+- RLS coupling: the embed on `chart_of_accounts` works because
+  `view:transactions` and `view:chart_of_accounts` map to the same role set
+  today. If the two capabilities diverge, the embed returns `category: null`
+  for the excluded roles without an error. The aggregation folds such rows
+  into `Uncategorized`, so the failure stays visible, not silent.
 - React Query options: `staleTime: 30000`, `refetchOnWindowFocus: true`
   (CLAUDE.md data-fetch rule).
 
@@ -156,7 +170,11 @@ Input: rows + period + interval. Output:
   3. **Top source change**: the payee with the largest inflow in the last
      full calendar month, against that payee's mean over the three preceding
      months. Emit only when the delta is 20% or more.
-  An insight that fails its data threshold does not render.
+  All time anchors ("trailing 90 days", "last full calendar month") anchor
+  to `period.to`, not to today, so a historical period reads correctly.
+  An insight that fails its data threshold does not render. When zero
+  insights pass, the panel shows one line: "No notable changes for this
+  period."
 
 Interval default: `day` for periods up to 31 days, `week` up to 120 days,
 `month` above. The user can override with a Select.
@@ -166,10 +184,13 @@ Interval default: `day` for periods up to 31 days, `week` up to 120 days,
 **TimelineBrush** — a horizontal rail with month tick labels over the domain
 `[startOfMonth(subMonths(today, 23)), endOfDay(today)]`, capped at the
 earliest transaction when known. Two thumbs (Radix `SliderPrimitive` with a
-two-value array), step = one day. On commit (`onValueCommit`), it calls
-`onPeriodChange` with `type: 'custom'`. When the period changes from the
-presets or the picker, the thumbs follow. Both thumbs get `aria-label`s
-("Start date", "End date").
+two-value array). Thumb size is at least `h-6 w-6` (24px) to meet the WCAG
+2.5.8 target-size minimum. Step = one day at `sm` and above; step = seven
+days below `sm`, where one day maps to under half a pixel. Month tick
+labels show every month at `lg` and above, every third month below. On
+commit (`onValueCommit`), it calls `onPeriodChange` with `type: 'custom'`.
+When the period changes from the presets or the picker, the thumbs follow.
+Both thumbs get `aria-label`s ("Start date", "End date").
 
 **CashFlowHeadline** — three figures in one row: Net cashflow (large),
 Money in, Money out. Typography per CLAUDE.md scale. Negative net renders
@@ -184,7 +205,7 @@ text (lesson 2026-07-22).
 
 **CashFlowChart** — right column. Controls:
 - Cashflow filter Select: `All cashflow` | `Exclude transfers`.
-- Mode segmented control (three icon+label buttons): `Flow` (Sankey),
+- Mode control: a shadcn `ToggleGroup` with three items: `Flow` (Sankey),
   `By category` (stacked bars, positive up / negative down), `In vs out`
   (paired bars, out negated below zero).
 - Interval Select: Day / Week / Month (hidden in Flow mode).
@@ -192,8 +213,9 @@ Bars use `hsl(var(--chart-N))` fills; the in-vs-out mode uses
 `--success` / `--destructive`. Tooltip follows the existing token style
 (src/components/banking/CashFlowTab.tsx:141-147). Each mode renders inside
 `role="img"` with an `aria-label` built from the same aggregate strings.
-Loading renders `Skeleton`; error renders retry card; empty renders an
-empty state (CLAUDE.md three-state rule).
+Under every mode, one visible caption states the period totals in a
+sentence; the chart's `aria-describedby` points at it. This gives the
+Sankey a fuller description than one label.
 
 **MoneyBreakdownTable** — two cards side by side ("Money in", "Money out").
 Each card: total, a two-option underline tab (Source|Category — Recipient|
@@ -214,6 +236,13 @@ Single column below `lg`. The old metric cards, pie chart, and volatility
 gauge leave this tab. `BankingIntelligenceDashboard` and
 `FinancialIntelligence` gain the `onPeriodChange` prop thread.
 
+State gate: `CashFlowTab` gates the whole composition on the single
+`useCashFlowInsights` result. Loading renders `Skeleton` blocks in the
+final layout shape. Error renders one retry card. Zero transactions in the
+period renders one empty state. Child components receive data only
+(CLAUDE.md three-state rule). When the hook reports `truncated`, the tab
+shows one notice line above the headline.
+
 ## Visual direction (frontend-design)
 
 Refined-minimal, Apple/Notion per CLAUDE.md. The identity of the view is the
@@ -224,18 +253,24 @@ tokens. Motion: one staggered fade-in on load (existing `animate-fade-in`
 utility, src/components/banking/CashFlowTab.tsx:81); bars animate on mount via
 Recharts defaults. No gradients, no decorative chrome.
 
+The net figure uses `text-[28px] font-semibold tracking-tight`. This is a
+deliberate exception to the CLAUDE.md typography scale, for the one
+headline metric only. All other text stays on the scale.
+
 ## Tests
 
 - `tests/unit/cashflowInsights.test.ts` — bucket math, transfer folding,
   payee fallback order, top-N folding, percent math, subscription detection
   (positive + cadence-miss negative), revenue delta vs three-month mean,
-  top-source threshold, interval default.
+  top-source threshold, interval default, zero-row input (empty aggregates,
+  zero insights), time anchors at `period.to`.
 - `tests/e2e/financial-intelligence-cashflow.spec.ts` — seed a connected
   bank, two accounts, and transactions across four months (pattern:
-  tests/e2e/bank-transaction-filtering.spec.ts:36-90). Assert: headline
+  tests/e2e/bank-transaction-filtering.spec.ts:36-176). Assert: headline
   totals; narrative text visible; mode switch renders category bars and
   in-out bars; breakdown tab switch (Source → Category); bank-account filter
-  changes the totals.
+  changes the totals; the empty state shows for a period with no
+  transactions.
 
 ## Out of scope
 

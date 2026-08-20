@@ -232,11 +232,13 @@ const Scheduling = () => {
   // §3), so a chef with only `view:scheduling` no longer sees a tab that
   // leads to a queue the server would reject their actions on anyway.
   const canManageSchedule = isResolved && hasCapability('edit:scheduling');
-  // Only an owner or a manager can post a trade for an employee. This mirrors
-  // the create_shift_trade_for_employee RPC audience, so the offer action never
-  // shows for a role the RPC would reject (e.g. operations_manager).
-  const canOfferTrade =
-    selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
+  // Same capability as canManageSchedule. This mirrors the
+  // create_shift_trade_for_employee RPC audience
+  // (supabase/migrations/20260820120000_trade_approval_area_grant.sql),
+  // which now checks edit:scheduling instead of a hardcoded owner/manager
+  // role, so the offer action shows for every role the RPC would accept
+  // (operations_manager and a custom scheduling@manage role included).
+  const canOfferTrade = canManageSchedule;
   // `safeTz`, not `|| 'UTC'` — this value now feeds WRITE paths (drag-copy,
   // copy-week, planner create/update) where it decides the UTC instant that
   // gets stored, not just how a cell is labelled. `restaurants.timezone` is

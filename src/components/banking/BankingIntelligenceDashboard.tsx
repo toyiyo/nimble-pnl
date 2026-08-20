@@ -13,11 +13,13 @@ import type { Period } from "@/components/PeriodSelector";
 interface BankingIntelligenceDashboardProps {
   selectedPeriod: Period;
   selectedBankAccount: string;
+  onPeriodChange: (period: Period) => void;
 }
 
 export function BankingIntelligenceDashboard({
   selectedPeriod,
   selectedBankAccount,
+  onPeriodChange,
 }: BankingIntelligenceDashboardProps) {
   const [activeTab, setActiveTab] = useState("cash-flow");
 
@@ -57,7 +59,11 @@ export function BankingIntelligenceDashboard({
         </TabsList>
 
         <TabsContent value="cash-flow" className="mt-6">
-          <CashFlowTab selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
+          <CashFlowTab
+            selectedPeriod={selectedPeriod}
+            selectedBankAccount={selectedBankAccount}
+            onPeriodChange={onPeriodChange}
+          />
         </TabsContent>
 
         <TabsContent value="revenue" className="mt-6">

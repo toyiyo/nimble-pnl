@@ -54,6 +54,7 @@ export default function FinancialIntelligence() {
           <BankingIntelligenceDashboard
             selectedPeriod={selectedPeriod}
             selectedBankAccount={selectedBankAccount}
+            onPeriodChange={setSelectedPeriod}
           />
         </FeatureGate>
       </div>

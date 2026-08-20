@@ -152,11 +152,11 @@ SELECT is(
   'Scenario 1: custom role at scheduling:manage sees all four restaurant trades via the manager SELECT policy'
 );
 
+DELETE FROM shift_trades WHERE id = '65000000-0000-0000-0000-000000000053';
+
 SELECT is(
-  (WITH deleted AS (
-    DELETE FROM shift_trades WHERE id = '65000000-0000-0000-0000-000000000053' RETURNING id
-  ) SELECT COUNT(*) FROM deleted),
-  1::bigint,
+  (SELECT COUNT(*) FROM shift_trades WHERE id = '65000000-0000-0000-0000-000000000053'),
+  0::bigint,
   'Scenario 1: custom role at scheduling:manage can delete a trade'
 );
 
@@ -192,11 +192,11 @@ SELECT is(
   'Scenario 2: custom role at scheduling:view only, a non-participant, sees zero restaurant trades'
 );
 
+DELETE FROM shift_trades WHERE id = '65000000-0000-0000-0000-000000000054';
+
 SELECT is(
-  (WITH deleted AS (
-    DELETE FROM shift_trades WHERE id = '65000000-0000-0000-0000-000000000054' RETURNING id
-  ) SELECT COUNT(*) FROM deleted),
-  0::bigint,
+  (SELECT COUNT(*) FROM shift_trades WHERE id = '65000000-0000-0000-0000-000000000054'),
+  1::bigint,
   'Scenario 2: custom role at scheduling:view only deletes zero rows'
 );
 

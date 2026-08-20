@@ -141,9 +141,11 @@ SELECT is(
 );
 
 -- Case 7: a row on the day before p_start_date counts in comparison, not daily.
+-- The comparison window is 3 days (same length as the period), so it also
+-- reaches back to 2026-06-12 and picks up the case 6 fixture (75.00).
 SELECT is(
   get_cash_flow_metrics('c1000000-0000-0000-0000-000000000001'::uuid, '2026-06-15'::date, '2026-06-17'::date, NULL),
-  '{"daily": [], "comparison": {"inflow": 60.00, "outflow": 0}}'::jsonb,
+  '{"daily": [], "comparison": {"inflow": 135.00, "outflow": 0}}'::jsonb,
   'a row the day before p_start_date lands in comparison, not daily'
 );
 

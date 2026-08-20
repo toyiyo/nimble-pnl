@@ -11,8 +11,21 @@ table update. It never creates a journal entry. The income statement reads
 only `journal_entry_lines`. A matched expense therefore shows $0.00 on the
 income statement.
 
-Production evidence (2026-08-19): 137 categorized transactions carry
-`matched_at` and have no journal entry. The absolute total is $103,148.41.
+Production evidence (2026-08-19, from the task briefing): 137 categorized
+transactions carry `matched_at` and have no journal entry. The absolute
+total is $103,148.41. Reproduce with:
+
+```sql
+SELECT count(*), sum(abs(bt.amount))
+FROM bank_transactions bt
+WHERE bt.is_categorized
+  AND bt.matched_at IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM journal_entries je
+    WHERE je.reference_type = 'bank_transaction'
+      AND je.reference_id = bt.id
+  );
+```
 
 The backfill for historical rows ships on the branch
 `fix/bulk-categorize-journal-entries`. This task stops the continuing
@@ -96,23 +109,32 @@ Decision: **A**.
    [usePendingOutflows.tsx:142-159](../../../src/hooks/usePendingOutflows.tsx)).
 2. Fetch the bank transaction `notes` (unchanged shape,
    [usePendingOutflows.tsx:161-169](../../../src/hooks/usePendingOutflows.tsx)).
-3. **If the outflow has a `category_id`:** call the RPC first:
+3. Compute the merged notes with a containment guard:
+   - When the bank transaction `notes` already contains the outflow
+     `notes`, the merged value is the bank transaction `notes` unchanged.
+   - Otherwise join the two non-empty values with `\n\n` (current merge,
+     [usePendingOutflows.tsx:189-191](../../../src/hooks/usePendingOutflows.tsx)).
+   The guard makes a re-merge a no-op, so a retry cannot duplicate text.
+4. **If the outflow has a `category_id`:** call the RPC first:
    ```ts
    supabase.rpc('categorize_bank_transaction', {
      p_transaction_id: bankTransactionId,
      p_category_id: pendingOutflow.category_id,
-     p_description: null,
+     p_description: mergedNotes ?? null,
      p_normalized_payee: null,
      p_supplier_id: null,
    })
    ```
-   On error, throw. Nothing else has changed yet.
-4. Direct update to `bank_transactions` with **metadata only**:
+   On error, throw. Nothing else has changed yet. The RPC writes the
+   merged notes and the journal entry in one transaction
+   ([...sql:239](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql)).
+5. Direct update to `bank_transactions` with **metadata only**:
    `matched_at`, `suggested_category_id` (only when the outflow has a
-   category), merged `notes` (only when non-empty), and
-   `expense_invoice_upload_id` (only when an upload exists).
-   No `is_categorized`. No `category_id`.
-5. Update the pending outflow: `status: 'cleared'`,
+   category), and `expense_invoice_upload_id` (only when an upload
+   exists). No `is_categorized`. No `category_id`. On the category path,
+   no `notes` — the RPC already wrote them. On the no-category path,
+   include the merged `notes` (only when non-empty) in this update.
+6. Update the pending outflow: `status: 'cleared'`,
    `linked_bank_transaction_id`, `cleared_at` (unchanged,
    [usePendingOutflows.tsx:210-220](../../../src/hooks/usePendingOutflows.tsx)).
 
@@ -127,22 +149,32 @@ fully pending. The user sees one clear error.
 
 ### Retry safety
 
-If step 4 or 5 fails after the RPC commits, the transaction is categorized
-with a correct journal entry, and the outflow stays pending. A retry calls
-the RPC again with the same category. The RPC short-circuits as a no-op and
-preserves metadata
+If step 5 or 6 fails after the RPC commits, the transaction is categorized
+with a correct journal entry and the merged notes, and the outflow stays
+pending. A retry calls the RPC again with the same category. The RPC
+short-circuits as a no-op and preserves metadata
 ([...sql:89-113](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql)).
-Steps 4 and 5 then complete the match. The flow is safe to re-run.
+Steps 5 and 6 then complete the match. The flow is safe to re-run.
+
+The retry cannot lose or duplicate notes (Phase 2.5 supabase reviewer,
+major finding, fixed here):
+
+- The RPC writes the merged notes atomically with the categorize. No stop
+  state leaves `notes` cleared.
+- On retry, step 2 re-fetches notes that already contain the outflow
+  notes. The step-3 containment guard returns them unchanged, and the
+  RPC no-op branch preserves them with COALESCE
+  ([...sql:95-105](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql)).
 
 ### Notes handling
 
 The RPC main path writes `notes = p_description` without COALESCE
 ([...sql:239](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql)).
-The hook passes `p_description: null`, so the RPC clears `notes` for one
-step. Step 4 writes the merged notes back in the same mutation. The hook
-reads the pre-RPC `notes` in step 2, so no data is lost. When both notes are
-empty, the merged value is empty and step 4 skips the field; the cleared
-NULL equals the prior NULL.
+The hook therefore always passes the full desired notes value
+(`mergedNotes ?? null`) as `p_description`. When both notes are empty, the
+RPC writes NULL over NULL — no change. When only the bank transaction has
+notes, the merged value equals them — no change. The direct update no
+longer carries `notes` on the category path.
 
 ### No-category path (behavior change)
 
@@ -188,10 +220,17 @@ Keep the existing three keys.
 2. **Guard errors block the whole match.** A reconciled or closed-period
    transaction cannot take a metadata-only match. A silent metadata-only
    match would recreate the journal-less state this task deletes.
-3. **Notes clear-then-restore window.** One RPC step clears `notes` before
-   step 4 restores the merged value. The window is one round trip inside one
-   mutation. Accepted; approach B would delete the window at the cost of a
-   migration.
+3. **The journal entry description carries the merged notes.** The RPC
+   uses `p_description` for the journal entry description with a fallback
+   to the transaction description
+   ([...sql:174](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql),
+   [...sql:215](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql)).
+   When notes exist, the entry description shows them instead of the raw
+   transaction description. Accepted: the notes name the matched expense,
+   which is more informative in the ledger. This also fills
+   `transaction_reclassifications.reason` with the notes on a reclassify
+   ([...sql:191-197](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql));
+   with no notes, `reason` stays NULL (reviewer minor finding, accepted).
 
 ## Test plan
 
@@ -209,7 +248,11 @@ Add cases:
    outflow update; toast shows the mapped copy.
 4. No-category outflow → no RPC call; update contains only metadata; outflow
    cleared.
-5. Notes merge preserved → merged notes still land in the direct update.
+5. Notes merge preserved → the merged notes go to the RPC as
+   `p_description`; the direct update carries no `notes` on the category
+   path.
+6. Containment guard → when the bank notes already contain the outflow
+   notes, the merged value equals the bank notes (no duplication).
 
 ### E2E (`tests/e2e/pending-outflow-match.spec.ts`, new)
 

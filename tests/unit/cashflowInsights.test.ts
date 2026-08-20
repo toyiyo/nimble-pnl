@@ -6,6 +6,7 @@ import {
   payeeFor,
   topCategories,
   breakdown,
+  buildSankey,
   type CashFlowRow,
   type CashFlowPeriod,
 } from '@/lib/cashflowInsights';
@@ -298,5 +299,73 @@ describe('breakdown', () => {
     const rows = [makeRow({ amount: 100 })];
 
     expect(breakdown(rows, 'out', 'payee')).toEqual([]);
+  });
+});
+
+describe('buildSankey', () => {
+  it('builds left payees + Transfers in, a Money in center, and right payees + Transfers out + Net savings', () => {
+    const rows = [
+      makeRow({ amount: 300, normalized_payee: 'Client A' }),
+      makeRow({ amount: 200, normalized_payee: 'Client B' }),
+      makeRow({ amount: 50, normalized_payee: 'Bank Transfer', is_transfer: true }),
+      makeRow({ amount: -120, normalized_payee: 'Vendor X' }),
+      makeRow({ amount: -80, normalized_payee: 'Vendor Y' }),
+      makeRow({ amount: -30, normalized_payee: 'Bank Transfer', is_transfer: true }),
+    ];
+
+    const sankey = buildSankey(rows);
+
+    expect(sankey.nodes).toEqual([
+      { name: 'Money in' },
+      { name: 'Client A' },
+      { name: 'Client B' },
+      { name: 'Transfers in' },
+      { name: 'Vendor X' },
+      { name: 'Vendor Y' },
+      { name: 'Transfers out' },
+      { name: 'Net savings' },
+    ]);
+    expect(sankey.links).toEqual([
+      { source: 1, target: 0, value: 300 },
+      { source: 2, target: 0, value: 200 },
+      { source: 3, target: 0, value: 50 },
+      { source: 0, target: 4, value: 120 },
+      { source: 0, target: 5, value: 80 },
+      { source: 0, target: 6, value: 30 },
+      { source: 0, target: 7, value: 320 },
+    ]);
+  });
+
+  it('folds payees beyond the top five into Other income and Other expenses', () => {
+    const rows = [
+      ...Array.from({ length: 7 }, (_, i) => makeRow({ amount: 100 - i * 5, normalized_payee: `Client ${i}` })),
+      ...Array.from({ length: 7 }, (_, i) => makeRow({ amount: -(90 - i * 5), normalized_payee: `Vendor ${i}` })),
+    ];
+
+    const sankey = buildSankey(rows);
+
+    expect(sankey.nodes.map((n) => n.name)).toContain('Other income');
+    expect(sankey.nodes.map((n) => n.name)).toContain('Other expenses');
+  });
+
+  it('conserves flow: the sum of left links equals the sum of right links', () => {
+    const rows = [
+      makeRow({ amount: 400, normalized_payee: 'Client A' }),
+      makeRow({ amount: 250, normalized_payee: 'Client B' }),
+      makeRow({ amount: 90, normalized_payee: 'Client C' }),
+      makeRow({ amount: 60, normalized_payee: 'Bank Transfer', is_transfer: true }),
+      makeRow({ amount: -180, normalized_payee: 'Vendor X' }),
+      makeRow({ amount: -95, normalized_payee: 'Vendor Y' }),
+      makeRow({ amount: -40, normalized_payee: 'Vendor Z' }),
+      makeRow({ amount: -25, normalized_payee: 'Bank Transfer', is_transfer: true }),
+    ];
+
+    const sankey = buildSankey(rows);
+    const centerIndex = sankey.nodes.findIndex((n) => n.name === 'Money in');
+
+    const leftTotal = sankey.links.filter((l) => l.target === centerIndex).reduce((sum, l) => sum + l.value, 0);
+    const rightTotal = sankey.links.filter((l) => l.source === centerIndex).reduce((sum, l) => sum + l.value, 0);
+
+    expect(leftTotal).toBe(rightTotal);
   });
 });

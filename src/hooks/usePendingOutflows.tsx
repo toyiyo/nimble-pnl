@@ -168,28 +168,41 @@ export function usePendingOutflowMutations() {
       if (btFetchError) throw btFetchError;
       if (!bankTransaction) throw new Error('Bank transaction not found');
 
-      // Prepare updates for bank transaction
+      // Merge notes. A retry that already ran the merge must not duplicate
+      // the outflow notes, so skip the merge when the bank notes already
+      // contain them.
+      const bankNotes = bankTransaction.notes as string | null;
+      const outflowNotes = pendingOutflow.notes as string | null;
+      const mergedNotes = (bankNotes && outflowNotes && bankNotes.includes(outflowNotes))
+        ? bankNotes
+        : ([bankNotes, outflowNotes].filter(Boolean).join('\n\n') || null);
+
+      // Prepare the metadata-only update for bank_transactions.
       const bankTransactionUpdates: any = {
-        is_categorized: true,
         matched_at: new Date().toISOString(),
       };
 
-      // Copy category_id from pending outflow (overrides bank transaction's existing category)
       if (pendingOutflow.category_id) {
-        bankTransactionUpdates.category_id = pendingOutflow.category_id;
-      }
+        // The RPC applies the category, writes the merged notes, and posts
+        // the matching journal entry in one database transaction. It also
+        // blocks a reconciled transaction and a closed fiscal period — the
+        // guard text in onError matches
+        // supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql.
+        const { error: categorizeError } = await supabase.rpc('categorize_bank_transaction', {
+          p_transaction_id: bankTransactionId,
+          p_category_id: pendingOutflow.category_id,
+          p_description: mergedNotes,
+          p_normalized_payee: null,
+          p_supplier_id: null,
+        });
 
-      // Copy suggested_category_id from pending outflow's category as AI suggestion
-      if (pendingOutflow.category_id) {
+        if (categorizeError) throw categorizeError;
+
+        // Copy the category as the AI suggestion. Do not set category_id
+        // or is_categorized here — the RPC above already wrote them.
         bankTransactionUpdates.suggested_category_id = pendingOutflow.category_id;
-        // Note: AI confidence and reasoning would be set here if available from invoice processing
-      }
-
-      // Merge notes: append pending outflow notes to existing bank transaction notes
-      const mergedNotes = [bankTransaction.notes, pendingOutflow.notes]
-        .filter(Boolean)
-        .join('\n\n');
-      if (mergedNotes) {
+      } else if (mergedNotes) {
+        // No category to apply through the RPC. Write the merged notes directly.
         bankTransactionUpdates.notes = mergedNotes;
       }
 
@@ -219,7 +232,7 @@ export function usePendingOutflowMutations() {
 
       if (poError) throw poError;
 
-      return { pendingOutflowId, bankTransactionId };
+      return { pendingOutflowId, bankTransactionId, categorized: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });

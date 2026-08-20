@@ -105,6 +105,7 @@ describe('usePendingOutflowMutations', () => {
         }
         return mockPendingOutflowBuilder; // fallback
       });
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
 
@@ -123,14 +124,20 @@ describe('usePendingOutflowMutations', () => {
         cleared_at: expect.any(String),
       });
 
-      // Verify bank transaction was updated with copied data
+      // Verify the RPC applied the category and the merged notes
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('categorize_bank_transaction', {
+        p_transaction_id: 'bt-456',
+        p_category_id: 'cat-456',
+        p_description: 'Bank notes\n\nExpense notes',
+        p_normalized_payee: null,
+        p_supplier_id: null,
+      });
+
+      // Verify bank transaction got a metadata-only update
       expect(mockSupabase.from).toHaveBeenCalledWith('bank_transactions');
       expect(mockBankTransactionBuilder.update).toHaveBeenCalledWith({
-        is_categorized: true,
         matched_at: expect.any(String),
-        category_id: 'cat-456', // copied from pending outflow
         suggested_category_id: 'cat-456', // copied as AI suggestion
-        notes: 'Bank notes\n\nExpense notes', // merged notes
         expense_invoice_upload_id: 'upload-789', // linked upload
       });
     });
@@ -186,6 +193,7 @@ describe('usePendingOutflowMutations', () => {
         }
         return mockBankTransactionBuilder;
       });
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
 
@@ -196,13 +204,257 @@ describe('usePendingOutflowMutations', () => {
         });
       });
 
-      // Expense category should override existing bank transaction category
+      // The category is applied through the RPC, not a direct column write
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('categorize_bank_transaction', {
+        p_transaction_id: 'bt-456',
+        p_category_id: 'cat-456',
+        p_description: 'Expense notes',
+        p_normalized_payee: null,
+        p_supplier_id: null,
+      });
+
       expect(mockBankTransactionBuilder.update).toHaveBeenCalledWith({
-        is_categorized: true,
         matched_at: expect.any(String),
-        notes: 'Expense notes', // only expense notes since bank had none
-        category_id: 'cat-456', // expense category overrides existing
         suggested_category_id: 'cat-456', // expense category overrides existing
+      });
+    });
+
+    it('calls categorize_bank_transaction with the outflow category and the merged notes', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: 'Expense notes',
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: 'Bank notes',
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.confirmMatch.mutateAsync({
+          pendingOutflowId: 'po-123',
+          bankTransactionId: 'bt-456',
+        });
+      });
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('categorize_bank_transaction', {
+        p_transaction_id: 'bt-456',
+        p_category_id: 'cat-456',
+        p_description: 'Bank notes\n\nExpense notes',
+        p_normalized_payee: null,
+        p_supplier_id: null,
+      });
+    });
+
+    it('calls the RPC before the bank_transactions update', async () => {
+      const callOrder: string[] = [];
+
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: 'Expense notes',
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: 'Bank notes',
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn((_payload: unknown) => {
+          callOrder.push('update');
+          return mockBankTransactionBuilder;
+        }),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockImplementation(async () => {
+        callOrder.push('rpc');
+        return { data: null, error: null };
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.confirmMatch.mutateAsync({
+          pendingOutflowId: 'po-123',
+          bankTransactionId: 'bt-456',
+        });
+      });
+
+      expect(callOrder).toEqual(['rpc', 'update']);
+    });
+
+    it('sends a metadata-only update', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: 'Expense notes',
+        expense_invoice_uploads: [{
+          id: 'upload-789',
+          raw_file_url: 'https://example.com/file.pdf',
+          file_name: 'invoice.pdf',
+          raw_ocr_data: null,
+          field_confidence: null,
+        }],
+      };
+
+      const mockBankTransaction = {
+        notes: 'Bank notes',
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.confirmMatch.mutateAsync({
+          pendingOutflowId: 'po-123',
+          bankTransactionId: 'bt-456',
+        });
+      });
+
+      expect(mockBankTransactionBuilder.update).toHaveBeenCalledWith({
+        matched_at: expect.any(String),
+        suggested_category_id: 'cat-456',
+        expense_invoice_upload_id: 'upload-789',
+      });
+
+      const updatePayload = mockBankTransactionBuilder.update.mock.calls[0][0];
+      expect(updatePayload).not.toHaveProperty('is_categorized');
+      expect(updatePayload).not.toHaveProperty('category_id');
+      expect(updatePayload).not.toHaveProperty('notes');
+    });
+
+    it('keeps the bank notes unchanged when they already contain the outflow notes', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: 'B',
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: 'A\n\nB',
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.confirmMatch.mutateAsync({
+          pendingOutflowId: 'po-123',
+          bankTransactionId: 'bt-456',
+        });
+      });
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('categorize_bank_transaction', {
+        p_transaction_id: 'bt-456',
+        p_category_id: 'cat-456',
+        p_description: 'A\n\nB',
+        p_normalized_payee: null,
+        p_supplier_id: null,
       });
     });
 

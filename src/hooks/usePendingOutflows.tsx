@@ -245,7 +245,16 @@ export function usePendingOutflowMutations() {
       );
     },
     onError: (error) => {
-      toast.error(`Failed to confirm match: ${error.message}`);
+      // Map the categorize_bank_transaction guard errors to Banking-page
+      // copy. The raw text comes from
+      // supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql.
+      if (error.message.includes('reconciled')) {
+        toast.error('This transaction is reconciled. Reclassify it from the Banking page instead.');
+      } else if (error.message.includes('closed fiscal period')) {
+        toast.error('This transaction is in a closed fiscal period. Reopen the period before you match it.');
+      } else {
+        toast.error(`Failed to confirm match: ${error.message}`);
+      }
     },
   });
 

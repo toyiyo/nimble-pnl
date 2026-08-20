@@ -650,5 +650,192 @@ describe('usePendingOutflowMutations', () => {
 
       expect(toast.error).toHaveBeenCalledWith('Failed to confirm match: Not found');
     });
+
+    it('maps the reconciled guard', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: null,
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: null,
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockResolvedValue({
+        data: null,
+        error: {
+          message:
+            'Cannot categorize a reconciled transaction. Use reclassification instead by updating the category of an already categorized transaction.',
+        },
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.confirmMatch.mutateAsync({
+            pendingOutflowId: 'po-123',
+            bankTransactionId: 'bt-456',
+          });
+        } catch {
+          // expected: the RPC rejects with the reconciled guard
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith(
+        'This transaction is reconciled. Reclassify it from the Banking page instead.'
+      );
+      expect(mockBankTransactionBuilder.update).not.toHaveBeenCalled();
+      expect(mockPendingOutflowBuilder.update).not.toHaveBeenCalled();
+    });
+
+    it('maps the closed-period guard', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: null,
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: null,
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockResolvedValue({
+        data: null,
+        error: {
+          message: 'Cannot categorize transaction in closed fiscal period. Period closed on 2026-01-01',
+        },
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.confirmMatch.mutateAsync({
+            pendingOutflowId: 'po-123',
+            bankTransactionId: 'bt-456',
+          });
+        } catch {
+          // expected: the RPC rejects with the closed-period guard
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith(
+        'This transaction is in a closed fiscal period. Reopen the period before you match it.'
+      );
+      expect(mockBankTransactionBuilder.update).not.toHaveBeenCalled();
+      expect(mockPendingOutflowBuilder.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps the generic copy for other errors', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: null,
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: null,
+        category_id: null,
+        suggested_category_id: null,
+      };
+
+      const mockPendingOutflowBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      const mockBankTransactionBuilder = {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
+        }),
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+        if (table === 'bank_transactions') return mockBankTransactionBuilder;
+        return mockPendingOutflowBuilder;
+      });
+      mockSupabase.rpc.mockResolvedValue({
+        data: null,
+        error: { message: 'boom' },
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.confirmMatch.mutateAsync({
+            pendingOutflowId: 'po-123',
+            bankTransactionId: 'bt-456',
+          });
+        } catch {
+          // expected: the RPC rejects with an unrelated error
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to confirm match: boom');
+    });
   });
 });

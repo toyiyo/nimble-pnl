@@ -177,34 +177,40 @@ export function usePendingOutflowMutations() {
         ? bankNotes
         : ([bankNotes, outflowNotes].filter(Boolean).join('\n\n') || null);
 
+      // A bank transaction can carry a category_id with no journal entry,
+      // from a write path outside categorize_bank_transaction. Any code
+      // path that treats the transaction's existing category as ledger-
+      // backed must check this first, or it recreates a journal-less
+      // categorized state.
+      const hasJournalEntry = async () => {
+        const { data: existingEntry, error: journalCheckError } = await supabase
+          .from('journal_entries')
+          .select('id')
+          .eq('reference_type', 'bank_transaction')
+          .eq('reference_id', bankTransactionId)
+          .maybeSingle();
+
+        if (journalCheckError) throw journalCheckError;
+        return !!existingEntry;
+      };
+
       // Prepare the metadata-only update for bank_transactions.
       const bankTransactionUpdates: any = {
         matched_at: new Date().toISOString(),
       };
+
+      let categorized = false;
 
       if (pendingOutflow.category_id) {
         // The RPC returns journal_entry_id: null when the transaction
         // already has this exact category
         // (supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql:90-113).
         // That skip assumes a journal entry already exists from the first
-        // categorize. A transaction can be is_categorized with no journal
-        // entry, from a write path outside this RPC. Block the match in
-        // that case. A silent match would hide a missing journal entry
-        // (Codex review finding).
-        if (bankTransaction.category_id === pendingOutflow.category_id) {
-          const { data: existingEntry, error: journalCheckError } = await supabase
-            .from('journal_entries')
-            .select('id')
-            .eq('reference_type', 'bank_transaction')
-            .eq('reference_id', bankTransactionId)
-            .maybeSingle();
-
-          if (journalCheckError) throw journalCheckError;
-          if (!existingEntry) {
-            throw new Error(
-              'This transaction is already categorized but has no journal entry. Recategorize it on the Banking page, then match again.'
-            );
-          }
+        // categorize. Block the match when one does not.
+        if (bankTransaction.category_id === pendingOutflow.category_id && !(await hasJournalEntry())) {
+          throw new Error(
+            'This transaction is already categorized but has no journal entry. Recategorize it on the Banking page, then match again.'
+          );
         }
 
         // The RPC applies the category, writes the merged notes, and posts
@@ -225,6 +231,7 @@ export function usePendingOutflowMutations() {
         // Copy the category as the AI suggestion. Do not set category_id
         // or is_categorized here — the RPC above already wrote them.
         bankTransactionUpdates.suggested_category_id = pendingOutflow.category_id;
+        categorized = true;
       } else if (mergedNotes) {
         // No category to apply through the RPC. Write the merged notes directly.
         bankTransactionUpdates.notes = mergedNotes;
@@ -255,9 +262,12 @@ export function usePendingOutflowMutations() {
       // the cleared card (PendingOutflowCard.tsx). When the outflow had no
       // category but the matched transaction was already categorized, copy
       // that category onto the outflow so the badge does not show a false
-      // "needs category" state (sound-logic review finding).
-      if (!pendingOutflow.category_id && bankTransaction.category_id) {
+      // "needs category" state. Only copy it when a journal entry backs
+      // the transaction's category — otherwise the badge would hide the
+      // same journal-less state this task fixes.
+      if (!pendingOutflow.category_id && bankTransaction.category_id && (await hasJournalEntry())) {
         pendingOutflowUpdates.category_id = bankTransaction.category_id;
+        categorized = true;
       }
 
       const { error: poError } = await supabase
@@ -270,7 +280,7 @@ export function usePendingOutflowMutations() {
       return {
         pendingOutflowId,
         bankTransactionId,
-        categorized: !!(pendingOutflow.category_id || bankTransaction.category_id),
+        categorized,
       };
     },
     onSuccess: (data) => {

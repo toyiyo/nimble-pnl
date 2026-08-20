@@ -34,6 +34,7 @@ interface EditExpenseSheetProps {
 }
 
 export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseSheetProps) {
+  const isCleared = expense?.status === 'cleared';
   const { toast } = useToast();
   const { suppliers, createSupplier } = useSuppliers();
   const { updatePendingOutflow, deletePendingOutflow } = usePendingOutflowMutations();
@@ -374,9 +375,9 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
                 }
                 filterByTypes={['expense', 'asset', 'cogs']}
                 placeholder="Select category (expense, COGS, or asset)..."
-                disabled={expense?.status === 'cleared'}
+                disabled={isCleared}
               />
-              {expense?.status === 'cleared' && (
+              {isCleared && (
                 <p className="text-xs text-muted-foreground">
                   This expense is cleared. Change the category on the Banking page instead.
                 </p>

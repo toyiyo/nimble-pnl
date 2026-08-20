@@ -442,7 +442,7 @@ describe('usePendingOutflowMutations', () => {
       expect(toast.success).toHaveBeenCalledWith('Expense matched and cleared');
     });
 
-    it('marks a no-category outflow as categorized when the matched transaction already has one', async () => {
+    it('marks a no-category outflow as categorized when the matched transaction already has a journal entry', async () => {
       const mockPendingOutflow = {
         id: 'po-123',
         category_id: null,
@@ -456,8 +456,10 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const { mockPendingOutflowBuilder } =
-        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
+      const { mockPendingOutflowBuilder, mockJournalEntriesBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction, {
+          existingJournalEntry: { id: 'je-1' },
+        });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
 
@@ -471,6 +473,9 @@ describe('usePendingOutflowMutations', () => {
       // No category on the outflow, so the RPC never runs.
       expect(mockSupabase.rpc).not.toHaveBeenCalled();
 
+      // The journal entry check ran before the copy.
+      expect(mockJournalEntriesBuilder.select).toHaveBeenCalledWith('id');
+
       // The outflow copies the transaction's existing category so the
       // "Needs category" badge does not show a false positive.
       expect(mockPendingOutflowBuilder.update).toHaveBeenCalledWith({
@@ -481,6 +486,54 @@ describe('usePendingOutflowMutations', () => {
       });
 
       expect(toast.success).toHaveBeenCalledWith('Expense matched and cleared');
+    });
+
+    it('does not copy the category onto a no-category outflow when the matched transaction has no journal entry', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: null,
+        notes: null,
+        expense_invoice_uploads: [],
+      };
+
+      // The transaction carries a category with no backing journal entry —
+      // the same legacy state the same-category RPC guard blocks above.
+      const mockBankTransaction = {
+        notes: null,
+        category_id: 'existing-cat',
+        suggested_category_id: null,
+      };
+
+      const { mockPendingOutflowBuilder, mockJournalEntriesBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction, {
+          existingJournalEntry: null,
+        });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.confirmMatch.mutateAsync({
+          pendingOutflowId: 'po-123',
+          bankTransactionId: 'bt-456',
+        });
+      });
+
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
+      expect(mockJournalEntriesBuilder.select).toHaveBeenCalledWith('id');
+
+      // No journal entry backs the transaction's category, so the outflow
+      // does not copy it — the "Needs category" badge stays accurate.
+      expect(mockPendingOutflowBuilder.update).toHaveBeenCalledWith({
+        status: 'cleared',
+        linked_bank_transaction_id: 'bt-456',
+        cleared_at: expect.any(String),
+      });
+      const outflowUpdatePayload = mockPendingOutflowBuilder.update.mock.calls[0][0];
+      expect(outflowUpdatePayload).not.toHaveProperty('category_id');
+
+      expect(toast.success).toHaveBeenCalledWith(
+        'Expense matched. Categorize the transaction on the Banking page.'
+      );
     });
 
     it('skips the RPC when the outflow has no category', async () => {

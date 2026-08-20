@@ -530,6 +530,19 @@ export function useBankStatementImport() {
         importedCount++;
       }
 
+      // Best-effort rule run right after import. The public wrapper rejects a
+      // collaborator_accountant role and any other non-owner, non-manager
+      // caller; the 5-minute cron sweep drains the batch either way, so a
+      // failure here must not fail the import (design doc section 5.2).
+      try {
+        await supabase.rpc('apply_rules_to_bank_transactions', {
+          p_restaurant_id: selectedRestaurant.restaurant_id,
+          p_batch_limit: Math.max(importedCount, 100),
+        });
+      } catch {
+        // Ignored. The cron sweep categorizes any row this call misses.
+      }
+
       // Calculate total balance from all imported transactions for this bank
       const { data: allTransactions } = await supabase
         .from('bank_transactions')

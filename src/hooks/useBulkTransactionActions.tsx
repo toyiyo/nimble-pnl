@@ -146,8 +146,8 @@ async function rebuildBalancesAfterPartialWrite(restaurantId: string): Promise<v
     if (error) {
       console.error('Balance rebuild after a partial bulk categorize also failed', error);
     }
-  } catch (caught) {
-    console.error('Balance rebuild after a partial bulk categorize also failed', caught);
+  } catch (error_) {
+    console.error('Balance rebuild after a partial bulk categorize also failed', error_);
   }
 }
 

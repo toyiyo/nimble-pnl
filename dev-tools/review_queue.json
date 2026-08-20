@@ -112450,6 +112450,776 @@
       "created_at": "2026-08-19T18:03:21.378Z",
       "updated_at": "2026-08-19T18:03:21.378Z",
       "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "766",
+        "comment_id": 3819250857,
+        "file": "supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql",
+        "line": 114
+      },
+      "title": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Keep non-P&L transactions out of journal creation**",
+      "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Keep non-P&L transactions out of journal creation**\n\nWhen a selected row has `is_transfer = true` or a non-null `excluded_reason`, this loop still processes it because neither field is selected or filtered. These rows are explicitly excluded from accounting/P&L, and the UI permits bulk selection on the Excluded tab (`src/hooks/useBankTransactions.tsx:178`), so categorizing one now creates journal lines that appear on the income statement while leaving its exclusion flag intact. Skip these rows or explicitly clear the exclusion state before posting them.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "4ad59ca94740821c426fa532f5de3de30e49baaa",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.030Z",
+      "updated_at": "2026-08-20T07:04:27.030Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "766",
+        "comment_id": 3819250867,
+        "file": "supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql",
+        "line": 125
+      },
+      "title": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Preserve split transaction allocations during bulk categorize**",
+      "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Preserve split transaction allocations during bulk categorize**\n\nA split parent is returned on the Categorized tab (`src/hooks/useBankTransactions.tsx:172-176`) with `is_categorized = true` and `category_id = NULL`, so this test treats it as an initial categorization. The existing `bank_transaction` journal entry is then reused and all split lines are deleted at lines 197-229, while `is_split` and `bank_transaction_splits` remain unchanged. Selecting such a row therefore replaces its split ledger allocation with one category but leaves the UI/database claiming it is still split; split parents should be skipped or intentionally unsplit atomically.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "09665539d33d17994ebe4395ea0cbec338d498f7",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.031Z",
+      "updated_at": "2026-08-20T07:04:27.031Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaAd-k6OSsPfV5h4Tx0Q",
+        "pr": "766",
+        "file": "src/hooks/useBulkTransactionActions.tsx",
+        "line": 108
+      },
+      "title": "Refactor this function to reduce its Cognitive Complexity from 25 to the 15 allowed.",
+      "body": "Refactor this function to reduce its Cognitive Complexity from 25 to the 15 allowed.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "cf45b55a77114c856b7a98da04ea7bbcc04c79a7",
+      "status": "fixed",
+      "created_at": "2026-08-20T07:04:27.032Z",
+      "updated_at": "2026-08-20T08:09:11.987Z",
+      "notes": [
+        "Fixed in commit 02c99a22: mutationFn split into six helpers; Sonar re-analysis of PR 766 no longer reports issue AaAd-k6OSsPfV5h4Tx0Q."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 134
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/src/pages/Scheduling.tsx"
+      ],
+      "id": "80b169ee292e187721f8893514547aa60e7a74b4",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.088Z",
+      "updated_at": "2026-08-20T07:04:27.088Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 145
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/src/pages/Scheduling.tsx"
+      ],
+      "id": "61d2c2589358dd944133cf8d1093d734dc562294",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.089Z",
+      "updated_at": "2026-08-20T07:04:27.089Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 170
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/src/pages/Scheduling.tsx"
+      ],
+      "id": "43a5092664ddad52899dc030d21b48193ec2f0c8",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.089Z",
+      "updated_at": "2026-08-20T07:04:27.089Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 210
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/src/pages/Scheduling.tsx"
+      ],
+      "id": "9a8ceaf8ca198ce8177f29eeec3d3ac6d3e1eec0",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.089Z",
+      "updated_at": "2026-08-20T07:04:27.089Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 428
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'setCurrentWeekStart'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/src/pages/Scheduling.tsx"
+      ],
+      "id": "e1e0ccf5ada5d00376c7397dd785c48471796250",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.089Z",
+      "updated_at": "2026-08-20T07:04:27.089Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "no-var in index.ts",
+      "body": "Unexpected var, use let or const instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "0055ac598ca5edb5769874aac6e29c2d27948e7c",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.090Z",
+      "updated_at": "2026-08-20T07:04:27.090Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'e' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "7e64fbcfa94ba2fbec34f8eda7081286ed98ec4b",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.091Z",
+      "updated_at": "2026-08-20T07:04:27.091Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'r' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "1c2c2929a32f013770d586991281a68fc5b4d361",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.091Z",
+      "updated_at": "2026-08-20T07:04:27.091Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'o' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "5844e647ceb4262bd2b3e85e69afa5679147639a",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.091Z",
+      "updated_at": "2026-08-20T07:04:27.091Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "@typescript-eslint/no-unused-expressions in index.ts",
+      "body": "Expected an assignment or function call and instead saw an expression.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "1129343ff81715b2c0e00ac260b9983ed61b603a",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.091Z",
+      "updated_at": "2026-08-20T07:04:27.091Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'n' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "fe5e0f73aa832752c9744178b185f6584a5f737f",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.091Z",
+      "updated_at": "2026-08-20T07:04:27.091Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'i' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "7788e8d8050b6713421bd90fbcce8db86baa944e",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.094Z",
+      "updated_at": "2026-08-20T07:04:27.094Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'s' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "22206e7ed7a27ca39174c46276896ca624591b0d",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.094Z",
+      "updated_at": "2026-08-20T07:04:27.094Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'a' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "a5d155ba5e200ee2bdad4b226c848f1736d96dd5",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.094Z",
+      "updated_at": "2026-08-20T07:04:27.094Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'t' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "bb705edc21efae537b4cbbfc4c22ed397a277c61",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.096Z",
+      "updated_at": "2026-08-20T07:04:27.096Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'m' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "3200c3856e25504bb19df02e54b4f11419fc1c7c",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.097Z",
+      "updated_at": "2026-08-20T07:04:27.097Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'d' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "907b73843e5eab3bed042cae35781c1612410cb5",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.097Z",
+      "updated_at": "2026-08-20T07:04:27.097Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'y' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "9c46373bd0f5ff4fc692cb59a3647f7ee9704d12",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.097Z",
+      "updated_at": "2026-08-20T07:04:27.097Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'N' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "9c437ba5ab27b68bea0fc202187994c0ab2c2c35",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.097Z",
+      "updated_at": "2026-08-20T07:04:27.097Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'R' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "878b652eb22259ad23f266b3ebe5fe52c378984d",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.097Z",
+      "updated_at": "2026-08-20T07:04:27.097Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'x' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "6f50c9bc0d0b0911024eda0f83870fc17f4ad1a3",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.097Z",
+      "updated_at": "2026-08-20T07:04:27.097Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "no-useless-escape in index.ts",
+      "body": "Unnecessary escape character: \\-.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "1181a18a4af0c499f27cef3ffaa80c0591a86171",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.097Z",
+      "updated_at": "2026-08-20T07:04:27.097Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "no-empty in index.ts",
+      "body": "Empty block statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "0e1f68eec0fe3f7edf6b5692139f70ab2086b0a6",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.098Z",
+      "updated_at": "2026-08-20T07:04:27.098Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'c' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "de2f8e54a937ce06dbcfb45efbb81f7a30dd39ab",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.098Z",
+      "updated_at": "2026-08-20T07:04:27.098Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'T' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "fd214b8b450cb31a033b0139125a1fd0d0197840",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.099Z",
+      "updated_at": "2026-08-20T07:04:27.099Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'h' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "8ba5c43d9be1f2beec5e49ca4b1deaf3aa4bc8ae",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.099Z",
+      "updated_at": "2026-08-20T07:04:27.099Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'K' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "b84bd050e4500dfcbfffdfae5050126e4ffc4cb7",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.099Z",
+      "updated_at": "2026-08-20T07:04:27.099Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'S' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "8cc770e812c132d8fe574e273d3b76f89d020038",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.099Z",
+      "updated_at": "2026-08-20T07:04:27.099Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'Z' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "ab08a62f0f9ec804522ff1653586b1eb03b436da",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.099Z",
+      "updated_at": "2026-08-20T07:04:27.099Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'u' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "9c3cd6a819e1ca1c6375a13fcba1c272ac9e930a",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.104Z",
+      "updated_at": "2026-08-20T07:04:27.104Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'w' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "dc9f38cd4040a4ef779e7bbcc7eda48e824ef081",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.104Z",
+      "updated_at": "2026-08-20T07:04:27.104Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts",
+        "line": 1
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'Q' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/supabase/.temp/start-secrets/supabase_edge_runtime_ncdujvdgqtaunuyigflp/main/index.ts"
+      ],
+      "id": "ce58212286394330efafb4bf6f463da8ccdc3bb2",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.105Z",
+      "updated_at": "2026-08-20T07:04:27.105Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 161
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "4b8a8f61e64ec5d51100b72cb14715a46ec2b147",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.130Z",
+      "updated_at": "2026-08-20T07:04:27.130Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 162
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "e145d92d3d07d17eba2e181c4ef19a6008727d6f",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.130Z",
+      "updated_at": "2026-08-20T07:04:27.130Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 165
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "b7595b93f8000ed5357bd5ea3d20dcef96329c27",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.130Z",
+      "updated_at": "2026-08-20T07:04:27.130Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 187
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "d35d9b86c169f66bb9ebcd1d9aeb774c1e33026f",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.131Z",
+      "updated_at": "2026-08-20T07:04:27.131Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/employee-schedule-retraction.spec.ts",
+        "line": 43
+      },
+      "title": "@typescript-eslint/no-explicit-any in employee-schedule-retraction.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/tests/e2e/employee-schedule-retraction.spec.ts"
+      ],
+      "id": "16c688069bc48fdd9469b8b06257a7937cfcef83",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.132Z",
+      "updated_at": "2026-08-20T07:04:27.132Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/employee-schedule-retraction.spec.ts",
+        "line": 135
+      },
+      "title": "@typescript-eslint/no-explicit-any in employee-schedule-retraction.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/bulk-categorize-journal-entries/tests/e2e/employee-schedule-retraction.spec.ts"
+      ],
+      "id": "174e0c62f352c219e1dd30f458385f07e529614f",
+      "status": "open",
+      "created_at": "2026-08-20T07:04:27.132Z",
+      "updated_at": "2026-08-20T07:04:27.132Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "766",
+        "comment_id": 3819250857,
+        "file": "supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql",
+        "line": 123
+      },
+      "title": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Keep non-P&L transactions out of journal creation**",
+      "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Keep non-P&L transactions out of journal creation**\n\nWhen a selected row has `is_transfer = true` or a non-null `excluded_reason`, this loop still processes it because neither field is selected or filtered. These rows are explicitly excluded from accounting/P&L, and the UI permits bulk selection on the Excluded tab (`src/hooks/useBankTransactions.tsx:178`), so categorizing one now creates journal lines that appear on the income statement while leaving its exclusion flag intact. Skip these rows or explicitly clear the exclusion state before posting them.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "0b3abf47a1aea699dfb2ef02bf5f02ce87f7f6ff",
+      "status": "open",
+      "created_at": "2026-08-20T07:38:26.579Z",
+      "updated_at": "2026-08-20T07:38:26.579Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "766",
+        "comment_id": 3819250867,
+        "file": "supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql",
+        "line": 151
+      },
+      "title": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Preserve split transaction allocations during bulk categorize**",
+      "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Preserve split transaction allocations during bulk categorize**\n\nA split parent is returned on the Categorized tab (`src/hooks/useBankTransactions.tsx:172-176`) with `is_categorized = true` and `category_id = NULL`, so this test treats it as an initial categorization. The existing `bank_transaction` journal entry is then reused and all split lines are deleted at lines 197-229, while `is_split` and `bank_transaction_splits` remain unchanged. Selecting such a row therefore replaces its split ledger allocation with one category but leaves the UI/database claiming it is still split; split parents should be skipped or intentionally unsplit atomically.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "9273898bf23b5af9405836801b6e6040143bc5d1",
+      "status": "open",
+      "created_at": "2026-08-20T07:38:26.580Z",
+      "updated_at": "2026-08-20T07:38:26.580Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "766",
+        "comment_id": 3819538056,
+        "file": "supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql",
+        "line": 123
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Fixed in commit 1d04c4c8. The RPC now reads is_transfer and excluded_reason for each row. A transfer row or an excluded row now skips with reason 'excluded', before the journal-entry logic runs. Test coverage: supabase/tests/22_bulk_categorize_bank_transactions.sql, new tests 18-19. Fixed in `1d04c4c8`.",
+      "severity": "info",
+      "id": "2e35124260af8da1ff8d5a6b930234d973da99b1",
+      "status": "open",
+      "created_at": "2026-08-20T07:38:26.581Z",
+      "updated_at": "2026-08-20T07:38:26.581Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "766",
+        "comment_id": 3819538893,
+        "file": "supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql",
+        "line": 151
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Fixed in commit 1d04c4c8. The RPC now reads is_split for each row. A split-parent row now skips with reason 'split', before the entry logic can touch its bank_transaction_splits ledger. Test coverage: supabase/tests/22_bulk_categorize_bank_transactions.sql, new tests 20-21. Fixed in `1d04c4c8`.",
+      "severity": "info",
+      "id": "0ca34ff8c2e447fd5ac9ca97188dcc7df20653ef",
+      "status": "open",
+      "created_at": "2026-08-20T07:38:26.581Z",
+      "updated_at": "2026-08-20T07:38:26.581Z",
+      "tests_to_run": []
     }
   ]
 }

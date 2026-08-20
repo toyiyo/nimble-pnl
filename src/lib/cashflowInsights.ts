@@ -242,7 +242,7 @@ function sumByKey(rows: CashFlowRow[], keyFor: (row: CashFlowRow) => string): { 
 
   for (const row of rows) {
     const label = keyFor(row);
-    const foldedKey = label.toLocaleUpperCase();
+    const foldedKey = label.toUpperCase();
     let entry = sums.get(foldedKey);
     if (!entry) {
       entry = { label, amount: 0 };
@@ -273,7 +273,7 @@ export function topCategories(rows: CashFlowRow[]): CategoryTotal[] {
     // A real category can already be named 'Other' and land in the top
     // five. Fold into that entry instead of pushing a second one with the
     // same name — a duplicate name renders as one doubled bar in the chart.
-    const existingOther = top.find((entry) => entry.name === 'Other');
+    const existingOther = top.find((entry) => entry.name.toUpperCase() === 'OTHER');
     if (existingOther) {
       existingOther.amount += otherAmount;
     } else {
@@ -580,7 +580,7 @@ function buildTopSourceInsight(
             !isInternalTransfer(row) &&
             row.amount >= 0 &&
             monthKeyFromDateStr(row.transaction_date) === key &&
-            payeeFor(row).toLocaleUpperCase() === top.key.toLocaleUpperCase(),
+            payeeFor(row).toUpperCase() === top.key.toUpperCase(),
         )
         .reduce((s, row) => s + row.amount, 0);
       return sum + monthTotal;

@@ -279,6 +279,25 @@ describe('topCategories', () => {
     // Exactly one 'Other' entry — the real category plus the folded rest.
     expect(result.filter((entry) => entry.name === 'Other')).toEqual([{ name: 'Other', amount: 130 }]);
   });
+
+  it('folds the remainder into a real category named other in lower case', () => {
+    const rows = [
+      makeRow({ amount: 500, category: { id: 'c1', name: 'A', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -400, category: { id: 'c2', name: 'B', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: 300, category: { id: 'c3', name: 'C', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -200, category: { id: 'c4', name: 'D', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: 190, category: { id: 'c5', name: 'other', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -50, category: { id: 'c6', name: 'F', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -10, category: { id: 'c7', name: 'G', account_type: 'expense', account_subtype: null } }),
+    ];
+
+    const result = topCategories(rows);
+
+    // One entry only, with the first-seen label 'other'.
+    expect(result.filter((entry) => entry.name.toUpperCase() === 'OTHER')).toEqual([
+      { name: 'other', amount: 130 },
+    ]);
+  });
 });
 
 describe('breakdown', () => {

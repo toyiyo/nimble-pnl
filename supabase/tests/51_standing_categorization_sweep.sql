@@ -82,12 +82,12 @@ WHERE n.nspname = 'public'
   AND p.proname = 'apply_rules_to_pos_sales_internal';
 
 -- ---------------------------------------------------------------------------
--- Fixtures. Rows are inserted BEFORE their rules exist, so the BEFORE INSERT
--- triggers find nothing to apply and both rows land as genuine candidates
--- (rules_evaluated_at defaults to '-infinity'). This reproduces the production
--- bug directly: a row that predates the rule that would match it.
--- auto_apply_bank_categorization_rules honours no skip GUC, so insert ordering
--- is the only way to leave a bank row uncategorized.
+-- Fixtures. Rows are inserted BEFORE their rules exist. For the POS row this
+-- means the auto_categorize_pos_sale BEFORE INSERT trigger finds nothing to
+-- apply. The bank row is a genuine candidate for a simpler reason:
+-- rules_evaluated_at defaults to '-infinity', so any new row starts unswept.
+-- This reproduces the production bug directly: a row that predates the rule
+-- that would match it.
 -- ---------------------------------------------------------------------------
 
 INSERT INTO restaurants (id, name) VALUES
@@ -263,14 +263,9 @@ FROM halves;
 -- a cancel, so before the split ONE timed-out POS batch skipped bank entirely —
 -- and the Feb 2026 incident logged 733 statement_timeout aborts.
 
--- A fresh bank candidate, created after the ticks above. The rule is
--- deactivated across the INSERT because auto_categorize_bank_transaction is a
--- BEFORE INSERT trigger that honours no skip GUC — with the rule live the row
--- would arrive already categorized and prove nothing. Reactivating raises the
--- watermark, which is what re-opens the row to the sweep.
-UPDATE categorization_rules SET is_active = false
-WHERE id = 'dddddddd-0000-0000-0000-0000000000f2';
-
+-- A fresh bank candidate, created after the ticks above. The bank row is a
+-- sweep candidate because rules_evaluated_at defaults to '-infinity', so it
+-- starts unswept the moment it lands, with no workaround needed at insert.
 INSERT INTO bank_transactions
   (id, restaurant_id, connected_bank_id, stripe_transaction_id,
    transaction_date, description, amount)
@@ -278,9 +273,6 @@ VALUES
   ('dddddddd-0000-0000-0000-0000000000e2', 'dddddddd-0000-0000-0000-0000000000a1',
    'dddddddd-0000-0000-0000-0000000000b1', 'txn_standing_sweep_starvation',
    CURRENT_DATE, 'STANDING SWEEP VENDOR', -31.00);
-
-UPDATE categorization_rules SET is_active = true
-WHERE id = 'dddddddd-0000-0000-0000-0000000000f2';
 
 -- Fault injection, reverted by this file's ROLLBACK along with everything else.
 -- 57014 is query_canceled: what statement_timeout raises, and what WHEN OTHERS

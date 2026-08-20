@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, parseISO } from "date-fns";
+import { fetchAllPages } from "@/lib/paginatedBankQuery";
 
 interface RevenueHealthMetrics {
   depositFrequency: number; // days between deposits
@@ -22,6 +23,18 @@ interface RevenueHealthMetrics {
     amount: number;
     reason: string;
   }>;
+  /** True when the fetch hit the 20-page cap before reaching a short page. */
+  truncated: boolean;
+}
+
+interface TransactionRow {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  status: string;
+  description: string | null;
+  merchant_name: string | null;
+  category_id: string | null;
 }
 
 export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
@@ -43,24 +56,32 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
       
       const revenueAccountIds = new Set(revenueAccounts?.map(a => a.id) || []);
 
-      let query = supabase
-        .from('bank_transactions')
-        .select('id, transaction_date, amount, status, description, merchant_name, category_id')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
-        .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
+      const { rows: txns, truncated } = await fetchAllPages<TransactionRow>(async (from, to) => {
+        let query = supabase
+          .from('bank_transactions')
+          .select('id, transaction_date, amount, status, description, merchant_name, category_id')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .eq('status', 'posted')
+          .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
+          // `transaction_date` is timestamptz. A bare 'yyyy-MM-dd' bound reads
+          // as midnight and drops the whole final day.
+          .lte('transaction_date', `${format(endDate, 'yyyy-MM-dd')}T23:59:59.999Z`);
 
-      // Apply bank account filter if specified
-      if (bankAccountId && bankAccountId !== 'all') {
-        query = query.eq('connected_bank_id', bankAccountId);
-      }
+        // Apply bank account filter if specified
+        if (bankAccountId && bankAccountId !== 'all') {
+          query = query.eq('connected_bank_id', bankAccountId);
+        }
 
-      const { data: transactions, error } = await query.order('transaction_date', { ascending: true });
+        // `transaction_date` is not unique, so a second order on the primary key
+        // gives every page a total order. Without it, rows tied at a page
+        // boundary can be skipped or duplicated across pages.
+        const { data, error } = await query
+          .order('transaction_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
 
-      if (error) throw error;
-
-      const txns = transactions || [];
+        return { data: (data ?? null) as TransactionRow[] | null, error };
+      });
       
       // Filter deposits (inflows)
       const deposits = txns.filter(t => t.amount > 0);
@@ -203,6 +224,7 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
         refundRate,
         missingDepositDays,
         anomalousDeposits,
+        truncated,
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

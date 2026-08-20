@@ -180,10 +180,16 @@ export function ManualMatchDialog({
   async function handleConfirm(): Promise<void> {
     if (!selectedTransactionId) return;
 
-    await confirmMatch.mutateAsync({
-      pendingOutflowId: pendingOutflow.id,
-      bankTransactionId: selectedTransactionId,
-    });
+    try {
+      await confirmMatch.mutateAsync({
+        pendingOutflowId: pendingOutflow.id,
+        bankTransactionId: selectedTransactionId,
+      });
+    } catch {
+      // The mutation's onError already shows a toast. Keep the dialog
+      // open so the user can retry or pick a different transaction.
+      return;
+    }
 
     onClose();
   }

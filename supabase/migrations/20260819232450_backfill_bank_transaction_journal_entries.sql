@@ -30,9 +30,13 @@ BEGIN
   DROP TABLE IF EXISTS tmp_backfill_candidates;
   DROP TABLE IF EXISTS tmp_backfill_created_entries;
 
-  -- Candidate predicate: categorized, not a transfer, not marked excluded,
-  -- no existing journal entry for this bank_transaction, not inside a
-  -- closed fiscal period, and the restaurant has a cash account 1000. The
+  -- Candidate predicate: categorized, not a transfer, not reconciled, not
+  -- marked excluded, no existing journal entry for this bank_transaction,
+  -- not inside a closed fiscal period, and the restaurant has a cash
+  -- account 1000. The reconciled guard matches the bulk RPC: a reconciled
+  -- row is settled and a backfill must not change its ledger. Production
+  -- has 0 reconciled candidates (verified 2026-08-19), so this guard
+  -- protects only a later rerun. The
   -- LEFT JOIN LATERAL mirrors the single RPC's cash-account LIMIT 1 so two
   -- accounts coded 1000 on one restaurant cannot fan out a row. A split
   -- parent needs no explicit filter here: category_id IS NOT NULL below
@@ -70,6 +74,7 @@ BEGIN
   WHERE bt.is_categorized = true
     AND bt.category_id IS NOT NULL
     AND bt.is_transfer = false
+    AND bt.is_reconciled = false
     AND bt.excluded_reason IS NULL
     AND cash.id IS NOT NULL
     AND NOT EXISTS (
@@ -78,11 +83,15 @@ BEGIN
         AND je.reference_id = bt.id
         AND je.restaurant_id = bt.restaurant_id
     )
+    -- Compare on the same UTC-cast date the entry insert below uses for
+    -- entry_date. A raw timestamptz >= date comparison casts at the session
+    -- TimeZone and lets a transaction late on the period's last UTC day
+    -- (for example 23:30Z) write an entry_date inside the closed period.
     AND NOT EXISTS (
       SELECT 1 FROM fiscal_periods fp
       WHERE fp.restaurant_id = bt.restaurant_id
-        AND bt.transaction_date >= fp.period_start
-        AND bt.transaction_date <= fp.period_end
+        AND (bt.transaction_date AT TIME ZONE 'UTC')::date >= fp.period_start
+        AND (bt.transaction_date AT TIME ZONE 'UTC')::date <= fp.period_end
         AND fp.is_closed = true
     );
 

@@ -113,9 +113,10 @@ describe('useBulkCategorizeTransactions', () => {
     expect(result.current.data?.skipped).toHaveLength(2);
   });
 
-  it('rejects the mutation on an RPC error and shows error.message in the toast', async () => {
+  it('rejects the mutation on an RPC error, shows error.message, and still refreshes the UI', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'network unreachable' } });
     const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const spy = vi.spyOn(client, 'invalidateQueries');
     const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
 
     result.current.mutate({ transactionIds: ['t1'], categoryId: 'c1', restaurantId: 'r1' });
@@ -124,6 +125,11 @@ describe('useBulkCategorizeTransactions', () => {
     expect(toastError).toHaveBeenCalled();
     const [, options] = toastError.mock.calls[0] as [string, { description?: string }];
     expect(options.description).toBe('network unreachable');
+    // The RPC can commit even when the response is lost — the generic error
+    // path must refresh the queries so the UI shows the real state.
+    const keys = spy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
+    expect(keys).toContain(JSON.stringify(['bank-transactions']));
+    expect(keys).toContain(JSON.stringify(['income-statement']));
   });
 
   it('shows an error toast with grouped skip reasons and duration 10000', async () => {

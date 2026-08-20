@@ -278,6 +278,11 @@ export function useBulkCategorizeTransactions() {
         return;
       }
 
+      // A generic failure can still follow a committed write — for example
+      // the RPC commits but the response is lost in transit. Refresh the
+      // queries so the UI converges on the real database state.
+      invalidateBulkCategorizeQueries(queryClient);
+
       const message = extractErrorMessage(error);
       toast.error('Failed to categorize transactions', {
         description: message || 'Please try again or contact support',

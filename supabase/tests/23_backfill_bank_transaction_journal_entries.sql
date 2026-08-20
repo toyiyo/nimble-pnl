@@ -7,7 +7,7 @@
 -- section 7 for the candidate predicate and insert shape this pins.
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(19);
 
 SET LOCAL role TO postgres;
 
@@ -84,10 +84,30 @@ INSERT INTO bank_transactions (
   -- later rerun).
   ('00000000-0000-0000-0000-000000000906'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
    'txn-backfill-excluded-1', CURRENT_DATE, -12.00, 'Categorized but excluded', 'posted', true, false, false,
-   '00000000-0000-0000-0000-000000000812'::uuid, 'duplicate')
+   '00000000-0000-0000-0000-000000000812'::uuid, 'duplicate'),
+  -- Test 12: late on the closed period's last UTC day -> must gain nothing.
+  -- A raw timestamptz-vs-date comparison casts period_end to midnight and
+  -- lets this row through; the UTC-cast guard must catch it, because its
+  -- entry_date (2020-01-31) is inside the closed period.
+  ('00000000-0000-0000-0000-000000000907'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
+   'txn-backfill-closed-boundary-1', TIMESTAMPTZ '2020-01-31 23:30:00+00', -35.00, 'Last UTC day of a closed period', 'posted', true, false, false,
+   '00000000-0000-0000-0000-000000000812'::uuid, NULL),
+  -- Test 13: reconciled row -> must gain nothing (same guard as the bulk
+  -- RPC: a reconciled row is settled and the backfill must not change its
+  -- ledger).
+  ('00000000-0000-0000-0000-000000000908'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
+   'txn-backfill-reconciled-1', CURRENT_DATE, -18.00, 'Categorized and reconciled', 'posted', true, false, true,
+   '00000000-0000-0000-0000-000000000812'::uuid, NULL),
+  -- Test 14: eligible row with a POSITIVE amount -> must gain an entry that
+  -- debits cash and credits the category (the opposite sign branch of
+  -- test 1).
+  ('00000000-0000-0000-0000-000000000909'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
+   'txn-backfill-eligible-positive-1', CURRENT_DATE, 75.00, 'Categorized deposit, entry-less', 'posted', true, false, false,
+   '00000000-0000-0000-0000-000000000812'::uuid, NULL)
 ON CONFLICT (id) DO UPDATE SET
   is_categorized = EXCLUDED.is_categorized,
   is_transfer = EXCLUDED.is_transfer,
+  is_reconciled = EXCLUDED.is_reconciled,
   category_id = EXCLUDED.category_id,
   excluded_reason = EXCLUDED.excluded_reason;
 
@@ -108,20 +128,20 @@ SELECT ok(
 
 SELECT is(
   (SELECT (result ->> 'entries_created')::int FROM backfill_call_1),
-  1,
-  'First call reports entries_created = 1 (only one fixture row is eligible)'
+  2,
+  'First call reports entries_created = 2 (one negative and one positive eligible row)'
 );
 
 SELECT is(
   (SELECT (result ->> 'lines_created')::int FROM backfill_call_1),
-  2,
-  'First call reports lines_created = 2 (one entry, two lines)'
+  4,
+  'First call reports lines_created = 4 (two entries, two lines each)'
 );
 
 SELECT is(
   (SELECT (result ->> 'restaurants_rebuilt')::int FROM backfill_call_1),
   1,
-  'First call reports restaurants_rebuilt = 1 (only R_BF_MAIN gained an entry)'
+  'First call reports restaurants_rebuilt = 1 (only R_BF_MAIN gained entries)'
 );
 
 -- ---------------------------------------------------------------------------
@@ -140,7 +160,7 @@ SELECT is(
      JOIN journal_entries je ON je.id = jel.journal_entry_id
      WHERE je.reference_type = 'bank_transaction' AND je.reference_id = '00000000-0000-0000-0000-000000000901'::uuid
        AND jel.account_id = '00000000-0000-0000-0000-000000000812'::uuid),
-  55.00,
+  55.00::numeric,
   'Negative amount: category line is debited ABS(amount)'
 );
 
@@ -149,7 +169,7 @@ SELECT is(
      JOIN journal_entries je ON je.id = jel.journal_entry_id
      WHERE je.reference_type = 'bank_transaction' AND je.reference_id = '00000000-0000-0000-0000-000000000901'::uuid
        AND jel.account_id = '00000000-0000-0000-0000-000000000811'::uuid),
-  55.00,
+  55.00::numeric,
   'Negative amount: cash line is credited ABS(amount)'
 );
 
@@ -220,6 +240,56 @@ SELECT is(
      WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000000906'::uuid),
   0,
   'Row marked excluded gains no journal entry'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 12: a row late on the closed period's last UTC day gains nothing.
+-- The guard must compare on the UTC-cast date, not the raw timestamptz.
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT COUNT(*)::int FROM journal_entries
+     WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000000907'::uuid),
+  0,
+  'Row at 23:30 UTC on the closed period''s last day gains no journal entry'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 13: a reconciled row gains nothing.
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT COUNT(*)::int FROM journal_entries
+     WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000000908'::uuid),
+  0,
+  'Reconciled row gains no journal entry'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 14: the eligible positive-amount row gains one entry with the
+-- opposite sign convention (debit cash, credit category).
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT COUNT(*)::int FROM journal_entries
+     WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000000909'::uuid),
+  1,
+  'Eligible positive-amount row gains exactly one journal entry'
+);
+
+SELECT is(
+  (SELECT jel.debit_amount FROM journal_entry_lines jel
+     JOIN journal_entries je ON je.id = jel.journal_entry_id
+     WHERE je.reference_type = 'bank_transaction' AND je.reference_id = '00000000-0000-0000-0000-000000000909'::uuid
+       AND jel.account_id = '00000000-0000-0000-0000-000000000811'::uuid),
+  75.00::numeric,
+  'Positive amount: cash line is debited ABS(amount)'
+);
+
+SELECT is(
+  (SELECT jel.credit_amount FROM journal_entry_lines jel
+     JOIN journal_entries je ON je.id = jel.journal_entry_id
+     WHERE je.reference_type = 'bank_transaction' AND je.reference_id = '00000000-0000-0000-0000-000000000909'::uuid
+       AND jel.account_id = '00000000-0000-0000-0000-000000000812'::uuid),
+  75.00::numeric,
+  'Positive amount: category line is credited ABS(amount)'
 );
 
 SELECT * FROM finish();

@@ -580,9 +580,13 @@ SELECT is(
 
 -- ---------------------------------------------------------------------------
 -- Local entry day: an evening instant lands on the restaurant-local day.
--- 03:30Z on 2026-02-02 = 21:30 CST on 2026-02-01 (restaurant timezone
--- defaults to America/Chicago).
+-- 03:30Z on 2026-02-02 = 21:30 CST on 2026-02-01 (America/Chicago).
+-- Pin the timezone the assertion depends on. Do not rely on the column
+-- default.
 -- ---------------------------------------------------------------------------
+UPDATE restaurants SET timezone = 'America/Chicago'
+  WHERE id = '00000000-0000-0000-0000-000000000610'::uuid;
+
 INSERT INTO bank_transactions (
   id, restaurant_id, connected_bank_id, stripe_transaction_id,
   transaction_date, amount, description, status, is_categorized, is_transfer, is_reconciled

@@ -18,9 +18,10 @@ SET LOCAL role TO postgres;
 -- R_BF_MAIN: fully provisioned (cash account 1000, one active category, one
 -- inactive category). Carries one row per exclusion rule plus the one row
 -- that must gain an entry.
-INSERT INTO restaurants (id, name) VALUES
-  ('00000000-0000-0000-0000-000000000810'::uuid, 'Backfill Main Restaurant')
-ON CONFLICT (id) DO NOTHING;
+-- Pin the timezone: the local-entry-day assertion below depends on it.
+INSERT INTO restaurants (id, name, timezone) VALUES
+  ('00000000-0000-0000-0000-000000000810'::uuid, 'Backfill Main Restaurant', 'America/Chicago')
+ON CONFLICT (id) DO UPDATE SET timezone = 'America/Chicago';
 
 INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance, is_active) VALUES
   ('00000000-0000-0000-0000-000000000811'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '1000', 'Cash', 'asset', 'cash', 'debit', true),
@@ -105,7 +106,7 @@ INSERT INTO bank_transactions (
    'txn-backfill-eligible-positive-1', CURRENT_DATE, 75.00, 'Categorized deposit, entry-less', 'posted', true, false, false,
    '00000000-0000-0000-0000-000000000812'::uuid, NULL),
   -- Local entry day: evening instant. 03:30Z on 2026-02-02 = 21:30 CST on
-  -- 2026-02-01 (R_BF_MAIN timezone defaults to America/Chicago).
+  -- 2026-02-01 (R_BF_MAIN timezone pinned to America/Chicago above).
   ('00000000-0000-0000-0000-000000000910'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
    'txn-backfill-evening-1', TIMESTAMPTZ '2026-02-02 03:30:00+00', -44.00, 'Evening instant, entry-less', 'posted', true, false, false,
    '00000000-0000-0000-0000-000000000812'::uuid, NULL)

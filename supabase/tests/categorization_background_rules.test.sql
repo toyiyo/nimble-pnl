@@ -837,8 +837,12 @@ SELECT is(
 
 -- ============================================================
 -- Test (o): the internal bank engine writes the restaurant-local entry day.
--- 03:30Z on 2026-02-02 = 21:30 CST on 2026-02-01.
+-- 03:30Z on 2026-02-02 = 21:30 CST on 2026-02-01. Pin the timezone the
+-- assertion depends on. Do not rely on the column default.
 -- ============================================================
+UPDATE public.restaurants SET timezone = 'America/Chicago'
+  WHERE id = 'c1a00008-0000-0000-0000-000000000801';
+
 ALTER TABLE public.bank_transactions DISABLE TRIGGER auto_categorize_bank_transaction;
 
 INSERT INTO public.bank_transactions

@@ -21,8 +21,8 @@ function payeeFor(insight: CashFlowInsight): string | undefined {
 }
 
 function iconFor(insight: CashFlowInsight): LucideIcon {
-  if (/ increased$/.test(insight.title)) return TrendingUp;
-  if (/ decreased$/.test(insight.title)) return TrendingDown;
+  if (insight.title.endsWith(' increased')) return TrendingUp;
+  if (insight.title.endsWith(' decreased')) return TrendingDown;
   return Info;
 }
 
@@ -33,21 +33,27 @@ function renderBody(body: string, payee?: string): ReactNode[] {
   const splitPattern = new RegExp(`(${patterns.join('|')})`, 'g');
   const matchPattern = new RegExp(`^(${patterns.join('|')})$`);
 
-  return body.split(splitPattern).map((part, index) =>
-    part && matchPattern.test(part) ? (
-      <span key={index} className="bg-muted rounded-md px-1">
+  // A key from the part text plus its occurrence count is stable across
+  // re-renders, unlike the array index.
+  const seen = new Map<string, number>();
+  return body.split(splitPattern).map((part) => {
+    const occurrence = seen.get(part) ?? 0;
+    seen.set(part, occurrence + 1);
+    const key = `${part}#${occurrence}`;
+    return part && matchPattern.test(part) ? (
+      <span key={key} className="bg-muted rounded-md px-1">
         {part}
       </span>
     ) : (
-      <span key={index}>{part}</span>
-    )
-  );
+      <span key={key}>{part}</span>
+    );
+  });
 }
 
 /** The deterministic insight list for the cash flow view. All copy is visible text. */
 export function CashFlowNarrative({ insights, className }: CashFlowNarrativeProps) {
   return (
-    <div role="region" aria-label="Cash flow narrative" className={cn(className)}>
+    <section aria-label="Cash flow narrative" className={cn(className)}>
       {insights.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">No notable trends for this period.</p>
       ) : (
@@ -71,6 +77,6 @@ export function CashFlowNarrative({ insights, className }: CashFlowNarrativeProp
       <p className="mt-4 text-[12px] text-muted-foreground">
         Trends are generated and may include inaccuracies.
       </p>
-    </div>
+    </section>
   );
 }

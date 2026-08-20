@@ -93,12 +93,12 @@ export function MoneyBreakdownTable({
 
       <div id={panelId} role="tabpanel" className="mt-3 space-y-3">
         {rows.length === 0 && <p className="text-[13px] text-muted-foreground">No activity for this period.</p>}
-        {/* `role="list"`/`role="listitem"` give each row an accessible name
-            (its label), so a test can find one row with
-            `getByRole('listitem', { name: ... })` instead of a data-testid. */}
-        <div role="list" className="space-y-3">
+        {/* Native `ul`/`li` keep the list semantics, so a test can find one
+            row with `getByRole('listitem', { name: ... })` instead of a
+            data-testid. */}
+        <ul className="list-none space-y-3 p-0 m-0">
           {rows.map((row) => (
-            <div key={row.label} role="listitem" aria-label={row.label} className="flex items-center gap-3">
+            <li key={row.label} aria-label={row.label} className="flex items-center gap-3">
               <div className="w-28 shrink-0 truncate text-[13px] text-foreground">{row.label}</div>
               <div className="w-10 shrink-0 text-right text-[12px] text-muted-foreground">
                 {formatPct(row.pctOfTotal)}
@@ -113,9 +113,9 @@ export function MoneyBreakdownTable({
               <div className="w-20 shrink-0 text-right text-[13px] font-medium text-foreground">
                 {formatCurrency(Math.abs(row.amount))}
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </div>
   );

@@ -473,7 +473,14 @@ function buildRevenueChangeInsight(
   const delta = (lastMonthRevenue - precedingMean) / precedingMean;
   // A zero delta is neither an increase nor a decrease. Say so, or the
   // title claims growth that did not happen.
-  const direction = delta > 0 ? 'increased' : delta < 0 ? 'decreased' : 'stayed flat';
+  let direction: string;
+  if (delta > 0) {
+    direction = 'increased';
+  } else if (delta < 0) {
+    direction = 'decreased';
+  } else {
+    direction = 'stayed flat';
+  }
 
   return {
     id: 'revenue-change',

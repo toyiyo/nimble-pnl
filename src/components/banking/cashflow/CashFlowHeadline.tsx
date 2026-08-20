@@ -14,8 +14,10 @@ export function CashFlowHeadline({ totals, className }: CashFlowHeadlineProps) {
     <div className={cn('flex flex-wrap items-baseline gap-x-8 gap-y-2', className)}>
       {/* `role="group"` plus `aria-label` gives each stat an accessible name, so
           a test can scope to it with `getByRole('group', { name: ... })` instead
-          of walking the DOM. */}
-      <div role="group" aria-label="Net cashflow">
+          of walking the DOM. No native element carries the group role here:
+          `fieldset` is a form element, and a `section` per stat would add
+          three landmark regions of noise. */}
+      <div role="group" aria-label="Net cashflow">{/* NOSONAR: see the comment above */}
         <div className="text-[13px] text-muted-foreground">Net cashflow</div>
         <div
           className={cn(
@@ -26,11 +28,11 @@ export function CashFlowHeadline({ totals, className }: CashFlowHeadlineProps) {
           {formatCurrency(totals.net)}
         </div>
       </div>
-      <div role="group" aria-label="Money in">
+      <div role="group" aria-label="Money in">{/* NOSONAR: group role, see above */}
         <div className="text-[13px] text-muted-foreground">Money in</div>
         <div className="text-[15px] font-medium text-foreground">{formatCurrency(totals.moneyIn)}</div>
       </div>
-      <div role="group" aria-label="Money out">
+      <div role="group" aria-label="Money out">{/* NOSONAR: group role, see above */}
         <div className="text-[13px] text-muted-foreground">Money out</div>
         <div className="text-[15px] font-medium text-foreground">
           {formatCurrency(Math.abs(totals.moneyOut))}

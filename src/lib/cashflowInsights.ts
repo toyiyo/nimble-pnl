@@ -175,7 +175,7 @@ export function bucketSeries(rows: CashFlowRow[], period: CashFlowPeriod, interv
     bucket.byCategory[label] = (bucket.byCategory[label] ?? 0) + row.amount;
   }
 
-  orderedKeys.sort();
+  orderedKeys.sort((a, b) => a.localeCompare(b));
   return orderedKeys.map((key) => bucketsByKey.get(key)!);
 }
 

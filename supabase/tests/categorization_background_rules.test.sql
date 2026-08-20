@@ -571,9 +571,8 @@ SELECT is(
   '(e) no trigger: supplier_id stays NULL after plain INSERT'
 );
 
-CREATE TEMP TABLE sweep_e AS
-  SELECT * FROM apply_rules_to_bank_transactions_internal(
-    'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
+SELECT * FROM apply_rules_to_bank_transactions_internal(
+  'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
 
 SELECT is(
   (SELECT is_categorized FROM public.bank_transactions
@@ -660,9 +659,8 @@ VALUES
    false,
    'c1a00000-0000-0000-0000-000000000d05');
 
-CREATE TEMP TABLE sweep_f AS
-  SELECT * FROM apply_rules_to_bank_transactions_internal(
-    'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
+SELECT * FROM apply_rules_to_bank_transactions_internal(
+  'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
 
 SELECT is(
   (SELECT supplier_id FROM public.bank_transactions

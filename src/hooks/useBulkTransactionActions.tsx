@@ -92,6 +92,86 @@ function invalidateBulkCategorizeQueries(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
 }
 
+/** Rows the RPC changed: categorized plus reclassified. Unchanged and skipped rows are not in it. */
+function changedCount(result: BulkCategorizeRpcResult): number {
+  return result.categorized_count + result.reclassified_count;
+}
+
+function extractErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  return (error as { message?: string })?.message;
+}
+
+/** Calls the RPC for one chunk of at most 500 ids. Throws on an RPC error or a failure result. */
+async function categorizeChunk(
+  idChunk: string[],
+  categoryId: string,
+  restaurantId: string
+): Promise<BulkCategorizeRpcResult> {
+  const { data, error } = await supabase.rpc('bulk_categorize_bank_transactions', {
+    p_transaction_ids: idChunk,
+    p_category_id: categoryId,
+    p_restaurant_id: restaurantId,
+    // Every chunk skips its own rebuild; one rebuild_account_balances
+    // call runs after the chunk loop, for the whole operation.
+    p_skip_rebuild: true,
+  });
+
+  if (error) throw error;
+
+  const result = data as unknown as BulkCategorizeRpcResult;
+  if (!result.success) {
+    throw new Error('Failed to categorize transactions');
+  }
+  return result;
+}
+
+function addChunkResult(aggregate: BulkCategorizeRpcResult, result: BulkCategorizeRpcResult): void {
+  aggregate.categorized_count += result.categorized_count;
+  aggregate.reclassified_count += result.reclassified_count;
+  aggregate.unchanged_count += result.unchanged_count;
+  aggregate.skipped.push(...result.skipped);
+}
+
+/**
+ * Rebuilds balances for a partial write, so the ledger is not left stale
+ * on top of the operation being incomplete. A failure here must not
+ * replace the real cause in the caller — log it and return.
+ */
+async function rebuildBalancesAfterPartialWrite(restaurantId: string): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('rebuild_account_balances', {
+      p_restaurant_id: restaurantId,
+    });
+    if (error) {
+      console.error('Balance rebuild after a partial bulk categorize also failed', error);
+    }
+  } catch (caught) {
+    console.error('Balance rebuild after a partial bulk categorize also failed', caught);
+  }
+}
+
+/**
+ * A later chunk's failure must not hide an earlier chunk's real writes:
+ * those journal entries already exist in the database. When an earlier
+ * chunk wrote, rebuild balances now and raise a PartialBulkCategorizeError
+ * that carries the partial aggregate. Otherwise re-raise the original error.
+ */
+async function raiseChunkFailure(
+  chunkError: unknown,
+  aggregate: BulkCategorizeRpcResult,
+  restaurantId: string
+): Promise<never> {
+  if (changedCount(aggregate) === 0) {
+    throw chunkError;
+  }
+  await rebuildBalancesAfterPartialWrite(restaurantId);
+  throw new PartialBulkCategorizeError(
+    extractErrorMessage(chunkError) || 'Failed to categorize transactions',
+    aggregate
+  );
+}
+
 /**
  * Hook for bulk categorizing bank transactions.
  * Calls the bulk_categorize_bank_transactions RPC, which writes a journal
@@ -116,56 +196,13 @@ export function useBulkCategorizeTransactions() {
 
       for (const idChunk of chunk(transactionIds, BULK_CATEGORIZE_CHUNK_SIZE)) {
         try {
-          const { data, error } = await supabase.rpc('bulk_categorize_bank_transactions', {
-            p_transaction_ids: idChunk,
-            p_category_id: categoryId,
-            p_restaurant_id: restaurantId,
-            // Every chunk skips its own rebuild; one rebuild_account_balances
-            // call runs after the loop below, for the whole operation.
-            p_skip_rebuild: true,
-          });
-
-          if (error) throw error;
-
-          const result = data as unknown as BulkCategorizeRpcResult;
-          if (!result.success) {
-            throw new Error('Failed to categorize transactions');
-          }
-
-          aggregate.categorized_count += result.categorized_count;
-          aggregate.reclassified_count += result.reclassified_count;
-          aggregate.unchanged_count += result.unchanged_count;
-          aggregate.skipped.push(...result.skipped);
+          addChunkResult(aggregate, await categorizeChunk(idChunk, categoryId, restaurantId));
         } catch (chunkError) {
-          // A later chunk's failure must not hide an earlier chunk's real
-          // writes: those journal entries already exist in the database.
-          if (aggregate.categorized_count + aggregate.reclassified_count > 0) {
-            // Rebuild balances for the partial write now, so the ledger
-            // is not left stale on top of the operation being incomplete.
-            // A failure here must not replace the real cause below it —
-            // log it and keep going.
-            try {
-              const { error: rescueRebuildError } = await supabase.rpc('rebuild_account_balances', {
-                p_restaurant_id: restaurantId,
-              });
-              if (rescueRebuildError) {
-                console.error('Balance rebuild after a partial bulk categorize also failed', rescueRebuildError);
-              }
-            } catch (rescueRebuildCatchError) {
-              console.error('Balance rebuild after a partial bulk categorize also failed', rescueRebuildCatchError);
-            }
-
-            const message =
-              chunkError instanceof Error
-                ? chunkError.message
-                : (chunkError as { message?: string })?.message || 'Failed to categorize transactions';
-            throw new PartialBulkCategorizeError(message, aggregate);
-          }
-          throw chunkError;
+          await raiseChunkFailure(chunkError, aggregate, restaurantId);
         }
       }
 
-      if (aggregate.categorized_count + aggregate.reclassified_count > 0) {
+      if (changedCount(aggregate) > 0) {
         const { error: rebuildError } = await supabase.rpc('rebuild_account_balances', {
           p_restaurant_id: restaurantId,
         });
@@ -182,19 +219,19 @@ export function useBulkCategorizeTransactions() {
     onSuccess: (result) => {
       invalidateBulkCategorizeQueries(queryClient);
 
-      const changedCount = result.categorized_count + result.reclassified_count;
+      const changed = changedCount(result);
 
       // A row only ever lands in categorized/reclassified, unchanged, or
       // skipped. Showing "0 transactions categorized" as a success when
       // every row was skipped would contradict the skip-count error toast
       // shown right below it.
-      if (changedCount > 0 || result.unchanged_count > 0) {
+      if (changed > 0 || result.unchanged_count > 0) {
         const description =
           result.unchanged_count > 0
             ? `${result.unchanged_count} already had this category`
             : 'Changes have been applied successfully';
 
-        toast.success(`${changedCount} transactions categorized`, {
+        toast.success(`${changed} transactions categorized`, {
           description,
           duration: 10000,
           action: {
@@ -222,26 +259,26 @@ export function useBulkCategorizeTransactions() {
         // Refresh the UI to show them instead of leaving it stale.
         invalidateBulkCategorizeQueries(queryClient);
 
-        const changedCount = error.partial.categorized_count + error.partial.reclassified_count;
+        const changed = changedCount(error.partial);
 
         // error.message may carry raw RPC error text (a guard message, a
         // network error, or a rebuild failure) — the same rule as
         // KNOWN_SKIP_REASONS applies: log it, do not render it.
         if (error.rebuildOnlyFailed) {
           toast.error('Categorized, but balances did not refresh', {
-            description: `${changedCount} transactions were categorized. Reload the page, or contact support if balances still look wrong.`,
+            description: `${changed} transactions were categorized. Reload the page, or contact support if balances still look wrong.`,
             duration: 10000,
           });
         } else {
           toast.error('Only part of the selection was categorized', {
-            description: `${changedCount} transactions were categorized before this error. Please try again or contact support.`,
+            description: `${changed} transactions were categorized before this error. Please try again or contact support.`,
             duration: 10000,
           });
         }
         return;
       }
 
-      const message = error instanceof Error ? error.message : (error as { message?: string })?.message;
+      const message = extractErrorMessage(error);
       toast.error('Failed to categorize transactions', {
         description: message || 'Please try again or contact support',
       });

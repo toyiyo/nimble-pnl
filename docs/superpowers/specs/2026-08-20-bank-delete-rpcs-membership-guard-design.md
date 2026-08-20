@@ -105,6 +105,14 @@ Service-role note: `auth.uid()` is NULL for service-role calls, so the guard
 would raise. No edge function or cron job calls these four functions, so no
 service path breaks.
 
+Grant note: the migration grants EXECUTE to `authenticated`
+(`20260301000001_update_delete_functions_with_tombstone.sql:90,183,283,327`)
+and never revokes the default PUBLIC execute grant. The `anon` and
+`service_role` roles can still call these functions today. The guard closes
+that path because `auth.uid()` returns NULL for those callers, not because
+of a grant boundary. Grant hardening stays on the sibling branch
+`fix/secdef-execute-grants`.
+
 ## Tests
 
 ### pgTAP (new file `supabase/tests/65_bank_delete_rpcs_membership_guard.sql`)
@@ -124,9 +132,9 @@ Tests, member impersonated:
 - Each of the four functions returns `success: true` on the victim
   restaurant's own data.
 
-Test, no JWT claims (`auth.uid()` NULL):
-- `bulk_delete_bank_transactions` raises. This pins the service-role
-  behavior.
+Tests, no JWT claims (`auth.uid()` NULL):
+- Each of the four functions raises. This pins the service-role behavior
+  per function and catches a copy-paste error in any one guard insertion.
 
 ### pgTAP (change existing file)
 

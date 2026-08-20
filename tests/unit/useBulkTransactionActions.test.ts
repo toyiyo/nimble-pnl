@@ -54,7 +54,7 @@ describe('useBulkCategorizeTransactions', () => {
     toastInfo.mockReset();
   });
 
-  it('calls the RPC with the three p_ params', async () => {
+  it('calls the RPC with the three p_ params plus p_skip_rebuild, then rebuilds once', async () => {
     rpc.mockResolvedValue({ data: makeResult({ categorized_count: 2 }), error: null });
     const client = new QueryClient();
     const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
@@ -66,10 +66,12 @@ describe('useBulkCategorizeTransactions', () => {
       p_transaction_ids: ['t1', 't2'],
       p_category_id: 'c1',
       p_restaurant_id: 'r1',
+      p_skip_rebuild: true,
     });
+    expect(rpc).toHaveBeenCalledWith('rebuild_account_balances', { p_restaurant_id: 'r1' });
   });
 
-  it('chunks 501 ids into two RPC calls and aggregates counts and skipped', async () => {
+  it('chunks 501 ids into two RPC calls, aggregates counts and skipped, then rebuilds once', async () => {
     const ids = Array.from({ length: 501 }, (_, i) => `t${i}`);
     rpc
       .mockResolvedValueOnce({
@@ -84,16 +86,25 @@ describe('useBulkCategorizeTransactions', () => {
       .mockResolvedValueOnce({
         data: makeResult({ categorized_count: 1, skipped: [{ id: 't500', reason: 'closed_period' }] }),
         error: null,
-      });
+      })
+      .mockResolvedValueOnce({ data: 6, error: null });
     const client = new QueryClient();
     const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
 
     result.current.mutate({ transactionIds: ids, categoryId: 'c1', restaurantId: 'r1' });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(rpc).toHaveBeenCalledTimes(2);
-    expect(rpc.mock.calls[0][1]).toMatchObject({ p_transaction_ids: ids.slice(0, 500) });
-    expect(rpc.mock.calls[1][1]).toMatchObject({ p_transaction_ids: ids.slice(500) });
+    // 2 chunk calls + 1 trailing rebuild call, not 1 rebuild per chunk.
+    expect(rpc).toHaveBeenCalledTimes(3);
+    expect(rpc.mock.calls[0]).toEqual([
+      'bulk_categorize_bank_transactions',
+      expect.objectContaining({ p_transaction_ids: ids.slice(0, 500), p_skip_rebuild: true }),
+    ]);
+    expect(rpc.mock.calls[1]).toEqual([
+      'bulk_categorize_bank_transactions',
+      expect.objectContaining({ p_transaction_ids: ids.slice(500), p_skip_rebuild: true }),
+    ]);
+    expect(rpc.mock.calls[2]).toEqual(['rebuild_account_balances', { p_restaurant_id: 'r1' }]);
     expect(result.current.data).toMatchObject({
       categorized_count: 491,
       reclassified_count: 5,
@@ -181,5 +192,62 @@ describe('useBulkCategorizeTransactions', () => {
     expect(toastSuccess).toHaveBeenCalled();
     const [message] = toastSuccess.mock.calls[0] as [string];
     expect(message).toContain('6');
+  });
+
+  it('does not show a success toast when every row is skipped', async () => {
+    rpc.mockResolvedValue({
+      data: makeResult({ skipped: [{ id: 't1', reason: 'reconciled' }] }),
+      error: null,
+    });
+    const client = new QueryClient();
+    const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
+
+    result.current.mutate({ transactionIds: ['t1'], categoryId: 'c1', restaurantId: 'r1' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalled();
+  });
+
+  it('shows an unexpected-error bucket, not raw SQLERRM text, for an unknown skip reason', async () => {
+    rpc.mockResolvedValue({
+      data: makeResult({
+        categorized_count: 1,
+        skipped: [{ id: 't2', reason: 'duplicate key value violates unique constraint "unique_journal_entry_reference"' }],
+      }),
+      error: null,
+    });
+    const client = new QueryClient();
+    const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
+
+    result.current.mutate({ transactionIds: ['t1', 't2'], categoryId: 'c1', restaurantId: 'r1' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const skipCall = toastError.mock.calls.find(([, options]) => (options as { duration?: number })?.duration === 10000);
+    expect(skipCall).toBeTruthy();
+    const [, options] = skipCall as [string, { description: string }];
+    expect(options.description).toBe('1 unexpected error');
+    expect(options.description).not.toContain('constraint');
+  });
+
+  it('reports a partial success and refreshes the UI when a later chunk fails', async () => {
+    const ids = Array.from({ length: 501 }, (_, i) => `t${i}`);
+    rpc
+      .mockResolvedValueOnce({ data: makeResult({ categorized_count: 500 }), error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'network unreachable' } });
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
+
+    result.current.mutate({ transactionIds: ids, categoryId: 'c1', restaurantId: 'r1' });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(toastError).toHaveBeenCalled();
+    const [title, options] = toastError.mock.calls[0] as [string, { description: string }];
+    expect(title).toBe('Only part of the selection was categorized');
+    expect(options.description).toContain('500 transactions were categorized');
+    expect(options.description).toContain('network unreachable');
+    const keys = spy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
+    expect(keys).toContain(JSON.stringify(['income-statement']));
   });
 });

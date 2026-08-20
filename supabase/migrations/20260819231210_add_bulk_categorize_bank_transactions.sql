@@ -14,11 +14,22 @@
 -- See docs/superpowers/specs/2026-08-19-bulk-categorize-journal-entries-design.md
 -- section 5 for the full design (guard order, per-row branch table, sign
 -- convention, entry-number format, result shape).
+--
+-- p_skip_rebuild (default false): the hook chunks a selection over 500 ids
+-- into more than one call. Every chunk call sets p_skip_rebuild = true, so
+-- this function never runs the full-ledger rebuild itself; the hook makes
+-- one direct call to rebuild_account_balances after the last chunk
+-- succeeds (src/hooks/useBulkTransactionActions.tsx). This keeps the
+-- rebuild to once per bulk operation, not once per chunk, and it stays
+-- correct even when the final chunk itself makes no change but an earlier
+-- chunk did. A direct caller that omits p_skip_rebuild keeps the original
+-- one-call, rebuild-if-changed contract.
 
 CREATE OR REPLACE FUNCTION public.bulk_categorize_bank_transactions(
   p_transaction_ids uuid[],
   p_category_id uuid,
-  p_restaurant_id uuid
+  p_restaurant_id uuid,
+  p_skip_rebuild boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -75,21 +86,30 @@ BEGIN
   END IF;
 
   -- Guard 4: input bounds. No silent truncation above 500 ids.
-  -- Messages here are pinned by supabase/tests/22_bulk_categorize_bank_transactions.sql
-  -- (throws_ok(sql, text) matches the text argument as the exact error
-  -- message when it is not a 5-char SQLSTATE code, not as a description).
+  -- Messages here follow the same 'p_param must ...' wording as guards 1-3
+  -- and the rest of the codebase (example:
+  -- supabase/migrations/20260804090300_bounded_categorization_sweep.sql:85).
+  -- supabase/tests/22_bulk_categorize_bank_transactions.sql checks them
+  -- with throws_like('%...%'), not an exact-text match.
   IF p_transaction_ids IS NULL OR array_length(p_transaction_ids, 1) IS NULL THEN
-    RAISE EXCEPTION 'Empty p_transaction_ids raises';
+    RAISE EXCEPTION 'p_transaction_ids must not be empty';
   END IF;
 
   IF array_length(p_transaction_ids, 1) > 500 THEN
-    RAISE EXCEPTION 'p_transaction_ids over 500 ids raises';
+    RAISE EXCEPTION 'p_transaction_ids must contain 500 ids or fewer, got %', array_length(p_transaction_ids, 1);
   END IF;
 
   -- Per-row loop. An id outside this tenant does not match the filter and
   -- is reported below in skipped with reason not_found.
+  -- Explicit column list, not SELECT *: bank_transactions.raw_data is a
+  -- JSONB column holding the full Stripe/Plaid payload and this loop never
+  -- reads it. Fetching it for up to 500 rows per call would be a large,
+  -- needless amplification of the single-row categorize_bank_transaction
+  -- RPC's own SELECT * (which pays that cost for only one row).
   FOR v_transaction IN
-    SELECT * FROM bank_transactions
+    SELECT id, category_id, is_categorized, is_reconciled, transaction_date,
+           amount, description, stripe_transaction_id
+    FROM bank_transactions
     WHERE id = ANY(p_transaction_ids)
       AND restaurant_id = p_restaurant_id
   LOOP
@@ -239,7 +259,7 @@ BEGIN
     v_skipped := v_skipped || jsonb_build_object('id', v_missing_id, 'reason', 'not_found');
   END LOOP;
 
-  IF v_any_change THEN
+  IF v_any_change AND NOT p_skip_rebuild THEN
     PERFORM rebuild_account_balances(p_restaurant_id);
   END IF;
 
@@ -253,6 +273,6 @@ BEGIN
 END;
 $function$;
 
-REVOKE EXECUTE ON FUNCTION public.bulk_categorize_bank_transactions(uuid[], uuid, uuid) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.bulk_categorize_bank_transactions(uuid[], uuid, uuid) FROM anon;
-GRANT EXECUTE ON FUNCTION public.bulk_categorize_bank_transactions(uuid[], uuid, uuid) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.bulk_categorize_bank_transactions(uuid[], uuid, uuid, boolean) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.bulk_categorize_bank_transactions(uuid[], uuid, uuid, boolean) FROM anon;
+GRANT EXECUTE ON FUNCTION public.bulk_categorize_bank_transactions(uuid[], uuid, uuid, boolean) TO authenticated;

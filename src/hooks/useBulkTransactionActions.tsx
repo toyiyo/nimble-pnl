@@ -32,15 +32,46 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+/**
+ * The three skip reasons the RPC's guarded branches set. Any other value
+ * is the raw SQLERRM text from the RPC's catch-all exception trap
+ * (supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql)
+ * and must not reach the user verbatim or be underscore-replaced — a real
+ * Postgres error can carry underscores from a constraint or column name.
+ */
+const KNOWN_SKIP_REASONS = new Set(['reconciled', 'closed_period', 'not_found']);
+
 /** Groups skipped rows by reason for a toast description like "3 reconciled, 2 closed period". */
 function summarizeSkipReasons(skipped: BulkCategorizeSkippedRow[]): string {
   const counts = new Map<string, number>();
+  let unexpectedCount = 0;
   for (const row of skipped) {
-    counts.set(row.reason, (counts.get(row.reason) ?? 0) + 1);
+    if (KNOWN_SKIP_REASONS.has(row.reason)) {
+      counts.set(row.reason, (counts.get(row.reason) ?? 0) + 1);
+    } else {
+      unexpectedCount += 1;
+      console.error('Unexpected bulk categorize skip reason', { id: row.id, reason: row.reason });
+    }
   }
-  return Array.from(counts.entries())
-    .map(([reason, count]) => `${count} ${reason.replace(/_/g, ' ')}`)
-    .join(', ');
+  const parts = Array.from(counts.entries()).map(([reason, count]) => `${count} ${reason.replace(/_/g, ' ')}`);
+  if (unexpectedCount > 0) {
+    parts.push(`${unexpectedCount} unexpected error${unexpectedCount === 1 ? '' : 's'}`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * Thrown when a chunk fails after an earlier chunk already wrote real
+ * journal entries. Carries the partial aggregate so onError can invalidate
+ * queries and tell the user how much succeeded, instead of discarding it.
+ */
+class PartialBulkCategorizeError extends Error {
+  partial: BulkCategorizeRpcResult;
+  constructor(message: string, partial: BulkCategorizeRpcResult) {
+    super(message);
+    this.name = 'PartialBulkCategorizeError';
+    this.partial = partial;
+  }
 }
 
 /**
@@ -66,23 +97,51 @@ export function useBulkCategorizeTransactions() {
       };
 
       for (const idChunk of chunk(transactionIds, BULK_CATEGORIZE_CHUNK_SIZE)) {
-        const { data, error } = await supabase.rpc('bulk_categorize_bank_transactions', {
-          p_transaction_ids: idChunk,
-          p_category_id: categoryId,
+        try {
+          const { data, error } = await supabase.rpc('bulk_categorize_bank_transactions', {
+            p_transaction_ids: idChunk,
+            p_category_id: categoryId,
+            p_restaurant_id: restaurantId,
+            // Every chunk skips its own rebuild; one rebuild_account_balances
+            // call runs after the loop below, for the whole operation.
+            p_skip_rebuild: true,
+          });
+
+          if (error) throw error;
+
+          const result = data as unknown as BulkCategorizeRpcResult;
+          if (!result.success) {
+            throw new Error('Failed to categorize transactions');
+          }
+
+          aggregate.categorized_count += result.categorized_count;
+          aggregate.reclassified_count += result.reclassified_count;
+          aggregate.unchanged_count += result.unchanged_count;
+          aggregate.skipped.push(...result.skipped);
+        } catch (chunkError) {
+          // A later chunk's failure must not hide an earlier chunk's real
+          // writes: those journal entries already exist in the database.
+          if (aggregate.categorized_count + aggregate.reclassified_count > 0) {
+            const message =
+              chunkError instanceof Error
+                ? chunkError.message
+                : (chunkError as { message?: string })?.message || 'Failed to categorize transactions';
+            throw new PartialBulkCategorizeError(message, aggregate);
+          }
+          throw chunkError;
+        }
+      }
+
+      if (aggregate.categorized_count + aggregate.reclassified_count > 0) {
+        const { error: rebuildError } = await supabase.rpc('rebuild_account_balances', {
           p_restaurant_id: restaurantId,
         });
-
-        if (error) throw error;
-
-        const result = data as unknown as BulkCategorizeRpcResult;
-        if (!result.success) {
-          throw new Error('Failed to categorize transactions');
+        if (rebuildError) {
+          // The journal entries are already written; only the cached
+          // current_balance rollup failed. Report it as a partial result
+          // rather than a total failure.
+          throw new PartialBulkCategorizeError(rebuildError.message, aggregate);
         }
-
-        aggregate.categorized_count += result.categorized_count;
-        aggregate.reclassified_count += result.reclassified_count;
-        aggregate.unchanged_count += result.unchanged_count;
-        aggregate.skipped.push(...result.skipped);
       }
 
       return aggregate;
@@ -95,22 +154,29 @@ export function useBulkCategorizeTransactions() {
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
 
       const changedCount = result.categorized_count + result.reclassified_count;
-      const description =
-        result.unchanged_count > 0
-          ? `${result.unchanged_count} already had this category`
-          : 'Changes have been applied successfully';
 
-      toast.success(`${changedCount} transactions categorized`, {
-        description,
-        duration: 10000,
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            // TODO: Implement undo functionality
-            toast.info('Undo feature coming soon');
+      // A row only ever lands in categorized/reclassified, unchanged, or
+      // skipped. Showing "0 transactions categorized" as a success when
+      // every row was skipped would contradict the skip-count error toast
+      // shown right below it.
+      if (changedCount > 0 || result.unchanged_count > 0) {
+        const description =
+          result.unchanged_count > 0
+            ? `${result.unchanged_count} already had this category`
+            : 'Changes have been applied successfully';
+
+        toast.success(`${changedCount} transactions categorized`, {
+          description,
+          duration: 10000,
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              // TODO: Implement undo functionality
+              toast.info('Undo feature coming soon');
+            },
           },
-        },
-      });
+        });
+      }
 
       if (result.skipped.length > 0) {
         toast.error(`${result.skipped.length} transactions skipped`, {
@@ -121,6 +187,23 @@ export function useBulkCategorizeTransactions() {
     },
     onError: (error) => {
       console.error('Error bulk categorizing transactions:', error);
+
+      if (error instanceof PartialBulkCategorizeError) {
+        // Some rows already wrote real journal entries before the failure.
+        // Refresh the UI to show them instead of leaving it stale.
+        queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+        queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+        queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+        queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+
+        const changedCount = error.partial.categorized_count + error.partial.reclassified_count;
+        toast.error('Only part of the selection was categorized', {
+          description: `${changedCount} transactions were categorized before this error: ${error.message}`,
+          duration: 10000,
+        });
+        return;
+      }
+
       const message = error instanceof Error ? error.message : (error as { message?: string })?.message;
       toast.error('Failed to categorize transactions', {
         description: message || 'Please try again or contact support',

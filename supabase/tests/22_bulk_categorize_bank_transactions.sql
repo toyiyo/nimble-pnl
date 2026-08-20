@@ -6,7 +6,7 @@
 -- section 5 for the guard order and per-row branch semantics this pins.
 
 BEGIN;
-SELECT plan(27);
+SELECT plan(30);
 
 SET LOCAL role TO postgres;
 
@@ -176,24 +176,26 @@ SELECT throws_like(
 -- ---------------------------------------------------------------------------
 -- Test 4: empty array -> raises
 -- ---------------------------------------------------------------------------
-SELECT throws_ok(
+SELECT throws_like(
   $$ SELECT bulk_categorize_bank_transactions(
        ARRAY[]::uuid[],
        '00000000-0000-0000-0000-000000000612'::uuid,
        '00000000-0000-0000-0000-000000000610'::uuid
      ) $$,
+  '%p_transaction_ids must not be empty%',
   'Empty p_transaction_ids raises'
 );
 
 -- ---------------------------------------------------------------------------
 -- Test 5: array over 500 ids -> raises
 -- ---------------------------------------------------------------------------
-SELECT throws_ok(
+SELECT throws_like(
   $$ SELECT bulk_categorize_bank_transactions(
        (SELECT array_agg(gen_random_uuid()) FROM generate_series(1, 501)),
        '00000000-0000-0000-0000-000000000612'::uuid,
        '00000000-0000-0000-0000-000000000610'::uuid
      ) $$,
+  '%p_transaction_ids must contain 500 ids or fewer%',
   'p_transaction_ids over 500 ids raises'
 );
 
@@ -442,6 +444,52 @@ SELECT is(
      WHERE je.reference_type = 'bank_transaction' AND je.reference_id = '00000000-0000-0000-0000-000000000710'::uuid),
   DATE '2026-03-10',
   'entry_date equals the UTC calendar day of transaction_date'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 17: p_skip_rebuild = true still creates the journal entry but
+-- leaves current_balance untouched; a direct rebuild_account_balances call
+-- afterward picks up the change. Covers the fix for the multi-chunk
+-- rebuild-amplification finding (performance review).
+-- ---------------------------------------------------------------------------
+INSERT INTO bank_transactions (
+  id, restaurant_id, connected_bank_id, stripe_transaction_id,
+  transaction_date, amount, description, status, is_categorized, is_transfer, is_reconciled
+) VALUES (
+  '00000000-0000-0000-0000-000000000711'::uuid, '00000000-0000-0000-0000-000000000610'::uuid, '00000000-0000-0000-0000-000000000615'::uuid,
+  'txn-bulk-skip-rebuild-1', CURRENT_DATE, -80.00, 'Skip-rebuild flag txn', 'posted', false, false, false
+)
+ON CONFLICT (id) DO UPDATE SET is_categorized = false, category_id = NULL, is_reconciled = false;
+
+SELECT set_config(
+  'bulk_categorize_test.balance_before',
+  (SELECT current_balance::text FROM chart_of_accounts WHERE id = '00000000-0000-0000-0000-000000000612'::uuid),
+  true
+);
+
+SELECT is(
+  (SELECT bulk_categorize_bank_transactions(
+       ARRAY['00000000-0000-0000-0000-000000000711'::uuid],
+       '00000000-0000-0000-0000-000000000612'::uuid,
+       '00000000-0000-0000-0000-000000000610'::uuid,
+       true
+     ) ->> 'categorized_count')::int,
+  1,
+  'p_skip_rebuild = true still creates the journal entry'
+);
+
+SELECT is(
+  (SELECT current_balance::text FROM chart_of_accounts WHERE id = '00000000-0000-0000-0000-000000000612'::uuid),
+  current_setting('bulk_categorize_test.balance_before'),
+  'p_skip_rebuild = true leaves current_balance unchanged (no internal rebuild)'
+);
+
+SELECT rebuild_account_balances('00000000-0000-0000-0000-000000000610'::uuid);
+
+SELECT isnt(
+  (SELECT current_balance::text FROM chart_of_accounts WHERE id = '00000000-0000-0000-0000-000000000612'::uuid),
+  current_setting('bulk_categorize_test.balance_before'),
+  'A direct rebuild_account_balances call after p_skip_rebuild = true reflects the new entry'
 );
 
 SELECT * FROM finish();

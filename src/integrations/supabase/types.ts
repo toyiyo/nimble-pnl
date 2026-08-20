@@ -10705,6 +10705,7 @@ export type Database = {
         Args: {
           p_category_id: string
           p_restaurant_id: string
+          p_skip_rebuild?: boolean
           p_transaction_ids: string[]
         }
         Returns: Json

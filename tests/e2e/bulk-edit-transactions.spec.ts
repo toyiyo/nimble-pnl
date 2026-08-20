@@ -117,8 +117,13 @@ test.describe('Bank Transactions Bulk Edit', () => {
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole('heading', { name: /categorize.*transaction/i })).toBeVisible();
 
-    // Pick a category from the restaurant's default chart of accounts
-    const categorySelector = page.getByRole('combobox', { name: /select category/i });
+    // Pick a category from the restaurant's default chart of accounts.
+    // The account selector's role is combobox but it carries no accessible
+    // name, so scope the query to the dialog to find it. The popover's
+    // search input also carries role combobox and can outlive its close
+    // animation in the DOM, so pin to the first match: the trigger button,
+    // which renders before the portaled popover content in DOM order.
+    const categorySelector = page.getByRole('dialog').getByRole('combobox').first();
     await expect(categorySelector).toBeVisible({ timeout: 10000 });
     await categorySelector.click();
     await page.getByPlaceholder(/search accounts/i).fill('Office Supplies');

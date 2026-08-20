@@ -7,6 +7,7 @@ import {
   topCategories,
   breakdown,
   buildSankey,
+  computeInsights,
   type CashFlowRow,
   type CashFlowPeriod,
 } from '@/lib/cashflowInsights';
@@ -367,5 +368,104 @@ describe('buildSankey', () => {
     const rightTotal = sankey.links.filter((l) => l.source === centerIndex).reduce((sum, l) => sum + l.value, 0);
 
     expect(leftTotal).toBe(rightTotal);
+  });
+});
+
+function subscriptionCharges(payee: string, dates: string[], amount: number): CashFlowRow[] {
+  return dates.map((date) =>
+    makeRow({ transaction_date: date, amount: -amount, normalized_payee: payee, is_transfer: false }),
+  );
+}
+
+function inflowRow(date: string, payee: string, amount: number): CashFlowRow {
+  return makeRow({ transaction_date: date, amount, normalized_payee: payee, is_transfer: false });
+}
+
+describe('computeInsights', () => {
+  it('finds a subscription: 3+ charges, 25-35 day cadence, under 10% amount variance', () => {
+    const rows = subscriptionCharges('Netflix', ['2026-06-01', '2026-07-01', '2026-08-01'], 15.99);
+
+    const insights = computeInsights(rows, period('2026-08-01', '2026-08-19'));
+
+    expect(insights).toContainEqual({
+      id: 'subscriptions',
+      title: '1 notable transactions',
+      body: 'We noticed 1 subscriptions you may want to review',
+    });
+  });
+
+  it('emits no subscription insight for an irregular cadence', () => {
+    const rows = subscriptionCharges('Gym', ['2026-06-01', '2026-06-10', '2026-08-01'], 40);
+
+    const insights = computeInsights(rows, period('2026-08-01', '2026-08-19'));
+
+    expect(insights.find((i) => i.id === 'subscriptions')).toBeUndefined();
+  });
+
+  it('reports a revenue change: last full calendar month vs the mean of the three before it', () => {
+    const rows = [
+      inflowRow('2026-04-15', 'Client A', 1000),
+      inflowRow('2026-05-15', 'Client A', 1000),
+      inflowRow('2026-06-15', 'Client A', 1000),
+      inflowRow('2026-07-15', 'Client A', 1500),
+    ];
+
+    // period.to on the last day of July makes July the last full calendar month.
+    const insights = computeInsights(rows, period('2026-01-01', '2026-07-31'));
+
+    const revenue = insights.find((i) => i.id === 'revenue-change');
+    expect(revenue?.title).toBe('Revenue increased');
+    expect(revenue?.body).toContain('July 2026');
+    expect(revenue?.body).toContain('$1,500');
+    expect(revenue?.body).toContain('$1,000');
+  });
+
+  it('emits a top-source insight only when the delta is 20% or more', () => {
+    const flatRows = [
+      inflowRow('2026-04-15', 'Payee B', 700),
+      inflowRow('2026-05-15', 'Payee B', 700),
+      inflowRow('2026-06-15', 'Payee B', 700),
+      inflowRow('2026-07-15', 'Payee A', 100),
+      inflowRow('2026-07-15', 'Payee B', 830), // (830-700)/700 = 18.6%, below the 20% floor
+    ];
+    const flat = computeInsights(flatRows, period('2026-01-01', '2026-07-31'));
+    expect(flat.find((i) => i.id === 'top-source-change')).toBeUndefined();
+
+    const spikeRows = [
+      inflowRow('2026-04-15', 'Payee B', 700),
+      inflowRow('2026-05-15', 'Payee B', 700),
+      inflowRow('2026-06-15', 'Payee B', 700),
+      inflowRow('2026-07-15', 'Payee A', 100),
+      inflowRow('2026-07-15', 'Payee B', 1000), // (1000-700)/700 = 42.9%, above the floor
+    ];
+    const spike = computeInsights(spikeRows, period('2026-01-01', '2026-07-31'));
+    const topSource = spike.find((i) => i.id === 'top-source-change');
+    expect(topSource?.title).toBe('Payee B increased');
+    expect(topSource?.body).toContain('$1,000');
+    expect(topSource?.body).toContain('$700');
+  });
+
+  it('returns an empty list when no rule clears its data threshold', () => {
+    const rows = [inflowRow('2026-07-15', 'Client A', 250), inflowRow('2026-07-20', 'Vendor X', -60)];
+
+    const insights = computeInsights(rows, period('2026-07-01', '2026-07-31'));
+
+    expect(insights).toEqual([]);
+  });
+
+  it('anchors every time window to period.to, not to today', () => {
+    const rows = [
+      inflowRow('2026-03-15', 'Client A', 1000),
+      inflowRow('2026-04-15', 'Client A', 1000),
+      inflowRow('2026-05-15', 'Client A', 1000),
+      inflowRow('2026-06-15', 'Client A', 1000),
+      inflowRow('2026-07-15', 'Client A', 2000),
+    ];
+
+    const julyAnchored = computeInsights(rows, period('2026-01-01', '2026-07-31'));
+    const juneAnchored = computeInsights(rows, period('2026-01-01', '2026-06-30'));
+
+    expect(julyAnchored.find((i) => i.id === 'revenue-change')?.body).toContain('July 2026');
+    expect(juneAnchored.find((i) => i.id === 'revenue-change')?.body).toContain('June 2026');
   });
 });

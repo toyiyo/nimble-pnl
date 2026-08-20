@@ -232,13 +232,17 @@ export function usePendingOutflowMutations() {
 
       if (poError) throw poError;
 
-      return { pendingOutflowId, bankTransactionId, categorized: true };
+      return { pendingOutflowId, bankTransactionId, categorized: !!pendingOutflow.category_id };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
-      toast.success('Expense matched and cleared');
+      toast.success(
+        data.categorized
+          ? 'Expense matched and cleared'
+          : 'Expense matched. Categorize the transaction on the Banking page.'
+      );
     },
     onError: (error) => {
       toast.error(`Failed to confirm match: ${error.message}`);

@@ -252,6 +252,89 @@ export function breakdown(rows: CashFlowRow[], direction: CashFlowDirection, by:
   return top;
 }
 
+/** One node in `buildSankey`'s output. */
+export interface SankeyNode {
+  name: string;
+}
+
+/** One link in `buildSankey`'s output. `source`/`target` are node indexes. */
+export interface SankeyLink {
+  source: number;
+  target: number;
+  value: number;
+}
+
+/** Nodes and links for the Flow (Sankey) chart mode. */
+export interface SankeyData {
+  nodes: SankeyNode[];
+  links: SankeyLink[];
+}
+
+const SANKEY_TOP_PAYEE_COUNT = 5;
+
+/**
+ * Build Sankey nodes and links for the Flow chart mode.
+ * Left: top inflow payees plus `Transfers in`.
+ * Center: `Money in`.
+ * Right: top outflow payees plus `Transfers out` and `Net savings`.
+ * The sum of left link values equals the sum of right link values.
+ */
+export function buildSankey(rows: CashFlowRow[]): SankeyData {
+  const inflowRows = rows.filter((row) => row.amount >= 0 && !row.is_transfer);
+  const outflowRows = rows.filter((row) => row.amount < 0 && !row.is_transfer);
+
+  const transferInTotal = rows
+    .filter((row) => row.amount >= 0 && row.is_transfer)
+    .reduce((sum, row) => sum + row.amount, 0);
+  const transferOutTotal = Math.abs(
+    rows.filter((row) => row.amount < 0 && row.is_transfer).reduce((sum, row) => sum + row.amount, 0),
+  );
+
+  const inflowEntries = sumByKey(inflowRows, payeeFor).sort((a, b) => b.amount - a.amount);
+  const outflowEntries = sumByKey(outflowRows, payeeFor)
+    .map(({ key, amount }) => ({ key, amount: Math.abs(amount) }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const topInflow = inflowEntries.slice(0, SANKEY_TOP_PAYEE_COUNT);
+  const otherIncome = inflowEntries.slice(SANKEY_TOP_PAYEE_COUNT).reduce((sum, entry) => sum + entry.amount, 0);
+
+  const topOutflow = outflowEntries.slice(0, SANKEY_TOP_PAYEE_COUNT);
+  const otherExpenses = outflowEntries.slice(SANKEY_TOP_PAYEE_COUNT).reduce((sum, entry) => sum + entry.amount, 0);
+
+  const nodes: SankeyNode[] = [];
+  const links: SankeyLink[] = [];
+  const addNode = (name: string): number => nodes.push({ name }) - 1;
+
+  const centerIndex = addNode('Money in');
+
+  for (const entry of topInflow) {
+    links.push({ source: addNode(entry.key), target: centerIndex, value: entry.amount });
+  }
+  if (otherIncome > 0) {
+    links.push({ source: addNode('Other income'), target: centerIndex, value: otherIncome });
+  }
+  if (transferInTotal > 0) {
+    links.push({ source: addNode('Transfers in'), target: centerIndex, value: transferInTotal });
+  }
+
+  for (const entry of topOutflow) {
+    links.push({ source: centerIndex, target: addNode(entry.key), value: entry.amount });
+  }
+  if (otherExpenses > 0) {
+    links.push({ source: centerIndex, target: addNode('Other expenses'), value: otherExpenses });
+  }
+  if (transferOutTotal > 0) {
+    links.push({ source: centerIndex, target: addNode('Transfers out'), value: transferOutTotal });
+  }
+
+  const netRemainder = Math.max(computeTotals(rows).net, 0);
+  if (netRemainder > 0) {
+    links.push({ source: centerIndex, target: addNode('Net savings'), value: netRemainder });
+  }
+
+  return { nodes, links };
+}
+
 /** Compute totals and the bucketed series in one call. */
 export function computeCashFlowAggregates(
   rows: CashFlowRow[],

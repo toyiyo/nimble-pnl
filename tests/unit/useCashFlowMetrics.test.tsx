@@ -17,10 +17,12 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
 }));
 
+const mockRestaurantContext = vi.hoisted(() => ({
+  selectedRestaurant: { restaurant_id: 'rest-123' } as { restaurant_id: string } | null,
+}));
+
 vi.mock('@/contexts/RestaurantContext', () => ({
-  useRestaurantContext: () => ({
-    selectedRestaurant: { restaurant_id: 'rest-123' },
-  }),
+  useRestaurantContext: () => mockRestaurantContext,
 }));
 
 function createWrapper() {
@@ -37,6 +39,7 @@ function createWrapper() {
 
 beforeEach(() => {
   mockSupabase.rpc.mockReset();
+  mockRestaurantContext.selectedRestaurant = { restaurant_id: 'rest-123' };
 });
 
 describe('useCashFlowMetrics', () => {
@@ -131,10 +134,14 @@ describe('useCashFlowMetrics', () => {
   });
 
   it('does not call the RPC when no restaurant is selected', async () => {
-    // enabled guard is exercised via the mocked context above always
-    // returning a restaurant; this case is covered by the hook's
-    // `enabled: !!selectedRestaurant?.restaurant_id` guard, unchanged
-    // from the previous implementation.
+    mockRestaurantContext.selectedRestaurant = null;
+
+    const { result } = renderHook(
+      () => useCashFlowMetrics(new Date(2026, 7, 1), new Date(2026, 7, 10), 'all'),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
     expect(mockSupabase.rpc).not.toHaveBeenCalled();
   });
 });

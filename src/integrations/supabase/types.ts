@@ -11307,7 +11307,7 @@ export type Database = {
       }
       get_cash_flow_metrics: {
         Args: {
-          p_bank_account_id?: string
+          p_bank_account_id?: string | null
           p_end_date: string
           p_restaurant_id: string
           p_start_date: string

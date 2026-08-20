@@ -53,6 +53,25 @@ export interface CashFlowAggregates {
   series: CashFlowBucket[];
 }
 
+/** One row's signed total for a category, from `topCategories`. */
+export interface CategoryTotal {
+  name: string;
+  amount: number;
+}
+
+/** Direction filter for `breakdown`. */
+export type CashFlowDirection = 'in' | 'out';
+
+/** Group key for `breakdown`. */
+export type BreakdownBy = 'payee' | 'category';
+
+/** One row in a `breakdown` table. */
+export interface BreakdownRow {
+  label: string;
+  amount: number;
+  pctOfTotal: number;
+}
+
 const DAY_INTERVAL_MAX_DAYS = 31;
 const WEEK_INTERVAL_MAX_DAYS = 120;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -158,6 +177,79 @@ export function bucketSeries(rows: CashFlowRow[], period: CashFlowPeriod, interv
 
   orderedKeys.sort();
   return orderedKeys.map((key) => bucketsByKey.get(key)!);
+}
+
+const TOP_CATEGORY_COUNT = 5;
+const TOP_BREAKDOWN_COUNT = 8;
+
+/**
+ * Pick a display name for a transaction's other party.
+ * Falls back through `normalized_payee`, `merchant_name`, `description`,
+ * then `'Unknown'` when all three are null.
+ */
+export function payeeFor(row: CashFlowRow): string {
+  return row.normalized_payee ?? row.merchant_name ?? row.description ?? 'Unknown';
+}
+
+function sumByKey(rows: CashFlowRow[], keyFor: (row: CashFlowRow) => string): { key: string; amount: number }[] {
+  const sums = new Map<string, number>();
+  const order: string[] = [];
+
+  for (const row of rows) {
+    const key = keyFor(row);
+    if (!sums.has(key)) {
+      sums.set(key, 0);
+      order.push(key);
+    }
+    sums.set(key, sums.get(key)! + row.amount);
+  }
+
+  return order.map((key) => ({ key, amount: sums.get(key)! }));
+}
+
+/**
+ * Sum rows by category. Returns the five largest by absolute sum;
+ * the rest fold into `Other`.
+ */
+export function topCategories(rows: CashFlowRow[]): CategoryTotal[] {
+  const entries = sumByKey(rows, categoryLabel).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+
+  const top = entries.slice(0, TOP_CATEGORY_COUNT).map(({ key, amount }) => ({ name: key, amount }));
+  const rest = entries.slice(TOP_CATEGORY_COUNT);
+
+  if (rest.length > 0) {
+    const otherAmount = rest.reduce((sum, entry) => sum + entry.amount, 0);
+    top.push({ name: 'Other', amount: otherAmount });
+  }
+
+  return top;
+}
+
+/**
+ * Sum rows in one direction (money in or money out), grouped by payee or
+ * category. Returns the top eight rows by absolute amount, the rest folded
+ * into a `Remaining` row, each with `pctOfTotal`.
+ */
+export function breakdown(rows: CashFlowRow[], direction: CashFlowDirection, by: BreakdownBy): BreakdownRow[] {
+  const filtered = rows.filter((row) => (direction === 'in' ? row.amount >= 0 : row.amount < 0));
+  const keyFor = by === 'payee' ? payeeFor : categoryLabel;
+
+  const total = filtered.reduce((sum, row) => sum + Math.abs(row.amount), 0);
+  const pctOfTotal = (amount: number) => (total === 0 ? 0 : (Math.abs(amount) / total) * 100);
+
+  const entries = sumByKey(filtered, keyFor).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+
+  const top = entries
+    .slice(0, TOP_BREAKDOWN_COUNT)
+    .map(({ key, amount }) => ({ label: key, amount, pctOfTotal: pctOfTotal(amount) }));
+  const rest = entries.slice(TOP_BREAKDOWN_COUNT);
+
+  if (rest.length > 0) {
+    const remainingAmount = rest.reduce((sum, entry) => sum + entry.amount, 0);
+    top.push({ label: 'Remaining', amount: remainingAmount, pctOfTotal: pctOfTotal(remainingAmount) });
+  }
+
+  return top;
 }
 
 /** Compute totals and the bucketed series in one call. */

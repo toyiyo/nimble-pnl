@@ -3,6 +3,9 @@ import {
   defaultInterval,
   computeTotals,
   bucketSeries,
+  payeeFor,
+  topCategories,
+  breakdown,
   type CashFlowRow,
   type CashFlowPeriod,
 } from '@/lib/cashflowInsights';
@@ -175,5 +178,125 @@ describe('bucketSeries', () => {
     const buckets = bucketSeries([], period('2026-08-01', '2026-08-31'), 'day');
 
     expect(buckets).toEqual([]);
+  });
+});
+
+describe('payeeFor', () => {
+  it('prefers normalized_payee', () => {
+    const row = makeRow({ normalized_payee: 'Acme', merchant_name: 'Other Co', description: 'desc' });
+
+    expect(payeeFor(row)).toBe('Acme');
+  });
+
+  it('falls back to merchant_name when normalized_payee is null', () => {
+    const row = makeRow({ normalized_payee: null, merchant_name: 'Merchant Co', description: 'desc' });
+
+    expect(payeeFor(row)).toBe('Merchant Co');
+  });
+
+  it('falls back to description when normalized_payee and merchant_name are null', () => {
+    const row = makeRow({ normalized_payee: null, merchant_name: null, description: 'Check #100' });
+
+    expect(payeeFor(row)).toBe('Check #100');
+  });
+
+  it('falls back to Unknown when all three fields are null', () => {
+    const row = makeRow({ normalized_payee: null, merchant_name: null, description: null });
+
+    expect(payeeFor(row)).toBe('Unknown');
+  });
+});
+
+describe('topCategories', () => {
+  it('returns every category signed sum when there are 5 or fewer', () => {
+    const rows = [
+      makeRow({ amount: 100, category: { id: 'c1', name: 'Food' } }),
+      makeRow({ amount: -50, category: { id: 'c2', name: 'Rent' } }),
+    ];
+
+    expect(topCategories(rows)).toEqual([
+      { name: 'Food', amount: 100 },
+      { name: 'Rent', amount: -50 },
+    ]);
+  });
+
+  it('folds categories beyond the top 5 by absolute sum into Other', () => {
+    const rows = [
+      makeRow({ amount: 500, category: { id: 'c1', name: 'A' } }),
+      makeRow({ amount: -400, category: { id: 'c2', name: 'B' } }),
+      makeRow({ amount: 300, category: { id: 'c3', name: 'C' } }),
+      makeRow({ amount: -200, category: { id: 'c4', name: 'D' } }),
+      makeRow({ amount: 100, category: { id: 'c5', name: 'E' } }),
+      makeRow({ amount: -50, category: { id: 'c6', name: 'F' } }),
+      makeRow({ amount: -10, category: { id: 'c7', name: 'G' } }),
+    ];
+
+    expect(topCategories(rows)).toEqual([
+      { name: 'A', amount: 500 },
+      { name: 'B', amount: -400 },
+      { name: 'C', amount: 300 },
+      { name: 'D', amount: -200 },
+      { name: 'E', amount: 100 },
+      { name: 'Other', amount: -60 },
+    ]);
+  });
+
+  it('folds transfer rows into Transfers', () => {
+    const rows = [makeRow({ amount: -75, is_transfer: true, category: { id: 'c1', name: 'Food' } })];
+
+    expect(topCategories(rows)).toEqual([{ name: 'Transfers', amount: -75 }]);
+  });
+
+  it('folds rows with no category into Uncategorized', () => {
+    const rows = [makeRow({ amount: 40, category: null })];
+
+    expect(topCategories(rows)).toEqual([{ name: 'Uncategorized', amount: 40 }]);
+  });
+
+  it('returns an empty list for an empty row list', () => {
+    expect(topCategories([])).toEqual([]);
+  });
+});
+
+describe('breakdown', () => {
+  it('groups money-in rows by payee with pctOfTotal, dropping outflows', () => {
+    const rows = [
+      makeRow({ amount: 300, normalized_payee: 'Client A' }),
+      makeRow({ amount: 100, normalized_payee: 'Client B' }),
+      makeRow({ amount: -50, normalized_payee: 'Client A' }),
+    ];
+
+    expect(breakdown(rows, 'in', 'payee')).toEqual([
+      { label: 'Client A', amount: 300, pctOfTotal: 75 },
+      { label: 'Client B', amount: 100, pctOfTotal: 25 },
+    ]);
+  });
+
+  it('groups money-out rows by category with pctOfTotal, dropping inflows', () => {
+    const rows = [
+      makeRow({ amount: -300, category: { id: 'c1', name: 'Rent' } }),
+      makeRow({ amount: -100, category: { id: 'c2', name: 'Food' } }),
+      makeRow({ amount: 200, category: { id: 'c1', name: 'Rent' } }),
+    ];
+
+    expect(breakdown(rows, 'out', 'category')).toEqual([
+      { label: 'Rent', amount: -300, pctOfTotal: 75 },
+      { label: 'Food', amount: -100, pctOfTotal: 25 },
+    ]);
+  });
+
+  it('folds payees beyond the top 8 into a Remaining row', () => {
+    const rows = Array.from({ length: 9 }, (_, i) => makeRow({ amount: -(100 - i * 5), normalized_payee: `Payee ${i}` }));
+
+    const result = breakdown(rows, 'out', 'payee');
+
+    expect(result).toHaveLength(9);
+    expect(result[8]).toEqual({ label: 'Remaining', amount: -60, pctOfTotal: (60 / 720) * 100 });
+  });
+
+  it('returns an empty list when no rows match the direction', () => {
+    const rows = [makeRow({ amount: 100 })];
+
+    expect(breakdown(rows, 'out', 'payee')).toEqual([]);
   });
 });

@@ -374,7 +374,13 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
                 }
                 filterByTypes={['expense', 'asset', 'cogs']}
                 placeholder="Select category (expense, COGS, or asset)..."
+                disabled={expense?.status === 'cleared'}
               />
+              {expense?.status === 'cleared' && (
+                <p className="text-xs text-muted-foreground">
+                  This expense is cleared. Change the category on the Banking page instead.
+                </p>
+              )}
             </div>
 
             {/* Notes */}

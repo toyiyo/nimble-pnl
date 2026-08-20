@@ -183,6 +183,30 @@ export function usePendingOutflowMutations() {
       };
 
       if (pendingOutflow.category_id) {
+        // The RPC returns journal_entry_id: null when the transaction
+        // already has this exact category
+        // (supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql:90-113).
+        // That skip assumes a journal entry already exists from the first
+        // categorize. A transaction can be is_categorized with no journal
+        // entry, from a write path outside this RPC. Block the match in
+        // that case. A silent match would hide a missing journal entry
+        // (Codex review finding).
+        if (bankTransaction.category_id === pendingOutflow.category_id) {
+          const { data: existingEntry, error: journalCheckError } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('reference_type', 'bank_transaction')
+            .eq('reference_id', bankTransactionId)
+            .maybeSingle();
+
+          if (journalCheckError) throw journalCheckError;
+          if (!existingEntry) {
+            throw new Error(
+              'This transaction is already categorized but has no journal entry. Recategorize it on the Banking page, then match again.'
+            );
+          }
+        }
+
         // The RPC applies the category, writes the merged notes, and posts
         // the matching journal entry in one database transaction. It also
         // blocks a reconciled transaction and a closed fiscal period — the
@@ -221,18 +245,33 @@ export function usePendingOutflowMutations() {
       if (btError) throw btError;
 
       // Update pending outflow
+      const pendingOutflowUpdates: Record<string, unknown> = {
+        status: 'cleared',
+        linked_bank_transaction_id: bankTransactionId,
+        cleared_at: new Date().toISOString(),
+      };
+
+      // The outflow's own category_id drives the "Needs category" badge on
+      // the cleared card (PendingOutflowCard.tsx). When the outflow had no
+      // category but the matched transaction was already categorized, copy
+      // that category onto the outflow so the badge does not show a false
+      // "needs category" state (sound-logic review finding).
+      if (!pendingOutflow.category_id && bankTransaction.category_id) {
+        pendingOutflowUpdates.category_id = bankTransaction.category_id;
+      }
+
       const { error: poError } = await supabase
         .from('pending_outflows')
-        .update({
-          status: 'cleared',
-          linked_bank_transaction_id: bankTransactionId,
-          cleared_at: new Date().toISOString(),
-        })
+        .update(pendingOutflowUpdates)
         .eq('id', pendingOutflowId);
 
       if (poError) throw poError;
 
-      return { pendingOutflowId, bankTransactionId, categorized: !!pendingOutflow.category_id };
+      return {
+        pendingOutflowId,
+        bankTransactionId,
+        categorized: !!(pendingOutflow.category_id || bankTransaction.category_id),
+      };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });

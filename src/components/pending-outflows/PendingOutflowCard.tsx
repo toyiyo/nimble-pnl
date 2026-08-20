@@ -227,9 +227,19 @@ export const PendingOutflowCard = ({ outflow, onEdit, onPrintCheck }: PendingOut
                   </Button>
                 </div>
               ) : outflow.status === 'cleared' && outflow.cleared_at ? (
-                <span className="text-xs text-muted-foreground">
-                  Cleared {format(new Date(outflow.cleared_at), 'MMM d')}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Cleared {format(new Date(outflow.cleared_at), 'MMM d')}
+                  </span>
+                  {!outflow.category_id && (
+                    <Badge
+                      variant="outline"
+                      className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted"
+                    >
+                      Needs category
+                    </Badge>
+                  )}
+                </div>
               ) : null}
             </div>
           </div>

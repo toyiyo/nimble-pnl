@@ -277,6 +277,7 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
             description: 'Morning Deposit',
             amount: 1000,
             status: 'posted',
+            is_transfer: false,
           },
           {
             // Final-day row, 23:45 UTC on the period's last day. The old
@@ -289,6 +290,7 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
             description: 'Late Deposit',
             amount: 250,
             status: 'posted',
+            is_transfer: false,
           },
           {
             // Transfer row: never counts as cash flow, in the hero or the

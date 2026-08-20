@@ -84,7 +84,7 @@ BEGIN
   -- Guard 4: input bounds. No silent truncation above 500 ids.
   -- Messages here use 'p_param must ...' wording, matching precedent in
   -- supabase/migrations/20260804090300_bounded_categorization_sweep.sql:85
-  -- (guards 1-3 above use their own fixed wording, not this pattern).
+  -- (guards 1, 1b-3 above use their own fixed wording, not this pattern).
   -- supabase/tests/22_bulk_categorize_bank_transactions.sql checks them
   -- with throws_like('%...%'), not an exact-text match.
   IF p_transaction_ids IS NULL OR array_length(p_transaction_ids, 1) IS NULL THEN

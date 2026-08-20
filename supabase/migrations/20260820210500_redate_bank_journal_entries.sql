@@ -61,6 +61,7 @@ BEGIN
   JOIN restaurants r ON r.id = bt.restaurant_id
   WHERE je.id = tr.reclass_journal_entry_id
     AND je.reference_type = 'reclassification'
+    AND je.restaurant_id = bt.restaurant_id
     AND je.entry_date IS DISTINCT FROM bank_txn_entry_day(bt.transaction_date, r.timezone)
     AND NOT EXISTS (
       SELECT 1 FROM fiscal_periods fp

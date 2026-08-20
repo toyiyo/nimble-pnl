@@ -1,16 +1,18 @@
--- Bulk categorize must create journal entries — backfill.
+-- backfill_bank_transaction_journal_entries writes the restaurant-local entry day
 --
--- The bug fixed in 20260819231210_add_bulk_categorize_bank_transactions.sql
--- stops new bulk categorizations from skipping the ledger. This migration
--- repairs the 2,328 rows the old bulk hook already left with no journal
--- entry (6 restaurants, verified against production on 2026-08-19).
+-- Change: this migration changes only the entry-day derivation and the
+-- fiscal-period guard basis. It replaces the raw transaction_date cast
+-- with bank_txn_entry_day(transaction_date, restaurant.timezone) in two
+-- places: the closed-period guard on tmp_backfill_candidates, and the
+-- entry_date column of the journal_entries insert. It adds a JOIN to
+-- restaurants so the candidate query carries the restaurant's timezone
+-- (r.timezone) through to both call sites.
 --
--- The function stays in the database (kept, rerunnable) so a later repair
--- (for example after the trigger-producer and pending-outflow-producer
--- fixes land) is one call. See
--- docs/superpowers/specs/2026-08-19-bulk-categorize-journal-entries-design.md
--- section 7 for the candidate predicate, insert shape, and entry-number
--- format this pins.
+-- This migration is a CREATE OR REPLACE of the function body from
+-- supabase/migrations/20260819232450_backfill_bank_transaction_journal_entries.sql.
+-- Every other line of that function body is byte-identical.
+--
+-- See docs/superpowers/specs/2026-08-20-journal-entry-date-timezone-design.md.
 
 CREATE OR REPLACE FUNCTION public.backfill_bank_transaction_journal_entries()
 RETURNS jsonb

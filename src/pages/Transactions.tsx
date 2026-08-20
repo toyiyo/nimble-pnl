@@ -542,8 +542,10 @@ const Transactions = () => {
 
       {/* Bulk action bar (appears when items are selected). The Select
           button above gates entry on canBulkEditTransactions. This check
-          guards against stale selection state. */}
-      {selectedRestaurant && bulkSelection.hasSelection && canBulkEditTransactions && (
+          guards against stale selection state. selectedRestaurant is not
+          checked here: the early return at line 222 guarantees it is set
+          by this point in the render. */}
+      {bulkSelection.hasSelection && canBulkEditTransactions && (
         <>
           <BulkActionBar
             selectedCount={bulkSelection.selectedCount}

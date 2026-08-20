@@ -71,7 +71,9 @@ match this signature.
    an active `auto_apply` rule, permanently
    (`supabase/migrations/20260804091000_standing_categorization_sweep.sql:213-222`;
    drain function:
-   `supabase/migrations/20260804090700_categorization_watermark_and_drain_convergence.sql:81-160`).
+   `supabase/migrations/20260804091000_standing_categorization_sweep.sql:27-181` —
+   this version replaces the self-retiring 20260804090700 version and never
+   unschedules itself).
 5. Every new row is a sweep candidate: `rules_evaluated_at` defaults to
    `'-infinity'`
    (`supabase/migrations/20260804090000_rules_evaluated_at_columns.sql`).
@@ -144,9 +146,14 @@ One new migration file, four steps, in this order:
    SET is_categorized = false, updated_at = now()
    WHERE is_categorized = true
      AND category_id IS NULL
-     AND is_split = false;
+     AND is_split = false
+     AND is_reconciled = false
+     AND excluded_reason IS NULL;
    ```
-   This state is inconsistent by construction. A categorized non-split row
+   The `is_reconciled` and `excluded_reason` guards match
+   `categorize_bank_transaction` and the backfill predicate
+   (`20260819232450...sql:74-79`). Today's 2 target rows pass both guards
+   (checked against production). This state is inconsistent by construction. A categorized non-split row
    must have a category. The reset makes the rows honest: they show as
    uncategorized, and a future matching rule or a manual categorization can
    fix them. Production count today: 2 rows. Print the count with
@@ -205,10 +212,10 @@ pgTAP (`supabase/tests/`):
    `auto_apply_bank_categorization_rules` do not exist (query `pg_trigger` and
    `pg_proc`). This pins the removal.
 
-Unit tests (`tests/unit/`): the hook change is one fire-and-forget RPC call. If
-`useBankStatementImport` has an existing test harness, add a case: the import
-succeeds when the RPC rejects. If no harness exists, the pgTAP tests carry the
-server behavior and the E2E suite carries the import flow; state this in the PR.
+Unit tests (`tests/unit/`): the hook change is one fire-and-forget RPC call.
+No test harness exists for `useBankStatementImport` (checked 2026-08-20). The
+pgTAP tests carry the server behavior. The E2E suite carries the import flow.
+The PR description must state this.
 
 ### 5.5 Performance
 
@@ -224,7 +231,11 @@ server behavior and the E2E suite carries the import flow; state this in the PR.
 1. A restaurant could see an imported row as uncategorized for up to 5 minutes
    (CSV failure path, tombstone restore). The trade is deliberate: a correct
    ledger beats an instant label. The Stripe path, the main volume, keeps
-   same-request categorization.
+   same-request categorization. One role always takes the 5-minute path: a
+   `collaborator_accountant` reaches the CSV import through `/banking`, but
+   the wrapper rejects the role by its `role IN ('owner', 'manager')` check
+   (`20260703090000...sql:780-804`). For that role the best-effort call fails
+   by role check, not by chance.
 2. The migration runs a production data repair (2 resets + 5 backfills at
    today's counts). Both steps are idempotent and print their counts. The
    2,328-row precedent from PR #766 ran without incident.

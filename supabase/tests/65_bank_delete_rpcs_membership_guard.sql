@@ -22,17 +22,17 @@ SET LOCAL role TO postgres;
 -- Member user: belongs to the victim restaurant.
 INSERT INTO auth.users (id, email) VALUES
   ('65000000-0000-0000-0000-000000000001'::uuid, 'guard-member@example.com')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 -- Attacker user: belongs to a different restaurant only.
 INSERT INTO auth.users (id, email) VALUES
   ('65000000-0000-0000-0000-000000000002'::uuid, 'guard-attacker@example.com')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 -- Victim restaurant, owned by the member user.
 INSERT INTO restaurants (id, name) VALUES
   ('65000000-0000-0000-0000-000000000010'::uuid, 'Guard Victim Restaurant')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('65000000-0000-0000-0000-000000000001'::uuid, '65000000-0000-0000-0000-000000000010'::uuid, 'owner')
@@ -42,7 +42,7 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 -- victim restaurant.
 INSERT INTO restaurants (id, name) VALUES
   ('65000000-0000-0000-0000-000000000020'::uuid, 'Guard Attacker Restaurant')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('65000000-0000-0000-0000-000000000002'::uuid, '65000000-0000-0000-0000-000000000020'::uuid, 'owner')
@@ -51,7 +51,10 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 -- Victim's connected bank.
 INSERT INTO connected_banks (id, restaurant_id, stripe_financial_account_id, institution_name) VALUES
   ('65000000-0000-0000-0000-000000000030'::uuid, '65000000-0000-0000-0000-000000000010'::uuid, 'fa_test_guard_030', 'Guard Test Bank')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  restaurant_id = EXCLUDED.restaurant_id,
+  stripe_financial_account_id = EXCLUDED.stripe_financial_account_id,
+  institution_name = EXCLUDED.institution_name;
 
 -- Victim category, used by the split fixture below.
 INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance, is_active) VALUES
@@ -64,17 +67,36 @@ INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_tran
   ('65000000-0000-0000-0000-000000000102'::uuid, '65000000-0000-0000-0000-000000000010'::uuid, '65000000-0000-0000-0000-000000000030'::uuid, 'guard_txn_102', DATE '2026-02-02', 'Guard Test Txn 102', -20.00, 'bank_integration'),
   ('65000000-0000-0000-0000-000000000103'::uuid, '65000000-0000-0000-0000-000000000010'::uuid, '65000000-0000-0000-0000-000000000030'::uuid, 'guard_txn_103', DATE '2026-02-03', 'Guard Test Txn 103', -30.00, 'bank_integration'),
   ('65000000-0000-0000-0000-000000000104'::uuid, '65000000-0000-0000-0000-000000000010'::uuid, '65000000-0000-0000-0000-000000000030'::uuid, 'guard_txn_104', DATE '2026-02-04', 'Guard Test Txn 104', -40.00, 'bank_integration')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  restaurant_id = EXCLUDED.restaurant_id,
+  connected_bank_id = EXCLUDED.connected_bank_id,
+  stripe_transaction_id = EXCLUDED.stripe_transaction_id,
+  transaction_date = EXCLUDED.transaction_date,
+  description = EXCLUDED.description,
+  amount = EXCLUDED.amount,
+  source = EXCLUDED.source;
 
 -- One split row on transaction 101.
 INSERT INTO bank_transaction_splits (id, transaction_id, category_id, amount, description) VALUES
   ('65000000-0000-0000-0000-000000000050'::uuid, '65000000-0000-0000-0000-000000000101'::uuid, '65000000-0000-0000-0000-000000000040'::uuid, -10.00, 'Guard Test Split')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  transaction_id = EXCLUDED.transaction_id,
+  category_id = EXCLUDED.category_id,
+  amount = EXCLUDED.amount,
+  description = EXCLUDED.description;
 
 -- One tombstone row, inserted directly (not via delete_bank_transaction).
 INSERT INTO deleted_bank_transactions (id, restaurant_id, connected_bank_id, source, external_transaction_id, fingerprint, transaction_date, amount, description) VALUES
   ('65000000-0000-0000-0000-000000000060'::uuid, '65000000-0000-0000-0000-000000000010'::uuid, '65000000-0000-0000-0000-000000000030'::uuid, 'bank_integration', 'guard_txn_060', compute_transaction_fingerprint(DATE '2026-02-05', -50.00, 'Guard Test Tombstone 060'), DATE '2026-02-05', -50.00, 'Guard Test Tombstone 060')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  restaurant_id = EXCLUDED.restaurant_id,
+  connected_bank_id = EXCLUDED.connected_bank_id,
+  source = EXCLUDED.source,
+  external_transaction_id = EXCLUDED.external_transaction_id,
+  fingerprint = EXCLUDED.fingerprint,
+  transaction_date = EXCLUDED.transaction_date,
+  amount = EXCLUDED.amount,
+  description = EXCLUDED.description;
 
 -- ---------------------------------------------------------------------------
 -- Section 1: attacker claims set. Every call must be rejected (4 tests).

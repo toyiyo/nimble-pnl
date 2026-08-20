@@ -47,7 +47,7 @@ function renderBody(body: string, payee?: string): ReactNode[] {
 /** The deterministic insight list for the cash flow view. All copy is visible text. */
 export function CashFlowNarrative({ insights, className }: CashFlowNarrativeProps) {
   return (
-    <div className={cn(className)}>
+    <div role="region" aria-label="Cash flow narrative" className={cn(className)}>
       {insights.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">No notable trends for this period.</p>
       ) : (

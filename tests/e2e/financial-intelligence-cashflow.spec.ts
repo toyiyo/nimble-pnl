@@ -21,13 +21,14 @@ function dateDaysAgo(page: Page, daysAgo: number): Promise<string> {
 
 /**
  * Read a headline value ("$2,400") next to its label ("Net cashflow").
- * CashFlowHeadline puts each label and value in the same wrapper div, so
- * this scopes to that wrapper instead of matching the value text page-wide
- * (breakdown cards repeat "Money in" / "Money out" as card titles).
+ * CashFlowHeadline gives each stat a `role="group"` with the label as its
+ * accessible name, so this scopes by role instead of matching the value
+ * text page-wide (breakdown cards repeat "Money in" / "Money out" as card
+ * titles).
  */
 async function expectHeadlineValue(page: Page, label: string, value: string) {
-  const wrapper = page.getByText(label, { exact: true }).first().locator('..');
-  await expect(wrapper.getByText(value, { exact: true })).toBeVisible({ timeout: 10000 });
+  const group = page.getByRole('group', { name: label });
+  await expect(group.getByText(value, { exact: true })).toBeVisible({ timeout: 10000 });
 }
 
 test.describe('Financial Intelligence — Cash Flow view', () => {
@@ -168,7 +169,7 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
       { rid: restaurantId, day2, day3, day32, day33, day62, day87 },
     );
 
-    await page.goto('/financial-intelligence');
+    await page.goto('/financial-intelligence', { timeout: 10000 });
 
     // Switch to a period wide enough to hold every seeded row (the page
     // opens on "This Month", which would miss the older rows).
@@ -180,7 +181,11 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
     await expectHeadlineValue(page, 'Money out', '$1,600');
 
     // --- Narrative: always-visible caption text ------------------------
-    await expect(page.getByText('Trends are generated and may include inaccuracies.')).toBeVisible();
+    // The insight list itself is calendar-dependent (it compares full
+    // calendar months against "today"), so this only pins the region's
+    // always-visible disclaimer through a semantic selector.
+    const narrative = page.getByRole('region', { name: 'Cash flow narrative' });
+    await expect(narrative.getByText('Trends are generated and may include inaccuracies.')).toBeVisible();
 
     // --- Chart mode switch: category bars and in/out bars ---------------
     await expect(page.getByRole('img', { name: /Flow view of cash flow/i })).toBeVisible();
@@ -192,15 +197,18 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
     await expect(page.getByRole('img', { name: /In vs out view of cash flow, net \$2,400/i })).toBeVisible();
 
     // --- Breakdown tab switch: Source rows vs. folded Category rows ----
-    await expect(page.locator('[data-testid="breakdown-track-Client Payment Alpha"]')).toBeVisible();
-    await expect(page.locator('[data-testid="breakdown-track-Second Bank Income"]')).toBeVisible();
+    // Each breakdown row carries `role="listitem"` with its label as the
+    // accessible name (MoneyBreakdownTable.tsx), so a row can be found
+    // without a data-testid.
+    await expect(page.getByRole('listitem', { name: 'Client Payment Alpha' })).toBeVisible();
+    await expect(page.getByRole('listitem', { name: 'Second Bank Income' })).toBeVisible();
 
     const sourceTab = page.getByRole('tab', { name: 'Source' });
     const categoryTabInMoneyIn = sourceTab.locator('..').getByRole('tab', { name: 'Category' });
     await categoryTabInMoneyIn.click();
 
-    await expect(page.locator('[data-testid="breakdown-track-Client Payment Alpha"]')).not.toBeVisible();
-    await expect(page.locator('[data-testid="breakdown-track-Uncategorized"]')).toBeVisible();
+    await expect(page.getByRole('listitem', { name: 'Client Payment Alpha' })).not.toBeVisible();
+    await expect(page.getByRole('listitem', { name: 'Uncategorized' })).toBeVisible();
 
     // --- Bank-account filter changes the totals -------------------------
     await page.getByRole('combobox').filter({ hasText: 'All Accounts' }).click();

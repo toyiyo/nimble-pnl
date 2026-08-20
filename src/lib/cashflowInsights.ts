@@ -219,7 +219,15 @@ export function topCategories(rows: CashFlowRow[]): CategoryTotal[] {
 
   if (rest.length > 0) {
     const otherAmount = rest.reduce((sum, entry) => sum + entry.amount, 0);
-    top.push({ name: 'Other', amount: otherAmount });
+    // A real category can already be named 'Other' and land in the top
+    // five. Fold into that entry instead of pushing a second one with the
+    // same name — a duplicate name renders as one doubled bar in the chart.
+    const existingOther = top.find((entry) => entry.name === 'Other');
+    if (existingOther) {
+      existingOther.amount += otherAmount;
+    } else {
+      top.push({ name: 'Other', amount: otherAmount });
+    }
   }
 
   return top;
@@ -463,7 +471,9 @@ function buildRevenueChangeInsight(
   if (precedingMean <= 0) return null;
 
   const delta = (lastMonthRevenue - precedingMean) / precedingMean;
-  const direction = delta >= 0 ? 'increased' : 'decreased';
+  // A zero delta is neither an increase nor a decrease. Say so, or the
+  // title claims growth that did not happen.
+  const direction = delta > 0 ? 'increased' : delta < 0 ? 'decreased' : 'stayed flat';
 
   return {
     id: 'revenue-change',

@@ -1,21 +1,27 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { startOfDay, endOfDay, subDays } from 'date-fns';
+import { startOfDay, endOfDay, subDays, addDays } from 'date-fns';
 import { TimelineBrush } from '@/components/banking/cashflow/TimelineBrush';
 import type { Period } from '@/components/PeriodSelector';
 
 function mockMatchMedia(matches: Record<string, boolean>) {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: matches[query] ?? false,
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
+  // `restoreAllMocks` does not undo a direct `window.matchMedia =` assignment.
+  // Stub it through `vi.stubGlobal` so `vi.unstubAllGlobals()` in `afterEach`
+  // restores the original value between tests.
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn().mockImplementation((query: string) => ({
+      matches: matches[query] ?? false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
 }
 
 function makePeriod(from: Date, to: Date): Period {
@@ -38,6 +44,7 @@ describe('TimelineBrush', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders a start and end thumb with the required aria-labels', () => {
@@ -181,5 +188,42 @@ describe('TimelineBrush', () => {
 
     const ticks = screen.getAllByTestId('timeline-brush-tick');
     expect(ticks.length).toBeLessThanOrEqual(10);
+  });
+
+  it('includes the start year in the label when the range crosses a year boundary', () => {
+    const from = new Date(2026, 11, 20); // Dec 20, 2026
+    const to = new Date(2027, 0, 5); // Jan 5, 2027
+    const onPeriodChange = vi.fn();
+    render(<TimelineBrush selectedPeriod={makePeriod(from, to)} onPeriodChange={onPeriodChange} />);
+
+    const endThumb = screen.getByRole('slider', { name: 'End date' });
+    endThumb.focus();
+    fireEvent.keyDown(endThumb, { key: 'ArrowLeft' });
+
+    expect(onPeriodChange).toHaveBeenCalled();
+    const [call] = onPeriodChange.mock.calls.at(-1)!;
+    expect(call.label).toMatch(/^Dec 20, 2026 - /);
+  });
+
+  it('extends the domain to a future custom period end instead of clamping it to today', () => {
+    const today = new Date();
+    const futureTo = addDays(today, 10);
+    const onPeriodChange = vi.fn();
+    render(
+      <TimelineBrush
+        selectedPeriod={makePeriod(subDays(today, 5), futureTo)}
+        onPeriodChange={onPeriodChange}
+      />
+    );
+
+    // Move only the start thumb; the end thumb's index should already
+    // reflect the future end date, not a value clamped to today.
+    const startThumb = screen.getByRole('slider', { name: 'Start date' });
+    startThumb.focus();
+    fireEvent.keyDown(startThumb, { key: 'ArrowRight' });
+
+    expect(onPeriodChange).toHaveBeenCalled();
+    const [call] = onPeriodChange.mock.calls.at(-1)!;
+    expect(startOfDay(call.to).getTime()).toBe(startOfDay(futureTo).getTime());
   });
 });

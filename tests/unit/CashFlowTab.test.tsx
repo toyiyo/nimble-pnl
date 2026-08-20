@@ -12,6 +12,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { CashFlowTab } from '@/components/banking/CashFlowTab';
 import type { Period } from '@/components/PeriodSelector';
 import type { CashFlowInsightsData } from '@/hooks/useCashFlowInsights';
+import type { CashFlowRow, BreakdownRow, CashFlowInsight } from '@/lib/cashflowInsights';
 
 const mockUseCashFlowInsights = vi.hoisted(() => vi.fn());
 const mockRefetch = vi.hoisted(() => vi.fn());
@@ -66,23 +67,28 @@ const EMPTY_DATA: CashFlowInsightsData = {
 };
 
 function dataWithRows(overrides: Partial<CashFlowInsightsData> = {}): CashFlowInsightsData {
+  const row: CashFlowRow = {
+    transaction_date: '2026-01-05',
+    amount: 5000,
+    is_transfer: false,
+    normalized_payee: 'Client A',
+    merchant_name: null,
+    description: null,
+    category: null,
+  };
+  const source: BreakdownRow = { label: 'Client A', amount: 5000, pctOfTotal: 100 };
+  // moneyOut and BreakdownRow amounts for outflow stay negative, matching
+  // CashFlowRow's amount convention (negative = money out).
+  const recipient: BreakdownRow = { label: 'Vendor B', amount: -2000, pctOfTotal: 100 };
+  const insight: CashFlowInsight = { id: 'revenue-change', title: 'Revenue increased', body: 'Body' };
+
   return {
     ...EMPTY_DATA,
-    rows: [
-      {
-        transaction_date: '2026-01-05',
-        amount: 5000,
-        is_transfer: false,
-        normalized_payee: 'Client A',
-        merchant_name: null,
-        description: null,
-        category: null,
-      } as never,
-    ],
-    aggregates: { totals: { moneyIn: 5000, moneyOut: 2000, net: 3000 }, series: [] },
-    sources: [{ name: 'Client A', amount: 5000, pctOfTotal: 1 } as never],
-    recipients: [{ name: 'Vendor B', amount: 2000, pctOfTotal: 1 } as never],
-    insights: [{ id: 'revenue-change', title: 'Revenue increased', body: 'Body' } as never],
+    rows: [row],
+    aggregates: { totals: { moneyIn: 5000, moneyOut: -2000, net: 3000 }, series: [] },
+    sources: [source],
+    recipients: [recipient],
+    insights: [insight],
     ...overrides,
   };
 }
@@ -126,6 +132,14 @@ describe('CashFlowTab', () => {
     expect(screen.queryByTestId('headline')).not.toBeInTheDocument();
   });
 
+  it('keeps the brush visible in the empty state, so a user can brush back out', () => {
+    mockUseCashFlowInsights.mockReturnValue({ data: EMPTY_DATA, isLoading: false, error: null, refetch: mockRefetch });
+    const { onPeriodChange } = renderTab();
+    expect(screen.getByText(/no transactions/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('commit-brush'));
+    expect(onPeriodChange).toHaveBeenCalledTimes(1);
+  });
+
   it('shows one notice line when the hook reports truncated', () => {
     mockUseCashFlowInsights.mockReturnValue({
       data: dataWithRows({ truncated: true }),
@@ -160,7 +174,7 @@ describe('CashFlowTab', () => {
     expect(screen.getByTestId('narrative')).toHaveTextContent('insights:1');
     expect(screen.getByTestId('chart')).toHaveTextContent('rows:1');
     expect(screen.getByTestId('table-Money in')).toHaveTextContent('Money in:5000:Source');
-    expect(screen.getByTestId('table-Money out')).toHaveTextContent('Money out:2000:Recipient');
+    expect(screen.getByTestId('table-Money out')).toHaveTextContent('Money out:-2000:Recipient');
   });
 
   it('forwards a TimelineBrush commit to the onPeriodChange prop', () => {

@@ -12,7 +12,10 @@ export function CashFlowHeadline({ totals, className }: CashFlowHeadlineProps) {
 
   return (
     <div className={cn('flex flex-wrap items-baseline gap-x-8 gap-y-2', className)}>
-      <div>
+      {/* `role="group"` plus `aria-label` gives each stat an accessible name, so
+          a test can scope to it with `getByRole('group', { name: ... })` instead
+          of walking the DOM. */}
+      <div role="group" aria-label="Net cashflow">
         <div className="text-[13px] text-muted-foreground">Net cashflow</div>
         <div
           className={cn(
@@ -23,11 +26,11 @@ export function CashFlowHeadline({ totals, className }: CashFlowHeadlineProps) {
           {formatCurrency(totals.net)}
         </div>
       </div>
-      <div>
+      <div role="group" aria-label="Money in">
         <div className="text-[13px] text-muted-foreground">Money in</div>
         <div className="text-[15px] font-medium text-foreground">{formatCurrency(totals.moneyIn)}</div>
       </div>
-      <div>
+      <div role="group" aria-label="Money out">
         <div className="text-[13px] text-muted-foreground">Money out</div>
         <div className="text-[15px] font-medium text-foreground">
           {formatCurrency(Math.abs(totals.moneyOut))}

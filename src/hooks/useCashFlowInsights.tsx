@@ -71,7 +71,7 @@ async function fetchAllRows(
     let query = supabase
       .from('bank_transactions')
       .select(
-        'transaction_date, amount, is_transfer, normalized_payee, merchant_name, description, category:chart_of_accounts!category_id(id, name:account_name)',
+        'id, transaction_date, amount, is_transfer, normalized_payee, merchant_name, description, category:chart_of_accounts!category_id(id, name:account_name)',
       )
       .eq('restaurant_id', restaurantId)
       .eq('status', 'posted')
@@ -84,7 +84,13 @@ async function fetchAllRows(
 
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
-    const { data, error } = await query.order('transaction_date', { ascending: true }).range(from, to);
+    // `transaction_date` is not unique, so a second order on the primary key
+    // gives every page a total order. Without it, rows tied at a page
+    // boundary can be skipped or duplicated across pages.
+    const { data, error } = await query
+      .order('transaction_date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
 
     if (error) throw error;
 

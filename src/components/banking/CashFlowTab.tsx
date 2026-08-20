@@ -58,8 +58,12 @@ export function CashFlowTab({ selectedPeriod, selectedBankAccount, onPeriodChang
 
   if (!data || data.rows.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">No transactions for this period</p>
+      <div className="space-y-6 animate-fade-in">
+        {/* Keep the brush visible so the user can brush back out of an empty range. */}
+        <TimelineBrush selectedPeriod={selectedPeriod} onPeriodChange={onPeriodChange} />
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">No transactions for this period</p>
+        </div>
       </div>
     );
   }

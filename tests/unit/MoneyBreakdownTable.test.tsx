@@ -127,6 +127,9 @@ describe('MoneyBreakdownTable', () => {
       />,
     );
 
-    expect(screen.getAllByText('$5,000').length).toBeGreaterThan(0);
+    // One for the header total, one for the row amount.
+    expect(screen.getAllByText('$5,000')).toHaveLength(2);
+    const rowAmount = screen.getAllByText('$5,000').find((el) => el.className.includes('text-right'));
+    expect(rowAmount).toBeDefined();
   });
 });

@@ -22,9 +22,13 @@ interface TimelineBrushProps {
   className?: string;
 }
 
-function domainFor(earliestTransaction?: Date | null): { start: Date; end: Date } {
+function domainFor(earliestTransaction: Date | null | undefined, selectedPeriodEnd: Date): { start: Date; end: Date } {
   const today = new Date();
-  const end = endOfDay(today);
+  const defaultEnd = endOfDay(today);
+  // A custom period can end in the future (the date picker allows it).
+  // Extend the domain to cover it, or the thumb clamps to today and a
+  // commit silently overwrites the period with an earlier end date.
+  const end = selectedPeriodEnd > defaultEnd ? endOfDay(selectedPeriodEnd) : defaultEnd;
   const defaultStart = startOfMonth(subMonths(today, 23));
   const start = earliestTransaction && earliestTransaction > defaultStart
     ? startOfDay(earliestTransaction)
@@ -52,7 +56,7 @@ export function TimelineBrush({
   const isLgUp = useMediaQuery('(min-width: 1024px)');
   const step = isSmUp ? 1 : 7;
 
-  const { start: domainStart, end: domainEnd } = domainFor(earliestTransaction);
+  const { start: domainStart, end: domainEnd } = domainFor(earliestTransaction, selectedPeriod.to);
   const totalDays = Math.max(differenceInCalendarDays(domainEnd, domainStart), 1);
 
   const dateToIndex = (date: Date) => clamp(differenceInCalendarDays(date, domainStart), 0, totalDays);
@@ -75,11 +79,12 @@ export function TimelineBrush({
   const handleCommit = (next: number[]) => {
     const [startIndex, endIndex] = next as [number, number];
     const { from, to } = indexToRange(startIndex, endIndex);
+    const sameYear = from.getFullYear() === to.getFullYear();
     onPeriodChange({
       type: 'custom',
       from,
       to,
-      label: `${format(from, 'MMM d')} - ${format(to, 'MMM d, yyyy')}`,
+      label: `${format(from, sameYear ? 'MMM d' : 'MMM d, yyyy')} - ${format(to, 'MMM d, yyyy')}`,
     });
   };
 

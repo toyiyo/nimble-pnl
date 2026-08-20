@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { formatCurrency, type BreakdownRow } from '@/lib/cashflowInsights';
@@ -24,16 +24,18 @@ interface TabButtonProps {
   label: string;
   active: boolean;
   onClick: () => void;
+  controls: string;
   className?: string;
 }
 
 /** One underline tab button, shared by the primary and Category tabs. */
-function TabButton({ label, active, onClick, className }: TabButtonProps) {
+function TabButton({ label, active, onClick, controls, className }: TabButtonProps) {
   return (
     <button
       type="button"
       role="tab"
       aria-selected={active}
+      aria-controls={controls}
       onClick={onClick}
       className={cn(
         'relative px-0 py-2 text-[13px] font-medium transition-colors',
@@ -63,6 +65,8 @@ export function MoneyBreakdownTable({
 }: MoneyBreakdownTableProps) {
   const [tab, setTab] = useState<Tab>('primary');
   const rows = tab === 'primary' ? primaryRows : categoryRows;
+  const baseId = useId();
+  const panelId = `${baseId}-panel`;
 
   return (
     <div className={cn('rounded-xl border border-border/40 bg-background p-4', className)}>
@@ -76,30 +80,42 @@ export function MoneyBreakdownTable({
           label={primaryTabLabel}
           active={tab === 'primary'}
           onClick={() => setTab('primary')}
+          controls={panelId}
           className="mr-6"
         />
-        <TabButton label="Category" active={tab === 'category'} onClick={() => setTab('category')} />
+        <TabButton
+          label="Category"
+          active={tab === 'category'}
+          onClick={() => setTab('category')}
+          controls={panelId}
+        />
       </div>
 
-      <div className="mt-3 space-y-3">
-        {rows.map((row) => (
-          <div key={row.label} className="flex items-center gap-3">
-            <div className="w-28 shrink-0 truncate text-[13px] text-foreground">{row.label}</div>
-            <div className="w-10 shrink-0 text-right text-[12px] text-muted-foreground">
-              {formatPct(row.pctOfTotal)}
+      <div id={panelId} role="tabpanel" className="mt-3 space-y-3">
+        {rows.length === 0 && <p className="text-[13px] text-muted-foreground">No activity for this period.</p>}
+        {/* `role="list"`/`role="listitem"` give each row an accessible name
+            (its label), so a test can find one row with
+            `getByRole('listitem', { name: ... })` instead of a data-testid. */}
+        <div role="list" className="space-y-3">
+          {rows.map((row) => (
+            <div key={row.label} role="listitem" aria-label={row.label} className="flex items-center gap-3">
+              <div className="w-28 shrink-0 truncate text-[13px] text-foreground">{row.label}</div>
+              <div className="w-10 shrink-0 text-right text-[12px] text-muted-foreground">
+                {formatPct(row.pctOfTotal)}
+              </div>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                <div
+                  data-testid={`breakdown-track-${row.label}`}
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${Math.min(100, Math.max(0, row.pctOfTotal))}%` }}
+                />
+              </div>
+              <div className="w-20 shrink-0 text-right text-[13px] font-medium text-foreground">
+                {formatCurrency(Math.abs(row.amount))}
+              </div>
             </div>
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-              <div
-                data-testid={`breakdown-track-${row.label}`}
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.min(100, Math.max(0, row.pctOfTotal))}%` }}
-              />
-            </div>
-            <div className="w-20 shrink-0 text-right text-[13px] font-medium text-foreground">
-              {formatCurrency(Math.abs(row.amount))}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

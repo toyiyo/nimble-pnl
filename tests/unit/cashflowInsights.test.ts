@@ -47,7 +47,7 @@ describe('defaultInterval', () => {
 });
 
 describe('computeTotals', () => {
-  it('sums money in, money out, and net', () => {
+  it('CRITICAL: sums money in, money out, and net', () => {
     const rows = [
       makeRow({ amount: 500 }),
       makeRow({ amount: -200 }),
@@ -258,6 +258,23 @@ describe('topCategories', () => {
   it('returns an empty list for an empty row list', () => {
     expect(topCategories([])).toEqual([]);
   });
+
+  it('folds the remainder into a real category already named Other', () => {
+    const rows = [
+      makeRow({ amount: 500, category: { id: 'c1', name: 'A' } }),
+      makeRow({ amount: -400, category: { id: 'c2', name: 'B' } }),
+      makeRow({ amount: 300, category: { id: 'c3', name: 'C' } }),
+      makeRow({ amount: -200, category: { id: 'c4', name: 'D' } }),
+      makeRow({ amount: 190, category: { id: 'c5', name: 'Other' } }),
+      makeRow({ amount: -50, category: { id: 'c6', name: 'F' } }),
+      makeRow({ amount: -10, category: { id: 'c7', name: 'G' } }),
+    ];
+
+    const result = topCategories(rows);
+
+    // Exactly one 'Other' entry — the real category plus the folded rest.
+    expect(result.filter((entry) => entry.name === 'Other')).toEqual([{ name: 'Other', amount: 130 }]);
+  });
 });
 
 describe('breakdown', () => {
@@ -437,6 +454,22 @@ describe('computeInsights', () => {
     expect(revenue?.body).toContain('July 2026');
     expect(revenue?.body).toContain('$1,500');
     expect(revenue?.body).toContain('$1,000');
+  });
+
+  it('reports "stayed flat" when last month exactly matches the preceding mean', () => {
+    const rows = [
+      inflowRow('2026-04-15', 'Client A', 1000),
+      inflowRow('2026-05-15', 'Client A', 1000),
+      inflowRow('2026-06-15', 'Client A', 1000),
+      inflowRow('2026-07-15', 'Client A', 1000),
+    ];
+
+    const insights = computeInsights(rows, period('2026-01-01', '2026-07-31'));
+
+    const revenue = insights.find((i) => i.id === 'revenue-change');
+    // A zero delta is neither growth nor decline, so the title must say
+    // neither "increased" nor "decreased".
+    expect(revenue?.title).toBe('Revenue stayed flat');
   });
 
   it('emits a top-source insight only when the delta is 20% or more', () => {

@@ -45,13 +45,19 @@ async function grantCustomSchedulingRole(
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.id) throw new Error('No session');
 
+      // flavor 'collaborator', not 'platform': the RLS INSERT policy on
+      // public.roles ("manage:collaborators holders can insert roles")
+      // requires flavor = 'collaborator' for any authenticated insert — see
+      // 20260730100000_roles_and_areas_tables.sql. scheduling's
+      // max_level_collaborator is 'manage', so a collaborator-flavored role
+      // can still hold scheduling@manage.
       const { data: role, error: roleErr } = await supabase
         .from('roles')
         .insert({
           restaurant_id: restId,
           name: `Trade Test Role ${level} ${Date.now()}`,
           description: 'e2e fixture role',
-          flavor: 'platform',
+          flavor: 'collaborator',
           builtin: false,
         })
         .select('id')

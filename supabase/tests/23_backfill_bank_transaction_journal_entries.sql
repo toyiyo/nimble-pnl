@@ -7,7 +7,7 @@
 -- section 7 for the candidate predicate and insert shape this pins.
 
 BEGIN;
-SELECT plan(19);
+SELECT plan(20);
 
 SET LOCAL role TO postgres;
 
@@ -103,6 +103,11 @@ INSERT INTO bank_transactions (
   -- test 1).
   ('00000000-0000-0000-0000-000000000909'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
    'txn-backfill-eligible-positive-1', CURRENT_DATE, 75.00, 'Categorized deposit, entry-less', 'posted', true, false, false,
+   '00000000-0000-0000-0000-000000000812'::uuid, NULL),
+  -- Local entry day: evening instant. 03:30Z on 2026-02-02 = 21:30 CST on
+  -- 2026-02-01 (R_BF_MAIN timezone defaults to America/Chicago).
+  ('00000000-0000-0000-0000-000000000910'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
+   'txn-backfill-evening-1', TIMESTAMPTZ '2026-02-02 03:30:00+00', -44.00, 'Evening instant, entry-less', 'posted', true, false, false,
    '00000000-0000-0000-0000-000000000812'::uuid, NULL)
 ON CONFLICT (id) DO UPDATE SET
   is_categorized = EXCLUDED.is_categorized,
@@ -128,14 +133,14 @@ SELECT ok(
 
 SELECT is(
   (SELECT (result ->> 'entries_created')::int FROM backfill_call_1),
-  2,
-  'First call reports entries_created = 2 (one negative and one positive eligible row)'
+  3,
+  'First call reports entries_created = 3 (two negative and one positive eligible row)'
 );
 
 SELECT is(
   (SELECT (result ->> 'lines_created')::int FROM backfill_call_1),
-  4,
-  'First call reports lines_created = 4 (two entries, two lines each)'
+  6,
+  'First call reports lines_created = 6 (three entries, two lines each)'
 );
 
 SELECT is(
@@ -291,6 +296,17 @@ SELECT is(
   75.00::numeric,
   'Positive amount: category line is credited ABS(amount)'
 );
+
+-- ---------------------------------------------------------------------------
+-- Local entry day: an evening instant writes the restaurant-local day, not
+-- the UTC day.
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT entry_date FROM journal_entries
+   WHERE reference_type = 'bank_transaction'
+     AND reference_id = '00000000-0000-0000-0000-000000000910'::uuid),
+  DATE '2026-02-01',
+  'backfill writes the restaurant-local entry day');
 
 SELECT * FROM finish();
 ROLLBACK;

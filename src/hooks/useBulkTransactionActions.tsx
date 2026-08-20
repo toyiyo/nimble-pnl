@@ -33,13 +33,13 @@ function chunk<T>(items: T[], size: number): T[][] {
 }
 
 /**
- * The three skip reasons the RPC's guarded branches set. Any other value
+ * The five skip reasons the RPC's guarded branches set. Any other value
  * is the raw SQLERRM text from the RPC's catch-all exception trap
  * (supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql)
  * and must not reach the user verbatim or be underscore-replaced — a real
  * Postgres error can carry underscores from a constraint or column name.
  */
-const KNOWN_SKIP_REASONS = new Set(['reconciled', 'closed_period', 'not_found']);
+const KNOWN_SKIP_REASONS = new Set(['reconciled', 'closed_period', 'not_found', 'excluded', 'split']);
 
 /** Groups skipped rows by reason for a toast description like "3 reconciled, 2 closed period". */
 function summarizeSkipReasons(skipped: BulkCategorizeSkippedRow[]): string {

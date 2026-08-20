@@ -7,7 +7,7 @@
 -- section 7 for the candidate predicate and insert shape this pins.
 
 BEGIN;
-SELECT plan(13);
+SELECT plan(14);
 
 SET LOCAL role TO postgres;
 
@@ -56,32 +56,40 @@ ON CONFLICT (id) DO UPDATE SET is_closed = true;
 -- any of them yet.
 INSERT INTO bank_transactions (
   id, restaurant_id, connected_bank_id, stripe_transaction_id,
-  transaction_date, amount, description, status, is_categorized, is_transfer, is_reconciled, category_id
+  transaction_date, amount, description, status, is_categorized, is_transfer, is_reconciled, category_id, excluded_reason
 ) VALUES
   -- Test 1/2/9/10: the one row that must gain an entry, negative amount.
   ('00000000-0000-0000-0000-000000000901'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
    'txn-backfill-eligible-1', CURRENT_DATE, -55.00, 'Categorized, entry-less', 'posted', true, false, false,
-   '00000000-0000-0000-0000-000000000812'::uuid),
+   '00000000-0000-0000-0000-000000000812'::uuid, NULL),
   -- Test 3: transfer row -> must gain nothing.
   ('00000000-0000-0000-0000-000000000902'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
    'txn-backfill-transfer-1', CURRENT_DATE, -20.00, 'Transfer row', 'posted', true, true, false,
-   '00000000-0000-0000-0000-000000000812'::uuid),
+   '00000000-0000-0000-0000-000000000812'::uuid, NULL),
   -- Test 4: inside a closed fiscal period -> must gain nothing.
   ('00000000-0000-0000-0000-000000000903'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
    'txn-backfill-closed-period-1', DATE '2020-01-15', -30.00, 'In a closed fiscal period', 'posted', true, false, false,
-   '00000000-0000-0000-0000-000000000812'::uuid),
+   '00000000-0000-0000-0000-000000000812'::uuid, NULL),
   -- Test 6: inactive category -> must gain nothing.
   ('00000000-0000-0000-0000-000000000904'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
    'txn-backfill-inactive-cat-1', CURRENT_DATE, -40.00, 'Inactive category', 'posted', true, false, false,
-   '00000000-0000-0000-0000-000000000813'::uuid),
+   '00000000-0000-0000-0000-000000000813'::uuid, NULL),
   -- Test 5: restaurant with no cash account 1000 -> must gain nothing.
   ('00000000-0000-0000-0000-000000000905'::uuid, '00000000-0000-0000-0000-000000000820'::uuid, '00000000-0000-0000-0000-000000000825'::uuid,
    'txn-backfill-nocash-1', CURRENT_DATE, -25.00, 'No cash account restaurant', 'posted', true, false, false,
-   '00000000-0000-0000-0000-000000000821'::uuid)
+   '00000000-0000-0000-0000-000000000821'::uuid, NULL),
+  -- Test 11: categorized AND marked excluded -> must gain nothing (codex
+  -- review finding, same guard as the bulk RPC's; 0 rows in production
+  -- currently combine both, but this function stays in the database for a
+  -- later rerun).
+  ('00000000-0000-0000-0000-000000000906'::uuid, '00000000-0000-0000-0000-000000000810'::uuid, '00000000-0000-0000-0000-000000000815'::uuid,
+   'txn-backfill-excluded-1', CURRENT_DATE, -12.00, 'Categorized but excluded', 'posted', true, false, false,
+   '00000000-0000-0000-0000-000000000812'::uuid, 'duplicate')
 ON CONFLICT (id) DO UPDATE SET
   is_categorized = EXCLUDED.is_categorized,
   is_transfer = EXCLUDED.is_transfer,
-  category_id = EXCLUDED.category_id;
+  category_id = EXCLUDED.category_id,
+  excluded_reason = EXCLUDED.excluded_reason;
 
 -- ---------------------------------------------------------------------------
 -- First call: runs the backfill once against every fixture above.
@@ -202,6 +210,16 @@ SELECT is(
      WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000000904'::uuid),
   0,
   'Row with an inactive category gains no journal entry'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 11: a row that is categorized AND marked excluded gains nothing.
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT COUNT(*)::int FROM journal_entries
+     WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000000906'::uuid),
+  0,
+  'Row marked excluded gains no journal entry'
 );
 
 SELECT * FROM finish();

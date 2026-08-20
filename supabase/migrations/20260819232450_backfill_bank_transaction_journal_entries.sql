@@ -30,11 +30,19 @@ BEGIN
   DROP TABLE IF EXISTS tmp_backfill_candidates;
   DROP TABLE IF EXISTS tmp_backfill_created_entries;
 
-  -- Candidate predicate: categorized, not a transfer, no existing journal
-  -- entry for this bank_transaction, not inside a closed fiscal period, and
-  -- the restaurant has a cash account 1000. The LEFT JOIN LATERAL mirrors
-  -- the single RPC's cash-account LIMIT 1 so two accounts coded 1000 on one
-  -- restaurant cannot fan out a row.
+  -- Candidate predicate: categorized, not a transfer, not marked excluded,
+  -- no existing journal entry for this bank_transaction, not inside a
+  -- closed fiscal period, and the restaurant has a cash account 1000. The
+  -- LEFT JOIN LATERAL mirrors the single RPC's cash-account LIMIT 1 so two
+  -- accounts coded 1000 on one restaurant cannot fan out a row. A split
+  -- parent needs no explicit filter here: category_id IS NOT NULL below
+  -- already excludes it, because bank_transactions never carries both
+  -- is_split = true and a non-null category_id (confirmed against
+  -- production: 0 rows). The excluded_reason filter guards a case
+  -- production does not currently have (0 of the 2,328 rows this backfill
+  -- targets carry it) but this function stays in the database for a later
+  -- rerun, so a future excluded+categorized row must not gain an entry
+  -- either (same finding as the bulk RPC's guard, codex review on this PR).
   CREATE TEMP TABLE tmp_backfill_candidates ON COMMIT DROP AS
   SELECT
     bt.id AS bank_transaction_id,
@@ -62,6 +70,7 @@ BEGIN
   WHERE bt.is_categorized = true
     AND bt.category_id IS NOT NULL
     AND bt.is_transfer = false
+    AND bt.excluded_reason IS NULL
     AND cash.id IS NOT NULL
     AND NOT EXISTS (
       SELECT 1 FROM journal_entries je

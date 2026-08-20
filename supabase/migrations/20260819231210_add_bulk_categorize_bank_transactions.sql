@@ -24,6 +24,14 @@
 -- correct even when the final chunk itself makes no change but an earlier
 -- chunk did. A direct caller that omits p_skip_rebuild keeps the original
 -- one-call, rebuild-if-changed contract.
+--
+-- Row eligibility: the UI page that drives this RPC
+-- (src/pages/Transactions.tsx) loads every status in one list and lets a
+-- bulk selection include rows from the Excluded tab and split-parent rows,
+-- unlike the single-row categorize flow, which only ever sends an id the
+-- user picked from an eligible row. This function skips a transfer, an
+-- excluded row, and a split parent instead of posting a journal entry for
+-- it (codex review finding on this PR).
 
 CREATE OR REPLACE FUNCTION public.bulk_categorize_bank_transactions(
   p_transaction_ids uuid[],
@@ -108,7 +116,8 @@ BEGIN
   -- RPC's own SELECT * (which pays that cost for only one row).
   FOR v_transaction IN
     SELECT id, category_id, is_categorized, is_reconciled, transaction_date,
-           amount, description, stripe_transaction_id
+           amount, description, stripe_transaction_id, is_transfer,
+           excluded_reason, is_split
     FROM bank_transactions
     WHERE id = ANY(p_transaction_ids)
       AND restaurant_id = p_restaurant_id
@@ -118,6 +127,23 @@ BEGIN
       v_original_category_id := NULL;
       v_journal_entry_id := NULL;
       v_existing_journal_entry := NULL;
+
+      -- Skip a row that must never carry a P&L journal entry: a transfer,
+      -- a row marked excluded, or a split parent. A split parent keeps
+      -- category_id NULL even when is_categorized is true (its ledger
+      -- lives in bank_transaction_splits, one row per allocation) — left
+      -- unfiltered, this call would open the "else" branch below, insert
+      -- a single-category journal entry for it, and leave is_split and the
+      -- split rows untouched, so the UI and the ledger would disagree.
+      IF v_transaction.is_transfer OR v_transaction.excluded_reason IS NOT NULL THEN
+        v_skipped := v_skipped || jsonb_build_object('id', v_transaction.id, 'reason', 'excluded');
+        CONTINUE;
+      END IF;
+
+      IF v_transaction.is_split THEN
+        v_skipped := v_skipped || jsonb_build_object('id', v_transaction.id, 'reason', 'split');
+        CONTINUE;
+      END IF;
 
       IF v_transaction.is_categorized AND v_transaction.category_id IS NOT NULL THEN
         v_is_reclassification := true;

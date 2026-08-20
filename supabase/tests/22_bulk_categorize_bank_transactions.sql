@@ -6,7 +6,7 @@
 -- section 5 for the guard order and per-row branch semantics this pins.
 
 BEGIN;
-SELECT plan(30);
+SELECT plan(34);
 
 SET LOCAL role TO postgres;
 
@@ -124,6 +124,34 @@ ON CONFLICT (id) DO UPDATE SET
   is_reconciled = EXCLUDED.is_reconciled,
   category_id = EXCLUDED.category_id,
   suggested_category_id = EXCLUDED.suggested_category_id;
+
+-- R_MAIN bank_transactions covering the transfer / excluded / split skip
+-- guards. Unlike the single-row categorize flow, the page that drives this
+-- RPC (src/pages/Transactions.tsx) loads every status in one list, so a
+-- bulk selection can include a transfer, an Excluded-tab row, or a split
+-- parent (codex review finding on this PR).
+INSERT INTO bank_transactions (
+  id, restaurant_id, connected_bank_id, stripe_transaction_id,
+  transaction_date, amount, description, status, is_categorized, is_transfer,
+  is_reconciled, category_id, excluded_reason, is_split
+) VALUES
+  -- Test 18: is_transfer = true -> must skip, reason 'excluded'.
+  ('00000000-0000-0000-0000-000000000712'::uuid, '00000000-0000-0000-0000-000000000610'::uuid, '00000000-0000-0000-0000-000000000615'::uuid,
+   'txn-bulk-transfer-1', CURRENT_DATE, -15.00, 'Transfer between accounts', 'posted', false, true, false, NULL, NULL, false),
+  -- Test 19: excluded_reason set -> must skip, reason 'excluded'.
+  ('00000000-0000-0000-0000-000000000713'::uuid, '00000000-0000-0000-0000-000000000610'::uuid, '00000000-0000-0000-0000-000000000615'::uuid,
+   'txn-bulk-excluded-1', CURRENT_DATE, -18.00, 'Marked excluded', 'posted', false, false, false, NULL, 'duplicate', false),
+  -- Test 20/21: split parent (is_categorized = true, category_id NULL,
+  -- is_split = true) -> must skip, reason 'split', and must not gain a
+  -- journal entry.
+  ('00000000-0000-0000-0000-000000000714'::uuid, '00000000-0000-0000-0000-000000000610'::uuid, '00000000-0000-0000-0000-000000000615'::uuid,
+   'txn-bulk-split-parent-1', CURRENT_DATE, -90.00, 'Split parent', 'posted', true, false, false, NULL, NULL, true)
+ON CONFLICT (id) DO UPDATE SET
+  is_categorized = EXCLUDED.is_categorized,
+  is_transfer = EXCLUDED.is_transfer,
+  category_id = EXCLUDED.category_id,
+  excluded_reason = EXCLUDED.excluded_reason,
+  is_split = EXCLUDED.is_split;
 
 -- Closed fiscal period covering the 2020-01-15 transaction above.
 INSERT INTO fiscal_periods (id, restaurant_id, period_start, period_end, is_closed, closed_at) VALUES
@@ -490,6 +518,64 @@ SELECT isnt(
   (SELECT current_balance::text FROM chart_of_accounts WHERE id = '00000000-0000-0000-0000-000000000612'::uuid),
   current_setting('bulk_categorize_test.balance_before'),
   'A direct rebuild_account_balances call after p_skip_rebuild = true reflects the new entry'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 18: is_transfer = true -> skipped, reason 'excluded'
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT (skip ->> 'reason')
+     FROM jsonb_array_elements(
+       bulk_categorize_bank_transactions(
+         ARRAY['00000000-0000-0000-0000-000000000712'::uuid],
+         '00000000-0000-0000-0000-000000000612'::uuid,
+         '00000000-0000-0000-0000-000000000610'::uuid
+       ) -> 'skipped'
+     ) AS skip
+     WHERE (skip ->> 'id')::uuid = '00000000-0000-0000-0000-000000000712'::uuid),
+  'excluded',
+  'Transfer row skips with reason excluded'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 19: excluded_reason set -> skipped, reason 'excluded'
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT (skip ->> 'reason')
+     FROM jsonb_array_elements(
+       bulk_categorize_bank_transactions(
+         ARRAY['00000000-0000-0000-0000-000000000713'::uuid],
+         '00000000-0000-0000-0000-000000000612'::uuid,
+         '00000000-0000-0000-0000-000000000610'::uuid
+       ) -> 'skipped'
+     ) AS skip
+     WHERE (skip ->> 'id')::uuid = '00000000-0000-0000-0000-000000000713'::uuid),
+  'excluded',
+  'Row marked excluded skips with reason excluded'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 20/21: split parent -> skipped, reason 'split', no journal entry
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT (skip ->> 'reason')
+     FROM jsonb_array_elements(
+       bulk_categorize_bank_transactions(
+         ARRAY['00000000-0000-0000-0000-000000000714'::uuid],
+         '00000000-0000-0000-0000-000000000612'::uuid,
+         '00000000-0000-0000-0000-000000000610'::uuid
+       ) -> 'skipped'
+     ) AS skip
+     WHERE (skip ->> 'id')::uuid = '00000000-0000-0000-0000-000000000714'::uuid),
+  'split',
+  'Split parent skips with reason split'
+);
+
+SELECT is(
+  (SELECT COUNT(*)::int FROM journal_entries
+     WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000000714'::uuid),
+  0,
+  'Split parent gains no journal entry from the bulk call'
 );
 
 SELECT * FROM finish();

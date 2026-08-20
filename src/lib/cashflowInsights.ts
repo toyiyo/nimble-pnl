@@ -435,12 +435,18 @@ export function formatCurrency(amount: number): string {
 
 /** Format an amount as short USD ("$48K", "$1.2M"), for chart axis ticks. */
 export function formatCompactCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(amount);
+  // Intl compact notation keeps a trailing zero on some Node ICU builds
+  // ("$48.0K" versus "$48K"). Format by hand for a stable output.
+  const sign = amount < 0 ? '-' : '';
+  const abs = Math.abs(amount);
+  const short = (value: number, suffix: string) => {
+    const rounded = Math.round(value * 10) / 10;
+    const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    return `${sign}$${text}${suffix}`;
+  };
+  if (abs >= 1_000_000) return short(abs / 1_000_000, 'M');
+  if (abs >= 1_000) return short(abs / 1_000, 'K');
+  return `${sign}$${Math.round(abs)}`;
 }
 
 function monthKeyFromDateStr(dateStr: string): string {

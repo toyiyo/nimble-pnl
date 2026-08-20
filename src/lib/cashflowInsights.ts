@@ -523,12 +523,11 @@ export function computeInsights(rows: CashFlowRow[], period: CashFlowPeriod): Ca
 
   const subscriptionCount = countSubscriptionPayees(rows, period.to);
   if (subscriptionCount > 0) {
-    const title =
-      subscriptionCount === 1 ? '1 notable transaction' : `${subscriptionCount} notable transactions`;
-    const body =
-      subscriptionCount === 1
-        ? 'We noticed 1 subscription you may want to review'
-        : `We noticed ${subscriptionCount} subscriptions you may want to review`;
+    const isSingleSubscription = subscriptionCount === 1;
+    const title = isSingleSubscription ? '1 notable transaction' : `${subscriptionCount} notable transactions`;
+    const body = isSingleSubscription
+      ? 'We noticed 1 subscription you may want to review'
+      : `We noticed ${subscriptionCount} subscriptions you may want to review`;
     insights.push({ id: 'subscriptions', title, body });
   }
 

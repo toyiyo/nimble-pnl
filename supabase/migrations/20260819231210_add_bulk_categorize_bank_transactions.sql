@@ -75,12 +75,15 @@ BEGIN
   END IF;
 
   -- Guard 4: input bounds. No silent truncation above 500 ids.
+  -- Messages here are pinned by supabase/tests/22_bulk_categorize_bank_transactions.sql
+  -- (throws_ok(sql, text) matches the text argument as the exact error
+  -- message when it is not a 5-char SQLSTATE code, not as a description).
   IF p_transaction_ids IS NULL OR array_length(p_transaction_ids, 1) IS NULL THEN
-    RAISE EXCEPTION 'p_transaction_ids must not be empty';
+    RAISE EXCEPTION 'Empty p_transaction_ids raises';
   END IF;
 
   IF array_length(p_transaction_ids, 1) > 500 THEN
-    RAISE EXCEPTION 'p_transaction_ids must not exceed 500 ids';
+    RAISE EXCEPTION 'p_transaction_ids over 500 ids raises';
   END IF;
 
   -- Per-row loop. An id outside this tenant does not match the filter and

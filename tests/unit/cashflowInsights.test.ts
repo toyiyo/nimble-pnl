@@ -697,6 +697,12 @@ describe('formatCompactCurrency', () => {
     expect(formatCompactCurrency(-2500)).toBe('-$2.5K');
     expect(formatCompactCurrency(0)).toBe('$0');
   });
+
+  it('promotes a value that rounds to 1000 thousands into the M branch', () => {
+    expect(formatCompactCurrency(999950)).toBe('$1M');
+    expect(formatCompactCurrency(-999950)).toBe('-$1M');
+    expect(formatCompactCurrency(999949)).toBe('$999.9K');
+  });
 });
 
 describe('computeCashFlowAggregates', () => {

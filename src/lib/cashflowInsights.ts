@@ -445,7 +445,12 @@ export function formatCompactCurrency(amount: number): string {
     return `${sign}$${text}${suffix}`;
   };
   if (abs >= 1_000_000) return short(abs / 1_000_000, 'M');
-  if (abs >= 1_000) return short(abs / 1_000, 'K');
+  if (abs >= 1_000) {
+    // 999950 rounds to 1000 thousands. Promote it to the M branch, not "$1000K".
+    const roundedThousands = Math.round((abs / 1_000) * 10) / 10;
+    if (roundedThousands >= 1_000) return short(abs / 1_000_000, 'M');
+    return short(abs / 1_000, 'K');
+  }
   return `${sign}$${Math.round(abs)}`;
 }
 

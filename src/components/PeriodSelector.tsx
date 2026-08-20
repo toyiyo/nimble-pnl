@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Calendar } from 'lucide-react';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { startOfWeek, endOfDay, startOfMonth, startOfQuarter, subDays, format, startOfDay } from 'date-fns';
+import { customPeriodLabel, presetPeriod, PRESET_PERIOD_TYPES } from '@/lib/periodUrlState';
 
 export type PeriodType = 'today' | 'week' | 'month' | 'quarter' | 'last30' | 'last90' | 'custom';
 
@@ -21,24 +21,12 @@ export function PeriodSelector({ selectedPeriod, onPeriodChange }: PeriodSelecto
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const today = new Date();
-  const endToday = endOfDay(today);
 
-  const periods: Array<{ type: PeriodType; label: string; from: Date; to: Date }> = [
-    { type: 'today', label: 'Today', from: startOfDay(today), to: endToday },
-    { type: 'week', label: 'This Week', from: startOfDay(startOfWeek(today, { weekStartsOn: 1 })), to: endToday },
-    { type: 'month', label: 'This Month', from: startOfDay(startOfMonth(today)), to: endToday },
-    { type: 'quarter', label: 'This Quarter', from: startOfDay(startOfQuarter(today)), to: endToday },
-    { type: 'last30', label: 'Last 30 Days', from: startOfDay(subDays(endToday, 29)), to: endToday },
-    { type: 'last90', label: 'Last 90 Days', from: startOfDay(subDays(endToday, 89)), to: endToday },
-  ];
+  // presetPeriod is shared with the URL codec, so a decoded link matches a tab click.
+  const periods: Period[] = PRESET_PERIOD_TYPES.map((type) => presetPeriod(type, today));
 
-  const handlePeriodSelect = (period: typeof periods[0]) => {
-    onPeriodChange({
-      type: period.type,
-      from: period.from,
-      to: period.to,
-      label: period.label,
-    });
+  const handlePeriodSelect = (period: Period) => {
+    onPeriodChange(period);
     setShowDatePicker(false);
   };
 
@@ -48,7 +36,7 @@ export function PeriodSelector({ selectedPeriod, onPeriodChange }: PeriodSelecto
         type: 'custom',
         from: range.from,
         to: range.to,
-        label: `${format(range.from, 'MMM d')} - ${format(range.to, 'MMM d, yyyy')}`,
+        label: customPeriodLabel(range.from, range.to),
       });
       setShowDatePicker(false);
     }

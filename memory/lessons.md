@@ -2966,8 +2966,8 @@
 ## Category: Data Accuracy (continued)
 
 ### [2026-08-19] Split a date into a calendar-day question and an instant question (PR #764)
-- **Mistake risk, avoided:** The task brief said `ShiftRow` uses `isToday`, `isPast`, `isFuture` and `new Date()` on the host clock, and asked to move the page to the restaurant timezone. A blanket rewrite of all four would have been wrong.
-- **Correction:** The design split the five badge branches by the question each one asks. "Is this shift today?" is a calendar-day question, so it now reads `clock.toBusinessDay(shift.start_time) === clock.today`. "Is this shift over?" and "is it in progress?" compare instants, and an instant compares the same way in every zone, so `isPast`, `isFuture` and the `now` range check stay unchanged. Both Phase 2.5 reviewers confirmed the split. Commit 7a74b35b carries the rule as a comment above the function.
+- **Mistake risk, avoided:** The task brief said `ShiftRow` uses `isToday`, `isPast`, `isFuture` and `new Date()` on the host clock, and asked to move the page to the restaurant timezone. A change to all four calls would have been wrong.
+- **Correction:** The design split the five badge branches by the question each one asks. "Is this shift today?" is a calendar-day question, so it now reads `clock.toBusinessDay(shift.start_time) === clock.today`. "Is this shift over?" and "is it in progress?" compare instants, and an instant compares the same way in every zone, so `isPast`, `isFuture` and the `now` range check stay unchanged. Both Phase 2.5 reviewers confirmed the split. Commit 7a74b35b puts the rule in a comment above the function.
 - **Rule:** Before you route a date through the restaurant clock, name the question it answers. A calendar-day question needs the zone. An instant comparison does not, and the clock adds risk with no gain. Write the split into the code as a comment, or the next author reverts it.
 
 ### [2026-08-19] Test count is not branch count (PR #764)
@@ -2975,13 +2975,18 @@
 - **Correction:** A Phase 2.5 reviewer read the branches, not the test names, and found the gap. The plan gained two cases plus a re-run with the host zone pinned to `America/Phoenix`, which proves the two instant branches do not move with the host clock.
 - **Rule:** Count the branches in the function, then map each test to a branch. A fixture reused across every case can pin the code to one branch and hide the rest.
 
+### [2026-08-19] An `as` cast lets a wrong field name into a fixture (PR #764)
+- **Mistake:** `tests/unit/ShiftRow.publishes.test.tsx` built its `Shift` fixture with `break_minutes: 0`. The type names the field `break_duration` (`src/types/scheduling.ts:117`). The `as Shift` cast silenced `tsc`, so `break_duration` stayed `undefined` and every row in that file rendered `NaNh NaNm`. Three tests passed anyway, because none of them read the duration. CodeRabbit found it.
+- **Correction:** The fixture now sets `break_duration: 0`. A fourth case asserts the row shows `8h 0m` and contains no `NaN`, so the wrong field name cannot come back unseen.
+- **Rule:** An `as T` cast on a test fixture turns a wrong field name into silent `undefined`. Build fixtures with a typed factory, or assert one rendered value that depends on each field. A passing test proves nothing about a field it never reads.
+
 ## Category: Dev workflow / Worktree hygiene (continued)
 
-### [2026-08-19] Green CI does not mean mergeable; check both (PR #764)
-- **Mistake:** The workflow finished, opened PR #764, and reported all checks green. `gh pr view --json mergeable` then returned `CONFLICTING`. PR #761 had landed on main and touched both changed files. Nothing in the check output showed this.
+### [2026-08-19] A pass on every check does not mean the branch merges (PR #764)
+- **Mistake:** The workflow finished, opened PR #764, and reported a pass on every check. `gh pr view --json mergeable` then returned `CONFLICTING`. PR #761 had landed on main and touched both changed files. Nothing in the check output showed this.
 - **Correction:** `git merge origin/main` produced 8 conflicts: 2 in `ShiftRow.tsx` and 6 in `EmployeeSchedule.tsx`. The resolution kept main's shared `getRestaurantWeekStart` helper over the equivalent inline code on this branch, and kept both new props on `ShiftRow`. Nine tests then failed for two reasons that no conflict marker showed: main's new test file did not pass the required `clock` prop, and the merged page called `useRestaurantPublishes`, which runs a React Query query that three timezone tests did not mock.
-- **Rule:** After CI turns green, query `mergeable` before you report the PR ready. When you merge main into a branch, run the full suite after the merge. A clean conflict resolution still breaks tests that neither side changed.
+- **Rule:** After every check passes, query `mergeable` before you report the PR ready. When you merge main into a branch, run the full suite after the merge. A clean conflict resolution still breaks tests that neither side changed.
 
 ### [2026-08-19] `npm run typecheck` does not read the test folder (PR #764)
 - **Mistake:** `tests/unit/ShiftRow.publishes.test.tsx` rendered `ShiftRow` without the new required `clock` prop. `npm run typecheck` passed. `tsconfig.app.json` sets `"include": ["src"]`, so `tsc` never read the file. Only the test run found it, as a runtime `TypeError` on `undefined.toBusinessDay`.
-- **Rule:** When you add a required prop to a shared component, grep the test folder for the component name. Do not treat a green `typecheck` as proof that the call sites compile — confirm which folders the tsconfig includes.
+- **Rule:** When you add a required prop to a shared component, grep the test folder for the component name. A `typecheck` pass does not prove the call sites compile. Check which folders the tsconfig includes.

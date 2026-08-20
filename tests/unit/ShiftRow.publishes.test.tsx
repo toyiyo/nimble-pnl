@@ -11,7 +11,11 @@ const draft = {
   end_time: '2026-08-20T20:00:00Z',
   status: 'scheduled',
   is_published: false,
-  break_minutes: 0,
+  // `Shift` names this field `break_duration` (src/types/scheduling.ts:117).
+  // A fixture that spells it `break_minutes` leaves `break_duration`
+  // undefined, and the row then renders "NaNh NaNm". The `as Shift` cast
+  // hides that from `tsc`.
+  break_duration: 0,
 } as Shift;
 
 describe('ShiftRow draft treatment', () => {
@@ -30,5 +34,12 @@ describe('ShiftRow draft treatment', () => {
   it('marks a draft by default, so current call sites do not change', () => {
     render(<ShiftRow shift={draft} clock={makeClock()} />);
     expect(screen.getByText('Draft')).toBeInTheDocument();
+  });
+
+  it('renders a real duration, so the fixture cannot go back to break_minutes', () => {
+    const { container } = render(<ShiftRow shift={draft} clock={makeClock()} />);
+
+    expect(container.textContent).toContain('8h 0m');
+    expect(container.textContent).not.toContain('NaN');
   });
 });

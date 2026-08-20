@@ -20,7 +20,9 @@ No later migration replaces that policy (grep for
 SECURITY DEFINER bypasses RLS. A member without `edit:transactions` — a
 staff, chef, or kiosk role — can call the RPC directly. The call writes
 real journal entries. The old hook path could not do this: it made a
-direct UPDATE, and the RLS policy filtered it to zero rows.
+direct UPDATE, and the RLS policy filtered it to zero rows. Commit
+f4e049b7 (PR #766) deleted that direct `.update()` call in
+src/hooks/useBulkTransactionActions.tsx and added the RPC call.
 
 The membership-only guard was a documented design choice
 (docs/superpowers/specs/2026-08-19-bulk-categorize-journal-entries-design.md:124-127,
@@ -52,6 +54,10 @@ error messages. A non-member gets `Unauthorized: ...`. A member without
 the capability gets `Access denied: ...`. pgTAP test 1 pins the first
 message (supabase/tests/22_bulk_categorize_bank_transactions.sql:168-176).
 
+`edit:transactions` also matches the INSERT policy on `journal_entries`
+(supabase/migrations/20260120100100_update_rls_for_collaborators.sql:319-322),
+the other table this RPC writes. One capability covers both write targets.
+
 ## 3. Who keeps access, who loses it
 
 `user_has_capability` resolves `edit:transactions` on two paths:
@@ -65,10 +71,11 @@ message (supabase/tests/22_bulk_categorize_bank_transactions.sql:168-176).
 The function fails closed: no membership row returns FALSE
 (20260806140000, `IF NOT FOUND THEN RETURN FALSE`).
 
-Losers: members with roles such as `staff`, `chef`, `kiosk`, and
-collaborators without the books area. None of these reach the bulk
-categorize UI: the `bank_transactions` SELECT policy requires
-`view:transactions`
+Losers: members with the roles `staff`, `chef`, `kiosk`,
+`operations_manager`, `collaborator_operations_manager`, and custom
+roles without `transactions` at level `manage`. None of these reach the
+bulk categorize UI: the `bank_transactions` SELECT policy requires
+`view:transactions`, and the same roles lack that capability too
 (supabase/migrations/20260120100100_update_rls_for_collaborators.sql), so
 the Transactions page shows them no rows. Only a direct RPC call loses
 access. That is the hole this change closes.
@@ -124,10 +131,17 @@ Change `supabase/tests/22_bulk_categorize_bank_transactions.sql`:
 - `bulk_delete_bank_transactions`: its membership-check gap is tracked
   by a separate follow-up task
   (docs/superpowers/specs/2026-08-19-bulk-categorize-journal-entries-design.md:79).
+  That task is in flight on the sibling worktree modest-mcclintock-f69894
+  (migration 20260820120000_bank_delete_rpcs_membership_guard.sql).
 - `categorize_bank_transaction` (single row): membership-only today
   (supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql:57-65).
-  Same class of gap, same separate-task treatment. This task changes the
-  bulk RPC only, per the task brief.
+  The design review marked this gap `major`: a caller without
+  `edit:transactions` can call the single-row RPC in a loop and get the
+  effect the new bulk guard blocks. The task brief scopes this change to
+  the bulk RPC only. Action: a tracked follow-up task exists for the
+  single-row RPC (created 2026-08-20, same guard pattern). The bulk fix
+  still has value on its own: it removes the 500-rows-per-call surface
+  and it sets the guard pattern the follow-up copies.
 - Frontend: no change. The RPC signature is unchanged, so
   src/integrations/supabase/types.ts is unchanged.
 

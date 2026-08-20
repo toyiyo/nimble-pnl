@@ -42,6 +42,49 @@ const createWrapper = () => {
   };
 };
 
+// Every confirmMatch test stubs the same pair of `supabase.from` tables and
+// routes them through `mockSupabase.from.mockImplementation`. This helper
+// builds both builders once so each test only supplies the fixture data (and,
+// rarely, a call-order hook) instead of ~20 lines of mock plumbing.
+function setupConfirmMatchMocks(
+  pendingOutflow: unknown,
+  bankTransaction: unknown,
+  options: { onBankUpdate?: () => void } = {}
+) {
+  const mockPendingOutflowBuilder = {
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: pendingOutflow, error: null }),
+    }),
+    update: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockResolvedValue({ error: null }),
+  };
+
+  const mockBankTransactionBuilder: {
+    select: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    eq: ReturnType<typeof vi.fn>;
+  } = {
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: bankTransaction, error: null }),
+    }),
+    update: vi.fn((_payload: unknown) => {
+      options.onBankUpdate?.();
+      return mockBankTransactionBuilder;
+    }),
+    eq: vi.fn().mockResolvedValue({ error: null }),
+  };
+
+  mockSupabase.from.mockImplementation((table: string) => {
+    if (table === 'pending_outflows') return mockPendingOutflowBuilder;
+    if (table === 'bank_transactions') return mockBankTransactionBuilder;
+    return mockPendingOutflowBuilder;
+  });
+
+  return { mockPendingOutflowBuilder, mockBankTransactionBuilder };
+}
+
 describe('usePendingOutflowMutations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -68,43 +111,8 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowSelectBuilder = {
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({
-          data: mockPendingOutflow,
-          error: null,
-        }),
-      };
-
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue(mockPendingOutflowSelectBuilder),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionSelectBuilder = {
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({
-          data: mockBankTransaction,
-          error: null,
-        }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue(mockBankTransactionSelectBuilder),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') {
-          return mockPendingOutflowBuilder;
-        }
-        if (table === 'bank_transactions') {
-          return mockBankTransactionBuilder;
-        }
-        return mockPendingOutflowBuilder; // fallback
-      });
+      const { mockPendingOutflowBuilder, mockBankTransactionBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -156,43 +164,8 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: 'existing-suggested',
       };
 
-      const mockPendingOutflowSelectBuilder = {
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({
-          data: mockPendingOutflow,
-          error: null,
-        }),
-      };
-
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue(mockPendingOutflowSelectBuilder),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionSelectBuilder = {
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({
-          data: mockBankTransaction,
-          error: null,
-        }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue(mockBankTransactionSelectBuilder),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') {
-          return mockPendingOutflowBuilder;
-        }
-        if (table === 'bank_transactions') {
-          return mockBankTransactionBuilder;
-        }
-        return mockBankTransactionBuilder;
-      });
+      const { mockBankTransactionBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -233,29 +206,7 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -292,31 +243,8 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn((_payload: unknown) => {
-          callOrder.push('update');
-          return mockBankTransactionBuilder;
-        }),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
+      setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction, {
+        onBankUpdate: () => callOrder.push('update'),
       });
       mockSupabase.rpc.mockImplementation(async () => {
         callOrder.push('rpc');
@@ -355,29 +283,8 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      const { mockBankTransactionBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -415,29 +322,7 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -472,29 +357,8 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      const { mockBankTransactionBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -533,29 +397,7 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -586,29 +428,7 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
@@ -637,29 +457,7 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
@@ -726,29 +524,8 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      const { mockPendingOutflowBuilder, mockBankTransactionBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({
         data: null,
         error: {
@@ -791,29 +568,8 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      const { mockPendingOutflowBuilder, mockBankTransactionBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({
         data: null,
         error: {
@@ -855,29 +611,7 @@ describe('usePendingOutflowMutations', () => {
         suggested_category_id: null,
       };
 
-      const mockPendingOutflowBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockPendingOutflow, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      const mockBankTransactionBuilder = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockBankTransaction, error: null }),
-        }),
-        update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockImplementation((table: string) => {
-        if (table === 'pending_outflows') return mockPendingOutflowBuilder;
-        if (table === 'bank_transactions') return mockBankTransactionBuilder;
-        return mockPendingOutflowBuilder;
-      });
+      setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
       mockSupabase.rpc.mockResolvedValue({
         data: null,
         error: { message: 'boom' },

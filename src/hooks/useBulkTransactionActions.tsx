@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -62,16 +62,34 @@ function summarizeSkipReasons(skipped: BulkCategorizeSkippedRow[]): string {
 
 /**
  * Thrown when a chunk fails after an earlier chunk already wrote real
- * journal entries. Carries the partial aggregate so onError can invalidate
+ * journal entries, or when every chunk succeeds but the trailing balance
+ * rebuild fails. Carries the partial aggregate so onError can invalidate
  * queries and tell the user how much succeeded, instead of discarding it.
+ * `message` is for logging only — never render it in a toast; it can carry
+ * the raw RPC error text (see KNOWN_SKIP_REASONS above for why).
  */
 class PartialBulkCategorizeError extends Error {
   partial: BulkCategorizeRpcResult;
-  constructor(message: string, partial: BulkCategorizeRpcResult) {
+  /**
+   * True when every selected row was categorized and only the trailing
+   * balance-rebuild call failed. onError must not call this a partial
+   * categorize — the categorize step fully succeeded.
+   */
+  rebuildOnlyFailed: boolean;
+  constructor(message: string, partial: BulkCategorizeRpcResult, rebuildOnlyFailed = false) {
     super(message);
     this.name = 'PartialBulkCategorizeError';
     this.partial = partial;
+    this.rebuildOnlyFailed = rebuildOnlyFailed;
   }
+}
+
+/** Invalidates every query the new journal entries change. Shared by the success and partial-failure paths. */
+function invalidateBulkCategorizeQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+  queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+  queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+  queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
 }
 
 /**
@@ -122,6 +140,21 @@ export function useBulkCategorizeTransactions() {
           // A later chunk's failure must not hide an earlier chunk's real
           // writes: those journal entries already exist in the database.
           if (aggregate.categorized_count + aggregate.reclassified_count > 0) {
+            // Rebuild balances for the partial write now, so the ledger
+            // is not left stale on top of the operation being incomplete.
+            // A failure here must not replace the real cause below it —
+            // log it and keep going.
+            try {
+              const { error: rescueRebuildError } = await supabase.rpc('rebuild_account_balances', {
+                p_restaurant_id: restaurantId,
+              });
+              if (rescueRebuildError) {
+                console.error('Balance rebuild after a partial bulk categorize also failed', rescueRebuildError);
+              }
+            } catch (rescueRebuildCatchError) {
+              console.error('Balance rebuild after a partial bulk categorize also failed', rescueRebuildCatchError);
+            }
+
             const message =
               chunkError instanceof Error
                 ? chunkError.message
@@ -137,21 +170,17 @@ export function useBulkCategorizeTransactions() {
           p_restaurant_id: restaurantId,
         });
         if (rebuildError) {
-          // The journal entries are already written; only the cached
-          // current_balance rollup failed. Report it as a partial result
-          // rather than a total failure.
-          throw new PartialBulkCategorizeError(rebuildError.message, aggregate);
+          // Every row was categorized; only the cached current_balance
+          // rollup failed. This is not a partial categorize — flag it so
+          // onError shows copy that matches what actually happened.
+          throw new PartialBulkCategorizeError(rebuildError.message, aggregate, true);
         }
       }
 
       return aggregate;
     },
     onSuccess: (result) => {
-      // Invalidate every query the new journal entries change.
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
-      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidateBulkCategorizeQueries(queryClient);
 
       const changedCount = result.categorized_count + result.reclassified_count;
 
@@ -191,16 +220,24 @@ export function useBulkCategorizeTransactions() {
       if (error instanceof PartialBulkCategorizeError) {
         // Some rows already wrote real journal entries before the failure.
         // Refresh the UI to show them instead of leaving it stale.
-        queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-        queryClient.invalidateQueries({ queryKey: ['income-statement'] });
-        queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
-        queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+        invalidateBulkCategorizeQueries(queryClient);
 
         const changedCount = error.partial.categorized_count + error.partial.reclassified_count;
-        toast.error('Only part of the selection was categorized', {
-          description: `${changedCount} transactions were categorized before this error: ${error.message}`,
-          duration: 10000,
-        });
+
+        // error.message may carry raw RPC error text (a guard message, a
+        // network error, or a rebuild failure) — the same rule as
+        // KNOWN_SKIP_REASONS applies: log it, do not render it.
+        if (error.rebuildOnlyFailed) {
+          toast.error('Categorized, but balances did not refresh', {
+            description: `${changedCount} transactions were categorized. Reload the page, or contact support if balances still look wrong.`,
+            duration: 10000,
+          });
+        } else {
+          toast.error('Only part of the selection was categorized', {
+            description: `${changedCount} transactions were categorized before this error. Please try again or contact support.`,
+            duration: 10000,
+          });
+        }
         return;
       }
 

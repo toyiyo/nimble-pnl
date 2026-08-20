@@ -230,11 +230,12 @@ describe('useBulkCategorizeTransactions', () => {
     expect(options.description).not.toContain('constraint');
   });
 
-  it('reports a partial success and refreshes the UI when a later chunk fails', async () => {
+  it('reports a partial success, rebuilds balances for it, and refreshes the UI when a later chunk fails', async () => {
     const ids = Array.from({ length: 501 }, (_, i) => `t${i}`);
     rpc
       .mockResolvedValueOnce({ data: makeResult({ categorized_count: 500 }), error: null })
-      .mockResolvedValueOnce({ data: null, error: { message: 'network unreachable' } });
+      .mockResolvedValueOnce({ data: null, error: { message: 'network unreachable' } })
+      .mockResolvedValueOnce({ data: null, error: null }); // rescue rebuild_account_balances call
     const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const spy = vi.spyOn(client, 'invalidateQueries');
     const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
@@ -242,12 +243,34 @@ describe('useBulkCategorizeTransactions', () => {
     result.current.mutate({ transactionIds: ids, categoryId: 'c1', restaurantId: 'r1' });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+    // 2 chunk calls + 1 rescue rebuild call after the second chunk fails.
+    expect(rpc).toHaveBeenCalledTimes(3);
+    expect(rpc.mock.calls[2]).toEqual(['rebuild_account_balances', { p_restaurant_id: 'r1' }]);
     expect(toastError).toHaveBeenCalled();
     const [title, options] = toastError.mock.calls[0] as [string, { description: string }];
     expect(title).toBe('Only part of the selection was categorized');
     expect(options.description).toContain('500 transactions were categorized');
-    expect(options.description).toContain('network unreachable');
+    // The raw RPC error text must not reach the toast (same rule as
+    // KNOWN_SKIP_REASONS) — only a generic, fixed description.
+    expect(options.description).not.toContain('network unreachable');
     const keys = spy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown }).queryKey));
     expect(keys).toContain(JSON.stringify(['income-statement']));
+  });
+
+  it('reports a distinct error, not "partial", when every row is categorized but the trailing rebuild fails', async () => {
+    rpc
+      .mockResolvedValueOnce({ data: makeResult({ categorized_count: 3 }), error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'connection reset' } }); // trailing rebuild call
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useBulkCategorizeTransactions(), { wrapper: wrapper(client) });
+
+    result.current.mutate({ transactionIds: ['t1', 't2', 't3'], categoryId: 'c1', restaurantId: 'r1' });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(toastError).toHaveBeenCalled();
+    const [title, options] = toastError.mock.calls[0] as [string, { description: string }];
+    expect(title).not.toBe('Only part of the selection was categorized');
+    expect(options.description).toContain('3 transactions were categorized');
+    expect(options.description).not.toContain('connection reset');
   });
 });

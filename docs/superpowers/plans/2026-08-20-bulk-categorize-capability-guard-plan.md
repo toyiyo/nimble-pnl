@@ -30,12 +30,13 @@ File: `supabase/tests/22_bulk_categorize_bank_transactions.sql`
    - Restore impersonation to user `...000601` after test 24 if any test
      follows; none does today.
 3. Change `plan(34)` to `plan(37)`.
-4. Run `npm run test:db`. Expect tests 22, 23, and 24 to fail on the
-   old function: the staff call in test 22 does not raise, so it
-   categorizes row `...000715` as a real side effect; test 23 then
-   finds the row already categorized; and test 24 reuses the same row
-   and category, so it lands in the "already categorized, same
-   category" branch (`unchanged_count`) instead of `categorized_count`.
+4. Run `npm run db:reset`, then `npm run test:db`. Expect tests 22, 23,
+   and 24 to fail on the old function: the staff call in test 22 does
+   not raise, so it categorizes row `...000715` as a real side effect;
+   test 23 then finds the row already categorized; and test 24 reuses
+   the same row and category, so it lands in the "already
+   categorized, same category" branch (`unchanged_count`) instead of
+   `categorized_count`.
 
 ## Task 2: GREEN — the migration
 

@@ -147,7 +147,7 @@ vi.mock('@/components/banking/BankTransactionList', () => ({
   BankTransactionList: () => <div data-testid="bank-transaction-list" />,
 }));
 vi.mock('@/components/bulk-edit/BulkActionBar', () => ({
-  BulkActionBar: () => <div data-testid="bulk-action-bar" />,
+  BulkActionBar: () => <div role="toolbar" aria-label="Bulk actions" />,
 }));
 vi.mock('@/components/banking/BulkCategorizeTransactionsPanel', () => ({
   BulkCategorizeTransactionsPanel: () => null,
@@ -159,7 +159,7 @@ vi.mock('@/components/bulk-edit/BulkDeleteConfirmDialog', () => ({
 import Transactions from '@/pages/Transactions';
 
 const findSelectButton = () => screen.queryByRole('button', { name: /^Select$/i });
-const findBulkActionBar = () => screen.queryByTestId('bulk-action-bar');
+const findBulkActionBar = () => screen.queryByRole('toolbar', { name: 'Bulk actions' });
 
 describe('Transactions page — bulk edit capability gate (canBulkEditTransactions)', () => {
   beforeEach(() => {

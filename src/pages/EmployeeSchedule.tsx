@@ -9,6 +9,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMyShifts } from '@/hooks/useShifts';
 import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
@@ -39,12 +40,11 @@ import {
   addDays,
   subDays,
   eachDayOfInterval,
-  parseISO,
-  isToday,
   differenceInMinutes,
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
-import { safeTz } from '@/lib/restaurantClock';
+import { toBusinessDay, businessDayRangeToInstants } from '@/lib/restaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { formatLocalDate, wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
 import { useNowTick } from '@/hooks/useNowTick';
 import {
@@ -61,13 +61,27 @@ const EmployeeSchedule = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
+  // The restaurant's clock, never the host browser's. Two questions on this
+  // page are calendar-day questions -- "which day column does this shift belong
+  // to" and "which day is today" -- and only the restaurant's calendar answers
+  // them. An employee who opens the page from another zone (travel, a remote
+  // manager, a phone that never left the last airport) otherwise reads a
+  // different week than the one the restaurant published.
+  const clock = useRestaurantClock();
+  const restaurantTimezone = clock.tz;
+  const restaurantToday = clock.today;
+
   // One key for the whole page treatment. `useFeatureFlagEnabled` returns
   // `undefined` when PostHog is unconfigured, so compare to `true`. The
   // default is the current page.
   const showClarity = useFeatureFlagEnabled('employee_schedule_clarity') === true;
 
-  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
-
+  // The week itself must start from the restaurant's calendar day, not the
+  // host's. `getRestaurantWeekStart` reads `new Date()` in the restaurant
+  // timezone, so the anchor names the restaurant's week. A host anchor could
+  // disagree near a week boundary (host America/Phoenix, restaurant
+  // Pacific/Auckland is ~19-20h apart), and a shift for the restaurant's
+  // actual current day would match no column and vanish from the grid.
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
     getRestaurantWeekStart(new Date(), restaurantTimezone)
   );
@@ -92,13 +106,31 @@ const EmployeeSchedule = () => {
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: WEEK_STARTS_ON });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
+  // Calendar-day strings for the visible week, read from host-local `Date`
+  // fields. `currentWeekStart` was itself seeded from the restaurant's
+  // calendar day (`restaurantToday`), so these strings already name the
+  // restaurant's week, not the host's.
+  const weekStartStr = formatLocalDate(currentWeekStart);
+  const weekEndStr = formatLocalDate(weekEnd);
+
+  // The shift query needs UTC instants, not host-local `Date`s. Calling
+  // `.toISOString()` on `currentWeekStart`/`weekEnd` would bound the query in
+  // the HOST's zone: for a Phoenix viewer and an Auckland restaurant the two
+  // windows sit ~19h apart, so most of Auckland's Monday shifts would fall
+  // outside the query and never load. `businessDayRangeToInstants` resolves
+  // restaurant-local midnight for both ends instead.
+  const { start: queryStart, end: queryEnd } = useMemo(
+    () => businessDayRangeToInstants(weekStartStr, weekEndStr, restaurantTimezone),
+    [weekStartStr, weekEndStr, restaurantTimezone]
+  );
+
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const {
     shifts: myShifts,
     loading: shiftsLoading,
     error: shiftsError,
     refetch: refetchShifts,
-  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
+  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, queryStart, queryEnd);
 
   // The anchor never depends on the viewed week. Both bounds come from one
   // value that changes once per restaurant calendar day. A `Date` built in the
@@ -171,7 +203,6 @@ const EmployeeSchedule = () => {
     [publication?.published_at, myShifts]
   );
 
-  const weekStartStr = formatLocalDate(currentWeekStart);
   const employeeId = currentEmployee?.id ?? null;
 
   const [seenFingerprint, setSeenFingerprint] = useState<string | null>(null);
@@ -197,19 +228,26 @@ const EmployeeSchedule = () => {
   // Group shifts by day
   const shiftsByDay = useMemo(() => {
     const grouped = new Map<string, Shift[]>();
+    // `weekDays` are calendar days the user navigated to, held as host-local
+    // midnight `Date`s -- `toDateOnlyString` reads their fields, it does not
+    // convert an instant.
     weekDays.forEach((day) => {
-      grouped.set(format(day, 'yyyy-MM-dd'), []);
+      grouped.set(toDateOnlyString(day), []);
     });
 
     myShifts.forEach((shift) => {
-      const dayKey = format(parseISO(shift.start_time), 'yyyy-MM-dd');
+      // `start_time` IS an instant, so it needs the restaurant's zone to name
+      // a day. The old `format(parseISO(...))` read it in the viewer's zone:
+      // a 9 p.m. shift seen from a zone one day ahead landed in the next day's
+      // column, and on the week's last day it matched no column and vanished.
+      const dayKey = toBusinessDay(shift.start_time, restaurantTimezone);
       if (grouped.has(dayKey)) {
         grouped.get(dayKey)!.push(shift);
       }
     });
 
     return grouped;
-  }, [myShifts, weekDays]);
+  }, [myShifts, weekDays, restaurantTimezone]);
 
   // Calculate weekly totals
   const weeklyStats = useMemo(() => {
@@ -367,7 +405,7 @@ const EmployeeSchedule = () => {
           <CardContent>
             <div className="space-y-3">
               {upcomingShifts.map((shift) => (
-                <ShiftRow key={shift.id} shift={shift} variant="upcoming" />
+                <ShiftRow key={shift.id} shift={shift} variant="upcoming" clock={clock} />
               ))}
             </div>
           </CardContent>
@@ -464,13 +502,14 @@ const EmployeeSchedule = () => {
           ) : (
             <div className="space-y-3">
               {weekDays.map((day) => {
-                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayKey = toDateOnlyString(day);
                 const dayShifts = shiftsByDay.get(dayKey) || [];
-                const isDayToday = isToday(day);
+                const isDayToday = dayKey === restaurantToday;
 
                 return (
                   <div
                     key={dayKey}
+                    data-testid={`schedule-day-${dayKey}`}
                     className={`p-4 rounded-lg border ${
                       isDayToday ? 'bg-primary/5 border-primary/20' : 'bg-card'
                     }`}
@@ -496,6 +535,7 @@ const EmployeeSchedule = () => {
                             key={shift.id}
                             shift={shift}
                             onTrade={handleTradeShift}
+                            clock={clock}
                             restaurantPublishes={showClarity ? restaurantPublishes : true}
                           />
                         ))}

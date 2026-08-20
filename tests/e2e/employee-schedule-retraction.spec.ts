@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser, E2EHelperWindow } from '../helpers/e2e-supabase';
 
 /**
  * The whole point of the banner is that an employee can tell a draft week from
@@ -9,8 +9,32 @@ import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } fr
  *
  * Timezone is pinned for the same reason as schedule-publish-week-range.spec.ts:
  * CI runs UTC, and week bucketing bugs are invisible there.
+ *
+ * The seeded shift's "10:00 AM" text is read from the restaurant clock (My
+ * Schedule renders every shift in the restaurant's own timezone, not the
+ * device's — see ShiftRow.tsx). `signUpAndCreateRestaurant` leaves
+ * `restaurants.timezone` at its DB default, `America/Chicago`, so pointing the
+ * restaurant at the same zone the browser is pinned to keeps the "10:00 AM"
+ * built from browser-local `new Date()` math true under either clock.
  */
 test.use({ timezoneId: 'America/New_York' });
+
+/**
+ * Points the restaurant at the same zone the browser is pinned to (see file
+ * header). Ported from shift-create-timezone.spec.ts's helper of the same name.
+ */
+async function setRestaurantTimezone(page: Page, restaurantId: string, timezone: string): Promise<void> {
+  const result = await page.evaluate(
+    async ({ restId, tz }) => {
+      const supabase = (window as unknown as E2EHelperWindow).__supabase;
+      const { error } = await supabase.from('restaurants').update({ timezone: tz }).eq('id', restId);
+      if (error) return { ok: false, message: error.message };
+      return { ok: true };
+    },
+    { restId: restaurantId, tz: timezone },
+  );
+  if (!result.ok) throw new Error(`restaurants timezone update failed: ${result.message}`);
+}
 
 /** The owner is also the employee, so one session can both publish and read the result. */
 async function seedSelfAsEmployeeWithShift(page: Page, restaurantId: string): Promise<void> {
@@ -111,6 +135,7 @@ test.describe('Employee schedule publish states', () => {
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
+    await setRestaurantTimezone(page, restaurantId, 'America/New_York');
     await seedSelfAsEmployeeWithShift(page, restaurantId);
 
     // --- State A: nothing published yet. The shift is visible, with a quiet

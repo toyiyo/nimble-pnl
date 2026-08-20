@@ -142,17 +142,26 @@ Change `supabase/tests/22_bulk_categorize_bank_transactions.sql`:
   single-row RPC (created 2026-08-20, same guard pattern). The bulk fix
   still has value on its own: it removes the 500-rows-per-call surface
   and it sets the guard pattern the follow-up copies.
-- Frontend: no change. The RPC signature is unchanged, so
-  src/integrations/supabase/types.ts is unchanged.
+- Frontend: the RPC signature is unchanged, so
+  src/integrations/supabase/types.ts is unchanged. This document first
+  predicted no other frontend change. That prediction was wrong: the CI
+  feedback loop on this PR (#770) found that a custom role at
+  `transactions` area level `view` gets `view:transactions` without
+  `edit:transactions` (src/lib/permissions/areas.ts) and can still open
+  `/transactions` (src/lib/permissions/routeAreas.ts). Commit 95c307d9
+  added a `canBulkEditTransactions` gate in src/pages/Transactions.tsx
+  that hides the "Select" button and the bulk action bar from that
+  role, so a UI click never reaches the RPC's new Access denied guard.
 
 ## 8. E2E position
 
 tests/e2e/bulk-edit-transactions.spec.ts already drives the allowed path
 (owner bulk-categorizes two rows through the UI) and must stay green.
-The denied path is a direct-RPC surface with no reachable UI: a role
-without `edit:transactions` also lacks `view:transactions`, so the page
-lists no rows to select. pgTAP covers the denial at the RPC boundary.
-No new E2E spec.
+The denied path is a direct-RPC surface. Section 7 above corrects this
+document's original claim that no UI path could reach it: since commit
+95c307d9, src/pages/Transactions.tsx gates bulk selection and the bulk
+action bar behind `edit:transactions`, so no UI path reaches a denied
+call. pgTAP covers the denial at the RPC boundary. No new E2E spec.
 
 ## 9. Documentation
 

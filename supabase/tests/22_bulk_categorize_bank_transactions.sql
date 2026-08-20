@@ -629,11 +629,13 @@ SET LOCAL role TO postgres;
 
 SELECT ok(
   (SELECT is_categorized = false FROM bank_transactions
-     WHERE id = '00000000-0000-0000-0000-000000000715'::uuid)
+     WHERE id = '00000000-0000-0000-0000-000000000715'::uuid
+       AND restaurant_id = '00000000-0000-0000-0000-000000000610'::uuid)
   AND NOT EXISTS (
     SELECT 1 FROM journal_entries
      WHERE reference_type = 'bank_transaction'
        AND reference_id = '00000000-0000-0000-0000-000000000715'::uuid
+       AND restaurant_id = '00000000-0000-0000-0000-000000000610'::uuid
   ),
   'Row stays uncategorized and gains no journal entry after the denied staff call'
 );

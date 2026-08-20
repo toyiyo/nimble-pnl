@@ -10700,6 +10700,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      bank_txn_entry_day: {
+        Args: { p_ts: string; p_tz: string | null }
+        Returns: string
+      }
       builtin_role_id_for: { Args: { p_role: string }; Returns: string }
       bulk_categorize_bank_transactions: {
         Args: {

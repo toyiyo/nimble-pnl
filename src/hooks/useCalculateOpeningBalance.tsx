@@ -65,7 +65,10 @@ export const useCalculateOpeningBalance = () => {
 
       if (equityError) throw equityError;
 
-      // Step 6: Get earliest transaction date for the journal entry date
+      // Step 6: Get earliest transaction date for the journal entry date.
+      // bank_txn_entry_day holds the entry-day convention (date anchors keep
+      // the UTC day; real instants take the restaurant-local day). The
+      // client never derives the day itself.
       const { data: earliestTxn } = await supabase
         .from('bank_transactions')
         .select('transaction_date')
@@ -74,7 +77,22 @@ export const useCalculateOpeningBalance = () => {
         .limit(1)
         .maybeSingle();
 
-      const openingDate = earliestTxn?.transaction_date || new Date().toISOString().split('T')[0];
+      let openingDate = new Date().toISOString().split('T')[0];
+      if (earliestTxn?.transaction_date) {
+        const { data: restaurant, error: tzError } = await supabase
+          .from('restaurants')
+          .select('timezone')
+          .eq('id', restaurantId)
+          .single();
+        if (tzError) throw tzError;
+
+        const { data: entryDay, error: entryDayError } = await supabase.rpc(
+          'bank_txn_entry_day',
+          { p_ts: earliestTxn.transaction_date, p_tz: restaurant.timezone },
+        );
+        if (entryDayError) throw entryDayError;
+        openingDate = entryDay ?? openingDate;
+      }
 
       // Step 7: Check if opening balance already exists
       const { data: existingEntry } = await supabase

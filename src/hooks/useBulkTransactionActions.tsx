@@ -8,35 +8,100 @@ interface BulkCategorizeParams {
   restaurantId: string;
 }
 
+interface BulkCategorizeSkippedRow {
+  id: string;
+  reason: string;
+}
+
+interface BulkCategorizeRpcResult {
+  success: boolean;
+  categorized_count: number;
+  reclassified_count: number;
+  unchanged_count: number;
+  skipped: BulkCategorizeSkippedRow[];
+}
+
+/** The RPC accepts at most 500 ids per call (see the migration's guard 4). */
+const BULK_CATEGORIZE_CHUNK_SIZE = 500;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/** Groups skipped rows by reason for a toast description like "3 reconciled, 2 closed period". */
+function summarizeSkipReasons(skipped: BulkCategorizeSkippedRow[]): string {
+  const counts = new Map<string, number>();
+  for (const row of skipped) {
+    counts.set(row.reason, (counts.get(row.reason) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([reason, count]) => `${count} ${reason.replace(/_/g, ' ')}`)
+    .join(', ');
+}
+
 /**
- * Hook for bulk categorizing bank transactions
- * Applies a category to multiple transactions at once
+ * Hook for bulk categorizing bank transactions.
+ * Calls the bulk_categorize_bank_transactions RPC, which writes a journal
+ * entry per transaction so the change reaches the income statement.
  */
 export function useBulkCategorizeTransactions() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ transactionIds, categoryId, restaurantId }: BulkCategorizeParams) => {
-      const { data, error } = await supabase
-        .from('bank_transactions')
-        .update({
-          category_id: categoryId,
-          is_categorized: true,
-          suggested_category_id: null, // Clear AI suggestions
-        })
-        .in('id', transactionIds)
-        .eq('restaurant_id', restaurantId)
-        .select();
+    mutationFn: async ({
+      transactionIds,
+      categoryId,
+      restaurantId,
+    }: BulkCategorizeParams): Promise<BulkCategorizeRpcResult> => {
+      const aggregate: BulkCategorizeRpcResult = {
+        success: true,
+        categorized_count: 0,
+        reclassified_count: 0,
+        unchanged_count: 0,
+        skipped: [],
+      };
 
-      if (error) throw error;
-      return data;
+      for (const idChunk of chunk(transactionIds, BULK_CATEGORIZE_CHUNK_SIZE)) {
+        const { data, error } = await supabase.rpc('bulk_categorize_bank_transactions', {
+          p_transaction_ids: idChunk,
+          p_category_id: categoryId,
+          p_restaurant_id: restaurantId,
+        });
+
+        if (error) throw error;
+
+        const result = data as unknown as BulkCategorizeRpcResult;
+        if (!result.success) {
+          throw new Error('Failed to categorize transactions');
+        }
+
+        aggregate.categorized_count += result.categorized_count;
+        aggregate.reclassified_count += result.reclassified_count;
+        aggregate.unchanged_count += result.unchanged_count;
+        aggregate.skipped.push(...result.skipped);
+      }
+
+      return aggregate;
     },
-    onSuccess: (_, variables) => {
-      // Invalidate all transaction queries to refresh the UI
+    onSuccess: (result) => {
+      // Invalidate every query the new journal entries change.
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      
-      toast.success(`${variables.transactionIds.length} transactions categorized`, {
-        description: 'Changes have been applied successfully',
+      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+
+      const changedCount = result.categorized_count + result.reclassified_count;
+      const description =
+        result.unchanged_count > 0
+          ? `${result.unchanged_count} already had this category`
+          : 'Changes have been applied successfully';
+
+      toast.success(`${changedCount} transactions categorized`, {
+        description,
         duration: 10000,
         action: {
           label: 'Undo',
@@ -46,11 +111,19 @@ export function useBulkCategorizeTransactions() {
           },
         },
       });
+
+      if (result.skipped.length > 0) {
+        toast.error(`${result.skipped.length} transactions skipped`, {
+          description: summarizeSkipReasons(result.skipped),
+          duration: 10000,
+        });
+      }
     },
     onError: (error) => {
       console.error('Error bulk categorizing transactions:', error);
+      const message = error instanceof Error ? error.message : (error as { message?: string })?.message;
       toast.error('Failed to categorize transactions', {
-        description: 'Please try again or contact support',
+        description: message || 'Please try again or contact support',
       });
     },
   });

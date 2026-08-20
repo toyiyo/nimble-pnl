@@ -43,8 +43,8 @@ returned `Unauthorized: Manager access required`.
   The legacy CASE grants `edit:scheduling` to
   `('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')`
   (supabase/migrations/20260730140000_user_has_capability_from_areas.sql:146).
-  The helper fails closed for a non-member (line 83) and for a member with
-  no `role_id` and no `role` string (line 90).
+  The helper fails closed for a non-member (line 80) and for a member with
+  no `role_id` and no `role` string (line 86).
 - RLS policies already call this helper in production. Example:
   `user_has_capability(restaurant_id, 'edit:scheduling')`
   (supabase/migrations/20260730150000_rewrite_collaborator_policies.sql:79).
@@ -101,14 +101,29 @@ The `operations_manager` rows are the deliberate product change that
   bodies from `20260713010000_harden_accept_shift_trade.sql` (the latest
   definitions; confirmed by
   `grep -rlE "FUNCTION\s+(public\.)?approve_shift_trade" supabase/migrations | sort`).
-  Change only the guard block:
-  `IF NOT user_has_capability(v_trade.restaurant_id, 'edit:scheduling') THEN`
+  Change only the guard condition. The current bodies run the guard
+  BEFORE the `FOR UPDATE` fetch, with a subquery for the restaurant
+  (20260713010000_harden_accept_shift_trade.sql:141). Keep that order.
+  The order prevents a trade-ID existence oracle: an unauthorized caller
+  gets the same generic error for a real ID and for a fake ID. The
+  sibling `approve_open_shift_claim` documents this pattern
+  (supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql:391).
+  New guard:
+  `IF NOT user_has_capability((SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id), 'edit:scheduling') THEN`
   with error `Unauthorized: schedule manage access required`.
+  A fake ID makes the subquery return NULL; the helper then finds no
+  membership row and fails closed, so the error stays generic.
   Keep `SECURITY DEFINER`, keep `SET search_path = public, pg_temp`, keep
   the `p_manager_user_id != auth.uid()` check, keep the grants and update
   the function comments.
 - Re-create `create_shift_trade_for_employee`. Source the body from
-  `20260814130000_allow_draft_shift_trade.sql`. Same guard swap.
+  `20260814130000_allow_draft_shift_trade.sql`. Same guard swap, with
+  `p_restaurant_id` as the helper argument. The source migration's
+  comment (lines 27-31) rejects `edit:scheduling` because it would
+  create a dead-end approval queue. That rationale is now stale: this
+  migration moves `approve_shift_trade` and `reject_shift_trade` to the
+  same predicate, so the "mirrors the approve audience" invariant stays
+  true. State this in the new function comment.
 - Drop and re-create the three policies with the same names and with
   `USING (user_has_capability(shift_trades.restaurant_id, 'edit:scheduling'))`:
   `"Managers can view all shift trades"` (SELECT),
@@ -118,9 +133,6 @@ The `operations_manager` rows are the deliberate product change that
   Keep the policy names so `16_shift_trades_security.sql:144` stays true.
 - Write a provenance header that names the source migration for each
   re-created object (lesson 2026-07-22).
-- Note: the trade row carries `restaurant_id`, so the guard reads
-  `v_trade.restaurant_id` after the `FOR UPDATE` fetch. The fetch happens
-  before the guard in the current bodies; keep that order.
 
 ### 2. pgTAP tests (new file)
 
@@ -143,14 +155,38 @@ Impersonate with `set_config('request.jwt.claims', ...)` for `auth.uid()`;
 add `SET LOCAL role = 'authenticated'` only for the RLS assertions; `RESET
 ROLE` before `finish()` (lesson 2026-07-22).
 
+Also change one existing suite. Test 6 in
+`supabase/tests/53_directed_shift_trade_rls.sql:180` asserts that an
+`operations_manager` sees zero directed trades. The widened SELECT policy
+makes that count 1. Change the assertion to `1::bigint`. Change the test
+comment and the file header (lines 6-7) to state the widened audience and
+the date. Without this change, `npm run test:db` fails.
+
 ### 3. Frontend
 
 Gate the manager trade surfaces on the same capability:
 
 - In `src/pages/Scheduling.tsx`, hide the trades `TabsTrigger`
   (line 906) and the trades `TabsContent` (line 1632) when
-  `hasCapability('edit:scheduling')` is false. This deletes the dead
-  approval queue that a chef sees today.
+  `isResolved && hasCapability('edit:scheduling')` is false. The page
+  does not import `usePermissions` today; add the import. The
+  `isResolved` guard follows the house pattern
+  (src/components/ReactivateEmployeeDialog.tsx:36,
+  src/pages/Expenses.tsx:94) and prevents a late tab pop-in for a
+  manager on first paint. This deletes the dead approval queue that a
+  chef sees today.
+- The `Tabs` at src/pages/Scheduling.tsx:881 is uncontrolled
+  (`defaultValue="schedule"`). When the trades tab hides while active,
+  an uncontrolled `Tabs` shows a blank panel. Convert the `Tabs` to
+  controlled state and reset to `schedule` when the active tab is not
+  allowed. Copy the pattern from
+  src/pages/RestaurantSettings.tsx:420-438.
+- The pending-trade badges (src/pages/Scheduling.tsx:911,
+  src/pages/Scheduling.tsx:1642) live inside the gated blocks and need
+  no separate gate. The `useShiftTrades(restaurantId,
+  'pending_approval', null)` fetch at src/pages/Scheduling.tsx:313
+  stays unconditional; after the RLS change it returns zero rows for a
+  non-manager, so it is a wasted fetch, not a leak.
 - No change in `TradeApprovalQueue` internals: after the gate, every
   viewer of the queue can act on it.
 
@@ -160,7 +196,9 @@ Gate the manager trade surfaces on the same capability:
   with only `view:scheduling` it does not.
 - E2E: extend `tests/e2e/manager-initiated-shift-trade.spec.ts` (or add a
   spec) so a member with a custom `scheduling@manage` role approves a
-  pending trade end to end.
+  pending trade end to end. The custom-role setup pattern is in
+  `tests/e2e/roles-and-areas.spec.ts` (there is no helper for it in
+  `tests/helpers/e2e-supabase.ts`).
 
 ## Out of scope (filed as follow-up)
 

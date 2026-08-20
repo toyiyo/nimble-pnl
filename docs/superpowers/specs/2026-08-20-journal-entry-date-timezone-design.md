@@ -2,7 +2,7 @@
 
 Date: 2026-08-20
 Branch: claude/friendly-kare-5ade92
-Status: draft for Phase 2.5 review
+Status: Phase 2.5 review folded in (2 critical, 3 major, 2 minor — all fixed)
 
 ## Problem
 
@@ -27,7 +27,7 @@ data into three populations:
 
 | Population | Rows | Meaning |
 |---|---|---|
-| Exactly `00:00:00` UTC | 3,991 | Date-only values. Statement imports write `transaction.date`, a plain date string (supabase/functions/process-bank-statement/index.ts:911). |
+| Exactly `00:00:00` UTC | 3,991 | Date-only values. The OCR function writes a plain date string into the staging table `bank_statement_lines` (supabase/functions/process-bank-statement/index.ts:911). The import hook copies the staged value into `bank_transactions.transaction_date` (src/hooks/useBankStatementImport.tsx:475, insert at 489-491). |
 | Exactly `12:00:00` UTC | 2,552 | Stripe noon-anchored date-only values. The sync writes `transacted_at` epoch seconds (supabase/functions/stripe-sync-transactions/index.ts:278). |
 | Other times | 1,775 | Real instants from Stripe `transacted_at`. |
 
@@ -44,6 +44,12 @@ Impact counts, with the restaurant timezone applied to real instants only:
 | Source transactions where the day shift crosses a month boundary | 3 |
 
 The zero in row three confirms the current convention is uniformly UTC.
+
+These counts are a snapshot. The bank-entry count grew from 4,908 to 5,470
+within hours of the first measurement (the backfill cron runs every 5
+minutes). Treat each number as reproducible from its query, not as a fixed
+value. The re-date migration computes its own row set at run time and does
+not depend on these counts.
 
 ## Decision: a hybrid day convention
 
@@ -76,6 +82,7 @@ CREATE OR REPLACE FUNCTION public.bank_txn_entry_day(p_ts timestamptz, p_tz text
 RETURNS date
 LANGUAGE plpgsql
 STABLE
+SET search_path = public, pg_catalog
 AS $$
 BEGIN
   IF p_ts IS NULL THEN
@@ -100,13 +107,17 @@ fallback for a garbage timezone is the UTC day — today's behavior. The
 `COALESCE` default matches the column default `'America/Chicago'`.
 
 Every caller passes `restaurants.timezone` for the transaction's restaurant.
+Each SQL function loads that timezone once, with one `restaurants` lookup,
+into a local variable. The migration also grants `EXECUTE` on the helper to
+`authenticated`, because the opening-balance hook (path 5 below) calls it
+through PostgREST.
 
 ## Write paths to change (one release)
 
-Four functions write `entry_date` from `transaction_date`. Each gets a
-`CREATE OR REPLACE` migration that swaps the cast for
-`bank_txn_entry_day(v_transaction.transaction_date, v_timezone)` and aligns
-its period guard to the same expression.
+Four SQL functions and one client hook write `entry_date` from
+`transaction_date`. Each function gets a `CREATE OR REPLACE` migration that
+swaps the cast for `bank_txn_entry_day(v_transaction.transaction_date,
+v_timezone)` and aligns its period guard to the same expression.
 
 1. **`categorize_bank_transaction`** — current definition in
    supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql.
@@ -130,7 +141,20 @@ its period guard to the same expression.
 4. **`backfill_bank_transaction_journal_entries`** — current definition in
    supabase/migrations/20260819232450_backfill_bank_transaction_journal_entries.sql.
    One insert uses the explicit UTC cast (line 115). Its closed-period guard
-   already matches its insert (lines 93-94); both move to the helper.
+   already matches its insert (lines 93-94); both move to the helper. The
+   `tmp_backfill_candidates` query has no `restaurants` join today (lines
+   50-96). The replacement adds `JOIN restaurants r ON r.id =
+   bt.restaurant_id`, carries `r.timezone` as a candidate column, and passes
+   it to the helper in the insert and in the guard.
+5. **`useCalculateOpeningBalance`** (client hook) —
+   src/hooks/useCalculateOpeningBalance.tsx reads the earliest
+   `bank_transactions.transaction_date` (lines 69-77) and inserts that value
+   as `journal_entries.entry_date` with `reference_type =
+   'opening_balance'` (line 97). PostgREST coerces the timestamptz string to
+   `DATE` at the UTC day. The fix: the hook fetches `restaurants.timezone`,
+   then calls the `bank_txn_entry_day` RPC to derive the day. The convention
+   stays in one SQL expression; the client holds no copy of the rule. The
+   fallback when no transaction exists (line 77) stays as today.
 
 The trigger `auto_apply_bank_categorization_rules`
 (supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql:224)
@@ -171,10 +195,35 @@ A second migration re-dates existing rows:
    crosses the `CURRENT_DATE` bound and every stored balance is unchanged.
    East-of-UTC zones have no affected rows (all 208 shifts are
    `America/Chicago`).
+5. Do not re-date `opening_balance` entries. Production has 4 such entries.
+   For all 4, the earliest transaction is date-anchored, so the new
+   convention gives the same day as the UTC cast — the convention change
+   moves zero of these rows. Their `entry_date` values do differ from the
+   day of today's earliest transaction, but that is anchor drift: imports
+   and deletions after creation changed which transaction is earliest. A
+   re-date from today's earliest transaction would move entries by months,
+   not by a one-day timezone correction, and would desync
+   `reconciliation_boundaries.balance_start_date`. That repair is a separate
+   pre-existing problem, out of scope here.
 
 Expected production effect: 181 rows updated (179 + 2), 3 of them across a
 month boundary. The statement touches at most a few thousand joined rows;
 no `statement_timeout` risk.
+
+## Report-level effects
+
+Three report components read `entry_date` with caller-chosen date bounds:
+`TrialBalance` passes an arbitrary `p_as_of_date` to the balance RPC
+(src/components/financial-statements/TrialBalance.tsx:53); `BalanceSheet`
+filters `journal_entry.entry_date <= asOf`
+(src/components/financial-statements/BalanceSheet.tsx:80-82);
+`IncomeStatement` filters a `gte`/`lte` range
+(src/components/financial-statements/IncomeStatement.tsx:215-220). After the
+re-date, an affected entry moves from the UTC day to the local day, so a
+report bounded inside that window shows different numbers. This shift is the
+intended correction, not a side effect. A pgTAP test must show it:
+compute a balance with an as-of date between the old day and the new day,
+before and after the re-date statement, and assert the entry now counts.
 
 ## What does not change (non-goals)
 
@@ -187,6 +236,8 @@ no `statement_timeout` risk.
 - UI date rendering for bank transactions. The Transactions page shows the
   source timestamp; that display is a separate product surface.
 - `fiscal_periods.period_start/period_end` semantics (already local days).
+- Existing `opening_balance` entry dates and their anchor drift (see
+  re-date item 5). Only the forward path of the hook changes.
 
 ## Tests
 
@@ -203,6 +254,11 @@ no `statement_timeout` risk.
   evening-instant fixture each, asserting the local-day `entry_date`.
 - Extend the categorize suite with an evening-instant fixture and with a
   recategorize-heals-entry_date assertion.
+- Re-date suite: assert the before/after balance shift from the
+  report-level-effects section (mid-window as-of date).
+- New Vitest unit test for the changed `useCalculateOpeningBalance` date
+  derivation: mock the RPC, assert the hook passes the fetched timezone and
+  uses the RPC result as `entry_date`; assert the no-transaction fallback.
 - Per lesson [2026-08-19], any test that asserts restaurant-timezone
   behavior must not read the host clock; all fixtures use explicit UTC
   instants and fixed expected dates.

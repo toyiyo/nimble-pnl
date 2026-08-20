@@ -6,6 +6,7 @@ import {
   bucketSeries,
   dayKeyOf,
   formatCompactCurrency,
+  formatPercentOfTotal,
   isInternalTransfer,
   payeeFor,
   topCategories,
@@ -448,8 +449,24 @@ describe('computeInsights', () => {
 
     expect(insights).toContainEqual({
       id: 'subscriptions',
-      title: '1 notable transaction',
-      body: 'We noticed 1 subscription you may want to review',
+      title: '1 recurring charge',
+      body: 'A steady monthly charge in the last 90 days: Netflix ($15.99).',
+    });
+  });
+
+  it('names every recurring payee with its mean charge, largest first', () => {
+    const rows = [
+      ...subscriptionCharges('Netflix', ['2026-06-01', '2026-07-01', '2026-08-01'], 15.99),
+      ...subscriptionCharges('Adobe', ['2026-06-03', '2026-07-03', '2026-08-03'], 54.99),
+      ...subscriptionCharges('Hosting Co', ['2026-06-05', '2026-07-05', '2026-08-05'], 20),
+    ];
+
+    const insights = computeInsights(rows, period('2026-08-01', '2026-08-19'));
+
+    expect(insights).toContainEqual({
+      id: 'subscriptions',
+      title: '3 recurring charges',
+      body: 'Steady monthly charges in the last 90 days: Adobe ($54.99), Hosting Co ($20), and Netflix ($15.99).',
     });
   });
 
@@ -711,5 +728,29 @@ describe('computeCashFlowAggregates', () => {
     const aggregates = computeCashFlowAggregates(rows, period('2026-08-01', '2026-08-01'), 'day');
 
     expect(aggregates.totals).toEqual({ moneyIn: 500, moneyOut: -400, net: 100 });
+  });
+});
+
+describe('formatPercentOfTotal', () => {
+  it('rounds to a whole percent, the same as the breakdown tables', () => {
+    expect(formatPercentOfTotal(2000, 4800)).toBe('42%');
+    expect(formatPercentOfTotal(1200, 4800)).toBe('25%');
+  });
+
+  it('uses the absolute amount, so an outflow shares the same scale', () => {
+    expect(formatPercentOfTotal(-2000, 4800)).toBe('42%');
+  });
+
+  it('shows "<1%" for a small non-zero share instead of "0%"', () => {
+    expect(formatPercentOfTotal(1, 1000)).toBe('<1%');
+  });
+
+  it('shows "0%" for a zero amount', () => {
+    expect(formatPercentOfTotal(0, 1000)).toBe('0%');
+  });
+
+  it('returns an empty string when the total is not positive', () => {
+    expect(formatPercentOfTotal(100, 0)).toBe('');
+    expect(formatPercentOfTotal(100, -50)).toBe('');
   });
 });

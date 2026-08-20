@@ -51,11 +51,9 @@ describe('CashFlowNarrative', () => {
     expect(payeeChip.className).toContain('px-1');
   });
 
-  it('always shows the trends caption', () => {
+  it('shows no static disclaimer text', () => {
     render(<CashFlowNarrative insights={[]} />);
-    expect(
-      screen.getByText('Trends are generated and may include inaccuracies.')
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Trends are generated/)).not.toBeInTheDocument();
   });
 
   it('shows a fallback line when there are no insights', () => {

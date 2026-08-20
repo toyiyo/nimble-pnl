@@ -8,6 +8,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 import { CashFlowChart } from '@/components/banking/cashflow/CashFlowChart';
 import type { CashFlowRow, CashFlowPeriod } from '@/lib/cashflowInsights';
@@ -72,9 +73,14 @@ const rows: CashFlowRow[] = [
   },
 ];
 
+// The chart reads and writes URL search params, so it needs a router.
+function renderChart(ui: React.ReactElement, initialEntries: string[] = ['/']) {
+  return render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+}
+
 describe('CashFlowChart', () => {
   it('defaults to Flow mode: role="img", aria-label mentions Flow, interval select hidden', () => {
-    render(<CashFlowChart rows={rows} period={period} />);
+    renderChart(<CashFlowChart rows={rows} period={period} />);
 
     const chart = screen.getByRole('img', { name: /flow/i });
     expect(chart).toBeInTheDocument();
@@ -82,7 +88,7 @@ describe('CashFlowChart', () => {
   });
 
   it('wires the visible caption to the chart via aria-describedby', () => {
-    render(<CashFlowChart rows={rows} period={period} />);
+    renderChart(<CashFlowChart rows={rows} period={period} />);
 
     const chart = screen.getByRole('img', { name: /flow/i });
     const describedById = chart.getAttribute('aria-describedby');
@@ -99,7 +105,7 @@ describe('CashFlowChart', () => {
   });
 
   it('switches to By category mode: shows the interval select and updates the aria-label', () => {
-    render(<CashFlowChart rows={rows} period={period} />);
+    renderChart(<CashFlowChart rows={rows} period={period} />);
 
     fireEvent.click(screen.getByText('By category'));
 
@@ -108,7 +114,7 @@ describe('CashFlowChart', () => {
   });
 
   it('switches to In vs out mode: updates the aria-label and keeps the interval select shown', () => {
-    render(<CashFlowChart rows={rows} period={period} />);
+    renderChart(<CashFlowChart rows={rows} period={period} />);
 
     fireEvent.click(screen.getByText('In vs out'));
 
@@ -117,7 +123,7 @@ describe('CashFlowChart', () => {
   });
 
   it('going back to Flow mode hides the interval select again', () => {
-    render(<CashFlowChart rows={rows} period={period} />);
+    renderChart(<CashFlowChart rows={rows} period={period} />);
 
     fireEvent.click(screen.getByText('By category'));
     expect(screen.getByTestId('interval')).toBeInTheDocument();
@@ -127,7 +133,7 @@ describe('CashFlowChart', () => {
   });
 
   it('excludes transfer rows by default and adds them back when set to All cashflow', () => {
-    render(<CashFlowChart rows={rows} period={period} />);
+    renderChart(<CashFlowChart rows={rows} period={period} />);
 
     const chart = screen.getByRole('img', { name: /flow/i });
     const describedById = chart.getAttribute('aria-describedby')!;
@@ -142,7 +148,26 @@ describe('CashFlowChart', () => {
   });
 
   it('renders an empty flow gracefully for zero rows', () => {
-    render(<CashFlowChart rows={[]} period={period} />);
+    renderChart(<CashFlowChart rows={[]} period={period} />);
+
+    expect(screen.getByRole('img', { name: /flow/i })).toBeInTheDocument();
+  });
+
+  it('restores the view from the URL view param', () => {
+    renderChart(<CashFlowChart rows={rows} period={period} />, ['/?view=inout']);
+
+    expect(screen.getByRole('img', { name: /in vs out/i })).toBeInTheDocument();
+  });
+
+  it('restores the interval from the URL interval param', () => {
+    renderChart(<CashFlowChart rows={rows} period={period} />, ['/?view=category&interval=month']);
+
+    expect(screen.getByRole('img', { name: /category/i })).toBeInTheDocument();
+    expect(screen.getByTestId('interval')).toHaveValue('month');
+  });
+
+  it('falls back to Flow mode for an unknown view param', () => {
+    renderChart(<CashFlowChart rows={rows} period={period} />, ['/?view=bogus']);
 
     expect(screen.getByRole('img', { name: /flow/i })).toBeInTheDocument();
   });

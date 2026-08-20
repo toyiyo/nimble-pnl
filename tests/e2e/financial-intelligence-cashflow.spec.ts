@@ -175,17 +175,21 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
     // opens on "This Month", which would miss the older rows).
     await page.getByRole('button', { name: 'Last 90 Days' }).click();
 
+    // --- URL state: the period preset lands in the search params --------
+    await expect(page).toHaveURL(/period=last90/);
+
     // --- Headline totals: all accounts combined -----------------------
     await expectHeadlineValue(page, 'Net cashflow', '$2,400');
     await expectHeadlineValue(page, 'Money in', '$4,000');
     await expectHeadlineValue(page, 'Money out', '$1,600');
 
-    // --- Narrative: always-visible caption text ------------------------
+    // --- Narrative: region present, no static disclaimer ----------------
     // The insight list itself is calendar-dependent (it compares full
-    // calendar months against "today"), so this only pins the region's
-    // always-visible disclaimer through a semantic selector.
+    // calendar months against "today"), so this only pins the region and
+    // the absence of the old boilerplate disclaimer.
     const narrative = page.getByRole('region', { name: 'Cash flow narrative' });
-    await expect(narrative.getByText('Trends are generated and may include inaccuracies.')).toBeVisible();
+    await expect(narrative).toBeVisible();
+    await expect(narrative.getByText(/Trends are generated/)).toHaveCount(0);
 
     // --- Chart mode switch: category bars and in/out bars ---------------
     await expect(page.getByRole('img', { name: /Flow view of cash flow/i })).toBeVisible();
@@ -195,6 +199,13 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
 
     await page.getByRole('radio', { name: 'In vs out', exact: true }).click();
     await expect(page.getByRole('img', { name: /In vs out view of cash flow, net \$2,400/i })).toBeVisible();
+
+    // --- URL state: view and period survive a reload ---------------------
+    await expect(page).toHaveURL(/view=inout/);
+    await page.reload();
+    await expect(
+      page.getByRole('img', { name: /In vs out view of cash flow, net \$2,400/i }),
+    ).toBeVisible({ timeout: 10000 });
 
     // --- Breakdown tab switch: Source rows vs. folded Category rows ----
     // Each breakdown row carries `role="listitem"` with its label as the

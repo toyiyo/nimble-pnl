@@ -205,6 +205,32 @@ describe('TimelineBrush', () => {
     expect(call.label).toMatch(/^Dec 20, 2026 - /);
   });
 
+  it('exposes the thumb dates through aria-valuetext', () => {
+    const from = new Date(2026, 6, 1); // Jul 1, 2026
+    const to = new Date(2026, 7, 19); // Aug 19, 2026
+    render(<TimelineBrush selectedPeriod={makePeriod(from, to)} onPeriodChange={vi.fn()} />);
+
+    expect(screen.getByRole('slider', { name: 'Start date' })).toHaveAttribute(
+      'aria-valuetext',
+      'Jul 1, 2026'
+    );
+    expect(screen.getByRole('slider', { name: 'End date' })).toHaveAttribute(
+      'aria-valuetext',
+      'Aug 19, 2026'
+    );
+  });
+
+  it('renders a date bubble on each thumb with the thumb date', () => {
+    const from = new Date(2026, 6, 1); // Jul 1, 2026
+    const to = new Date(2026, 7, 19); // Aug 19, 2026
+    render(<TimelineBrush selectedPeriod={makePeriod(from, to)} onPeriodChange={vi.fn()} />);
+
+    const bubbles = screen.getAllByTestId('brush-thumb-date');
+    expect(bubbles).toHaveLength(2);
+    expect(bubbles[0]).toHaveTextContent('Jul 1, 2026');
+    expect(bubbles[1]).toHaveTextContent('Aug 19, 2026');
+  });
+
   it('extends the domain to a future custom period end instead of clamping it to today', () => {
     const today = new Date();
     const futureTo = addDays(today, 10);

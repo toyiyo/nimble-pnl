@@ -449,6 +449,37 @@ export function formatCompactCurrency(amount: number): string {
   return `${sign}$${Math.round(abs)}`;
 }
 
+/**
+ * The share of `total` that `amount` covers, as "42%". The rounding matches
+ * the breakdown tables. A non-zero share under one half percent reads "<1%",
+ * so a small slice does not display as "0%". Returns an empty string when
+ * the total is not positive, so the caller can drop the share cleanly.
+ */
+export function formatPercentOfTotal(amount: number, total: number): string {
+  if (total <= 0) return '';
+  const pct = (Math.abs(amount) / total) * 100;
+  if (pct > 0 && pct < 0.5) return '<1%';
+  return `${Math.round(pct)}%`;
+}
+
+/** Format a charge amount with cents only when it has them ("$15.99", "$45"). */
+function formatChargeAmount(amount: number): string {
+  const isWholeDollar = Math.round(amount * 100) % 100 === 0;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: isWholeDollar ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+/** Join names as a sentence list: "A", "A and B", "A, B, and C". */
+function listJoin(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
 function monthKeyFromDateStr(dateStr: string): string {
   return dateStr.slice(0, 7);
 }
@@ -478,12 +509,18 @@ function lastFullCalendarMonth(to: Date): YearMonth {
   return shiftMonth({ year, month }, -1);
 }
 
+interface SubscriptionPayee {
+  payee: string;
+  meanAmount: number;
+}
+
 /**
- * Count outflow payees that look like subscriptions: 3+ charges in the
+ * Find outflow payees that look like subscriptions: 3+ charges in the
  * trailing 90 days before `to`, a 25-35 day cadence between every charge,
- * and under 10% variance across their amounts.
+ * and under 10% variance across their amounts. Returns the payees with
+ * their mean charge, largest first, so the insight can name them.
  */
-function countSubscriptionPayees(rows: CashFlowRow[], to: Date): number {
+function findSubscriptionPayees(rows: CashFlowRow[], to: Date): SubscriptionPayee[] {
   const toMidnight = new Date(to.getFullYear(), to.getMonth(), to.getDate());
   const windowStart = new Date(toMidnight);
   windowStart.setDate(windowStart.getDate() - SUBSCRIPTION_WINDOW_DAYS);
@@ -500,8 +537,8 @@ function countSubscriptionPayees(rows: CashFlowRow[], to: Date): number {
     byPayee.set(key, charges);
   }
 
-  let count = 0;
-  for (const charges of byPayee.values()) {
+  const found: SubscriptionPayee[] = [];
+  for (const [payee, charges] of byPayee) {
     if (charges.length < SUBSCRIPTION_MIN_CHARGES) continue;
     charges.sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -515,10 +552,10 @@ function countSubscriptionPayees(rows: CashFlowRow[], to: Date): number {
     const amounts = charges.map((c) => c.amount);
     const mean = amounts.reduce((sum, a) => sum + a, 0) / amounts.length;
     const variance = mean === 0 ? 0 : (Math.max(...amounts) - Math.min(...amounts)) / mean;
-    if (variance < SUBSCRIPTION_VARIANCE_MAX) count += 1;
+    if (variance < SUBSCRIPTION_VARIANCE_MAX) found.push({ payee, meanAmount: mean });
   }
 
-  return count;
+  return found.sort((a, b) => b.meanAmount - a.meanAmount);
 }
 
 /** Sum non-transfer money in for one calendar month (`YYYY-MM`). */
@@ -609,13 +646,12 @@ function buildTopSourceInsight(
 export function computeInsights(rows: CashFlowRow[], period: CashFlowPeriod): CashFlowInsight[] {
   const insights: CashFlowInsight[] = [];
 
-  const subscriptionCount = countSubscriptionPayees(rows, period.to);
-  if (subscriptionCount > 0) {
-    const isSingleSubscription = subscriptionCount === 1;
-    const title = isSingleSubscription ? '1 notable transaction' : `${subscriptionCount} notable transactions`;
-    const body = isSingleSubscription
-      ? 'We noticed 1 subscription you may want to review'
-      : `We noticed ${subscriptionCount} subscriptions you may want to review`;
+  const subscriptions = findSubscriptionPayees(rows, period.to);
+  if (subscriptions.length > 0) {
+    const names = subscriptions.map((s) => `${s.payee} (${formatChargeAmount(s.meanAmount)})`);
+    const title = subscriptions.length === 1 ? '1 recurring charge' : `${subscriptions.length} recurring charges`;
+    const noun = subscriptions.length === 1 ? 'A steady monthly charge' : 'Steady monthly charges';
+    const body = `${noun} in the last ${SUBSCRIPTION_WINDOW_DAYS} days: ${listJoin(names)}.`;
     insights.push({ id: 'subscriptions', title, body });
   }
 

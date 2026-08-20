@@ -74,9 +74,6 @@ export function CashFlowNarrative({ insights, className }: CashFlowNarrativeProp
           })}
         </ul>
       )}
-      <p className="mt-4 text-[12px] text-muted-foreground">
-        Trends are generated and may include inaccuracies.
-      </p>
     </section>
   );
 }

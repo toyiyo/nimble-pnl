@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Layer, ResponsiveContainer, Sankey, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -11,12 +12,14 @@ import {
   defaultInterval,
   formatCompactCurrency,
   formatCurrency,
+  formatPercentOfTotal,
   isInternalTransfer,
   topCategories,
   type CashFlowPeriod,
   type CashFlowRow,
   type Interval,
 } from '@/lib/cashflowInsights';
+import { readEnumParam } from '@/lib/periodUrlState';
 
 interface CashFlowChartProps {
   rows: CashFlowRow[];
@@ -24,7 +27,9 @@ interface CashFlowChartProps {
   className?: string;
 }
 
-type ChartMode = 'flow' | 'category' | 'inout';
+const CHART_MODES = ['flow', 'category', 'inout'] as const;
+type ChartMode = (typeof CHART_MODES)[number];
+const INTERVALS = ['day', 'week', 'month'] as const;
 type CashflowFilter = 'all' | 'exclude-transfers';
 
 const MODE_LABELS: Record<ChartMode, string> = {
@@ -108,16 +113,18 @@ interface SankeyNodeProps {
   y?: number;
   width?: number;
   height?: number;
-  payload?: { name: string; value?: number; targetLinks?: number[] };
+  payload?: { name: string; value?: number; sourceLinks?: number[]; targetLinks?: number[] };
+  totalFlow?: number;
 }
 
 /**
  * One Sankey node with its label. A sink node (no outgoing links) sits in
  * the last column. Its label anchors to the left of the bar, so long payee
- * names stay inside the chart.
+ * names stay inside the chart. Each source and sink also shows its share
+ * of the total flow; the center hub is the total, so it shows none.
  */
 function SankeyNode(props: SankeyNodeProps) {
-  const { x = 0, y = 0, width = 0, height = 0, payload } = props;
+  const { x = 0, y = 0, width = 0, height = 0, payload, totalFlow = 0 } = props;
   // Recharts fills `targetLinks` with the outgoing link indices. A sink
   // node has none, so it sits in the last column.
   const isRightSide = (payload?.targetLinks?.length ?? 0) === 0;
@@ -127,6 +134,11 @@ function SankeyNode(props: SankeyNodeProps) {
   const name = payload?.name ?? '';
   const label = name.length > SANKEY_NODE_LABEL_MAX ? `${name.slice(0, SANKEY_NODE_LABEL_MAX - 1)}…` : name;
 
+  // The hub has incoming and outgoing links. Its value is the whole flow,
+  // so a share on it reads "100%" and carries no information.
+  const isHub = (payload?.sourceLinks?.length ?? 0) > 0 && (payload?.targetLinks?.length ?? 0) > 0;
+  const share = payload?.value !== undefined && !isHub ? formatPercentOfTotal(payload.value, totalFlow) : '';
+
   return (
     <Layer>
       <rect x={x} y={y} width={width} height={height} fill="hsl(var(--chart-2))" rx={2} />
@@ -135,7 +147,7 @@ function SankeyNode(props: SankeyNodeProps) {
       </text>
       {payload?.value !== undefined && (
         <text x={textX} y={y + height / 2} dy={12} fontSize={11} textAnchor={anchor} fill="hsl(var(--muted-foreground))">
-          {formatCurrency(payload.value)}
+          {share ? `${formatCurrency(payload.value)} · ${share}` : formatCurrency(payload.value)}
         </text>
       )}
     </Layer>
@@ -150,17 +162,47 @@ function SankeyNode(props: SankeyNodeProps) {
  */
 export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
   const captionId = useId();
-  const [mode, setMode] = useState<ChartMode>('flow');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [mode, setMode] = useState<ChartMode>(() => readEnumParam(searchParams, 'view', CHART_MODES) ?? 'flow');
   const [filter, setFilter] = useState<CashflowFilter>('exclude-transfers');
-  const [interval, setIntervalValue] = useState<Interval>(() => defaultInterval(period));
+  const [interval, setIntervalValue] = useState<Interval>(
+    () => readEnumParam(searchParams, 'interval', INTERVALS) ?? defaultInterval(period),
+  );
+
+  const setParams = (mutate: (params: URLSearchParams) => void) => {
+    // Read the live search string, not the hook value. The page writes the
+    // period params and the hook value can lag one render behind.
+    const params = new URLSearchParams(window.location.search);
+    mutate(params);
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleModeChange = (value: string) => {
+    if (!value) return;
+    setMode(value as ChartMode);
+    setParams((params) => params.set('view', value));
+  };
+
+  const handleIntervalChange = (value: string) => {
+    setIntervalValue(value as Interval);
+    setParams((params) => params.set('interval', value));
+  };
 
   // The default interval depends on the period length. Re-derive it whenever
   // the period changes, so a longer or shorter range gets the right bucket
   // size even after the user has manually picked one for a prior period.
+  // The first render must not reset: it can carry an interval from the URL.
+  const periodKey = `${period.from.getTime()}:${period.to.getTime()}`;
+  const prevPeriodKey = useRef(periodKey);
   useEffect(() => {
+    if (prevPeriodKey.current === periodKey) return;
+    prevPeriodKey.current = periodKey;
     setIntervalValue(defaultInterval(period));
+    if (new URLSearchParams(window.location.search).has('interval')) {
+      setParams((params) => params.delete('interval'));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period.from.getTime(), period.to.getTime()]);
+  }, [periodKey]);
 
   const filteredRows = useMemo(
     () => (filter === 'exclude-transfers' ? rows.filter((row) => !isInternalTransfer(row)) : rows),
@@ -169,6 +211,25 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
 
   const totals = useMemo(() => computeTotals(filteredRows), [filteredRows]);
   const sankeyData = useMemo(() => buildSankey(filteredRows), [filteredRows]);
+  // Node 0 is the 'Money in' hub (buildSankey adds it first). The links into
+  // the hub sum to the whole flow, the base for every node's share.
+  const sankeyTotal = useMemo(
+    () => sankeyData.links.reduce((sum, link) => (link.target === 0 ? sum + link.value : sum), 0),
+    [sankeyData],
+  );
+
+  // Tooltip line with the amount and its share of money in or money out.
+  const formatBarTooltipValue = (value: number) => {
+    const base = value >= 0 ? totals.moneyIn : Math.abs(totals.moneyOut);
+    const share = formatPercentOfTotal(value, base);
+    if (!share) return formatCurrency(value);
+    return `${formatCurrency(value)} · ${share} of money ${value >= 0 ? 'in' : 'out'}`;
+  };
+
+  const formatSankeyTooltipValue = (value: number) => {
+    const share = formatPercentOfTotal(value, sankeyTotal);
+    return share ? `${formatCurrency(value)} · ${share}` : formatCurrency(value);
+  };
   const series = useMemo(() => bucketSeries(filteredRows, period, interval), [filteredRows, period, interval]);
   const categories = useMemo(() => topCategories(filteredRows), [filteredRows]);
   // The top-5-plus-Other category set, computed once across the whole
@@ -233,7 +294,7 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
         <ToggleGroup
           type="single"
           value={mode}
-          onValueChange={(value) => value && setMode(value as ChartMode)}
+          onValueChange={handleModeChange}
           aria-label="Chart mode"
         >
           <ToggleGroupItem value="flow" aria-label="Flow">
@@ -248,7 +309,7 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
         </ToggleGroup>
 
         {mode !== 'flow' && (
-          <Select name="interval" value={interval} onValueChange={(value) => setIntervalValue(value as Interval)}>
+          <Select name="interval" value={interval} onValueChange={handleIntervalChange}>
             <SelectTrigger aria-label="Interval" className="h-9 w-[104px] text-[13px] bg-muted/30 border-border/40 rounded-lg">
               <SelectValue />
             </SelectTrigger>
@@ -266,13 +327,13 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
           <ResponsiveContainer width="100%" height="100%">
             <Sankey
               data={sankeyData}
-              node={<SankeyNode />}
+              node={<SankeyNode totalFlow={sankeyTotal} />}
               link={{ stroke: 'hsl(var(--muted-foreground))', strokeOpacity: 0.25 }}
               nodePadding={28}
               nodeWidth={8}
               margin={{ top: 12, right: 12, bottom: 12, left: 12 }}
             >
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value: number) => formatCurrency(value)} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={formatSankeyTooltipValue} />
             </Sankey>
           </ResponsiveContainer>
         )}
@@ -303,7 +364,7 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
                 labelFormatter={(value: string) => formatBucketLabel(value, interval)}
-                formatter={(value: number) => formatCurrency(value)}
+                formatter={formatBarTooltipValue}
               />
               {categories.map((category, index) => (
                 <Bar
@@ -342,7 +403,7 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
                 labelFormatter={(value: string) => formatBucketLabel(value, interval)}
-                formatter={(value: number) => formatCurrency(value)}
+                formatter={formatBarTooltipValue}
               />
               {/* The mount animation can complete with zero geometry and leave
                   the chart blank. Render the bars without animation. */}

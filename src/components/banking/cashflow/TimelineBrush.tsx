@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { Period } from '@/components/PeriodSelector';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { customPeriodLabel } from '@/lib/periodUrlState';
 
 interface TimelineBrushProps {
   /** The page-level period. The brush both reads and writes it. */
@@ -38,6 +39,27 @@ function domainFor(earliestTransaction: Date | null | undefined, selectedPeriodE
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+const THUMB_CLASS =
+  'relative block h-6 w-6 rounded-full border-2 border-foreground bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50';
+
+/**
+ * The date above a thumb. Visible while a pointer drags the slider, and on
+ * keyboard focus, so an arrow-key user sees the date too.
+ */
+function ThumbDateBubble({ label, visible }: { label: string; visible: boolean }) {
+  return (
+    <span
+      data-testid="brush-thumb-date"
+      className={cn(
+        'pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/40 bg-background px-2 py-1 text-[11px] font-medium text-foreground shadow-sm transition-opacity',
+        visible ? 'opacity-100' : 'opacity-0 group-focus-visible:opacity-100',
+      )}
+    >
+      {label}
+    </span>
+  );
 }
 
 /**
@@ -69,6 +91,13 @@ export function TimelineBrush({
     dateToIndex(selectedPeriod.from),
     dateToIndex(selectedPeriod.to),
   ]);
+  // True while a pointer drags a thumb. Shows the date bubbles.
+  const [isDragging, setIsDragging] = useState(false);
+
+  const thumbDates: [string, string] = [
+    format(addDays(domainStart, value[0]), 'MMM d, yyyy'),
+    format(addDays(domainStart, value[1]), 'MMM d, yyyy'),
+  ];
 
   // External period changes (preset tabs, the date picker) move the thumbs.
   useEffect(() => {
@@ -77,14 +106,14 @@ export function TimelineBrush({
   }, [selectedPeriod.from.getTime(), selectedPeriod.to.getTime(), domainStart.getTime()]);
 
   const handleCommit = (next: number[]) => {
+    setIsDragging(false);
     const [startIndex, endIndex] = next as [number, number];
     const { from, to } = indexToRange(startIndex, endIndex);
-    const sameYear = from.getFullYear() === to.getFullYear();
     onPeriodChange({
       type: 'custom',
       from,
       to,
-      label: `${format(from, sameYear ? 'MMM d' : 'MMM d, yyyy')} - ${format(to, 'MMM d, yyyy')}`,
+      label: customPeriodLabel(from, to),
     });
   };
 
@@ -114,18 +143,27 @@ export function TimelineBrush({
         minStepsBetweenThumbs={1}
         onValueChange={(next) => setValue(next as [number, number])}
         onValueCommit={handleCommit}
+        onPointerDown={() => setIsDragging(true)}
+        onPointerUp={() => setIsDragging(false)}
+        onPointerCancel={() => setIsDragging(false)}
       >
         <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-muted">
           <SliderPrimitive.Range className="absolute h-full bg-foreground/70" />
         </SliderPrimitive.Track>
         <SliderPrimitive.Thumb
           aria-label="Start date"
-          className="block h-6 w-6 rounded-full border-2 border-foreground bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-        />
+          aria-valuetext={thumbDates[0]}
+          className={cn(THUMB_CLASS, 'group')}
+        >
+          <ThumbDateBubble label={thumbDates[0]} visible={isDragging} />
+        </SliderPrimitive.Thumb>
         <SliderPrimitive.Thumb
           aria-label="End date"
-          className="block h-6 w-6 rounded-full border-2 border-foreground bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-        />
+          aria-valuetext={thumbDates[1]}
+          className={cn(THUMB_CLASS, 'group')}
+        >
+          <ThumbDateBubble label={thumbDates[1]} visible={isDragging} />
+        </SliderPrimitive.Thumb>
       </SliderPrimitive.Root>
       <div className="relative h-4 w-full">
         {ticks.map((tick) => (

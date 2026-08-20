@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
 import { Receipt, Search, Download, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown, Tags, Trash2, ArrowLeftRight } from 'lucide-react';
@@ -32,6 +33,15 @@ import { isMultiSelectKey } from '@/utils/bulkEditUtils';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
+  const { hasCapability, isResolved: isPermissionsResolved } = usePermissions();
+  // A custom role can hold `transactions` at level `view` only. This role
+  // gets `view:transactions`, not `edit:transactions`
+  // (src/lib/permissions/areas.ts). Bulk categorize, mark-as-transfer,
+  // and delete all write to `bank_transactions`. Hide the entry point to
+  // these actions when the user lacks edit access. The RPCs already deny
+  // the write on the server. This check stops the UI from a button that
+  // always fails.
+  const canBulkEditTransactions = isPermissionsResolved && hasCapability('edit:transactions');
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<TransactionFilters>({});
   const { toast } = useToast();
@@ -334,7 +344,7 @@ const Transactions = () => {
             
             {/* Action Buttons */}
             <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
-              {!isMobile && transactions.length > 0 && (
+              {!isMobile && transactions.length > 0 && canBulkEditTransactions && (
                 <Button
                   variant={bulkSelection.isSelectionMode ? "default" : "outline"}
                   onClick={bulkSelection.toggleSelectionMode}
@@ -530,8 +540,10 @@ const Transactions = () => {
         onClose={() => setShowReconciliationDialog(false)}
       />
 
-      {/* Bulk action bar (appears when items are selected) */}
-      {selectedRestaurant && bulkSelection.hasSelection && (
+      {/* Bulk action bar (appears when items are selected). The Select
+          button above gates entry on canBulkEditTransactions. This check
+          guards against stale selection state. */}
+      {selectedRestaurant && bulkSelection.hasSelection && canBulkEditTransactions && (
         <>
           <BulkActionBar
             selectedCount={bulkSelection.selectedCount}

@@ -21,6 +21,9 @@ import { useCalculateOpeningBalance } from '@/hooks/useCalculateOpeningBalance';
 // A chainable thenable: every method returns the chain; awaiting it
 // resolves to the canned response.
 function chain(response: unknown) {
+  // `any`: the Proxy returns itself from every property access, so its
+  // real type is a self-reference TypeScript cannot express. The proxy
+  // only stands in for the Supabase query builder's chained calls.
   const proxy: any = new Proxy(() => proxy, {
     get(_t, prop) {
       if (prop === 'then') {

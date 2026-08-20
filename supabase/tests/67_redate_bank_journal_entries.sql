@@ -2,12 +2,13 @@
 -- Description: proves the one-time re-date statement shape used by
 -- migration 20260820210500_redate_bank_journal_entries.sql. Seeds a
 -- wrong-day bank entry, a wrong-day reclass entry, a date-anchored entry,
--- and a closed-period collision; runs the same UPDATEs; asserts the moves
--- and the skips. Also proves the report-level effect: a mid-window as-of
--- balance changes after the re-date.
+-- and two closed-period collisions (one on the new day, one on the old
+-- day); runs the same UPDATEs; asserts the moves and the skips. Also
+-- proves the report-level effect: a mid-window as-of balance changes
+-- after the re-date.
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 SET LOCAL role TO postgres;
 SET LOCAL timezone TO 'Asia/Tokyo';
@@ -52,7 +53,14 @@ INSERT INTO bank_transactions (
   -- old day (2026-04-01, UTC) does not. The re-date must skip it.
   ('00000000-0000-0000-0000-000000006804'::uuid, '00000000-0000-0000-0000-000000006710'::uuid,
    '00000000-0000-0000-0000-000000006715'::uuid, 'txn-redate-closed-1',
-   TIMESTAMPTZ '2026-04-01 03:30:00+00', -40.00, 'Closed-period collision', 'posted', true, false, false)
+   TIMESTAMPTZ '2026-04-01 03:30:00+00', -40.00, 'Closed-period collision', 'posted', true, false, false),
+  -- 6805: the mirror case. The old day (2026-03-01, UTC) sits inside the
+  -- closed period; the new day (2026-02-28, local) does not. A move
+  -- would pull activity out of the closed period. The re-date must skip
+  -- it too.
+  ('00000000-0000-0000-0000-000000006805'::uuid, '00000000-0000-0000-0000-000000006710'::uuid,
+   '00000000-0000-0000-0000-000000006715'::uuid, 'txn-redate-closed-2',
+   TIMESTAMPTZ '2026-03-01 03:30:00+00', -45.00, 'Closed-period source collision', 'posted', true, false, false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO journal_entries (
@@ -70,7 +78,10 @@ INSERT INTO journal_entries (
    'reclassification', gen_random_uuid(), 30.00, 30.00),
   ('00000000-0000-0000-0000-000000006904'::uuid, '00000000-0000-0000-0000-000000006710'::uuid,
    DATE '2026-04-01', 'BANK-txn-redate-closed-1-SEED', 'Closed-period collision',
-   'bank_transaction', '00000000-0000-0000-0000-000000006804'::uuid, 40.00, 40.00);
+   'bank_transaction', '00000000-0000-0000-0000-000000006804'::uuid, 40.00, 40.00),
+  ('00000000-0000-0000-0000-000000006905'::uuid, '00000000-0000-0000-0000-000000006710'::uuid,
+   DATE '2026-03-01', 'BANK-txn-redate-closed-2-SEED', 'Closed-period source collision',
+   'bank_transaction', '00000000-0000-0000-0000-000000006805'::uuid, 45.00, 45.00);
 
 -- Lines for 6901 so the report-effect assertion has an amount to sum.
 INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description) VALUES
@@ -111,9 +122,12 @@ WHERE je.reference_type = 'bank_transaction'
   AND NOT EXISTS (
     SELECT 1 FROM fiscal_periods fp
     WHERE fp.restaurant_id = je.restaurant_id
-      AND bank_txn_entry_day(bt.transaction_date, r.timezone) >= fp.period_start
-      AND bank_txn_entry_day(bt.transaction_date, r.timezone) <= fp.period_end
       AND fp.is_closed = true
+      AND (
+        bank_txn_entry_day(bt.transaction_date, r.timezone)
+          BETWEEN fp.period_start AND fp.period_end
+        OR je.entry_date BETWEEN fp.period_start AND fp.period_end
+      )
   );
 
 UPDATE journal_entries je
@@ -129,9 +143,12 @@ WHERE je.id = tr.reclass_journal_entry_id
   AND NOT EXISTS (
     SELECT 1 FROM fiscal_periods fp
     WHERE fp.restaurant_id = je.restaurant_id
-      AND bank_txn_entry_day(bt.transaction_date, r.timezone) >= fp.period_start
-      AND bank_txn_entry_day(bt.transaction_date, r.timezone) <= fp.period_end
       AND fp.is_closed = true
+      AND (
+        bank_txn_entry_day(bt.transaction_date, r.timezone)
+          BETWEEN fp.period_start AND fp.period_end
+        OR je.entry_date BETWEEN fp.period_start AND fp.period_end
+      )
   );
 
 -- Assertions -----------------------------------------------------------------
@@ -154,6 +171,11 @@ SELECT is(
   (SELECT entry_date FROM journal_entries WHERE id = '00000000-0000-0000-0000-000000006904'::uuid),
   DATE '2026-04-01',
   'closed-period collision keeps its old day');
+
+SELECT is(
+  (SELECT entry_date FROM journal_entries WHERE id = '00000000-0000-0000-0000-000000006905'::uuid),
+  DATE '2026-03-01',
+  'an entry inside a closed period does not move out of it');
 
 -- Report-level effect, AFTER: the same as-of day now includes the entry.
 SELECT is(
@@ -178,9 +200,12 @@ WHERE je.reference_type = 'bank_transaction'
   AND NOT EXISTS (
     SELECT 1 FROM fiscal_periods fp
     WHERE fp.restaurant_id = je.restaurant_id
-      AND bank_txn_entry_day(bt.transaction_date, r.timezone) >= fp.period_start
-      AND bank_txn_entry_day(bt.transaction_date, r.timezone) <= fp.period_end
       AND fp.is_closed = true
+      AND (
+        bank_txn_entry_day(bt.transaction_date, r.timezone)
+          BETWEEN fp.period_start AND fp.period_end
+        OR je.entry_date BETWEEN fp.period_start AND fp.period_end
+      )
   );
 
 SELECT is(

@@ -9,9 +9,16 @@
 --
 -- Production expectation (measured 2026-08-20, read-only): 179 bank-entry
 -- rows and 2 reclassification-entry rows move; 0 rows are skipped for a
--- closed period. These counts drift with the sync cron between the
--- measurement and the deploy — the two UPDATE statements below compute
--- their own row set at run time, so a drifted count is not a bug.
+-- closed period (production holds 0 closed fiscal_periods rows). These
+-- counts drift with the sync cron between the measurement and the deploy
+-- — the two UPDATE statements below compute their own row set at run
+-- time, so a drifted count is not a bug.
+--
+-- The closed-period guard is symmetric: a row does not move when its NEW
+-- day falls inside a closed period, and it does not move when its OLD
+-- entry_date sits inside one. A move out of a closed period changes that
+-- period's historical totals just as a move into one does (PR #772
+-- review, codex P2).
 --
 -- The two UPDATE statements are byte-identical to the ones proven in
 -- supabase/tests/67_redate_bank_journal_entries.sql. Keep them in sync.
@@ -44,9 +51,12 @@ BEGIN
     AND NOT EXISTS (
       SELECT 1 FROM fiscal_periods fp
       WHERE fp.restaurant_id = je.restaurant_id
-        AND bank_txn_entry_day(bt.transaction_date, r.timezone) >= fp.period_start
-        AND bank_txn_entry_day(bt.transaction_date, r.timezone) <= fp.period_end
         AND fp.is_closed = true
+        AND (
+          bank_txn_entry_day(bt.transaction_date, r.timezone)
+            BETWEEN fp.period_start AND fp.period_end
+          OR je.entry_date BETWEEN fp.period_start AND fp.period_end
+        )
     );
 
   GET DIAGNOSTICS v_bank_entries_moved = ROW_COUNT;
@@ -66,9 +76,12 @@ BEGIN
     AND NOT EXISTS (
       SELECT 1 FROM fiscal_periods fp
       WHERE fp.restaurant_id = je.restaurant_id
-        AND bank_txn_entry_day(bt.transaction_date, r.timezone) >= fp.period_start
-        AND bank_txn_entry_day(bt.transaction_date, r.timezone) <= fp.period_end
         AND fp.is_closed = true
+        AND (
+          bank_txn_entry_day(bt.transaction_date, r.timezone)
+            BETWEEN fp.period_start AND fp.period_end
+          OR je.entry_date BETWEEN fp.period_start AND fp.period_end
+        )
     );
 
   GET DIAGNOSTICS v_reclass_entries_moved = ROW_COUNT;

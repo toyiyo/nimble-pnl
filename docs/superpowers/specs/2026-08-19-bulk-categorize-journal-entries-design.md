@@ -93,9 +93,16 @@ bulk_categorize_bank_transactions(
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
+SET statement_timeout TO '120s'
 ```
 
 `GRANT EXECUTE ... TO authenticated; REVOKE ... FROM PUBLIC, anon;`
+
+The `statement_timeout` override is not optional. This codebase already
+shipped a client-callable, 500-row-batch, per-row-loop SECURITY DEFINER
+function without one; it hit the `authenticated` role's ~8s default and
+threw `canceling statement due to statement timeout`
+(supabase/migrations/20260720120001_bulk_deduction_keyset_batching.sql:1-8,31).
 
 Why a new RPC and not a loop over `categorize_bank_transaction` in the
 client or in SQL:
@@ -123,8 +130,12 @@ Set-level guards, checked once (mirror of 20260709120000 lines 57-65,
    belongs to `p_restaurant_id` and `is_active = true`.
 3. Cash account: raise `Cash account (1000) not found` unless the restaurant
    has an account with `account_code = '1000'` (first by `LIMIT 1`).
-4. Input: raise on NULL or empty `p_transaction_ids`; cap the array at 500
-   ids to bound the statement (the UI page size is 500).
+4. Input: raise on NULL or empty `p_transaction_ids`. Raise on more than
+   500 ids — an explicit error, never silent truncation. The cap bounds the
+   statement. The client chunks larger selections (section 6). The page size
+   is 500 (src/hooks/useBankTransactions.tsx:14,
+   `BANK_TRANSACTIONS_PAGE_SIZE`), and `selectAll` can exceed it after
+   `loadMore()` (src/pages/Transactions.tsx:60-67,520-525).
 
 Per-row loop over
 `SELECT ... FROM bank_transactions WHERE id = ANY(p_transaction_ids) AND restaurant_id = p_restaurant_id`.
@@ -185,24 +196,49 @@ Result shape (precedent: `bulk_delete_bank_transactions` returns jsonb with
 ## 6. Design decision 2: hook change
 
 `useBulkCategorizeTransactions` (src/hooks/useBulkTransactionActions.tsx:15-57)
-keeps its signature and its React Query invalidation. The mutationFn changes
-to:
+keeps its signature. The mutationFn chunks `transactionIds` into batches of
+500 and calls the RPC once per chunk, in sequence:
 
 ```ts
 const { data, error } = await supabase.rpc('bulk_categorize_bank_transactions', {
-  p_transaction_ids: transactionIds,
+  p_transaction_ids: chunk,
   p_category_id: categoryId,
   p_restaurant_id: restaurantId,
 });
 ```
 
-Throw on `error` or on `!result.success`. The success toast reports
-`categorized_count + reclassified_count + unchanged_count`. When `skipped`
-is not empty, show a second warning toast with the skipped count and the
-first reason. Call sites (src/pages/Transactions.tsx:29,52 and
-src/pages/Banking.tsx:36,84) need no change.
+Throw on `error` or on `!result.success`. Aggregate the counts and the
+`skipped` arrays across chunks and return the aggregate.
 
-The Undo stub stays as-is (out of scope).
+Invalidation must cover every query the new journal entries change. Mirror
+`useCategorizeTransactions` (src/hooks/useCategorizeTransactions.tsx:38-41):
+invalidate `['bank-transactions']`, `['income-statement']`,
+`['balance-sheet']`, and `['chart-of-accounts']`. The current hook
+invalidates only `['bank-transactions']`
+(src/hooks/useBulkTransactionActions.tsx:36); with the default 30s
+`staleTime` (src/lib/react-query-config.ts:33) the income statement would
+show stale zeros right after a bulk categorize.
+
+Toasts (design-review findings folded):
+
+- Success toast count = `categorized_count + reclassified_count` only.
+  `unchanged_count` rows produced no ledger change; when it is above zero,
+  the toast description names it ("N already had this category").
+- When `skipped` is not empty, show a `toast.error` with the skipped count
+  and the reason counts grouped ("3 reconciled, 2 in a closed period"),
+  `duration: 10000`. The codebase uses only `toast.success/error/info`;
+  `toast.warning` is unproven under the current theme
+  (src/components/ui/sonner.tsx:13).
+- `onError` shows `error.message`, not the current fixed string
+  (src/hooks/useBulkTransactionActions.tsx:50-55). Precedent:
+  `useBulkDeleteTransactions` at line 97.
+
+Call sites (src/pages/Transactions.tsx:29,52 and src/pages/Banking.tsx:36,84)
+need no change. Both already disable the submit control while the mutation
+is pending (src/pages/Transactions.tsx:565, src/pages/Banking.tsx:869).
+
+The Undo stub stays as-is (out of scope). Note: after this fix the stub sits
+next to a real accounting mutation, so its follow-up task gains weight.
 
 ## 7. Design decision 3: backfill as a kept, rerunnable function
 
@@ -211,8 +247,13 @@ origin/main), generated at file-creation time:
 
 1. `CREATE FUNCTION backfill_bank_transaction_journal_entries() RETURNS jsonb`,
    SECURITY DEFINER, `SET search_path = public, pg_temp`.
-   `REVOKE EXECUTE FROM PUBLIC, anon, authenticated;` — only `postgres` and
-   `service_role` can call it. It is a maintenance function, not an API.
+   `REVOKE EXECUTE FROM PUBLIC, anon, authenticated;` then
+   `GRANT EXECUTE ... TO service_role;` — the revoke from PUBLIC also strips
+   `service_role`, so the explicit grant is required for the reuse story.
+   Precedents that pair the revoke with the grant:
+   supabase/migrations/20260804090300_bounded_categorization_sweep.sql:601-604
+   and supabase/migrations/20260721150000_revel_sold_at_timezone_backfill.sql:280-284.
+   It is a maintenance function, not an API.
 2. `SET statement_timeout = 0;` then `SELECT backfill_bank_transaction_journal_entries();`
    then `RESET statement_timeout;`. The function stays in the database so a
    later repair (for example after the trigger fix lands) is one call.
@@ -267,7 +308,20 @@ Description of the entry: `bt.description` (the single RPC uses
 `COALESCE(p_description, v_transaction.description)` and the bulk path has
 no description parameter).
 
-`entry_date = bt.transaction_date`, matching 20260709120000 line 172/213.
+`entry_date` in both new functions is
+`(bt.transaction_date AT TIME ZONE 'UTC')::date`, written explicitly.
+Background: `bank_transactions.transaction_date` is TIMESTAMPTZ
+(supabase/migrations/20251021195308_82a73d7e-12b8-49e6-b3ab-975a7b822f5c.sql)
+and `journal_entries.entry_date` is DATE
+(supabase/migrations/20251018183326_5da7500b-3a17-4a58-af24-d2175258f871.sql:165).
+The single RPC assigns one to the other with an implicit cast at the session
+time zone (20260709120000 line 172/213). PostgREST sessions run with
+`TimeZone = UTC`, so every existing entry carries the UTC calendar day. The
+explicit UTC cast keeps the new entries consistent with the existing ledger
+and deletes the dependence on the session GUC (a migration session could
+carry a different `TimeZone`). A restaurant-local cast in only the new paths
+would split the ledger into two date conventions. The restaurant-local
+question covers the single RPC too; it is filed as a follow-up task.
 
 After the insert: loop `PERFORM rebuild_account_balances(restaurant_id)` for
 each distinct affected restaurant (6 in production). Return jsonb with
@@ -281,9 +335,9 @@ returns zeros and the migration is a no-op there.
 
 | Layer | File | Covers |
 |---|---|---|
-| pgTAP | supabase/tests/bulk_categorize_bank_transactions.sql | membership raise, inactive category raise, missing cash account raise, empty array raise, entry creation for negative and positive amounts, sign convention, suggestion cleared, same-category no-op, reclassification entry + `transaction_reclassifications` row, reconciled skip reason, closed-period skip reason, cross-tenant id in `skipped`, result shape |
+| pgTAP | supabase/tests/bulk_categorize_bank_transactions.sql | membership raise, inactive category raise, missing cash account raise, empty array raise, over-500 array raise, entry creation for negative and positive amounts, sign convention, suggestion cleared, same-category no-op, reclassification entry + `transaction_reclassifications` row, reconciled + uncategorized skip reason, reconciled + categorized reclassification succeeds, closed-period skip reason, cross-tenant id in `skipped`, result shape |
 | pgTAP | supabase/tests/backfill_bank_transaction_journal_entries.sql | fixture rows gain entries with correct lines, idempotent rerun, transfer excluded, closed-period excluded, restaurant without cash account excluded |
-| Vitest | tests/unit/useBulkTransactionActions.test.ts | RPC called with correct params, error path throws, skipped rows surface a warning toast |
+| Vitest | tests/unit/useBulkTransactionActions.test.ts | RPC called with correct params, 501+ ids chunk into two calls with aggregated result, error path throws with the RPC message, skipped rows show an error toast with grouped reasons, all four query keys invalidated |
 | Playwright | tests/e2e (extend banking spec) | bulk categorize marks rows categorized in the UI |
 
 pgTAP impersonation: `SELECT set_config('request.jwt.claims', '{"sub":"<uuid>","role":"authenticated"}', true);`.

@@ -369,6 +369,25 @@ describe('buildSankey', () => {
 
     expect(leftTotal).toBe(rightTotal);
   });
+
+  it('conserves flow in a loss period by adding a From savings link on the left', () => {
+    const rows = [
+      makeRow({ amount: 1000, normalized_payee: 'Client A' }),
+      makeRow({ amount: -1500, normalized_payee: 'Vendor X' }),
+    ];
+
+    const sankey = buildSankey(rows);
+    const centerIndex = sankey.nodes.findIndex((n) => n.name === 'Money in');
+
+    expect(sankey.nodes.map((n) => n.name)).toContain('From savings');
+    expect(sankey.nodes.map((n) => n.name)).not.toContain('Net savings');
+
+    const leftTotal = sankey.links.filter((l) => l.target === centerIndex).reduce((sum, l) => sum + l.value, 0);
+    const rightTotal = sankey.links.filter((l) => l.source === centerIndex).reduce((sum, l) => sum + l.value, 0);
+
+    expect(leftTotal).toBe(rightTotal);
+    expect(leftTotal).toBe(1500);
+  });
 });
 
 function subscriptionCharges(payee: string, dates: string[], amount: number): CashFlowRow[] {
@@ -389,8 +408,8 @@ describe('computeInsights', () => {
 
     expect(insights).toContainEqual({
       id: 'subscriptions',
-      title: '1 notable transactions',
-      body: 'We noticed 1 subscriptions you may want to review',
+      title: '1 notable transaction',
+      body: 'We noticed 1 subscription you may want to review',
     });
   });
 

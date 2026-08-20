@@ -327,9 +327,14 @@ export function buildSankey(rows: CashFlowRow[]): SankeyData {
     links.push({ source: centerIndex, target: addNode('Transfers out'), value: transferOutTotal });
   }
 
-  const netRemainder = Math.max(computeTotals(rows).net, 0);
-  if (netRemainder > 0) {
-    links.push({ source: centerIndex, target: addNode('Net savings'), value: netRemainder });
+  // Keep the diagram flow-conserving in a loss period too: a positive net
+  // becomes a `Net savings` link out of the center; a negative net becomes
+  // a `From savings` link into the center, so left and right totals match.
+  const net = computeTotals(rows).net;
+  if (net > 0) {
+    links.push({ source: centerIndex, target: addNode('Net savings'), value: net });
+  } else if (net < 0) {
+    links.push({ source: addNode('From savings'), target: centerIndex, value: Math.abs(net) });
   }
 
   return { nodes, links };
@@ -518,11 +523,13 @@ export function computeInsights(rows: CashFlowRow[], period: CashFlowPeriod): Ca
 
   const subscriptionCount = countSubscriptionPayees(rows, period.to);
   if (subscriptionCount > 0) {
-    insights.push({
-      id: 'subscriptions',
-      title: `${subscriptionCount} notable transactions`,
-      body: `We noticed ${subscriptionCount} subscriptions you may want to review`,
-    });
+    const title =
+      subscriptionCount === 1 ? '1 notable transaction' : `${subscriptionCount} notable transactions`;
+    const body =
+      subscriptionCount === 1
+        ? 'We noticed 1 subscription you may want to review'
+        : `We noticed ${subscriptionCount} subscriptions you may want to review`;
+    insights.push({ id: 'subscriptions', title, body });
   }
 
   const lastFullMonth = lastFullCalendarMonth(period.to);

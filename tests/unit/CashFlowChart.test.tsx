@@ -106,7 +106,7 @@ describe('CashFlowChart', () => {
     expect(screen.getByTestId('interval')).toBeInTheDocument();
   });
 
-  it('switches to In vs out mode: updates the aria-label and hides the interval select is still shown', () => {
+  it('switches to In vs out mode: updates the aria-label and keeps the interval select shown', () => {
     render(<CashFlowChart rows={rows} period={period} />);
 
     fireEvent.click(screen.getByText('In vs out'));

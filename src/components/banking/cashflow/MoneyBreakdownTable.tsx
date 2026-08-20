@@ -20,6 +20,33 @@ function formatPct(pct: number): string {
   return `${Math.round(pct)}%`;
 }
 
+interface TabButtonProps {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  className?: string;
+}
+
+/** One underline tab button, shared by the primary and Category tabs. */
+function TabButton({ label, active, onClick, className }: TabButtonProps) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        'relative px-0 py-2 text-[13px] font-medium transition-colors',
+        active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+        className,
+      )}
+    >
+      {label}
+      {active && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
+    </button>
+  );
+}
+
 /**
  * One breakdown card: a total, an underline tab pair (Source|Category or
  * Recipient|Category), and up to eight rows plus a folded Remaining row.
@@ -45,32 +72,13 @@ export function MoneyBreakdownTable({
       </div>
 
       <div role="tablist" className="mt-3 flex border-b border-border/40">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'primary'}
+        <TabButton
+          label={primaryTabLabel}
+          active={tab === 'primary'}
           onClick={() => setTab('primary')}
-          className={cn(
-            'relative px-0 py-2 mr-6 text-[13px] font-medium transition-colors',
-            tab === 'primary' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {primaryTabLabel}
-          {tab === 'primary' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'category'}
-          onClick={() => setTab('category')}
-          className={cn(
-            'relative px-0 py-2 text-[13px] font-medium transition-colors',
-            tab === 'category' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          Category
-          {tab === 'category' && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
-        </button>
+          className="mr-6"
+        />
+        <TabButton label="Category" active={tab === 'category'} onClick={() => setTab('category')} />
       </div>
 
       <div className="mt-3 space-y-3">

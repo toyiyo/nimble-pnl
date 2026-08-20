@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Layer, ResponsiveContainer, Sankey, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -63,6 +63,14 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
   const [filter, setFilter] = useState<CashflowFilter>('all');
   const [interval, setIntervalValue] = useState<Interval>(() => defaultInterval(period));
 
+  // The default interval depends on the period length. Re-derive it whenever
+  // the period changes, so a longer or shorter range gets the right bucket
+  // size even after the user has manually picked one for a prior period.
+  useEffect(() => {
+    setIntervalValue(defaultInterval(period));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period.from.getTime(), period.to.getTime()]);
+
   const filteredRows = useMemo(
     () => (filter === 'exclude-transfers' ? rows.filter((row) => !row.is_transfer) : rows),
     [rows, filter],
@@ -72,10 +80,30 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
   const sankeyData = useMemo(() => buildSankey(filteredRows), [filteredRows]);
   const series = useMemo(() => bucketSeries(filteredRows, period, interval), [filteredRows, period, interval]);
   const categories = useMemo(() => topCategories(filteredRows), [filteredRows]);
+  // The top-5-plus-Other category set, computed once across the whole
+  // period. Buckets must fold into this same set, or a category outside
+  // the top 5 renders no Bar and silently drops from the stacked chart.
+  const topCategoryNames = useMemo(
+    () => new Set(categories.filter((category) => category.name !== 'Other').map((category) => category.name)),
+    [categories],
+  );
 
   const categoryChartData = useMemo(
-    () => series.map((bucket) => ({ bucketStart: bucket.bucketStart, ...bucket.byCategory })),
-    [series],
+    () =>
+      series.map((bucket) => {
+        const point: Record<string, string | number> = { bucketStart: bucket.bucketStart };
+        let otherAmount = 0;
+        for (const [name, amount] of Object.entries(bucket.byCategory)) {
+          if (topCategoryNames.has(name)) {
+            point[name] = amount;
+          } else {
+            otherAmount += amount;
+          }
+        }
+        if (otherAmount !== 0) point['Other'] = otherAmount;
+        return point;
+      }),
+    [series, topCategoryNames],
   );
   const inOutChartData = useMemo(
     () => series.map((bucket) => ({ bucketStart: bucket.bucketStart, moneyIn: bucket.moneyIn, moneyOut: bucket.moneyOut })),

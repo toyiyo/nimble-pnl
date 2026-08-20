@@ -11,6 +11,7 @@ import {
 } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Period } from '@/components/PeriodSelector';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface TimelineBrushProps {
   /** The page-level period. The brush both reads and writes it. */
@@ -19,22 +20,6 @@ interface TimelineBrushProps {
   /** Earliest known transaction date, when known. Caps the domain start. */
   earliestTransaction?: Date | null;
   className?: string;
-}
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window === 'undefined' ? false : window.matchMedia(query).matches
-  );
-
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const onChange = () => setMatches(mql.matches);
-    onChange();
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  }, [query]);
-
-  return matches;
 }
 
 function domainFor(earliestTransaction?: Date | null): { start: Date; end: Date } {

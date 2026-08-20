@@ -171,19 +171,38 @@ major finding, fixed here):
 The RPC main path writes `notes = p_description` without COALESCE
 ([...sql:239](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql)).
 The hook therefore always passes the full desired notes value
-(`mergedNotes ?? null`) as `p_description`. When both notes are empty, the
-RPC writes NULL over NULL — no change. When only the bank transaction has
-notes, the merged value equals them — no change. The direct update no
-longer carries `notes` on the category path.
+(`mergedNotes || null`, with `||` so an empty string normalizes to NULL)
+as `p_description`. When both notes are empty, the RPC writes NULL — no
+visible change. Exception: a stored empty-string `notes` becomes NULL
+after a match; downstream reads treat both as empty (frontend reviewer,
+minor, accepted). When only the bank transaction has notes, the merged
+value equals them — no change. The direct update no longer carries
+`notes` on the category path.
 
 ### No-category path (behavior change)
 
 When the outflow has no `category_id`, skip the RPC and do **not** set
 `is_categorized`, `category_id`, or `suggested_category_id`. Write only
 `matched_at`, merged notes, and the invoice link, then clear the outflow.
-The transaction stays in the review queue for real categorization later.
+The transaction stays in the review queue for a real categorize later.
 The old behavior (categorized with no category) produced permanent
 journal-less rows.
+
+**User signal (Phase 2.5 frontend reviewer, major finding).** Without a
+signal, this state hides itself: the cleared card shows only
+"Cleared {date}"
+([PendingOutflowCard.tsx:229-233](../../../src/components/pending-outflows/PendingOutflowCard.tsx))
+and the Expenses totals exclude cleared outflows
+([Expenses.tsx:44-46](../../../src/pages/Expenses.tsx)). Two signals fix
+this:
+
+1. `confirmMatch` returns a `categorized` flag. `onSuccess` shows
+   "Expense matched and cleared" when true. When false it shows
+   "Expense matched. Categorize the transaction on the Banking page."
+2. The cleared branch of `PendingOutflowCard` adds a "Needs category"
+   badge when `outflow.category_id` is null. The state is client-derivable:
+   a cleared outflow with no category means the match skipped the
+   categorize step.
 
 ### UI error handling
 
@@ -245,9 +264,15 @@ Add cases:
    cleared.
 2. RPC order → the RPC runs before the `bank_transactions` update.
 3. RPC guard error → mutation rejects; no `bank_transactions` update; no
-   outflow update; toast shows the mapped copy.
+   outflow update; toast shows the mapped copy. Use the verbatim
+   `RAISE EXCEPTION` text from the migration
+   ([...sql:117](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql),
+   [...sql:141](../../../supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql))
+   in the test, so a future wording change in the SQL breaks the test
+   instead of a silent fallback (frontend reviewer, minor). Add a comment
+   in the hook that names the migration file next to the substrings.
 4. No-category outflow → no RPC call; update contains only metadata; outflow
-   cleared.
+   cleared; the success toast shows the categorize reminder copy.
 5. Notes merge preserved → the merged notes go to the RPC as
    `p_description`; the direct update carries no `notes` on the category
    path.
@@ -260,8 +285,13 @@ Follow the seeding pattern from
 [bulk-edit-transactions.spec.ts:1-77](../../../tests/e2e/bulk-edit-transactions.spec.ts):
 sign up, seed a connected bank, one uncategorized bank transaction, one
 expense category, and one pending outflow with that category. Drive the
-Expenses page ([Expenses.tsx:17-18](../../../src/pages/Expenses.tsx)) to
-confirm a match. Assert:
+Expenses page to confirm a match. Render chain: `Expenses.tsx` renders
+`PendingOutflowsList`
+([PendingOutflowsList.tsx:146-153](../../../src/components/pending-outflows/PendingOutflowsList.tsx)
+renders `PendingOutflowCard`), and the card renders `ManualMatchDialog`
+and `MatchSuggestionCard`
+([PendingOutflowCard.tsx:20-21](../../../src/components/pending-outflows/PendingOutflowCard.tsx)).
+Assert:
 
 - the pending outflow shows as cleared,
 - `journal_entries` has one row with `reference_type = 'bank_transaction'`
@@ -275,5 +305,8 @@ No pgTAP: this change adds no SQL.
 
 - Historical repair (owned by `fix/bulk-categorize-journal-entries`).
 - Approach B (atomic server RPC).
+- The Single Dialog Pattern violation: `ManualMatchDialog` mounts once per
+  card, not once at the list level (pre-existing; frontend reviewer,
+  minor). Risk stays low while outflow lists stay under 100 rows.
 - The Transfer-category read-path filtering (covered by an earlier fix, see
   `memory/lessons.md` entry on `isTransferCategoryType`).

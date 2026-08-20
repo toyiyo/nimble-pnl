@@ -80,9 +80,14 @@ export function CashFlowTab({ selectedPeriod, selectedBankAccount, onPeriodChang
 
       <CashFlowHeadline totals={data.aggregates.totals} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CashFlowNarrative insights={data.insights} />
-        <CashFlowChart rows={data.rows} period={selectedPeriod} />
+      {/* The chart needs the width: two of three columns on large screens. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="rounded-xl border border-border/40 bg-background p-4 lg:col-span-1">
+          <CashFlowNarrative insights={data.insights} />
+        </div>
+        <div className="rounded-xl border border-border/40 bg-background p-4 lg:col-span-2">
+          <CashFlowChart rows={data.rows} period={selectedPeriod} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

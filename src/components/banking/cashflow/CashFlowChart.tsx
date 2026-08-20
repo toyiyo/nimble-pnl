@@ -9,7 +9,9 @@ import {
   buildSankey,
   computeTotals,
   defaultInterval,
+  formatCompactCurrency,
   formatCurrency,
+  isInternalTransfer,
   topCategories,
   type CashFlowPeriod,
   type CashFlowRow,
@@ -40,14 +42,102 @@ const CATEGORY_COLORS = [
   'hsl(var(--muted-foreground))',
 ];
 
-function SankeyNode(props: { x?: number; y?: number; width?: number; height?: number; payload?: { name: string } }) {
+const MONEY_IN_COLOR = 'hsl(var(--success))';
+const MONEY_OUT_COLOR = 'hsl(var(--destructive))';
+const SANKEY_NODE_LABEL_MAX = 22;
+
+const AXIS_TICK = { fill: 'hsl(var(--muted-foreground))', fontSize: 11 };
+const TOOLTIP_STYLE = {
+  backgroundColor: 'hsl(var(--background))',
+  border: '1px solid hsl(var(--border))',
+  borderRadius: '8px',
+  fontSize: '12px',
+};
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_LONG = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * Split a 'yyyy-MM-dd' bucket key. The key names a calendar day, not an
+ * instant, so no Date object and no timezone is involved.
+ */
+function splitBucketKey(bucketStart: string): { year: number; month: number; day: number } {
+  const [year, month, day] = bucketStart.split('-').map(Number);
+  return { year, month, day };
+}
+
+/** Short axis label for a bucket: 'Aug 4' for day and week, 'Aug' for month. */
+function formatBucketTick(bucketStart: string, interval: Interval): string {
+  const { month, day } = splitBucketKey(bucketStart);
+  if (interval === 'month') return MONTH_SHORT[month - 1];
+  return `${MONTH_SHORT[month - 1]} ${day}`;
+}
+
+/** Full tooltip label for a bucket: the day, the week start, or the month. */
+function formatBucketLabel(bucketStart: string, interval: Interval): string {
+  const { year, month, day } = splitBucketKey(bucketStart);
+  if (interval === 'month') return `${MONTH_LONG[month - 1]} ${year}`;
+  const dayLabel = `${MONTH_SHORT[month - 1]} ${day}, ${year}`;
+  return interval === 'week' ? `Week of ${dayLabel}` : dayLabel;
+}
+
+interface LegendItem {
+  name: string;
+  color: string;
+}
+
+/** A row of color chips that names each series in the active chart. */
+function ChartLegend({ items }: { items: LegendItem[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {items.map((item) => (
+        <span key={item.name} className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: item.color }} />
+          {item.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+interface SankeyNodeProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  payload?: { name: string; value?: number; targetLinks?: number[] };
+}
+
+/**
+ * One Sankey node with its label. A sink node (no outgoing links) sits in
+ * the last column. Its label anchors to the left of the bar, so long payee
+ * names stay inside the chart.
+ */
+function SankeyNode(props: SankeyNodeProps) {
   const { x = 0, y = 0, width = 0, height = 0, payload } = props;
+  // Recharts fills `targetLinks` with the outgoing link indices. A sink
+  // node has none, so it sits in the last column.
+  const isRightSide = (payload?.targetLinks?.length ?? 0) === 0;
+  const textX = isRightSide ? x - 6 : x + width + 6;
+  const anchor = isRightSide ? 'end' : 'start';
+
+  const name = payload?.name ?? '';
+  const label = name.length > SANKEY_NODE_LABEL_MAX ? `${name.slice(0, SANKEY_NODE_LABEL_MAX - 1)}…` : name;
+
   return (
     <Layer>
       <rect x={x} y={y} width={width} height={height} fill="hsl(var(--chart-2))" rx={2} />
-      <text x={x + width + 6} y={y + height / 2} dy={4} fontSize={12} fill="hsl(var(--foreground))">
-        {payload?.name}
+      <text x={textX} y={y + height / 2} dy={-1} fontSize={12} textAnchor={anchor} fill="hsl(var(--foreground))">
+        {label}
       </text>
+      {payload?.value !== undefined && (
+        <text x={textX} y={y + height / 2} dy={12} fontSize={11} textAnchor={anchor} fill="hsl(var(--muted-foreground))">
+          {formatCurrency(payload.value)}
+        </text>
+      )}
     </Layer>
   );
 }
@@ -55,12 +145,13 @@ function SankeyNode(props: { x?: number; y?: number; width?: number; height?: nu
 /**
  * The Cash Flow chart panel: Flow (Sankey), By category (stacked bars),
  * and In vs out (paired bars). Each mode carries an accessible name and a
- * visible caption wired with `aria-describedby`.
+ * visible caption wired with `aria-describedby`. Internal transfers stay
+ * hidden until the user picks "All cashflow".
  */
 export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
   const captionId = useId();
   const [mode, setMode] = useState<ChartMode>('flow');
-  const [filter, setFilter] = useState<CashflowFilter>('all');
+  const [filter, setFilter] = useState<CashflowFilter>('exclude-transfers');
   const [interval, setIntervalValue] = useState<Interval>(() => defaultInterval(period));
 
   // The default interval depends on the period length. Re-derive it whenever
@@ -72,7 +163,7 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
   }, [period.from.getTime(), period.to.getTime()]);
 
   const filteredRows = useMemo(
-    () => (filter === 'exclude-transfers' ? rows.filter((row) => !row.is_transfer) : rows),
+    () => (filter === 'exclude-transfers' ? rows.filter((row) => !isInternalTransfer(row)) : rows),
     [rows, filter],
   );
 
@@ -91,16 +182,17 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
   const categoryChartData = useMemo(
     () =>
       series.map((bucket) => {
-        const point: Record<string, string | number> = { bucketStart: bucket.bucketStart };
-        let otherAmount = 0;
+        // Every category gets an explicit 0. The sign stack offset turns a
+        // missing key into NaN and then draws no bar at all.
+        const point: Record<string, string | number> = { bucketStart: bucket.bucketStart, Other: 0 };
+        for (const name of topCategoryNames) point[name] = 0;
         for (const [name, amount] of Object.entries(bucket.byCategory)) {
           if (topCategoryNames.has(name)) {
             point[name] = amount;
           } else {
-            otherAmount += amount;
+            point['Other'] = (point['Other'] as number) + amount;
           }
         }
-        if (otherAmount !== 0) point['Other'] = otherAmount;
         return point;
       }),
     [series, topCategoryNames],
@@ -109,6 +201,15 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
     () => series.map((bucket) => ({ bucketStart: bucket.bucketStart, moneyIn: bucket.moneyIn, moneyOut: bucket.moneyOut })),
     [series],
   );
+
+  const categoryLegend = useMemo<LegendItem[]>(
+    () => categories.map((category, index) => ({ name: category.name, color: CATEGORY_COLORS[index % CATEGORY_COLORS.length] })),
+    [categories],
+  );
+  const inOutLegend: LegendItem[] = [
+    { name: 'Money in', color: MONEY_IN_COLOR },
+    { name: 'Money out', color: MONEY_OUT_COLOR },
+  ];
 
   const modeLabel = MODE_LABELS[mode];
   const ariaLabel = `${modeLabel} view of cash flow, net ${formatCurrency(totals.net)}`;
@@ -124,8 +225,8 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="exclude-transfers">Excludes transfers</SelectItem>
             <SelectItem value="all">All cashflow</SelectItem>
-            <SelectItem value="exclude-transfers">Exclude transfers</SelectItem>
           </SelectContent>
         </Select>
 
@@ -160,31 +261,48 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
         )}
       </div>
 
-      <div role="img" aria-label={ariaLabel} aria-describedby={captionId} className="h-[280px]">
+      <div role="img" aria-label={ariaLabel} aria-describedby={captionId} className="h-[300px]">
         {mode === 'flow' && (
           <ResponsiveContainer width="100%" height="100%">
             <Sankey
               data={sankeyData}
               node={<SankeyNode />}
-              link={{ stroke: 'hsl(var(--muted-foreground))', strokeOpacity: 0.3 }}
-              nodePadding={24}
-              nodeWidth={10}
-            />
+              link={{ stroke: 'hsl(var(--muted-foreground))', strokeOpacity: 0.25 }}
+              nodePadding={28}
+              nodeWidth={8}
+              margin={{ top: 12, right: 12, bottom: 12, left: 12 }}
+            >
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value: number) => formatCurrency(value)} />
+            </Sankey>
           </ResponsiveContainer>
         )}
 
         {mode === 'category' && (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={categoryChartData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis dataKey="bucketStart" tick={{ fill: 'hsl(var(--muted-foreground))' }} className="text-xs" />
-              <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} className="text-xs" />
+            {/* stackOffset="sign" stacks the inflows up and the outflows down.
+                The default offset overlaps mixed-sign segments. */}
+            <BarChart data={categoryChartData} stackOffset="sign" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
+              <XAxis
+                dataKey="bucketStart"
+                tick={AXIS_TICK}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={24}
+                tickFormatter={(value: string) => formatBucketTick(value, interval)}
+              />
+              <YAxis
+                tick={AXIS_TICK}
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                domain={['auto', 'auto']}
+                tickFormatter={(value: number) => formatCompactCurrency(value)}
+              />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--background))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                }}
+                contentStyle={TOOLTIP_STYLE}
+                labelFormatter={(value: string) => formatBucketLabel(value, interval)}
                 formatter={(value: number) => formatCurrency(value)}
               />
               {categories.map((category, index) => (
@@ -192,7 +310,9 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
                   key={category.name}
                   dataKey={category.name}
                   stackId="categories"
+                  maxBarSize={28}
                   fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+                  isAnimationActive={false}
                 />
               ))}
             </BarChart>
@@ -201,24 +321,40 @@ export function CashFlowChart({ rows, period, className }: CashFlowChartProps) {
 
         {mode === 'inout' && (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={inOutChartData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis dataKey="bucketStart" tick={{ fill: 'hsl(var(--muted-foreground))' }} className="text-xs" />
-              <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} className="text-xs" />
+            <BarChart data={inOutChartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
+              <XAxis
+                dataKey="bucketStart"
+                tick={AXIS_TICK}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={24}
+                tickFormatter={(value: string) => formatBucketTick(value, interval)}
+              />
+              <YAxis
+                tick={AXIS_TICK}
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                tickFormatter={(value: number) => formatCompactCurrency(value)}
+              />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--background))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                }}
+                contentStyle={TOOLTIP_STYLE}
+                labelFormatter={(value: string) => formatBucketLabel(value, interval)}
                 formatter={(value: number) => formatCurrency(value)}
               />
-              <Bar dataKey="moneyIn" fill="hsl(var(--success))" />
-              <Bar dataKey="moneyOut" fill="hsl(var(--destructive))" />
+              {/* The mount animation can complete with zero geometry and leave
+                  the chart blank. Render the bars without animation. */}
+              <Bar name="Money in" dataKey="moneyIn" fill={MONEY_IN_COLOR} maxBarSize={20} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              <Bar name="Money out" dataKey="moneyOut" fill={MONEY_OUT_COLOR} maxBarSize={20} radius={[0, 0, 3, 3]} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         )}
       </div>
+
+      {mode === 'category' && <ChartLegend items={categoryLegend} />}
+      {mode === 'inout' && <ChartLegend items={inOutLegend} />}
 
       <p id={captionId} className="text-[13px] text-muted-foreground">
         {caption}

@@ -5,15 +5,23 @@
  * fetches the rows; this file turns rows into totals and time buckets.
  */
 
+import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
+
 /** One bank transaction row, as read from `bank_transactions`. */
 export interface CashFlowRow {
-  transaction_date: string; // 'yyyy-MM-dd'
+  /** 'yyyy-MM-dd' or a full ISO timestamp such as '2026-08-19T12:47:12+00:00'. */
+  transaction_date: string;
   amount: number; // negative for outflow, positive for inflow
   is_transfer: boolean;
   normalized_payee: string | null;
   merchant_name: string | null;
   description: string | null;
-  category: { id: string; name: string } | null;
+  category: {
+    id: string;
+    name: string;
+    account_type: string | null;
+    account_subtype: string | null;
+  } | null;
 }
 
 /** The date window the aggregation runs over. */
@@ -93,8 +101,27 @@ export function defaultInterval(period: CashFlowPeriod): Interval {
   return 'month';
 }
 
+/**
+ * Detect a movement between the restaurant's own accounts.
+ *
+ * The `is_transfer` flag marks only pairs from the Transfer dialog. The
+ * `categorize_bank_transaction` RPC assigns categories such as "Transfer
+ * Clearing Account" without the flag (see
+ * docs/superpowers/specs/2026-04-26-transfer-category-classification-design.md).
+ * A blanket non-P&L exclusion is wrong here: a loan payment or an owner
+ * contribution is real external cash. So a category counts as internal
+ * only when it is non-P&L AND is a cash account or carries "transfer" in
+ * its name.
+ */
+export function isInternalTransfer(row: CashFlowRow): boolean {
+  if (row.is_transfer) return true;
+  const category = row.category;
+  if (!category || !isTransferCategoryType(category.account_type)) return false;
+  return category.account_subtype === 'cash' || /transfer/i.test(category.name);
+}
+
 function categoryLabel(row: CashFlowRow): string {
-  if (row.is_transfer) return 'Transfers';
+  if (isInternalTransfer(row)) return 'Transfers';
   if (row.category?.name) return row.category.name;
   return 'Uncategorized';
 }
@@ -106,7 +133,7 @@ export function computeTotals(rows: CashFlowRow[], options: ComputeTotalsOptions
   let moneyOut = 0;
 
   for (const row of rows) {
-    if (excludeTransfers && row.is_transfer) continue;
+    if (excludeTransfers && isInternalTransfer(row)) continue;
     if (row.amount >= 0) {
       moneyIn += row.amount;
     } else {
@@ -117,8 +144,17 @@ export function computeTotals(rows: CashFlowRow[], options: ComputeTotalsOptions
   return { moneyIn, moneyOut, net: moneyIn + moneyOut };
 }
 
+/**
+ * The 'yyyy-MM-dd' day of a `transaction_date` value. The column is
+ * timestamptz in production, so PostgREST returns full ISO timestamps;
+ * the first ten characters are always the day.
+ */
+export function dayKeyOf(dateStr: string): string {
+  return dateStr.slice(0, 10);
+}
+
 function parseDateKey(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
+  const [year, month, day] = dayKeyOf(dateStr).split('-').map(Number);
   return new Date(year, month - 1, day);
 }
 
@@ -185,26 +221,41 @@ const TOP_BREAKDOWN_COUNT = 8;
 /**
  * Pick a display name for a transaction's other party.
  * Falls back through `normalized_payee`, `merchant_name`, `description`,
- * then `'Unknown'` when all three are null.
+ * then `'Unknown'` when all three are empty. Bank descriptions arrive as
+ * semicolon lists ("SYGMA Network; Payment; CAMILUKE FLAVORS LLC - ...");
+ * the first segment is the payee.
  */
 export function payeeFor(row: CashFlowRow): string {
-  return row.normalized_payee ?? row.merchant_name ?? row.description ?? 'Unknown';
+  const raw = row.normalized_payee ?? row.merchant_name ?? row.description;
+  if (!raw) return 'Unknown';
+  const firstSegment = raw.split(';')[0].replace(/\s+/g, ' ').trim();
+  return firstSegment || 'Unknown';
 }
 
+/**
+ * Group rows and sum their amounts. Keys fold case ("OLO # 24329" and
+ * "Olo # 24329" are one group); the first-seen spelling is the label.
+ */
 function sumByKey(rows: CashFlowRow[], keyFor: (row: CashFlowRow) => string): { key: string; amount: number }[] {
-  const sums = new Map<string, number>();
+  const sums = new Map<string, { label: string; amount: number }>();
   const order: string[] = [];
 
   for (const row of rows) {
-    const key = keyFor(row);
-    if (!sums.has(key)) {
-      sums.set(key, 0);
-      order.push(key);
+    const label = keyFor(row);
+    const foldedKey = label.toLocaleUpperCase();
+    let entry = sums.get(foldedKey);
+    if (!entry) {
+      entry = { label, amount: 0 };
+      sums.set(foldedKey, entry);
+      order.push(foldedKey);
     }
-    sums.set(key, sums.get(key)! + row.amount);
+    entry.amount += row.amount;
   }
 
-  return order.map((key) => ({ key, amount: sums.get(key)! }));
+  return order.map((foldedKey) => {
+    const { label, amount } = sums.get(foldedKey)!;
+    return { key: label, amount };
+  });
 }
 
 /**
@@ -239,7 +290,9 @@ export function topCategories(rows: CashFlowRow[]): CategoryTotal[] {
  * into a `Remaining` row, each with `pctOfTotal`.
  */
 export function breakdown(rows: CashFlowRow[], direction: CashFlowDirection, by: BreakdownBy): BreakdownRow[] {
-  const filtered = rows.filter((row) => (direction === 'in' ? row.amount >= 0 : row.amount < 0));
+  const filtered = rows.filter(
+    (row) => !isInternalTransfer(row) && (direction === 'in' ? row.amount >= 0 : row.amount < 0),
+  );
   const keyFor = by === 'payee' ? payeeFor : categoryLabel;
 
   const total = filtered.reduce((sum, row) => sum + Math.abs(row.amount), 0);
@@ -288,14 +341,14 @@ const SANKEY_TOP_PAYEE_COUNT = 5;
  * The sum of left link values equals the sum of right link values.
  */
 export function buildSankey(rows: CashFlowRow[]): SankeyData {
-  const inflowRows = rows.filter((row) => row.amount >= 0 && !row.is_transfer);
-  const outflowRows = rows.filter((row) => row.amount < 0 && !row.is_transfer);
+  const inflowRows = rows.filter((row) => row.amount >= 0 && !isInternalTransfer(row));
+  const outflowRows = rows.filter((row) => row.amount < 0 && !isInternalTransfer(row));
 
   const transferInTotal = rows
-    .filter((row) => row.amount >= 0 && row.is_transfer)
+    .filter((row) => row.amount >= 0 && isInternalTransfer(row))
     .reduce((sum, row) => sum + row.amount, 0);
   const transferOutTotal = Math.abs(
-    rows.filter((row) => row.amount < 0 && row.is_transfer).reduce((sum, row) => sum + row.amount, 0),
+    rows.filter((row) => row.amount < 0 && isInternalTransfer(row)).reduce((sum, row) => sum + row.amount, 0),
   );
 
   const inflowEntries = sumByKey(inflowRows, payeeFor).sort((a, b) => b.amount - a.amount);
@@ -380,6 +433,16 @@ export function formatCurrency(amount: number): string {
   );
 }
 
+/** Format an amount as short USD ("$48K", "$1.2M"), for chart axis ticks. */
+export function formatCompactCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(amount);
+}
+
 function monthKeyFromDateStr(dateStr: string): string {
   return dateStr.slice(0, 7);
 }
@@ -421,7 +484,7 @@ function countSubscriptionPayees(rows: CashFlowRow[], to: Date): number {
 
   const byPayee = new Map<string, { date: Date; amount: number }[]>();
   for (const row of rows) {
-    if (row.is_transfer || row.amount >= 0) continue;
+    if (isInternalTransfer(row) || row.amount >= 0) continue;
     const rowDate = parseDateKey(row.transaction_date);
     if (rowDate < windowStart || rowDate > toMidnight) continue;
 
@@ -455,7 +518,9 @@ function countSubscriptionPayees(rows: CashFlowRow[], to: Date): number {
 /** Sum non-transfer money in for one calendar month (`YYYY-MM`). */
 function monthlyRevenue(rows: CashFlowRow[], monthKey: string): number {
   return rows
-    .filter((row) => !row.is_transfer && row.amount >= 0 && monthKeyFromDateStr(row.transaction_date) === monthKey)
+    .filter(
+      (row) => !isInternalTransfer(row) && row.amount >= 0 && monthKeyFromDateStr(row.transaction_date) === monthKey,
+    )
     .reduce((sum, row) => sum + row.amount, 0);
 }
 
@@ -495,7 +560,7 @@ function buildTopSourceInsight(
   precedingKeys: string[],
 ): CashFlowInsight | null {
   const lastMonthInflowRows = rows.filter(
-    (row) => !row.is_transfer && row.amount >= 0 && monthKeyFromDateStr(row.transaction_date) === lastMonthKey,
+    (row) => !isInternalTransfer(row) && row.amount >= 0 && monthKeyFromDateStr(row.transaction_date) === lastMonthKey,
   );
   if (lastMonthInflowRows.length === 0) return null;
 
@@ -506,10 +571,10 @@ function buildTopSourceInsight(
       const monthTotal = rows
         .filter(
           (row) =>
-            !row.is_transfer &&
+            !isInternalTransfer(row) &&
             row.amount >= 0 &&
             monthKeyFromDateStr(row.transaction_date) === key &&
-            payeeFor(row) === top.key,
+            payeeFor(row).toLocaleUpperCase() === top.key.toLocaleUpperCase(),
         )
         .reduce((s, row) => s + row.amount, 0);
       return sum + monthTotal;
@@ -570,8 +635,9 @@ export function computeCashFlowAggregates(
   interval: Interval,
   options: ComputeTotalsOptions = {},
 ): CashFlowAggregates {
+  const effectiveRows = options.excludeTransfers ? rows.filter((row) => !isInternalTransfer(row)) : rows;
   return {
-    totals: computeTotals(rows, options),
-    series: bucketSeries(rows, period, interval),
+    totals: computeTotals(effectiveRows),
+    series: bucketSeries(effectiveRows, period, interval),
   };
 }

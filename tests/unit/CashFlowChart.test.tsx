@@ -50,7 +50,7 @@ const rows: CashFlowRow[] = [
     normalized_payee: 'Client A',
     merchant_name: null,
     description: null,
-    category: { id: 'c1', name: 'Sales' },
+    category: { id: 'c1', name: 'Sales', account_type: 'revenue', account_subtype: null },
   },
   {
     transaction_date: '2026-06-05',
@@ -59,7 +59,7 @@ const rows: CashFlowRow[] = [
     normalized_payee: 'Vendor B',
     merchant_name: null,
     description: null,
-    category: { id: 'c2', name: 'Supplies' },
+    category: { id: 'c2', name: 'Supplies', account_type: 'expense', account_subtype: null },
   },
   {
     transaction_date: '2026-06-10',
@@ -93,8 +93,9 @@ describe('CashFlowChart', () => {
     expect(caption).toBeVisible();
     expect(caption!.textContent).toMatch(/money in/i);
     expect(caption!.textContent).toMatch(/money out/i);
+    // The default filter excludes the transfer row, so money out is $2,000.
     expect(caption!.textContent).toMatch(/\$5,000/);
-    expect(caption!.textContent).toMatch(/\$3,500/);
+    expect(caption!.textContent).toMatch(/\$2,000/);
   });
 
   it('switches to By category mode: shows the interval select and updates the aria-label', () => {
@@ -125,18 +126,19 @@ describe('CashFlowChart', () => {
     expect(screen.queryByTestId('interval')).not.toBeInTheDocument();
   });
 
-  it('the cashflow filter select excludes transfer rows from the caption totals when set to Exclude transfers', () => {
+  it('excludes transfer rows by default and adds them back when set to All cashflow', () => {
     render(<CashFlowChart rows={rows} period={period} />);
 
     const chart = screen.getByRole('img', { name: /flow/i });
     const describedById = chart.getAttribute('aria-describedby')!;
-    expect(document.getElementById(describedById)!.textContent).toMatch(/\$3,500/);
+    // The default filter is 'exclude-transfers': the $1,500 transfer is out.
+    expect(document.getElementById(describedById)!.textContent).toMatch(/\$2,000/);
 
-    fireEvent.change(screen.getByTestId('cashflow-filter'), { target: { value: 'exclude-transfers' } });
+    fireEvent.change(screen.getByTestId('cashflow-filter'), { target: { value: 'all' } });
 
     const captionAfter = document.getElementById(chart.getAttribute('aria-describedby')!)!;
-    expect(captionAfter.textContent).not.toMatch(/\$3,500/);
-    expect(captionAfter.textContent).toMatch(/\$2,000/);
+    expect(captionAfter.textContent).not.toMatch(/\$2,000/);
+    expect(captionAfter.textContent).toMatch(/\$3,500/);
   });
 
   it('renders an empty flow gracefully for zero rows', () => {

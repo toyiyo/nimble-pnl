@@ -10,6 +10,7 @@ import {
   type CashFlowAggregates,
   type CashFlowInsight,
   type BreakdownRow,
+  dayKeyOf,
   defaultInterval,
   computeCashFlowAggregates,
   breakdown,
@@ -71,12 +72,14 @@ async function fetchAllRows(
     let query = supabase
       .from('bank_transactions')
       .select(
-        'id, transaction_date, amount, is_transfer, normalized_payee, merchant_name, description, category:chart_of_accounts!category_id(id, name:account_name)',
+        'id, transaction_date, amount, is_transfer, normalized_payee, merchant_name, description, category:chart_of_accounts!category_id(id, name:account_name, account_type, account_subtype)',
       )
       .eq('restaurant_id', restaurantId)
       .eq('status', 'posted')
       .gte('transaction_date', fetchFrom)
-      .lte('transaction_date', fetchTo);
+      // `transaction_date` is timestamptz. A bare 'yyyy-MM-dd' bound reads
+      // as midnight and drops the whole final day.
+      .lte('transaction_date', `${fetchTo}T23:59:59.999Z`);
 
     if (bankAccountId && bankAccountId !== 'all') {
       query = query.eq('connected_bank_id', bankAccountId);
@@ -139,7 +142,11 @@ export function useCashFlowInsights(period: CashFlowPeriod, bankAccountId: strin
   const truncated = query.data?.truncated ?? false;
 
   const periodRows = useMemo(
-    () => allRows.filter((row) => row.transaction_date >= periodFromKey && row.transaction_date <= periodToKey),
+    () =>
+      allRows.filter((row) => {
+        const dayKey = dayKeyOf(row.transaction_date);
+        return dayKey >= periodFromKey && dayKey <= periodToKey;
+      }),
     [allRows, periodFromKey, periodToKey],
   );
 
@@ -150,7 +157,9 @@ export function useCashFlowInsights(period: CashFlowPeriod, bankAccountId: strin
 
     return {
       rows: periodRows,
-      aggregates: computeCashFlowAggregates(periodRows, period, interval),
+      // Internal transfers stay out of the headline and the breakdown
+      // totals. The chart adds them back through its own filter control.
+      aggregates: computeCashFlowAggregates(periodRows, period, interval, { excludeTransfers: true }),
       sources: breakdown(periodRows, 'in', 'payee'),
       recipients: breakdown(periodRows, 'out', 'payee'),
       categoryBreakdownIn: breakdown(periodRows, 'in', 'category'),

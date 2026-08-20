@@ -99,7 +99,9 @@ export function MoneyBreakdownTable({
         <ul className="list-none space-y-3 p-0 m-0">
           {rows.map((row) => (
             <li key={row.label} aria-label={row.label} className="flex items-center gap-3">
-              <div className="w-28 shrink-0 truncate text-[13px] text-foreground">{row.label}</div>
+              <div title={row.label} className="w-40 shrink-0 truncate text-[13px] text-foreground">
+                {row.label}
+              </div>
               <div className="w-10 shrink-0 text-right text-[12px] text-muted-foreground">
                 {formatPct(row.pctOfTotal)}
               </div>

@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   defaultInterval,
   computeTotals,
+  computeCashFlowAggregates,
   bucketSeries,
+  dayKeyOf,
+  formatCompactCurrency,
+  isInternalTransfer,
   payeeFor,
   topCategories,
   breakdown,
@@ -20,7 +24,7 @@ function makeRow(overrides: Partial<CashFlowRow>): CashFlowRow {
     normalized_payee: 'Acme Foods',
     merchant_name: null,
     description: null,
-    category: { id: 'cat-1', name: 'Food' },
+    category: { id: 'cat-1', name: 'Food', account_type: 'expense', account_subtype: null },
     ...overrides,
   };
 }
@@ -95,9 +99,9 @@ describe('computeTotals', () => {
 describe('bucketSeries', () => {
   it('groups rows into day buckets with per-category signed sums', () => {
     const rows = [
-      makeRow({ transaction_date: '2026-08-01', amount: 100, category: { id: 'c1', name: 'Food' } }),
-      makeRow({ transaction_date: '2026-08-01', amount: -30, category: { id: 'c2', name: 'Rent' } }),
-      makeRow({ transaction_date: '2026-08-02', amount: 50, category: { id: 'c1', name: 'Food' } }),
+      makeRow({ transaction_date: '2026-08-01', amount: 100, category: { id: 'c1', name: 'Food', account_type: 'expense', account_subtype: null } }),
+      makeRow({ transaction_date: '2026-08-01', amount: -30, category: { id: 'c2', name: 'Rent', account_type: 'expense', account_subtype: null } }),
+      makeRow({ transaction_date: '2026-08-02', amount: 50, category: { id: 'c1', name: 'Food', account_type: 'expense', account_subtype: null } }),
     ];
 
     const buckets = bucketSeries(rows, period('2026-08-01', '2026-08-02'), 'day');
@@ -118,7 +122,7 @@ describe('bucketSeries', () => {
   });
 
   it('folds transfer rows into a Transfers category', () => {
-    const rows = [makeRow({ amount: -75, is_transfer: true, category: { id: 'c1', name: 'Food' } })];
+    const rows = [makeRow({ amount: -75, is_transfer: true, category: { id: 'c1', name: 'Food', account_type: 'expense', account_subtype: null } })];
 
     const buckets = bucketSeries(rows, period('2026-08-01', '2026-08-01'), 'day');
 
@@ -212,8 +216,8 @@ describe('payeeFor', () => {
 describe('topCategories', () => {
   it('returns every category signed sum when there are 5 or fewer', () => {
     const rows = [
-      makeRow({ amount: 100, category: { id: 'c1', name: 'Food' } }),
-      makeRow({ amount: -50, category: { id: 'c2', name: 'Rent' } }),
+      makeRow({ amount: 100, category: { id: 'c1', name: 'Food', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -50, category: { id: 'c2', name: 'Rent', account_type: 'expense', account_subtype: null } }),
     ];
 
     expect(topCategories(rows)).toEqual([
@@ -224,13 +228,13 @@ describe('topCategories', () => {
 
   it('folds categories beyond the top 5 by absolute sum into Other', () => {
     const rows = [
-      makeRow({ amount: 500, category: { id: 'c1', name: 'A' } }),
-      makeRow({ amount: -400, category: { id: 'c2', name: 'B' } }),
-      makeRow({ amount: 300, category: { id: 'c3', name: 'C' } }),
-      makeRow({ amount: -200, category: { id: 'c4', name: 'D' } }),
-      makeRow({ amount: 100, category: { id: 'c5', name: 'E' } }),
-      makeRow({ amount: -50, category: { id: 'c6', name: 'F' } }),
-      makeRow({ amount: -10, category: { id: 'c7', name: 'G' } }),
+      makeRow({ amount: 500, category: { id: 'c1', name: 'A', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -400, category: { id: 'c2', name: 'B', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: 300, category: { id: 'c3', name: 'C', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -200, category: { id: 'c4', name: 'D', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: 100, category: { id: 'c5', name: 'E', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -50, category: { id: 'c6', name: 'F', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -10, category: { id: 'c7', name: 'G', account_type: 'expense', account_subtype: null } }),
     ];
 
     expect(topCategories(rows)).toEqual([
@@ -244,7 +248,7 @@ describe('topCategories', () => {
   });
 
   it('folds transfer rows into Transfers', () => {
-    const rows = [makeRow({ amount: -75, is_transfer: true, category: { id: 'c1', name: 'Food' } })];
+    const rows = [makeRow({ amount: -75, is_transfer: true, category: { id: 'c1', name: 'Food', account_type: 'expense', account_subtype: null } })];
 
     expect(topCategories(rows)).toEqual([{ name: 'Transfers', amount: -75 }]);
   });
@@ -261,13 +265,13 @@ describe('topCategories', () => {
 
   it('folds the remainder into a real category already named Other', () => {
     const rows = [
-      makeRow({ amount: 500, category: { id: 'c1', name: 'A' } }),
-      makeRow({ amount: -400, category: { id: 'c2', name: 'B' } }),
-      makeRow({ amount: 300, category: { id: 'c3', name: 'C' } }),
-      makeRow({ amount: -200, category: { id: 'c4', name: 'D' } }),
-      makeRow({ amount: 190, category: { id: 'c5', name: 'Other' } }),
-      makeRow({ amount: -50, category: { id: 'c6', name: 'F' } }),
-      makeRow({ amount: -10, category: { id: 'c7', name: 'G' } }),
+      makeRow({ amount: 500, category: { id: 'c1', name: 'A', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -400, category: { id: 'c2', name: 'B', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: 300, category: { id: 'c3', name: 'C', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -200, category: { id: 'c4', name: 'D', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: 190, category: { id: 'c5', name: 'Other', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -50, category: { id: 'c6', name: 'F', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -10, category: { id: 'c7', name: 'G', account_type: 'expense', account_subtype: null } }),
     ];
 
     const result = topCategories(rows);
@@ -293,9 +297,9 @@ describe('breakdown', () => {
 
   it('groups money-out rows by category with pctOfTotal, dropping inflows', () => {
     const rows = [
-      makeRow({ amount: -300, category: { id: 'c1', name: 'Rent' } }),
-      makeRow({ amount: -100, category: { id: 'c2', name: 'Food' } }),
-      makeRow({ amount: 200, category: { id: 'c1', name: 'Rent' } }),
+      makeRow({ amount: -300, category: { id: 'c1', name: 'Rent', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: -100, category: { id: 'c2', name: 'Food', account_type: 'expense', account_subtype: null } }),
+      makeRow({ amount: 200, category: { id: 'c1', name: 'Rent', account_type: 'expense', account_subtype: null } }),
     ];
 
     expect(breakdown(rows, 'out', 'category')).toEqual([
@@ -519,5 +523,174 @@ describe('computeInsights', () => {
 
     expect(julyAnchored.find((i) => i.id === 'revenue-change')?.body).toContain('July 2026');
     expect(juneAnchored.find((i) => i.id === 'revenue-change')?.body).toContain('June 2026');
+  });
+});
+
+describe('isInternalTransfer', () => {
+  it('returns true for a row with the is_transfer flag', () => {
+    expect(isInternalTransfer(makeRow({ is_transfer: true, category: null }))).toBe(true);
+  });
+
+  it('CRITICAL: returns true for an unflagged row in a non-P&L cash account', () => {
+    // Production: categorize_bank_transaction assigns "Transfer Clearing
+    // Account" (asset/cash) without setting is_transfer.
+    const row = makeRow({
+      is_transfer: false,
+      category: { id: 'c1', name: 'Transfer Clearing Account', account_type: 'asset', account_subtype: 'cash' },
+    });
+
+    expect(isInternalTransfer(row)).toBe(true);
+  });
+
+  it('returns true for a non-P&L account with "transfer" in its name', () => {
+    const row = makeRow({
+      is_transfer: false,
+      category: { id: 'c2', name: 'Inter-Account Transfer', account_type: 'equity', account_subtype: 'owners_equity' },
+    });
+
+    expect(isInternalTransfer(row)).toBe(true);
+  });
+
+  it('CRITICAL: returns false for real external non-P&L cash movement', () => {
+    // An owner contribution, a loan payment, and an equipment purchase are
+    // non-P&L, but they are real money in or out.
+    const contribution = makeRow({
+      category: { id: 'c3', name: 'Owner Contributions', account_type: 'equity', account_subtype: 'owners_equity' },
+    });
+    const loan = makeRow({
+      category: { id: 'c4', name: 'SBA Loan Payable', account_type: 'liability', account_subtype: null },
+    });
+    const equipment = makeRow({
+      category: { id: 'c5', name: 'Kitchen Equipment', account_type: 'asset', account_subtype: 'fixed_assets' },
+    });
+
+    expect(isInternalTransfer(contribution)).toBe(false);
+    expect(isInternalTransfer(loan)).toBe(false);
+    expect(isInternalTransfer(equipment)).toBe(false);
+  });
+
+  it('returns false for a P&L row and for an uncategorized row', () => {
+    expect(isInternalTransfer(makeRow({}))).toBe(false);
+    expect(isInternalTransfer(makeRow({ category: null }))).toBe(false);
+  });
+});
+
+describe('dayKeyOf', () => {
+  it('returns a bare date key unchanged', () => {
+    expect(dayKeyOf('2026-08-19')).toBe('2026-08-19');
+  });
+
+  it('CRITICAL: strips the time from a timestamptz ISO string', () => {
+    expect(dayKeyOf('2026-08-19T12:47:12+00:00')).toBe('2026-08-19');
+    expect(dayKeyOf('2026-08-19T00:00:00.000Z')).toBe('2026-08-19');
+  });
+});
+
+describe('bucketSeries with timestamptz dates', () => {
+  it('CRITICAL: buckets a full ISO timestamp by its date, not by local time parsing', () => {
+    const rows = [makeRow({ transaction_date: '2026-08-01T23:30:00+00:00', amount: 10 })];
+
+    const buckets = bucketSeries(rows, period('2026-08-01', '2026-08-01'), 'day');
+
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]).toMatchObject({ bucketStart: '2026-08-01', moneyIn: 10 });
+  });
+});
+
+describe('payeeFor with bank-format descriptions', () => {
+  it('CRITICAL: keeps the first segment of a semicolon description', () => {
+    const row = makeRow({
+      normalized_payee: null,
+      merchant_name: null,
+      description: 'SYGMA Network; Payment; CAMILUKE FLAVORS LLC - The SYGMA Net',
+    });
+
+    expect(payeeFor(row)).toBe('SYGMA Network');
+  });
+
+  it('collapses repeated whitespace inside the payee', () => {
+    const row = makeRow({ normalized_payee: null, merchant_name: null, description: '  OLO   #  24329  ; deposit' });
+
+    expect(payeeFor(row)).toBe('OLO # 24329');
+  });
+
+  it('returns Unknown for a description that is only separators', () => {
+    const row = makeRow({ normalized_payee: null, merchant_name: null, description: ' ; Payment' });
+
+    expect(payeeFor(row)).toBe('Unknown');
+  });
+});
+
+describe('breakdown case folding', () => {
+  it('CRITICAL: groups case variants of one payee into one row', () => {
+    const rows = [
+      makeRow({ amount: 100, normalized_payee: 'OLO # 24329' }),
+      makeRow({ amount: 50, normalized_payee: 'Olo # 24329' }),
+    ];
+
+    const result = breakdown(rows, 'in', 'payee');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].label).toBe('OLO # 24329');
+    expect(result[0].amount).toBe(150);
+  });
+});
+
+describe('breakdown transfer exclusion', () => {
+  it('excludes unflagged clearing-account rows', () => {
+    const rows = [
+      makeRow({ amount: 500, normalized_payee: 'Client A' }),
+      makeRow({
+        amount: 400,
+        normalized_payee: 'Sweep',
+        category: { id: 'c9', name: 'Transfer Clearing Account', account_type: 'asset', account_subtype: 'cash' },
+      }),
+    ];
+
+    const result = breakdown(rows, 'in', 'payee');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].label).toBe('Client A');
+  });
+});
+
+describe('formatCompactCurrency', () => {
+  it('formats thousands and millions in short form', () => {
+    expect(formatCompactCurrency(48000)).toBe('$48K');
+    expect(formatCompactCurrency(1200000)).toBe('$1.2M');
+    expect(formatCompactCurrency(-2500)).toBe('-$2.5K');
+    expect(formatCompactCurrency(0)).toBe('$0');
+  });
+});
+
+describe('computeCashFlowAggregates', () => {
+  it('CRITICAL: drops internal transfers from totals and series when excludeTransfers is set', () => {
+    const rows = [
+      makeRow({ transaction_date: '2026-08-01', amount: 500 }),
+      makeRow({
+        transaction_date: '2026-08-01',
+        amount: -400,
+        is_transfer: false,
+        category: { id: 'c9', name: 'Transfer Clearing Account', account_type: 'asset', account_subtype: 'cash' },
+      }),
+    ];
+
+    const aggregates = computeCashFlowAggregates(rows, period('2026-08-01', '2026-08-01'), 'day', {
+      excludeTransfers: true,
+    });
+
+    expect(aggregates.totals).toEqual({ moneyIn: 500, moneyOut: 0, net: 500 });
+    expect(aggregates.series[0].byCategory).toEqual({ Food: 500 });
+  });
+
+  it('keeps internal transfers when excludeTransfers is not set', () => {
+    const rows = [
+      makeRow({ transaction_date: '2026-08-01', amount: 500 }),
+      makeRow({ transaction_date: '2026-08-01', amount: -400, is_transfer: true }),
+    ];
+
+    const aggregates = computeCashFlowAggregates(rows, period('2026-08-01', '2026-08-01'), 'day');
+
+    expect(aggregates.totals).toEqual({ moneyIn: 500, moneyOut: -400, net: 100 });
   });
 });

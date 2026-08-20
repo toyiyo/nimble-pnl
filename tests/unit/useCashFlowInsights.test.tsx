@@ -122,8 +122,9 @@ describe('useCashFlowInsights', () => {
 
     // period.to = 2026-08-15; 4 months back, start of month => 2026-04-01,
     // which is earlier than period.from (2026-08-01), so the wide window wins.
+    // The column is timestamptz, so the end bound must cover the full final day.
     expect(builder.gte).toHaveBeenCalledWith('transaction_date', '2026-04-01');
-    expect(builder.lte).toHaveBeenCalledWith('transaction_date', '2026-08-15');
+    expect(builder.lte).toHaveBeenCalledWith('transaction_date', '2026-08-15T23:59:59.999Z');
     expect(builder.order).toHaveBeenCalledWith('transaction_date', { ascending: true });
   });
 

@@ -7,7 +7,7 @@
 -- section 7 for the candidate predicate and insert shape this pins.
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(13);
 
 SET LOCAL role TO postgres;
 

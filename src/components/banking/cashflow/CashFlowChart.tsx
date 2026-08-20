@@ -9,6 +9,7 @@ import {
   buildSankey,
   computeTotals,
   defaultInterval,
+  formatCurrency,
   topCategories,
   type CashFlowPeriod,
   type CashFlowRow,
@@ -38,14 +39,6 @@ const CATEGORY_COLORS = [
   'hsl(var(--chart-5))',
   'hsl(var(--muted-foreground))',
 ];
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 function SankeyNode(props: { x?: number; y?: number; width?: number; height?: number; payload?: { name: string } }) {
   const { x = 0, y = 0, width = 0, height = 0, payload } = props;

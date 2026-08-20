@@ -360,7 +360,8 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-function formatCurrency(amount: number): string {
+/** Format a signed amount as whole-dollar USD, for insight text and the cashflow UI. */
+export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
     amount,
   );

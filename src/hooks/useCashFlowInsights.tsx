@@ -9,15 +9,10 @@ import {
   type CashFlowPeriod,
   type CashFlowAggregates,
   type CashFlowInsight,
-  type SankeyData,
-  type CategoryTotal,
   type BreakdownRow,
   defaultInterval,
-  computeTotals,
-  bucketSeries,
-  topCategories,
+  computeCashFlowAggregates,
   breakdown,
-  buildSankey,
   computeInsights,
 } from '@/lib/cashflowInsights';
 
@@ -30,14 +25,12 @@ export interface CashFlowInsightsData {
   /** Rows inside the display period only (not the wider fetch window). */
   rows: CashFlowRow[];
   aggregates: CashFlowAggregates;
-  topCategories: CategoryTotal[];
   /** Money in, grouped by payee. */
   sources: BreakdownRow[];
   /** Money out, grouped by payee. */
   recipients: BreakdownRow[];
   categoryBreakdownIn: BreakdownRow[];
   categoryBreakdownOut: BreakdownRow[];
-  sankey: SankeyData;
   /** Computed from the full wide-window row set, not just the display period. */
   insights: CashFlowInsight[];
   /** True when the fetch hit the 20-page cap before reaching a short page. */
@@ -47,12 +40,10 @@ export interface CashFlowInsightsData {
 const EMPTY_DATA: CashFlowInsightsData = {
   rows: [],
   aggregates: { totals: { moneyIn: 0, moneyOut: 0, net: 0 }, series: [] },
-  topCategories: [],
   sources: [],
   recipients: [],
   categoryBreakdownIn: [],
   categoryBreakdownOut: [],
-  sankey: { nodes: [], links: [] },
   insights: [],
   truncated: false,
 };
@@ -113,9 +104,10 @@ async function fetchAllRows(
  *
  * Fetches a window from `min(period.from, startOfMonth(subMonths(period.to,
  * 4)))` to `period.to` so the narrative's month-over-month comparisons have
- * history, then memoizes the visual aggregates (totals, series, breakdowns,
- * Sankey) from rows inside `period` only, and the insights from the full
- * wide-window row set.
+ * history, then memoizes the visual aggregates (totals, series, breakdowns)
+ * from rows inside `period` only, and the insights from the full wide-window
+ * row set. `CashFlowChart` derives the Sankey and top-category views itself
+ * from `data.rows`, filtered by its own in-chart controls.
  */
 export function useCashFlowInsights(period: CashFlowPeriod, bankAccountId: string = 'all') {
   const { selectedRestaurant } = useRestaurantContext();
@@ -152,16 +144,11 @@ export function useCashFlowInsights(period: CashFlowPeriod, bankAccountId: strin
 
     return {
       rows: periodRows,
-      aggregates: {
-        totals: computeTotals(periodRows),
-        series: bucketSeries(periodRows, period, interval),
-      },
-      topCategories: topCategories(periodRows),
+      aggregates: computeCashFlowAggregates(periodRows, period, interval),
       sources: breakdown(periodRows, 'in', 'payee'),
       recipients: breakdown(periodRows, 'out', 'payee'),
       categoryBreakdownIn: breakdown(periodRows, 'in', 'category'),
       categoryBreakdownOut: breakdown(periodRows, 'out', 'category'),
-      sankey: buildSankey(periodRows),
       insights: computeInsights(allRows, period),
       truncated,
     };

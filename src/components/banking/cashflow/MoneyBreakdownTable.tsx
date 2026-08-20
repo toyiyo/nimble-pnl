@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import type { BreakdownRow } from '@/lib/cashflowInsights';
+import { formatCurrency, type BreakdownRow } from '@/lib/cashflowInsights';
 
 interface MoneyBreakdownTableProps {
   /** Card title: "Money in" or "Money out". */
@@ -15,14 +15,6 @@ interface MoneyBreakdownTableProps {
 }
 
 type Tab = 'primary' | 'category';
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount));
-}
 
 function formatPct(pct: number): string {
   return `${Math.round(pct)}%`;
@@ -49,7 +41,7 @@ export function MoneyBreakdownTable({
     <div className={cn('rounded-xl border border-border/40 bg-background p-4', className)}>
       <div className="flex items-baseline justify-between">
         <div className="text-[14px] font-medium text-foreground">{title}</div>
-        <div className="text-[15px] font-medium text-foreground">{formatCurrency(total)}</div>
+        <div className="text-[15px] font-medium text-foreground">{formatCurrency(Math.abs(total))}</div>
       </div>
 
       <div role="tablist" className="mt-3 flex border-b border-border/40">
@@ -96,7 +88,7 @@ export function MoneyBreakdownTable({
               />
             </div>
             <div className="w-20 shrink-0 text-right text-[13px] font-medium text-foreground">
-              {formatCurrency(row.amount)}
+              {formatCurrency(Math.abs(row.amount))}
             </div>
           </div>
         ))}

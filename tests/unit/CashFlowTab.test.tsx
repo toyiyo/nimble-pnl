@@ -57,12 +57,10 @@ const period: Period = { type: 'month', from: new Date(2026, 0, 1), to: new Date
 const EMPTY_DATA: CashFlowInsightsData = {
   rows: [],
   aggregates: { totals: { moneyIn: 0, moneyOut: 0, net: 0 }, series: [] },
-  topCategories: [],
   sources: [],
   recipients: [],
   categoryBreakdownIn: [],
   categoryBreakdownOut: [],
-  sankey: { nodes: [], links: [] },
   insights: [],
   truncated: false,
 };

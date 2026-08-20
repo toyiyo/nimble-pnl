@@ -1,17 +1,9 @@
 import { cn } from '@/lib/utils';
-import type { CashFlowTotals } from '@/lib/cashflowInsights';
+import { formatCurrency, type CashFlowTotals } from '@/lib/cashflowInsights';
 
 interface CashFlowHeadlineProps {
   totals: CashFlowTotals;
   className?: string;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 /** Net cashflow, Money in, and Money out for the selected period. */

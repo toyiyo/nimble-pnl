@@ -9,11 +9,14 @@
 --   (c) supplier-only rule DOES match a transaction already linked to the supplier
 --   (d) supplier + transaction_type='debit' only (no description/amount) stays FILTER:
 --       does NOT match a supplier-less debit
---   (e) trigger (auto_apply_bank_categorization_rules): INSERT a bank_transactions row
---       matching a description+supplier auto_apply rule -> category_id set,
---       is_categorized=true, AND supplier_id assigned from the rule
---   (f) trigger path: INSERT a row whose transaction supplier is already set;
---       rule supplier must NOT overwrite it (COALESCE: txn supplier wins)
+--   (e) apply_rules_to_bank_transactions_internal (the sweep engine, no trigger):
+--       INSERT an uncategorized bank_transactions row, assert it stays
+--       uncategorized, then call the internal engine directly and assert
+--       category_id set, is_categorized=true, supplier_id assigned from the
+--       rule, and a balanced journal entry posted.
+--   (f) internal engine, run again: INSERT a row whose transaction supplier is
+--       already set; the rule supplier must NOT overwrite it (COALESCE: txn
+--       supplier wins)
 --
 -- Task 2 (tests g–i): apply_rules_to_pos_sales_internal privilege trio + NULL-auth path
 --   + public wrapper enforcement. Written RED (§4 not yet implemented).
@@ -43,8 +46,8 @@
 --   (k) NULL-auth batch path: with jwt.claims cleared (no auth context), seed an uncategorized
 --       bank_transactions row (description matches 'VENDOR-H', supplier-less) + an active
 --       auto_apply bank_transactions rule (description 'VENDOR-H' contains, with supplier_id=H).
---       Disable the BEFORE INSERT trigger (auto_categorize_bank_transaction) so the trigger
---       does NOT pre-categorize the row. Call
+--       No trigger exists on bank_transactions; the row stays uncategorized until the
+--       sweep runs. Call
 --       apply_rules_to_bank_transactions_internal(restaurant_h, 100) and assert:
 --         applied_count=1
 --         txn.is_categorized=true, category_id set from rule
@@ -83,7 +86,7 @@
 --     Sale I:          c1a00009-...-000000000201  (item_name='Delivery Fee', is_categorized=false)
 
 BEGIN;
-SELECT plan(27);
+SELECT plan(37);
 
 -- ============================================================
 -- Setup
@@ -116,7 +119,8 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00000-...-000000000f01/0f02 = rest A  (expense + cash)
 --   c1a00000-...-000000000f03      = rest B
 --   c1a00000-...-000000000f04      = rest C
---   c1a00000-...-000000000f05      = rest E
+--   c1a00000-...-000000000f05      = rest E (expense)
+--   c1a00000-...-000000000f06      = rest E cash account (account_code='1000')
 --   c1a00007-...-000000000706      = rest G expense (Sales Tax category)
 --   c1a00007-...-000000000707      = rest G cash account (account_code='1000')
 --   c1a00008-...-000000000806      = rest H expense (Food Costs H)
@@ -181,6 +185,10 @@ VALUES
    'expense', 'cost_of_goods_sold', 'debit'),
   ('c1a00000-0000-0000-0000-000000000f05', 'c1a00000-0000-0000-0000-000000000e01', '5100', 'Food Costs E',
    'expense', 'cost_of_goods_sold', 'debit'),
+  -- Restaurant E cash account: apply_rules_to_bank_transactions_internal needs a
+  -- '1000' account for the restaurant, or it logs a WARNING and skips the batch.
+  ('c1a00000-0000-0000-0000-000000000f06', 'c1a00000-0000-0000-0000-000000000e01', '1000', 'Cash E',
+   'asset', 'cash', 'debit'),
   -- Restaurant G: expense account (for POS rule category) + cash account (apply_rules needs '1000')
   ('c1a00007-0000-0000-0000-000000000706', 'c1a00007-0000-0000-0000-000000000701', '5200', 'Tax Expense G',
    'expense', 'cost_of_goods_sold', 'debit'),
@@ -381,12 +389,9 @@ ON CONFLICT (id) DO NOTHING;
 SELECT set_config('app.skip_unified_sales_triggers', 'false', true);
 
 -- bank_transactions row for test (k): uncategorized VENDOR-H txn to be processed by
--- apply_rules_to_bank_transactions_internal. Inserted with the BEFORE INSERT trigger
--- disabled so the trigger does NOT pre-categorize the row. supplier_id is NULL (the
--- internal engine must assign it from rule H via assign-not-filter semantics).
--- RED: the trigger disable is just precautionary here; the internal function doesn't
---      exist yet so (k) will error at the function call step.
-ALTER TABLE public.bank_transactions DISABLE TRIGGER auto_categorize_bank_transaction;
+-- apply_rules_to_bank_transactions_internal. No trigger exists on bank_transactions;
+-- only the sweep engine categorizes rows. supplier_id is NULL (the internal engine
+-- must assign it from rule H via assign-not-filter semantics).
 
 INSERT INTO public.bank_transactions
   (id, restaurant_id, connected_bank_id, stripe_transaction_id,
@@ -401,8 +406,6 @@ VALUES
    -500.00,
    false)
 ON CONFLICT (id) DO NOTHING;
-
-ALTER TABLE public.bank_transactions ENABLE TRIGGER auto_categorize_bank_transaction;
 
 -- ============================================================
 -- Test (a): find_matching_rules_for_bank_transaction
@@ -497,15 +500,42 @@ SELECT is(
 );
 
 -- ============================================================
--- Test (e): trigger path (auto_apply_bank_categorization_rules)
---   INSERT a bank_transactions row matching a description+supplier auto_apply rule:
---   assert category_id set, is_categorized=true, AND supplier_id assigned from rule
+-- Existence checks: the trigger and its function are gone
 -- ============================================================
--- The trigger fires BEFORE INSERT. After INSERT, the row should have:
+-- apply_rules_to_bank_transactions_internal (the sweep) is now the only path
+-- that categorizes bank_transactions rows. No BEFORE INSERT trigger exists.
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'auto_categorize_bank_transaction'
+      AND tgrelid = 'public.bank_transactions'::regclass
+  ),
+  'no auto_categorize_bank_transaction trigger exists on bank_transactions'
+);
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'auto_apply_bank_categorization_rules'
+  ),
+  'no auto_apply_bank_categorization_rules function exists'
+);
+
+-- ============================================================
+-- Test (e): apply_rules_to_bank_transactions_internal (the sweep engine)
+--   INSERT an uncategorized bank_transactions row matching a description+
+--   supplier auto_apply rule, then call the internal engine directly:
+--   assert category_id set, is_categorized=true, supplier_id assigned from
+--   rule, and a balanced journal entry posted.
+-- ============================================================
+-- No trigger fires on INSERT, so the row must stay uncategorized after INSERT.
+-- After the internal engine call, the row should have:
 --   is_categorized = true
 --   category_id = 'c1a0...0f05'  (from rule E)
 --   supplier_id = 'c1a0...0d04'  (assigned from rule — assign-not-filter semantics)
--- RED: supplier_id will remain NULL because the current trigger does not set it.
 
 INSERT INTO public.bank_transactions
   (id, restaurant_id, connected_bank_id, stripe_transaction_id,
@@ -523,31 +553,98 @@ VALUES
 SELECT is(
   (SELECT is_categorized FROM public.bank_transactions
    WHERE id = 'c1a00000-0000-0000-0000-000000000101'),
+  false,
+  '(e) no trigger: is_categorized stays false after plain INSERT'
+);
+
+SELECT is(
+  (SELECT category_id FROM public.bank_transactions
+   WHERE id = 'c1a00000-0000-0000-0000-000000000101'),
+  NULL::uuid,
+  '(e) no trigger: category_id stays NULL after plain INSERT'
+);
+
+SELECT is(
+  (SELECT supplier_id FROM public.bank_transactions
+   WHERE id = 'c1a00000-0000-0000-0000-000000000101'),
+  NULL::uuid,
+  '(e) no trigger: supplier_id stays NULL after plain INSERT'
+);
+
+CREATE TEMP TABLE sweep_e AS
+  SELECT * FROM apply_rules_to_bank_transactions_internal(
+    'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
+
+SELECT is(
+  (SELECT is_categorized FROM public.bank_transactions
+   WHERE id = 'c1a00000-0000-0000-0000-000000000101'),
   true,
-  '(e) trigger path: is_categorized=true after INSERT matching description+supplier rule'
+  '(e) internal engine: is_categorized=true after matching description+supplier rule'
 );
 
 SELECT is(
   (SELECT category_id FROM public.bank_transactions
    WHERE id = 'c1a00000-0000-0000-0000-000000000101'),
   'c1a00000-0000-0000-0000-000000000f05'::uuid,
-  '(e) trigger path: category_id set from rule'
+  '(e) internal engine: category_id set from rule'
 );
 
 SELECT is(
   (SELECT supplier_id FROM public.bank_transactions
    WHERE id = 'c1a00000-0000-0000-0000-000000000101'),
   'c1a00000-0000-0000-0000-000000000d04'::uuid,
-  '(e) trigger path: supplier_id assigned from rule (assign-not-filter semantics)'
+  '(e) internal engine: supplier_id assigned from rule (assign-not-filter semantics)'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM public.journal_entries
+    WHERE reference_type = 'bank_transaction'
+      AND reference_id = 'c1a00000-0000-0000-0000-000000000101'
+  ),
+  '(e) journal_entries row posted with reference_id = the bank transaction id'
+);
+
+SELECT is(
+  (SELECT count(*)::int
+   FROM public.journal_entry_lines jel
+   JOIN public.journal_entries je ON je.id = jel.journal_entry_id
+   WHERE je.reference_type = 'bank_transaction'
+     AND je.reference_id = 'c1a00000-0000-0000-0000-000000000101'),
+  2,
+  '(e) journal_entry_lines: two lines posted for the journal entry'
+);
+
+SELECT is(
+  (SELECT sum(jel.debit_amount)
+   FROM public.journal_entry_lines jel
+   JOIN public.journal_entries je ON je.id = jel.journal_entry_id
+   WHERE je.reference_type = 'bank_transaction'
+     AND je.reference_id = 'c1a00000-0000-0000-0000-000000000101'),
+  200.00,
+  '(e) journal_entry_lines: debit sum = 200.00'
+);
+
+SELECT is(
+  (SELECT sum(jel.credit_amount)
+   FROM public.journal_entry_lines jel
+   JOIN public.journal_entries je ON je.id = jel.journal_entry_id
+   WHERE je.reference_type = 'bank_transaction'
+     AND je.reference_id = 'c1a00000-0000-0000-0000-000000000101'),
+  200.00,
+  '(e) journal_entry_lines: credit sum = 200.00'
 );
 
 -- ============================================================
--- Test (f): trigger path — INSERT a row whose txn supplier is already set;
---   rule supplier must NOT overwrite it (COALESCE: txn supplier wins)
+-- Test (f): internal engine, run again — INSERT a row whose txn supplier is
+--   already set; the rule supplier must NOT overwrite it (COALESCE: txn
+--   supplier wins)
 -- ============================================================
 -- The txn's supplier_id = d05 (Supplier E-other).
 -- The matching rule E has supplier_id = d04 (Supplier E).
--- After trigger fires, supplier_id must still be d05 (txn supplier wins).
+-- This row is a candidate because rules_evaluated_at defaults to '-infinity'.
+-- After the internal engine runs, supplier_id must still be d05 (txn supplier
+-- wins) and category_id must be set from the rule.
 
 INSERT INTO public.bank_transactions
   (id, restaurant_id, connected_bank_id, stripe_transaction_id,
@@ -563,11 +660,22 @@ VALUES
    false,
    'c1a00000-0000-0000-0000-000000000d05');
 
+CREATE TEMP TABLE sweep_f AS
+  SELECT * FROM apply_rules_to_bank_transactions_internal(
+    'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
+
 SELECT is(
   (SELECT supplier_id FROM public.bank_transactions
    WHERE id = 'c1a00000-0000-0000-0000-000000000102'),
   'c1a00000-0000-0000-0000-000000000d05'::uuid,
-  '(f) trigger path: pre-existing txn supplier_id is NOT overwritten by rule supplier'
+  '(f) internal engine: pre-existing txn supplier_id is NOT overwritten by rule supplier'
+);
+
+SELECT is(
+  (SELECT category_id FROM public.bank_transactions
+   WHERE id = 'c1a00000-0000-0000-0000-000000000102'),
+  'c1a00000-0000-0000-0000-000000000f05'::uuid,
+  '(f) internal engine: category_id set from rule'
 );
 
 -- ============================================================

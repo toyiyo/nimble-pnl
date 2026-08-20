@@ -233,4 +233,99 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
     await page.getByRole('button', { name: 'Today' }).click();
     await expect(page.getByText('No transactions for this period')).toBeVisible({ timeout: 10000 });
   });
+
+  test('hero net value matches the Cash Flow section net value', async ({ page }) => {
+    const user = generateTestUser();
+
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await getRestaurantId(page);
+    expect(restaurantId).toBeTruthy();
+
+    const today = await dateDaysAgo(page, 0);
+
+    // Seed one ordinary row, one row at the last minute of today (the
+    // final-day bound), and one transfer row. The transfer must not count
+    // in either view; the final-day row must count in both.
+    await page.evaluate(
+      async ({ rid, today }) => {
+        const { supabase } = await import('/src/integrations/supabase/client');
+
+        const timestamp = Date.now();
+        const random = crypto.randomUUID().slice(0, 8);
+
+        const { data: bank, error: bankError } = await supabase
+          .from('connected_banks')
+          .insert({
+            restaurant_id: rid,
+            institution_name: 'Hero Parity Test Bank',
+            stripe_financial_account_id: `fca_hp_${timestamp}_${random}`,
+            account_mask: '3333',
+            status: 'connected',
+          })
+          .select()
+          .single();
+        if (bankError) throw new Error(`Failed to create bank: ${bankError.message}`);
+
+        const { error: txError } = await supabase.from('bank_transactions').insert([
+          {
+            restaurant_id: rid,
+            connected_bank_id: bank.id,
+            stripe_transaction_id: `txn_hp_1_${timestamp}_${random}`,
+            transaction_date: `${today}T09:00:00.000Z`,
+            description: 'Morning Deposit',
+            amount: 1000,
+            status: 'posted',
+          },
+          {
+            // Final-day row, 23:45 UTC on the period's last day. The old
+            // exclusive end bound (`< end_date` at midnight) dropped this
+            // row; the fixed bound (`< end_date + 1`) counts it.
+            restaurant_id: rid,
+            connected_bank_id: bank.id,
+            stripe_transaction_id: `txn_hp_2_${timestamp}_${random}`,
+            transaction_date: `${today}T23:45:00.000Z`,
+            description: 'Late Deposit',
+            amount: 250,
+            status: 'posted',
+          },
+          {
+            // Transfer row: never counts as cash flow, in the hero or the
+            // section. A large amount makes a regression obvious.
+            restaurant_id: rid,
+            connected_bank_id: bank.id,
+            stripe_transaction_id: `txn_hp_3_${timestamp}_${random}`,
+            transaction_date: `${today}T12:00:00.000Z`,
+            description: 'Internal Transfer',
+            amount: 9999,
+            status: 'posted',
+            is_transfer: true,
+          },
+        ]);
+        if (txError) throw new Error(`Failed to create transactions: ${txError.message}`);
+      },
+      { rid: restaurantId, today },
+    );
+
+    await page.goto('/financial-intelligence', { timeout: 10000 });
+    await page.getByRole('button', { name: 'Today' }).click();
+
+    // Expected net: $1,000 + $250, with the $9,999 transfer excluded.
+    await expectHeadlineValue(page, 'Net cashflow', '$1,250');
+
+    // `FinancialPulseHero` gives its value no accessible group role (unlike
+    // `CashFlowHeadline`), so read its unique "text-3xl font-bold
+    // text-white" node and poll past the `CountingNumber` count-up
+    // animation until it settles.
+    await expect
+      .poll(
+        async () => {
+          const text = await page.locator('.text-3xl.font-bold.text-white').first().textContent();
+          return Number((text ?? '').replace(/[^0-9.-]/g, ''));
+        },
+        { timeout: 10000, message: 'hero net cash flow value' },
+      )
+      .toBe(1250);
+  });
 });

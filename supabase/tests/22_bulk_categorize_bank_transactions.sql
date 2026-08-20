@@ -6,7 +6,7 @@
 -- section 5 for the guard order and per-row branch semantics this pins.
 
 BEGIN;
-SELECT plan(34);
+SELECT plan(37);
 
 SET LOCAL role TO postgres;
 
@@ -39,6 +39,35 @@ ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name, is_active =
 INSERT INTO connected_banks (id, restaurant_id, stripe_financial_account_id, institution_name, status) VALUES
   ('00000000-0000-0000-0000-000000000615'::uuid, '00000000-0000-0000-0000-000000000610'::uuid, 'fa_test_bulk_main_001', 'Test Bank', 'connected')
 ON CONFLICT (id) DO NOTHING;
+
+-- Guard-test users, both members of R_MAIN: a staff user (no
+-- edit:transactions capability) and a collaborator_accountant user (has
+-- edit:transactions capability). See tests 22-24.
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-0000-0000-000000000602'::uuid, 'bulk-categorize-staff@example.com'),
+  ('00000000-0000-0000-0000-000000000603'::uuid, 'bulk-categorize-accountant@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('00000000-0000-0000-0000-000000000602'::uuid, '00000000-0000-0000-0000-000000000610'::uuid, 'staff'),
+  ('00000000-0000-0000-0000-000000000603'::uuid, '00000000-0000-0000-0000-000000000610'::uuid, 'collaborator_accountant')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
+
+-- Row for the capability-guard tests (22-24). The date sits outside the
+-- closed fiscal period fixture (2020-01-01 to 2020-01-31) below, so the
+-- RPC does not skip it with reason 'closed_period'.
+INSERT INTO bank_transactions (
+  id, restaurant_id, connected_bank_id, stripe_transaction_id,
+  transaction_date, amount, description, status, is_categorized, is_transfer, is_reconciled
+) VALUES (
+  '00000000-0000-0000-0000-000000000715'::uuid,
+  '00000000-0000-0000-0000-000000000610'::uuid,
+  '00000000-0000-0000-0000-000000000615'::uuid,
+  'txn-bulk-capability-guard-1',
+  DATE '2026-08-01', -12.00, 'Capability guard test row', 'posted', false, false, false
+)
+ON CONFLICT (id) DO UPDATE SET
+  is_categorized = false, is_transfer = false, is_reconciled = false, category_id = NULL;
 
 -- R_NOCASH: user is a member, has an active category, but NO account_code
 -- '1000'. Used only by the "cash account missing" guard test.
@@ -577,6 +606,56 @@ SELECT is(
   0,
   'Split parent gains no journal entry from the bulk call'
 );
+
+-- ---------------------------------------------------------------------------
+-- Test 22: staff role lacks edit:transactions -> Access denied
+-- ---------------------------------------------------------------------------
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000602","role":"authenticated"}', true);
+
+SELECT throws_like(
+  $$ SELECT bulk_categorize_bank_transactions(
+       ARRAY['00000000-0000-0000-0000-000000000715'::uuid],
+       '00000000-0000-0000-0000-000000000612'::uuid,
+       '00000000-0000-0000-0000-000000000610'::uuid
+     ) $$,
+  '%Access denied%',
+  'Staff role without edit:transactions raises Access denied'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 23: the denied staff call above wrote nothing
+-- ---------------------------------------------------------------------------
+SET LOCAL role TO postgres;
+
+SELECT ok(
+  (SELECT is_categorized = false FROM bank_transactions
+     WHERE id = '00000000-0000-0000-0000-000000000715'::uuid)
+  AND NOT EXISTS (
+    SELECT 1 FROM journal_entries
+     WHERE reference_type = 'bank_transaction'
+       AND reference_id = '00000000-0000-0000-0000-000000000715'::uuid
+  ),
+  'Row stays uncategorized and gains no journal entry after the denied staff call'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 24: collaborator_accountant has edit:transactions -> call succeeds
+-- ---------------------------------------------------------------------------
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000603","role":"authenticated"}', true);
+
+SELECT is(
+  (SELECT bulk_categorize_bank_transactions(
+       ARRAY['00000000-0000-0000-0000-000000000715'::uuid],
+       '00000000-0000-0000-0000-000000000612'::uuid,
+       '00000000-0000-0000-0000-000000000610'::uuid
+     ) ->> 'categorized_count')::int,
+  1,
+  'collaborator_accountant with edit:transactions categorizes the row'
+);
+
+-- Restore impersonation to the primary test user in case a later test is
+-- added after this block.
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000601","role":"authenticated"}', true);
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -234,7 +234,7 @@ export const PendingOutflowCard = ({ outflow, onEdit, onPrintCheck }: PendingOut
                   {!outflow.category_id && (
                     <Badge
                       variant="outline"
-                      className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted"
+                      className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground"
                     >
                       Needs category
                     </Badge>

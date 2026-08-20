@@ -2,9 +2,13 @@
 --
 -- Bug: bulk_categorize_bank_transactions checks only restaurant membership
 -- (Guard 1). Any member can bulk categorize, even a role with no
--- edit:transactions capability (for example collaborator_accountant in a
--- read-only configuration). The single-row RPC categorize_bank_transaction
--- already checks this capability; the bulk RPC never caught up.
+-- edit:transactions capability (for example staff, chef, or kiosk). The
+-- RLS UPDATE policy on bank_transactions requires this capability, but
+-- this RPC is SECURITY DEFINER and bypasses RLS, so it must apply its own
+-- gate. The single-row RPC categorize_bank_transaction has the same gap
+-- (membership-only today); a tracked follow-up task covers it separately
+-- (see docs/superpowers/specs/2026-08-20-bulk-categorize-capability-guard-design.md
+-- section 7).
 --
 -- Fix: add Guard 1b, a capability check, right after Guard 1. This function
 -- body is otherwise identical to the one defined in
@@ -54,7 +58,8 @@ BEGIN
   END IF;
 
   -- Guard 1b: capability. A member without edit:transactions must not
-  -- bulk categorize, matching the check in categorize_bank_transaction.
+  -- bulk categorize. This RPC is SECURITY DEFINER and bypasses RLS, so it
+  -- must apply the same gate as the bank_transactions UPDATE policy itself.
   IF NOT public.user_has_capability(p_restaurant_id, 'edit:transactions') THEN
     RAISE EXCEPTION 'Access denied: you cannot edit transactions for this restaurant';
   END IF;

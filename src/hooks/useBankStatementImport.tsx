@@ -538,7 +538,7 @@ export function useBankStatementImport() {
       // Best-effort rule run after import.
       // Warning: the wrapper runs rebuild_account_balances over the full
       // ledger. An await here delays the "Import Complete" toast on every
-      // import. Do not await this call (performance review, phase 7b).
+      // import. Do not await this call.
       // The wrapper also rejects a collaborator_accountant role and any
       // other non-owner, non-manager caller. The 5-minute cron sweep
       // still drains the batch. A failure here must not fail the import

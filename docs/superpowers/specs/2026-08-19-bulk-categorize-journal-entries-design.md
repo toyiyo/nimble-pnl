@@ -137,6 +137,12 @@ Set-level guards, checked once (mirror of 20260709120000 lines 57-65,
    `BANK_TRANSACTIONS_PAGE_SIZE`), and `selectAll` can exceed it after
    `loadMore()` (src/pages/Transactions.tsx:60-67,520-525).
 
+**Amendment (2026-08-20):** Guard 1 now checks two conditions, not one.
+A caller must have a matching `user_restaurants` row, and the `edit:transactions`
+capability. See
+docs/superpowers/specs/2026-08-20-bulk-categorize-capability-guard-design.md
+and supabase/migrations/20260820100000_bulk_categorize_capability_guard.sql.
+
 Per-row loop over
 `SELECT ... FROM bank_transactions WHERE id = ANY(p_transaction_ids) AND restaurant_id = p_restaurant_id`.
 Ids outside the tenant do not match the filter; the RPC reports them in

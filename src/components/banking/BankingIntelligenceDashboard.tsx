@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { TrendingUp, DollarSign, PieChart, Sparkles, AlertTriangle } from "lucide-react";
@@ -9,17 +10,36 @@ import { SpendingAnalysisTab } from "./SpendingAnalysisTab";
 import { LiquidityTab } from "./LiquidityTab";
 import { PredictionsTab } from "./PredictionsTab";
 import type { Period } from "@/components/PeriodSelector";
+import { readEnumParam } from "@/lib/periodUrlState";
+
+const DASHBOARD_TABS = ["cash-flow", "revenue", "spending", "liquidity", "predictions"] as const;
+type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
 interface BankingIntelligenceDashboardProps {
   selectedPeriod: Period;
   selectedBankAccount: string;
+  onPeriodChange: (period: Period) => void;
 }
 
 export function BankingIntelligenceDashboard({
   selectedPeriod,
   selectedBankAccount,
+  onPeriodChange,
 }: BankingIntelligenceDashboardProps) {
-  const [activeTab, setActiveTab] = useState("cash-flow");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<DashboardTab>(
+    () => readEnumParam(searchParams, "tab", DASHBOARD_TABS) ?? "cash-flow",
+  );
+
+  const handleTabChange = (value: string) => {
+    const tab = value as DashboardTab;
+    setActiveTab(tab);
+    // Read the live search string, not the hook value. The page writes the
+    // period params and the hook value can lag one render behind.
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", tab);
+    setSearchParams(params, { replace: true });
+  };
 
   return (
     <div className="space-y-6">
@@ -27,7 +47,7 @@ export function BankingIntelligenceDashboard({
       <FinancialPulseHero selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
 
       {/* Intelligence Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto">
           <TabsTrigger value="cash-flow" className="gap-2 py-2.5">
             <TrendingUp className="h-4 w-4" />
@@ -57,7 +77,11 @@ export function BankingIntelligenceDashboard({
         </TabsList>
 
         <TabsContent value="cash-flow" className="mt-6">
-          <CashFlowTab selectedPeriod={selectedPeriod} selectedBankAccount={selectedBankAccount} />
+          <CashFlowTab
+            selectedPeriod={selectedPeriod}
+            selectedBankAccount={selectedBankAccount}
+            onPeriodChange={onPeriodChange}
+          />
         </TabsContent>
 
         <TabsContent value="revenue" className="mt-6">

@@ -33,7 +33,7 @@ describe('defaultInterval', () => {
   });
 
   it('returns week for periods between 32 and 120 days', () => {
-    expect(defaultInterval(period('2026-05-01', '2026-08-31'))).toBe('week');
+    expect(defaultInterval(period('2026-06-01', '2026-08-31'))).toBe('week');
   });
 
   it('returns month for periods above 120 days', () => {

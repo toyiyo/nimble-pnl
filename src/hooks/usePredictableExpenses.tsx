@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, parseISO, differenceInDays, addDays } from "date-fns";
+import { toDateOnlyString, toInclusiveDayEnd } from "@/lib/dateOnly";
+import { fetchAllPages } from "@/lib/paginatedBankQuery";
 
 export interface PredictableExpense {
   vendor: string;
@@ -17,6 +19,16 @@ interface PredictableExpensesMetrics {
   upcomingExpenses: PredictableExpense[];
   totalExpected: number;
   highConfidenceTotal: number;
+  truncated: boolean;
+}
+
+interface PredictableExpenseTransactionRow {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  merchant_name: string | null;
+  normalized_payee: string | null;
+  description: string | null;
 }
 
 export function usePredictableExpenses(lookAheadDays: number = 30) {
@@ -34,19 +46,22 @@ export function usePredictableExpenses(lookAheadDays: number = 30) {
       const lookbackStart = addDays(today, -lookbackDays);
 
       // Fetch historical outflow transactions (including pending)
-      const { data: transactions, error } = await supabase
-        .from('bank_transactions')
-        .select('transaction_date, amount, merchant_name, normalized_payee, description')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .in('status', ['posted', 'pending'])
-        .lt('amount', 0) // Only outflows
-        .gte('transaction_date', format(lookbackStart, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(today, 'yyyy-MM-dd'))
-        .order('transaction_date', { ascending: true });
-
-      if (error) throw error;
-
-      const txns = transactions || [];
+      const { rows: txns, truncated } = await fetchAllPages<PredictableExpenseTransactionRow>(
+        async (from, to) => {
+          const { data, error } = await supabase
+            .from('bank_transactions')
+            .select('id, transaction_date, amount, merchant_name, normalized_payee, description')
+            .eq('restaurant_id', selectedRestaurant.restaurant_id)
+            .in('status', ['posted', 'pending'])
+            .lt('amount', 0) // Only outflows
+            .gte('transaction_date', format(lookbackStart, 'yyyy-MM-dd'))
+            .lte('transaction_date', toInclusiveDayEnd(toDateOnlyString(today)))
+            .order('transaction_date', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to);
+          return { data, error };
+        },
+      );
 
       // Group by vendor using normalized key for accurate pattern detection
       const vendorMap = new Map<string, { label: string; payments: Array<{ date: Date; amount: number }> }>();
@@ -144,6 +159,7 @@ export function usePredictableExpenses(lookAheadDays: number = 30) {
         upcomingExpenses,
         totalExpected,
         highConfidenceTotal,
+        truncated,
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

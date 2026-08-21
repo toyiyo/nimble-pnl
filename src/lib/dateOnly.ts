@@ -49,3 +49,14 @@ export function toDateOnlyString(date: Date): string {
 export function formatDateOnly(value: string, pattern = 'MMM d, yyyy'): string {
   return format(parseDateOnly(value), pattern);
 }
+
+/**
+ * Convert a YYYY-MM-DD calendar-day string into an inclusive upper bound for
+ * a `timestamptz` column filter. A bare 'yyyy-MM-dd' bound on `.lte()` reads
+ * as midnight and drops the whole final day, so callers filtering a
+ * `timestamptz` column by calendar day must pass this to `.lte()` instead of
+ * the bare date string.
+ */
+export function toInclusiveDayEnd(dateOnly: string): string {
+  return `${dateOnly}T23:59:59.999Z`;
+}

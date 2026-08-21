@@ -11309,6 +11309,15 @@ export type Database = {
           on_break: boolean
         }[]
       }
+      get_cash_flow_metrics: {
+        Args: {
+          p_bank_account_id?: string | null
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: Json
+      }
       get_labor_sales_analytics: {
         Args: {
           p_end_date: string

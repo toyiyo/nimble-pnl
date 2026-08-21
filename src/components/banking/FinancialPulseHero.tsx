@@ -14,8 +14,18 @@ interface FinancialPulseHeroProps {
 }
 
 export function FinancialPulseHero({ selectedPeriod, selectedBankAccount }: FinancialPulseHeroProps) {
-  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+  const { data: metrics, isLoading, error } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
   const periodDays = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
+
+  if (error) {
+    return (
+      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+        <CardContent className="p-6">
+          <p className="text-sm text-muted-foreground">Cannot load cash flow data</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (

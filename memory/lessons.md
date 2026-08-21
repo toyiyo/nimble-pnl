@@ -3012,3 +3012,29 @@
 - **Mistake:** The Phase 6 simplify pass kept six `window as any` casts and their `eslint-disable-line` comments in `tests/e2e/bank-delete-cross-tenant.spec.ts`. It checked that the lint rule was active and called the comments load-bearing. It also kept two duplicate check blocks as test-file style. Both calls rationalized the current state instead of a search for an alternative.
 - **Correction:** The Phase 7a ocr-rules reviewer found that the codebase already exports the `E2EHelperWindow` type for `page.evaluate` callbacks. Commit f4d57215 replaced all six casts with the typed cast, deleted the six disable comments, and extracted the duplicate blocks into one `transactionExists` helper. The same commit fixed the file's stale header comment, which still described the tests as RED-phase failures after the guard migration made them pass.
 - **Rule:** Before you keep an `any` cast because its disable comment is "load-bearing", grep the test helpers for an existing type — the cast is only load-bearing when no typed alternative exists. And when a later task changes a file's premise (RED tests turn GREEN), update the file's comments in that task; a comment that describes the old premise is a review finding in waiting.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-21] The minimum entry day is not the entry day of the minimum timestamp (PR #772)
+- **Mistake:** `useCalculateOpeningBalance` fetched the earliest `transaction_date` and derived one entry day from it. The hybrid convention is not monotonic. An anchor at `2026-02-01 00:00Z` keeps Feb 1. A later instant at `2026-02-01 03:30Z` maps to Jan 31 in America/Chicago. The earliest timestamp can give a later day than the true minimum. The hook also dropped the query error, so a failed fetch fell through to today's date. The codex reviewer found both (P1).
+- **Correction:** A new RPC, `min_bank_txn_entry_day(p_restaurant_id)`, returns `MIN(bank_txn_entry_day(...))` over the restaurant's transactions on the server. The hook now makes one RPC call, throws on error, and never derives a day. Suite 68 pins the anchor-plus-instant pair that inverts the order.
+- **Rule:** When a day mapping is not monotonic, aggregate over the mapped values, not over the raw values. Put the aggregate next to the mapping, in SQL. Test with one anchor and one instant that invert their order.
+
+### [2026-08-21] A closed-period guard must block moves out, not only moves in (PR #772)
+- **Mistake:** The re-date migration skipped a row only when the new derived day fell inside a closed fiscal period. A row whose old `entry_date` sat inside a closed period still moved out. A move out changes the period's historical totals in the same way as a move in. The codex reviewer found the gap (P2).
+- **Correction:** The guard now tests both days: `bank_txn_entry_day(bt.transaction_date, r.timezone) BETWEEN fp.period_start AND fp.period_end OR je.entry_date BETWEEN fp.period_start AND fp.period_end`. Suite 67 pins both collisions with one fixture per direction (plan 8 → 9).
+- **Rule:** A guard on a value change must test the old value and the new value against the protected range. Write one fixture per direction. Production held 0 closed periods, so the blast-radius count could not show the gap — a symmetric guard is a code property, not a data property.
+
+## Category: Workflow / PR Hygiene (continued)
+
+### [2026-08-21] A wrong sentence in the PR body becomes a review finding against correct code (PR #772)
+- **Mistake:** The PR body said an invalid or null timezone falls back to UTC. The code and the design doc say: null falls back to `America/Chicago` (the column default), and only an invalid string falls back to the UTC day. CodeRabbit read the body, saw a mismatch with the code, and demanded a UTC fallback for null (finding 3825938826). That change would contradict the approved design.
+- **Correction:** The fix was to the PR body, not to the code. The reply pushed back with the design-doc citation and the suite 65 tests that pin both fallbacks.
+- **Rule:** The PR body is review input. Check every behavior sentence in it against the code before you publish. When a finding contradicts the design, first check whether the reviewer quoted your own wrong words.
+
+## Category: Database Tests (pgTAP) (continued)
+
+### [2026-08-21] An assertion that depends on a column default must pin the value in the fixture (PR #772)
+- **Mistake:** Suites 22, 23, and `categorization_background_rules.test.sql` asserted local-day results for restaurants that never set `timezone`. The assertions held only because the column default is `'America/Chicago'`. A change to the default would move the expected days and fail three suites for an unrelated reason. A review finding flagged the hidden dependency.
+- **Correction:** Each suite now pins the timezone: an explicit `UPDATE restaurants SET timezone = 'America/Chicago'`, or the value in the INSERT, with a comment that names the dependency.
+- **Rule:** When an expected value depends on a column value, set that value in the fixture. A schema default is not part of the test's contract.

@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { fetchAllPages } from "@/lib/paginatedBankQuery";
+import { toInclusiveDayEnd } from "@/lib/dateOnly";
 
 interface RevenueHealthMetrics {
   depositFrequency: number; // days between deposits
@@ -63,9 +64,7 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
           .eq('restaurant_id', selectedRestaurant.restaurant_id)
           .eq('status', 'posted')
           .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-          // `transaction_date` is timestamptz. A bare 'yyyy-MM-dd' bound reads
-          // as midnight and drops the whole final day.
-          .lte('transaction_date', `${format(endDate, 'yyyy-MM-dd')}T23:59:59.999Z`);
+          .lte('transaction_date', toInclusiveDayEnd(format(endDate, 'yyyy-MM-dd')));
 
         // Apply bank account filter if specified
         if (bankAccountId && bankAccountId !== 'all') {

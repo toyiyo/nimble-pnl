@@ -4,6 +4,7 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, parseISO } from "date-fns";
 import { isTransferCategoryType } from "@/lib/chartOfAccountsUtils";
 import { fetchAllPages } from "@/lib/paginatedBankQuery";
+import { toInclusiveDayEnd } from "@/lib/dateOnly";
 
 // Processing fee detection patterns
 const PROCESSING_FEE_PATTERNS = [
@@ -73,9 +74,7 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
           .in('status', ['posted', 'pending'])
           .eq('is_transfer', false)
           .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-          // `transaction_date` is timestamptz. A bare 'yyyy-MM-dd' bound reads
-          // as midnight and drops the whole final day.
-          .lte('transaction_date', `${format(endDate, 'yyyy-MM-dd')}T23:59:59.999Z`);
+          .lte('transaction_date', toInclusiveDayEnd(format(endDate, 'yyyy-MM-dd')));
 
         if (bankAccountId && bankAccountId !== 'all') {
           txQuery = txQuery.eq('connected_bank_id', bankAccountId);

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, parseISO, differenceInDays, addDays } from "date-fns";
-import { toDateOnlyString } from "@/lib/dateOnly";
+import { toDateOnlyString, toInclusiveDayEnd } from "@/lib/dateOnly";
 import { fetchAllPages } from "@/lib/paginatedBankQuery";
 
 export interface PredictableExpense {
@@ -55,7 +55,7 @@ export function usePredictableExpenses(lookAheadDays: number = 30) {
             .in('status', ['posted', 'pending'])
             .lt('amount', 0) // Only outflows
             .gte('transaction_date', format(lookbackStart, 'yyyy-MM-dd'))
-            .lte('transaction_date', `${toDateOnlyString(today)}T23:59:59.999Z`)
+            .lte('transaction_date', toInclusiveDayEnd(toDateOnlyString(today)))
             .order('transaction_date', { ascending: true })
             .order('id', { ascending: true })
             .range(from, to);

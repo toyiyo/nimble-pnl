@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { startOfMonth, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { toDateOnlyString } from '@/lib/dateOnly';
+import { toDateOnlyString, toInclusiveDayEnd } from '@/lib/dateOnly';
 import { fetchAllPages } from '@/lib/paginatedBankQuery';
 import {
   type CashFlowRow,
@@ -74,9 +74,7 @@ async function fetchAllRows(
       .eq('restaurant_id', restaurantId)
       .eq('status', 'posted')
       .gte('transaction_date', fetchFrom)
-      // `transaction_date` is timestamptz. A bare 'yyyy-MM-dd' bound reads
-      // as midnight and drops the whole final day.
-      .lte('transaction_date', `${fetchTo}T23:59:59.999Z`);
+      .lte('transaction_date', toInclusiveDayEnd(fetchTo));
 
     if (bankAccountId && bankAccountId !== 'all') {
       query = query.eq('connected_bank_id', bankAccountId);

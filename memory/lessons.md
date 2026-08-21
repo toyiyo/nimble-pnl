@@ -3003,3 +3003,31 @@
 - **Mistake:** The backfill predicate mirrored `bulk_categorize_bank_transactions` but listed only five of its six eligibility guards. `is_reconciled = false` was absent. Production had 0 reconciled candidates, so no wrong rows were written — but the function stays in the database for later reruns, where the gap becomes live. CodeRabbit found it. The tests had the same blind spot: every eligible fixture was a negative amount, so half of each `CASE WHEN amount < 0` branch in the line insert ran untested.
 - **Correction:** Added `AND bt.is_reconciled = false` plus a reconciled fixture that asserts no entry. Added a positive-amount fixture with debit-cash and credit-category assertions (plan 14 → 19).
 - **Rule:** Before you ship a predicate that mirrors an RPC, write the RPC's guards in one list and the predicate's in another. Every guard must appear in both, or the difference needs a written reason. Then fixture every `CASE` branch the insert contains — one eligible row per sign is the minimum for a ledger write.
+
+## Category: CI / Migrations (continued)
+
+### [2026-08-21] A 14-digit-prefix migration collision recurred, from two other PRs (PR #771)
+- **Mistake:** PR #767 and PR #769 each merged a migration file with the same prefix `20260820120000` to `main`. The July 21 lesson in this file names this exact failure. Neither author saw the collision, because neither branch could see the other branch's file before merge.
+- **Correction:** This branch had already met and fixed its own collision with PR #767's file (commit 669d41dd, renamed to `…120001`). The second collision, between PR #767 and PR #769, sat outside this branch — our diff does not touch either file. Filed a follow-up task to rename PR #769's file on `main` to a free prefix.
+- **Rule:** A repeated lesson in this file is a sign that the fix must live in the pipeline, not in memory. `tests/unit/migrationVersionUniqueness.test.ts` finds the collision only after both PRs merge, too late for either author to act. The real fix is a check at merge time — a required status check on `main` that runs this test on every push, so the SECOND merge fails CI before it lands, not after.
+
+## Category: Testing — Test Design (continued)
+
+### [2026-08-21] A guard test that never renders the hook passes whether the guard works or not (PR #771)
+- **Mistake:** `useCashFlowMetrics.test.tsx` had a "no restaurant selected" case, but it never rendered the hook under test. The assertion ran against nothing, so it passed with the guard present, and it would have passed with the guard removed. CodeRabbit found this during PR review.
+- **Correction:** Set `mockRestaurantContext.selectedRestaurant = null` and rendered the hook for real, so the test now exercises the actual early-return path.
+- **Rule:** A guard test must render or call the code under test. Check this by breaking the guard on purpose and confirming the test then fails. A test that stays green after you delete the guard is testing nothing.
+
+## Category: Data Integrity / RPC Contracts (continued)
+
+### [2026-08-21] A generated RPC Args type can omit `null` even when the hook already sends it (PR #771)
+- **Mistake:** The generated Supabase types typed `get_cash_flow_metrics`'s `p_bank_account_id` as `string`, but the hook passes `null` for "all accounts." `strictNullChecks` is off in this repo, so `tsc` did not catch it — the type was simply wrong, silently.
+- **Correction:** Changed the generated type to `string | null`, to match the real call site.
+- **Rule:** After you add an RPC with a nullable filter argument, check the generated Args type allows `null` at every call site that passes it. With `strictNullChecks: false`, `tsc` will not catch a missing `| null` — read the generated type by eye.
+
+## Category: E2E / Flaky Tests (continued)
+
+### [2026-08-21] `toISOString()` renders the UTC day, and a "days ago" helper can inherit the wrong day near midnight UTC (PR #771)
+- **Mistake:** `dateDaysAgo()` in `tests/e2e/financial-intelligence-cashflow.spec.ts` built a date string through `toISOString()`, which always renders the UTC day. In a timezone behind UTC, just after midnight UTC, the local calendar day is still yesterday, but `toISOString()` already names tomorrow. The test's "Today" filter check would then compare against the wrong day. CodeRabbit found the risk.
+- **Correction:** Read the date from the browser's own clock at that call site, instead of converting through UTC.
+- **Rule:** Do not build a "days ago" or "today" string with `toISOString()` when the check is a LOCAL calendar day. `toISOString()` answers a UTC question; a "Today" UI filter asks a local-day question. Read the day from the same clock the UI reads.

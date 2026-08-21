@@ -80,9 +80,7 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
           txQuery = txQuery.eq('connected_bank_id', bankAccountId);
         }
 
-        // `transaction_date` is not unique, so a second order on the primary
-        // key gives every page a total order. Without it, rows tied at a
-        // page boundary can be skipped or duplicated across pages.
+        // Paging stability rule: see fetchAllPages in paginatedBankQuery.ts.
         const { data, error } = await txQuery
           .order('transaction_date', { ascending: true })
           .order('id', { ascending: true })

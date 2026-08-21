@@ -28,7 +28,7 @@ interface RevenueHealthMetrics {
   truncated: boolean;
 }
 
-interface TransactionRow {
+interface RevenueTransactionRow {
   id: string;
   transaction_date: string;
   amount: number;
@@ -57,7 +57,7 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
       
       const revenueAccountIds = new Set(revenueAccounts?.map(a => a.id) || []);
 
-      const { rows: txns, truncated } = await fetchAllPages<TransactionRow>(async (from, to) => {
+      const { rows: txns, truncated } = await fetchAllPages<RevenueTransactionRow>(async (from, to) => {
         let query = supabase
           .from('bank_transactions')
           .select('id, transaction_date, amount, status, description, merchant_name, category_id')
@@ -71,15 +71,13 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
           query = query.eq('connected_bank_id', bankAccountId);
         }
 
-        // `transaction_date` is not unique, so a second order on the primary key
-        // gives every page a total order. Without it, rows tied at a page
-        // boundary can be skipped or duplicated across pages.
+        // Paging stability rule: see fetchAllPages in paginatedBankQuery.ts.
         const { data, error } = await query
           .order('transaction_date', { ascending: true })
           .order('id', { ascending: true })
           .range(from, to);
 
-        return { data: (data ?? null) as TransactionRow[] | null, error };
+        return { data: (data ?? null) as RevenueTransactionRow[] | null, error };
       });
       
       // Filter deposits (inflows)

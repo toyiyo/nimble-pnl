@@ -22,6 +22,12 @@ export interface FetchAllPagesResult<T> {
  * `buildPage(from, to)` must run one `.range(from, to)` query and return
  * its `{ data, error }` result. Stops at the first page shorter than
  * `PAGE_SIZE`, at `MAX_PAGES`, or at the first page error.
+ *
+ * Paging stability rule for the caller's `.order()` calls: order by
+ * `transaction_date` first, then by the row's primary key (`id`).
+ * `transaction_date` is not unique, so the second order gives every page
+ * a total order. Without it, rows tied at a page boundary can be skipped
+ * or duplicated across pages.
  */
 export async function fetchAllPages<T>(
   buildPage: (from: number, to: number) => Promise<PageResult<T>>,

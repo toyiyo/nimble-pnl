@@ -27,6 +27,7 @@ export function useCashFlowMetrics(startDate: Date, endDate: Date, bankAccountId
       });
 
       if (error) throw error;
+      if (!data) throw new Error("No cash flow data returned");
 
       const result = data as unknown as CashFlowMetricsResponse;
 

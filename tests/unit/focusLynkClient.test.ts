@@ -96,6 +96,65 @@ function makeFetch(opts: {
   });
 }
 
+// ── Sequential fetch double for the poll flow ────────────────────────────────
+
+type SeqResponse = { status?: number; body?: string; throws?: boolean };
+
+/**
+ * Build a fetch mock that answers calls in order from `responses`.
+ * The last entry repeats when calls run past the end.
+ */
+function makeSeqFetch(responses: SeqResponse[]) {
+  let call = 0;
+  return vi.fn(async (_url: string) => {
+    const r = responses[Math.min(call, responses.length - 1)];
+    call++;
+    if (r.throws) throw new Error('network error');
+    const status = r.status ?? 200;
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      text: async () => r.body ?? '',
+    } as Response;
+  });
+}
+
+/** Initial 2xx response with no blob_url and error_condition InProgress (new path). */
+const QUEUED_BODY = JSON.stringify({
+  pos_response: {
+    header: { category: 'LegacyDatafeed', type: 'Response', request_id: 'x.1' },
+    payload: { response: { result: 'Success', error_condition: 'InProgress' } },
+  },
+});
+
+/** Build a Status response body whose wrapper carries `innerPayload`. */
+function wrapperBody(innerPayload: Record<string, unknown>): string {
+  return JSON.stringify({
+    pos_response: {
+      header: { category: 'Status', type: 'Response', request_id: 'x.2' },
+      payload: {
+        repeated_message_response: {
+          header: { category: 'LegacyDatafeed', type: 'Response', request_id: 'x.1' },
+          payload: innerPayload,
+        },
+        response: { result: 'Success', error_condition: 'None' },
+      },
+    },
+  });
+}
+
+const WRAPPER_READY = wrapperBody({
+  blob_url: BLOB_URL,
+  expires_at_utc: '2026-08-21T17:35:53.2566551Z',
+  response: { result: 'Success', error_condition: 'None' },
+});
+
+const WRAPPER_PENDING = wrapperBody({
+  response: { result: 'Success', error_condition: 'InProgress' },
+});
+
+const XML_RESPONSE: SeqResponse = { body: SAMPLE_XML };
+
 // ── focusApiBaseUrl ───────────────────────────────────────────────────────────
 
 describe('focusApiBaseUrl', () => {
@@ -267,17 +326,6 @@ describe('fetchDatafeed', () => {
     );
   });
 
-  // ── InProgress ───────────────────────────────────────────────────────────────
-
-  it('returns ok:false kind=inprogress when Lynk response has error_condition "InProgress"', async () => {
-    const inProgressBody = JSON.stringify({
-      pos_response: { error_condition: 'InProgress' },
-    });
-    const fetchFn = makeFetch({ syncBody: inProgressBody });
-    const result = await fetchDatafeed({ fetch: fetchFn }, CONFIG, BUSINESS_DATE);
-    expect(result).toMatchObject({ ok: false, kind: 'inprogress' });
-  });
-
   // ── HTTP errors ──────────────────────────────────────────────────────────────
 
   it('maps Lynk 401 response to kind=auth', async () => {
@@ -439,75 +487,121 @@ describe('fetchDatafeed', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  // ── Transient no-blob_url retry ───────────────────────────────────────────────
+  // ── Status poll loop ─────────────────────────────────────────────────────────
 
-  it('retries once when the first Lynk response is missing blob_url and the second succeeds', async () => {
-    // First POST: 200 with no blob_url (transient Focus back-end issue)
-    // Second POST: 200 with blob_url (retry succeeds)
-    // Blob download: returns XML
-    let postCallCount = 0;
-    const fetchFn = vi.fn(async (url: string) => {
-      // The blob GET has a different URL (blob.core.windows.net)
-      if (url !== `${PROD_BASE}/api/lynk/sync`) {
-        // Blob download — always succeeds
-        return {
-          status: 200,
-          ok: true,
-          text: async () => SAMPLE_XML,
-        } as Response;
-      }
-      postCallCount++;
-      if (postCallCount === 1) {
-        // First attempt: missing blob_url
-        return {
-          status: 200,
-          ok: true,
-          text: async () => JSON.stringify({ pos_response: { payload: {} } }),
-        } as Response;
-      }
-      // Second attempt: has blob_url
-      return {
-        status: 200,
-        ok: true,
-        text: async () => JSON.stringify({ pos_response: { payload: { blob_url: BLOB_URL } } }),
-      } as Response;
+  describe('fetchDatafeed Status poll', () => {
+    const noSleep = () => Promise.resolve();
+
+    it('fast path: blob_url in the initial response → no Status POST, no sleep', async () => {
+      const fetchFn = makeFetch({});
+      const sleepMock = vi.fn().mockResolvedValue(undefined);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: sleepMock },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+      expect(fetchFn).toHaveBeenCalledTimes(2); // sync POST + blob GET
+      expect(sleepMock).not.toHaveBeenCalled();
     });
 
-    const sleepMock = vi.fn().mockResolvedValue(undefined);
-    const result = await fetchDatafeed({ fetch: fetchFn, sleep: sleepMock }, CONFIG, BUSINESS_DATE);
+    it('queued initial response → sleeps 5000 ms, then POSTs a Status request', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { body: WRAPPER_READY },
+        XML_RESPONSE,
+      ]);
+      const sleepMock = vi.fn().mockResolvedValue(undefined);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: sleepMock },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+      expect(sleepMock).toHaveBeenCalledTimes(1);
+      expect(sleepMock).toHaveBeenCalledWith(5000);
 
-    expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
-    // Two POSTs to the Lynk sync endpoint + one blob GET
-    expect(postCallCount).toBe(2);
-    expect(fetchFn).toHaveBeenCalledTimes(3);
-    // sleep was called once between the two POST attempts
-    expect(sleepMock).toHaveBeenCalledTimes(1);
-    expect(sleepMock).toHaveBeenCalledWith(expect.any(Number));
-  });
-
-  it('returns kind=parse error after two attempts when both Lynk responses are missing blob_url', async () => {
-    // Both POST attempts are missing blob_url — should give up after 2 attempts.
-    let postCallCount = 0;
-    const noBlobBody = JSON.stringify({ pos_response: { payload: {} } });
-    const fetchFn = vi.fn(async () => {
-      postCallCount++;
-      return {
-        status: 200,
-        ok: true,
-        text: async () => noBlobBody,
-      } as Response;
+      // The second POST is a Status request that references the initial request_id.
+      const [, initInitial] = fetchFn.mock.calls[0] as [string, RequestInit];
+      const [pollUrl, initPoll] = fetchFn.mock.calls[1] as [string, RequestInit];
+      expect(pollUrl).toBe(`${PROD_BASE}/api/lynk/sync`);
+      const initialBody = JSON.parse(initInitial.body as string);
+      const pollBody = JSON.parse(initPoll.body as string);
+      expect(pollBody.pos_request.header.category).toBe('Status');
+      expect(pollBody.pos_request.payload.request_reference).toBe(
+        initialBody.pos_request.header.request_id,
+      );
     });
 
-    const sleepMock = vi.fn().mockResolvedValue(undefined);
-    const result = await fetchDatafeed({ fetch: fetchFn, sleep: sleepMock }, CONFIG, BUSINESS_DATE);
+    it('poll request ids follow ${base}.${n}: initial .1, polls .2 and .3', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { body: WRAPPER_PENDING },
+        { body: WRAPPER_READY },
+        XML_RESPONSE,
+      ]);
+      await fetchDatafeed({ fetch: fetchFn, sleep: noSleep }, CONFIG, BUSINESS_DATE);
 
-    expect(result).toMatchObject({ ok: false, kind: 'parse' });
-    if (!result.ok) {
-      expect(result.error).toMatch(/blob_url/);
-    }
-    // Exactly 2 POSTs (original + 1 retry) — no third attempt
-    expect(postCallCount).toBe(2);
-    // sleep was called once (before the retry)
-    expect(sleepMock).toHaveBeenCalledTimes(1);
+      const ids = [0, 1, 2].map((i) => {
+        const [, init] = fetchFn.mock.calls[i] as [string, RequestInit];
+        return JSON.parse(init.body as string).pos_request.header.request_id as string;
+      });
+      expect(ids[0]).toMatch(/\.1$/);
+      expect(ids[1]).toMatch(/\.2$/);
+      expect(ids[2]).toMatch(/\.3$/);
+      const base = ids[0].slice(0, -2);
+      expect(ids[1]).toBe(`${base}.2`);
+      expect(ids[2]).toBe(`${base}.3`);
+    });
+
+    it('blob_url arrives on poll 3 → three sleeps of 5000 ms', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { body: WRAPPER_PENDING },
+        { body: WRAPPER_PENDING },
+        { body: WRAPPER_READY },
+        XML_RESPONSE,
+      ]);
+      const sleepMock = vi.fn().mockResolvedValue(undefined);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: sleepMock },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+      expect(sleepMock).toHaveBeenCalledTimes(3);
+      expect(sleepMock).toHaveBeenNthCalledWith(3, 5000);
+    });
+
+    it('initial response with the OLD top-level error_condition path enters the poll', async () => {
+      // The old dead-path shape stays supported as a fallback.
+      const oldShape = JSON.stringify({ pos_response: { error_condition: 'InProgress' } });
+      const fetchFn = makeSeqFetch([
+        { body: oldShape },
+        { body: WRAPPER_READY },
+        XML_RESPONSE,
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+      expect(fetchFn).toHaveBeenCalledTimes(3);
+    });
+
+    it('initial response with the NEW payload.response error_condition path enters the poll', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { body: WRAPPER_READY },
+        XML_RESPONSE,
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+    });
   });
 });

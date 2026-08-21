@@ -25,6 +25,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   focusApiBaseUrl,
   buildLynkRequest,
+  buildStatusRequest,
   fetchDatafeed,
   type FocusLynkConfig,
 } from '../../supabase/functions/_shared/focusLynkClient.ts';
@@ -150,6 +151,26 @@ describe('buildLynkRequest', () => {
   it('throws on a malformed date (not YYYY-MM-DD)', () => {
     expect(() => buildLynkRequest('06/29/2026', 'req-001')).toThrow(/YYYY-MM-DD/);
     expect(() => buildLynkRequest('2026-6-29', 'req-001')).toThrow(/YYYY-MM-DD/);
+  });
+});
+
+// ── buildStatusRequest ───────────────────────────────────────────────────────
+
+describe('buildStatusRequest', () => {
+  it('returns pos_request.header.category = "Status" and type = "Request"', () => {
+    const body = buildStatusRequest('base.1', 'base.2');
+    expect(body.pos_request.header.category).toBe('Status');
+    expect(body.pos_request.header.type).toBe('Request');
+  });
+
+  it('embeds the provided request_id in the header', () => {
+    const body = buildStatusRequest('base.1', 'base.2');
+    expect(body.pos_request.header.request_id).toBe('base.2');
+  });
+
+  it('embeds the reference in payload.request_reference', () => {
+    const body = buildStatusRequest('base.1', 'base.2');
+    expect(body.pos_request.payload.request_reference).toBe('base.1');
   });
 });
 

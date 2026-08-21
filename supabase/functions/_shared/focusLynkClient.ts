@@ -182,6 +182,34 @@ export function buildLynkRequest(
 }
 
 /**
+ * Build the JSON body for a Lynk Status poll request.
+ *
+ * The Status request asks Focus for the state of an earlier request.
+ * The response wraps the referenced message in
+ * `pos_response.payload.repeated_message_response`.
+ *
+ * @param requestReference request_id of the initial LegacyDatafeed request
+ * @param requestId        Unique id for this poll request
+ */
+export function buildStatusRequest(
+  requestReference: string,
+  requestId: string,
+): { pos_request: { header: Record<string, string>; payload: Record<string, string> } } {
+  return {
+    pos_request: {
+      header: {
+        category: 'Status',
+        type: 'Request',
+        request_id: requestId,
+      },
+      payload: {
+        request_reference: requestReference,
+      },
+    },
+  };
+}
+
+/**
  * Fetch one day of datafeed XML from the Focus POS Lynk API.
  *
  * Never throws — returns a discriminated result so callers can surface a

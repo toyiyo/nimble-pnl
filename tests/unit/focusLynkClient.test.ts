@@ -153,6 +153,17 @@ const WRAPPER_PENDING = wrapperBody({
   response: { result: 'Success', error_condition: 'InProgress' },
 });
 
+const WRAPPER_NOTFOUND = wrapperBody({
+  response: { result: 'Failure', error_condition: 'NotFound' },
+});
+
+/** A 2xx JSON poll response with no wrapper and no pending condition. */
+const NO_SIGNAL_BODY = JSON.stringify({
+  pos_response: {
+    payload: { response: { result: 'Success', error_condition: 'None' } },
+  },
+});
+
 const XML_RESPONSE: SeqResponse = { body: SAMPLE_XML };
 
 // ── focusApiBaseUrl ───────────────────────────────────────────────────────────
@@ -364,11 +375,11 @@ describe('fetchDatafeed', () => {
     expect(result).toMatchObject({ ok: false, kind: 'parse' });
   });
 
-  it('maps a 200 Lynk response with no blob_url to kind=parse', async () => {
-    const fetchFn = makeFetch({
-      syncBody: JSON.stringify({ pos_response: { payload: {} } }),
-    });
-    // Inject a no-op sleep so the retry doesn't add 1 500ms of wall time
+  it('maps a non-JSON poll body to kind=parse', async () => {
+    const fetchFn = makeSeqFetch([
+      { body: QUEUED_BODY },
+      { body: 'not json at all{' },
+    ]);
     const result = await fetchDatafeed(
       { fetch: fetchFn, sleep: () => Promise.resolve() },
       CONFIG,
@@ -602,6 +613,122 @@ describe('fetchDatafeed', () => {
         BUSINESS_DATE,
       );
       expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+    });
+
+    it('cap exhaustion: 4 pending polls → kind=inprogress', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { body: WRAPPER_PENDING },
+      ]);
+      const sleepMock = vi.fn().mockResolvedValue(undefined);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: sleepMock },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'inprogress' });
+      expect(fetchFn).toHaveBeenCalledTimes(5); // initial + 4 polls
+      expect(sleepMock).toHaveBeenCalledTimes(4);
+    });
+
+    it('inner NotFound → kind=inprogress with a NotFound message, no further polls', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { body: WRAPPER_NOTFOUND },
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'inprogress' });
+      if (!result.ok) {
+        expect(result.error).toMatch(/NotFound/);
+      }
+      expect(fetchFn).toHaveBeenCalledTimes(2); // initial + 1 poll, then stop
+    });
+
+    it('no pending signal in any response → kind=parse, not inprogress', async () => {
+      // Initial: 2xx JSON, no blob_url, no condition. Polls: no wrapper, no condition.
+      const noSignalInitial = JSON.stringify({ pos_response: { payload: {} } });
+      const fetchFn = makeSeqFetch([
+        { body: noSignalInitial },
+        { body: NO_SIGNAL_BODY },
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'parse' });
+      if (!result.ok) {
+        expect(result.error).toMatch(/blob_url/);
+      }
+    });
+
+    it('unknown inner error_condition → logs the value and keeps polling', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const throttled = wrapperBody({
+          response: { result: 'Failure', error_condition: 'Throttled' },
+        });
+        const fetchFn = makeSeqFetch([
+          { body: QUEUED_BODY },
+          { body: throttled },
+          { body: WRAPPER_READY },
+          XML_RESPONSE,
+        ]);
+        const result = await fetchDatafeed(
+          { fetch: fetchFn, sleep: noSleep },
+          CONFIG,
+          BUSINESS_DATE,
+        );
+        expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Throttled'),
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('HTTP 500 on a poll → kind=http with status 500', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { status: 500, body: 'Internal Server Error' },
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'http', status: 500 });
+    });
+
+    it('HTTP 401 on a poll → kind=auth', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { status: 401, body: '{"error":"Unauthorized"}' },
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'auth', status: 401 });
+    });
+
+    it('network throw on a poll → kind=network', async () => {
+      const fetchFn = makeSeqFetch([
+        { body: QUEUED_BODY },
+        { throws: true },
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'network' });
     });
   });
 });

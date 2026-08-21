@@ -9,18 +9,21 @@
  *     auth: HTTP Basic (apiKey:apiSecret)
  *     header: focuspos-restaurant-id: {restaurantGuid}
  *
- * On success the response contains `pos_response.payload.blob_url`, a
- * time-limited Azure SAS URL. The client GETs that URL and returns the XML
- * string to the caller.
+ * When the response contains `pos_response.payload.blob_url` (a time-limited
+ * Azure SAS URL), the client GETs that URL and returns the XML string.
  *
- * On `pos_response.error_condition === "InProgress"` the datafeed is not yet
- * ready; the caller should retry on the next cron pass (kind = "inprogress").
+ * When the response has no blob_url, the datafeed is queued. The client polls
+ * the same endpoint with Status requests that reference the initial
+ * request_id. The poll response wraps the referenced message in
+ * `pos_response.payload.repeated_message_response`. After STATUS_POLL_MAX
+ * polls the client returns kind = "inprogress"; the caller retries on the
+ * next cron pass.
  *
  * SSRF guard:
  *  - baseUrl must be https + host (sub.)focuspos.com, no userinfo.
  *  - blob_url must be https + host (sub.)blob.core.windows.net, no userinfo.
  *
- * Design ref: design §2 (Lynk Datafeed), §6 (SSRF guard).
+ * Design ref: docs/superpowers/specs/2026-08-21-focus-lynk-async-datafeed-design.md
  */
 
 // ── SSRF allow-lists ─────────────────────────────────────────────────────────
@@ -65,9 +68,9 @@ export interface FocusLynkDeps {
   /** fetch implementation. Production: globalThis.fetch. Tests: a vi.fn() double. */
   fetch: typeof fetch;
   /**
-   * Optional delay function injected for tests so the retry does not actually
-   * sleep. Production: omit (defaults to a real 1 500 ms sleep). Tests: pass
-   * `() => Promise.resolve()` or a spy that resolves immediately.
+   * Optional delay function injected for tests so the Status poll does not
+   * actually sleep. Production: omit (defaults to a real setTimeout sleep).
+   * Tests: pass `() => Promise.resolve()` or a spy that resolves immediately.
    */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -396,6 +399,23 @@ export async function fetchDatafeed(
       const wrapper = pollRes.json?.pos_response?.payload?.repeated_message_response;
       if (wrapper) {
         pendingSignal = true;
+        const inner: string | undefined = wrapper?.payload?.response?.error_condition;
+        if (inner === 'NotFound') {
+          return {
+            ok: false,
+            status: lastStatus,
+            kind: 'inprogress',
+            error:
+              'Focus POS lost the datafeed request reference (NotFound); a new request starts on the next pass',
+          };
+        }
+        if (inner && inner !== 'None' && inner !== 'InProgress') {
+          // Unknown vendor condition — log it so it does not hide behind
+          // "still generating". Never log a URL here without redaction.
+          console.warn(
+            `focusLynkClient: unknown error_condition "${inner}" in a Status poll response`,
+          );
+        }
         blobUrl = wrapper?.payload?.blob_url;
       } else if (lynkErrorCondition(pollRes.json?.pos_response) === 'InProgress') {
         pendingSignal = true;
@@ -404,6 +424,9 @@ export async function fetchDatafeed(
 
     if (!blobUrl) {
       if (pendingSignal) {
+        console.warn(
+          `focusLynkClient: poll cap exhausted (${STATUS_POLL_MAX} polls) for business date ${businessDate}`,
+        );
         return {
           ok: false,
           status: lastStatus,

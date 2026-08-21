@@ -243,7 +243,16 @@ test.describe('Financial Intelligence — Cash Flow view', () => {
     const restaurantId = await getRestaurantId(page);
     expect(restaurantId).toBeTruthy();
 
-    const today = await dateDaysAgo(page, 0);
+    // Read today's local calendar day straight from the browser clock.
+    // dateDaysAgo() converts through toISOString(), which reads UTC — in
+    // zones behind UTC after midnight UTC it names tomorrow, so the seeded
+    // row would miss the "Today" UI filter (local calendar day).
+    const today = await page.evaluate(() => {
+      const date = new Date();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${date.getFullYear()}-${month}-${day}`;
+    });
 
     // Seed one ordinary row, one row at the last minute of today (the
     // final-day bound), and one transfer row. The transfer must not count

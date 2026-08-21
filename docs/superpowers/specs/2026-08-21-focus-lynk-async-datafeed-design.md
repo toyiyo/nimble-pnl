@@ -130,18 +130,23 @@ The design review checked the real cron schedules:
 
 When the poll cap runs out, the pass returns `'inprogress'` and the cursor
 stays. The next pass sends a fresh `LegacyDatafeed` request for the same
-business date. This converges for two reasons:
+business date.
 
-1. The probe evidence points to file reuse. Two probe runs on the same day
-   asked for the same business date. Both got a `blob_url` for the same
-   file name (`FTP08202026-30128-D.XML`). Focus keeps the generated file,
-   so a repeat request for a built file answers at once.
-2. Even without reuse, one generation takes 5 to 15 seconds (vendor
-   statement). That fits inside the next pass's poll budget (initial
-   request + 20 s of polls). A day completes in at most two passes.
+**Convergence is an expectation, not a proven bound.** One generation takes
+5 to 15 seconds (vendor statement). Under those conditions, a day completes
+in at most two passes: the first pass starts the build, and the next pass's
+poll budget (20 s) covers a full build. The probe cannot prove server-side
+file reuse: the blob file name encodes the date and the restaurant id
+(`FTP08202026-30128-D.XML`), so an identical name on a repeat request
+proves nothing about a cache.
 
-If production shows repeated cap exhaustion, raise `STATUS_POLL_MAX` in a
-follow-up. The exhaustion log line (see the error mapping) gives the signal.
+**Residual risk.** A business date whose build always exceeds the poll
+window can stall: every 5-minute pass restarts the build, hits the cap,
+and returns `'inprogress'`. The stall is bounded to one business date on
+one connection and loses no data. The "poll cap exhausted" log line (see
+the error mapping) makes it visible. The fix is a follow-up: raise
+`STATUS_POLL_MAX`, or count exhaustions per connection (see "Out of
+scope").
 
 ## Design
 

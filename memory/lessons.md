@@ -3008,6 +3008,33 @@
 - **Correction:** Added `AND bt.is_reconciled = false` plus a reconciled fixture that asserts no entry. Added a positive-amount fixture with debit-cash and credit-category assertions (plan 14 → 19).
 - **Rule:** Before you ship a predicate that mirrors an RPC, write the RPC's guards in one list and the predicate's in another. Every guard must appear in both, or the difference needs a written reason. Then fixture every `CASE` branch the insert contains — one eligible row per sign is the minimum for a ledger write.
 
+## Category: CI / Migrations (continued)
+
+### [2026-08-21] A 14-digit-prefix migration collision recurred, from two other PRs (PR #771)
+- **Mistake:** PR #767 and PR #769 each merged a migration file with the same prefix `20260820120000` to `main`. The July 21 lesson in this file names this exact failure. Neither author saw the collision, because neither branch could see the other branch's file before merge.
+- **Correction:** This branch had already met and fixed its own collision with PR #767's file (commit 669d41dd, renamed to `…120001`). The second collision, between PR #767 and PR #769, was outside this branch — our diff does not touch either file. Filed a follow-up task to rename PR #769's file on `main` to a free prefix.
+- **Rule:** A repeated lesson in this file is a sign that the fix must live in the pipeline, not in memory. `tests/unit/migrationVersionUniqueness.test.ts` finds the collision only after both PRs merge, too late for either author to act. The real fix is a check at merge time — a required status check on `main` that runs this test on every push, so CI fails the second PR before the merge, not after.
+
+## Category: Testing — Test Design (continued)
+
+### [2026-08-21] A guard test that never renders the hook passes whether the guard works or not (PR #771)
+- **Mistake:** `useCashFlowMetrics.test.tsx` had a "no restaurant selected" case, but it never rendered the hook under test. The assertion ran against nothing, so it passed with the guard present, and it would have passed with the guard removed. CodeRabbit found this during PR review.
+- **Correction:** Set `mockRestaurantContext.selectedRestaurant = null` and rendered the hook for real, so the test now exercises the actual early-return path.
+- **Rule:** A guard test must render or call the code under test. Check this by breaking the guard on purpose and confirming the test then fails. A test that continues to pass after you delete the guard tests nothing.
+
+## Category: Data Integrity / RPC Contracts (continued)
+
+### [2026-08-21] A generated RPC Args type can omit `null` even when the hook already sends it (PR #771)
+- **Mistake:** The generated Supabase types typed `get_cash_flow_metrics`'s `p_bank_account_id` as `string`, but the hook passes `null` for "all accounts." `strictNullChecks` is off in this repo, so `tsc` did not catch it — the type was simply wrong, silently.
+- **Correction:** Changed the generated type to `string | null`, to match the real call site.
+- **Rule:** After you add an RPC with a nullable filter argument, check the generated Args type allows `null` at every call site that passes it. With `strictNullChecks: false`, `tsc` will not catch a missing `| null` — inspect the generated type manually.
+
+## Category: E2E / Flaky Tests (continued)
+
+### [2026-08-21] `toISOString()` renders the UTC day, and a "days ago" helper can inherit the wrong day near midnight UTC (PR #771)
+- **Mistake:** `dateDaysAgo()` in `tests/e2e/financial-intelligence-cashflow.spec.ts` built a date string through `toISOString()`, which always renders the UTC day. In a timezone behind UTC, immediately after midnight UTC, the local calendar day is still the previous day, but `toISOString()` already names the next day. The test's "Today" filter check would then compare against the wrong day. CodeRabbit found the risk.
+- **Correction:** Read the date from the browser's own clock at that call site, instead of converting through UTC.
+- **Rule:** Do not build a "days ago" or "today" string with `toISOString()` when the check is a LOCAL calendar day. `toISOString()` answers a UTC question; a "Today" UI filter asks a local-day question. Read the day from the same clock the UI reads.
 ## Category: Code Review (continued)
 
 ### [2026-08-20] A "load-bearing" eslint-disable is a search you have not run yet (PR #767)
@@ -3015,9 +3042,33 @@
 - **Correction:** The Phase 7a ocr-rules reviewer found that the codebase already exports the `E2EHelperWindow` type for `page.evaluate` callbacks. Commit f4d57215 replaced all six casts with the typed cast, deleted the six disable comments, and extracted the duplicate blocks into one `transactionExists` helper. The same commit fixed the file's stale header comment, which still described the tests as RED-phase failures after the guard migration made them pass.
 - **Rule:** Before you keep an `any` cast because its disable comment is "load-bearing", grep the test helpers for an existing type — the cast is only load-bearing when no typed alternative exists. And when a later task changes a file's premise (RED tests turn GREEN), update the file's comments in that task; a comment that describes the old premise is a review finding in waiting.
 
+## Category: Data Accuracy (continued)
+
+### [2026-08-21] The minimum entry day is not the entry day of the minimum timestamp (PR #772)
+- **Mistake:** `useCalculateOpeningBalance` fetched the earliest `transaction_date` and derived one entry day from it. The hybrid convention is not monotonic. An anchor at `2026-02-01 00:00Z` keeps Feb 1. A later instant at `2026-02-01 03:30Z` maps to Jan 31 in America/Chicago. The earliest timestamp can give a later day than the true minimum. The hook also dropped the query error, so a failed fetch fell through to today's date. The codex reviewer found both (P1).
+- **Correction:** A new RPC, `min_bank_txn_entry_day(p_restaurant_id)`, returns `MIN(bank_txn_entry_day(...))` over the restaurant's transactions on the server. The hook now makes one RPC call, throws on error, and never derives a day. Suite 68 pins the anchor-plus-instant pair that inverts the order.
+- **Rule:** When a day mapping is not monotonic, aggregate over the mapped values, not over the raw values. Put the aggregate next to the mapping, in SQL. Test with one anchor and one instant that invert their order.
+
+### [2026-08-21] A closed-period guard must block moves out, not only moves in (PR #772)
+- **Mistake:** The re-date migration skipped a row only when the new derived day fell inside a closed fiscal period. A row whose old `entry_date` sat inside a closed period still moved out. A move out changes the period's historical totals in the same way as a move in. The codex reviewer found the gap (P2).
+- **Correction:** The guard now tests both days: `bank_txn_entry_day(bt.transaction_date, r.timezone) BETWEEN fp.period_start AND fp.period_end OR je.entry_date BETWEEN fp.period_start AND fp.period_end`. Suite 67 pins both collisions with one fixture per direction (plan 8 → 9).
+- **Rule:** A guard on a value change must test the old value and the new value against the protected range. Write one fixture per direction. Production held 0 closed periods, so the blast-radius count could not show the gap — a symmetric guard is a code property, not a data property.
+
+## Category: Workflow / PR Hygiene (continued)
+
+### [2026-08-21] A wrong sentence in the PR body becomes a review finding against correct code (PR #772)
+- **Mistake:** The PR body said an invalid or null timezone falls back to UTC. The code and the design doc say: null falls back to `America/Chicago` (the column default), and only an invalid string falls back to the UTC day. CodeRabbit read the body, saw a mismatch with the code, and demanded a UTC fallback for null (finding 3825938826). That change would contradict the approved design.
+- **Correction:** The fix was to the PR body, not to the code. The reply pushed back with the design-doc citation and the suite 65 tests that pin both fallbacks.
+- **Rule:** The PR body is review input. Check every behavior sentence in it against the code before you publish. When a finding contradicts the design, first check whether the reviewer quoted your own wrong words.
+
 ## Category: Database Tests (pgTAP) (continued)
 
 ### [2026-08-20] A RED-phase denial test executes for real and poisons later tests (PR #770)
 - **Mistake:** The plan predicted 2 failing tests in the RED phase for a new capability guard: the `throws_like '%Access denied%'` denial test and its no-side-effect check. The run showed 3 failures. Under the old, un-guarded function body the denial test's RPC call does not raise — it *succeeds*, and categorizes the fixture row for real. The success test that reused the same row and category then landed in the "already categorized, same category" branch and reported `unchanged_count` instead of `categorized_count`.
 - **Correction:** The guard landed and all 37 tests passed; the plan doc was updated to predict 3 RED failures with the cascade explained. No code change was needed — the wrong prediction cost a debugging detour during the RED run.
 - **Rule:** In the RED phase, a denial test is a *live call* under the old permissive body. Trace its real side effects through every later test that shares its fixtures before predicting the failure count. Either give the denial test fixtures no other test touches, or write the RED prediction by simulating the old body's actual writes, not by counting the new assertions.
+
+### [2026-08-21] An assertion that depends on a column default must pin the value in the fixture (PR #772)
+- **Mistake:** Suites 22, 23, and `categorization_background_rules.test.sql` asserted local-day results for restaurants that never set `timezone`. The assertions held only because the column default is `'America/Chicago'`. A change to the default would move the expected days and fail three suites for an unrelated reason. A review finding flagged the hidden dependency.
+- **Correction:** Each suite now pins the timezone: an explicit `UPDATE restaurants SET timezone = 'America/Chicago'`, or the value in the INSERT, with a comment that names the dependency.
+- **Rule:** When an expected value depends on a column value, set that value in the fixture. A schema default is not part of the test's contract.

@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, addDays, subDays, parseISO } from "date-fns";
+import { fetchAllPages } from "@/lib/paginatedBankQuery";
+import { toInclusiveDayEnd } from "@/lib/dateOnly";
 
 interface LiquidityMetrics {
   currentBalance: number;
@@ -15,6 +17,14 @@ interface LiquidityMetrics {
   burnRateTrend: number[];
   runwayStatus: 'healthy' | 'caution' | 'critical';
   recommendation: string;
+  truncated: boolean;
+}
+
+interface LiquidityTransactionRow {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  status: string;
 }
 
 export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
@@ -71,25 +81,29 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
 
       // Fetch recent outflows for burn rate calculation
       const periodDays = differenceInDays(endDate, startDate) + 1;
-      
-      let txnQuery = supabase
-        .from('bank_transactions')
-        .select('transaction_date, amount, status')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
-        .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
 
-      // Apply bank account filter if specified
-      if (bankAccountId && bankAccountId !== 'all') {
-        txnQuery = txnQuery.eq('connected_bank_id', bankAccountId);
-      }
+      const { rows: periodTxns, truncated } = await fetchAllPages<LiquidityTransactionRow>(async (from, to) => {
+        let txnQuery = supabase
+          .from('bank_transactions')
+          .select('id, transaction_date, amount, status')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .eq('status', 'posted')
+          .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
+          .lte('transaction_date', toInclusiveDayEnd(format(endDate, 'yyyy-MM-dd')));
 
-      const { data: periodTransactions, error: periodError } = await txnQuery.order('transaction_date', { ascending: true });
+        // Apply bank account filter if specified
+        if (bankAccountId && bankAccountId !== 'all') {
+          txnQuery = txnQuery.eq('connected_bank_id', bankAccountId);
+        }
 
-      if (periodError) throw periodError;
+        // Paging stability rule: see fetchAllPages in paginatedBankQuery.ts.
+        const { data, error } = await txnQuery
+          .order('transaction_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
 
-      const periodTxns = periodTransactions || [];
+        return { data: (data ?? null) as LiquidityTransactionRow[] | null, error };
+      });
 
       // Calculate outflows and inflows for period
       const outflows = periodTxns
@@ -189,6 +203,7 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
         burnRateTrend,
         runwayStatus,
         recommendation,
+        truncated,
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

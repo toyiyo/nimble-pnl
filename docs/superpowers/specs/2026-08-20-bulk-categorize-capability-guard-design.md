@@ -153,6 +153,19 @@ Change `supabase/tests/22_bulk_categorize_bank_transactions.sql`:
   that hides the "Select" button and the bulk action bar from that
   role, so a UI click never reaches the RPC's new Access denied guard.
 
+**Amendment (2026-08-21):** while this PR was open, PR #772 merged
+migration 20260820210200_bulk_categorize_local_entry_day.sql. That
+migration replaces the same function. It sourced its body from
+20260819231210, which predates Guard 1b, so the section 5 claim "no
+later migration redefines it" became stale. The two branches merged
+with no text conflict because each change is a separate migration
+file, but on a fresh database 20260820210200 runs last and removes
+the guard. Fix on this branch: migration
+20260821130000_bulk_categorize_guard_restore.sql replaces the
+function again with the 20260820210200 body plus Guard 1b. The pgTAP
+guard tests (22-24) run against the final function state, so they
+catch this class of silent override on every `db:reset`.
+
 ## 8. E2E position
 
 tests/e2e/bulk-edit-transactions.spec.ts already drives the allowed path

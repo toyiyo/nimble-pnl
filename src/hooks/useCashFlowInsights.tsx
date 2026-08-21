@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { startOfMonth, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { toDateOnlyString } from '@/lib/dateOnly';
+import { toDateOnlyString, toInclusiveDayEnd } from '@/lib/dateOnly';
+import { fetchAllPages } from '@/lib/paginatedBankQuery';
 import {
   type CashFlowRow,
   type CashFlowPeriod,
@@ -17,8 +18,6 @@ import {
   computeInsights,
 } from '@/lib/cashflowInsights';
 
-const PAGE_SIZE = 1000;
-const MAX_PAGES = 20;
 const HISTORY_MONTHS = 4;
 
 /** The full aggregate output the Cash Flow Insights view reads from one hook call. */
@@ -66,9 +65,7 @@ async function fetchAllRows(
   fetchTo: string,
   bankAccountId: string,
 ): Promise<FetchResult> {
-  const rows: CashFlowRow[] = [];
-
-  for (let page = 0; page < MAX_PAGES; page += 1) {
+  const { rows, truncated } = await fetchAllPages<CashFlowRow>(async (from, to) => {
     let query = supabase
       .from('bank_transactions')
       .select(
@@ -77,35 +74,22 @@ async function fetchAllRows(
       .eq('restaurant_id', restaurantId)
       .eq('status', 'posted')
       .gte('transaction_date', fetchFrom)
-      // `transaction_date` is timestamptz. A bare 'yyyy-MM-dd' bound reads
-      // as midnight and drops the whole final day.
-      .lte('transaction_date', `${fetchTo}T23:59:59.999Z`);
+      .lte('transaction_date', toInclusiveDayEnd(fetchTo));
 
     if (bankAccountId && bankAccountId !== 'all') {
       query = query.eq('connected_bank_id', bankAccountId);
     }
 
-    const from = page * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-    // `transaction_date` is not unique, so a second order on the primary key
-    // gives every page a total order. Without it, rows tied at a page
-    // boundary can be skipped or duplicated across pages.
+    // Paging stability rule: see fetchAllPages in paginatedBankQuery.ts.
     const { data, error } = await query
       .order('transaction_date', { ascending: true })
       .order('id', { ascending: true })
       .range(from, to);
 
-    if (error) throw error;
+    return { data: (data ?? null) as unknown as CashFlowRow[] | null, error };
+  });
 
-    const pageRows = (data ?? []) as unknown as CashFlowRow[];
-    rows.push(...pageRows);
-
-    if (pageRows.length < PAGE_SIZE) {
-      return { rows, truncated: false };
-    }
-  }
-
-  return { rows, truncated: true };
+  return { rows, truncated };
 }
 
 /**

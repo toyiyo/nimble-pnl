@@ -53,9 +53,24 @@ the last 7 days. The section below showed $6,919 for the 52-day period.
 4. Tests
    - Change `tests/unit/cashFlowMetrics.test.ts` and
      `tests/unit/useCashFlowMetrics.test.tsx` to the new names.
+   - Delete the 7-day assertions and retitle the first case in
+     `tests/unit/cashFlowMetrics.test.ts:11-28`. Keep the assertion
+     that the period fields sum the full `daily` array.
    - Add a case to `tests/unit/FinancialPulseHero.test.tsx`: the tile
      shows the period net and the period label for a period longer
      than 7 days.
+5. Icon condition (design-review finding)
+   - `FinancialPulseHero.tsx:97` uses `> 0` for the trend icon. The
+     prefix at `:107` uses `>= 0`. Align the icon condition to `>= 0`
+     so a $0 net shows the up icon with the `$` prefix.
+
+## Decided trade-offs
+
+- `totalInflows`/`totalOutflows` also exist in other banking hooks
+  with different scopes (`src/hooks/useSpendingAnalysis.tsx:34`,
+  `src/hooks/useOutflowByCategory.tsx:18`,
+  `src/hooks/useRevenueHealth.tsx:172`). The interfaces are separate.
+  Accept the reuse; the names state the period scope correctly.
 
 ## Alternatives not taken
 

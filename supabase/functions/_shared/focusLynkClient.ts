@@ -419,7 +419,9 @@ export async function fetchDatafeed(
       const wrapper = pollRes.json?.pos_response?.payload?.repeated_message_response;
       if (wrapper) {
         pendingSignal = true;
-        const inner: string | undefined = wrapper?.payload?.response?.error_condition;
+        // `unknown`: the inner error_condition is untyped vendor JSON with no
+        // schema. A non-string value must not throw inside redactUrlsInText.
+        const inner: unknown = wrapper?.payload?.response?.error_condition;
         if (inner === 'NotFound') {
           return {
             ok: false,
@@ -429,11 +431,12 @@ export async function fetchDatafeed(
               'Focus POS lost the datafeed request reference (NotFound); a new request starts on the next pass',
           };
         }
-        if (inner && inner !== 'None' && inner !== 'InProgress') {
+        if (inner !== undefined && inner !== null && inner !== 'None' && inner !== 'InProgress') {
           // Unknown vendor condition — log it so it does not hide behind
-          // "still generating". Redact any embedded URL query string first.
+          // "still generating". Stringify first (inner may not be a string)
+          // then redact any embedded URL query string.
           console.warn(
-            `focusLynkClient: unknown error_condition "${redactUrlsInText(inner)}" in a Status poll response`,
+            `focusLynkClient: unknown error_condition "${redactUrlsInText(String(inner))}" in a Status poll response`,
           );
         }
         blobUrl = wrapper?.payload?.blob_url;
@@ -467,13 +470,7 @@ export async function fetchDatafeed(
 
   if (!isSafeUrl(blobUrl, BLOB_HOST_RE)) {
     // Redact any query string (Azure SAS URLs embed auth tokens in sig=/se=/sv= params).
-    let redacted = blobUrl;
-    try {
-      const u = new URL(blobUrl);
-      redacted = `${u.protocol}//${u.host}${u.pathname}`;
-    } catch {
-      // If the URL can't be parsed just use it as-is (no query string to redact)
-    }
+    const redacted = redactUrlsInText(blobUrl);
     return {
       ok: false,
       status: 0,

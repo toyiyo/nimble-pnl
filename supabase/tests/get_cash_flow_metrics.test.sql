@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(10);
+SELECT plan(12);
 
 -- Fixed identities for this test.
 -- restaurant:            c1000000-0000-0000-0000-000000000001
@@ -90,6 +90,44 @@ VALUES
 
 -- Case 10 has no fixture: it is a truly empty window, 2030-01-01..2030-01-02.
 
+-- Case 11/12 fixtures: the category heuristic from isInternalTransfer
+-- (src/lib/cashflowInsights.ts). Three categories: a cash-subtype asset,
+-- an equity account with "Transfer" in the name, and a loan (control).
+INSERT INTO chart_of_accounts
+  (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance)
+VALUES
+  ('c1000000-0000-0000-0000-00000000c001', 'c1000000-0000-0000-0000-000000000001',
+   '1050', 'Transfer Clearing Account', 'asset', 'cash', 'debit'),
+  ('c1000000-0000-0000-0000-00000000c002', 'c1000000-0000-0000-0000-000000000001',
+   '3010', 'Inter-Account Transfer', 'equity', 'owners_equity', 'credit'),
+  ('c1000000-0000-0000-0000-00000000c003', 'c1000000-0000-0000-0000-000000000001',
+   '2500', 'Notes Payable', 'liability', 'loan', 'credit')
+ON CONFLICT (id) DO NOTHING;
+
+-- Case 11: two flagless rows, both categorized to transfer-type accounts.
+-- One matches by subtype cash, one by the account name. Neither counts.
+INSERT INTO bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount, status, is_transfer, category_id)
+VALUES
+  ('c1000000-0000-0000-0000-00000000ab01', 'c1000000-0000-0000-0000-000000000001',
+   'c1000000-0000-0000-0000-0000000000a1', 'cf-rpc-txn-cat-cash', '2026-06-27T10:00:00Z',
+   'Flagless transfer via cash subtype', 111.00, 'posted', FALSE,
+   'c1000000-0000-0000-0000-00000000c001'),
+  ('c1000000-0000-0000-0000-00000000ab02', 'c1000000-0000-0000-0000-000000000001',
+   'c1000000-0000-0000-0000-0000000000a1', 'cf-rpc-txn-cat-name', '2026-06-27T11:00:00Z',
+   'Flagless transfer via account name', -222.00, 'posted', FALSE,
+   'c1000000-0000-0000-0000-00000000c002');
+
+-- Case 12: a flagless row categorized to a loan account. Real external
+-- cash: it counts.
+INSERT INTO bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount, status, is_transfer, category_id)
+VALUES
+  ('c1000000-0000-0000-0000-00000000ac01', 'c1000000-0000-0000-0000-000000000001',
+   'c1000000-0000-0000-0000-0000000000a1', 'cf-rpc-txn-cat-loan', '2026-06-28T10:00:00Z',
+   'Loan payment', -300.00, 'posted', FALSE,
+   'c1000000-0000-0000-0000-00000000c003');
+
 -- Auth.uid() reads the JWT claims GUC directly and needs no role switch
 -- (memory/lessons.md:1406). Stay as postgres so RLS never interferes; the
 -- RPC is SECURITY DEFINER and performs its own capability gate.
@@ -169,6 +207,20 @@ SELECT is(
   get_cash_flow_metrics('c1000000-0000-0000-0000-000000000001'::uuid, '2030-01-01'::date, '2030-01-02'::date, NULL),
   '{"daily": [], "comparison": {"inflow": 0, "outflow": 0}}'::jsonb,
   'an empty window returns zero totals, not NULL'
+);
+
+-- Case 11: a flagless row with a transfer-type category does not count.
+SELECT is(
+  get_cash_flow_metrics('c1000000-0000-0000-0000-000000000001'::uuid, '2026-06-27'::date, '2026-06-27'::date, NULL)->'daily',
+  '[]'::jsonb,
+  'flagless rows with transfer-type categories produce no daily entry'
+);
+
+-- Case 12: a flagless row with a loan category counts.
+SELECT is(
+  get_cash_flow_metrics('c1000000-0000-0000-0000-000000000001'::uuid, '2026-06-28'::date, '2026-06-28'::date, NULL)->'daily',
+  '[{"day": "2026-06-28", "inflow": 0, "outflow": 300.00}]'::jsonb,
+  'a flagless row with a loan category counts as real cash'
 );
 
 SELECT * FROM finish();

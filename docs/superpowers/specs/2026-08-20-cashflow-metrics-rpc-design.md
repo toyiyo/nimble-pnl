@@ -98,6 +98,19 @@ Filters, identical for both windows:
 - `restaurant_id = p_restaurant_id`
 - `status = 'posted'`
 - `is_transfer = false`  ← fixes cause 1
+- The category heuristic from `isInternalTransfer`
+  (`src/lib/cashflowInsights.ts:116-121`): exclude a row when its
+  `chart_of_accounts` category (via `category_id`) has `account_type IN
+  ('asset', 'liability', 'equity')` AND (`account_subtype = 'cash'` OR
+  `account_name ~* 'transfer'`). The `categorize_bank_transaction` RPC
+  assigns transfer categories without the `is_transfer` flag (see
+  `docs/superpowers/specs/2026-04-26-transfer-category-classification-design.md`),
+  so the flag alone leaves a hero/section gap. A row with no category
+  counts. A non-P&L category outside the cash/transfer set (a loan
+  payment, an owner contribution) counts — that is real external cash.
+  The SQL copy of this heuristic must stay identical to the TypeScript
+  copy in `isInternalTransfer`; the SQL is authoritative for the hero.
+  Source of the change: the Codex review finding on PR #771.
 - `connected_bank_id = p_bank_account_id` when the parameter is not null
   (the client passes null for "all"; column cited at
   `src/hooks/useCashFlowMetrics.tsx:43`)
@@ -292,6 +305,11 @@ Impersonate the caller with
 9. An empty window returns `{"daily": [], "comparison": {...}}` with
    zero totals, not NULL.
 10. Inflow and outflow split by sign; outflow is positive.
+11. A flagless row (`is_transfer = false`) with a transfer-type category
+    does not count. Cover both branches: subtype `cash`, and a name
+    that matches `~* 'transfer'`.
+12. A flagless row with a non-P&L category outside the cash/transfer
+    set (a loan account) counts.
 
 ### Unit: `tests/unit/cashFlowMetrics.test.ts`
 

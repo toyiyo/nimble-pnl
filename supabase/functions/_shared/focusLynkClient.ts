@@ -118,6 +118,23 @@ export function isSafeUrl(url: string, hostRe: RegExp): boolean {
   return u.protocol === 'https:' && u.username === '' && u.password === '' && hostRe.test(u.hostname);
 }
 
+/**
+ * Strip the query string from any URL-like substring in free text.
+ * Vendor text (an unknown error_condition) is untrusted and can embed a
+ * URL with a SAS token in its query params (sig=/se=/sv=); redact before
+ * a log line ever carries it.
+ */
+export function redactUrlsInText(text: string): string {
+  return text.replace(/https?:\/\/\S+/gi, (match) => {
+    try {
+      const u = new URL(match);
+      return `${u.protocol}//${u.host}${u.pathname}`;
+    } catch {
+      return match;
+    }
+  });
+}
+
 /** HTTP Basic header. */
 function basicAuth(apiKey: string, apiSecret: string): string {
   return 'Basic ' + btoa(`${apiKey}:${apiSecret}`);
@@ -414,9 +431,9 @@ export async function fetchDatafeed(
         }
         if (inner && inner !== 'None' && inner !== 'InProgress') {
           // Unknown vendor condition — log it so it does not hide behind
-          // "still generating". Never log a URL here without redaction.
+          // "still generating". Redact any embedded URL query string first.
           console.warn(
-            `focusLynkClient: unknown error_condition "${inner}" in a Status poll response`,
+            `focusLynkClient: unknown error_condition "${redactUrlsInText(inner)}" in a Status poll response`,
           );
         }
         blobUrl = wrapper?.payload?.blob_url;

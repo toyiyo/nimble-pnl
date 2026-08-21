@@ -673,6 +673,41 @@ describe('fetchDatafeed', () => {
       }
     });
 
+    it('unknown inner error_condition with an embedded SAS URL → warning omits the query string', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const sasUrl =
+          'https://leak.blob.core.windows.net/feeds/secret.xml?sig=topsecret&se=2026-01-01';
+        const withUrl = wrapperBody({
+          response: {
+            result: 'Failure',
+            error_condition: `Blocked: see ${sasUrl}`,
+          },
+        });
+        const fetchFn = makeSeqFetch([
+          { body: QUEUED_BODY },
+          { body: withUrl },
+          { body: WRAPPER_READY },
+          XML_RESPONSE,
+        ]);
+        const result = await fetchDatafeed(
+          { fetch: fetchFn, sleep: noSleep },
+          CONFIG,
+          BUSINESS_DATE,
+        );
+        expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const loggedMessage = warnSpy.mock.calls[0][0] as string;
+        expect(loggedMessage).toContain(
+          'https://leak.blob.core.windows.net/feeds/secret.xml',
+        );
+        expect(loggedMessage).not.toContain('topsecret');
+        expect(loggedMessage).not.toContain('sig=');
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
     it('HTTP 500 on a poll → kind=http with status 500', async () => {
       const fetchFn = makeSeqFetch([
         { body: QUEUED_BODY },

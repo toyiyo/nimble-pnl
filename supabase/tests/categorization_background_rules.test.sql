@@ -83,7 +83,7 @@
 --     Sale I:          c1a00009-...-000000000201  (item_name='Delivery Fee', is_categorized=false)
 
 BEGIN;
-SELECT plan(27);
+SELECT plan(28);
 
 -- ============================================================
 -- Setup
@@ -834,6 +834,44 @@ SELECT is(
   true,
   '(n) backfill loop drains POS backlog: Delivery Fee row is_categorized=true'
 );
+
+-- ============================================================
+-- Test (o): the internal bank engine writes the restaurant-local entry day.
+-- 03:30Z on 2026-02-02 = 21:30 CST on 2026-02-01. Pin the timezone the
+-- assertion depends on. Do not rely on the column default.
+-- ============================================================
+UPDATE public.restaurants SET timezone = 'America/Chicago'
+  WHERE id = 'c1a00008-0000-0000-0000-000000000801';
+
+ALTER TABLE public.bank_transactions DISABLE TRIGGER auto_categorize_bank_transaction;
+
+INSERT INTO public.bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id,
+   transaction_date, description, amount, is_categorized)
+VALUES
+  ('c1a00008-0000-0000-0000-000000000102',
+   'c1a00008-0000-0000-0000-000000000801',
+   'c1a00008-0000-0000-0000-0000000000b8',
+   'cbt-stripe-txn-h02',
+   TIMESTAMPTZ '2026-02-02 03:30:00+00',
+   'Payment to VENDOR-H Corp evening run',
+   -75.00,
+   false)
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE public.bank_transactions ENABLE TRIGGER auto_categorize_bank_transaction;
+
+SET LOCAL "request.jwt.claims" TO '';
+
+SELECT apply_rules_to_bank_transactions_internal(
+  'c1a00008-0000-0000-0000-000000000801'::uuid, 100);
+
+SELECT is(
+  (SELECT entry_date FROM public.journal_entries
+   WHERE reference_type = 'bank_transaction'
+     AND reference_id = 'c1a00008-0000-0000-0000-000000000102'),
+  DATE '2026-02-01',
+  '(o) internal bank engine writes the restaurant-local entry day');
 
 SELECT * FROM finish();
 ROLLBACK;

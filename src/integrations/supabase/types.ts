@@ -10700,6 +10700,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      bank_txn_entry_day: {
+        Args: { p_ts: string; p_tz: string | null }
+        Returns: string
+      }
       builtin_role_id_for: { Args: { p_role: string }; Returns: string }
       bulk_categorize_bank_transactions: {
         Args: {
@@ -11617,6 +11621,10 @@ export type Database = {
       matches_pos_sale_rule: {
         Args: { p_rule_id: string; p_sale: Json }
         Returns: boolean
+      }
+      min_bank_txn_entry_day: {
+        Args: { p_restaurant_id: string }
+        Returns: string
       }
       no_plan: { Args: never; Returns: boolean[] }
       num_failed: { Args: never; Returns: number }

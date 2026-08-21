@@ -53,51 +53,6 @@ const CONFIG: FocusLynkConfig = {
 
 // ── fetch double ──────────────────────────────────────────────────────────────
 
-/**
- * Build a sequential fetch mock:
- * Call 1 → Lynk sync response (returns blob_url)
- * Call 2 → Blob download response (returns XML)
- */
-function makeFetch(opts: {
-  syncStatus?: number;
-  syncBody?: string;
-  blobStatus?: number;
-  blobBody?: string;
-  throws?: boolean;
-}) {
-  const {
-    syncStatus = 200,
-    syncBody = JSON.stringify({ pos_response: { payload: { blob_url: BLOB_URL } } }),
-    blobStatus = 200,
-    blobBody = SAMPLE_XML,
-    throws = false,
-  } = opts;
-
-  let callCount = 0;
-  return vi.fn(async (url: string) => {
-    callCount++;
-    if (throws && callCount === 1) {
-      throw new Error('network error');
-    }
-    if (callCount === 1) {
-      // Lynk sync call
-      return {
-        status: syncStatus,
-        ok: syncStatus >= 200 && syncStatus < 300,
-        text: async () => syncBody,
-      } as Response;
-    }
-    // Blob download
-    return {
-      status: blobStatus,
-      ok: blobStatus >= 200 && blobStatus < 300,
-      text: async () => blobBody,
-    } as Response;
-  });
-}
-
-// ── Sequential fetch double for the poll flow ────────────────────────────────
-
 type SeqResponse = { status?: number; body?: string; throws?: boolean };
 
 /**
@@ -117,6 +72,32 @@ function makeSeqFetch(responses: SeqResponse[]) {
       text: async () => r.body ?? '',
     } as Response;
   });
+}
+
+/**
+ * Build a two-call fetch double for the happy-path Lynk flow:
+ * Call 1 → Lynk sync response (returns blob_url)
+ * Call 2+ → Blob download response (returns XML)
+ */
+function makeFetch(opts: {
+  syncStatus?: number;
+  syncBody?: string;
+  blobStatus?: number;
+  blobBody?: string;
+  throws?: boolean;
+}) {
+  const {
+    syncStatus = 200,
+    syncBody = JSON.stringify({ pos_response: { payload: { blob_url: BLOB_URL } } }),
+    blobStatus = 200,
+    blobBody = SAMPLE_XML,
+    throws = false,
+  } = opts;
+
+  return makeSeqFetch([
+    { status: syncStatus, body: syncBody, throws },
+    { status: blobStatus, body: blobBody },
+  ]);
 }
 
 /** Initial 2xx response with no blob_url and error_condition InProgress (new path). */

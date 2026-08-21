@@ -2,14 +2,16 @@
 -- Test: directed shift_trades visibility (RLS)
 --
 -- Directed trades (target_employee_id set) must be private to the target,
--- offerer, and accepter — plus owners/managers who see everything via the
--- separate "Managers can view all shift trades" policy (Policy 4, owner/manager
--- only; operations_manager is deliberately excluded to match the owner/manager-
--- only approve/reject RPCs). Today, Policy 1 ("Employees can view shift trades
--- in their restaurant") only checks restaurant membership, so ANY active
--- employee (a bystander) can read a directed trade. This test proves that gap
--- (RED) and locks in correct visibility once the follow-up migration tightens
--- Policy 1 (GREEN). Policy 4 is unchanged.
+-- offerer, and accepter — plus any holder of edit:scheduling, who sees
+-- everything via the separate "Managers can view all shift trades" policy
+-- (Policy 4). As of 2026-08-20, Policy 4 admits every role with
+-- edit:scheduling, not only owner/manager: operations_manager holds
+-- edit:scheduling in the legacy CASE, so it now sees the directed trade
+-- too, matching the approve/reject RPCs it can now call. Today, Policy 1
+-- ("Employees can view shift trades in their restaurant") only checks
+-- restaurant membership, so ANY active employee (a bystander) can read a
+-- directed trade. This test proves that gap (RED) and locks in correct
+-- visibility once the follow-up migration tightens Policy 1 (GREEN).
 --
 -- Migration under test (not yet applied when this test is written):
 --   supabase/migrations/<ts>_restrict_directed_shift_trade_visibility.sql
@@ -178,11 +180,12 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 6: Operations_manager O does NOT see the DIRECTED trade → 0 rows.
--- Policy 4 is deliberately left owner/manager-only: the approve/reject RPCs and
--- delete policy are owner/manager-only, so exposing trades to an operations_manager
--- who cannot action them would only surface a dead approval queue. O has no
--- employees row, so Policy 1 doesn't grant access either.
+-- Test 6: Operations_manager O sees the DIRECTED trade → 1 row.
+-- Policy 4 now admits every holder of edit:scheduling (2026-08-20), and the
+-- legacy CASE grants operations_manager edit:scheduling — the same
+-- capability the approve/reject RPCs now check — so O sees the trade via
+-- the manager policy, same as owner/manager. O has no employees row, so
+-- Policy 1 still grants nothing on its own; this row comes from Policy 4.
 -- ============================================================================
 RESET ROLE;
 SET LOCAL role = 'authenticated';
@@ -190,8 +193,8 @@ SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-0000000
 
 SELECT is(
   (SELECT COUNT(*) FROM shift_trades WHERE id = '53000000-0000-0000-0000-000000000051'),
-  0::bigint,
-  'Operations_manager O does NOT see the directed trade (Policy 4 is owner/manager only)'
+  1::bigint,
+  'Operations_manager O sees the directed trade via the manager policy (edit:scheduling)'
 );
 
 -- ============================================================================

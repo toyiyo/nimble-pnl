@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { format } from 'date-fns';
-import { parseDateOnly, toDateOnlyString, formatDateOnly } from '@/lib/dateOnly';
+import { parseDateOnly, toDateOnlyString, formatDateOnly, toInclusiveDayEnd } from '@/lib/dateOnly';
 
 // All assertions here use TZ-independent properties (wall-clock fields read in
 // the runner's local TZ; helper anchors to local midnight by construction).
@@ -89,6 +89,16 @@ describe('formatDateOnly', () => {
   it('matches a parseDateOnly + format composition', () => {
     const expected = format(parseDateOnly('2026-05-29'), 'MMM d, yyyy');
     expect(formatDateOnly('2026-05-29', 'MMM d, yyyy')).toBe(expected);
+  });
+});
+
+describe('toInclusiveDayEnd', () => {
+  it('appends the last instant of the day in UTC', () => {
+    expect(toInclusiveDayEnd('2026-05-29')).toBe('2026-05-29T23:59:59.999Z');
+  });
+
+  it('is a pure string transform (no TZ-dependent Date parsing)', () => {
+    expect(toInclusiveDayEnd('2024-02-29')).toBe('2024-02-29T23:59:59.999Z');
   });
 });
 

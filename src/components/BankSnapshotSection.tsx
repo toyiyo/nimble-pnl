@@ -41,7 +41,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
 
     return {
       availableCash: liquidityMetrics.currentBalance,
-      netChange: cashFlowMetrics.netCashFlow30d || 0,
+      netChange: cashFlowMetrics.netCashFlow || 0,
       runway: liquidityMetrics.daysOfCash,
       runwayStatus: liquidityMetrics.runwayStatus,
       accountCount: connectedBanks?.length || 0,

@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
 
 const hookMock = vi.hoisted(() => vi.fn());
 
@@ -33,5 +33,45 @@ describe('FinancialPulseHero', () => {
     expect(screen.getByText('Cannot load cash flow data')).toBeInTheDocument();
     expect(screen.queryByText('Net Cash Flow')).not.toBeInTheDocument();
     expect(screen.queryByText('Volatility')).not.toBeInTheDocument();
+  });
+
+  it('shows the period net and period label, not a fixed 7-day window', () => {
+    vi.useFakeTimers();
+
+    hookMock.mockReturnValue({
+      data: {
+        totalInflows: 10000,
+        totalOutflows: 3081,
+        netCashFlow: 6919,
+        avgDailyCashFlow: 691.9,
+        volatility: 100,
+        trend: [],
+        trailingTrendPercentage: 5,
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    const quarterPeriod = {
+      from: new Date('2026-06-01'),
+      to: new Date('2026-06-10'),
+      label: 'This Quarter',
+    } as unknown as import('@/components/PeriodSelector').Period;
+
+    render(<FinancialPulseHero selectedPeriod={quarterPeriod} selectedBankAccount="all" />);
+
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    expect(screen.getByText('$6919')).toBeInTheDocument();
+    expect(screen.getAllByText('This Quarter').length).toBeGreaterThan(0);
+    expect(screen.queryByText('(7 days)')).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 });

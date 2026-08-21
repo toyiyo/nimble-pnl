@@ -113325,6 +113325,23 @@
       "status": "open",
       "created_at": "2026-08-21T20:24:02.817Z",
       "updated_at": "2026-08-21T20:24:02.817Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "776",
+        "comment_id": 3833559112,
+        "file": "supabase/functions/_shared/focusLynkClient.ts",
+        "line": 473
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Wrapped blob_url in String() before redactUrlsInText, matching the existing error_condition pattern. A regression test now covers a numeric blob_url. Fixed in `79b8521e`.",
+      "severity": "info",
+      "id": "83eb2ee56aba6bf03d352cb93d943d99d4108cb6",
+      "status": "open",
+      "created_at": "2026-08-21T20:55:42.443Z",
+      "updated_at": "2026-08-21T20:55:42.443Z",
+      "tests_to_run": []
     }
   ]
 }

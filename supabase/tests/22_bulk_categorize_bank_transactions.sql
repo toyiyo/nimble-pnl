@@ -6,7 +6,7 @@
 -- section 5 for the guard order and per-row branch semantics this pins.
 
 BEGIN;
-SELECT plan(34);
+SELECT plan(35);
 
 SET LOCAL role TO postgres;
 
@@ -577,6 +577,41 @@ SELECT is(
   0,
   'Split parent gains no journal entry from the bulk call'
 );
+
+-- ---------------------------------------------------------------------------
+-- Local entry day: an evening instant lands on the restaurant-local day.
+-- 03:30Z on 2026-02-02 = 21:30 CST on 2026-02-01 (America/Chicago).
+-- Pin the timezone the assertion depends on. Do not rely on the column
+-- default.
+-- ---------------------------------------------------------------------------
+UPDATE restaurants SET timezone = 'America/Chicago'
+  WHERE id = '00000000-0000-0000-0000-000000000610'::uuid;
+
+INSERT INTO bank_transactions (
+  id, restaurant_id, connected_bank_id, stripe_transaction_id,
+  transaction_date, amount, description, status, is_categorized, is_transfer, is_reconciled
+) VALUES (
+  '00000000-0000-0000-0000-000000000760'::uuid,
+  '00000000-0000-0000-0000-000000000610'::uuid,
+  '00000000-0000-0000-0000-000000000615'::uuid,
+  'txn-bulk-evening-instant-1',
+  TIMESTAMPTZ '2026-02-02 03:30:00+00', -33.00, 'Evening instant', 'posted', false, false, false
+)
+ON CONFLICT (id) DO UPDATE SET is_categorized = false, category_id = NULL;
+
+SELECT bulk_categorize_bank_transactions(
+  p_restaurant_id   => '00000000-0000-0000-0000-000000000610'::uuid,
+  p_category_id     => '00000000-0000-0000-0000-000000000612'::uuid,
+  p_transaction_ids => ARRAY['00000000-0000-0000-0000-000000000760'::uuid],
+  p_skip_rebuild    => true
+);
+
+SELECT is(
+  (SELECT entry_date FROM journal_entries
+   WHERE reference_type = 'bank_transaction'
+     AND reference_id = '00000000-0000-0000-0000-000000000760'::uuid),
+  DATE '2026-02-01',
+  'bulk categorize writes the restaurant-local entry day');
 
 SELECT * FROM finish();
 ROLLBACK;

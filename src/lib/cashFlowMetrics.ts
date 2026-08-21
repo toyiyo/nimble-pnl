@@ -9,12 +9,9 @@ export interface DailyFlow {
 }
 
 export interface CashFlowMetrics {
-  netInflows7d: number;
-  netInflows30d: number;
-  netOutflows7d: number;
-  netOutflows30d: number;
-  netCashFlow7d: number;
-  netCashFlow30d: number;
+  totalInflows: number;
+  totalOutflows: number;
+  netCashFlow: number;
   avgDailyCashFlow: number;
   volatility: number;
   trend: number[];
@@ -39,20 +36,11 @@ export function deriveCashFlowMetrics(
 
   const periodDays = differenceInDays(endDate, startDate) + 1;
 
-  const netInflows30d = round2(daily.reduce((sum, row) => sum + row.inflow, 0));
-  const netOutflows30d = round2(daily.reduce((sum, row) => sum + row.outflow, 0));
-  const netCashFlow30d = round2(netInflows30d - netOutflows30d);
+  const totalInflows = round2(daily.reduce((sum, row) => sum + row.inflow, 0));
+  const totalOutflows = round2(daily.reduce((sum, row) => sum + row.outflow, 0));
+  const netCashFlow = round2(totalInflows - totalOutflows);
 
-  const last7Keys = lastNDayKeys(endDate, 7);
-  const netInflows7d = round2(
-    last7Keys.reduce((sum, key) => sum + (byDay.get(key)?.inflow ?? 0), 0),
-  );
-  const netOutflows7d = round2(
-    last7Keys.reduce((sum, key) => sum + (byDay.get(key)?.outflow ?? 0), 0),
-  );
-  const netCashFlow7d = round2(netInflows7d - netOutflows7d);
-
-  const avgDailyCashFlow = periodDays > 0 ? netCashFlow30d / periodDays : 0;
+  const avgDailyCashFlow = periodDays > 0 ? netCashFlow / periodDays : 0;
 
   // Volatility: population standard deviation of net daily flow, over the
   // days present in `daily` only — not the zero-filled trend window.
@@ -67,15 +55,12 @@ export function deriveCashFlowMetrics(
   });
 
   const trailingTrendPercentage =
-    comparisonInflow > 0 ? ((netInflows30d - comparisonInflow) / comparisonInflow) * 100 : 0;
+    comparisonInflow > 0 ? ((totalInflows - comparisonInflow) / comparisonInflow) * 100 : 0;
 
   return {
-    netInflows7d,
-    netInflows30d,
-    netOutflows7d,
-    netOutflows30d,
-    netCashFlow7d,
-    netCashFlow30d,
+    totalInflows,
+    totalOutflows,
+    netCashFlow,
     avgDailyCashFlow,
     volatility,
     trend,

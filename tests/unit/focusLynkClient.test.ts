@@ -466,6 +466,22 @@ describe('fetchDatafeed', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
+  it('SSRF: a non-string blob_url (malformed vendor response) does not throw', async () => {
+    // JSON.stringify keeps blob_url as a real number, not a string with digits —
+    // fetchDatafeed must not throw when it redacts a non-string value.
+    const malformedBody = JSON.stringify({
+      pos_response: { payload: { blob_url: 12345 } },
+    });
+    const fetchFn = makeFetch({ syncBody: malformedBody });
+    const result = await fetchDatafeed({ fetch: fetchFn }, CONFIG, BUSINESS_DATE);
+    expect(result).toMatchObject({ ok: false, kind: 'config' });
+    if (!result.ok) {
+      expect(result.error).toContain('12345');
+    }
+    // Only 1 call — the blob GET must not have been made
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
   // ── Config guard ─────────────────────────────────────────────────────────────
 
   it('returns kind=config when restaurantGuid is empty', async () => {

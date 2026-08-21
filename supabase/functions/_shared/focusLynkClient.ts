@@ -470,7 +470,10 @@ export async function fetchDatafeed(
 
   if (!isSafeUrl(blobUrl, BLOB_HOST_RE)) {
     // Redact any query string (Azure SAS URLs embed auth tokens in sig=/se=/sv= params).
-    const redacted = redactUrlsInText(blobUrl);
+    // `blob_url` is untyped vendor JSON. Stringify first: a non-string
+    // value (e.g. a number from a malformed response) must not throw
+    // inside redactUrlsInText's `.replace()` call.
+    const redacted = redactUrlsInText(String(blobUrl));
     return {
       ok: false,
       status: 0,

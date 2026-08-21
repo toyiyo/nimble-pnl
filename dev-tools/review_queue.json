@@ -113220,6 +113220,111 @@
       "created_at": "2026-08-20T07:38:26.581Z",
       "updated_at": "2026-08-20T07:38:26.581Z",
       "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "776",
+        "comment_id": 3833342392,
+        "file": "supabase/functions/_shared/focusLynkClient.ts",
+        "line": 473
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Handle non-string blob URLs without throwing**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Handle non-string blob URLs without throwing**\n\nWhen a 2xx vendor response contains a truthy non-string `blob_url` (for example, a number or object after a malformed/schema-changed response), `isSafeUrl` safely rejects it, but this call passes it to `redactUrlsInText`, which invokes `.replace` and throws a `TypeError`. This breaks `fetchDatafeed`'s never-throw contract and turns diagnosable vendor data into an unhandled edge-function failure; validate the runtime type or stringify it before redaction and return a `parse`/`config` result.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "d988e04adfce809cea7202e6653c05511974b899",
+      "status": "fixed",
+      "created_at": "2026-08-21T20:24:02.750Z",
+      "updated_at": "2026-08-21T20:24:02.750Z",
+      "tests_to_run": [],
+      "notes": [
+        "Fixed: wrapped the redaction call in String(blobUrl) at focusLynkClient.ts, matching the existing String(inner) pattern for the untyped error_condition field. Added a regression test in tests/unit/focusLynkClient.test.ts asserting a numeric blob_url returns kind=config without throwing."
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 140
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+      ],
+      "id": "0f640ad1dfed44be26732552bb6be1141eed82c2",
+      "status": "open",
+      "created_at": "2026-08-21T20:24:02.816Z",
+      "updated_at": "2026-08-21T20:24:02.816Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 146
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+      ],
+      "id": "b4166fa0f53838d633b340ccf7b44ce781506e71",
+      "status": "open",
+      "created_at": "2026-08-21T20:24:02.816Z",
+      "updated_at": "2026-08-21T20:24:02.816Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 171
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+      ],
+      "id": "f42192f0d0497e1d5d1c75b584bc604d1f307e54",
+      "status": "open",
+      "created_at": "2026-08-21T20:24:02.816Z",
+      "updated_at": "2026-08-21T20:24:02.816Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 211
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+      ],
+      "id": "fe0f602a85e94a4d87748794fe0296a98f3d459b",
+      "status": "open",
+      "created_at": "2026-08-21T20:24:02.817Z",
+      "updated_at": "2026-08-21T20:24:02.817Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 449
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'setCurrentWeekStart'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+      ],
+      "id": "f945ba4d625aa1bbf37705cd2d07bba06caf1af2",
+      "status": "open",
+      "created_at": "2026-08-21T20:24:02.817Z",
+      "updated_at": "2026-08-21T20:24:02.817Z"
     }
   ]
 }

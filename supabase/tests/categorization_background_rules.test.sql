@@ -86,7 +86,7 @@
 --     Sale I:          c1a00009-...-000000000201  (item_name='Delivery Fee', is_categorized=false)
 
 BEGIN;
-SELECT plan(38);
+SELECT plan(40);
 
 -- ============================================================
 -- Setup
@@ -571,8 +571,11 @@ SELECT is(
   '(e) no trigger: supplier_id stays NULL after plain INSERT'
 );
 
-SELECT * FROM apply_rules_to_bank_transactions_internal(
-  'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
+SELECT lives_ok(
+  $q$SELECT * FROM apply_rules_to_bank_transactions_internal(
+    'c1a00000-0000-0000-0000-000000000e01'::uuid, 100)$q$,
+  '(e) internal engine: first run completes without error'
+);
 
 SELECT is(
   (SELECT is_categorized FROM public.bank_transactions
@@ -620,7 +623,7 @@ SELECT is(
    JOIN public.journal_entries je ON je.id = jel.journal_entry_id
    WHERE je.reference_type = 'bank_transaction'
      AND je.reference_id = 'c1a00000-0000-0000-0000-000000000101'),
-  200.00,
+  200.00::numeric,
   '(e) journal_entry_lines: debit sum = 200.00'
 );
 
@@ -630,7 +633,7 @@ SELECT is(
    JOIN public.journal_entries je ON je.id = jel.journal_entry_id
    WHERE je.reference_type = 'bank_transaction'
      AND je.reference_id = 'c1a00000-0000-0000-0000-000000000101'),
-  200.00,
+  200.00::numeric,
   '(e) journal_entry_lines: credit sum = 200.00'
 );
 
@@ -659,8 +662,11 @@ VALUES
    false,
    'c1a00000-0000-0000-0000-000000000d05');
 
-SELECT * FROM apply_rules_to_bank_transactions_internal(
-  'c1a00000-0000-0000-0000-000000000e01'::uuid, 100);
+SELECT lives_ok(
+  $q$SELECT * FROM apply_rules_to_bank_transactions_internal(
+    'c1a00000-0000-0000-0000-000000000e01'::uuid, 100)$q$,
+  '(f) internal engine: second run completes without error'
+);
 
 SELECT is(
   (SELECT supplier_id FROM public.bank_transactions

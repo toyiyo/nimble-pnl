@@ -545,10 +545,16 @@ export function useBankStatementImport() {
       // (design doc section 5.2).
       const applyImportedRules = async () => {
         try {
-          await supabase.rpc('apply_rules_to_bank_transactions', {
+          // supabase.rpc returns database and authorization errors in the
+          // result; it does not throw them. The catch covers only network
+          // and unexpected failures.
+          const { error } = await supabase.rpc('apply_rules_to_bank_transactions', {
             p_restaurant_id: selectedRestaurant.restaurant_id,
             p_batch_limit: Math.max(importedCount, MIN_RULE_APPLY_BATCH_LIMIT),
           });
+          if (error) {
+            console.error('apply_rules_to_bank_transactions best-effort call failed:', error);
+          }
         } catch (error) {
           console.error('apply_rules_to_bank_transactions best-effort call failed:', error);
         }

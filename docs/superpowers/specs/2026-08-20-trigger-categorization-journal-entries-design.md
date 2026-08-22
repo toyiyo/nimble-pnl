@@ -143,11 +143,14 @@ One new migration file, four steps, in this order:
 3. Reset the stuck rows:
    ```sql
    UPDATE bank_transactions
-   SET is_categorized = false, updated_at = now()
+   SET is_categorized = false,
+       rules_evaluated_at = '-infinity',
+       updated_at = now()
    WHERE is_categorized = true
      AND category_id IS NULL
      AND is_split = false
      AND is_reconciled = false
+     AND is_transfer = false
      AND excluded_reason IS NULL;
    ```
    The `is_reconciled` and `excluded_reason` guards match
@@ -158,6 +161,13 @@ One new migration file, four steps, in this order:
    uncategorized, and a future matching rule or a manual categorization can
    fix them. Production count today: 2 rows. Print the count with
    `RAISE NOTICE`.
+
+   Two guards came from the PR #775 review. `is_transfer = false`:
+   `mark_as_transfer` sets `is_categorized = true` with `category_id`
+   NULL on both pair rows, and that state is valid — the reset must not
+   touch it. `rules_evaluated_at = '-infinity'`: the sweep claims only
+   rows below the rules watermark, and both production target rows carry
+   a fresh stamp — the rewind puts them into the next 5-minute sweep.
 4. Run the repair once:
    `PERFORM public.backfill_bank_transaction_journal_entries();` inside a DO
    block, with `SET statement_timeout = 0` around it, and `RAISE NOTICE` for

@@ -20,16 +20,28 @@ DROP FUNCTION IF EXISTS public.auto_apply_bank_categorization_rules();
 -- matching rule or a manual categorization can fix them. Guards match
 -- categorize_bank_transaction and the backfill predicate
 -- (20260819232450_backfill_bank_transaction_journal_entries.sql:74-79).
+--
+-- is_transfer = false: mark_as_transfer sets is_categorized = true with
+-- category_id NULL on both pair rows. That state is valid — the transfer
+-- journal entry exists. The reset must not touch it (Codex P1, PR #775).
+--
+-- rules_evaluated_at = '-infinity': the sweep claims only rows with
+-- rules_evaluated_at < the rules watermark. The stuck rows carry a fresh
+-- stamp, so without the rewind they wait for the next rule change. The
+-- rewind puts them into the next 5-minute sweep (CodeRabbit, PR #775).
 DO $$
 DECLARE
   v_reset_count integer;
 BEGIN
   UPDATE bank_transactions
-  SET is_categorized = false, updated_at = now()
+  SET is_categorized = false,
+      rules_evaluated_at = '-infinity',
+      updated_at = now()
   WHERE is_categorized = true
     AND category_id IS NULL
     AND is_split = false
     AND is_reconciled = false
+    AND is_transfer = false
     AND excluded_reason IS NULL;
 
   GET DIAGNOSTICS v_reset_count = ROW_COUNT;

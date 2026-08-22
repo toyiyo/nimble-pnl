@@ -74,11 +74,14 @@ Build exactly the design's section 5.1, in this order:
    `RAISE NOTICE` for the row count:
    ```sql
    UPDATE bank_transactions
-   SET is_categorized = false, updated_at = now()
+   SET is_categorized = false,
+       rules_evaluated_at = '-infinity',
+       updated_at = now()
    WHERE is_categorized = true
      AND category_id IS NULL
      AND is_split = false
      AND is_reconciled = false
+     AND is_transfer = false
      AND excluded_reason IS NULL;
    ```
 5. `SET statement_timeout = 0;`, then a `DO` block that calls

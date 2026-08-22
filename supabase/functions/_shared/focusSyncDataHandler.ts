@@ -425,7 +425,9 @@ export async function handleSyncData(
         syncCursor: readCursor,
         timezone: tz,
         now,
-        budgetMs: 12_000,
+        // 45 s: after the async vendor change, one day costs 5-15 s of poll
+        // wait. Three days must fit one manual-sync kick (design 2026-08-21).
+        budgetMs: 45_000,
         maxDays: 3,
       });
 

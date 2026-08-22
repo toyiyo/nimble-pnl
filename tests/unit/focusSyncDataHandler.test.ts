@@ -24,7 +24,7 @@
  *  - Status propagated from processReportDay (ok / empty / error)
  *
  *  B3 additions (spec §5.2, §8.1, §8.2, §8.3):
- *  - Lynk backfill: delegates to processBackfillBatch(budgetMs=12_000, maxDays=3)
+ *  - Lynk backfill: delegates to processBackfillBatch(budgetMs=45_000, maxDays=3)
  *  - Lynk backfill: cursor write uses CAS (§8.1) — filters eq('sync_cursor', readCursor)
  *  - Lynk backfill error: writes connection_status='error' + last_error (§8.3)
  *  - Lynk backfill: response includes backgrounded=true when not done
@@ -654,7 +654,7 @@ describe('handleSyncData', () => {
       });
     });
 
-    it('calls processBackfillBatch with budgetMs=12_000 and maxDays=3', async () => {
+    it('calls processBackfillBatch with budgetMs=45_000 and maxDays=3', async () => {
       const { deps } = makeDeps({
         serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
       });
@@ -663,7 +663,7 @@ describe('handleSyncData', () => {
 
       expect(mockProcessBackfillBatch).toHaveBeenCalledOnce();
       const [, , opts] = mockProcessBackfillBatch.mock.calls[0] as [unknown, unknown, Record<string, unknown>];
-      expect(opts.budgetMs).toBe(12_000);
+      expect(opts.budgetMs).toBe(45_000);
       expect(opts.maxDays).toBe(3);
     });
 

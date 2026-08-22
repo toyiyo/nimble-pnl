@@ -202,12 +202,18 @@ export function usePendingOutflowMutations() {
       let categorized = false;
 
       if (pendingOutflow.category_id) {
-        // The RPC returns journal_entry_id: null when the transaction
-        // already has this exact category
-        // (supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql:90-113).
-        // That skip assumes a journal entry already exists from the first
-        // categorize. Block the match when one does not.
-        if (bankTransaction.category_id === pendingOutflow.category_id && !(await hasJournalEntry())) {
+        // The RPC treats ANY already-categorized transaction as a
+        // reclassification, same category or not
+        // (supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql:84-87).
+        // The same-category branch (...sql:90-113) skips the journal entry
+        // outright. The different-category branch (...sql:164-197) credits
+        // the transaction's EXISTING category account without checking a
+        // journal entry backs it — a spurious credit with no offsetting
+        // debit when one does not. Both branches assume a journal entry
+        // already exists from the first categorize. Block the match
+        // whenever the transaction already carries any category and none
+        // does, not only when the categories match.
+        if (bankTransaction.category_id && !(await hasJournalEntry())) {
           throw new Error(
             'This transaction is already categorized but has no journal entry. Recategorize it on the Banking page, then match again.'
           );

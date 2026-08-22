@@ -79,8 +79,9 @@ function setupConfirmMatchMocks(
     eq: vi.fn().mockResolvedValue({ error: null }),
   };
 
-  // Backs the pre-RPC "does a journal entry already exist" guard. Only hit
-  // when the outflow's category matches the transaction's existing category.
+  // Backs the pre-RPC "does a journal entry already exist" guard. Hit
+  // whenever the bank transaction already carries a category_id, same as
+  // the outflow's category or not.
   const journalEntriesQuery = {
     eq: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({
@@ -167,7 +168,52 @@ describe('usePendingOutflowMutations', () => {
       });
     });
 
-    it('should handle cases where bank transaction already has category', async () => {
+    it('blocks a different-category match when the transaction has no journal entry', async () => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: 'Expense notes',
+        expense_invoice_uploads: [],
+      };
+
+      // The transaction already carries a DIFFERENT category. The RPC
+      // would take the reclassification branch here, crediting
+      // "existing-cat" — a spurious credit unless a journal entry from
+      // the first categorize already debits that account.
+      const mockBankTransaction = {
+        notes: null,
+        category_id: 'existing-cat',
+        suggested_category_id: 'existing-suggested',
+      };
+
+      const { mockPendingOutflowBuilder, mockBankTransactionBuilder, mockJournalEntriesBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction, {
+          existingJournalEntry: null,
+        });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.confirmMatch.mutateAsync({
+            pendingOutflowId: 'po-123',
+            bankTransactionId: 'bt-456',
+          });
+        } catch {
+          // expected: the pre-RPC journal-entry guard rejects the match
+        }
+      });
+
+      expect(mockJournalEntriesBuilder.select).toHaveBeenCalledWith('id');
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
+      expect(mockBankTransactionBuilder.update).not.toHaveBeenCalled();
+      expect(mockPendingOutflowBuilder.update).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining('already categorized but has no journal entry')
+      );
+    });
+
+    it('allows a different-category match when a journal entry already exists', async () => {
       const mockPendingOutflow = {
         id: 'po-123',
         category_id: 'cat-456',
@@ -182,7 +228,9 @@ describe('usePendingOutflowMutations', () => {
       };
 
       const { mockBankTransactionBuilder } =
-        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction, {
+          existingJournalEntry: { id: 'je-1' },
+        });
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
 
       const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });

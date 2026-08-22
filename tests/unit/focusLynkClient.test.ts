@@ -663,6 +663,25 @@ describe('fetchDatafeed', () => {
       }
     });
 
+    it('scalar repeated_message_response → kind=parse, not inprogress', async () => {
+      // A malformed scalar wrapper ("queued") is not an object envelope.
+      // It must not count as a pending signal.
+      const scalarWrapper = JSON.stringify({
+        pos_response: { payload: { repeated_message_response: 'queued' } },
+      });
+      const noSignalInitial = JSON.stringify({ pos_response: { payload: {} } });
+      const fetchFn = makeSeqFetch([
+        { body: noSignalInitial },
+        { body: scalarWrapper },
+      ]);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: noSleep },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'parse' });
+    });
+
     it('unknown inner error_condition → logs the value and keeps polling', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       try {

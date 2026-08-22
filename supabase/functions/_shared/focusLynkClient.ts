@@ -398,7 +398,8 @@ export async function fetchDatafeed(
   let lastStatus = initial.status;
 
   // A pending signal is an InProgress condition or a repeated_message_response
-  // wrapper. When no response ever shows one, the shape is broken → 'parse'.
+  // wrapper object. A scalar wrapper is malformed and does not count.
+  // When no response ever shows a signal, the shape is broken → 'parse'.
   let pendingSignal = lynkErrorCondition(initial.json?.pos_response) === 'InProgress';
 
   // ── 5. Status poll loop (runs only when the initial response has no blob_url)
@@ -417,7 +418,7 @@ export async function fetchDatafeed(
       lastStatus = pollRes.status;
 
       const wrapper = pollRes.json?.pos_response?.payload?.repeated_message_response;
-      if (wrapper) {
+      if (wrapper && typeof wrapper === 'object') {
         pendingSignal = true;
         // `unknown`: the inner error_condition is untyped vendor JSON with no
         // schema. A non-string value must not throw inside redactUrlsInText.

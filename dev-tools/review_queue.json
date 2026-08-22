@@ -113251,7 +113251,7 @@
       "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
       "severity": "minor",
       "tests_to_run": [
-        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+        "npm run lint -- src/pages/Scheduling.tsx"
       ],
       "id": "0f640ad1dfed44be26732552bb6be1141eed82c2",
       "status": "open",
@@ -113268,7 +113268,7 @@
       "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
       "severity": "minor",
       "tests_to_run": [
-        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+        "npm run lint -- src/pages/Scheduling.tsx"
       ],
       "id": "b4166fa0f53838d633b340ccf7b44ce781506e71",
       "status": "open",
@@ -113285,7 +113285,7 @@
       "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
       "severity": "minor",
       "tests_to_run": [
-        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+        "npm run lint -- src/pages/Scheduling.tsx"
       ],
       "id": "f42192f0d0497e1d5d1c75b584bc604d1f307e54",
       "status": "open",
@@ -113302,7 +113302,7 @@
       "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
       "severity": "minor",
       "tests_to_run": [
-        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+        "npm run lint -- src/pages/Scheduling.tsx"
       ],
       "id": "fe0f602a85e94a4d87748794fe0296a98f3d459b",
       "status": "open",
@@ -113319,7 +113319,7 @@
       "body": "React Hook useCallback has a missing dependency: 'setCurrentWeekStart'. Either include it or remove the dependency array.",
       "severity": "minor",
       "tests_to_run": [
-        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-lynk-async-datafeed/src/pages/Scheduling.tsx"
+        "npm run lint -- src/pages/Scheduling.tsx"
       ],
       "id": "f945ba4d625aa1bbf37705cd2d07bba06caf1af2",
       "status": "open",
@@ -113338,10 +113338,20 @@
       "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Wrapped blob_url in String() before redactUrlsInText, matching the existing error_condition pattern. A regression test now covers a numeric blob_url. Fixed in `79b8521e`.",
       "severity": "info",
       "id": "83eb2ee56aba6bf03d352cb93d943d99d4108cb6",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-08-21T20:55:42.443Z",
-      "updated_at": "2026-08-21T20:55:42.443Z",
+      "updated_at": "2026-08-22T01:50:27.778Z",
       "tests_to_run": []
+    },
+    {
+      "title": "Focus Lynk: enforce one shared deadline per datafeed attempt",
+      "body": "CodeRabbit finding on PR #776 (focusLynkClient.ts:413). One fetchDatafeed attempt can take up to 200 s when each request hits the 30 s timeout. The budgetMs gate in processBackfillBatch runs only between days. Follow-up: pass the remaining batch budget into fetchDatafeed and derive each request timeout and poll delay from it.",
+      "severity": "minor",
+      "tests_to_run": [],
+      "id": "ae2a362920d48ba887e799006c43e2cf28bab6c6",
+      "status": "open",
+      "created_at": "2026-08-22T01:50:27.778Z",
+      "updated_at": "2026-08-22T01:50:27.778Z"
     }
   ]
 }

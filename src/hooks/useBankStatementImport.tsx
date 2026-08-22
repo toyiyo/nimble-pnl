@@ -5,6 +5,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { parseBankAmount, type BankColumnMapping } from '@/utils/bankTransactionColumnMapping';
 
+// Floor for the batch limit on the best-effort rule-apply call after an
+// import. This matches the server default of the public wrapper function
+// (apply_rules_to_bank_transactions, supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql).
+const MIN_RULE_APPLY_BATCH_LIMIT = 100;
+
 export interface BankStatementUpload {
   id: string;
   restaurant_id: string;
@@ -529,6 +534,32 @@ export function useBankStatementImport() {
 
         importedCount++;
       }
+
+      // Best-effort rule run after import.
+      // Warning: the wrapper runs rebuild_account_balances over the full
+      // ledger. An await here delays the "Import Complete" toast on every
+      // import. Do not await this call.
+      // The wrapper also rejects a collaborator_accountant role and any
+      // other non-owner, non-manager caller. The 5-minute cron sweep
+      // still drains the batch. A failure here must not fail the import
+      // (design doc section 5.2).
+      const applyImportedRules = async () => {
+        try {
+          // supabase.rpc returns database and authorization errors in the
+          // result; it does not throw them. The catch covers only network
+          // and unexpected failures.
+          const { error } = await supabase.rpc('apply_rules_to_bank_transactions', {
+            p_restaurant_id: selectedRestaurant.restaurant_id,
+            p_batch_limit: Math.max(importedCount, MIN_RULE_APPLY_BATCH_LIMIT),
+          });
+          if (error) {
+            console.error('apply_rules_to_bank_transactions best-effort call failed:', error);
+          }
+        } catch (error) {
+          console.error('apply_rules_to_bank_transactions best-effort call failed:', error);
+        }
+      };
+      void applyImportedRules();
 
       // Calculate total balance from all imported transactions for this bank
       const { data: allTransactions } = await supabase

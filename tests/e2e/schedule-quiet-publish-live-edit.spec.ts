@@ -227,8 +227,12 @@ test.describe('Quiet publish and live edit of a published shift', () => {
     await responsePromise;
 
     // The toast names the shift count and says nobody was notified.
-    await expect(page.getByText(/^schedule unpublished$/i)).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/1 shift.*unlocked for editing\.\s*nobody was notified\./i)).toBeVisible();
+    // Scope to the toast viewport region: Radix also renders the toast text in
+    // a hidden aria-live announce clone for ~1s, and a page-wide getByText
+    // then matches 2 elements and fails strict mode.
+    const toastRegion = page.getByRole('region', { name: /notifications/i });
+    await expect(toastRegion.getByText(/^schedule unpublished$/i)).toBeVisible({ timeout: 10000 });
+    await expect(toastRegion.getByText(/1 shift.*unlocked for editing\.\s*nobody was notified\./i)).toBeVisible();
 
     // The week actually returns to the unpublished state: a fresh load shows
     // the action button flip back from Unpublish to Publish.

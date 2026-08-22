@@ -168,26 +168,30 @@ describe('usePendingOutflowMutations', () => {
       });
     });
 
+    // Shared by the two guard tests below (block vs. allow): the same
+    // different-category pending outflow and bank transaction fixtures.
+    // Only the `existingJournalEntry` option passed to
+    // setupConfirmMatchMocks differs between them. The transaction
+    // already carries a DIFFERENT category, so the RPC would take the
+    // reclassification branch here, crediting "existing-cat" — a
+    // spurious credit unless a journal entry from the first categorize
+    // already debits that account.
+    const differentCategoryPendingOutflow = {
+      id: 'po-123',
+      category_id: 'cat-456',
+      notes: 'Expense notes',
+      expense_invoice_uploads: [],
+    };
+
+    const differentCategoryBankTransaction = {
+      notes: null,
+      category_id: 'existing-cat',
+      suggested_category_id: 'existing-suggested',
+    };
+
     it('blocks a different-category match when the transaction has no journal entry', async () => {
-      const mockPendingOutflow = {
-        id: 'po-123',
-        category_id: 'cat-456',
-        notes: 'Expense notes',
-        expense_invoice_uploads: [],
-      };
-
-      // The transaction already carries a DIFFERENT category. The RPC
-      // would take the reclassification branch here, crediting
-      // "existing-cat" — a spurious credit unless a journal entry from
-      // the first categorize already debits that account.
-      const mockBankTransaction = {
-        notes: null,
-        category_id: 'existing-cat',
-        suggested_category_id: 'existing-suggested',
-      };
-
       const { mockPendingOutflowBuilder, mockBankTransactionBuilder, mockJournalEntriesBuilder } =
-        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction, {
+        setupConfirmMatchMocks(differentCategoryPendingOutflow, differentCategoryBankTransaction, {
           existingJournalEntry: null,
         });
 
@@ -214,21 +218,8 @@ describe('usePendingOutflowMutations', () => {
     });
 
     it('allows a different-category match when a journal entry already exists', async () => {
-      const mockPendingOutflow = {
-        id: 'po-123',
-        category_id: 'cat-456',
-        notes: 'Expense notes',
-        expense_invoice_uploads: [],
-      };
-
-      const mockBankTransaction = {
-        notes: null,
-        category_id: 'existing-cat',
-        suggested_category_id: 'existing-suggested',
-      };
-
       const { mockBankTransactionBuilder } =
-        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction, {
+        setupConfirmMatchMocks(differentCategoryPendingOutflow, differentCategoryBankTransaction, {
           existingJournalEntry: { id: 'je-1' },
         });
       mockSupabase.rpc.mockResolvedValue({ data: null, error: null });

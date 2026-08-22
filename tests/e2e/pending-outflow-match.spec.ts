@@ -17,13 +17,14 @@ test.describe('Pending Outflow Match Journal Entry', () => {
     // expense chart account, and one pending outflow with that category and
     // a near-equal amount.
     const seed = await page.evaluate(async () => {
-      const authUser = await (window as unknown as E2EHelperWindow).__getAuthUser();
+      const win = window as unknown as E2EHelperWindow;
+      const authUser = await win.__getAuthUser();
       if (!authUser?.id) throw new Error('No user session');
 
-      const restaurantId = await (window as unknown as E2EHelperWindow).__getRestaurantId(authUser.id);
+      const restaurantId = await win.__getRestaurantId(authUser.id);
       if (!restaurantId) throw new Error('No restaurant');
 
-      const { data: bank, error: bankError } = await (window as unknown as E2EHelperWindow).__supabase
+      const { data: bank, error: bankError } = await win.__supabase
         .from('connected_banks')
         .insert({
           restaurant_id: restaurantId,
@@ -35,7 +36,7 @@ test.describe('Pending Outflow Match Journal Entry', () => {
         .single();
       if (bankError) throw bankError;
 
-      const { data: transaction, error: txnError } = await (window as unknown as E2EHelperWindow).__supabase
+      const { data: transaction, error: txnError } = await win.__supabase
         .from('bank_transactions')
         .insert({
           restaurant_id: restaurantId,
@@ -50,7 +51,7 @@ test.describe('Pending Outflow Match Journal Entry', () => {
         .single();
       if (txnError) throw txnError;
 
-      const { data: account, error: acctError } = await (window as unknown as E2EHelperWindow).__supabase
+      const { data: account, error: acctError } = await win.__supabase
         .from('chart_of_accounts')
         .select('id')
         .eq('restaurant_id', restaurantId)
@@ -59,7 +60,7 @@ test.describe('Pending Outflow Match Journal Entry', () => {
         .single();
       if (acctError) throw acctError;
 
-      const { data: outflow, error: outflowError } = await (window as unknown as E2EHelperWindow).__supabase
+      const { data: outflow, error: outflowError } = await win.__supabase
         .from('pending_outflows')
         .insert({
           restaurant_id: restaurantId,
@@ -105,7 +106,8 @@ test.describe('Pending Outflow Match Journal Entry', () => {
     // Verify the ledger write, the transaction metadata, and the outflow
     // status through the page's own Supabase session.
     const result = await page.evaluate(async ({ transactionId, outflowId }) => {
-      const { data: entries, error: entriesError } = await (window as unknown as E2EHelperWindow).__supabase
+      const win = window as unknown as E2EHelperWindow;
+      const { data: entries, error: entriesError } = await win.__supabase
         .from('journal_entries')
         .select('id, reference_type, reference_id, is_balanced')
         .eq('reference_type', 'bank_transaction')
@@ -115,7 +117,7 @@ test.describe('Pending Outflow Match Journal Entry', () => {
       const entry = entries?.[0];
       let lineCount = 0;
       if (entry) {
-        const { data: lines, error: linesError } = await (window as unknown as E2EHelperWindow).__supabase
+        const { data: lines, error: linesError } = await win.__supabase
           .from('journal_entry_lines')
           .select('id')
           .eq('journal_entry_id', entry.id);
@@ -123,14 +125,14 @@ test.describe('Pending Outflow Match Journal Entry', () => {
         lineCount = lines?.length ?? 0;
       }
 
-      const { data: transaction, error: txnError } = await (window as unknown as E2EHelperWindow).__supabase
+      const { data: transaction, error: txnError } = await win.__supabase
         .from('bank_transactions')
         .select('is_categorized, matched_at')
         .eq('id', transactionId)
         .single();
       if (txnError) throw txnError;
 
-      const { data: outflow, error: outflowError } = await (window as unknown as E2EHelperWindow).__supabase
+      const { data: outflow, error: outflowError } = await win.__supabase
         .from('pending_outflows')
         .select('status')
         .eq('id', outflowId)

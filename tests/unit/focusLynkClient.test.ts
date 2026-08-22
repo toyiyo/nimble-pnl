@@ -663,7 +663,31 @@ describe('fetchDatafeed', () => {
       }
     });
 
-    it('scalar repeated_message_response → kind=parse, not inprogress', async () => {
+    it('CRITICAL: should keep the top-level InProgress signal when the nested error_condition is not a string', async () => {
+      // A malformed nested error_condition (an object) must not mask a
+      // valid top-level InProgress signal. Regression for a bug where
+      // `??` treated any non-null nested value as present, even a
+      // non-string one, and silently dropped the legacy fallback.
+      const maskedInitial = JSON.stringify({
+        pos_response: {
+          payload: { response: { error_condition: { code: 1 } } },
+          error_condition: 'InProgress',
+        },
+      });
+      const fetchFn = makeSeqFetch([
+        { body: maskedInitial },
+        { body: NO_SIGNAL_BODY },
+      ]);
+      const sleepMock = vi.fn().mockResolvedValue(undefined);
+      const result = await fetchDatafeed(
+        { fetch: fetchFn, sleep: sleepMock },
+        CONFIG,
+        BUSINESS_DATE,
+      );
+      expect(result).toMatchObject({ ok: false, kind: 'inprogress' });
+    });
+
+    it('CRITICAL: should return kind=parse when repeated_message_response is scalar', async () => {
       // A malformed scalar wrapper ("queued") is not an object envelope.
       // It must not count as a pending signal.
       const scalarWrapper = JSON.stringify({

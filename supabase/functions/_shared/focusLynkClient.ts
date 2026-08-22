@@ -163,10 +163,15 @@ function isoToFocusDate(isoDate: string): string {
  * `payload.response.error_condition`. The old top-level path stays as a
  * fallback for safety.
  */
-// `any`: the Lynk API response body is untyped vendor JSON with no schema.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function lynkErrorCondition(posResponse: any): string | undefined {
-  return posResponse?.payload?.response?.error_condition ?? posResponse?.error_condition;
+function lynkErrorCondition(posResponse: unknown): string | undefined {
+  if (typeof posResponse !== 'object' || posResponse === null) return undefined;
+  const response = posResponse as {
+    payload?: { response?: { error_condition?: unknown } };
+    error_condition?: unknown;
+  };
+  const nested = response.payload?.response?.error_condition;
+  if (typeof nested === 'string') return nested;
+  return typeof response.error_condition === 'string' ? response.error_condition : undefined;
 }
 
 // ── Public functions ──────────────────────────────────────────────────────────

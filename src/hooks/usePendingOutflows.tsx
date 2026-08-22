@@ -161,35 +161,96 @@ export function usePendingOutflowMutations() {
       // Fetch current bank transaction to merge notes
       const { data: bankTransaction, error: btFetchError } = await supabase
         .from('bank_transactions')
-        .select('notes, category_id, suggested_category_id')
+        .select('notes, category_id, suggested_category_id, is_transfer, is_split, excluded_reason')
         .eq('id', bankTransactionId)
         .single();
 
       if (btFetchError) throw btFetchError;
       if (!bankTransaction) throw new Error('Bank transaction not found');
 
-      // Prepare updates for bank transaction
-      const bankTransactionUpdates: any = {
-        is_categorized: true,
+      // A transfer, an excluded row, or a split parent must never get a
+      // single-category journal entry. ManualMatchDialog filters these out,
+      // but a stale row list or a direct call must not rely on the UI alone
+      // for a financial write — see the same guard the bulk categorize RPC
+      // applies (supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql).
+      if (bankTransaction.is_transfer || bankTransaction.is_split || bankTransaction.excluded_reason) {
+        throw new Error(
+          'This transaction is a transfer, a split, or excluded and cannot be matched here.'
+        );
+      }
+
+      // Merge notes. A retry that already ran the merge must not duplicate
+      // the outflow notes, so skip the merge when the bank notes already
+      // contain them.
+      const bankNotes = bankTransaction.notes as string | null;
+      const outflowNotes = pendingOutflow.notes as string | null;
+      const mergedNotes = (bankNotes && outflowNotes && bankNotes.includes(outflowNotes))
+        ? bankNotes
+        : ([bankNotes, outflowNotes].filter(Boolean).join('\n\n') || null);
+
+      // A bank transaction can carry a category_id with no journal entry,
+      // from a write path outside categorize_bank_transaction. Any code
+      // path that treats the transaction's existing category as ledger-
+      // backed must check this first, or it recreates a journal-less
+      // categorized state.
+      const hasJournalEntry = async () => {
+        const { data: existingEntry, error: journalCheckError } = await supabase
+          .from('journal_entries')
+          .select('id')
+          .eq('reference_type', 'bank_transaction')
+          .eq('reference_id', bankTransactionId)
+          .maybeSingle();
+
+        if (journalCheckError) throw journalCheckError;
+        return !!existingEntry;
+      };
+
+      // Prepare the metadata-only update for bank_transactions.
+      const bankTransactionUpdates: Record<string, unknown> = {
         matched_at: new Date().toISOString(),
       };
 
-      // Copy category_id from pending outflow (overrides bank transaction's existing category)
-      if (pendingOutflow.category_id) {
-        bankTransactionUpdates.category_id = pendingOutflow.category_id;
-      }
+      let categorized = false;
 
-      // Copy suggested_category_id from pending outflow's category as AI suggestion
       if (pendingOutflow.category_id) {
+        // The RPC treats ANY already-categorized transaction as a
+        // reclassification, same category or not
+        // (supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql:84-87).
+        // The same-category branch (...sql:90-113) skips the journal entry
+        // outright. The different-category branch (...sql:164-197) credits
+        // the transaction's EXISTING category account without checking a
+        // journal entry backs it — a spurious credit with no offsetting
+        // debit when one does not. Both branches assume a journal entry
+        // already exists from the first categorize. Block the match
+        // whenever the transaction already carries any category and none
+        // does, not only when the categories match.
+        if (bankTransaction.category_id && !(await hasJournalEntry())) {
+          throw new Error(
+            'This transaction is already categorized but has no journal entry. Recategorize it on the Banking page, then match again.'
+          );
+        }
+
+        // The RPC applies the category, writes the merged notes, and posts
+        // the matching journal entry in one database transaction. It also
+        // blocks a reconciled transaction and a closed fiscal period — the
+        // guard text in onError matches
+        // supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql.
+        const { error: categorizeError } = await supabase.rpc('categorize_bank_transaction', {
+          p_transaction_id: bankTransactionId,
+          p_category_id: pendingOutflow.category_id,
+          p_description: mergedNotes,
+          p_normalized_payee: null,
+          p_supplier_id: null,
+        });
+
+        if (categorizeError) throw categorizeError;
+
+        // Copy the category as the AI suggestion. Do not set category_id
+        // or is_categorized here — the RPC above already wrote them.
         bankTransactionUpdates.suggested_category_id = pendingOutflow.category_id;
-        // Note: AI confidence and reasoning would be set here if available from invoice processing
-      }
-
-      // Merge notes: append pending outflow notes to existing bank transaction notes
-      const mergedNotes = [bankTransaction.notes, pendingOutflow.notes]
-        .filter(Boolean)
-        .join('\n\n');
-      if (mergedNotes) {
+        categorized = true;
+      } else if (mergedNotes) {
+        // No category to apply through the RPC. Write the merged notes directly.
         bankTransactionUpdates.notes = mergedNotes;
       }
 
@@ -208,27 +269,61 @@ export function usePendingOutflowMutations() {
       if (btError) throw btError;
 
       // Update pending outflow
+      const pendingOutflowUpdates: Record<string, unknown> = {
+        status: 'cleared',
+        linked_bank_transaction_id: bankTransactionId,
+        cleared_at: new Date().toISOString(),
+      };
+
+      // The outflow's own category_id drives the "Needs category" badge on
+      // the cleared card (PendingOutflowCard.tsx). When the outflow had no
+      // category but the matched transaction was already categorized, copy
+      // that category onto the outflow so the badge does not show a false
+      // "needs category" state. Only copy it when a journal entry backs
+      // the transaction's category — otherwise the badge would hide the
+      // same journal-less state this task fixes.
+      if (!pendingOutflow.category_id && bankTransaction.category_id && (await hasJournalEntry())) {
+        pendingOutflowUpdates.category_id = bankTransaction.category_id;
+        categorized = true;
+      }
+
       const { error: poError } = await supabase
         .from('pending_outflows')
-        .update({
-          status: 'cleared',
-          linked_bank_transaction_id: bankTransactionId,
-          cleared_at: new Date().toISOString(),
-        })
+        .update(pendingOutflowUpdates)
         .eq('id', pendingOutflowId);
 
       if (poError) throw poError;
 
-      return { pendingOutflowId, bankTransactionId };
+      return {
+        pendingOutflowId,
+        bankTransactionId,
+        categorized,
+      };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
-      toast.success('Expense matched and cleared');
+      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      toast.success(
+        data.categorized
+          ? 'Expense matched and cleared'
+          : 'Expense matched. Categorize the transaction on the Banking page.'
+      );
     },
     onError: (error) => {
-      toast.error(`Failed to confirm match: ${error.message}`);
+      // Map the categorize_bank_transaction guard errors to Banking-page
+      // copy. The raw text comes from
+      // supabase/migrations/20260709120000_categorize_preserve_metadata_on_noop.sql.
+      if (error.message.includes('reconciled')) {
+        toast.error('This transaction is reconciled. Reclassify it from the Banking page instead.');
+      } else if (error.message.includes('closed fiscal period')) {
+        toast.error('This transaction is in a closed fiscal period. Reopen the period before you match it.');
+      } else {
+        toast.error(`Failed to confirm match: ${error.message}`);
+      }
     },
   });
 

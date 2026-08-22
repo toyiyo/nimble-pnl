@@ -2,11 +2,12 @@ import React, { ReactNode } from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useBankTransactions } from '@/hooks/useBankTransactions';
+import { useBankTransactions, useCategorizeTransaction } from '@/hooks/useBankTransactions';
 import type { TransactionFilters } from '@/types/transactions';
 
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 const mockRestaurantContext = vi.hoisted(() => ({
@@ -389,5 +390,83 @@ describe('useBankTransactions (paginated)', () => {
     expect(mockSupabase.from).not.toHaveBeenCalled();
 
     mockRestaurantContext.selectedRestaurant = { restaurant_id: 'rest-123' }; // restore for other tests
+  });
+});
+
+type UpdateResult = { error: { message: string } | null };
+
+const createPendingOutflowsSyncBuilder = (result: UpdateResult) => {
+  const builder = {
+    update: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    is: vi.fn().mockResolvedValue(result),
+  };
+  return builder;
+};
+
+describe('useCategorizeTransaction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('syncs the category onto a cleared, uncategorized pending outflow after the RPC succeeds', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
+    const pendingOutflowsBuilder = createPendingOutflowsSyncBuilder({ error: null });
+    mockSupabase.from.mockImplementation(() => pendingOutflowsBuilder);
+
+    const { result } = renderHook(() => useCategorizeTransaction(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        transactionId: 'txn-1',
+        categoryId: 'cat-1',
+      });
+    });
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('categorize_bank_transaction', expect.objectContaining({
+      p_transaction_id: 'txn-1',
+      p_category_id: 'cat-1',
+    }));
+    expect(mockSupabase.from).toHaveBeenCalledWith('pending_outflows');
+    expect(pendingOutflowsBuilder.update).toHaveBeenCalledWith({ category_id: 'cat-1' });
+    expect(pendingOutflowsBuilder.eq).toHaveBeenCalledWith('linked_bank_transaction_id', 'txn-1');
+    expect(pendingOutflowsBuilder.eq).toHaveBeenCalledWith('status', 'cleared');
+    expect(pendingOutflowsBuilder.is).toHaveBeenCalledWith('category_id', null);
+  });
+
+  it('does not run the sync update when the RPC errors', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: null, error: { message: 'RPC failed' } });
+
+    const { result } = renderHook(() => useCategorizeTransaction(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({ transactionId: 'txn-1', categoryId: 'cat-1' })
+      ).rejects.toThrow();
+    });
+
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
+
+  it('throws when the sync update itself fails', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: { success: true }, error: null });
+    const pendingOutflowsBuilder = createPendingOutflowsSyncBuilder({
+      error: { message: 'sync failed' },
+    });
+    mockSupabase.from.mockImplementation(() => pendingOutflowsBuilder);
+
+    const { result } = renderHook(() => useCategorizeTransaction(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({ transactionId: 'txn-1', categoryId: 'cat-1' })
+      ).rejects.toThrow();
+    });
   });
 });

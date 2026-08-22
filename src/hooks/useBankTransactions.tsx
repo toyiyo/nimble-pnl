@@ -430,11 +430,28 @@ export function useCategorizeTransaction() {
       });
 
       if (error) throw error;
+
+      // A pending outflow can clear with no category when it was matched to
+      // an uncategorized transaction (usePendingOutflows.confirmMatch), and
+      // then shows a "Needs category" badge until this transaction gets a
+      // category. Categorizing it here must sync that outflow, or the badge
+      // never clears. Scoped to a cleared, still-uncategorized outflow so a
+      // normal (non-matched) categorization stays a no-op.
+      const { error: syncError } = await supabase
+        .from('pending_outflows')
+        .update({ category_id: categoryId })
+        .eq('linked_bank_transaction_id', transactionId)
+        .eq('status', 'cleared')
+        .is('category_id', null);
+
+      if (syncError) throw syncError;
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
       toast({
         title: "Transaction categorized",
         description: "The transaction has been successfully categorized.",

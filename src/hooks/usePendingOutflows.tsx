@@ -161,12 +161,23 @@ export function usePendingOutflowMutations() {
       // Fetch current bank transaction to merge notes
       const { data: bankTransaction, error: btFetchError } = await supabase
         .from('bank_transactions')
-        .select('notes, category_id, suggested_category_id')
+        .select('notes, category_id, suggested_category_id, is_transfer, is_split, excluded_reason')
         .eq('id', bankTransactionId)
         .single();
 
       if (btFetchError) throw btFetchError;
       if (!bankTransaction) throw new Error('Bank transaction not found');
+
+      // A transfer, an excluded row, or a split parent must never get a
+      // single-category journal entry. ManualMatchDialog filters these out,
+      // but a stale row list or a direct call must not rely on the UI alone
+      // for a financial write — see the same guard the bulk categorize RPC
+      // applies (supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql).
+      if (bankTransaction.is_transfer || bankTransaction.is_split || bankTransaction.excluded_reason) {
+        throw new Error(
+          'This transaction is a transfer, a split, or excluded and cannot be matched here.'
+        );
+      }
 
       // Merge notes. A retry that already ran the merge must not duplicate
       // the outflow notes, so skip the merge when the bank notes already
@@ -195,7 +206,7 @@ export function usePendingOutflowMutations() {
       };
 
       // Prepare the metadata-only update for bank_transactions.
-      const bankTransactionUpdates: any = {
+      const bankTransactionUpdates: Record<string, unknown> = {
         matched_at: new Date().toISOString(),
       };
 

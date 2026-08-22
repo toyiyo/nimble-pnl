@@ -109,6 +109,56 @@ describe('usePendingOutflowMutations', () => {
   });
 
   describe('confirmMatch', () => {
+    // Codex review finding on PR #777: ManualMatchDialog's own filter only
+    // excludes amount >= 0. A transfer, an excluded row, or a split parent
+    // must never get a single-category journal entry (the bulk categorize
+    // RPC skips all three for the same reason — see
+    // supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql).
+    // This is the defense-in-depth guard for a stale row list or a direct
+    // call that bypasses the dialog's own filter.
+    it.each([
+      ['a transfer', { is_transfer: true, is_split: false, excluded_reason: null }],
+      ['a split parent', { is_transfer: false, is_split: true, excluded_reason: null }],
+      ['an excluded row', { is_transfer: false, is_split: false, excluded_reason: 'duplicate' }],
+    ])('blocks a match onto %s', async (_label, flags) => {
+      const mockPendingOutflow = {
+        id: 'po-123',
+        category_id: 'cat-456',
+        notes: null,
+        expense_invoice_uploads: [],
+      };
+
+      const mockBankTransaction = {
+        notes: null,
+        category_id: null,
+        suggested_category_id: null,
+        ...flags,
+      };
+
+      const { mockBankTransactionBuilder, mockPendingOutflowBuilder } =
+        setupConfirmMatchMocks(mockPendingOutflow, mockBankTransaction);
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.confirmMatch.mutateAsync({
+            pendingOutflowId: 'po-123',
+            bankTransactionId: 'bt-456',
+          });
+        } catch {
+          // expected: the pre-RPC transfer/split/excluded guard rejects the match
+        }
+      });
+
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
+      expect(mockBankTransactionBuilder.update).not.toHaveBeenCalled();
+      expect(mockPendingOutflowBuilder.update).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining('transfer, a split, or excluded')
+      );
+    });
+
     it('should copy expense data to bank transaction when confirming match', async () => {
       const mockPendingOutflow = {
         id: 'po-123',

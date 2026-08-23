@@ -51,6 +51,14 @@ Files: `src/components/banking/FinancialPulseHero.tsx`,
 Run `npm run typecheck`, `npm run lint`, `npm run test`,
 `npm run build`. Fix and commit until green.
 
+Status 2026-08-22: the gate ran green in the main session at commit
+945abe91. Typecheck: green. Build: `✓ built in 1m 19s`. Unit suite:
+`805 passed | 1 skipped` files, `9628 passed | 2 skipped` tests.
+Lint: the changed files are clean; the repo-wide errors exist on
+`main`. Confirm that commit 945abe91 is on the branch and that only
+`docs/` files changed after it. Then report `completed`. Do not
+re-run the gate in that case.
+
 E2E gate: justified exception. The change re-binds an existing tile
 to an existing field and renames fields. No route, RPC, or record
 flow changes. Unit tests cover the tile binding and the lib math.

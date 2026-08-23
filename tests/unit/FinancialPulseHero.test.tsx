@@ -67,8 +67,6 @@ describe('FinancialPulseHero', () => {
     expect(screen.getByText('$6919')).toBeInTheDocument();
     expect(screen.getAllByText('This Quarter').length).toBeGreaterThan(0);
     expect(screen.queryByText('(7 days)')).not.toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 
   afterEach(() => {

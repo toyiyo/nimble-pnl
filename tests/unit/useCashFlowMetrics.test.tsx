@@ -110,9 +110,9 @@ describe('useCashFlowMetrics', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data?.netInflows30d).toBe(100);
-    expect(result.current.data?.netOutflows30d).toBe(40);
-    expect(result.current.data?.netCashFlow30d).toBe(60);
+    expect(result.current.data?.totalInflows).toBe(100);
+    expect(result.current.data?.totalOutflows).toBe(40);
+    expect(result.current.data?.netCashFlow).toBe(60);
     // (100 - 50) / 50 * 100 = 100
     expect(result.current.data?.trailingTrendPercentage).toBe(100);
   });

@@ -8,7 +8,7 @@ function d(year: number, month: number, day: number): Date {
 }
 
 describe('deriveCashFlowMetrics', () => {
-  it('sums only the last 7 days of the period into the 7d fields', () => {
+  it('sums inflow and outflow over the full period, not a fixed window', () => {
     // 10-day period, 2026-08-01..2026-08-10. Flat $100 inflow every day.
     const daily: DailyFlow[] = Array.from({ length: 10 }, (_, i) => ({
       day: `2026-08-${String(i + 1).padStart(2, '0')}`,
@@ -18,13 +18,9 @@ describe('deriveCashFlowMetrics', () => {
 
     const metrics = deriveCashFlowMetrics(daily, 0, d(2026, 8, 1), d(2026, 8, 10));
 
-    // Last 7 days are 08-04..08-10.
-    expect(metrics.netInflows7d).toBe(700);
-    expect(metrics.netOutflows7d).toBe(0);
-    expect(metrics.netCashFlow7d).toBe(700);
-    expect(metrics.netInflows30d).toBe(1000);
-    expect(metrics.netOutflows30d).toBe(0);
-    expect(metrics.netCashFlow30d).toBe(1000);
+    expect(metrics.totalInflows).toBe(1000);
+    expect(metrics.totalOutflows).toBe(0);
+    expect(metrics.netCashFlow).toBe(1000);
   });
 
   it('computes volatility over days present in the series, not zero-filled gaps', () => {
@@ -101,12 +97,9 @@ describe('deriveCashFlowMetrics', () => {
     const metrics = deriveCashFlowMetrics([], 0, d(2026, 8, 1), d(2026, 8, 5));
 
     expect(metrics).toEqual({
-      netInflows7d: 0,
-      netInflows30d: 0,
-      netOutflows7d: 0,
-      netOutflows30d: 0,
-      netCashFlow7d: 0,
-      netCashFlow30d: 0,
+      totalInflows: 0,
+      totalOutflows: 0,
+      netCashFlow: 0,
       avgDailyCashFlow: 0,
       volatility: 0,
       trend: [0, 0, 0, 0, 0],

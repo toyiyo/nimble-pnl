@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { fetchFinancialCOGSRows, COGS_MAX_PAGES } from '@/services/cogsFetch';
+import { fetchTipSplitRows, sumTipsOwedByEmployee } from '@/services/tipsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { isCompensationHidden } from '@/lib/employeeMaskedFields';
@@ -185,6 +186,15 @@ export function useMonthlyMetrics(
       const toStr = toDateOnlyString(dateTo);
       const warnings: string[] = [];
 
+      // A page-cap hit is a soft-fail signal (not a query error): log it for
+      // debugging and add a user-facing warning. Shared by every paged fetch
+      // below so the log/push pair stays in one place.
+      const pushCapWarning = (capped: boolean, warnMsg: string, ...consoleArgs: unknown[]) => {
+        if (!capped) return;
+        console.warn(...consoleArgs);
+        warnings.push(warnMsg);
+      };
+
       // bank_transactions.transaction_date is TIMESTAMPTZ; pending_outflows.issue_date
       // is DATE. Slice to yyyy-MM-dd then take first 7 chars for the month bucket.
       // See toUtcDayKey for the TZ rationale.
@@ -286,10 +296,11 @@ export function useMonthlyMetrics(
         );
         foodCostsData = rows;
 
-        if (inventoryCapped) {
-          console.warn('inventory COGS fetch hit the page limit; the food cost figure is incomplete.');
-          warnings.push('The inventory COGS rows hit the fetch limit. The food cost figure is incomplete.');
-        }
+        pushCapWarning(
+          inventoryCapped,
+          'The inventory COGS rows hit the fetch limit. The food cost figure is incomplete.',
+          'inventory COGS fetch hit the page limit; the food cost figure is incomplete.'
+        );
       }
 
       // Fetch financial COGS when method uses financial data
@@ -299,10 +310,11 @@ export function useMonthlyMetrics(
         const { bankTxns, splitItems, parentDateMap, pendingTxns, capped: financialCapped } =
           await fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr);
 
-        if (financialCapped) {
-          console.warn('financial COGS fetch hit the page limit; the food cost figure is incomplete.');
-          warnings.push('The financial COGS rows hit the fetch limit. The food cost figure is incomplete.');
-        }
+        pushCapWarning(
+          financialCapped,
+          'The financial COGS rows hit the fetch limit. The food cost figure is incomplete.',
+          'financial COGS fetch hit the page limit; the food cost figure is incomplete.'
+        );
 
         // Aggregate all financial sources into a per-day dollar map via shared pure helper.
         // COGS_SUBTYPES filtering happens inside the helper.
@@ -333,10 +345,11 @@ export function useMonthlyMetrics(
             .range(from, to)
       );
 
-      if (bankLaborCapped) {
-        console.warn('bank labor fetch hit the page limit; the labor cost figure is incomplete.');
-        warnings.push('The bank labor rows hit the fetch limit. The labor cost figure is incomplete.');
-      }
+      pushCapWarning(
+        bankLaborCapped,
+        'The bank labor rows hit the fetch limit. The labor cost figure is incomplete.',
+        'bank labor fetch hit the page limit; the labor cost figure is incomplete.'
+      );
 
       const { rows: pendingLabor, capped: pendingLaborCapped } = await fetchAllRows(
         (from, to) =>
@@ -359,10 +372,11 @@ export function useMonthlyMetrics(
             .range(from, to)
       );
 
-      if (pendingLaborCapped) {
-        console.warn('pending labor fetch hit the page limit; the labor cost figure is incomplete.');
-        warnings.push('The pending labor rows hit the fetch limit. The labor cost figure is incomplete.');
-      }
+      pushCapWarning(
+        pendingLaborCapped,
+        'The pending labor rows hit the fetch limit. The labor cost figure is incomplete.',
+        'pending labor fetch hit the page limit; the labor cost figure is incomplete.'
+      );
 
       // Fetch time punches and employees to calculate labor costs using the same logic as Payroll
       // This ensures Dashboard and Payroll show consistent labor numbers (DRY principle)
@@ -388,13 +402,12 @@ export function useMonthlyMetrics(
           .order('id')
           .range(from, to),
       );
-      if (timePunchesCapped) {
-        console.warn(
-          '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
-          { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() },
-        );
-        warnings.push('The time punch rows hit the fetch limit. The labor cost figure is incomplete.');
-      }
+      pushCapWarning(
+        timePunchesCapped,
+        'The time punch rows hit the fetch limit. The labor cost figure is incomplete.',
+        '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
+        { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() }
+      );
 
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees_secure')
@@ -418,27 +431,18 @@ export function useMonthlyMetrics(
       }
 
       // Tip splits within the query window (joined parent for restaurant_id + split_date)
-      type TipSplitRow = {
-        amount: number;
-        employee_id: string;
-        tip_splits: { restaurant_id: string; split_date: string };
-      };
-      const { rows: tipSplitsData, capped: tipsCapped } = await fetchAllRows<TipSplitRow>(
-        (from, to) =>
-          supabase
-            .from('tip_split_items')
-            .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
-            .eq('tip_splits.restaurant_id', restaurantId)
-            .gte('tip_splits.split_date', fromStr)
-            .lte('tip_splits.split_date', toStr)
-            .order('id')
-            .range(from, to)
+      const { rows: tipSplitsData, capped: tipsCapped } = await fetchTipSplitRows(
+        supabase,
+        restaurantId,
+        fromStr,
+        toStr
       );
 
-      if (tipsCapped) {
-        console.warn('tips fetch hit the page limit; the labor cost figure is incomplete.');
-        warnings.push('The tip rows hit the fetch limit. The labor cost figure is incomplete.');
-      }
+      pushCapWarning(
+        tipsCapped,
+        'The tip rows hit the fetch limit. The labor cost figure is incomplete.',
+        'tips fetch hit the page limit; the labor cost figure is incomplete.'
+      );
 
       // Convert time punches to the expected format: cast punch_type to the union
       // and narrow location from the DB's JSON to the typed shape.
@@ -507,17 +511,11 @@ export function useMonthlyMetrics(
         if (clampedStart > clampedEnd) continue;
 
         // Build per-employee tipsOwed for *this* month from tipSplitsData.
-        // amount is stored as integer cents in the DB (tip_split_items.amount -- cents).
-        const tipsOwedByEmployee = new Map<string, number>();
-        for (const row of tipSplitsData) {
+        const monthTipRows = tipSplitsData.filter((row) => {
           const splitDate = new Date(row.tip_splits.split_date + 'T12:00:00');
-          if (splitDate < clampedStart || splitDate > clampedEnd) continue;
-          // amount is already in integer cents — no conversion needed.
-          tipsOwedByEmployee.set(
-            row.employee_id,
-            (tipsOwedByEmployee.get(row.employee_id) ?? 0) + row.amount
-          );
-        }
+          return splitDate >= clampedStart && splitDate <= clampedEnd;
+        });
+        const tipsOwedByEmployee = sumTipsOwedByEmployee(monthTipRows);
 
         // OT-D labor for this month (ISO-week banding + tipsOwed).
         const { actualLaborCents } = calculateActualLaborCostForMonth({

@@ -6,6 +6,7 @@ import { calculateActualLaborCost, calculateActualLaborCostForRange } from '@/se
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import { fetchTipSplitRows, sumTipsOwedByEmployee } from '@/services/tipsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 
@@ -118,28 +119,13 @@ export function useLaborCostsFromTimeTracking(
 
       // Tips owed in the window (integer cents). Same source and window rule
       // as useMonthlyMetrics so the two surfaces agree.
-      const { rows: tipRows, capped: tipsCapped } = await fetchAllRows<{
-        amount: number;
-        employee_id: string;
-        tip_splits: { restaurant_id: string; split_date: string };
-      }>((from, to) =>
-        supabase
-          .from('tip_split_items')
-          .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
-          .eq('tip_splits.restaurant_id', restaurantId)
-          .gte('tip_splits.split_date', toDateOnlyString(dateFrom))
-          .lte('tip_splits.split_date', toDateOnlyString(dateTo))
-          .order('id')
-          .range(from, to)
+      const { rows: tipRows, capped: tipsCapped } = await fetchTipSplitRows(
+        supabase,
+        restaurantId,
+        toDateOnlyString(dateFrom),
+        toDateOnlyString(dateTo)
       );
-
-      const tipsOwedByEmployee = new Map<string, number>();
-      for (const row of tipRows) {
-        tipsOwedByEmployee.set(
-          row.employee_id,
-          (tipsOwedByEmployee.get(row.employee_id) ?? 0) + row.amount
-        );
-      }
+      const tipsOwedByEmployee = sumTipsOwedByEmployee(tipRows);
 
       // 3. Convert database punches to TimePunch type
       const typedPunches: TimePunch[] = (punches || []).map((punch: DBTimePunch) => ({

@@ -25,6 +25,7 @@ export interface CostsFromSourceResult {
   actualLaborCost: number;   // From bank transactions (paid)
   laborBasis: LaborBasis;    // Which source is authoritative for this period
   totalCost: number;
+  capped: boolean;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -100,6 +101,7 @@ export function useCostsFromSource(
     actualLaborCost: transactionLaborCosts.totalCost,
     laborBasis,
     totalCost: unifiedCOGS.totalCOGS + totalLaborCost,
+    capped: unifiedCOGS.capped || laborCosts.capped,
     isLoading,
     error,
     refetch,

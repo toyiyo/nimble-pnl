@@ -32,11 +32,13 @@ report documents each query and result.
 2. **COGS truncation, twice, differently.** The pills read COGS through
    `useCostsFromSource` → `useUnifiedCOGS`
    (`src/hooks/useUnifiedCOGS.tsx:38-39`) → `useFoodCosts.tsx:48`, which
-   sets `.limit(10000)`. The monthly view queries inventory usage itself
-   with `.limit(10000)` at `src/hooks/useMonthlyMetrics.tsx:272-387`
-   (7 call sites). The wide window holds 31,813 rows. Each view truncates
-   a different 10,000-row slice, so pills show COGS 22,411 and monthly
-   shows 23,465.
+   sets `.limit(10000)`. The monthly view sets `.limit(10000)` at
+   `src/hooks/useMonthlyMetrics.tsx:272-387` (7 call sites). Line 272
+   queries `inventory_transactions`. Lines 292-387 query
+   `bank_transactions`, `bank_transaction_splits`, and
+   `pending_outflows` for financial COGS and bank labor. The wide
+   inventory window holds 31,813 rows. Each view truncates a different
+   10,000-row slice, so pills show COGS 22,411 and monthly shows 23,465.
 3. **Two labor formulas.** The pills call `calculateActualLaborCost`
    (`src/services/laborCalculations.ts:491`) through
    `src/hooks/useLaborCostsFromTimeTracking.tsx:136`. It counts straight
@@ -92,11 +94,55 @@ the warning near the affected figure. Style: the amber alert panel
 pattern from CLAUDE.md (`bg-amber-500/10 border-amber-500/20`). The
 hooks above expose `capped` in their return values.
 
+Accessibility and behavior:
+
+- The component has `role="status"`. The capped state is informational,
+  so `role="alert"` would over-interrupt a screen reader.
+- The visible text names the affected figure, for example: "The COGS
+  total is incomplete. The query hit the row cap."
+- Any icon carries `aria-hidden="true"`.
+- The panel is static. It takes no focus and has no tab stop.
+
 ### 3. Make failures loud
 
-Delete the `console.warn` catch blocks in `useMonthlyMetrics`. Let the
-error reach the React Query error state. The page shows the existing
-error UI instead of a wrong number.
+Today no error UI exists for this view. `src/pages/Index.tsx:178` reads
+only `data` and `isLoading` from `useMonthlyMetrics`, and line 418
+(`const monthlyData = monthlyMetrics || []`) turns every failure into an
+empty table. This change has three parts:
+
+**Wire the error and loading states.** Destructure `error` at
+`src/pages/Index.tsx:178`. Show a visible `role="alert"` message near
+`MonthlyBreakdownTable` when `error` is set. Add a loading skeleton
+gated on `monthlyLoading`, in the table shape, per the CLAUDE.md
+three-state rule.
+
+**Classify each catch site.** `useMonthlyMetrics` has seven
+`console.warn` catch blocks. Do not delete them all. A failure that
+makes a shown figure wrong must either fail the query (fatal) or show
+`DataCompletenessWarning` on that figure (soft). Never silent:
+
+| Line | Fetch | Class | Reason |
+|------|-------|-------|--------|
+| 120 | `get_unified_sales_totals` RPC | Soft + warning | A documented fallback formula exists. |
+| 370 | Bank labor costs | Fatal | The Actual Payroll figure would show 0. |
+| 390 | Pending labor outflows | Fatal | Same figure. |
+| 427 | Time punches | Fatal | The accrued labor figure would be wrong. |
+| 436 | Employees | Fatal | Same figure. |
+| 449 | Manual payments | Soft + warning | A small additive component. |
+| 461 | Tip split items | Fatal | Silent tip loss is the bug in this incident. |
+
+**Fatal** means: rethrow, so the React Query error state fires and the
+new error UI shows. React Query retries transient failures before the
+error state settles.
+
+### 3a. Deduplicate the financial-COGS logic
+
+`src/hooks/useCOGSFromFinancials.tsx:68-121` and the inline block at
+`src/hooks/useMonthlyMetrics.tsx:280-347` read `bank_transactions`,
+`bank_transaction_splits`, and `pending_outflows` the same way. Extract
+one shared helper and call it from both hooks. Add a unit test that
+proves both paths return the same total for one fixture — the same
+treatment item 4 gives the labor formula.
 
 ### 4. Unify the labor formula
 
@@ -118,20 +164,34 @@ payroll runs. This change reuses it; it does not fork it.
 
 ### 5. Label the basis on each view
 
-- Pills: add the caption "Before other expenses" under the profit pill.
-- Monthly view: add "Accrual basis" to the section header.
-- Sankey: add "Cash basis" to the section header.
-
-Exact copy lands in the plan. All strings go through the existing text
-conventions (Title case headers, sentence case captions).
+- **Pills.** `src/components/DashboardMetricCard.tsx:3-14` has one
+  `subtitle` prop, and the Gross Profit card fills it at
+  `src/pages/Index.tsx:828`. Add a second prop, `caption?: string`,
+  rendered on its own line below `subtitle`. Pass
+  "Before other expenses" from the Gross Profit card only.
+- **Monthly view.** Add "Accrual basis" to the single section header,
+  the `<h2>Monthly Performance</h2>` at `src/pages/Index.tsx:907`.
+- **Sankey.** Two headers exist. Put "Cash basis" on the page-level
+  `<h2>Cashflow</h2>` at `src/pages/Index.tsx:887`. That header stays
+  visible when the user collapses the section, so the label does too.
 
 ### 6. Reconcile the Sankey income links
 
-Keep the category links gross. Add one reconciliation line under the
-header: "Gross $X − discounts and refunds $Y = Net $Z". Mark the link
-tooltips "gross". This keeps the layout stable and makes the math
-visible. We do not rescale links to net; per-category net data does not
+Keep the category links gross. Add one reconciliation line:
+"Gross $X − discounts and refunds $Y = Net $Z". Mark the link tooltips
+"gross". We do not rescale links to net; per-category net data does not
 exist in the breakdown payload.
+
+Placement and states:
+
+- Put the line in the shared `CardHeader` markup of
+  `CashFlowSankeyChart`, not in the success branch only. The loading,
+  empty, and success branches share that header, so the line does not
+  flicker in and out.
+- The values come from data the component already reads:
+  `usePeriodMetrics` exposes `grossRevenue`, `discounts`, `refunds`,
+  and `netRevenue` (`src/hooks/usePeriodMetrics.tsx:104-109`). Show the
+  line when those values exist; hide it while they load.
 
 ### 7. Guardrail against new cap bugs
 
@@ -182,10 +242,13 @@ bugs.
 
 ## Error handling
 
-- `fetchAllRows` throws on a page error. React Query catches it and
-  sets the error state. The view renders the error UI.
-- `capped: true` is not an error. It renders the completeness warning
-  and still shows the partial figure.
+- `fetchAllRows` throws on a page error. A fatal catch site rethrows.
+  React Query sets the error state. The page shows the new
+  `role="alert"` message from Scope item 3.
+- A soft catch site logs and shows `DataCompletenessWarning` on the
+  affected figure.
+- `capped: true` is not an error. The view shows the completeness
+  warning and still shows the partial figure.
 
 ## Testing
 
@@ -194,5 +257,7 @@ bugs.
 | Tip pagination | Unit: mock paged responses; assert the full sum and the `capped` flag. |
 | COGS pagination | Unit: same pattern for `useFoodCosts` and `useCOGSFromFinancials` paths. |
 | Labor unification | Unit: pills helper and monthly formula return equal totals for one fixture. |
+| Financial-COGS dedup | Unit: the shared helper returns the same total from both hook paths for one fixture. |
 | Guardrail | Unit: the scan test fails on a synthetic violation fixture. |
+| Error and loading states | Unit: a fatal fetch failure sets the query error; the page shows the alert and the skeleton logic holds. |
 | Basis labels + warning | E2E: dashboard shows the three basis labels; warning appears when a hook reports `capped`. |

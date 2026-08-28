@@ -47,6 +47,7 @@ export interface MonthRevenueTotals {
   tipsCents: number;
   otherLiabilitiesCents: number;
   posCollectedCents: number;
+  salesTotalsFailed: boolean;
 }
 
 const toC = (n: number): number =>
@@ -155,6 +156,7 @@ export async function fetchMonthRevenueTotals(
     tipsCents,
     otherLiabilitiesCents,
     posCollectedCents,
+    salesTotalsFailed: !!unifiedErr,
   };
 }
 
@@ -239,6 +241,12 @@ export function useMonthlyMetrics(
           toDateOnlyString(clampedStart),
           toDateOnlyString(clampedEnd)
         );
+
+        if (totals.salesTotalsFailed) {
+          warnings.push(
+            `The POS sales total for ${monthKey} failed to load. The collected amount uses the fallback formula.`
+          );
+        }
 
         const month = ensureMonth(monthKey);
         month.gross_revenue          = totals.grossRevenueCents;
@@ -367,31 +375,25 @@ export function useMonthlyMetrics(
       // silently drop the newest punches (the query orders `punch_time asc`)
       // once the window's punches cross that threshold. The `.order('id')`
       // tiebreaker makes each page boundary deterministic when multiple
-      // punches share a `punch_time`. Errors stay non-fatal (console.warn)
-      // to match this hook's existing behavior for the labor calculation.
-      let timePunchesData: DBTimePunch[] | null = null;
-      try {
-        const { rows, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
-          supabase
-            .from('time_punches')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .gte('punch_time', dateFrom.toISOString())
-            .lte('punch_time', lookaheadPunchFetchRange(dateFrom, dateTo).fetchEnd.toISOString())
-            .order('punch_time', { ascending: true })
-            .order('id')
-            .range(from, to),
+      // punches share a `punch_time`. Errors are fatal: the query throws and
+      // the table shows the error state.
+      const { rows: timePunchesData, capped: timePunchesCapped } = await fetchAllRows<DBTimePunch>((from, to) =>
+        supabase
+          .from('time_punches')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .gte('punch_time', dateFrom.toISOString())
+          .lte('punch_time', lookaheadPunchFetchRange(dateFrom, dateTo).fetchEnd.toISOString())
+          .order('punch_time', { ascending: true })
+          .order('id')
+          .range(from, to),
+      );
+      if (timePunchesCapped) {
+        console.warn(
+          '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
+          { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() },
         );
-        timePunchesData = rows;
-        if (capped) {
-          console.warn(
-            '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
-            { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() },
-          );
-          warnings.push('The time punch rows hit the fetch limit. The labor cost figure is incomplete.');
-        }
-      } catch (timePunchesError) {
-        console.warn('Failed to fetch time punches for labor calculation:', timePunchesError);
+        warnings.push('The time punch rows hit the fetch limit. The labor cost figure is incomplete.');
       }
 
       const { data: employeesData, error: employeesError } = await supabase
@@ -399,9 +401,7 @@ export function useMonthlyMetrics(
         .select('*')
         .eq('restaurant_id', restaurantId);
 
-      if (employeesError) {
-        console.warn('Failed to fetch employees for labor calculation:', employeesError);
-      }
+      if (employeesError) throw employeesError;
 
       // Fetch per-job contractor payments (manual payments stored as source='per-job')
       const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
@@ -414,6 +414,7 @@ export function useMonthlyMetrics(
 
       if (manualPaymentsError) {
         console.warn('Failed to fetch manual payments:', manualPaymentsError);
+        warnings.push('The manual payment rows failed to load. The labor cost figure is incomplete.');
       }
 
       // Tip splits within the query window (joined parent for restaurant_id + split_date)

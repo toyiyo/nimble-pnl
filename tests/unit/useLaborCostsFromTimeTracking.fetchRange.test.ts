@@ -1,11 +1,20 @@
 /**
- * Regression: useLaborCostsFromTimeTracking's time_punches fetch must be
- * widened by a LOOK-AHEAD ONLY (via lookaheadPunchFetchRange) so a shift
- * whose clock_out lands just after dateTo is fetched whole, WITHOUT a
- * look-back. calculateActualLaborCost attributes hours/active-days to every
- * day a shift touches and does NOT drop shifts whose clock-in precedes the
- * window, so a symmetric look-back would pull a prior-period Sunday-night
- * shift into the first in-range day and overstate labor (Codex P2).
+ * Regression: useLaborCostsFromTimeTracking's time_punches DB fetch has two
+ * jobs with different rules:
+ *
+ * 1. The END is a LOOK-AHEAD ONLY (via lookaheadPunchFetchRange) so a shift
+ *    whose clock_out lands just after dateTo is fetched whole.
+ * 2. The START widens back to the Monday (WEEK_STARTS_ON) that contains
+ *    dateFrom, so calculateActualLaborCostForRange sees the FULL ISO week
+ *    and bands overtime correctly, even when dateFrom falls mid-week
+ *    (Codex P2, follow-up finding).
+ *
+ * calculateActualLaborCost (the straight-time daily series) must NOT see
+ * those extra look-back days — it attributes hours/active-days to every day
+ * a shift touches and does not drop shifts whose clock-in precedes the
+ * window, so it would pull a prior-period shift into the first in-range day
+ * and overstate labor. The hook filters them back out in memory before
+ * calling it (see useLaborCostsFromTimeTracking.weekLookback.test.ts).
  *
  * The React Query cache key must stay keyed on the *logical* dateFrom/
  * dateTo (not the buffered range) so cache identity is unaffected.
@@ -14,7 +23,9 @@ import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { startOfWeek } from 'date-fns';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 
 // Generic chainable Supabase query-builder mock: every method returns
 // `this` so any chain shape resolves, and the builder is thenable so
@@ -85,12 +96,16 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
     vi.clearAllMocks();
   });
 
-  it('fetches time_punches with a look-ahead only (start unchanged, end +18h)', async () => {
+  it('fetches time_punches widened to the ISO week start, with a look-ahead end (+18h)', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
-    const dateFrom = new Date('2026-03-02T00:00:00.000Z');
+    // dateFrom lands mid-week (a Monday-start week runs Mar 2 - Mar 8), so
+    // the DB fetch start must widen back to Mar 2, NOT stay at dateFrom.
+    const dateFrom = new Date('2026-03-04T00:00:00.000Z');
     const dateTo = new Date('2026-03-08T23:59:59.999Z');
     const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
+    const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
+    const expectedFetchStart = weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;
 
     const { result } = renderHook(
       () => useLaborCostsFromTimeTracking('rest-1', dateFrom, dateTo),
@@ -100,10 +115,33 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(fromMock).toHaveBeenCalledWith('time_punches');
+    expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', expectedFetchStart.toISOString());
+    expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', fetchEnd.toISOString());
+    // dateFrom is mid-week, so the widened start is strictly before it.
+    expect(expectedFetchStart.getTime()).toBeLessThan(dateFrom.getTime());
+    // End keeps the look-ahead-only rule: +18h past dateTo.
+    expect(fetchEnd.getTime() - dateTo.getTime()).toBe(18 * 3600 * 1000);
+  });
+
+  it('leaves the fetch start unchanged when dateFrom already falls on the week start', async () => {
+    const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
+
+    // Derive dateFrom FROM startOfWeek (rather than hardcoding a calendar
+    // date and assuming it lands on a Monday) so this holds under every
+    // host TZ the suite runs in, not only UTC.
+    const dateFrom = startOfWeek(new Date('2026-03-04T12:00:00.000Z'), { weekStartsOn: WEEK_STARTS_ON });
+    const dateTo = new Date(dateFrom.getTime() + 6 * 24 * 3600 * 1000 + 23 * 3600 * 1000);
+    const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
+
+    const { result } = renderHook(
+      () => useLaborCostsFromTimeTracking('rest-1', dateFrom, dateTo),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
     expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', fetchStart.toISOString());
     expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', fetchEnd.toISOString());
-    // Look-ahead only: start is the raw dateFrom (NO look-back), end is +18h.
     expect(fetchStart.toISOString()).toBe(dateFrom.toISOString());
-    expect(fetchEnd.getTime() - dateTo.getTime()).toBe(18 * 3600 * 1000);
   });
 });

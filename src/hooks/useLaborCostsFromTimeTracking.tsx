@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { startOfWeek } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
 import { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import { calculateActualLaborCost, calculateActualLaborCostForRange } from '@/services/laborCalculations';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
@@ -94,12 +96,24 @@ export function useLaborCostsFromTimeTracking(
       // threshold. The `.order('id')` tiebreaker makes each page boundary
       // deterministic when multiple punches share a `punch_time`.
       const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
+
+      // calculateActualLaborCostForRange (below) buckets punches by ISO week
+      // and bands overtime over the FULL week. When dateFrom does not fall on
+      // a week boundary, the days before dateFrom in that same week must
+      // still be fetched, or the week's hour total comes out too low and
+      // hours that should band as overtime cost as straight time instead.
+      // Widen the DB fetch back to the start of dateFrom's week for this.
+      // calculateActualLaborCost (the straight-time daily series) must NOT
+      // see these extra days — see punchesForDailyCost below.
+      const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
+      const otFetchStart = weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;
+
       const { rows: punches, capped: punchesCapped } = await fetchAllRows<DBTimePunch>((from, to) =>
         supabase
           .from('time_punches')
           .select('*')
           .eq('restaurant_id', restaurantId)
-          .gte('punch_time', fetchStart.toISOString())
+          .gte('punch_time', otFetchStart.toISOString())
           .lte('punch_time', fetchEnd.toISOString())
           .order('punch_time', { ascending: true })
           .order('id')
@@ -138,15 +152,26 @@ export function useLaborCostsFromTimeTracking(
 
       // 3b. For a live view, close still-open shifts at "now" so in-progress
       // hours count (parseWorkPeriods otherwise drops an un-clocked-out shift).
+      // `punchesForCost` can hold extra days from before `dateFrom` (the week
+      // look-back added above, for OT banding only).
       const punchesForCost = throughNow
         ? appendOpenShiftClockOuts(typedPunches, new Date())
         : typedPunches;
+
+      // calculateActualLaborCost attributes hours to every day a shift
+      // touches and does not drop shifts whose clock-in precedes the window,
+      // so it must not see the week look-back days — that would pull a
+      // prior-period shift into the first in-range day and overstate labor.
+      // Drop back to the punches the un-widened fetch would have returned.
+      const punchesForDailyCost = punchesForCost.filter(
+        (punch) => new Date(punch.punch_time).getTime() >= fetchStart.getTime()
+      );
 
       // 4. Use calculateActualLaborCost from laborCalculations.ts (same as payroll)
       // This ensures Dashboard and Payroll use identical calculation logic
       const { dailyCosts: laborDailyCosts } = calculateActualLaborCost(
         employees,
-        punchesForCost,
+        punchesForDailyCost,
         dateFrom,
         dateTo,
         timezone

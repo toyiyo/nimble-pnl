@@ -22,6 +22,8 @@ import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataCompletenessWarning } from '@/components/DataCompletenessWarning';
 import { DataInputDialog } from '@/components/DataInputDialog';
 import { PeriodSelector, Period } from '@/components/PeriodSelector';
 import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
@@ -168,14 +170,19 @@ const Index = () => {
     todayEnd
   );
 
-  const { data: periodMetrics, isLoading: periodLoading } = usePeriodMetrics(
+  const { data: periodMetrics, isLoading: periodLoading, capped: periodCapped } = usePeriodMetrics(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
   );
 
   // Fetch monthly metrics from unified_sales + daily_pnl
-  const { data: monthlyMetrics, isLoading: monthlyLoading } = useMonthlyMetrics(
+  const {
+    data: monthlyMetrics,
+    isLoading: monthlyLoading,
+    error: monthlyError,
+    warnings: monthlyWarnings
+  } = useMonthlyMetrics(
     selectedRestaurant?.restaurant_id || null,
     monthlyRangeStart,
     monthlyRangeEnd
@@ -750,6 +757,12 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
+                {periodCapped && (
+                  <DataCompletenessWarning
+                    className="mb-4"
+                    message="Some cost rows hit the fetch limit. The cost figures for this period can show low values."
+                  />
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
                     title="Your Sales (after discounts/refunds)"
@@ -827,6 +840,7 @@ const Index = () => {
                         }
                         subtitle={periodData && periodData.net_revenue > 0 ? `${profitMargin.toFixed(1)}% Gross Profit Margin` : undefined}
                         periodLabel={selectedPeriod.label}
+                        caption="Before other expenses"
                       />
                     );
                   })()}
@@ -887,7 +901,10 @@ const Index = () => {
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
+                    <div>
+                      <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
+                      <p className="text-[12px] text-muted-foreground">Cash basis</p>
+                    </div>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={cashflowOpen ? "Collapse Cashflow" : "Expand Cashflow"}>
                         {cashflowOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -904,7 +921,10 @@ const Index = () => {
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
+                    <div>
+                      <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
+                      <p className="text-[12px] text-muted-foreground">Accrual basis</p>
+                    </div>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={monthlyOpen ? "Collapse Monthly Performance" : "Expand Monthly Performance"}>
                         {monthlyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -912,7 +932,23 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                    <MonthlyBreakdownTable monthlyData={monthlyData} />
+                    {monthlyError ? (
+                      <div
+                        role="alert"
+                        className="p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-[13px] text-destructive"
+                      >
+                        The monthly data failed to load. Refresh the page.
+                      </div>
+                    ) : monthlyLoading ? (
+                      <Skeleton className="h-64 w-full rounded-xl" />
+                    ) : (
+                      <div className="space-y-3">
+                        {monthlyWarnings.length > 0 && (
+                          <DataCompletenessWarning message={monthlyWarnings.join(' ')} />
+                        )}
+                        <MonthlyBreakdownTable monthlyData={monthlyData} />
+                      </div>
+                    )}
                   </CollapsibleContent>
                 </div>
               </Collapsible>

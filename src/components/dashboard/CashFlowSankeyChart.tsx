@@ -235,9 +235,31 @@ const ChartTooltip = ({ data }: { data: TooltipData | null }) => {
       <p className="font-medium text-sm">{data.sourceName} → {data.targetName}</p>
       <p className="text-lg font-bold text-primary">{formatCurrency(data.value)}</p>
       {data.percentage !== undefined && !isNaN(data.percentage) && (
-        <p className="text-xs text-muted-foreground">{data.percentage.toFixed(1)}% of income</p>
+        <p className="text-xs text-muted-foreground">{data.percentage.toFixed(1)}% of gross income</p>
       )}
     </div>
+  );
+};
+
+interface ReconciliationMetrics {
+  grossRevenue: number;
+  discounts: number;
+  refunds: number;
+  netRevenue: number;
+}
+
+// One line that reconciles the Sankey's gross flow with the header's net
+// revenue, so the two figures no longer look like a mismatch.
+const RevenueReconciliationLine = ({ metrics }: { metrics: ReconciliationMetrics | null }) => {
+  if (!metrics) return null;
+  const fmt = (value: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
+  const adjustments = (metrics.discounts || 0) + (metrics.refunds || 0);
+  return (
+    <p className="text-[12px] text-muted-foreground mt-1">
+      Gross {fmt(metrics.grossRevenue)} − discounts and refunds {fmt(adjustments)} = Net{' '}
+      {fmt(metrics.netRevenue)}
+    </p>
   );
 };
 
@@ -494,6 +516,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
             <div>
               <CardTitle className="text-[17px] font-semibold text-foreground">Cashflow Visualization</CardTitle>
               <CardDescription className="text-[13px] text-muted-foreground">{selectedPeriod.label}</CardDescription>
+              <RevenueReconciliationLine metrics={periodMetrics} />
             </div>
           </div>
         </CardHeader>
@@ -515,6 +538,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
             <div>
               <CardTitle className="text-[17px] font-semibold text-foreground">Cashflow Visualization</CardTitle>
               <CardDescription className="text-[13px] text-muted-foreground">{selectedPeriod.label}</CardDescription>
+              <RevenueReconciliationLine metrics={periodMetrics} />
             </div>
           </div>
         </CardHeader>
@@ -544,6 +568,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
             <div>
               <CardTitle className="text-[17px] font-semibold text-foreground">Cashflow Visualization</CardTitle>
               <CardDescription className="text-[13px] text-muted-foreground">Money in → Cash Flow → Money out &middot; {selectedPeriod.label}</CardDescription>
+              <RevenueReconciliationLine metrics={periodMetrics} />
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm">

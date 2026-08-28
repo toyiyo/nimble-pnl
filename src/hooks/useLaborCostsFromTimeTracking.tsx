@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
 import { TimePunch, DBTimePunch } from '@/types/timeTracking';
-import { calculateActualLaborCost } from '@/services/laborCalculations';
+import { calculateActualLaborCost, calculateActualLaborCostForRange } from '@/services/laborCalculations';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
@@ -93,7 +93,7 @@ export function useLaborCostsFromTimeTracking(
       // threshold. The `.order('id')` tiebreaker makes each page boundary
       // deterministic when multiple punches share a `punch_time`.
       const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-      const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
+      const { rows: punches, capped: punchesCapped } = await fetchAllRows<DBTimePunch>((from, to) =>
         supabase
           .from('time_punches')
           .select('*')
@@ -115,6 +115,31 @@ export function useLaborCostsFromTimeTracking(
         .lte('date', toDateOnlyString(dateTo));
 
       if (manualPaymentsError) throw manualPaymentsError;
+
+      // Tips owed in the window (integer cents). Same source and window rule
+      // as useMonthlyMetrics so the two surfaces agree.
+      const { rows: tipRows, capped: tipsCapped } = await fetchAllRows<{
+        amount: number;
+        employee_id: string;
+        tip_splits: { restaurant_id: string; split_date: string };
+      }>((from, to) =>
+        supabase
+          .from('tip_split_items')
+          .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
+          .eq('tip_splits.restaurant_id', restaurantId)
+          .gte('tip_splits.split_date', toDateOnlyString(dateFrom))
+          .lte('tip_splits.split_date', toDateOnlyString(dateTo))
+          .order('id')
+          .range(from, to)
+      );
+
+      const tipsOwedByEmployee = new Map<string, number>();
+      for (const row of tipRows) {
+        tipsOwedByEmployee.set(
+          row.employee_id,
+          (tipsOwedByEmployee.get(row.employee_id) ?? 0) + row.amount
+        );
+      }
 
       // 3. Convert database punches to TimePunch type
       const typedPunches: TimePunch[] = (punches || []).map((punch: DBTimePunch) => ({
@@ -178,9 +203,32 @@ export function useLaborCostsFromTimeTracking(
       });
 
       const dailyCosts = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-      const totalCost = dailyCosts.reduce((sum, day) => sum + day.total_labor_cost, 0);
 
-      return { dailyCosts, totalCost, capped };
+      // dailyCosts stays straight-time for the daily chart. totalCost uses
+      // the payroll formula (OT banding + tips owed) so the pills equal
+      // Monthly Performance and Payroll.
+      const rangeStart = new Date(dateFrom);
+      rangeStart.setHours(0, 0, 0, 0);
+      const rangeEnd = new Date(dateTo);
+      rangeEnd.setHours(23, 59, 59, 999);
+
+      const { actualLaborCents } = calculateActualLaborCostForRange({
+        employees,
+        timePunches: punchesForCost,
+        tipsOwedByEmployee,
+        rangeStart,
+        rangeEnd,
+        timezone,
+      });
+
+      const perJobDollars = (manualPaymentsData ?? []).reduce(
+        (sum: number, payment: ManualPaymentDB) => sum + payment.allocated_cost / 100,
+        0
+      );
+
+      const totalCost = actualLaborCents / 100 + perJobDollars;
+
+      return { dailyCosts, totalCost, capped: punchesCapped || tipsCapped };
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds

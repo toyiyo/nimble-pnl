@@ -34,6 +34,7 @@ function makeChainable(): SupabaseChain {
   // gte/lte are spied separately per-table so tests can assert on them.
   chain.gte = vi.fn(() => chain);
   chain.lte = vi.fn(() => chain);
+  chain.range = vi.fn(() => Promise.resolve({ data: [], error: null }));
   chain.then = (resolve: (v: { data: unknown[]; error: null }) => void) =>
     resolve({ data: [], error: null });
   return chain;

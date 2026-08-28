@@ -16,6 +16,11 @@ Two causes exist. First, row-cap truncation drops data before the client
 sums it. Second, each view computes its own formula on its own basis, and
 no view labels its basis.
 
+All dollar figures and row counts in this document come from read-only
+production queries (`mcp__supabase-prod__execute_sql`) run on
+2026-08-27 for the restaurant in the investigation. The investigation
+report documents each query and result.
+
 ## Root causes (verified)
 
 1. **Tip query truncation.** The tip query at
@@ -63,6 +68,21 @@ Change these query paths to `fetchAllRows`
 
 Delete every `.limit(10000)` in these files. `fetchAllRows` pages with
 `.range()` and returns a `capped` flag when it stops at the page cap.
+
+Two rules apply to every converted query:
+
+- **Raise the page cap where the data exceeds it.** `fetchAllRows` stops
+  at `DEFAULT_MAX_PAGES = 20` pages (20,000 rows). The wide COGS window
+  holds 31,813 rows today. Pass `{ maxPages: 50 }` to every COGS call
+  site. Keep the default for the tip query (1,503 rows).
+- **Give every query a stable sort with a unique tiebreaker.** Pages
+  from `.range()` overlap or skip rows when the sort is not
+  deterministic. Follow the existing pattern at
+  `src/hooks/useMonthlyMetrics.tsx:408-418`: `.order(<time column>,
+  { ascending: true }).order('id')`. The tip query, the inventory-usage
+  queries, and all four `useCOGSFromFinancials` queries have no
+  `.order()` today. `useFoodCosts.tsx:47` orders by `created_at` only;
+  add `.order('id')` as the tiebreaker.
 
 ### 2. Surface the `capped` flag
 

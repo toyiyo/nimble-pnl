@@ -7,14 +7,13 @@ import {
   aggregateInventoryCOGSByDate,
   aggregateFinancialCOGSByDate,
   toUtcDayKey,
-  type BankTransactionRow,
-  type PendingOutflowRow,
-  type SplitItemRow,
+  type InventoryTransactionRow,
 } from '@/services/cogsCalculations';
 import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import { fetchFinancialCOGSRows, COGS_MAX_PAGES } from '@/services/cogsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { isCompensationHidden } from '@/lib/employeeMaskedFields';
@@ -175,13 +174,14 @@ export function useMonthlyMetrics(
 ) {
   const { tz: timezone } = useRestaurantClock();
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['monthly-metrics', restaurantId, toDateOnlyString(dateFrom), toDateOnlyString(dateTo), timezone],
     queryFn: async () => {
-      if (!restaurantId) return [];
+      if (!restaurantId) return { months: [], warnings: [] };
 
       const fromStr = toDateOnlyString(dateFrom);
       const toStr = toDateOnlyString(dateTo);
+      const warnings: string[] = [];
 
       // bank_transactions.transaction_date is TIMESTAMPTZ; pending_outflows.issue_date
       // is DATE. Slice to yyyy-MM-dd then take first 7 chars for the month bucket.
@@ -260,134 +260,100 @@ export function useMonthlyMetrics(
       const cogsMethod = (settingsData?.cogs_calculation_method as string) || 'inventory';
 
       // Fetch inventory COGS when method uses inventory data
-      let foodCostsData: { created_at: string; transaction_date: string | null; total_cost: number }[] | null = null;
+      let foodCostsData: InventoryTransactionRow[] = [];
       if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
-        const { data, error: foodCostsError } = await supabase
-          .from('inventory_transactions')
-          .select('created_at, transaction_date, total_cost')
-          .eq('restaurant_id', restaurantId)
-          .eq('transaction_type', 'usage')
-          .or(`transaction_date.gte.${toDateOnlyString(dateFrom)},and(transaction_date.is.null,created_at.gte.${toDateOnlyString(dateFrom)})`)
-          .or(`transaction_date.lte.${toDateOnlyString(dateTo)},and(transaction_date.is.null,created_at.lte.${toDateOnlyString(dateTo)}T23:59:59.999Z)`)
-          .limit(10000);
-        if (foodCostsError) throw foodCostsError;
-        foodCostsData = data;
+        const { rows, capped: inventoryCapped } = await fetchAllRows<InventoryTransactionRow>(
+          (from, to) =>
+            supabase
+              .from('inventory_transactions')
+              .select('created_at, transaction_date, total_cost')
+              .eq('restaurant_id', restaurantId)
+              .eq('transaction_type', 'usage')
+              .or(`transaction_date.gte.${fromStr},and(transaction_date.is.null,created_at.gte.${fromStr})`)
+              .or(`transaction_date.lte.${toStr},and(transaction_date.is.null,created_at.lte.${toStr}T23:59:59.999Z)`)
+              .order('created_at', { ascending: true })
+              .order('id')
+              .range(from, to),
+          { maxPages: COGS_MAX_PAGES }
+        );
+        foodCostsData = rows;
+
+        if (inventoryCapped) {
+          console.warn('inventory COGS fetch hit the page limit; the food cost figure is incomplete.');
+          warnings.push('The inventory COGS rows hit the fetch limit. The food cost figure is incomplete.');
+        }
       }
 
       // Fetch financial COGS when method uses financial data
       // financialCOGSByDay: yyyy-MM-dd → dollars (produced by shared pure helper)
       let financialCOGSByDay: Map<string, number> = new Map();
       if (cogsMethod === 'financials' || cogsMethod === 'combined') {
-        // Non-split bank transactions with COGS subtypes
-        const { data: cogsTxns, error: cogsTxnsError } = await supabase
-          .from('bank_transactions')
-          .select('transaction_date, amount, chart_of_accounts!category_id(account_subtype)')
-          .eq('restaurant_id', restaurantId)
-          .in('status', ['posted', 'pending'])
-          .eq('is_transfer', false)
-          .eq('is_split', false)
-          .lt('amount', 0)
-          .gte('transaction_date', fromStr)
-          .lte('transaction_date', toStr)
-          .limit(10000);
-        if (cogsTxnsError) throw cogsTxnsError;
+        const { bankTxns, splitItems, parentDateMap, pendingTxns, capped: financialCapped } =
+          await fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr);
 
-        // Split line items with COGS subtypes
-        const { data: splitParents } = await supabase
-          .from('bank_transactions')
-          .select('id, transaction_date')
-          .eq('restaurant_id', restaurantId)
-          .eq('is_split', true)
-          .in('status', ['posted', 'pending'])
-          .eq('is_transfer', false)
-          .gte('transaction_date', fromStr)
-          .lte('transaction_date', toStr)
-          .limit(10000);
-
-        type SplitParentRow = { id: string; transaction_date: string };
-        const splitParentIds = (splitParents || []).map((p: SplitParentRow) => p.id);
-        let splitItems: SplitItemRow[] = [];
-        // Day-keyed parentDateMap (yyyy-MM-dd) — required by shared helper.
-        // Use the canonical UTC day key so split items bucket the same way as
-        // the direct bank-txn rows (see toUtcDayKey).
-        const parentDateMap = new Map<string, string>();
-        for (const p of splitParents || [] as SplitParentRow[]) {
-          parentDateMap.set(p.id, toUtcDayKey(p.transaction_date));
+        if (financialCapped) {
+          console.warn('financial COGS fetch hit the page limit; the food cost figure is incomplete.');
+          warnings.push('The financial COGS rows hit the fetch limit. The food cost figure is incomplete.');
         }
-
-        if (splitParentIds.length > 0) {
-          const { data: splits } = await supabase
-            .from('bank_transaction_splits')
-            .select('transaction_id, amount, chart_of_accounts!category_id(account_subtype)')
-            .in('transaction_id', splitParentIds)
-            .limit(10000);
-
-          splitItems = (splits || []) as typeof splitItems;
-        }
-
-        // Pending outflows with COGS subtypes
-        const { data: cogsPending } = await supabase
-          .from('pending_outflows')
-          .select('issue_date, amount, chart_of_accounts!category_id(account_subtype)')
-          .eq('restaurant_id', restaurantId)
-          .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
-          .is('linked_bank_transaction_id', null)
-          .gte('issue_date', fromStr)
-          .lte('issue_date', toStr)
-          .limit(10000);
 
         // Aggregate all financial sources into a per-day dollar map via shared pure helper.
         // COGS_SUBTYPES filtering happens inside the helper.
-        financialCOGSByDay = aggregateFinancialCOGSByDate({
-          bankTxns: (cogsTxns || []) as BankTransactionRow[],
-          splitItems,
-          parentDateMap,
-          pendingTxns: (cogsPending || []) as PendingOutflowRow[],
-        });
+        financialCOGSByDay = aggregateFinancialCOGSByDate({ bankTxns, splitItems, parentDateMap, pendingTxns });
       }
 
       // Fetch actual labor costs from bank transactions + pending outflows
       // Use same pattern as useLaborCostsFromTransactions (no alias)
-      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
-      const { data: bankLabor, error: bankLaborError } = await supabase
-        .from('bank_transactions')
-        .select(`
-          transaction_date,
-          amount,
-          status,
-          chart_of_accounts!category_id(
-            account_subtype
-          )
-        `)
-        .eq('restaurant_id', restaurantId)
-        .gte('transaction_date', toDateOnlyString(dateFrom))
-        .lte('transaction_date', toDateOnlyString(dateTo))
-        .in('status', ['posted', 'pending'])
-        .lt('amount', 0) // Only outflows
-        .limit(10000); // Override Supabase's default 1000 row limit
+      const { rows: bankLabor, capped: bankLaborCapped } = await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from('bank_transactions')
+            .select(`
+              transaction_date,
+              amount,
+              status,
+              chart_of_accounts!category_id(
+                account_subtype
+              )
+            `)
+            .eq('restaurant_id', restaurantId)
+            .gte('transaction_date', fromStr)
+            .lte('transaction_date', toStr)
+            .in('status', ['posted', 'pending'])
+            .lt('amount', 0) // Only outflows
+            .order('transaction_date', { ascending: true })
+            .order('id')
+            .range(from, to)
+      );
 
-      if (bankLaborError) {
-        console.warn('Failed to fetch bank labor costs:', bankLaborError);
+      if (bankLaborCapped) {
+        console.warn('bank labor fetch hit the page limit; the labor cost figure is incomplete.');
+        warnings.push('The bank labor rows hit the fetch limit. The labor cost figure is incomplete.');
       }
 
-      const { data: pendingLabor, error: pendingLaborError } = await supabase
-        .from('pending_outflows')
-        .select(`
-          issue_date,
-          amount,
-          status,
-          chart_account:chart_of_accounts!category_id(
-            account_subtype
-          )
-        `)
-        .eq('restaurant_id', restaurantId)
-        .gte('issue_date', toDateOnlyString(dateFrom))
-        .lte('issue_date', toDateOnlyString(dateTo))
-        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
-        .limit(10000); // Override Supabase's default 1000 row limit
+      const { rows: pendingLabor, capped: pendingLaborCapped } = await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from('pending_outflows')
+            .select(`
+              issue_date,
+              amount,
+              status,
+              chart_account:chart_of_accounts!category_id(
+                account_subtype
+              )
+            `)
+            .eq('restaurant_id', restaurantId)
+            .gte('issue_date', fromStr)
+            .lte('issue_date', toStr)
+            .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+            .order('issue_date', { ascending: true })
+            .order('id')
+            .range(from, to)
+      );
 
-      if (pendingLaborError) {
-        console.warn('Failed to fetch pending labor costs:', pendingLaborError);
+      if (pendingLaborCapped) {
+        console.warn('pending labor fetch hit the page limit; the labor cost figure is incomplete.');
+        warnings.push('The pending labor rows hit the fetch limit. The labor cost figure is incomplete.');
       }
 
       // Fetch time punches and employees to calculate labor costs using the same logic as Payroll
@@ -422,6 +388,7 @@ export function useMonthlyMetrics(
             '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
             { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() },
           );
+          warnings.push('The time punch rows hit the fetch limit. The labor cost figure is incomplete.');
         }
       } catch (timePunchesError) {
         console.warn('Failed to fetch time punches for labor calculation:', timePunchesError);
@@ -450,23 +417,27 @@ export function useMonthlyMetrics(
       }
 
       // Tip splits within the query window (joined parent for restaurant_id + split_date)
-      const { data: tipSplitItems, error: tipSplitItemsError } = await supabase
-        .from('tip_split_items')
-        .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
-        .eq('tip_splits.restaurant_id', restaurantId)
-        .gte('tip_splits.split_date', fromStr)
-        .lte('tip_splits.split_date', toStr);
-
-      if (tipSplitItemsError) {
-        console.warn('Failed to fetch tip split items:', tipSplitItemsError);
-      }
-
       type TipSplitRow = {
         amount: number;
         employee_id: string;
         tip_splits: { restaurant_id: string; split_date: string };
       };
-      const typedTipSplits = (tipSplitItems ?? []) as TipSplitRow[];
+      const { rows: tipSplitsData, capped: tipsCapped } = await fetchAllRows<TipSplitRow>(
+        (from, to) =>
+          supabase
+            .from('tip_split_items')
+            .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
+            .eq('tip_splits.restaurant_id', restaurantId)
+            .gte('tip_splits.split_date', fromStr)
+            .lte('tip_splits.split_date', toStr)
+            .order('id')
+            .range(from, to)
+      );
+
+      if (tipsCapped) {
+        console.warn('tips fetch hit the page limit; the labor cost figure is incomplete.');
+        warnings.push('The tip rows hit the fetch limit. The labor cost figure is incomplete.');
+      }
 
       // Convert time punches to the expected format: cast punch_type to the union
       // and narrow location from the DB's JSON to the typed shape.
@@ -534,10 +505,10 @@ export function useMonthlyMetrics(
         const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
         if (clampedStart > clampedEnd) continue;
 
-        // Build per-employee tipsOwed for *this* month from typedTipSplits.
+        // Build per-employee tipsOwed for *this* month from tipSplitsData.
         // amount is stored as integer cents in the DB (tip_split_items.amount -- cents).
         const tipsOwedByEmployee = new Map<string, number>();
-        for (const row of typedTipSplits) {
+        for (const row of tipSplitsData) {
           const splitDate = new Date(row.tip_splits.split_date + 'T12:00:00');
           if (splitDate < clampedStart || splitDate > clampedEnd) continue;
           // amount is already in integer cents — no conversion needed.
@@ -631,10 +602,21 @@ export function useMonthlyMetrics(
       }));
 
       // Sort by period descending (most recent first)
-      return result.sort((a, b) => b.period.localeCompare(a.period));
+      return {
+        months: result.sort((a, b) => b.period.localeCompare(a.period)),
+        warnings,
+      };
     },
     enabled: !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });
+
+  return {
+    data: query.data?.months ?? null,
+    warnings: query.data?.warnings ?? [],
+    isLoading: query.isLoading,
+    error: (query.error as Error | null) ?? null,
+    refetch: query.refetch,
+  };
 }

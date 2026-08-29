@@ -108,37 +108,45 @@ export function useLaborCostsFromTimeTracking(
       const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
       const otFetchStart = weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;
 
-      const { rows: punches, capped: punchesCapped } = await fetchAllRows<DBTimePunch>((from, to) =>
+      // The three fetches below are independent. Run them together so the
+      // wait is the slowest fetch, not the sum. This hook backs the
+      // dashboard pills and reruns on every window refocus.
+      const [
+        { rows: punches, capped: punchesCapped },
+        { data: manualPaymentsData, error: manualPaymentsError },
+        { rows: tipRows, capped: tipsCapped },
+      ] = await Promise.all([
+        fetchAllRows<DBTimePunch>((from, to) =>
+          supabase
+            .from('time_punches')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .gte('punch_time', otFetchStart.toISOString())
+            .lte('punch_time', fetchEnd.toISOString())
+            .order('punch_time', { ascending: true })
+            .order('id')
+            .range(from, to),
+        ),
+        // 2. Fetch per-job contractor payments (source records only)
         supabase
-          .from('time_punches')
+          .from('daily_labor_allocations')
           .select('*')
           .eq('restaurant_id', restaurantId)
-          .gte('punch_time', otFetchStart.toISOString())
-          .lte('punch_time', fetchEnd.toISOString())
-          .order('punch_time', { ascending: true })
-          .order('id')
-          .range(from, to),
-      );
-
-      // 2. Fetch per-job contractor payments (source records only)
-      const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
-        .from('daily_labor_allocations')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('source', 'per-job') // Only per-job source records, not auto-generated
-        .gte('date', toDateOnlyString(dateFrom))
-        .lte('date', toDateOnlyString(dateTo));
+          .eq('source', 'per-job') // Only per-job source records, not auto-generated
+          .gte('date', toDateOnlyString(dateFrom))
+          .lte('date', toDateOnlyString(dateTo)),
+        // Tips owed in the window (integer cents). Same source and window rule
+        // as useMonthlyMetrics so the two surfaces agree.
+        fetchTipSplitRows(
+          supabase,
+          restaurantId,
+          toDateOnlyString(dateFrom),
+          toDateOnlyString(dateTo)
+        ),
+      ]);
 
       if (manualPaymentsError) throw manualPaymentsError;
 
-      // Tips owed in the window (integer cents). Same source and window rule
-      // as useMonthlyMetrics so the two surfaces agree.
-      const { rows: tipRows, capped: tipsCapped } = await fetchTipSplitRows(
-        supabase,
-        restaurantId,
-        toDateOnlyString(dateFrom),
-        toDateOnlyString(dateTo)
-      );
       const tipsOwedByEmployee = sumTipsOwedByEmployee(tipRows);
 
       // 3. Convert database punches to TimePunch type

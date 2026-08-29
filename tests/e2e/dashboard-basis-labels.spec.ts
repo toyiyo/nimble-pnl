@@ -7,8 +7,8 @@ test.describe('dashboard basis labels', () => {
     await signUpAndCreateRestaurant(page, user);
 
     await page.goto('/');
-    await expect(page.getByText('Performance Overview')).toBeVisible({ timeout: 20000 });
-    await expect(page.getByText('Before other expenses')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Performance Overview' })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Before other expenses', { exact: true })).toBeVisible();
 
     const cashflowHeading = page.getByRole('heading', { name: 'Cashflow', exact: true });
     await cashflowHeading.scrollIntoViewIfNeeded();

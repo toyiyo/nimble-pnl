@@ -235,7 +235,7 @@ const ChartTooltip = ({ data }: { data: TooltipData | null }) => {
       <p className="font-medium text-sm">{data.sourceName} → {data.targetName}</p>
       <p className="text-lg font-bold text-primary">{formatCurrency(data.value)}</p>
       {data.percentage !== undefined && !isNaN(data.percentage) && (
-        <p className="text-xs text-muted-foreground">{data.percentage.toFixed(1)}% of gross income</p>
+        <p className="text-xs text-muted-foreground">{data.percentage.toFixed(1)}% of total income</p>
       )}
     </div>
   );

@@ -277,53 +277,40 @@ export function useMonthlyMetrics(
         .maybeSingle();
       const cogsMethod = (settingsData?.cogs_calculation_method as string) || 'inventory';
 
-      // Fetch inventory COGS when method uses inventory data
-      let foodCostsData: InventoryTransactionRow[] = [];
-      if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
-        const { rows, capped: inventoryCapped } = await fetchAllRows<InventoryTransactionRow>(
-          (from, to) =>
-            supabase
-              .from('inventory_transactions')
-              .select('created_at, transaction_date, total_cost')
-              .eq('restaurant_id', restaurantId)
-              .eq('transaction_type', 'usage')
-              .or(`transaction_date.gte.${fromStr},and(transaction_date.is.null,created_at.gte.${fromStr})`)
-              .or(`transaction_date.lte.${toStr},and(transaction_date.is.null,created_at.lte.${toStr}T23:59:59.999Z)`)
-              .order('created_at', { ascending: true })
-              .order('id')
-              .range(from, to),
-          { maxPages: COGS_MAX_PAGES }
-        );
-        foodCostsData = rows;
+      // The eight fetches below depend only on cogsMethod (above), never on
+      // each other. Start them all, then await one Promise.all: the total
+      // wait is the slowest fetch, not the sum of every fetch's pages. A
+      // rejection in any fetch rejects the whole queryFn, the same result
+      // as the serial version.
 
-        pushCapWarning(
-          inventoryCapped,
-          'The inventory COGS rows hit the fetch limit. The food cost figure is incomplete.',
-          'inventory COGS fetch hit the page limit; the food cost figure is incomplete.'
-        );
-      }
+      // Inventory COGS rows, when the method uses inventory data.
+      const inventoryCOGSPromise =
+        cogsMethod === 'inventory' || cogsMethod === 'combined'
+          ? fetchAllRows<InventoryTransactionRow>(
+              (from, to) =>
+                supabase
+                  .from('inventory_transactions')
+                  .select('created_at, transaction_date, total_cost')
+                  .eq('restaurant_id', restaurantId)
+                  .eq('transaction_type', 'usage')
+                  .or(`transaction_date.gte.${fromStr},and(transaction_date.is.null,created_at.gte.${fromStr})`)
+                  .or(`transaction_date.lte.${toStr},and(transaction_date.is.null,created_at.lte.${toStr}T23:59:59.999Z)`)
+                  .order('created_at', { ascending: true })
+                  .order('id')
+                  .range(from, to),
+              { maxPages: COGS_MAX_PAGES }
+            )
+          : Promise.resolve({ rows: [] as InventoryTransactionRow[], capped: false });
 
-      // Fetch financial COGS when method uses financial data
-      // financialCOGSByDay: yyyy-MM-dd → dollars (produced by shared pure helper)
-      let financialCOGSByDay: Map<string, number> = new Map();
-      if (cogsMethod === 'financials' || cogsMethod === 'combined') {
-        const { bankTxns, splitItems, parentDateMap, pendingTxns, capped: financialCapped } =
-          await fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr);
+      // Financial COGS rows, when the method uses financial data.
+      const financialCOGSPromise =
+        cogsMethod === 'financials' || cogsMethod === 'combined'
+          ? fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr)
+          : Promise.resolve(null);
 
-        pushCapWarning(
-          financialCapped,
-          'The financial COGS rows hit the fetch limit. The food cost figure is incomplete.',
-          'financial COGS fetch hit the page limit; the food cost figure is incomplete.'
-        );
-
-        // Aggregate all financial sources into a per-day dollar map via shared pure helper.
-        // COGS_SUBTYPES filtering happens inside the helper.
-        financialCOGSByDay = aggregateFinancialCOGSByDate({ bankTxns, splitItems, parentDateMap, pendingTxns });
-      }
-
-      // Fetch actual labor costs from bank transactions + pending outflows
+      // Actual labor costs from bank transactions + pending outflows
       // Use same pattern as useLaborCostsFromTransactions (no alias)
-      const { rows: bankLabor, capped: bankLaborCapped } = await fetchAllRows(
+      const bankLaborPromise = fetchAllRows(
         (from, to) =>
           supabase
             .from('bank_transactions')
@@ -345,13 +332,7 @@ export function useMonthlyMetrics(
             .range(from, to)
       );
 
-      pushCapWarning(
-        bankLaborCapped,
-        'The bank labor rows hit the fetch limit. The labor cost figure is incomplete.',
-        'bank labor fetch hit the page limit; the labor cost figure is incomplete.'
-      );
-
-      const { rows: pendingLabor, capped: pendingLaborCapped } = await fetchAllRows(
+      const pendingLaborPromise = fetchAllRows(
         (from, to) =>
           supabase
             .from('pending_outflows')
@@ -372,12 +353,6 @@ export function useMonthlyMetrics(
             .range(from, to)
       );
 
-      pushCapWarning(
-        pendingLaborCapped,
-        'The pending labor rows hit the fetch limit. The labor cost figure is incomplete.',
-        'pending labor fetch hit the page limit; the labor cost figure is incomplete.'
-      );
-
       // Fetch time punches and employees to calculate labor costs using the same logic as Payroll
       // This ensures Dashboard and Payroll show consistent labor numbers (DRY principle)
       // Look-ahead buffer so an overnight shift clocking out just after the range
@@ -391,7 +366,7 @@ export function useMonthlyMetrics(
       // tiebreaker makes each page boundary deterministic when multiple
       // punches share a `punch_time`. Errors are fatal: the query throws and
       // the table shows the error state.
-      const { rows: timePunchesData, capped: timePunchesCapped } = await fetchAllRows<DBTimePunch>((from, to) =>
+      const timePunchesPromise = fetchAllRows<DBTimePunch>((from, to) =>
         supabase
           .from('time_punches')
           .select('*')
@@ -402,22 +377,14 @@ export function useMonthlyMetrics(
           .order('id')
           .range(from, to),
       );
-      pushCapWarning(
-        timePunchesCapped,
-        'The time punch rows hit the fetch limit. The labor cost figure is incomplete.',
-        '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
-        { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() }
-      );
 
-      const { data: employeesData, error: employeesError } = await supabase
+      const employeesPromise = supabase
         .from('employees_secure')
         .select('*')
         .eq('restaurant_id', restaurantId);
 
-      if (employeesError) throw employeesError;
-
       // Fetch per-job contractor payments (manual payments stored as source='per-job')
-      const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
+      const manualPaymentsPromise = supabase
         .from('daily_labor_allocations')
         .select('*')
         .eq('restaurant_id', restaurantId)
@@ -425,18 +392,82 @@ export function useMonthlyMetrics(
         .gte('date', toDateOnlyString(dateFrom))
         .lte('date', toDateOnlyString(dateTo));
 
-      if (manualPaymentsError) {
-        console.warn('Failed to fetch manual payments:', manualPaymentsError);
-        warnings.push('The manual payment rows failed to load. The labor cost figure is incomplete.');
-      }
-
       // Tip splits within the query window (joined parent for restaurant_id + split_date)
-      const { rows: tipSplitsData, capped: tipsCapped } = await fetchTipSplitRows(
+      const tipSplitsPromise = fetchTipSplitRows(
         supabase,
         restaurantId,
         fromStr,
         toStr
       );
+
+      const [
+        { rows: foodCostsData, capped: inventoryCapped },
+        financialCOGSRows,
+        { rows: bankLabor, capped: bankLaborCapped },
+        { rows: pendingLabor, capped: pendingLaborCapped },
+        { rows: timePunchesData, capped: timePunchesCapped },
+        { data: employeesData, error: employeesError },
+        { data: manualPaymentsData, error: manualPaymentsError },
+        { rows: tipSplitsData, capped: tipsCapped },
+      ] = await Promise.all([
+        inventoryCOGSPromise,
+        financialCOGSPromise,
+        bankLaborPromise,
+        pendingLaborPromise,
+        timePunchesPromise,
+        employeesPromise,
+        manualPaymentsPromise,
+        tipSplitsPromise,
+      ]);
+
+      // Warnings keep the same order as the serial version so the warning
+      // text the UI joins stays stable.
+      pushCapWarning(
+        inventoryCapped,
+        'The inventory COGS rows hit the fetch limit. The food cost figure is incomplete.',
+        'inventory COGS fetch hit the page limit; the food cost figure is incomplete.'
+      );
+
+      // financialCOGSByDay: yyyy-MM-dd → dollars (produced by shared pure helper)
+      let financialCOGSByDay: Map<string, number> = new Map();
+      if (financialCOGSRows) {
+        pushCapWarning(
+          financialCOGSRows.capped,
+          'The financial COGS rows hit the fetch limit. The food cost figure is incomplete.',
+          'financial COGS fetch hit the page limit; the food cost figure is incomplete.'
+        );
+
+        // Aggregate all financial sources into a per-day dollar map via shared pure helper.
+        // COGS_SUBTYPES filtering happens inside the helper.
+        const { bankTxns, splitItems, parentDateMap, pendingTxns } = financialCOGSRows;
+        financialCOGSByDay = aggregateFinancialCOGSByDate({ bankTxns, splitItems, parentDateMap, pendingTxns });
+      }
+
+      pushCapWarning(
+        bankLaborCapped,
+        'The bank labor rows hit the fetch limit. The labor cost figure is incomplete.',
+        'bank labor fetch hit the page limit; the labor cost figure is incomplete.'
+      );
+
+      pushCapWarning(
+        pendingLaborCapped,
+        'The pending labor rows hit the fetch limit. The labor cost figure is incomplete.',
+        'pending labor fetch hit the page limit; the labor cost figure is incomplete.'
+      );
+
+      pushCapWarning(
+        timePunchesCapped,
+        'The time punch rows hit the fetch limit. The labor cost figure is incomplete.',
+        '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
+        { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() }
+      );
+
+      if (employeesError) throw employeesError;
+
+      if (manualPaymentsError) {
+        console.warn('Failed to fetch manual payments:', manualPaymentsError);
+        warnings.push('The manual payment rows failed to load. The labor cost figure is incomplete.');
+      }
 
       pushCapWarning(
         tipsCapped,

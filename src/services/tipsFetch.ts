@@ -27,7 +27,13 @@ export async function fetchTipSplitRows(
       .gte('tip_splits.split_date', fromStr)
       .lte('tip_splits.split_date', toStr)
       .order('id')
-      .range(from, to)
+      // The untyped client infers the many-to-one join as an array.
+      // PostgREST returns a single object — assert the declared row
+      // type. A type-only cast, so test mocks need no extra method.
+      .range(from, to) as unknown as PromiseLike<{
+      data: TipSplitRow[] | null;
+      error: unknown;
+    }>
   );
 }
 

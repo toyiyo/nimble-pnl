@@ -52,7 +52,13 @@ export async function fetchFinancialCOGSRows(
           .lte('transaction_date', endDateStr)
           .order('transaction_date', { ascending: true })
           .order('id')
-          .range(from, to),
+          // The untyped client infers the many-to-one join as an array.
+          // PostgREST returns a single object — assert the declared row
+          // type. A type-only cast, so test mocks need no extra method.
+          .range(from, to) as unknown as PromiseLike<{
+          data: BankTransactionRow[] | null;
+          error: unknown;
+        }>,
       { maxPages: COGS_MAX_PAGES }
     ),
     fetchAllRows<SplitParentRow>(
@@ -83,7 +89,10 @@ export async function fetchFinancialCOGSRows(
           .lte('issue_date', endDateStr)
           .order('issue_date', { ascending: true })
           .order('id')
-          .range(from, to),
+          .range(from, to) as unknown as PromiseLike<{
+          data: PendingOutflowRow[] | null;
+          error: unknown;
+        }>,
       { maxPages: COGS_MAX_PAGES }
     ),
   ]);
@@ -103,7 +112,10 @@ export async function fetchFinancialCOGSRows(
           .select('transaction_id, amount, chart_of_accounts!category_id(account_subtype)')
           .in('transaction_id', parentIds)
           .order('id')
-          .range(from, to),
+          .range(from, to) as unknown as PromiseLike<{
+          data: SplitItemRow[] | null;
+          error: unknown;
+        }>,
       { maxPages: COGS_MAX_PAGES }
     );
   }

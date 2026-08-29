@@ -29,7 +29,7 @@ inventoryChain.order = vi.fn((...args: unknown[]) => {
 });
 inventoryChain.range = vi.fn((from: number, to: number) => {
   rangeCalls.push([from, to]);
-  const page = callIndex === 0 ? page0 : callIndex === 1 ? page1 : [];
+  const page = [page0, page1][callIndex] ?? [];
   callIndex++;
   return Promise.resolve({ data: page, error: null });
 });

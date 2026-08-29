@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import posthog from 'posthog-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
@@ -580,6 +580,30 @@ const Index = () => {
     return ((current - average) / average) * 100;
   };
 
+  // Monthly Performance body: one branch per state (error, loading, data).
+  let monthlyPerformanceContent: ReactNode;
+  if (monthlyError) {
+    monthlyPerformanceContent = (
+      <div
+        role="alert"
+        className="p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-[13px] text-destructive"
+      >
+        The monthly data failed to load. Refresh the page.
+      </div>
+    );
+  } else if (monthlyLoading) {
+    monthlyPerformanceContent = <Skeleton className="h-64 w-full rounded-xl" />;
+  } else {
+    monthlyPerformanceContent = (
+      <div className="space-y-3">
+        {monthlyWarnings.length > 0 && (
+          <DataCompletenessWarning message={monthlyWarnings.join(' ')} />
+        )}
+        <MonthlyBreakdownTable monthlyData={monthlyData} />
+      </div>
+    );
+  }
+
   // Redirect collaborators to their designated landing page (they don't see the dashboard)
   if (isCollaborator && landingPath !== '/') {
     return <Navigate to={landingPath} replace />;
@@ -932,23 +956,7 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                    {monthlyError ? (
-                      <div
-                        role="alert"
-                        className="p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-[13px] text-destructive"
-                      >
-                        The monthly data failed to load. Refresh the page.
-                      </div>
-                    ) : monthlyLoading ? (
-                      <Skeleton className="h-64 w-full rounded-xl" />
-                    ) : (
-                      <div className="space-y-3">
-                        {monthlyWarnings.length > 0 && (
-                          <DataCompletenessWarning message={monthlyWarnings.join(' ')} />
-                        )}
-                        <MonthlyBreakdownTable monthlyData={monthlyData} />
-                      </div>
-                    )}
+                    {monthlyPerformanceContent}
                   </CollapsibleContent>
                 </div>
               </Collapsible>

@@ -59,6 +59,10 @@ DECLARE
   v_entry_day               DATE;
   v_merged_notes            TEXT;
   v_upload_id               UUID;
+  v_norm_vendor             TEXT;
+  v_norm_merchant           TEXT;
+  v_norm_description        TEXT;
+  v_norm_payee              TEXT;
 BEGIN
   IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
     RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;
@@ -157,6 +161,7 @@ BEGIN
       SELECT * INTO v_po
       FROM pending_outflows
       WHERE id = v_pair.pending_outflow_id
+        AND restaurant_id = p_restaurant_id
       FOR UPDATE SKIP LOCKED;
 
       IF NOT FOUND THEN
@@ -166,6 +171,7 @@ BEGIN
       SELECT * INTO v_bt
       FROM bank_transactions
       WHERE id = v_pair.bank_transaction_id
+        AND restaurant_id = p_restaurant_id
       FOR UPDATE SKIP LOCKED;
 
       IF NOT FOUND THEN
@@ -198,6 +204,36 @@ BEGIN
         CONTINUE;
       END IF;
 
+      -- Re-validate the match itself, not just the row flags above. Nothing
+      -- in this function edits an outflow's amount/vendor or a transaction's
+      -- amount/date/description, but the claim can still land after an
+      -- unrelated edit committed between the candidate scan and this lock,
+      -- so the match criteria from the scan (design §5) are recomputed here
+      -- against the locked rows before either row is written.
+      v_entry_day         := bank_txn_entry_day(v_bt.transaction_date, v_timezone);
+      v_norm_vendor       := normalize_match_text(v_po.vendor_name);
+      v_norm_merchant     := normalize_match_text(v_bt.merchant_name);
+      v_norm_description  := normalize_match_text(v_bt.description);
+      v_norm_payee        := normalize_match_text(v_bt.normalized_payee);
+
+      IF ABS(v_po.amount + v_bt.amount) >= 0.01
+         OR v_entry_day < v_po.issue_date
+         OR v_entry_day > v_po.issue_date + 14
+         OR length(v_norm_vendor) < 3
+         OR NOT (
+           (length(v_norm_merchant) >= 3
+             AND (strpos(v_norm_merchant, v_norm_vendor) > 0
+                  OR strpos(v_norm_vendor, v_norm_merchant) > 0))
+           OR (length(v_norm_description) >= 3
+             AND (strpos(v_norm_description, v_norm_vendor) > 0
+                  OR strpos(v_norm_vendor, v_norm_description) > 0))
+           OR (length(v_norm_payee) >= 3
+             AND (strpos(v_norm_payee, v_norm_vendor) > 0
+                  OR strpos(v_norm_vendor, v_norm_payee) > 0))
+         ) THEN
+        CONTINUE;
+      END IF;
+
       -- Merge notes. Skip the merge when the bank notes already contain the
       -- outflow notes, so a re-run of this pair does not duplicate text.
       IF v_bt.notes IS NOT NULL AND v_po.notes IS NOT NULL
@@ -210,6 +246,7 @@ BEGIN
       SELECT id INTO v_upload_id
       FROM expense_invoice_uploads
       WHERE pending_outflow_id = v_po.id
+        AND restaurant_id = p_restaurant_id
       ORDER BY created_at
       LIMIT 1;
 
@@ -225,9 +262,8 @@ BEGIN
 
       IF v_category_id IS NOT NULL THEN
         -- Category branch: post the journal entry, categorize the
-        -- transaction.
-        v_entry_day := bank_txn_entry_day(v_bt.transaction_date, v_timezone);
-
+        -- transaction. v_entry_day was already computed above during the
+        -- match re-validation.
         SELECT id INTO v_fiscal_period_id
         FROM fiscal_periods
         WHERE restaurant_id = p_restaurant_id
@@ -289,7 +325,8 @@ BEGIN
             matched_by            = NULL,
             expense_invoice_upload_id = COALESCE(v_upload_id, expense_invoice_upload_id),
             updated_at            = now()
-        WHERE id = v_bt.id;
+        WHERE id = v_bt.id
+          AND restaurant_id = p_restaurant_id;
       ELSE
         -- No usable category (none set, or the set category is inactive):
         -- write the merged notes only. The transaction stays in For Review.
@@ -299,7 +336,8 @@ BEGIN
             matched_by            = NULL,
             expense_invoice_upload_id = COALESCE(v_upload_id, expense_invoice_upload_id),
             updated_at            = now()
-        WHERE id = v_bt.id;
+        WHERE id = v_bt.id
+          AND restaurant_id = p_restaurant_id;
       END IF;
 
       UPDATE pending_outflows
@@ -308,7 +346,8 @@ BEGIN
           cleared_at                 = now(),
           auto_linked_at             = now(),
           updated_at                 = now()
-      WHERE id = v_po.id;
+      WHERE id = v_po.id
+        AND restaurant_id = p_restaurant_id;
 
       v_linked_count := v_linked_count + 1;
     EXCEPTION WHEN OTHERS THEN

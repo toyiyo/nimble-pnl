@@ -57,6 +57,7 @@ BEGIN
   SELECT * INTO v_bt
   FROM bank_transactions
   WHERE id = v_po.linked_bank_transaction_id
+    AND restaurant_id = v_po.restaurant_id
   FOR UPDATE;
 
   IF v_bt.id IS NULL THEN

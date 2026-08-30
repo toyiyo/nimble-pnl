@@ -326,7 +326,11 @@ export function BankTransactionList({
                     isSelected={selectedIds.has(transaction.id)}
                     isCategorizing={categorize.isPending}
                     isConfirmingMatch={
-                      confirmMatch.variables?.bankTransactionId === transaction.id && confirmMatch.isPending
+                      // Disable EVERY Match button while one confirm runs,
+                      // not only the clicked row's. Two rows can suggest the
+                      // same pending outflow, and two concurrent confirms
+                      // would race on that outflow.
+                      confirmMatch.isPending
                     }
                     onSelectionToggle={handleSelectionToggle}
                     onQuickAccept={handleQuickAccept}

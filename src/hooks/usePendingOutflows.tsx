@@ -5,6 +5,12 @@ import { toast } from "sonner";
 import { useMemo } from "react";
 import type { PendingOutflow, PendingOutflowMatch, CreatePendingOutflowInput, UpdatePendingOutflowInput } from "@/types/pending-outflows";
 
+// The statuses a match can claim. The list mirrors the WHERE clause of
+// suggest_pending_outflow_matches (migration 20260830100400). confirmMatch
+// checks this list before the categorize RPC and again in the final
+// compare-and-set update on pending_outflows.
+export const MATCHABLE_OUTFLOW_STATUSES = ['pending', 'stale_30', 'stale_60', 'stale_90'];
+
 export function usePendingOutflows(options?: { enabled?: boolean }) {
   const { selectedRestaurant } = useRestaurantContext();
 
@@ -169,6 +175,14 @@ export function usePendingOutflowMutations() {
       if (fetchError) throw fetchError;
       if (!pendingOutflow) throw new Error('Pending outflow not found');
 
+      // Reject an outflow that another tab, the auto-link sweep, or a stale
+      // suggestion list already claimed. This check runs BEFORE the
+      // categorize RPC, so a stale click makes no financial write. The
+      // status list mirrors suggest_pending_outflow_matches.
+      if (!MATCHABLE_OUTFLOW_STATUSES.includes(pendingOutflow.status)) {
+        throw new Error('This expense is already matched or voided. Refresh the list and try again.');
+      }
+
       // Fetch current bank transaction to merge notes
       const { data: bankTransaction, error: btFetchError } = await supabase
         .from('bank_transactions')
@@ -298,12 +312,25 @@ export function usePendingOutflowMutations() {
         categorized = true;
       }
 
-      const { error: poError } = await supabase
+      // Compare-and-set claim: the status filter makes the update a no-op
+      // when a concurrent confirm already cleared or voided this outflow.
+      // A lost race then surfaces as an error instead of a silent relink.
+      // The categorize RPC above already ran in that case, so the error
+      // text tells the user to check the transaction category.
+      const { data: claimedOutflow, error: poError } = await supabase
         .from('pending_outflows')
         .update(pendingOutflowUpdates)
-        .eq('id', pendingOutflowId);
+        .eq('id', pendingOutflowId)
+        .in('status', MATCHABLE_OUTFLOW_STATUSES)
+        .select('id')
+        .maybeSingle();
 
       if (poError) throw poError;
+      if (!claimedOutflow) {
+        throw new Error(
+          'This expense was matched by another session while this match ran. Check the transaction category on the Banking page.'
+        );
+      }
 
       return {
         pendingOutflowId,

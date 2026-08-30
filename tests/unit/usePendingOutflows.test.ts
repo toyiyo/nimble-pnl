@@ -53,15 +53,34 @@ function setupConfirmMatchMocks(
   options: {
     onBankUpdate?: () => void;
     existingJournalEntry?: { id: string } | null;
+    claimedOutflow?: { id: string } | null;
   } = {}
 ) {
+  // The status column is NOT NULL in the database, so the hook always sees
+  // one. Default it here so each fixture only sets status when a test
+  // exercises the already-matched guard.
+  const outflowWithStatus = pendingOutflow
+    ? { status: 'pending', ...(pendingOutflow as Record<string, unknown>) }
+    : pendingOutflow;
+
   const mockPendingOutflowBuilder = {
     select: vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: pendingOutflow, error: null }),
+      single: vi.fn().mockResolvedValue({ data: outflowWithStatus, error: null }),
     }),
     update: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockResolvedValue({ error: null }),
+    eq: vi.fn().mockReturnThis(),
+    // The compare-and-set claim: update().eq().in().select().maybeSingle().
+    // `claimedOutflow: null` simulates a lost race (another session already
+    // cleared the outflow).
+    in: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: options.claimedOutflow === undefined ? { id: 'claimed' } : options.claimedOutflow,
+          error: null,
+        }),
+      }),
+    }),
   };
 
   const mockBankTransactionBuilder: {
@@ -914,6 +933,80 @@ describe('usePendingOutflowMutations', () => {
       });
 
       expect(toast.error).toHaveBeenCalledWith('Failed to confirm match: boom');
+    });
+
+    // PR #782 review, P1: two rows can suggest the same pending outflow, so
+    // two confirms can race on it. The hook rejects a non-matchable status
+    // before the categorize RPC, and the final update is a compare-and-set
+    // claim that surfaces a lost race as an error.
+    it('rejects an already-cleared outflow before any financial write', async () => {
+      const clearedOutflow = {
+        id: 'po-123',
+        status: 'cleared',
+        category_id: 'cat-456',
+        notes: null,
+        expense_invoice_uploads: [],
+      };
+
+      const { mockPendingOutflowBuilder } = setupConfirmMatchMocks(clearedOutflow, {
+        notes: null,
+        category_id: null,
+        suggested_category_id: null,
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.confirmMatch.mutateAsync({
+            pendingOutflowId: 'po-123',
+            bankTransactionId: 'bt-456',
+          });
+        } catch {
+          // expected: the outflow is not matchable
+        }
+      });
+
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
+      expect(mockPendingOutflowBuilder.update).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        'Failed to confirm match: This expense is already matched or voided. Refresh the list and try again.'
+      );
+    });
+
+    it('surfaces a lost compare-and-set race as an error', async () => {
+      setupConfirmMatchMocks(
+        {
+          id: 'po-123',
+          category_id: 'cat-456',
+          notes: null,
+          expense_invoice_uploads: [],
+        },
+        {
+          notes: null,
+          category_id: null,
+          suggested_category_id: null,
+        },
+        { claimedOutflow: null }
+      );
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.confirmMatch.mutateAsync({
+            pendingOutflowId: 'po-123',
+            bankTransactionId: 'bt-456',
+          });
+        } catch {
+          // expected: another session claimed the outflow first
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith(
+        'Failed to confirm match: This expense was matched by another session while this match ran. Check the transaction category on the Banking page.'
+      );
     });
   });
 

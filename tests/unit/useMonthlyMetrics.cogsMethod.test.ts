@@ -56,7 +56,6 @@ describe('useMonthlyMetrics COGS method normalization', () => {
   });
 
   it('treats a legacy "combined" setting as inventory-only, never summing both sources', async () => {
-     
     const fromMock = vi.fn((table: string) => {
       if (table === 'restaurant_financial_settings') {
         return makeChainable({ cogs_calculation_method: 'combined' });

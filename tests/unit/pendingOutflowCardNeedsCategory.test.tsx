@@ -24,6 +24,7 @@ vi.mock('@/hooks/usePendingOutflows', () => ({
     voidPendingOutflow: { mutate: vi.fn() },
     deletePendingOutflow: { mutate: vi.fn() },
     updatePendingOutflow: { mutateAsync: vi.fn() },
+    unlinkMatch: { mutate: vi.fn(), isPending: false, variables: undefined },
   }),
   usePendingOutflowMatches: () => ({ data: [] }),
 }));

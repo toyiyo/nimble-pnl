@@ -44,21 +44,21 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 DECLARE
-  v_pair                   RECORD;
-  v_po                     RECORD;
-  v_bt                     RECORD;
-  v_linked_count           INTEGER := 0;
-  v_candidate_count        INTEGER := 0;
-  v_cash_account_id        UUID;
+  v_pair                    RECORD;
+  v_po                      RECORD;
+  v_bt                      RECORD;
+  v_linked_count            INTEGER := 0;
+  v_candidate_count         INTEGER := 0;
+  v_cash_account_id         UUID;
   v_category_id             UUID;
   v_category_name           TEXT;
   v_fiscal_period_id        UUID;
   v_journal_entry_id        UUID;
   v_existing_journal_entry  UUID;
-  v_timezone                 TEXT;
-  v_entry_day                DATE;
-  v_merged_notes             TEXT;
-  v_upload_id                UUID;
+  v_timezone                TEXT;
+  v_entry_day               DATE;
+  v_merged_notes            TEXT;
+  v_upload_id               UUID;
 BEGIN
   IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
     RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;

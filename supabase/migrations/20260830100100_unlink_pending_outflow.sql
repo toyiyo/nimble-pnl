@@ -22,14 +22,14 @@ AS $$
 DECLARE
   v_po                RECORD;
   v_bt                RECORD;
-  v_timezone           TEXT;
-  v_entry_day          DATE;
-  v_fiscal_period_id    UUID;
-  v_journal_entry_id     UUID;
-  v_upload_id             UUID;
-  v_can_revert            BOOLEAN;
-  v_category_kept          BOOLEAN;
-  v_new_status              TEXT;
+  v_timezone          TEXT;
+  v_entry_day         DATE;
+  v_fiscal_period_id  UUID;
+  v_journal_entry_id  UUID;
+  v_upload_id         UUID;
+  v_can_revert        BOOLEAN;
+  v_category_kept     BOOLEAN;
+  v_new_status        TEXT;
 BEGIN
   SELECT * INTO v_po
   FROM pending_outflows

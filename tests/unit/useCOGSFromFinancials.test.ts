@@ -5,14 +5,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ---------------------------------------------------------------------------
 // Mocks
+//
+// useCOGSFromFinancials no longer builds its own supabase queries — it
+// delegates row fetching to fetchFinancialCOGSRows (tested against a real
+// supabase chain in cogsFetch.test.ts). This file mocks that helper and
+// keeps only the assertions that belong to the hook: does it feed the
+// helper's rows into aggregateFinancialCOGSByDate correctly, and does it
+// shape the result the way callers expect.
 // ---------------------------------------------------------------------------
 
-const mockSupabase = vi.hoisted(() => ({
-  from: vi.fn(),
-}));
+const mockFetchFinancialCOGSRows = vi.hoisted(() => vi.fn());
 
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: mockSupabase,
+vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
+
+vi.mock('@/services/cogsFetch', () => ({
+  COGS_MAX_PAGES: 50,
+  fetchFinancialCOGSRows: mockFetchFinancialCOGSRows,
 }));
 
 // ---------------------------------------------------------------------------
@@ -20,6 +28,8 @@ vi.mock('@/integrations/supabase/client', () => ({
 // ---------------------------------------------------------------------------
 
 import { useCOGSFromFinancials } from '@/hooks/useCOGSFromFinancials';
+import { toUtcDayKey } from '@/services/cogsCalculations';
+import { format } from 'date-fns';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,32 +47,6 @@ const createWrapper = () => {
   };
 };
 
-/**
- * Creates a fluent mock chain for supabase query builders.
- * Terminates with the given resolved value when the chain ends
- * (i.e. when no more chainable methods are called).
- *
- * Every method returns `this` so calls can be chained in any order.
- * The final `.limit()` call resolves the promise.
- */
-function createChainBuilder(resolvedValue: { data: unknown; error: unknown }) {
-  const builder: Record<string, ReturnType<typeof vi.fn>> = {};
-
-  const self = () => builder;
-
-  builder.select = vi.fn().mockImplementation(self);
-  builder.eq = vi.fn().mockImplementation(self);
-  builder.in = vi.fn().mockImplementation(self);
-  builder.is = vi.fn().mockImplementation(self);
-  builder.lt = vi.fn().mockImplementation(self);
-  builder.gte = vi.fn().mockImplementation(self);
-  builder.lte = vi.fn().mockImplementation(self);
-  builder.order = vi.fn().mockImplementation(self);
-  builder.limit = vi.fn().mockResolvedValue(resolvedValue);
-
-  return builder;
-}
-
 const DATE_FROM = new Date('2026-03-01');
 const DATE_TO = new Date('2026-03-07');
 
@@ -75,7 +59,6 @@ function bankTxn(
     id?: string;
     transaction_date?: string;
     amount?: number;
-    is_split?: boolean;
     account_subtype?: string | null;
   } = {},
 ) {
@@ -83,7 +66,6 @@ function bankTxn(
     id: overrides.id ?? 'bt-1',
     transaction_date: overrides.transaction_date ?? '2026-03-02T00:00:00Z',
     amount: overrides.amount ?? -150,
-    is_split: overrides.is_split ?? false,
     chart_of_accounts: overrides.account_subtype !== undefined
       ? overrides.account_subtype !== null
         ? { account_subtype: overrides.account_subtype }
@@ -131,56 +113,36 @@ function pendingOutflow(
 }
 
 /**
- * Sets up mockSupabase.from to return different chain builders per table.
- *
- * callIndex tracks sequential calls to `.from()` within a single queryFn invocation.
- * The hook makes calls in this order:
- *   0 → bank_transactions (non-split)
- *   1 → bank_transactions (split parents)
- *   2 → bank_transaction_splits (only if split parents exist)
- *   3 → pending_outflows
+ * Points the mocked fetchFinancialCOGSRows at the given rows, matching the
+ * shape the real helper returns (parentDateMap keyed by the UTC day of each
+ * split parent, same as the hook expects).
  */
 function setupMocks(options: {
   bankTxns?: unknown[];
-  splitParents?: unknown[];
+  splitParents?: { id: string; transaction_date: string }[];
   splitItems?: unknown[];
   pendingOutflows?: unknown[];
-  bankError?: unknown;
-  splitParentError?: unknown;
-  splitsError?: unknown;
-  pendingError?: unknown;
+  capped?: boolean;
 }) {
   const {
     bankTxns = [],
     splitParents = [],
     splitItems = [],
     pendingOutflows = [],
-    bankError = null,
-    splitParentError = null,
-    splitsError = null,
-    pendingError = null,
+    capped = false,
   } = options;
 
-  const bankChain = createChainBuilder({ data: bankTxns, error: bankError });
-  const splitParentChain = createChainBuilder({ data: splitParents, error: splitParentError });
-  const splitsChain = createChainBuilder({ data: splitItems, error: splitsError });
-  const pendingChain = createChainBuilder({ data: pendingOutflows, error: pendingError });
+  const parentDateMap = new Map<string, string>();
+  for (const p of splitParents) {
+    parentDateMap.set(p.id, toUtcDayKey(p.transaction_date));
+  }
 
-  let callIndex = 0;
-  mockSupabase.from.mockImplementation((table: string) => {
-    const idx = callIndex++;
-    if (table === 'bank_transactions') {
-      // First call (idx 0) is non-split bank txns, second call (idx 1) is split parents
-      return idx === 0 ? bankChain : splitParentChain;
-    }
-    if (table === 'bank_transaction_splits') {
-      return splitsChain;
-    }
-    if (table === 'pending_outflows') {
-      return pendingChain;
-    }
-    // fallback
-    return createChainBuilder({ data: [], error: null });
+  mockFetchFinancialCOGSRows.mockResolvedValue({
+    bankTxns,
+    splitItems,
+    parentDateMap,
+    pendingTxns: pendingOutflows,
+    capped,
   });
 }
 
@@ -312,9 +274,7 @@ describe('useCOGSFromFinancials', () => {
     expect(result.current.totalCost).toBe(150);
   });
 
-  it('excludes transfer transactions (only non-split bank query has is_transfer=false filter)', async () => {
-    // The hook explicitly filters is_transfer=false in both bank_transactions queries.
-    // We verify the filter is applied by checking the .eq calls.
+  it('calls fetchFinancialCOGSRows with the restaurant id and formatted date range', async () => {
     setupMocks({});
 
     const { result } = renderHook(
@@ -326,21 +286,12 @@ describe('useCOGSFromFinancials', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // The first .from('bank_transactions') call should have eq('is_transfer', false)
-    // Both bank_transactions calls should filter transfers
-    const fromCalls = mockSupabase.from.mock.calls;
-    expect(fromCalls[0][0]).toBe('bank_transactions');
-    expect(fromCalls[1][0]).toBe('bank_transactions');
-
-    // Verify is_transfer filter was applied (the chain builder .eq was called with 'is_transfer', false)
-    // Since we use a shared chain builder, we can check the .eq calls on both chains.
-    // The non-split chain (first from call) should have eq called with 'is_transfer', false
-    const bankChain = mockSupabase.from.mock.results[0].value;
-    const eqCalls = bankChain.eq.mock.calls;
-    const hasTransferFilter = eqCalls.some(
-      (call: unknown[]) => call[0] === 'is_transfer' && call[1] === false,
+    expect(mockFetchFinancialCOGSRows).toHaveBeenCalledWith(
+      expect.anything(),
+      'rest-123',
+      format(DATE_FROM, 'yyyy-MM-dd'),
+      format(DATE_TO, 'yyyy-MM-dd'),
     );
-    expect(hasTransferFilter).toBe(true);
   });
 
   it('returns daily aggregation by transaction_date', async () => {
@@ -378,8 +329,26 @@ describe('useCOGSFromFinancials', () => {
     expect(result.current.totalCost).toBe(250);
   });
 
+  it('passes the capped flag through from the helper', async () => {
+    setupMocks({
+      bankTxns: [bankTxn({ id: 'bt-1', amount: -10, account_subtype: 'food_cost' })],
+      capped: true,
+    });
+
+    const { result } = renderHook(
+      () => useCOGSFromFinancials('rest-123', DATE_FROM, DATE_TO),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.capped).toBe(true);
+  });
+
   it('returns empty when restaurantId is null', async () => {
-    // Should NOT call supabase at all
+    // Should NOT call the fetch helper at all
     const { result } = renderHook(
       () => useCOGSFromFinancials(null, DATE_FROM, DATE_TO),
       { wrapper: createWrapper() },
@@ -391,6 +360,7 @@ describe('useCOGSFromFinancials', () => {
 
     expect(result.current.dailyCosts).toEqual([]);
     expect(result.current.totalCost).toBe(0);
-    expect(mockSupabase.from).not.toHaveBeenCalled();
+    expect(result.current.capped).toBe(false);
+    expect(mockFetchFinancialCOGSRows).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,6 @@
+import { startOfWeek, endOfWeek } from 'date-fns';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+
 /**
  * Overnight-shift fetch windowing helpers.
  *
@@ -43,6 +46,44 @@ export function lookaheadPunchFetchRange(
   hours: number = OVERNIGHT_BUFFER_HOURS,
 ): { fetchStart: Date; fetchEnd: Date } {
   return { fetchStart: start, fetchEnd: new Date(end.getTime() + hours * 60 * 60 * 1000) };
+}
+
+/**
+ * Widen a punch-fetch start backward to the start of the ISO week
+ * (WEEK_STARTS_ON) that contains `dateFrom`, but only when that week start
+ * falls before the already-computed `fetchStart`.
+ *
+ * The OT-banding formula (`calculateActualLaborCostForRange`) buckets
+ * punches by ISO week and bands overtime over the FULL week. When
+ * `dateFrom` does not fall on a week boundary, the days before `dateFrom`
+ * in that same week must still be fetched, or the week's hour total comes
+ * out too low and hours that should band as overtime cost as straight time
+ * instead. A caller whose downstream calc attributes hours to every day a
+ * shift touches (e.g. `calculateActualLaborCost`, the straight-time daily
+ * series) must filter these look-back days back out before using them —
+ * this helper only widens the DB fetch.
+ */
+export function weekAlignedFetchStart(dateFrom: Date, fetchStart: Date): Date {
+  const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
+  return weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;
+}
+
+/**
+ * Widen a punch-fetch end forward to the end of the ISO week
+ * (WEEK_STARTS_ON) that contains `dateTo`, but only when that week end
+ * falls after the already-computed `fetchEnd`.
+ *
+ * Same OT-banding rule as `weekAlignedFetchStart`, applied to the end of
+ * the range: when `dateTo` does not fall on a week boundary, the days
+ * after `dateTo` in that same week must still be fetched, or the week's
+ * hour total comes out too low and hours that should band as overtime
+ * cost as straight time instead. A caller with a separate straight-time
+ * daily series must filter these look-ahead days back out before using
+ * them — this helper only widens the DB fetch.
+ */
+export function weekAlignedFetchEnd(dateTo: Date, fetchEnd: Date): Date {
+  const weekAlignedEnd = endOfWeek(dateTo, { weekStartsOn: WEEK_STARTS_ON });
+  return weekAlignedEnd > fetchEnd ? weekAlignedEnd : fetchEnd;
 }
 
 /** Inclusive on both boundaries, matching Supabase .gte/.lte semantics. */

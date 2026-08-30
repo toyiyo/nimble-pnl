@@ -44,6 +44,8 @@ function mockRevenueBreakdown() {
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    // The mock sets only the fields this test reads, not the hook's full
+    // return type. The `any` cast skips the missing-field type error.
   } as any);
 }
 
@@ -84,6 +86,8 @@ function mockPeriodMetrics(laborCost: number) {
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    // The mock sets only the fields this test reads, not the hook's full
+    // return type. The `any` cast skips the missing-field type error.
   } as any);
 }
 
@@ -108,6 +112,8 @@ function mockCostsFromSource(pendingTotal: number, actualTotal: number) {
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    // The mock sets only the fields this test reads, not the hook's full
+    // return type. The `any` cast skips the missing-field type error.
   } as any);
 }
 
@@ -117,6 +123,47 @@ function getRow(label: string): HTMLElement {
   const row = el.closest('.grid');
   if (!row) throw new Error(`Could not find row container for "${label}"`);
   return row as HTMLElement;
+}
+
+/**
+ * Overtime/tips divergence: the hook's period totals carry OT banding and
+ * tips; the dailyCosts series stays straight-time. The two differ whenever
+ * the period holds overtime. The labor children must read the hook totals,
+ * not a re-sum of dailyCosts.
+ */
+function mockCostsFromSourceDiverged(opts: {
+  pendingTotal: number;
+  actualTotal: number;
+  dailyPendingSum: number;
+  dailyActualSum: number;
+  laborBasis: 'accrued' | 'paid';
+}) {
+  const dailyLabor =
+    opts.laborBasis === 'accrued' ? opts.dailyPendingSum : opts.dailyActualSum;
+  const hookLabor =
+    opts.laborBasis === 'accrued' ? opts.pendingTotal : opts.actualTotal;
+  vi.mocked(useCostsFromSource).mockReturnValue({
+    dailyCosts: [
+      {
+        date: '2026-07-01',
+        food_cost: FOOD_COST,
+        labor_cost: dailyLabor,
+        pending_labor_cost: opts.dailyPendingSum,
+        actual_labor_cost: opts.dailyActualSum,
+        total_cost: FOOD_COST + dailyLabor,
+      },
+    ],
+    totalFoodCost: FOOD_COST,
+    totalLaborCost: hookLabor,
+    pendingLaborCost: opts.pendingTotal,
+    actualLaborCost: opts.actualTotal,
+    laborBasis: opts.laborBasis,
+    totalCost: FOOD_COST + hookLabor,
+    capped: false,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  });
 }
 
 describe('DetailedPnLBreakdown labor children (de-dup basis)', () => {
@@ -185,5 +232,33 @@ describe('DetailedPnLBreakdown labor children (de-dup basis)', () => {
     // Sum is exactly the counted share (20%), never pending% + actual% (58%)
     // and nowhere near the ~183% the original double-count bug produced.
     expect(countedPct + notCountedPct).toBe(20);
+  });
+
+  it('overtime divergence: the labor children show the hook totals, not a re-sum of the straight-time dailyCosts', () => {
+    // Hook totals carry OT + tips; the daily series stays straight-time.
+    const pendingTotal = 22000; // includes 2,000 of overtime premium
+    const actualTotal = 38000;
+    mockRevenueBreakdown();
+    mockPeriodMetrics(pendingTotal);
+    mockCostsFromSourceDiverged({
+      pendingTotal,
+      actualTotal,
+      dailyPendingSum: 20000, // straight-time only
+      dailyActualSum: 36000,
+      laborBasis: 'accrued',
+    });
+
+    render(<DetailedPnLBreakdown restaurantId="r1" />);
+
+    // The counted row equals the hook total (22,000), so it matches the
+    // Labor Cost header line. The old re-sum showed 20,000 here.
+    const counted = getRow('Pending Payroll (Scheduled) — counted');
+    expect(within(counted).getByText('$22,000.00')).toBeInTheDocument();
+    expect(within(counted).getByText('22.0%')).toBeInTheDocument();
+    expect(screen.queryByText('$20,000.00')).not.toBeInTheDocument();
+
+    const notCounted = getRow('Actual Payroll (Paid) — not counted this period');
+    expect(within(notCounted).getByText('$38,000.00')).toBeInTheDocument();
+    expect(screen.queryByText('$36,000.00')).not.toBeInTheDocument();
   });
 });

@@ -60,6 +60,7 @@ export function usePeriodMetrics(
   data: PeriodMetrics | null;
   isLoading: boolean;
   error: Error | null;
+  capped: boolean;
   refetch: () => void;
 } {
   // Get revenue from unified_sales (correct source)
@@ -81,6 +82,7 @@ export function usePeriodMetrics(
     pendingLaborCost: pendingLaborCostRaw,
     actualLaborCost: actualLaborCostRaw,
     laborBasis,
+    capped,
     isLoading: costsLoading,
     refetch: refetchCosts,
     error: costsError,
@@ -147,6 +149,7 @@ export function usePeriodMetrics(
     data: metrics,
     isLoading: revenueLoading || costsLoading,
     error: revenueError ?? costsError ?? null,
+    capped,
     refetch,
   };
 }

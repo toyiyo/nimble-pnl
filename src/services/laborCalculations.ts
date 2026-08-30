@@ -818,54 +818,54 @@ export function getEmployeeDailyRateDescription(employee: Employee): string {
 }
 
 // ============================================================================
-// Monthly Labor Cost (ISO-week OT banding + tipsOwed)
+// Range Labor Cost (ISO-week OT banding + tipsOwed)
 // ============================================================================
 
-export interface MonthlyLaborInput {
+export interface RangeLaborInput {
   employees: Employee[];
   timePunches: TimePunch[];
   /**
-   * Per-employee tipsOwed for the calendar month, in integer cents.
-   * Caller is responsible for filtering tip_split_items to the month
+   * Per-employee tipsOwed for the date range, in integer cents.
+   * Caller is responsible for filtering tip_split_items to the range
    * before passing.
    */
   tipsOwedByEmployee: Map<string, number>;
-  monthStart: Date;
-  monthEnd: Date;
+  rangeStart: Date;
+  rangeEnd: Date;
   /** Restaurant IANA timezone. Day bucketing is restaurant-local, not host-local. */
   timezone: string;
 }
 
-export interface MonthlyLaborResult {
-  /** Wages for the month (regular + OT + double-time + salary + contractor + daily-rate), integer cents. */
+export interface RangeLaborResult {
+  /** Wages for the range (regular + OT + double-time + salary + contractor + daily-rate), integer cents. */
   wagesCents: number;
-  /** Tips the restaurant owes employees attributed to this month, integer cents. */
+  /** Tips the restaurant owes employees attributed to this range, integer cents. */
   tipsOwedCents: number;
   /** wages + tipsOwed, integer cents. */
   actualLaborCents: number;
 }
 
 /**
- * Calculate actual labor cost for a calendar month using ISO-week OT banding.
+ * Calculate actual labor cost for a date range using ISO-week OT banding.
  *
  * For hourly employees: bucket each punch into the ISO week that contains it
  * (startOfWeek with WEEK_STARTS_ON), call calculateEmployeePay over the FULL
  * week (so OT bands are computed on the full 40h+ week), and distribute the
  * week's wage pay across the days actually worked in proportion to per-day
- * hours. Days outside [monthStart, monthEnd] are excluded; the days inside
- * the month sum to that month's contribution from the week.
+ * hours. Days outside [rangeStart, rangeEnd] are excluded; the days inside
+ * the range sum to that range's contribution from the week.
  *
  * For salary / contractor / daily_rate employees: there's no OT band to
- * preserve, so calculateEmployeePay is called directly over the calendar
- * month window — same proration logic as the existing `calculateActualLaborCost`.
+ * preserve, so calculateEmployeePay is called directly over the date range
+ * window — same proration logic as the existing `calculateActualLaborCost`.
  *
  * tipsOwed is added on top of wages — caller passes a Map<employee_id, cents>
- * pre-filtered to tip_splits whose split_date falls in [monthStart, monthEnd].
+ * pre-filtered to tip_splits whose split_date falls in [rangeStart, rangeEnd].
  */
-export function calculateActualLaborCostForMonth(
-  input: MonthlyLaborInput
-): MonthlyLaborResult {
-  const { employees, timePunches, tipsOwedByEmployee, monthStart, monthEnd, timezone } = input;
+export function calculateActualLaborCostForRange(
+  input: RangeLaborInput
+): RangeLaborResult {
+  const { employees, timePunches, tipsOwedByEmployee, rangeStart, rangeEnd, timezone } = input;
 
   let wagesCents = 0;
 
@@ -874,14 +874,14 @@ export function calculateActualLaborCostForMonth(
     const compType = employee.compensation_type ?? 'hourly';
 
     if (compType !== 'hourly') {
-      // No OT to band — call calculateEmployeePay over the calendar-month window.
+      // No OT to band — call calculateEmployeePay over the date range window.
       const pay = calculateEmployeePay(
         employee,
         employeePunches,
         0, // tips intentionally 0; tipsOwed added separately below
         timezone,
-        monthStart,
-        monthEnd
+        rangeStart,
+        rangeEnd
       );
       wagesCents +=
         pay.regularPay + pay.overtimePay + pay.doubleTimePay +
@@ -958,16 +958,16 @@ export function calculateActualLaborCostForMonth(
           : Math.round((weekWageCents * hours) / totalHours);
         distributed += dayCents;
 
-        // Only count this day if it falls inside the calendar-month window.
+        // Only count this day if it falls inside the date range window.
         const dayDate = new Date(dateKey + 'T12:00:00');
-        if (dayDate >= monthStart && dayDate <= monthEnd) {
+        if (dayDate >= rangeStart && dayDate <= rangeEnd) {
           wagesCents += dayCents;
         }
       }
     }
   }
 
-  // tipsOwed: caller already filtered to this month by split_date.
+  // tipsOwed: caller already filtered to this range by split_date.
   let tipsOwedCents = 0;
   tipsOwedByEmployee.forEach((cents) => {
     tipsOwedCents += cents;
@@ -978,4 +978,40 @@ export function calculateActualLaborCostForMonth(
     tipsOwedCents,
     actualLaborCents: wagesCents + tipsOwedCents,
   };
+}
+
+// ============================================================================
+// Backward-compatible shim: calculateActualLaborCostForMonth
+// ============================================================================
+
+export interface MonthlyLaborInput {
+  employees: Employee[];
+  timePunches: TimePunch[];
+  /**
+   * Per-employee tipsOwed for the calendar month, in integer cents.
+   * Caller is responsible for filtering tip_split_items to the month
+   * before passing.
+   */
+  tipsOwedByEmployee: Map<string, number>;
+  monthStart: Date;
+  monthEnd: Date;
+  /** Restaurant IANA timezone. Day bucketing is restaurant-local, not host-local. */
+  timezone: string;
+}
+
+export type MonthlyLaborResult = RangeLaborResult;
+
+/**
+ * Thin shim over calculateActualLaborCostForRange for existing callers that
+ * still speak in calendar-month terms.
+ */
+export function calculateActualLaborCostForMonth(input: MonthlyLaborInput): MonthlyLaborResult {
+  return calculateActualLaborCostForRange({
+    employees: input.employees,
+    timePunches: input.timePunches,
+    tipsOwedByEmployee: input.tipsOwedByEmployee,
+    rangeStart: input.monthStart,
+    rangeEnd: input.monthEnd,
+    timezone: input.timezone,
+  });
 }

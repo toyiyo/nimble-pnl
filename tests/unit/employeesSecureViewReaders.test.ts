@@ -36,9 +36,13 @@ describe('direct employees readers use employees_secure', () => {
 
   it('useMonthlyMetrics.tsx reads the labor employees query from employees_secure', () => {
     const source = readSource('src/hooks/useMonthlyMetrics.tsx');
-    expect(source).toContain(
-      "const { data: employeesData, error: employeesError } = await supabase\n        .from('employees_secure')"
+    // The employees fetch runs inside a Promise.all as a named promise.
+    // Whitespace- and quote-tolerant: a harmless reformat must not break this.
+    expect(source).toMatch(
+      /const\s+employeesPromise\s*=\s*supabase\s*\.from\(\s*['"]employees_secure['"]\s*\)/
     );
+    // Guard: the hook must not read the base employees table anywhere.
+    expect(source).not.toMatch(/\.from\s*\(\s*['"]employees['"]\s*\)/);
   });
 
   it('useTimePunches.tsx reads the employees join from employees_secure', () => {

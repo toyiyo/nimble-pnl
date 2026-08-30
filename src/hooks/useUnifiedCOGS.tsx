@@ -9,6 +9,7 @@ export interface UnifiedCOGSResult {
   dailyCOGS: { date: string; amount: number }[];
   breakdown: { inventory: number; financials: number };
   method: COGSMethod;
+  capped: boolean;
   isLoading: boolean;
   error: Error | null;
 }
@@ -41,6 +42,7 @@ export function useUnifiedCOGS(
   return useMemo(() => {
     let totalCOGS = 0;
     let dailyCOGS: { date: string; amount: number }[] = [];
+    let capped = false;
 
     switch (cogsMethod) {
       case 'inventory':
@@ -49,6 +51,7 @@ export function useUnifiedCOGS(
           date: d.date,
           amount: d.total_cost,
         }));
+        capped = inventoryCosts.capped;
         break;
 
       case 'financials':
@@ -57,6 +60,7 @@ export function useUnifiedCOGS(
           date: d.date,
           amount: d.total_cost,
         }));
+        capped = financialCosts.capped;
         break;
 
       case 'combined': {
@@ -74,6 +78,7 @@ export function useUnifiedCOGS(
         dailyCOGS = Array.from(dateMap.entries())
           .map(([date, amount]) => ({ date, amount }))
           .sort((a, b) => a.date.localeCompare(b.date));
+        capped = inventoryCosts.capped || financialCosts.capped;
         break;
       }
     }
@@ -86,6 +91,7 @@ export function useUnifiedCOGS(
         financials: financialCosts.totalCost,
       },
       method: cogsMethod,
+      capped,
       isLoading:
         settingsLoading || inventoryCosts.isLoading || financialCosts.isLoading,
       error: inventoryCosts.error || financialCosts.error,

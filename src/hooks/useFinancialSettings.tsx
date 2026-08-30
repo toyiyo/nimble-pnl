@@ -5,7 +5,14 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeCOGSMethod, type COGSMethod } from '@/lib/cogsMethod';
 
-export type { COGSMethod };
+// A legacy row can still hold 'combined' until the migration runs.
+const normalizeRow = (row: unknown): FinancialSettings => {
+  const record = row as FinancialSettings;
+  return {
+    ...record,
+    cogs_calculation_method: normalizeCOGSMethod(record.cogs_calculation_method),
+  };
+};
 
 export interface FinancialSettings {
   id?: string;
@@ -53,7 +60,7 @@ export const useFinancialSettings = (
       }
 
       if (data) {
-        setSettings(data as FinancialSettings);
+        setSettings(normalizeRow(data));
       } else {
         // Create default settings if none exist
         const defaultSettings = {
@@ -70,7 +77,7 @@ export const useFinancialSettings = (
         if (createError) {
           console.error('Error creating default financial settings:', createError);
         } else {
-          setSettings(newSettings as FinancialSettings);
+          setSettings(normalizeRow(newSettings));
         }
       }
     } catch (error) {
@@ -103,7 +110,7 @@ export const useFinancialSettings = (
         return;
       }
 
-      setSettings(data as FinancialSettings);
+      setSettings(normalizeRow(data));
       toast({
         title: 'Settings Updated',
         description: 'Financial settings have been saved successfully',

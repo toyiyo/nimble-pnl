@@ -1,7 +1,7 @@
 /**
  * Regression test for `useMonthlyMetrics`'s handling of the removed
- * 'combined' COGS method (design:
- * docs/superpowers/specs/2026-08-30-remove-combined-cogs-method-design.md,
+ * 'combined' COGS method (plan:
+ * docs/superpowers/plans/2026-08-30-remove-combined-cogs-method-plan.md,
  * Task 4).
  *
  * A legacy row can still store `cogs_calculation_method: 'combined'` until

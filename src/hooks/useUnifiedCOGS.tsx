@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 
 import { useFoodCosts } from '@/hooks/useFoodCosts';
 import { useCOGSFromFinancials } from '@/hooks/useCOGSFromFinancials';
-import { useFinancialSettings, COGSMethod } from '@/hooks/useFinancialSettings';
+import { useFinancialSettings } from '@/hooks/useFinancialSettings';
+import { type COGSMethod } from '@/lib/cogsMethod';
 
 export interface UnifiedCOGSResult {
   totalCOGS: number;

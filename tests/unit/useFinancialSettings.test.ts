@@ -121,6 +121,9 @@ describe('useFinancialSettings', () => {
     });
 
     expect(result.current.cogsMethod).toBe('inventory');
+    // The stored record must also hold the normalized value, so a consumer
+    // that reads settings.cogs_calculation_method never sees 'combined'.
+    expect(result.current.settings?.cogs_calculation_method).toBe('inventory');
   });
 
   it('updateSettings() calls supabase update and shows success toast', async () => {

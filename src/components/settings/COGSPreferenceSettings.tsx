@@ -7,7 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { Info } from 'lucide-react';
 
-import { useFinancialSettings, COGSMethod } from '@/hooks/useFinancialSettings';
+import { useFinancialSettings } from '@/hooks/useFinancialSettings';
+import { type COGSMethod } from '@/lib/cogsMethod';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 
 interface COGSPreferenceSettingsProps {

@@ -26,6 +26,7 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   },
 }));
 
@@ -913,6 +914,106 @@ describe('usePendingOutflowMutations', () => {
       });
 
       expect(toast.error).toHaveBeenCalledWith('Failed to confirm match: boom');
+    });
+  });
+
+  // unlinkMatch (plan task 8): the "Undo match" button on a cleared
+  // PendingOutflowCard calls unlink_pending_outflow, invalidates the same
+  // six query keys as confirmMatch, and maps category_kept to a toast.
+  describe('unlinkMatch', () => {
+    it('calls unlink_pending_outflow with the pending outflow id', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { category_kept: false, status: 'pending' },
+        error: null,
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.unlinkMatch.mutateAsync('po-123');
+      });
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('unlink_pending_outflow', {
+        p_pending_outflow_id: 'po-123',
+      });
+    });
+
+    it('invalidates the same six query keys as confirmMatch', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { category_kept: false, status: 'pending' },
+        error: null,
+      });
+
+      const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.unlinkMatch.mutateAsync('po-123');
+      });
+
+      const invalidatedKeys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey);
+      expect(invalidatedKeys).toContainEqual(['pending-outflows']);
+      expect(invalidatedKeys).toContainEqual(['bank-transactions']);
+      expect(invalidatedKeys).toContainEqual(['pending-outflow-matches']);
+      expect(invalidatedKeys).toContainEqual(['income-statement']);
+      expect(invalidatedKeys).toContainEqual(['balance-sheet']);
+      expect(invalidatedKeys).toContainEqual(['chart-of-accounts']);
+
+      invalidateSpy.mockRestore();
+    });
+
+    it('shows an informational toast when the RPC keeps the categorization', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { category_kept: true, status: 'pending' },
+        error: null,
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.unlinkMatch.mutateAsync('po-123');
+      });
+
+      expect(toast.info).toHaveBeenCalledWith(
+        'Match undone. Recategorize the transaction on the Banking page.'
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('shows a success toast when the RPC reverts the categorization', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: { category_kept: false, status: 'pending' },
+        error: null,
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.unlinkMatch.mutateAsync('po-123');
+      });
+
+      expect(toast.success).toHaveBeenCalledWith('Match undone');
+      expect(toast.info).not.toHaveBeenCalled();
+    });
+
+    it('shows an error toast when the RPC fails', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: null,
+        error: { message: 'boom' },
+      });
+
+      const { result } = renderHook(() => usePendingOutflowMutations(), { wrapper: createWrapper() });
+
+      await act(async () => {
+        try {
+          await result.current.unlinkMatch.mutateAsync('po-123');
+        } catch {
+          // expected: the RPC rejects
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to undo match: boom');
     });
   });
 });

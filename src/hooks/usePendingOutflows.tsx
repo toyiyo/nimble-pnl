@@ -327,6 +327,33 @@ export function usePendingOutflowMutations() {
     },
   });
 
+  const unlinkMatch = useMutation({
+    mutationFn: async (pendingOutflowId: string) => {
+      const { data, error } = await supabase.rpc('unlink_pending_outflow', {
+        p_pending_outflow_id: pendingOutflowId,
+      });
+
+      if (error) throw error;
+      return data as { category_kept: boolean; status: string };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
+      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
+      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      if (data.category_kept) {
+        toast.info('Match undone. Recategorize the transaction on the Banking page.');
+      } else {
+        toast.success('Match undone');
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to undo match: ${error.message}`);
+    },
+  });
+
   const deletePendingOutflow = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -350,6 +377,7 @@ export function usePendingOutflowMutations() {
     updatePendingOutflow,
     voidPendingOutflow,
     confirmMatch,
+    unlinkMatch,
     deletePendingOutflow,
   };
 }

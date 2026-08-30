@@ -191,6 +191,11 @@ pgTAP (`supabase/tests/restaurant_financial_settings.test.sql`):
   at line 174, staff attempts `inventory` at line 205, assertion expects
   `financials` at line 216. The insert at line 162 becomes `financials`.
 - Add one test: the CHECK constraint now rejects `combined`.
+- Add two tests for the migration backfill rule. pgTAP cannot insert a
+  `combined` row after the constraint tightens. The tests evaluate the
+  migration's exact CASE expression against fixture data instead: a
+  restaurant with one `usage` transaction must map to `inventory`; a
+  restaurant without usage data must map to `financials`.
 - Adjust `plan(N)`.
 
 E2E (`tests/e2e/`):
@@ -219,8 +224,17 @@ No change needed.
   can disagree for a restaurant without usage data during the deploy
   window. The window is short and the migration is the durable fix.
 - No E2E for the migrated-value path: pgTAP cannot insert `combined`
-  after the constraint tightens, so the review and the constraint test
-  cover the UPDATE step.
+  after the constraint tightens. Two pgTAP tests evaluate the backfill
+  CASE expression directly against fixture data (one restaurant with
+  usage data, one without) to cover both branches of the UPDATE rule.
+- Old clients during the deploy window: a client that still runs the
+  pre-deploy bundle can send `cogs_calculation_method = 'combined'`
+  after the migration runs. The CHECK constraint rejects the write with
+  SQLSTATE 23514. The hook shows the standard error toast and keeps the
+  stored value. No data corrupts. The window ends when the user reloads
+  and gets the two-option bundle. No compatibility path is added for
+  this: the write fails safely and the exposure window is one page
+  load.
 - The new CHECK constraint validates immediately, without `NOT VALID` +
   `VALIDATE CONSTRAINT`. This is acceptable here because the table holds
   one row per restaurant. Do not copy this pattern to a large table.

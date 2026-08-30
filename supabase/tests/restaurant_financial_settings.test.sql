@@ -8,7 +8,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(19);
 
 -- ============================================================================
 -- TEST CATEGORY 1: Table and Column Structure (Tests 1-6)
@@ -33,7 +33,7 @@ SELECT has_column('public', 'restaurant_financial_settings', 'created_at', 'shou
 SELECT has_column('public', 'restaurant_financial_settings', 'updated_at', 'should have updated_at column');
 
 -- ============================================================================
--- TEST CATEGORY 2: Default Value, CHECK, and UNIQUE Constraints (Tests 7-10)
+-- TEST CATEGORY 2: Default, CHECK, Backfill Rule, and UNIQUE (Tests 7-12)
 -- ============================================================================
 
 -- Setup: Disable RLS for direct constraint testing
@@ -78,7 +78,46 @@ SELECT throws_ok(
   'CHECK constraint should reject the removed combined value'
 );
 
--- Test 10: UNIQUE constraint on restaurant_id prevents duplicates
+-- Tests 10-11: The migration backfill rule maps each restaurant to one source.
+-- Migration 20260830120000 replaced 'combined' with this CASE expression.
+-- The constraint now rejects 'combined', so no test can insert a legacy row.
+-- These tests check the decision expression against fixture data instead.
+
+-- Fixture: restaurant 1 gets one product and one 'usage' transaction.
+INSERT INTO products (id, restaurant_id, sku, name)
+VALUES ('f0000000-0000-0000-0000-200000000001',
+        'f0000000-0000-0000-0000-000000000001',
+        'BACKFILL-TEST-1', 'Backfill Test Product')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO inventory_transactions (restaurant_id, product_id, transaction_type, quantity)
+VALUES ('f0000000-0000-0000-0000-000000000001',
+        'f0000000-0000-0000-0000-200000000001',
+        'usage', 1);
+
+-- Test 10: a restaurant with usage data maps to 'inventory'
+SELECT is(
+  (SELECT CASE WHEN EXISTS (
+     SELECT 1 FROM inventory_transactions it
+     WHERE it.restaurant_id = 'f0000000-0000-0000-0000-000000000001'
+       AND it.transaction_type = 'usage'
+   ) THEN 'inventory' ELSE 'financials' END),
+  'inventory',
+  'Backfill rule should map a restaurant with usage data to inventory'
+);
+
+-- Test 11: a restaurant without usage data maps to 'financials'
+SELECT is(
+  (SELECT CASE WHEN EXISTS (
+     SELECT 1 FROM inventory_transactions it
+     WHERE it.restaurant_id = 'f0000000-0000-0000-0000-000000000002'
+       AND it.transaction_type = 'usage'
+   ) THEN 'inventory' ELSE 'financials' END),
+  'financials',
+  'Backfill rule should map a restaurant without usage data to financials'
+);
+
+-- Test 12: UNIQUE constraint on restaurant_id prevents duplicates
 SELECT throws_ok(
   $$INSERT INTO restaurant_financial_settings (restaurant_id)
     VALUES ('f0000000-0000-0000-0000-000000000001')$$,
@@ -88,7 +127,7 @@ SELECT throws_ok(
 );
 
 -- ============================================================================
--- TEST CATEGORY 3: RLS Policies (Tests 11-17)
+-- TEST CATEGORY 3: RLS Policies (Tests 13-19)
 -- ============================================================================
 
 -- Create test auth users (as postgres)
@@ -119,7 +158,7 @@ ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_restaurants ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
--- Test 11: Restaurant member (owner) CAN SELECT their own settings
+-- Test 13: Restaurant member (owner) CAN SELECT their own settings
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -133,7 +172,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 12: Restaurant member (staff) CAN SELECT their restaurant settings
+-- Test 14: Restaurant member (staff) CAN SELECT their restaurant settings
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -147,7 +186,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 13: Non-member CANNOT SELECT any restaurant settings
+-- Test 15: Non-member CANNOT SELECT any restaurant settings
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -160,7 +199,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 14: Owner CAN INSERT settings for their restaurant
+-- Test 16: Owner CAN INSERT settings for their restaurant
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -173,7 +212,7 @@ SELECT lives_ok(
 );
 
 -- ============================================================================
--- Test 15: Owner CAN UPDATE settings for their restaurant
+-- Test 17: Owner CAN UPDATE settings for their restaurant
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -186,7 +225,7 @@ SELECT lives_ok(
 );
 
 -- ============================================================================
--- Test 16: Staff CANNOT INSERT settings (RLS blocks non-owner/manager writes)
+-- Test 18: Staff CANNOT INSERT settings (RLS blocks non-owner/manager writes)
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -203,7 +242,7 @@ SELECT throws_ok(
 );
 
 -- ============================================================================
--- Test 17: Staff UPDATE silently affects 0 rows (RLS filters out the row)
+-- Test 19: Staff UPDATE silently affects 0 rows (RLS filters out the row)
 -- ============================================================================
 
 SET LOCAL role TO authenticated;

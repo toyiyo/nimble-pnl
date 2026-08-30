@@ -50,7 +50,8 @@ DECLARE
   v_linked_count           INTEGER := 0;
   v_candidate_count        INTEGER := 0;
   v_cash_account_id        UUID;
-  v_category                RECORD;
+  v_category_id             UUID;
+  v_category_name           TEXT;
   v_fiscal_period_id        UUID;
   v_journal_entry_id        UUID;
   v_existing_journal_entry  UUID;
@@ -203,16 +204,17 @@ BEGIN
       ORDER BY created_at
       LIMIT 1;
 
-      v_category := NULL;
+      v_category_id := NULL;
+      v_category_name := NULL;
       IF v_po.category_id IS NOT NULL THEN
-        SELECT * INTO v_category
+        SELECT id, account_name INTO v_category_id, v_category_name
         FROM chart_of_accounts
         WHERE id = v_po.category_id
           AND restaurant_id = p_restaurant_id
           AND is_active = true;
       END IF;
 
-      IF v_category.id IS NOT NULL THEN
+      IF v_category_id IS NOT NULL THEN
         -- Category branch: post the journal entry, categorize the
         -- transaction.
         v_entry_day := bank_txn_entry_day(v_bt.transaction_date, v_timezone);
@@ -266,7 +268,7 @@ BEGIN
 
         INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
         VALUES
-          (v_journal_entry_id, v_category.id, ABS(v_bt.amount), 0, v_category.account_name),
+          (v_journal_entry_id, v_category_id, ABS(v_bt.amount), 0, v_category_name),
           (v_journal_entry_id, v_cash_account_id, 0, ABS(v_bt.amount), 'Cash payment');
 
         UPDATE bank_transactions

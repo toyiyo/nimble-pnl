@@ -7,7 +7,7 @@
 -- amount so scenarios never tie against each other inside the same call.
 
 BEGIN;
-SELECT plan(39);
+SELECT plan(47);
 
 SET LOCAL role TO postgres;
 
@@ -36,6 +36,14 @@ ON CONFLICT (id) DO UPDATE SET is_closed = true;
 SELECT is(normalize_match_text('Sysco Foods, LLC.'), 'syscofoodsllc', 'normalize_match_text lowercases and strips punctuation');
 SELECT is(normalize_match_text(NULL), '', 'normalize_match_text of NULL is empty string');
 SELECT is(normalize_match_text('ACME #123'), 'acme123', 'normalize_match_text keeps digits');
+
+-- normalize_match_tokens and vendor_text_match ---------------------------------
+SELECT is(normalize_match_tokens('Sysco Foods, LLC.'), 'sysco foods llc', 'normalize_match_tokens keeps word boundaries');
+SELECT is(normalize_match_tokens(NULL), '', 'normalize_match_tokens of NULL is empty string');
+SELECT is(vendor_text_match('Sysco', 'SYSCO FOODS 8812'), true, 'vendor_text_match: 5-char string matches by plain containment');
+SELECT is(vendor_text_match('Cox', 'RENT AND COX 4411'), true, 'vendor_text_match: 3-char string matches at a token boundary');
+SELECT is(vendor_text_match('Dco', 'RENT AND COX 4411'), false, 'vendor_text_match: 3-char string does not match across a word boundary');
+SELECT is(vendor_text_match('AB', 'AB SUPPLY'), false, 'vendor_text_match: a 2-char string never matches');
 
 -- Scenario 1: happy path WITH category ----------------------------------------
 INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status, notes) VALUES
@@ -313,6 +321,38 @@ SELECT is(
   0::numeric, 'p_skip_rebuild=true: current_balance is not rebuilt');
 
 SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid, 100, false);
+
+-- Scenario 14: short vendor (3 chars) links at a token boundary -------------------
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069971'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'UPS', 'ach', 271.82, DATE '2026-01-01', 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000069972'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-short-token',
+   TIMESTAMPTZ '2026-01-05 12:00:00+00', -271.82, 'UPS BILL PAYMENT', NULL, 'posted', false, false, false, false);
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069971'::uuid),
+  'cleared', 'short vendor at token boundary: outflow clears');
+
+-- Scenario 15: short vendor across a word boundary does not link ------------------
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069981'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Dco', 'ach', 314.15, DATE '2026-01-01', 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000069982'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-cross-word',
+   TIMESTAMPTZ '2026-01-05 12:00:00+00', -314.15, 'RENT AND COX 4411', NULL, 'posted', false, false, false, false);
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069981'::uuid),
+  'pending', 'short vendor across a word boundary: outflow stays pending');
 
 -- Grants -------------------------------------------------------------------------
 SELECT ok(

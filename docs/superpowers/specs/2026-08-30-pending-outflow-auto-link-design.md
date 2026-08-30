@@ -99,6 +99,8 @@ Drivers:
    rules call passes (index.ts:386-390). The edge function always calls
    `rebuild_account_balances` again on its no-violation path, so an
    internal rebuild here would run twice inside the ~10s CPU budget.
+   Pass `p_batch_limit: 25` — a small bound for the same CPU budget.
+   The 5-minute sweep links any remainder (performance review).
    The function has no `auth.uid()` check, which is required here because
    `auth.uid()` is NULL for service-role callers
    (comment at 20260820210300_sweep_local_entry_day.sql:216-217).
@@ -120,24 +122,38 @@ Auto-link criteria (all must hold):
    negative for outflows — same sign convention as
    20251107202635_...sql:37,78).
 2. **Window:** the transaction's restaurant-local entry day falls in
-   `[po.issue_date, po.issue_date + 14 days]`. Derive the day with
+   `[po.issue_date, po.issue_date + 14 days]` (inclusive on both ends,
+   so 15 calendar days). Derive the day with
    `bank_txn_entry_day(bt.transaction_date, restaurant.timezone)`, the
    single sanctioned derivation
    (20260820210300_sweep_local_entry_day.sql:154, PR #766 lesson at
    line 82-83). The window is forward-only: a payment posts on or after its
    issue date. A posting before the issue date signals a data-entry
    mismatch and stays in the suggestion flow.
-3. **Vendor:** normalized containment in either direction. Define
-   `normalize_match_text(text)`: lowercase, then remove every character
-   that is not a-z or 0-9 (IMMUTABLE). Match when one normalized string
-   contains the other. Both normalized strings must have length >= 3.
-   Containment in either direction handles both truncations:
-   outflow "Sysco Foods LLC" vs bank merchant "SYSCO", and outflow "Sysco"
-   vs bank description "SYSCO FOODS 8812". The bank side checks
-   `merchant_name`, `description`, and `normalized_payee` — the same fields
-   the fuzzy score reads plus the normalized payee
-   (20251107202635_...sql:57-60; `normalized_payee` on the BankTransaction
-   interface, src/hooks/useBankTransactions.tsx).
+3. **Vendor:** one shared boolean function, `vendor_text_match(a, b)`,
+   holds the comparison. Two normalizers feed it (both IMMUTABLE):
+   `normalize_match_text(text)` lowercases and removes every character
+   that is not a-z or 0-9; `normalize_match_tokens(text)` lowercases and
+   collapses every non-alphanumeric run to one space. The rules,
+   symmetric in both directions:
+   - Both sides must normalize to length >= 3.
+   - Plain containment counts only when the contained string has 5+
+     characters: outflow "Sysco Foods LLC" vs bank merchant "SYSCO", and
+     outflow "Sysco" vs bank description "SYSCO FOODS 8812".
+   - A 3-4 character string matches only at a token boundary: vendor
+     "Cox" matches description "RENT AND COX 4411" but not "RANDCORP".
+     Without this rule a short string can match across a word boundary
+     ('dco' inside 'rentandcox'), and the containment check gates an
+     unreviewed financial write (sound-logic review).
+   The bank side checks `merchant_name`, `description`, and
+   `normalized_payee` — the same fields the fuzzy score reads plus the
+   normalized payee (20251107202635_...sql:57-60; `normalized_payee` on
+   the BankTransaction interface, src/hooks/useBankTransactions.tsx).
+   Both the candidate scan and the post-claim re-validation call
+   `vendor_text_match`, so the two sites cannot drift apart. The amount
+   and window predicates stay inline in the candidate join — the planner
+   needs them sargable for `idx_bank_transactions_auto_link` — with
+   mirror comments at both sites.
 4. **Uniqueness in both directions:** exactly one eligible outflow matches
    the transaction, and exactly one eligible transaction matches that
    outflow. Any tie disqualifies both sides for this pass. Ties fall back
@@ -351,8 +367,8 @@ candidate with a one-click confirm.
   at src/components/banking/BankTransactionList.tsx:109). The button's
   onClick calls `e.stopPropagation()` so a click does not toggle row
   selection. The button disables while its mutation is pending.
-- The suggestion hides for one row while that row's confirm runs. The
-  per-row check is
+- The Match button disables for one row while that row's confirm runs
+  (the subtitle stays visible). The per-row check is
   `confirmMatch.variables?.bankTransactionId === transaction.id` together
   with `isPending` — not a broadcast pending flag. The match queries
   invalidate on success (src/hooks/usePendingOutflows.tsx:303-309).
@@ -391,8 +407,8 @@ tests/unit/migrationVersionUniqueness.test.ts):
 
 1. `20260830100000_auto_link_pending_outflows.sql` — the
    `pending_outflows.auto_linked_at` and `auto_link_suppressed_at`
-   columns, `normalize_match_text`,
-   `auto_link_pending_outflows_internal`, grants.
+   columns, `normalize_match_text`, `normalize_match_tokens`,
+   `vendor_text_match`, `auto_link_pending_outflows_internal`, grants.
 2. `20260830100100_unlink_pending_outflow.sql` — the unlink RPC, grants.
 3. `20260830100200_sweep_auto_link_loop.sql` — CREATE OR REPLACE of
    `drain_categorization_backlog()` with the third loop.

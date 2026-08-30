@@ -113,8 +113,11 @@ export function BankTransactionList({
   const reconcile = useReconcileTransaction();
   const unreconcile = useUnreconcileTransaction();
   const { confirmMatch } = usePendingOutflowMutations();
-  const { data: pendingOutflows } = usePendingOutflows();
-  const { data: pendingOutflowMatches } = usePendingOutflowMatches();
+  // Match suggestions show only on the For Review tab. The other tabs
+  // never read these values, so they skip both queries (the match RPC
+  // runs fuzzy scoring over the whole restaurant).
+  const { data: pendingOutflows } = usePendingOutflows({ enabled: status === 'for_review' });
+  const { data: pendingOutflowMatches } = usePendingOutflowMatches(undefined, { enabled: status === 'for_review' });
 
   const allSelected = transactions.length > 0 && transactions.every(t => selectedIds.has(t.id));
   const someSelected = transactions.some(t => selectedIds.has(t.id)) && !allSelected;

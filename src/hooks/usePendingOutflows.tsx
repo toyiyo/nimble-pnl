@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useMemo } from "react";
 import type { PendingOutflow, PendingOutflowMatch, CreatePendingOutflowInput, UpdatePendingOutflowInput } from "@/types/pending-outflows";
 
-export function usePendingOutflows() {
+export function usePendingOutflows(options?: { enabled?: boolean }) {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
@@ -28,14 +28,14 @@ export function usePendingOutflows() {
       if (error) throw error;
       return data as PendingOutflow[];
     },
-    enabled: !!selectedRestaurant?.restaurant_id,
+    enabled: !!selectedRestaurant?.restaurant_id && (options?.enabled ?? true),
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 }
 
-export function usePendingOutflowMatches(pendingOutflowId?: string) {
+export function usePendingOutflowMatches(pendingOutflowId?: string, options?: { enabled?: boolean }) {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
@@ -51,7 +51,7 @@ export function usePendingOutflowMatches(pendingOutflowId?: string) {
       if (error) throw error;
       return (data || []) as PendingOutflowMatch[];
     },
-    enabled: !!selectedRestaurant?.restaurant_id,
+    enabled: !!selectedRestaurant?.restaurant_id && (options?.enabled ?? true),
     staleTime: 30000,
   });
 }

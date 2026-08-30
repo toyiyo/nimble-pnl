@@ -7,7 +7,12 @@
 --                                 outflow from the candidate set below.
 --
 -- normalize_match_text(text): lowercase, strip every character outside
--- a-z0-9. Used for the vendor-name containment check.
+-- a-z0-9. normalize_match_tokens(text): lowercase, collapse every
+-- non-alphanumeric run to one space. vendor_text_match(text, text): the
+-- shared vendor comparison — plain containment for strings of 5+
+-- characters, token-boundary containment for shorter strings. The
+-- token-boundary path stops a short string (3-4 characters) from a
+-- false match across a word boundary (sound-logic review).
 --
 -- auto_link_pending_outflows_internal: the background writer. Mirrors
 -- confirmMatch (src/hooks/usePendingOutflows.tsx:134-301) for the write
@@ -29,6 +34,52 @@ IMMUTABLE
 AS $$
   SELECT regexp_replace(lower(COALESCE(p_text, '')), '[^a-z0-9]', '', 'g');
 $$;
+
+CREATE OR REPLACE FUNCTION normalize_match_tokens(p_text text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT btrim(regexp_replace(lower(COALESCE(p_text, '')), '[^a-z0-9]+', ' ', 'g'));
+$$;
+
+-- The one shared vendor comparison. Both the candidate scan and the
+-- post-claim re-validation in auto_link_pending_outflows_internal call
+-- this function, so the two sites cannot drift apart.
+--
+-- Rules (symmetric in both directions):
+--   1. Both sides must normalize to 3+ characters.
+--   2. Plain containment counts only when the contained side has 5+
+--      characters. A shorter contained string can span a word boundary
+--      by accident ('dco' inside 'rentandcox'), and this function gates
+--      an unreviewed financial write.
+--   3. A 3-4 character string still matches at a token boundary:
+--      'cox' matches 'rent and cox', not 'randcorp'.
+CREATE OR REPLACE FUNCTION vendor_text_match(p_a text, p_b text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  WITH n AS (
+    SELECT normalize_match_text(p_a)   AS na,
+           normalize_match_text(p_b)   AS nb,
+           normalize_match_tokens(p_a) AS ta,
+           normalize_match_tokens(p_b) AS tb
+  )
+  SELECT CASE
+    WHEN length(na) < 3 OR length(nb) < 3 THEN false
+    ELSE (length(na) >= 5 AND strpos(nb, na) > 0)
+      OR (length(nb) >= 5 AND strpos(na, nb) > 0)
+      OR strpos(' ' || tb || ' ', ' ' || ta || ' ') > 0
+      OR strpos(' ' || ta || ' ', ' ' || tb || ' ') > 0
+  END
+  FROM n;
+$$;
+
+COMMENT ON FUNCTION vendor_text_match(text, text) IS
+  'Shared vendor comparison for pending-outflow auto-link. Plain containment '
+  'for 5+ character strings; token-boundary containment for 3-4 character '
+  'strings. False when either side normalizes to fewer than 3 characters.';
 
 CREATE OR REPLACE FUNCTION auto_link_pending_outflows_internal(
   p_restaurant_id UUID,
@@ -59,10 +110,7 @@ DECLARE
   v_entry_day               DATE;
   v_merged_notes            TEXT;
   v_upload_id               UUID;
-  v_norm_vendor             TEXT;
-  v_norm_merchant           TEXT;
-  v_norm_description        TEXT;
-  v_norm_payee              TEXT;
+  v_entry_number            TEXT;
 BEGIN
   IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
     RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;
@@ -86,15 +134,23 @@ BEGIN
   WHERE id = p_restaurant_id;
 
   -- Candidate pairs: deterministic criteria (design §5). Amount exact,
-  -- forward-only 14-day window on the restaurant-local entry day, vendor
-  -- normalized containment in either direction, and exactly one match on
-  -- both sides -- any tie disqualifies both rows for this pass.
+  -- forward window on the restaurant-local entry day (inclusive interval
+  -- [issue_date, issue_date + 14], 15 calendar days), vendor match via
+  -- vendor_text_match, and exactly one match on both sides -- any tie
+  -- disqualifies both rows for this pass.
+  --
+  -- Performance contract (performance review): the amount and the raw
+  -- transaction_date predicates in the pairs join stay inline and
+  -- sargable, so the planner can drive the join through the partial
+  -- index idx_bank_transactions_auto_link (restaurant_id, amount,
+  -- transaction_date). Do not move them into a function. The post-claim
+  -- re-validation below mirrors the amount and window predicates.
   FOR v_pair IN
     WITH eligible_outflows AS (
       SELECT po.id,
              po.amount,
              po.issue_date,
-             normalize_match_text(po.vendor_name) AS norm_vendor
+             po.vendor_name
       FROM pending_outflows po
       WHERE po.restaurant_id = p_restaurant_id
         AND po.status IN ('pending', 'stale_30', 'stale_60', 'stale_90')
@@ -104,10 +160,11 @@ BEGIN
     eligible_transactions AS (
       SELECT bt.id,
              bt.amount,
+             bt.transaction_date,
              bank_txn_entry_day(bt.transaction_date, v_timezone) AS entry_day,
-             normalize_match_text(bt.merchant_name)     AS norm_merchant,
-             normalize_match_text(bt.description)       AS norm_description,
-             normalize_match_text(bt.normalized_payee)  AS norm_payee
+             bt.merchant_name,
+             bt.description,
+             bt.normalized_payee
       FROM bank_transactions bt
       WHERE bt.restaurant_id = p_restaurant_id
         AND bt.amount < 0
@@ -125,27 +182,34 @@ BEGIN
       SELECT eo.id AS pending_outflow_id, et.id AS bank_transaction_id
       FROM eligible_outflows eo
       JOIN eligible_transactions et
-        ON ABS(eo.amount + et.amount) < 0.01
+        -- Sargable range, equivalent to ABS(eo.amount + et.amount) < 0.01.
+        ON et.amount > (- eo.amount) - 0.01
+       AND et.amount < (- eo.amount) + 0.01
+        -- Sargable pre-filter on the raw timestamp. The 2-day slack on each
+        -- side covers every timezone skew between transaction_date and
+        -- entry_day; the entry_day predicates below stay authoritative.
+       AND et.transaction_date >= eo.issue_date - interval '2 days'
+       AND et.transaction_date <  eo.issue_date + interval '17 days'
        AND et.entry_day >= eo.issue_date
        AND et.entry_day <= eo.issue_date + 14
-       AND length(eo.norm_vendor) >= 3
-       AND (
-         (length(et.norm_merchant) >= 3
-           AND (strpos(et.norm_merchant, eo.norm_vendor) > 0
-                OR strpos(eo.norm_vendor, et.norm_merchant) > 0))
-         OR (length(et.norm_description) >= 3
-           AND (strpos(et.norm_description, eo.norm_vendor) > 0
-                OR strpos(eo.norm_vendor, et.norm_description) > 0))
-         OR (length(et.norm_payee) >= 3
-           AND (strpos(et.norm_payee, eo.norm_vendor) > 0
-                OR strpos(eo.norm_vendor, et.norm_payee) > 0))
-       )
+       AND (vendor_text_match(eo.vendor_name, et.merchant_name)
+         OR vendor_text_match(eo.vendor_name, et.description)
+         OR vendor_text_match(eo.vendor_name, et.normalized_payee))
+    ),
+    counted_pairs AS (
+      -- Window counts, not correlated subqueries: one sort per partition
+      -- instead of O(pairs^2) rescans (performance review).
+      SELECT p.pending_outflow_id,
+             p.bank_transaction_id,
+             count(*) OVER (PARTITION BY p.pending_outflow_id)  AS outflow_matches,
+             count(*) OVER (PARTITION BY p.bank_transaction_id) AS transaction_matches
+      FROM pairs p
     ),
     unique_pairs AS (
-      SELECT p.pending_outflow_id, p.bank_transaction_id
-      FROM pairs p
-      WHERE (SELECT count(*) FROM pairs p2 WHERE p2.pending_outflow_id = p.pending_outflow_id) = 1
-        AND (SELECT count(*) FROM pairs p3 WHERE p3.bank_transaction_id = p.bank_transaction_id) = 1
+      SELECT cp.pending_outflow_id, cp.bank_transaction_id
+      FROM counted_pairs cp
+      WHERE cp.outflow_matches = 1
+        AND cp.transaction_matches = 1
     )
     SELECT * FROM unique_pairs
     ORDER BY pending_outflow_id
@@ -209,28 +273,17 @@ BEGIN
       -- amount/date/description, but the claim can still land after an
       -- unrelated edit committed between the candidate scan and this lock,
       -- so the match criteria from the scan (design §5) are recomputed here
-      -- against the locked rows before either row is written.
-      v_entry_day         := bank_txn_entry_day(v_bt.transaction_date, v_timezone);
-      v_norm_vendor       := normalize_match_text(v_po.vendor_name);
-      v_norm_merchant     := normalize_match_text(v_bt.merchant_name);
-      v_norm_description  := normalize_match_text(v_bt.description);
-      v_norm_payee        := normalize_match_text(v_bt.normalized_payee);
+      -- against the locked rows before either row is written. The amount
+      -- and window predicates mirror the pairs join above; the vendor
+      -- comparison is the same shared vendor_text_match function.
+      v_entry_day := bank_txn_entry_day(v_bt.transaction_date, v_timezone);
 
       IF ABS(v_po.amount + v_bt.amount) >= 0.01
          OR v_entry_day < v_po.issue_date
          OR v_entry_day > v_po.issue_date + 14
-         OR length(v_norm_vendor) < 3
-         OR NOT (
-           (length(v_norm_merchant) >= 3
-             AND (strpos(v_norm_merchant, v_norm_vendor) > 0
-                  OR strpos(v_norm_vendor, v_norm_merchant) > 0))
-           OR (length(v_norm_description) >= 3
-             AND (strpos(v_norm_description, v_norm_vendor) > 0
-                  OR strpos(v_norm_vendor, v_norm_description) > 0))
-           OR (length(v_norm_payee) >= 3
-             AND (strpos(v_norm_payee, v_norm_vendor) > 0
-                  OR strpos(v_norm_vendor, v_norm_payee) > 0))
-         ) THEN
+         OR NOT (vendor_text_match(v_po.vendor_name, v_bt.merchant_name)
+              OR vendor_text_match(v_po.vendor_name, v_bt.description)
+              OR vendor_text_match(v_po.vendor_name, v_bt.normalized_payee)) THEN
         CONTINUE;
       END IF;
 
@@ -283,12 +336,14 @@ BEGIN
           AND restaurant_id = p_restaurant_id
         LIMIT 1;
 
+        v_entry_number := 'BANK-' || COALESCE(v_bt.stripe_transaction_id, v_bt.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US');
+
         IF v_existing_journal_entry IS NOT NULL THEN
           v_journal_entry_id := v_existing_journal_entry;
           DELETE FROM journal_entry_lines WHERE journal_entry_id = v_existing_journal_entry;
           UPDATE journal_entries
           SET entry_date   = v_entry_day,
-              entry_number = 'BANK-' || COALESCE(v_bt.stripe_transaction_id, v_bt.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
+              entry_number = v_entry_number,
               description  = 'Matched pending outflow: ' || v_po.vendor_name,
               total_debit  = ABS(v_bt.amount),
               total_credit = ABS(v_bt.amount),
@@ -301,7 +356,7 @@ BEGIN
           ) VALUES (
             p_restaurant_id,
             v_entry_day,
-            'BANK-' || COALESCE(v_bt.stripe_transaction_id, v_bt.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
+            v_entry_number,
             'Matched pending outflow: ' || v_po.vendor_name,
             'bank_transaction',
             v_bt.id,
@@ -369,10 +424,11 @@ $$;
 
 COMMENT ON FUNCTION auto_link_pending_outflows_internal(uuid, integer, boolean) IS
   'Background/service-role auto-link of pending_outflows to bank_transactions. '
-  'Deterministic criteria only (exact amount, 14-day forward window, normalized '
-  'vendor containment, unique on both sides). Returns (linked_count, '
-  'candidate_count) where candidate_count is the number of unique-matched pairs '
-  'evaluated this call, not the number linked.';
+  'Deterministic criteria only: exact amount, forward entry-day window '
+  '[issue_date, issue_date + 14] (15 calendar days inclusive), vendor_text_match, '
+  'unique on both sides. Returns (linked_count, candidate_count) where '
+  'candidate_count is the number of unique-matched pairs evaluated this call, '
+  'not the number linked.';
 
 REVOKE EXECUTE ON FUNCTION auto_link_pending_outflows_internal(uuid, integer, boolean)
   FROM PUBLIC, anon, authenticated;

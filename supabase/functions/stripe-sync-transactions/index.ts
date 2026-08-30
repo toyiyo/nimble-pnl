@@ -403,10 +403,12 @@ serve(async (req) => {
       // p_skip_rebuild=true for the same reason as the rules call above - the
       // explicit rebuild_account_balances call below covers it. A failure here
       // logs and does not fail the sync.
+      // p_batch_limit stays small here: this call runs inside the edge
+      // function's ~10s CPU budget. The 5-minute sweep links any remainder.
       try {
         const { data: linkResult, error: linkError } = await supabaseAdmin.rpc('auto_link_pending_outflows_internal', {
           p_restaurant_id: bank.restaurant_id,
-          p_batch_limit: 100,
+          p_batch_limit: 25,
           p_skip_rebuild: true,
         });
 

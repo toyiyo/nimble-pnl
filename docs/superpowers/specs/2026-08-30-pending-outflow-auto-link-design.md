@@ -2,7 +2,7 @@
 
 Date: 2026-08-30
 Branch: claude/distracted-tharp-1e7635
-Status: Draft for Phase 2.5 review
+Status: Reviewed — Phase 2.5 findings applied (frontend 14, supabase 10)
 
 ## 1. Problem
 
@@ -31,7 +31,7 @@ outflow, once as the categorized bank transaction.
 | `apply_rules_to_bank_transactions_internal` | supabase/migrations/20260820210300_sweep_local_entry_day.sql:18 | The service-role write pattern: batch claim, journal entry upsert, per-row error handling |
 | `drain_categorization_backlog()` | supabase/migrations/20260804091000_standing_categorization_sweep.sql:27 | The standing 5-minute pg_cron driver |
 | `categorize_bank_transaction` RPC | supabase/migrations/20260820210100_categorize_local_entry_day.sql:17 | The user-context categorize path; checks `auth.uid()` at line 52-59 |
-| `pending_outflows` table | supabase/migrations/20251107141500_pending_outflows.sql:2 | Schema, RLS, stale cron |
+| `pending_outflows` table | supabase/migrations/20251107141500_pending_outflows.sql:2 | Schema, RLS, stale-status thresholds |
 | `bank_transactions.matched_at`, `matched_by` | supabase/migrations/20251018183326_*.sql | Match metadata columns already exist |
 | For-review row UI | src/components/banking/MemoizedTransactionRow.tsx | Where the one-click suggestion surfaces |
 | Linked-outflow join | src/hooks/useBankTransactions.tsx (buildBaseQuery `linked_outflows`) | The list already loads the linked outflow |
@@ -76,15 +76,32 @@ Drivers:
    the same shape as the bank rules loop
    (20260804091000_standing_categorization_sweep.sql:151-156).
    The loop runs after rules so rules claim rows first.
+   The loop gets its own budget flag `v_budget_hit_link`. It checks the
+   flag against the shared 40-second `v_budget`, the same ceiling the bank
+   loop checks (20260804091000_standing_categorization_sweep.sql:49-59,129).
+   The loop reads neither `v_budget_pos`, `v_budget_hit_pos`, nor
+   `v_budget_hit_bank`.
    Warning: the conformance test
-   `supabase/tests/51_standing_categorization_sweep.sql` pins properties of
-   this function. The build must keep those pins green.
+   `supabase/tests/51_standing_categorization_sweep.sql` slices the
+   function body at the literal markers `'pos_sales'`,
+   `'bank_transactions'`, and `'categorization drain: applied'`. It pins
+   which budget flags each slice references. The new loop sits between the
+   bank loop and the final RAISE LOG. The new loop references only
+   `v_budget` and `v_budget_hit_link`, so the existing pins stay green. A
+   new pgTAP test must pin the same properties for the link loop: it runs
+   after the bank loop, and it references no POS flag and no bank flag, so
+   it cannot starve the rules loops (mirror of tests 8 and 9 in that
+   file).
 2. **Stripe sync.** In `supabase/functions/stripe-sync-transactions/index.ts`,
    after the existing rules call, add a best-effort call to the new
    function. Wrap it in try/catch like the rules call. Use the same
-   service-role client. The function has no `auth.uid()` check, which is
-   required here because `auth.uid()` is NULL for service-role callers
-   (comment at 20260820210300_sweep_local_entry_day.sql:57-58).
+   service-role client. Pass `p_skip_rebuild: true`, the same flag the
+   rules call passes (index.ts:386-390). The edge function always calls
+   `rebuild_account_balances` again on its no-violation path, so an
+   internal rebuild here would run twice inside the ~10s CPU budget.
+   The function has no `auth.uid()` check, which is required here because
+   `auth.uid()` is NULL for service-role callers
+   (comment at 20260820210300_sweep_local_entry_day.sql:216-217).
 
 ## 5. Design question 2: how does vendor matching work?
 
@@ -128,12 +145,14 @@ Auto-link criteria (all must hold):
 
 Eligible transaction: `amount < 0`, `is_categorized = false`,
 `is_split = false`, `is_transfer = false`, `excluded_reason IS NULL`,
-`is_reconciled = false`, and no pending outflow already links to it. This
-is the `confirmMatch` guard list
-(src/hooks/usePendingOutflows.tsx:176-180) plus `is_reconciled`, which
+`is_reconciled = false`, and no pending outflow already links to it.
+Three of these mirror the `confirmMatch` guards on `is_transfer`,
+`is_split`, and `excluded_reason`
+(src/hooks/usePendingOutflows.tsx:176-180). The rest are new criteria the
+function defines itself: `amount < 0` and `is_categorized = false` scope
+the automatic path, and `is_reconciled = false` is the check
 `confirmMatch` delegates to the categorize RPC
-(20260820210100_categorize_local_entry_day.sql:110-112) and the auto-link
-must check itself.
+(20260820210100_categorize_local_entry_day.sql:110-112).
 
 Scope note: the automatic link touches only uncategorized transactions.
 `confirmMatch` can match an already-categorized transaction after a user
@@ -143,8 +162,13 @@ categorizes the transaction first, the pair stays visible in the manual
 match flow (src/components/pending-outflows/ManualMatchDialog.tsx).
 
 Eligible outflow: `status IN ('pending','stale_30','stale_60','stale_90')`,
-`linked_bank_transaction_id IS NULL` — the same open set the fuzzy RPC uses
-(20251107202635_...sql:75-76).
+`linked_bank_transaction_id IS NULL`, and
+`auto_link_suppressed_at IS NULL`. The first two match the open set the
+fuzzy RPC uses (20251107202635_...sql:75-76). The suppression column is
+new (section 7): the unlink RPC sets it, so an undone pair does not
+re-link on the next sweep tick. Suppression applies to the outflow, not
+to one pair. After an undo, the user links that outflow by hand or
+through the one-click suggestion, which stays available.
 
 ## 6. Auto-link write semantics
 
@@ -152,18 +176,25 @@ The function mirrors `confirmMatch` (src/hooks/usePendingOutflows.tsx:134-301)
 in one database transaction per pair, with per-row exception handling like
 the rules sweep (20260820210300_sweep_local_entry_day.sql:339-348):
 
-1. Claim the outflow row with `FOR UPDATE SKIP LOCKED`, the same claim
-   pattern as the rules batch
-   (20260820210300_sweep_local_entry_day.sql:97-111). Re-check the
-   transaction's eligibility after the claim. This makes the sync-inline
-   call and the sweep call safe to run concurrently.
+1. Claim both rows with `FOR UPDATE SKIP LOCKED`: first the outflow row,
+   then the bank transaction row, the same claim pattern as the rules
+   batch (20260820210300_sweep_local_entry_day.sql:97-111). Re-check both
+   rows' eligibility after the claim. A plain re-read is not enough: the
+   rules sweep, a manual `categorize_bank_transaction` call, or a bulk
+   categorize can commit between a read and the write. The row lock on
+   `bank_transactions` closes that race. It makes the sync-inline call
+   and the sweep call safe to run concurrently.
 2. Merge notes. Skip the merge when the bank notes already contain the
    outflow notes; else join with a blank line
    (src/hooks/usePendingOutflows.tsx:182-189).
 3. When the outflow has a `category_id` and that category is active:
    - Guard the closed fiscal period on the local entry day
      (20260820210300_sweep_local_entry_day.sql:156-166). A closed period
-     skips this pair; it does not abort the batch.
+     skips this pair; it does not abort the batch. `pending_outflows` has
+     no per-row evaluation stamp, so a period-blocked pair re-runs on
+     every 5-minute tick until the period opens. This is acceptable: the
+     scan is bounded by the open outflows per restaurant, typically tens
+     of rows.
    - Upsert the journal entry by `reference_type = 'bank_transaction'` and
      `reference_id`, the shared upsert shape
      (20260820210300_sweep_local_entry_day.sql:218-252). Entry prefix
@@ -172,14 +203,23 @@ the rules sweep (20260820210300_sweep_local_entry_day.sql:339-348):
    - Insert the two journal lines: debit the category, credit cash account
      1000 (20260820210300_sweep_local_entry_day.sql:309-313).
    - Update the transaction: `category_id`, `is_categorized = true`,
-     `suggested_category_id = po.category_id` (confirmMatch parity,
-     src/hooks/usePendingOutflows.tsx:250), merged notes.
+     `suggested_category_id = po.category_id`, merged notes. In
+     `confirmMatch`, the categorize RPC call writes `category_id` and
+     `is_categorized` (src/hooks/usePendingOutflows.tsx:238-244); line 250
+     sets only `suggested_category_id`. The SQL function writes all three
+     in its own UPDATE.
 4. When the outflow has no category: write the merged notes only. The
    transaction stays in For Review (src/hooks/usePendingOutflows.tsx:252-255).
-5. Update the transaction metadata: `matched_at = now()`,
-   `matched_by = NULL`, and `expense_invoice_upload_id` from the outflow's
-   first upload when present (src/hooks/usePendingOutflows.tsx:257-261;
-   order by `created_at`, `LIMIT 1` for determinism).
+5. Update the transaction metadata: `matched_at = now()` (parity:
+   src/hooks/usePendingOutflows.tsx:209-210) and `matched_by = NULL`.
+   `matched_by = NULL` is new behavior, not parity — `confirmMatch` never
+   writes `matched_by` (the column exists, src/types/supabase.ts:868).
+   NULL marks a background writer. Set `expense_invoice_upload_id` from
+   the outflow's earliest upload, with an explicit
+   `ORDER BY created_at LIMIT 1` in the SQL. The client code takes index
+   `[0]` of an unordered embedded relation
+   (src/hooks/usePendingOutflows.tsx:257-261, no `ORDER BY`), so the SQL
+   function is stricter than the client here, not a mirror.
 6. Update the outflow: `status = 'cleared'`,
    `linked_bank_transaction_id`, `cleared_at = now()`, and the new column
    `auto_linked_at = now()` (src/hooks/usePendingOutflows.tsx:272-276 for
@@ -188,10 +228,15 @@ the rules sweep (20260820210300_sweep_local_entry_day.sql:339-348):
    `linked_count > 0` and `p_skip_rebuild` is false
    (20260820210300_sweep_local_entry_day.sql:351-353).
 
-Schema change: add `pending_outflows.auto_linked_at TIMESTAMPTZ NULL`.
-NULL means a manual link. The column drives the "Auto-matched" badge and
-the undo eligibility display.
+Schema changes: add two nullable columns to `pending_outflows`.
+`auto_linked_at TIMESTAMPTZ` — NULL means a manual link; the column
+drives the "Auto-matched" badge and the undo eligibility display.
+`auto_link_suppressed_at TIMESTAMPTZ` — set by the unlink RPC; a non-null
+value removes the outflow from the auto-link candidate set (section 5).
 
+Function shape: `SECURITY DEFINER` with
+`SET search_path = pg_catalog, public`, the stricter precedent
+(`bank_txn_entry_day` and `apply_rules_to_bank_transactions_internal`).
 Grants: `REVOKE ... FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ... TO service_role;`
 (pattern: 20260820210300_sweep_local_entry_day.sql:366-369). The pgTAP
@@ -207,7 +252,8 @@ No unlink path exists today. `PendingOutflowCard` renders the cleared state
 with no action (src/components/pending-outflows/PendingOutflowCard.tsx:229-243).
 
 RPC: `unlink_pending_outflow(p_pending_outflow_id uuid) RETURNS jsonb`.
-SECURITY DEFINER, `SET search_path`, with an `auth.uid()` membership guard
+SECURITY DEFINER, `SET search_path = pg_catalog, public`, with an
+`auth.uid()` membership guard
 restricted to owner/manager — the same roles the pending_outflows UPDATE
 RLS policy allows (20251107141500_pending_outflows.sql:53-69).
 
@@ -237,11 +283,17 @@ Steps:
 3. Clear the transaction match metadata: `matched_at = NULL`,
    `matched_by = NULL`. Clear `expense_invoice_upload_id` only when it
    equals the outflow's own upload id.
-4. Reset the outflow: `status = 'pending'`,
-   `linked_bank_transaction_id = NULL`, `cleared_at = NULL`,
-   `auto_linked_at = NULL`. The stale cron re-marks old outflows on its
-   next run (20251107141500_pending_outflows.sql:98-121), so 'pending' is
-   a safe reset value.
+4. Reset the outflow: `linked_bank_transaction_id = NULL`,
+   `cleared_at = NULL`, `auto_linked_at = NULL`, and
+   `auto_link_suppressed_at = now()`. The suppression stamp stops the
+   sweep from a re-link of the same pair on its next tick (section 5).
+   Compute `status` inline from the age of `issue_date`, with the same
+   thresholds as `mark_stale_pending_outflows()`
+   (20251107141500_pending_outflows.sql:98-121): 'stale_90' past 90 days,
+   then 'stale_60', then 'stale_30', else 'pending'. No cron job runs
+   `mark_stale_pending_outflows()` — checked against the production
+   `cron.job` table (16 jobs, none calls it) — so a plain 'pending' reset
+   would stay wrong forever on an old outflow.
 
 UI:
 
@@ -249,8 +301,13 @@ UI:
   the "Cleared" timestamp
   (src/components/pending-outflows/PendingOutflowCard.tsx:229-243). Gate it
   with `hasCapability('edit:pending_outflows')`, the existing capability
-  check on the card (PendingOutflowCard.tsx:179). Show an "Auto-matched"
-  badge when `auto_linked_at` is set.
+  check on the card (PendingOutflowCard.tsx:179). The card root is
+  clickable (PendingOutflowCard.tsx:105-116), so the button's onClick
+  must call `e.stopPropagation()` like every sibling button. Disable the
+  button while the unlink mutation is pending. Reuse the styling of the
+  existing Match button (PendingOutflowCard.tsx:194-211). Show an
+  "Auto-matched" badge when `auto_linked_at` is set, styled like the
+  "Needs category" badge (PendingOutflowCard.tsx:233-238).
 - Mutation in `usePendingOutflowMutations`, invalidating the same six
   query keys as `confirmMatch`
   (src/hooks/usePendingOutflows.tsx:303-309).
@@ -272,21 +329,36 @@ candidate with a one-click confirm.
   `match_score >= 70`. 70 is the existing "medium confidence" boundary
   (src/components/pending-outflows/MatchSuggestionCard.tsx score colors).
   This helper gets Vitest unit tests.
-- The Banking list computes the map once at list level and passes the
-  per-row value inside `displayValues`, which keeps the
+- The RPC returns no `vendor_name` and no `reference_number` — its
+  RETURNS TABLE has only the two ids, `match_score`, `amount_delta`,
+  `date_delta`, and `payee_similarity` (20251107202635_...sql:2-10). The
+  list joins each best match to the loaded outflow list by
+  `pending_outflow_id` to get the display fields.
+- The Banking list computes the map once at list level, inside the
+  existing `displayValues` `useMemo`
+  (src/components/banking/BankTransactionList.tsx:126-148). The matches
+  map joins that `useMemo` and its dependency array. The per-row value
+  rides in a new `displayValues` field `pendingOutflowMatch` — a new
+  field, not a reuse of `hasSuggestion` — which keeps the
   `MemoizedTransactionRow` comparator contract (displayValues compared by
-  reference; map rebuilt in the existing `useMemo`,
-  src/components/banking/BankTransactionList.tsx:126-148).
+  reference).
 - Row UI: a subtitle line under the description in the for_review state,
   next to the existing linked-info subtitle position
   (src/components/banking/MemoizedTransactionRow.tsx, LinkedInfoSubtitle),
   with the outflow vendor, reference number, and a "Match" button.
   The button calls the existing `confirmMatch` mutation hoisted at list
   level (single mutation instance, same pattern as `useCategorizeTransaction`
-  at src/components/banking/BankTransactionList.tsx:109).
-- The suggestion hides while the confirm mutation for that row is pending,
-  and the match queries invalidate on success
-  (src/hooks/usePendingOutflows.tsx:303-309).
+  at src/components/banking/BankTransactionList.tsx:109). The button's
+  onClick calls `e.stopPropagation()` so a click does not toggle row
+  selection. The button disables while its mutation is pending.
+- The suggestion hides for one row while that row's confirm runs. The
+  per-row check is
+  `confirmMatch.variables?.bankTransactionId === transaction.id` together
+  with `isPending` — not a broadcast pending flag. The match queries
+  invalidate on success (src/hooks/usePendingOutflows.tsx:303-309).
+- Two surfaces can suggest the same pair: this row subtitle and the
+  outflow card's "Match Found" flow. Both call the same `confirmMatch`
+  mutation, and its guards make a second confirm a safe no-op.
 
 The fuzzy RPC filters to `bt.is_categorized = false`
 (20251107202635_...sql:77), so suggestions only appear on For Review rows.
@@ -303,8 +375,10 @@ That matches the surface: the categorized tab has no suggestion column.
   `is_categorized = false OR category_id IS NULL`
   (20260820210300_sweep_local_entry_day.sql:105).
 - **Concurrent drivers.** The sync-inline call and the sweep call can
-  overlap. The `FOR UPDATE SKIP LOCKED` claim on the outflow plus the
-  post-claim re-check of the transaction make the pair write once.
+  overlap. The `FOR UPDATE SKIP LOCKED` claim on both rows — the outflow
+  and the bank transaction — plus the post-claim re-check makes the pair
+  write once. The transaction-row lock stops a lost update against the
+  rules sweep, a manual categorize, or a bulk categorize.
 - **Budget.** The third sweep loop shares the existing 40-second budget and
   follows the bank loop, so it never starves rules. Its scan is bounded by
   the count of open outflows per restaurant (typically tens of rows).
@@ -315,12 +389,24 @@ Migrations (unique 14-digit prefixes; current maximum is
 20260821190923, so 202608301xxxxx is safe; the uniqueness test is
 tests/unit/migrationVersionUniqueness.test.ts):
 
-1. `20260830100000_auto_link_pending_outflows.sql` —
-   `pending_outflows.auto_linked_at` column, `normalize_match_text`,
+1. `20260830100000_auto_link_pending_outflows.sql` — the
+   `pending_outflows.auto_linked_at` and `auto_link_suppressed_at`
+   columns, `normalize_match_text`,
    `auto_link_pending_outflows_internal`, grants.
 2. `20260830100100_unlink_pending_outflow.sql` — the unlink RPC, grants.
 3. `20260830100200_sweep_auto_link_loop.sql` — CREATE OR REPLACE of
    `drain_categorization_backlog()` with the third loop.
+4. `20260830100300_idx_bank_transactions_auto_link.sql` —
+   `CREATE INDEX CONCURRENTLY IF NOT EXISTS ... ON bank_transactions
+   (restaurant_id, amount, transaction_date) WHERE is_categorized = false
+   AND is_split = false AND is_transfer = false AND excluded_reason IS
+   NULL AND is_reconciled = false`. No existing index covers this scan:
+   `idx_bank_transactions_restaurant_categorized` covers only
+   `(restaurant_id, is_categorized)`, and the partial rule-candidates
+   index keys on `rules_evaluated_at`, which this scan never uses. The
+   file starts with the `-- supabase: no-transaction` header and has no
+   BEGIN, the same shape as
+   20260814148000_idx_bank_transactions_restaurant_date.sql:1-2.
 
 pgTAP (`supabase/tests/`):
 
@@ -335,9 +421,16 @@ pgTAP (`supabase/tests/`):
 - Closed fiscal period skips the pair and links nothing.
 - Unlink: full revert with journal deletion, `category_kept = true` when
   the transaction is reconciled, membership guard raises for an outsider.
-- Grants: internal function is service_role-only; unlink revoked from anon.
-- Sweep conformance additions in `51_standing_categorization_sweep.sql`
-  stay green.
+- Unlink, then run the internal function again: the pair does not
+  re-link (`auto_link_suppressed_at` blocks it).
+- `p_skip_rebuild = true`: the function links the pair and does not
+  change `account_balances`.
+- Unlink sets the correct stale status for an old outflow (issue_date
+  more than 30/60/90 days back).
+- Sweep conformance in `51_standing_categorization_sweep.sql`: the
+  existing pins stay green, plus new pins for the link loop — it sits
+  after the bank loop and references only `v_budget` and
+  `v_budget_hit_link` (mirror of tests 8 and 9).
 
 Vitest (`tests/unit/`):
 

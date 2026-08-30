@@ -3072,3 +3072,29 @@
 - **Mistake:** Suites 22, 23, and `categorization_background_rules.test.sql` asserted local-day results for restaurants that never set `timezone`. The assertions held only because the column default is `'America/Chicago'`. A change to the default would move the expected days and fail three suites for an unrelated reason. A review finding flagged the hidden dependency.
 - **Correction:** Each suite now pins the timezone: an explicit `UPDATE restaurants SET timezone = 'America/Chicago'`, or the value in the INSERT, with a comment that names the dependency.
 - **Rule:** When an expected value depends on a column value, set that value in the fixture. A schema default is not part of the test's contract.
+
+## Category: Workflow / PR Hygiene (continued)
+
+### [2026-08-30] The workflow script names a reviewer agentType that does not exist (PR #782)
+- **Mistake:** The Workflow script requested `agentType: 'feature-dev:code-reviewer'` for the four Phase 7a reviewers. That agent type does not exist in the session registry. Every reviewer call failed, the Verify gate looped 5 times, and the run stopped. Only the ocr-rules and codex reviews ran.
+- **Correction:** The recovery ran the four reviewers from the main session with the real agent types: `security-reviewer`, `maintainability-reviewer`, `performance-reviewer`, `sound-logic-reviewer`. The fold then shipped manually.
+- **Rule:** Before a workflow spawns a custom agentType, check the name against the session's agent list. A wrong name fails every call in the phase, not one.
+
+### [2026-08-30] A repo-wide lint gate that already fails proves nothing about a branch (PR #782)
+- **Mistake:** The plan's verification gate listed `npm run lint`. The repo baseline fails that command with 1539 pre-existing errors. A red run neither blocks nor clears the branch.
+- **Correction:** The gate became: run `npx eslint` on the changed files only, and confirm the branch diff adds no new findings. The pre-existing errors stay untouched.
+- **Rule:** When a repo-wide gate fails on the base branch, scope the gate to the changed files. Do not fix pre-existing findings inside a feature branch.
+
+## Category: Verification (continued)
+
+### [2026-08-30] `npx tsc --noEmit` at the repo root is a false green (PR #782)
+- **Mistake:** The root `tsconfig.json` sets `files: []` and only references the app and node projects. A plain `npx tsc --noEmit` type-checks zero files and always exits 0.
+- **Correction:** The gate now runs `npx tsc -p tsconfig.app.json --noEmit`.
+- **Rule:** Check what a type-check command compiles before you trust its exit code. A project file with `files: []` compiles nothing.
+
+## Category: Database Tests (pgTAP) (continued)
+
+### [2026-08-30] psql wraps TAP output in result tables, so a plain grep counts zero (PR #782)
+- **Mistake:** A pass/fail grep for `^ok` counted 0 lines on a green suite. psql prints the TAP lines inside a result table with leading spaces and a column header.
+- **Correction:** Run psql with `-qAt` (quiet, unaligned, tuples-only). The TAP lines then start at column one and the grep counts them.
+- **Rule:** Use `psql -qAt` for any script that parses query output.

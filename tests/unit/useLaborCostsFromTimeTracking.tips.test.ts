@@ -64,14 +64,38 @@ function makeRangeChain(rows: unknown[]): any {
   return chain;
 }
 
+// Serves one fixture page per `.range()` call — exercises multi-page
+// paging through `fetchAllRows` (a page of 1000 rows asks for the next).
+// The call counter lives in `state`, OUTSIDE the chain: `fetchAllRows`
+// builds a fresh chain per page, so a chain-local counter would always
+// serve page zero and never finish.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makePagedChain(pages: unknown[][], state: { call: number }): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chain: any = {};
+  ['select', 'eq', 'in', 'gte', 'lte', 'order', 'maybeSingle'].forEach((m) => {
+    chain[m] = vi.fn(() => chain);
+  });
+  chain.range = vi.fn(() =>
+    Promise.resolve({ data: pages[state.call++] ?? [], error: null })
+  );
+  return chain;
+}
+
 // Per-test payout fixture. Payouts reduce tips owed (netting, floored at
 // zero per employee) — the default is none so the base case stays $5 owed.
 const payoutRows: unknown[] = [];
+
+// Per-test per-job payment pages (daily_labor_allocations, source='per-job').
+// Default: one empty page, so the other cases have no per-job cost.
+const perJobPages: unknown[][] = [];
+const perJobState = { call: 0 };
 
 const fromMock = vi.fn((table: string) => {
   if (table === 'time_punches') return makeRangeChain(punches);
   if (table === 'tip_split_items') return makeRangeChain(tipRows);
   if (table === 'tip_payouts') return makeRangeChain(payoutRows);
+  if (table === 'daily_labor_allocations') return makePagedChain(perJobPages, perJobState);
   return makeRangeChain([]);
 });
 
@@ -91,6 +115,8 @@ const createWrapper = () => {
 describe('useLaborCostsFromTimeTracking payroll total with tips', () => {
   beforeEach(() => {
     payoutRows.length = 0;
+    perJobPages.length = 0;
+    perJobState.call = 0;
   });
 
   it('adds tips owed to the total but keeps dailyCosts straight-time', async () => {
@@ -162,5 +188,40 @@ describe('useLaborCostsFromTimeTracking payroll total with tips', () => {
 
     // Wages only: the netting never turns tips owed negative.
     expect(result.current.totalCost).toBeCloseTo(80, 2);
+  });
+
+  it('pages through per-job payments past the 1000-row PostgREST cap', async () => {
+    // 1000 payments of $1.00 fill page one; 5 more land on page two. An
+    // unpaged fetch would silently drop the second page.
+    const payment = (i: number, page: number) => ({
+      id: `pj-${page}-${i}`,
+      employee_id: 'e1',
+      date: '2026-07-06',
+      allocated_cost: 100, // $1.00 in cents
+      notes: null,
+    });
+    perJobPages.push(
+      Array.from({ length: 1000 }, (_, i) => payment(i, 0)),
+      Array.from({ length: 5 }, (_, i) => payment(i, 1)),
+    );
+
+    const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
+
+    const { result } = renderHook(
+      () =>
+        useLaborCostsFromTimeTracking(
+          RESTAURANT,
+          new Date('2026-07-06T00:00:00.000Z'),
+          new Date('2026-07-06T23:59:59.999Z'),
+        ),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // $80.00 wages + $5.00 tips owed + $1,005.00 per-job = $1,090.00.
+    expect(result.current.totalCost).toBeCloseTo(1090, 2);
+    // The last page is short, so the fetch is complete — not capped.
+    expect(result.current.capped).toBe(false);
   });
 });

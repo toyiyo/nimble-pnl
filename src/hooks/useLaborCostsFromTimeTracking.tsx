@@ -5,7 +5,7 @@ import { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import { calculateActualLaborCost, calculateActualLaborCostForRange } from '@/services/laborCalculations';
 import { lookaheadPunchFetchRange, weekAlignedFetchStart, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
-import { fetchAllRows } from '@/utils/fetchAllRows';
+import { fetchAllRows, asPagedRows } from '@/utils/fetchAllRows';
 import { fetchTipSplitRows, fetchTipPayoutRows, netTipsOwedByEmployee } from '@/services/tipsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
@@ -29,7 +29,8 @@ export interface LaborCostsFromTimeTrackingResult {
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
-  /** True when the time_punches fetch hit the pagination backstop
+  /** True when any of the paged fetches (time punches, per-job payments,
+   * tip splits, tip payouts) hit the pagination backstop
    * (`fetchAllRows`'s `maxPages`) — results may be truncated. */
   capped: boolean;
 }
@@ -116,14 +117,17 @@ export function useLaborCostsFromTimeTracking(
       // dashboard pills and reruns on every window refocus.
       const [
         { rows: punches, capped: punchesCapped },
-        { data: manualPaymentsData, error: manualPaymentsError },
+        { rows: manualPaymentsData, capped: perJobCapped },
         { rows: tipRows, capped: tipsCapped },
         { rows: tipPayoutRows, capped: tipPayoutsCapped },
       ] = await Promise.all([
         fetchAllRows<DBTimePunch>((from, to) =>
           supabase
             .from('time_punches')
-            .select('*')
+            // Every DBTimePunch column, named — no `select('*')` payload
+            // (raw_data-style bloat) and no silent widening if the table
+            // grows a column.
+            .select('id, employee_id, restaurant_id, punch_time, punch_type, created_at, updated_at, shift_id, notes, photo_path, device_info, location, created_by, modified_by')
             .eq('restaurant_id', restaurantId)
             .gte('punch_time', otFetchStart.toISOString())
             .lte('punch_time', otFetchEnd.toISOString())
@@ -131,14 +135,22 @@ export function useLaborCostsFromTimeTracking(
             .order('id')
             .range(from, to),
         ),
-        // 2. Fetch per-job contractor payments (source records only)
-        supabase
-          .from('daily_labor_allocations')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .eq('source', 'per-job') // Only per-job source records, not auto-generated
-          .gte('date', toDateOnlyString(dateFrom))
-          .lte('date', toDateOnlyString(dateTo)),
+        // 2. Fetch per-job contractor payments (source records only),
+        // paged like the other fetches — an unpaged select stops at
+        // PostgREST's 1,000-row cap and drops the rest silently.
+        fetchAllRows<ManualPaymentDB>((from, to) =>
+          asPagedRows<ManualPaymentDB>(
+            supabase
+              .from('daily_labor_allocations')
+              .select('id, employee_id, date, allocated_cost, notes')
+              .eq('restaurant_id', restaurantId)
+              .eq('source', 'per-job') // Only per-job source records, not auto-generated
+              .gte('date', toDateOnlyString(dateFrom))
+              .lte('date', toDateOnlyString(dateTo))
+              .order('id')
+              .range(from, to),
+          )
+        ),
         // Tips owed in the window (integer cents). Same source and window rule
         // as useMonthlyMetrics so the two surfaces agree.
         fetchTipSplitRows(
@@ -156,8 +168,6 @@ export function useLaborCostsFromTimeTracking(
           toDateOnlyString(dateTo)
         ),
       ]);
-
-      if (manualPaymentsError) throw manualPaymentsError;
 
       const tipsOwedByEmployee = netTipsOwedByEmployee(tipRows, tipPayoutRows);
 
@@ -262,7 +272,12 @@ export function useLaborCostsFromTimeTracking(
       const totalCost = actualLaborCents / 100 + perJobDollars;
       const wageCost = wagesCents / 100 + perJobDollars;
 
-      return { dailyCosts, totalCost, wageCost, capped: punchesCapped || tipsCapped || tipPayoutsCapped };
+      return {
+        dailyCosts,
+        totalCost,
+        wageCost,
+        capped: punchesCapped || perJobCapped || tipsCapped || tipPayoutsCapped,
+      };
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds

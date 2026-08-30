@@ -12,6 +12,14 @@ import { fetchAllRows, asPagedRows } from '@/utils/fetchAllRows';
 // 31,813 inventory rows in production). 50 pages covers 50,000 rows.
 export const COGS_MAX_PAGES = 50;
 
+// PostgREST serializes `.in()` values into the GET query string, and the
+// URL limit is ~8,000 chars. 150 UUIDs use ~5,600 chars — safe headroom.
+export const SPLIT_PARENT_ID_BATCH = 150;
+
+// How many split chunks fetch at once. Bounded so a 50-chunk window does
+// not open 50 concurrent connections.
+const SPLIT_CHUNK_CONCURRENCY = 5;
+
 export interface FinancialCOGSRows {
   bankTxns: BankTransactionRow[];
   splitItems: SplitItemRow[];
@@ -100,18 +108,41 @@ export async function fetchFinancialCOGSRows(
   let splits: { rows: SplitItemRow[]; capped: boolean } = { rows: [], capped: false };
   if (parents.rows.length > 0) {
     const parentIds = parents.rows.map((parent) => parent.id);
-    splits = await fetchAllRows<SplitItemRow>(
-      (from, to) =>
-        asPagedRows<SplitItemRow>(
-          client
-            .from('bank_transaction_splits')
-            .select('transaction_id, amount, chart_of_accounts!category_id(account_subtype)')
-            .in('transaction_id', parentIds)
-            .order('id')
-            .range(from, to)
-        ),
-      { maxPages: COGS_MAX_PAGES }
-    );
+    const chunks: string[][] = [];
+    for (let i = 0; i < parentIds.length; i += SPLIT_PARENT_ID_BATCH) {
+      chunks.push(parentIds.slice(i, i + SPLIT_PARENT_ID_BATCH));
+    }
+
+    const chunkResults: Array<{ rows: SplitItemRow[]; capped: boolean }> = [];
+    for (let i = 0; i < chunks.length; i += SPLIT_CHUNK_CONCURRENCY) {
+      const group = chunks.slice(i, i + SPLIT_CHUNK_CONCURRENCY);
+      const groupResults = await Promise.all(
+        group.map((chunk) =>
+          fetchAllRows<SplitItemRow>(
+            (from, to) =>
+              asPagedRows<SplitItemRow>(
+                client
+                  .from('bank_transaction_splits')
+                  // The `bank_transactions!inner` embed scopes each chunk
+                  // to the tenant — the split table itself carries no
+                  // restaurant_id column.
+                  .select('transaction_id, amount, chart_of_accounts!category_id(account_subtype), bank_transactions!inner(restaurant_id)')
+                  .eq('bank_transactions.restaurant_id', restaurantId)
+                  .in('transaction_id', chunk)
+                  .order('id')
+                  .range(from, to)
+              ),
+            { maxPages: COGS_MAX_PAGES }
+          )
+        )
+      );
+      chunkResults.push(...groupResults);
+    }
+
+    splits = {
+      rows: chunkResults.flatMap((result) => result.rows),
+      capped: chunkResults.some((result) => result.capped),
+    };
   }
 
   return {

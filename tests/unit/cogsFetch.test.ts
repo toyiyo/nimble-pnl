@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { COGS_MAX_PAGES, fetchFinancialCOGSRows } from '@/services/cogsFetch';
+import { COGS_MAX_PAGES, SPLIT_PARENT_ID_BATCH, fetchFinancialCOGSRows } from '@/services/cogsFetch';
 
 const BANK_SELECT = 'transaction_date, amount, chart_of_accounts!category_id(account_subtype)';
 const PARENT_SELECT = 'id, transaction_date';
-const SPLIT_SELECT = 'transaction_id, amount, chart_of_accounts!category_id(account_subtype)';
+const SPLIT_SELECT =
+  'transaction_id, amount, chart_of_accounts!category_id(account_subtype), bank_transactions!inner(restaurant_id)';
 const PENDING_SELECT = 'issue_date, amount, chart_of_accounts!category_id(account_subtype)';
 
 const bankRow = {
@@ -107,6 +108,82 @@ describe('fetchFinancialCOGSRows', () => {
     expect(result.splitItems).toEqual([]);
     expect(result.parentDateMap.size).toBe(0);
     expect(result.capped).toBe(false);
+  });
+
+  it('chunks the split parent ids so the .in() filter stays under the URL limit', async () => {
+    // 1,000 parent UUIDs in one .in() serialize to ~37,000 URL chars —
+    // far past PostgREST's 8,000-char limit. The fetch must chunk.
+    const parentCount = 1000;
+    const parentRows = Array.from({ length: parentCount }, (_, i) => ({
+      id: `parent-${i}`,
+      transaction_date: '2026-08-03T00:00:00',
+    }));
+    const expectedChunks = Math.ceil(parentCount / SPLIT_PARENT_ID_BATCH);
+    const splitRow = (i: number) => ({
+      transaction_id: `parent-${i * SPLIT_PARENT_ID_BATCH}`,
+      amount: -5,
+      chart_of_accounts: { account_subtype: 'food_cost' },
+    });
+
+    const specs = {
+      [`bank_transactions|${BANK_SELECT}`]: spec([[bankRow]]),
+      // A full 1,000-row page asks for a second page; serve it empty.
+      [`bank_transactions|${PARENT_SELECT}`]: spec([parentRows, []]),
+      // One small page per chunk — each chunk fetch stops after one range call.
+      [`bank_transaction_splits|${SPLIT_SELECT}`]: spec(
+        Array.from({ length: expectedChunks }, (_, i) => [splitRow(i)])
+      ),
+      [`pending_outflows|${PENDING_SELECT}`]: spec([[]]),
+    };
+
+    const result = await fetchFinancialCOGSRows(makeClient(specs), 'rest-1', '2026-08-01', '2026-08-31');
+
+    // Every chunk's rows merge into one result.
+    expect(result.splitItems).toHaveLength(expectedChunks);
+    expect(result.capped).toBe(false);
+
+    const splitCalls = specs[`bank_transaction_splits|${SPLIT_SELECT}`].calls;
+    const inCalls = splitCalls.filter(
+      (call) => call[0] === 'in' && call[1] === 'transaction_id'
+    );
+    expect(inCalls).toHaveLength(expectedChunks);
+    const seenIds = new Set<string>();
+    for (const call of inCalls) {
+      const ids = call[2] as string[];
+      expect(ids.length).toBeLessThanOrEqual(SPLIT_PARENT_ID_BATCH);
+      ids.forEach((id) => seenIds.add(id));
+    }
+    // The chunk union covers every parent id exactly once.
+    expect(seenIds.size).toBe(parentCount);
+
+    // Every chunk query carries the tenant scope.
+    const tenantCalls = splitCalls.filter(
+      (call) => call[0] === 'eq' && call[1] === 'bank_transactions.restaurant_id'
+    );
+    expect(tenantCalls).toHaveLength(expectedChunks);
+    expect(tenantCalls[0][2]).toBe('rest-1');
+  });
+
+  it('reports capped when a split chunk exhausts the page budget', async () => {
+    const fullSplitPage = Array(1000).fill({
+      transaction_id: 'parent-1',
+      amount: -5,
+      chart_of_accounts: { account_subtype: 'food_cost' },
+    });
+    const specs = {
+      [`bank_transactions|${BANK_SELECT}`]: spec([[bankRow]]),
+      [`bank_transactions|${PARENT_SELECT}`]: spec([
+        [{ id: 'parent-1', transaction_date: '2026-08-03T00:00:00' }],
+      ]),
+      [`bank_transaction_splits|${SPLIT_SELECT}`]: spec(
+        Array.from({ length: COGS_MAX_PAGES + 5 }, () => fullSplitPage)
+      ),
+      [`pending_outflows|${PENDING_SELECT}`]: spec([[]]),
+    };
+
+    const result = await fetchFinancialCOGSRows(makeClient(specs), 'rest-1', '2026-08-01', '2026-08-31');
+
+    expect(result.capped).toBe(true);
   });
 
   it('reports capped when a source exhausts the page budget', async () => {

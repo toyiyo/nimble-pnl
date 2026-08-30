@@ -159,12 +159,11 @@ function mockCostsFromSourceDiverged(opts: {
     actualLaborCost: opts.actualTotal,
     laborBasis: opts.laborBasis,
     totalCost: FOOD_COST + hookLabor,
+    capped: false,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
-    // The mock sets only the fields this test reads, not the hook's full
-    // return type. The `any` cast skips the missing-field type error.
-  } as any);
+  });
 }
 
 describe('DetailedPnLBreakdown labor children (de-dup basis)', () => {

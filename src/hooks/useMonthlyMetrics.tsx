@@ -479,7 +479,7 @@ export function useMonthlyMetrics(
       if (employeesError) throw employeesError;
 
       if (manualPaymentsError) {
-        console.warn('Failed to fetch manual payments:', manualPaymentsError);
+        if (import.meta.env.DEV) console.warn('Failed to fetch manual payments:', manualPaymentsError);
         warnings.push('The manual payment rows failed to load. The labor cost figure is incomplete.');
       }
 

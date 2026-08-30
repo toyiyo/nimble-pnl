@@ -21,7 +21,7 @@ import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { startOfWeek, endOfWeek } from 'date-fns';
+import { startOfWeek } from 'date-fns';
 import { lookaheadPunchFetchRange, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 

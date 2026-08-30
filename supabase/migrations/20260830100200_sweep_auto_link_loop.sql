@@ -180,11 +180,14 @@ BEGIN
   -- auto_link_pending_outflows_internal's own eligible_outflows CTE: open
   -- status, unlinked, not suppressed by a prior unlink.
   FOR r IN
-    SELECT DISTINCT po.restaurant_id
-    FROM pending_outflows po
-    WHERE po.status IN ('pending', 'stale_30', 'stale_60', 'stale_90')
-      AND po.linked_bank_transaction_id IS NULL
-      AND po.auto_link_suppressed_at IS NULL
+    SELECT d.restaurant_id
+    FROM (
+      SELECT DISTINCT po.restaurant_id
+      FROM pending_outflows po
+      WHERE po.status IN ('pending', 'stale_30', 'stale_60', 'stale_90')
+        AND po.linked_bank_transaction_id IS NULL
+        AND po.auto_link_suppressed_at IS NULL
+    ) d
     ORDER BY random()
   LOOP
     -- v_budget (the full 40s, the same ceiling the bank loop checks), and its

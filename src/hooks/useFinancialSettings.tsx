@@ -3,8 +3,9 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeCOGSMethod, type COGSMethod } from '@/lib/cogsMethod';
 
-export type COGSMethod = 'inventory' | 'financials' | 'combined';
+export type { COGSMethod };
 
 export interface FinancialSettings {
   id?: string;
@@ -118,7 +119,7 @@ export const useFinancialSettings = (
 
   return {
     settings,
-    cogsMethod: settings?.cogs_calculation_method ?? 'inventory',
+    cogsMethod: normalizeCOGSMethod(settings?.cogs_calculation_method),
     isLoading,
     updateSettings,
   };

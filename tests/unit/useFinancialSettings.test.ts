@@ -104,6 +104,25 @@ describe('useFinancialSettings', () => {
     expect(mockFromChain.insert).not.toHaveBeenCalled();
   });
 
+  it('normalizes a legacy "combined" method to "inventory"', async () => {
+    const legacyRow = {
+      id: 'set-1',
+      restaurant_id: 'rest-123',
+      cogs_calculation_method: 'combined',
+      created_at: '2026-03-01T00:00:00Z',
+      updated_at: '2026-03-01T00:00:00Z',
+    };
+    mockFromChain.maybeSingle.mockResolvedValue({ data: legacyRow, error: null });
+
+    const { result } = renderHook(() => useFinancialSettings('rest-123'));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.cogsMethod).toBe('inventory');
+  });
+
   it('updateSettings() calls supabase update and shows success toast', async () => {
     const existingRow = {
       id: 'set-1',
@@ -115,7 +134,7 @@ describe('useFinancialSettings', () => {
     const updatedRow = {
       id: 'set-1',
       restaurant_id: 'rest-123',
-      cogs_calculation_method: 'combined',
+      cogs_calculation_method: 'financials',
     };
     // After initial fetch, update call chain
     mockFromChain.single.mockResolvedValue({ data: updatedRow, error: null });
@@ -127,12 +146,12 @@ describe('useFinancialSettings', () => {
     });
 
     await act(async () => {
-      await result.current.updateSettings({ cogs_calculation_method: 'combined' });
+      await result.current.updateSettings({ cogs_calculation_method: 'financials' });
     });
 
     expect(mockSupabase.from).toHaveBeenCalledWith('restaurant_financial_settings');
     expect(mockFromChain.update).toHaveBeenCalledWith(
-      expect.objectContaining({ cogs_calculation_method: 'combined' }),
+      expect.objectContaining({ cogs_calculation_method: 'financials' }),
     );
     expect(mockFromChain.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
     expect(mockToast).toHaveBeenCalledWith(
@@ -229,7 +248,7 @@ describe('useFinancialSettings', () => {
     });
 
     await act(async () => {
-      await result.current.updateSettings({ cogs_calculation_method: 'combined' });
+      await result.current.updateSettings({ cogs_calculation_method: 'financials' });
     });
 
     expect(mockToast).toHaveBeenCalledWith(

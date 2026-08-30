@@ -1,11 +1,17 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { toast } from "sonner";
 import { useMemo } from "react";
 import type { PendingOutflow, PendingOutflowMatch, CreatePendingOutflowInput, UpdatePendingOutflowInput } from "@/types/pending-outflows";
 
-export function usePendingOutflows() {
+// The statuses a match can claim. The list mirrors the WHERE clause of
+// suggest_pending_outflow_matches (migration 20260830100400). confirmMatch
+// checks this list before the categorize RPC and again in the final
+// compare-and-set update on pending_outflows.
+export const MATCHABLE_OUTFLOW_STATUSES = ['pending', 'stale_30', 'stale_60', 'stale_90'];
+
+export function usePendingOutflows(options?: { enabled?: boolean }) {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
@@ -28,14 +34,14 @@ export function usePendingOutflows() {
       if (error) throw error;
       return data as PendingOutflow[];
     },
-    enabled: !!selectedRestaurant?.restaurant_id,
+    enabled: !!selectedRestaurant?.restaurant_id && (options?.enabled ?? true),
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 }
 
-export function usePendingOutflowMatches(pendingOutflowId?: string) {
+export function usePendingOutflowMatches(pendingOutflowId?: string, options?: { enabled?: boolean }) {
   const { selectedRestaurant } = useRestaurantContext();
 
   return useQuery({
@@ -51,9 +57,20 @@ export function usePendingOutflowMatches(pendingOutflowId?: string) {
       if (error) throw error;
       return (data || []) as PendingOutflowMatch[];
     },
-    enabled: !!selectedRestaurant?.restaurant_id,
+    enabled: !!selectedRestaurant?.restaurant_id && (options?.enabled ?? true),
     staleTime: 30000,
   });
+}
+
+// Both confirmMatch and unlinkMatch change the same pending-outflow /
+// bank-transaction pair, so both must invalidate the same six query keys.
+function invalidatePendingOutflowMatchQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
+  queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+  queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
+  queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+  queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+  queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
 }
 
 export function usePendingOutflowMutations() {
@@ -139,6 +156,9 @@ export function usePendingOutflowMutations() {
       pendingOutflowId: string; 
       bankTransactionId: string;
     }) => {
+      if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
+      const restaurantId = selectedRestaurant.restaurant_id;
+
       // Fetch pending outflow with invoice uploads
       const { data: pendingOutflow, error: fetchError } = await supabase
         .from('pending_outflows')
@@ -153,16 +173,26 @@ export function usePendingOutflowMutations() {
           )
         `)
         .eq('id', pendingOutflowId)
+        .eq('restaurant_id', restaurantId)
         .single();
 
       if (fetchError) throw fetchError;
       if (!pendingOutflow) throw new Error('Pending outflow not found');
+
+      // Reject an outflow that another tab, the auto-link sweep, or a stale
+      // suggestion list already claimed. This check runs BEFORE the
+      // categorize RPC, so a stale click makes no financial write. The
+      // status list mirrors suggest_pending_outflow_matches.
+      if (!MATCHABLE_OUTFLOW_STATUSES.includes(pendingOutflow.status)) {
+        throw new Error('This expense is already matched or voided. Refresh the list and try again.');
+      }
 
       // Fetch current bank transaction to merge notes
       const { data: bankTransaction, error: btFetchError } = await supabase
         .from('bank_transactions')
         .select('notes, category_id, suggested_category_id, is_transfer, is_split, excluded_reason')
         .eq('id', bankTransactionId)
+        .eq('restaurant_id', restaurantId)
         .single();
 
       if (btFetchError) throw btFetchError;
@@ -199,6 +229,7 @@ export function usePendingOutflowMutations() {
           .select('id')
           .eq('reference_type', 'bank_transaction')
           .eq('reference_id', bankTransactionId)
+          .eq('restaurant_id', restaurantId)
           .maybeSingle();
 
         if (journalCheckError) throw journalCheckError;
@@ -264,7 +295,8 @@ export function usePendingOutflowMutations() {
       const { error: btError } = await supabase
         .from('bank_transactions')
         .update(bankTransactionUpdates)
-        .eq('id', bankTransactionId);
+        .eq('id', bankTransactionId)
+        .eq('restaurant_id', restaurantId);
 
       if (btError) throw btError;
 
@@ -287,12 +319,26 @@ export function usePendingOutflowMutations() {
         categorized = true;
       }
 
-      const { error: poError } = await supabase
+      // Compare-and-set claim: the status filter makes the update a no-op
+      // when a concurrent confirm already cleared or voided this outflow.
+      // A lost race then surfaces as an error instead of a silent relink.
+      // The categorize RPC above already ran in that case, so the error
+      // text tells the user to check the transaction category.
+      const { data: claimedOutflow, error: poError } = await supabase
         .from('pending_outflows')
         .update(pendingOutflowUpdates)
-        .eq('id', pendingOutflowId);
+        .eq('id', pendingOutflowId)
+        .eq('restaurant_id', restaurantId)
+        .in('status', MATCHABLE_OUTFLOW_STATUSES)
+        .select('id')
+        .maybeSingle();
 
       if (poError) throw poError;
+      if (!claimedOutflow) {
+        throw new Error(
+          'This expense was matched by another session while this match ran. Check the transaction category on the Banking page.'
+        );
+      }
 
       return {
         pendingOutflowId,
@@ -301,12 +347,7 @@ export function usePendingOutflowMutations() {
       };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
-      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
-      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidatePendingOutflowMatchQueries(queryClient);
       toast.success(
         data.categorized
           ? 'Expense matched and cleared'
@@ -324,6 +365,28 @@ export function usePendingOutflowMutations() {
       } else {
         toast.error(`Failed to confirm match: ${error.message}`);
       }
+    },
+  });
+
+  const unlinkMatch = useMutation({
+    mutationFn: async (pendingOutflowId: string) => {
+      const { data, error } = await supabase.rpc('unlink_pending_outflow', {
+        p_pending_outflow_id: pendingOutflowId,
+      });
+
+      if (error) throw error;
+      return data as { category_kept: boolean; status: string };
+    },
+    onSuccess: (data) => {
+      invalidatePendingOutflowMatchQueries(queryClient);
+      if (data.category_kept) {
+        toast.info('Match undone. Recategorize the transaction on the Banking page.');
+      } else {
+        toast.success('Match undone');
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to undo match: ${error.message}`);
     },
   });
 
@@ -350,6 +413,7 @@ export function usePendingOutflowMutations() {
     updatePendingOutflow,
     voidPendingOutflow,
     confirmMatch,
+    unlinkMatch,
     deletePendingOutflow,
   };
 }

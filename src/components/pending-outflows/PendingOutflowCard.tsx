@@ -39,7 +39,7 @@ export const PendingOutflowCard = ({ outflow, onEdit, onPrintCheck }: PendingOut
   const [showManualMatch, setShowManualMatch] = useState(false);
   
   const { selectedRestaurant } = useRestaurantContext();
-  const { voidPendingOutflow, deletePendingOutflow } = usePendingOutflowMutations();
+  const { voidPendingOutflow, deletePendingOutflow, unlinkMatch } = usePendingOutflowMutations();
   const { data: matches } = usePendingOutflowMatches(outflow.id);
   const { hasCapability, isResolved } = usePermissions();
 
@@ -227,17 +227,51 @@ export const PendingOutflowCard = ({ outflow, onEdit, onPrintCheck }: PendingOut
                   </Button>
                 </div>
               ) : outflow.status === 'cleared' && outflow.cleared_at ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    Cleared {format(new Date(outflow.cleared_at), 'MMM d')}
-                  </span>
-                  {!outflow.category_id && (
-                    <Badge
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      Cleared {format(new Date(outflow.cleared_at), 'MMM d')}
+                    </span>
+                    {outflow.auto_linked_at && (
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground"
+                      >
+                        Auto-matched
+                      </Badge>
+                    )}
+                    {!outflow.category_id && (
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground"
+                      >
+                        Needs category
+                      </Badge>
+                    )}
+                  </div>
+                  {/* Gate on the link, not on auto_linked_at: the unlink RPC
+                      accepts manual matches too, and it rejects a cleared
+                      outflow with no linked transaction. */}
+                  {outflow.linked_bank_transaction_id && isResolved && hasCapability('edit:pending_outflows') && (
+                    <Button
                       variant="outline"
-                      className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        unlinkMatch.mutate(outflow.id);
+                      }}
+                      onKeyDown={(e) => {
+                        // The card is a role="button" with an Enter handler.
+                        // Stop the keydown here, or Enter on this button also
+                        // opens the edit dialog.
+                        e.stopPropagation();
+                      }}
+                      disabled={unlinkMatch.isPending && unlinkMatch.variables === outflow.id}
+                      className="h-8 px-2 rounded-lg text-[13px] font-medium"
+                      aria-label={`Undo match for ${outflow.vendor_name}`}
                     >
-                      Needs category
-                    </Badge>
+                      Undo match
+                    </Button>
                   )}
                 </div>
               ) : null}

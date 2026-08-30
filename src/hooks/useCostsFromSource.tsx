@@ -25,6 +25,7 @@ export interface CostsFromSourceResult {
   actualLaborCost: number;   // From bank transactions (paid)
   laborBasis: LaborBasis;    // Which source is authoritative for this period
   totalCost: number;
+  capped: boolean;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -62,8 +63,10 @@ export function useCostsFromSource(
   const isLoading = unifiedCOGS.isLoading || laborCosts.isLoading || transactionLaborCosts.isLoading;
   const error = unifiedCOGS.error || laborCosts.error || transactionLaborCosts.error;
 
-  // Per-period labor basis: accrued (time punches) when any exist, else paid.
-  const laborBasis = resolveLaborBasis(laborCosts.totalCost);
+  // Per-period labor basis: accrued when the period has wage labor (worked
+  // hours or per-job payments), else paid. wageCost excludes tips owed —
+  // tips alone must not hide paid (bank) labor behind the accrued pick.
+  const laborBasis = resolveLaborBasis(laborCosts.wageCost);
 
   // Combine daily costs; the daily labor_cost/total_cost respect the basis.
   const dailyCosts = useMemo(
@@ -100,6 +103,7 @@ export function useCostsFromSource(
     actualLaborCost: transactionLaborCosts.totalCost,
     laborBasis,
     totalCost: unifiedCOGS.totalCOGS + totalLaborCost,
+    capped: unifiedCOGS.capped || laborCosts.capped,
     isLoading,
     error,
     refetch,

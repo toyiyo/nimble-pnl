@@ -416,8 +416,10 @@ serve(async (req) => {
           const { linked_count, candidate_count } = linkResult[0];
           console.log(`[SYNC-TRANSACTIONS] Auto-linked ${linked_count} of ${candidate_count} pending outflow candidates`);
         }
-      } catch (error: any) {
-        console.error("[SYNC-TRANSACTIONS] Error auto-linking pending outflows:", error.message);
+      } catch (error) {
+        // Caught error type is unknown by default; narrow it instead of typing as `any`.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[SYNC-TRANSACTIONS] Error auto-linking pending outflows:", message);
       }
 
       // Skip default categorization - let rules and AI handle it

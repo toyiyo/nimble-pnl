@@ -180,12 +180,21 @@ BEGIN
         CONTINUE;
       END IF;
 
+      -- Re-check the NOT EXISTS guard from the candidate scan too. A concurrent
+      -- call (the sweep and the Stripe-sync inline call can run at the same
+      -- time) can commit a link to this same transaction, for a different
+      -- outflow, between the candidate scan and this claim. The bank-row lock
+      -- alone does not catch that once the other call has committed.
       IF v_bt.amount >= 0
          OR v_bt.is_categorized
          OR v_bt.is_split
          OR v_bt.is_transfer
          OR v_bt.excluded_reason IS NOT NULL
-         OR v_bt.is_reconciled THEN
+         OR v_bt.is_reconciled
+         OR EXISTS (
+           SELECT 1 FROM pending_outflows po2
+           WHERE po2.linked_bank_transaction_id = v_bt.id
+         ) THEN
         CONTINUE;
       END IF;
 

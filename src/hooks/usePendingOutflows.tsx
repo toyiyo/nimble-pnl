@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { toast } from "sonner";
@@ -54,6 +54,17 @@ export function usePendingOutflowMatches(pendingOutflowId?: string) {
     enabled: !!selectedRestaurant?.restaurant_id,
     staleTime: 30000,
   });
+}
+
+// Both confirmMatch and unlinkMatch change the same pending-outflow /
+// bank-transaction pair, so both must invalidate the same six query keys.
+function invalidatePendingOutflowMatchQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
+  queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+  queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
+  queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+  queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+  queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
 }
 
 export function usePendingOutflowMutations() {
@@ -301,12 +312,7 @@ export function usePendingOutflowMutations() {
       };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
-      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
-      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidatePendingOutflowMatchQueries(queryClient);
       toast.success(
         data.categorized
           ? 'Expense matched and cleared'
@@ -337,12 +343,7 @@ export function usePendingOutflowMutations() {
       return data as { category_kept: boolean; status: string };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['pending-outflows'] });
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-outflow-matches'] });
-      queryClient.invalidateQueries({ queryKey: ['income-statement'] });
-      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      invalidatePendingOutflowMatchQueries(queryClient);
       if (data.category_kept) {
         toast.info('Match undone. Recategorize the transaction on the Banking page.');
       } else {

@@ -9,6 +9,7 @@ import {
   toUtcDayKey,
   type InventoryTransactionRow,
 } from '@/services/cogsCalculations';
+import { normalizeCOGSMethod } from '@/lib/cogsMethod';
 import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange, weekAlignedFetchStart, weekAlignedFetchEnd } from '@/utils/punchWindow';
@@ -278,7 +279,7 @@ export function useMonthlyMetrics(
         .select('cogs_calculation_method')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
-      const cogsMethod = (settingsData?.cogs_calculation_method as string) || 'inventory';
+      const cogsMethod = normalizeCOGSMethod(settingsData?.cogs_calculation_method as string | null | undefined);
 
       // The eight fetches below depend only on cogsMethod (above), never on
       // each other. Start them all, then await one Promise.all: the total
@@ -288,7 +289,7 @@ export function useMonthlyMetrics(
 
       // Inventory COGS rows, when the method uses inventory data.
       const inventoryCOGSPromise =
-        cogsMethod === 'inventory' || cogsMethod === 'combined'
+        cogsMethod === 'inventory'
           ? fetchAllRows<InventoryTransactionRow>(
               (from, to) =>
                 supabase
@@ -307,7 +308,7 @@ export function useMonthlyMetrics(
 
       // Financial COGS rows, when the method uses financial data.
       const financialCOGSPromise =
-        cogsMethod === 'financials' || cogsMethod === 'combined'
+        cogsMethod === 'financials'
           ? fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr)
           : Promise.resolve(null);
 
@@ -544,9 +545,8 @@ export function useMonthlyMetrics(
         contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
       }));
 
-      // Inventory COGS (when method is 'inventory' or 'combined')
       // Inventory COGS: use shared helper to get day→dollars map, then bucket to months (cents).
-      if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
+      if (cogsMethod === 'inventory') {
         const invDaily = aggregateInventoryCOGSByDate(foodCostsData ?? []);
         for (const [dateKey, dollars] of invDaily) {
           const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
@@ -555,7 +555,7 @@ export function useMonthlyMetrics(
       }
 
       // Financial COGS: financialCOGSByDay is day→dollars; bucket to months (cents).
-      if (cogsMethod === 'financials' || cogsMethod === 'combined') {
+      if (cogsMethod === 'financials') {
         for (const [dateKey, dollars] of financialCOGSByDay) {
           const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
           ensureMonth(monthKey).food_cost += toC(dollars);

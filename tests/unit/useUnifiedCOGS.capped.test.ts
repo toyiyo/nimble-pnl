@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
-let cogsMethod: 'inventory' | 'financials' | 'combined' = 'combined';
+let cogsMethod: 'inventory' | 'financials' = 'inventory';
 
 vi.mock('@/hooks/useFoodCosts', () => ({
   useFoodCosts: () => ({
@@ -31,9 +31,8 @@ vi.mock('@/hooks/useFinancialSettings', () => ({
 
 describe('useUnifiedCOGS capped flag', () => {
   // The mocks above cap financials only. The flag must follow the active
-  // method: inventory ignores the financial cap, the other two report it.
+  // method: inventory ignores the financial cap, financials reports it.
   it.each([
-    { method: 'combined', expected: true },
     { method: 'inventory', expected: false },
     { method: 'financials', expected: true },
   ] as const)('reports capped=$expected for the $method method', async ({ method, expected }) => {

@@ -30,24 +30,16 @@ vi.mock('@/hooks/useFinancialSettings', () => ({
 }));
 
 describe('useUnifiedCOGS capped flag', () => {
-  it('reports capped for the combined method when either source is capped', async () => {
-    cogsMethod = 'combined';
+  // The mocks above cap financials only. The flag must follow the active
+  // method: inventory ignores the financial cap, the other two report it.
+  it.each([
+    { method: 'combined', expected: true },
+    { method: 'inventory', expected: false },
+    { method: 'financials', expected: true },
+  ] as const)('reports capped=$expected for the $method method', async ({ method, expected }) => {
+    cogsMethod = method;
     const { useUnifiedCOGS } = await import('@/hooks/useUnifiedCOGS');
     const { result } = renderHook(() => useUnifiedCOGS('rest-1', new Date(), new Date()));
-    expect(result.current.capped).toBe(true);
-  });
-
-  it('reports not capped for the inventory method when only financials is capped', async () => {
-    cogsMethod = 'inventory';
-    const { useUnifiedCOGS } = await import('@/hooks/useUnifiedCOGS');
-    const { result } = renderHook(() => useUnifiedCOGS('rest-1', new Date(), new Date()));
-    expect(result.current.capped).toBe(false);
-  });
-
-  it('reports capped for the financials method', async () => {
-    cogsMethod = 'financials';
-    const { useUnifiedCOGS } = await import('@/hooks/useUnifiedCOGS');
-    const { result } = renderHook(() => useUnifiedCOGS('rest-1', new Date(), new Date()));
-    expect(result.current.capped).toBe(true);
+    expect(result.current.capped).toBe(expected);
   });
 });

@@ -674,8 +674,9 @@ export function useMonthlyMetrics(
       }));
 
       // Sort by period descending (most recent first)
+      result.sort((a, b) => b.period.localeCompare(a.period));
       return {
-        months: result.sort((a, b) => b.period.localeCompare(a.period)),
+        months: result,
         warnings,
       };
     },

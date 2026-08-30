@@ -5,13 +5,13 @@ import { describe, it, expect } from 'vitest';
 import { DataCompletenessWarning } from '@/components/DataCompletenessWarning';
 
 describe('DataCompletenessWarning', () => {
-  it('renders the message in a role="status" panel', () => {
-    const { container } = render(
+  it('renders the message in a status panel', () => {
+    // <output> carries the implicit "status" role; getByRole resolves it.
+    const { getByRole } = render(
       <DataCompletenessWarning message="Some rows hit the fetch limit." />
     );
-    const panel = container.querySelector('[role="status"]');
-    expect(panel).not.toBeNull();
-    expect(panel?.textContent).toContain('Some rows hit the fetch limit.');
+    const panel = getByRole('status');
+    expect(panel.textContent).toContain('Some rows hit the fetch limit.');
   });
 
   it('hides the icon from screen readers', () => {

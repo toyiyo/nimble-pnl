@@ -127,41 +127,30 @@ describe('useUnifiedCOGS', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 3. Combined method — totals
+  // 3. totalCOGS never sums both sources
   // -----------------------------------------------------------------------
-  it('sums both sources when method is "combined"', () => {
+  it('totalCOGS equals exactly one source total, never the sum', () => {
     mockUseFinancialSettings.mockReturnValue(
-      settingsResult({ cogsMethod: 'combined' }),
+      settingsResult({ cogsMethod: 'inventory' }),
     );
 
-    const { result } = renderHook(() =>
+    const { result: inventoryHookResult } = renderHook(() =>
       useUnifiedCOGS('rest-1', DATE_FROM, DATE_TO),
     );
 
-    expect(result.current.totalCOGS).toBe(450); // 250 + 200
-    expect(result.current.method).toBe('combined');
-  });
+    expect(inventoryHookResult.current.totalCOGS).toBe(250);
+    expect(inventoryHookResult.current.totalCOGS).not.toBe(450);
 
-  // -----------------------------------------------------------------------
-  // 4. Combined method — daily merge by date
-  // -----------------------------------------------------------------------
-  it('merges daily data by date in combined mode', () => {
     mockUseFinancialSettings.mockReturnValue(
-      settingsResult({ cogsMethod: 'combined' }),
+      settingsResult({ cogsMethod: 'financials' }),
     );
 
-    const { result } = renderHook(() =>
+    const { result: financialsHookResult } = renderHook(() =>
       useUnifiedCOGS('rest-1', DATE_FROM, DATE_TO),
     );
 
-    // inventory: 03-01 (100), 03-02 (150)
-    // financials: 03-02 (75), 03-03 (125)
-    // merged: 03-01 (100), 03-02 (225), 03-03 (125)
-    expect(result.current.dailyCOGS).toEqual([
-      { date: '2026-03-01', amount: 100 },
-      { date: '2026-03-02', amount: 225 },
-      { date: '2026-03-03', amount: 125 },
-    ]);
+    expect(financialsHookResult.current.totalCOGS).toBe(200);
+    expect(financialsHookResult.current.totalCOGS).not.toBe(450);
   });
 
   // -----------------------------------------------------------------------
@@ -192,20 +181,6 @@ describe('useUnifiedCOGS', () => {
     );
 
     expect(financialsResultHook.current.breakdown).toEqual({
-      inventory: 250,
-      financials: 200,
-    });
-
-    // Test with combined method
-    mockUseFinancialSettings.mockReturnValue(
-      settingsResult({ cogsMethod: 'combined' }),
-    );
-
-    const { result: combinedResult } = renderHook(() =>
-      useUnifiedCOGS('rest-1', DATE_FROM, DATE_TO),
-    );
-
-    expect(combinedResult.current.breakdown).toEqual({
       inventory: 250,
       financials: 200,
     });
@@ -346,35 +321,4 @@ describe('useUnifiedCOGS', () => {
     );
   });
 
-  // -----------------------------------------------------------------------
-  // Combined mode with non-overlapping dates
-  // -----------------------------------------------------------------------
-  it('combined mode handles non-overlapping dates correctly', () => {
-    mockUseFinancialSettings.mockReturnValue(
-      settingsResult({ cogsMethod: 'combined' }),
-    );
-
-    mockUseFoodCosts.mockReturnValue(
-      inventoryResult({
-        dailyCosts: [{ date: '2026-03-01', total_cost: 100 }],
-        totalCost: 100,
-      }),
-    );
-    mockUseCOGSFromFinancials.mockReturnValue(
-      financialsResult({
-        dailyCosts: [{ date: '2026-03-05', total_cost: 50 }],
-        totalCost: 50,
-      }),
-    );
-
-    const { result } = renderHook(() =>
-      useUnifiedCOGS('rest-1', DATE_FROM, DATE_TO),
-    );
-
-    expect(result.current.totalCOGS).toBe(150);
-    expect(result.current.dailyCOGS).toEqual([
-      { date: '2026-03-01', amount: 100 },
-      { date: '2026-03-05', amount: 50 },
-    ]);
-  });
 });

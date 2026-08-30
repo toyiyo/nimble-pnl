@@ -11,6 +11,7 @@ import {
   type PendingOutflowRow,
   type SplitItemRow,
 } from '@/services/cogsCalculations';
+import { normalizeCOGSMethod } from '@/lib/cogsMethod';
 import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
@@ -257,11 +258,11 @@ export function useMonthlyMetrics(
         .select('cogs_calculation_method')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
-      const cogsMethod = (settingsData?.cogs_calculation_method as string) || 'inventory';
+      const cogsMethod = normalizeCOGSMethod(settingsData?.cogs_calculation_method as string | null | undefined);
 
       // Fetch inventory COGS when method uses inventory data
       let foodCostsData: { created_at: string; transaction_date: string | null; total_cost: number }[] | null = null;
-      if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
+      if (cogsMethod === 'inventory') {
         const { data, error: foodCostsError } = await supabase
           .from('inventory_transactions')
           .select('created_at, transaction_date, total_cost')
@@ -277,7 +278,7 @@ export function useMonthlyMetrics(
       // Fetch financial COGS when method uses financial data
       // financialCOGSByDay: yyyy-MM-dd → dollars (produced by shared pure helper)
       let financialCOGSByDay: Map<string, number> = new Map();
-      if (cogsMethod === 'financials' || cogsMethod === 'combined') {
+      if (cogsMethod === 'financials') {
         // Non-split bank transactions with COGS subtypes
         const { data: cogsTxns, error: cogsTxnsError } = await supabase
           .from('bank_transactions')
@@ -503,9 +504,8 @@ export function useMonthlyMetrics(
         contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
       }));
 
-      // Inventory COGS (when method is 'inventory' or 'combined')
       // Inventory COGS: use shared helper to get day→dollars map, then bucket to months (cents).
-      if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
+      if (cogsMethod === 'inventory') {
         const invDaily = aggregateInventoryCOGSByDate(foodCostsData ?? []);
         for (const [dateKey, dollars] of invDaily) {
           const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
@@ -514,7 +514,7 @@ export function useMonthlyMetrics(
       }
 
       // Financial COGS: financialCOGSByDay is day→dollars; bucket to months (cents).
-      if (cogsMethod === 'financials' || cogsMethod === 'combined') {
+      if (cogsMethod === 'financials') {
         for (const [dateKey, dollars] of financialCOGSByDay) {
           const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
           ensureMonth(monthKey).food_cost += toC(dollars);

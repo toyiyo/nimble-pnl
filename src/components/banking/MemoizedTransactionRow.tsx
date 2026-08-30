@@ -16,6 +16,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// A pending-outflow match candidate for one row, ready to show and confirm.
+export interface PendingOutflowMatchDisplay {
+  pendingOutflowId: string;
+  vendorName: string;
+  referenceNumber: string | null;
+}
+
 // Pre-computed values passed from parent to avoid per-row computation
 export interface TransactionDisplayValues {
   isNegative: boolean;
@@ -25,6 +32,7 @@ export interface TransactionDisplayValues {
   currentCategoryName?: string;
   hasSuggestion: boolean;
   linkedInfo?: LinkedInfoResult | null;
+  pendingOutflowMatch?: PendingOutflowMatchDisplay | null;
 }
 
 export interface MemoizedTransactionRowProps {
@@ -34,6 +42,7 @@ export interface MemoizedTransactionRowProps {
   isSelectionMode: boolean;
   isSelected: boolean;
   isCategorizing?: boolean;
+  isConfirmingMatch?: boolean;
   // Callbacks - passed from parent, should be stable (wrapped in useCallback)
   onSelectionToggle: (id: string, event: React.MouseEvent) => void;
   onQuickAccept: (transactionId: string, categoryId: string) => void;
@@ -43,6 +52,7 @@ export interface MemoizedTransactionRowProps {
   onCreateRule: (transaction: BankTransaction) => void;
   onReconcile: (transactionId: string) => void;
   onUnreconcile: (transactionId: string) => void;
+  onConfirmMatch: (transactionId: string, pendingOutflowId: string) => void;
 }
 
 // Column widths - must match BankTransactionList header
@@ -65,6 +75,7 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
   isSelectionMode,
   isSelected,
   isCategorizing = false,
+  isConfirmingMatch = false,
   onSelectionToggle,
   onQuickAccept,
   onOpenDetail,
@@ -73,6 +84,7 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
   onCreateRule,
   onReconcile,
   onUnreconcile,
+  onConfirmMatch,
 }: MemoizedTransactionRowProps) {
   const {
     isNegative,
@@ -133,6 +145,28 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
           <span className="font-medium truncate">{transaction.description}</span>
           {displayValues.linkedInfo && (
             <LinkedInfoSubtitle info={displayValues.linkedInfo} />
+          )}
+          {status === 'for_review' && displayValues.pendingOutflowMatch && (
+            <div className="flex items-center gap-1.5 mt-1 text-[13px] text-muted-foreground min-w-0">
+              <span className="truncate min-w-0">
+                Possible match: {displayValues.pendingOutflowMatch.vendorName}
+                {displayValues.pendingOutflowMatch.referenceNumber
+                  ? ` — ${displayValues.pendingOutflowMatch.referenceNumber}`
+                  : ''}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-[12px] shrink-0"
+                disabled={isConfirmingMatch}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onConfirmMatch(transaction.id, displayValues.pendingOutflowMatch!.pendingOutflowId);
+                }}
+              >
+                Match
+              </Button>
+            </div>
           )}
           <TransactionBadges
             isTransfer={transaction.is_transfer}
@@ -320,6 +354,7 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isSelectionMode === nextProps.isSelectionMode &&
     prevProps.isCategorizing === nextProps.isCategorizing &&
+    prevProps.isConfirmingMatch === nextProps.isConfirmingMatch &&
     prevProps.status === nextProps.status &&
     // Display values are pre-computed, check by reference (parent should memoize)
     prevProps.displayValues === nextProps.displayValues

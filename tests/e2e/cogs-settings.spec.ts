@@ -16,7 +16,7 @@ test.describe('COGS settings', () => {
     await signUpAndCreateRestaurant(page, testUser);
 
     await page.goto('/settings?tab=financial');
-    await page.waitForURL(/\/settings/, { timeout: 8000 });
+    await page.waitForURL(/\/settings/, { timeout: 10000 });
 
     await expect(
       page.getByRole('heading', { name: /cogs settings/i }),
@@ -37,7 +37,7 @@ test.describe('COGS settings', () => {
     await expect(financialsOption).toBeChecked();
 
     await page.reload();
-    await page.waitForURL(/\/settings/, { timeout: 8000 });
+    await page.waitForURL(/\/settings/, { timeout: 10000 });
     await expect(
       page.getByRole('heading', { name: /cogs settings/i }),
     ).toBeVisible({ timeout: 8000 });

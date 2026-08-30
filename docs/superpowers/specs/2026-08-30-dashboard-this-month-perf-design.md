@@ -17,9 +17,11 @@ A click on "This Month" at Wetzel's fires ~76 Supabase requests. The last
 The database computes the same sum in one ~300ms query. Two more problems
 ride on the same fetch:
 
-- `useMonthlyMetrics` fetches the 12-month inventory rows with
-  `.limit(10000)` and no order. Truncation drops arbitrary rows, and the
-  current month can show $0.
+- `useMonthlyMetrics` pages the 12-month inventory rows through
+  `fetchAllRows` with `maxPages: COGS_MAX_PAGES`
+  (`src/hooks/useMonthlyMetrics.tsx:290-306`, post PR #779). That is up
+  to 50 serial requests, and above 50,000 rows the figure goes
+  incomplete with a warning.
 - The whole dashboard unmounts into `<DashboardSkeleton/>` on every range
   change (`src/pages/Index.tsx:668`). No hook sets `placeholderData`, so
   the page goes blank while ~76 requests re-run.
@@ -91,9 +93,11 @@ Rules for this function:
   interface (`dailyCosts`, `totalCost`, `capped`, `isLoading`, `error`,
   `refetch`) does not change, so `useUnifiedCOGS` and its tests do not
   change. `capped` is now always `false` — the server has no row cap.
-- `useMonthlyMetrics` replaces its `.limit(10000)` inventory fetch with
-  one RPC call over the 12-month range. It sums the day rows into month
-  buckets. This deletes the truncation bug.
+- `useMonthlyMetrics` replaces its paged inventory fetch
+  (`inventoryCOGSPromise`, lines 290-306) with one RPC call over the
+  12-month range. The existing day→month loop at line 550 consumes the
+  RPC rows directly. The server aggregate has no row cap, so the
+  inventory `pushCapWarning` call goes away.
 - The break-even section (`Index.tsx:281`) keeps its `useUnifiedCOGS`
   call. The inventory side now costs one RPC round trip.
 
@@ -113,7 +117,9 @@ Rules for this function:
 - `useMonthlyMetrics`: run the 12 `fetchMonthRevenueTotals` calls with
   `Promise.all`. A later sort fixes the order.
 - `useMonthlyMetrics`: fetch `restaurant_financial_settings` concurrently
-  with the revenue months. Only the COGS branches depend on it.
+  with the revenue months. Its `await` at line 276 now blocks the start
+  of the eight parallel fetches, and only the two COGS branches depend
+  on it.
 - `React.memo` on five section components: `LaborPnlCard`,
   `LaborEfficiencyCard`, `BankSnapshotSection`, `OperationsHealthCard`,
   `DashboardQuickActions`.

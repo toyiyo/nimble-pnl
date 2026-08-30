@@ -44,6 +44,8 @@ function mockRevenueBreakdown() {
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    // The mock sets only the fields this test reads, not the hook's full
+    // return type. The `any` cast skips the missing-field type error.
   } as any);
 }
 
@@ -84,6 +86,8 @@ function mockPeriodMetrics(laborCost: number) {
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    // The mock sets only the fields this test reads, not the hook's full
+    // return type. The `any` cast skips the missing-field type error.
   } as any);
 }
 
@@ -108,6 +112,8 @@ function mockCostsFromSource(pendingTotal: number, actualTotal: number) {
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    // The mock sets only the fields this test reads, not the hook's full
+    // return type. The `any` cast skips the missing-field type error.
   } as any);
 }
 
@@ -156,6 +162,8 @@ function mockCostsFromSourceDiverged(opts: {
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    // The mock sets only the fields this test reads, not the hook's full
+    // return type. The `any` cast skips the missing-field type error.
   } as any);
 }
 

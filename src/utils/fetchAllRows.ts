@@ -22,6 +22,22 @@ export interface PagedResult<T> {
  * each call site's exact query shape intact while removing the duplicated
  * pagination loop.
  */
+/**
+ * Cast a Supabase query-builder chain to the page shape `fetchAllRows`
+ * expects.
+ *
+ * The untyped client infers a many-to-one join (e.g. `foo!id(bar)`) as an
+ * array, but PostgREST returns a single joined object at that key. This
+ * asserts the caller's declared row type instead. It is a type-only cast —
+ * it does not touch runtime behavior, so test mocks need no extra method
+ * beyond `.range()`.
+ */
+export function asPagedRows<T>(
+  query: unknown,
+): PromiseLike<{ data: T[] | null; error: unknown }> {
+  return query as unknown as PromiseLike<{ data: T[] | null; error: unknown }>;
+}
+
 export async function fetchAllRows<T>(
   buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
   opts?: { pageSize?: number; maxPages?: number },

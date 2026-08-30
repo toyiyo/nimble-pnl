@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { fetchAllRows } from '@/utils/fetchAllRows';
+import { fetchAllRows, asPagedRows } from '@/utils/fetchAllRows';
 
 export interface TipSplitRow {
   amount: number;
@@ -20,20 +20,16 @@ export async function fetchTipSplitRows(
   toStr: string
 ): Promise<{ rows: TipSplitRow[]; capped: boolean }> {
   return fetchAllRows<TipSplitRow>((from, to) =>
-    client
-      .from('tip_split_items')
-      .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
-      .eq('tip_splits.restaurant_id', restaurantId)
-      .gte('tip_splits.split_date', fromStr)
-      .lte('tip_splits.split_date', toStr)
-      .order('id')
-      // The untyped client infers the many-to-one join as an array.
-      // PostgREST returns a single object — assert the declared row
-      // type. A type-only cast, so test mocks need no extra method.
-      .range(from, to) as unknown as PromiseLike<{
-      data: TipSplitRow[] | null;
-      error: unknown;
-    }>
+    asPagedRows<TipSplitRow>(
+      client
+        .from('tip_split_items')
+        .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
+        .eq('tip_splits.restaurant_id', restaurantId)
+        .gte('tip_splits.split_date', fromStr)
+        .lte('tip_splits.split_date', toStr)
+        .order('id')
+        .range(from, to)
+    )
   );
 }
 

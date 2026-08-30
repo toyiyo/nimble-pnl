@@ -73,9 +73,11 @@ Rules for this function:
   SECURITY INVOKER, `SET search_path TO 'public'`, REVOKE from PUBLIC and
   anon, GRANT to authenticated. RLS on `inventory_transactions` enforces
   tenant isolation.
-- The plan phase checks the real column type of `transaction_date` in
-  production and adjusts the two casts to match the client's string
-  comparison semantics.
+- Production column types are confirmed: `transaction_date` is `date`,
+  `created_at` is `timestamptz`, `total_cost` is `numeric`. The casts
+  above are correct. A parity probe on production (2026-08-30) compared
+  this filter against the client filter for Wetzel's Cold Stone
+  (August 2026): both select 16,643 rows and both sum to $2,351.6333.
 - `get_inventory_usage_by_month` has no frontend caller and buckets by
   `created_at` only. This PR does not touch it. A follow-up task decides
   its removal.

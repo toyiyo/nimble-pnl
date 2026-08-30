@@ -50,17 +50,33 @@ const tipRows = [
   { amount: 500, employee_id: 'e1', tip_splits: { restaurant_id: RESTAURANT, split_date: '2026-07-06' } },
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeRangeChain(rows: unknown[]): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chain: any = {};
-  ['select', 'eq', 'in', 'gte', 'lte', 'order', 'maybeSingle'].forEach((m) => {
-    chain[m] = vi.fn(() => chain);
-  });
-  // A page smaller than 1000 rows stops the paging after one call.
-  chain.range = vi.fn(() => Promise.resolve({ data: rows, error: null }));
-  chain.then = (resolve: (v: { data: unknown[]; error: null }) => void) =>
-    resolve({ data: [], error: null });
+// Typed shape for the methods the hook calls on the query chain. `then`
+// makes the chain awaitable for queries the hook awaits without `.range()`.
+interface QueryChainMock {
+  select: (columns: string) => QueryChainMock;
+  eq: (column: string, value: unknown) => QueryChainMock;
+  in: (column: string, values: unknown[]) => QueryChainMock;
+  gte: (column: string, value: unknown) => QueryChainMock;
+  lte: (column: string, value: unknown) => QueryChainMock;
+  order: (column: string, options?: { ascending: boolean }) => QueryChainMock;
+  maybeSingle: () => QueryChainMock;
+  range: (from: number, to: number) => Promise<{ data: unknown[]; error: null }>;
+  then?: (resolve: (value: { data: unknown[]; error: null }) => void) => void;
+}
+
+function makeRangeChain(rows: unknown[]): QueryChainMock {
+  const chain: QueryChainMock = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    gte: vi.fn(() => chain),
+    lte: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    maybeSingle: vi.fn(() => chain),
+    // A page smaller than 1000 rows stops the paging after one call.
+    range: vi.fn(() => Promise.resolve({ data: rows, error: null })),
+    then: (resolve) => resolve({ data: [], error: null }),
+  };
   return chain;
 }
 
@@ -69,16 +85,19 @@ function makeRangeChain(rows: unknown[]): any {
 // The call counter lives in `state`, OUTSIDE the chain: `fetchAllRows`
 // builds a fresh chain per page, so a chain-local counter would always
 // serve page zero and never finish.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makePagedChain(pages: unknown[][], state: { call: number }): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chain: any = {};
-  ['select', 'eq', 'in', 'gte', 'lte', 'order', 'maybeSingle'].forEach((m) => {
-    chain[m] = vi.fn(() => chain);
-  });
-  chain.range = vi.fn(() =>
-    Promise.resolve({ data: pages[state.call++] ?? [], error: null })
-  );
+function makePagedChain(pages: unknown[][], state: { call: number }): QueryChainMock {
+  const chain: QueryChainMock = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    gte: vi.fn(() => chain),
+    lte: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    maybeSingle: vi.fn(() => chain),
+    range: vi.fn(() =>
+      Promise.resolve({ data: pages[state.call++] ?? [], error: null })
+    ),
+  };
   return chain;
 }
 

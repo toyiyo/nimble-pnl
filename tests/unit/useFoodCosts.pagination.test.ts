@@ -18,21 +18,30 @@ const rangeCalls: Array<[number, number]> = [];
 const orderCalls: unknown[][] = [];
 let callIndex = 0;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const inventoryChain: any = {};
-['select', 'eq', 'or'].forEach((m) => {
-  inventoryChain[m] = vi.fn(() => inventoryChain);
-});
-inventoryChain.order = vi.fn((...args: unknown[]) => {
-  orderCalls.push(args);
-  return inventoryChain;
-});
-inventoryChain.range = vi.fn((from: number, to: number) => {
-  rangeCalls.push([from, to]);
-  const page = [page0, page1][callIndex] ?? [];
-  callIndex++;
-  return Promise.resolve({ data: page, error: null });
-});
+// Typed shape for the methods useFoodCosts calls on the query chain.
+interface InventoryChainMock {
+  select: (columns: string) => InventoryChainMock;
+  eq: (column: string, value: unknown) => InventoryChainMock;
+  or: (filters: string) => InventoryChainMock;
+  order: (...args: [string] | [string, { ascending: boolean }]) => InventoryChainMock;
+  range: (from: number, to: number) => Promise<{ data: unknown[]; error: null }>;
+}
+
+const inventoryChain: InventoryChainMock = {
+  select: vi.fn(() => inventoryChain),
+  eq: vi.fn(() => inventoryChain),
+  or: vi.fn(() => inventoryChain),
+  order: vi.fn((...args: [string] | [string, { ascending: boolean }]) => {
+    orderCalls.push(args);
+    return inventoryChain;
+  }),
+  range: vi.fn((from: number, to: number) => {
+    rangeCalls.push([from, to]);
+    const page = [page0, page1][callIndex] ?? [];
+    callIndex++;
+    return Promise.resolve({ data: page, error: null });
+  }),
+};
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: { from: () => inventoryChain },

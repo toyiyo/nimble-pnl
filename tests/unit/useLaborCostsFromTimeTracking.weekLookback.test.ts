@@ -65,16 +65,32 @@ const weekPunches = ['2026-04-27', '2026-04-28', '2026-04-29', '2026-04-30', '20
     punch(`p${i}-out`, `${day}T18:00:00+00:00`, 'clock_out'),
   ]);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeRangeChain(rows: unknown[]): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chain: any = {};
-  ['select', 'eq', 'in', 'gte', 'lte', 'order', 'maybeSingle'].forEach((m) => {
-    chain[m] = vi.fn(() => chain);
-  });
-  chain.range = vi.fn(() => Promise.resolve({ data: rows, error: null }));
-  chain.then = (resolve: (v: { data: unknown[]; error: null }) => void) =>
-    resolve({ data: [], error: null });
+// Typed shape for the methods the hook calls on the query chain. `then`
+// makes the chain awaitable for queries the hook awaits without `.range()`.
+interface QueryChainMock {
+  select: (columns: string) => QueryChainMock;
+  eq: (column: string, value: unknown) => QueryChainMock;
+  in: (column: string, values: unknown[]) => QueryChainMock;
+  gte: (column: string, value: unknown) => QueryChainMock;
+  lte: (column: string, value: unknown) => QueryChainMock;
+  order: (column: string, options?: { ascending: boolean }) => QueryChainMock;
+  maybeSingle: () => QueryChainMock;
+  range: (from: number, to: number) => Promise<{ data: unknown[]; error: null }>;
+  then: (resolve: (value: { data: unknown[]; error: null }) => void) => void;
+}
+
+function makeRangeChain(rows: unknown[]): QueryChainMock {
+  const chain: QueryChainMock = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    gte: vi.fn(() => chain),
+    lte: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    maybeSingle: vi.fn(() => chain),
+    range: vi.fn(() => Promise.resolve({ data: rows, error: null })),
+    then: (resolve) => resolve({ data: [], error: null }),
+  };
   return chain;
 }
 

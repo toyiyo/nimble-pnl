@@ -12,6 +12,8 @@ import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useB
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { computeLinkedInfo } from "@/lib/bankTransactionLinkedInfo";
+import { usePendingOutflows, usePendingOutflowMatches, usePendingOutflowMutations } from "@/hooks/usePendingOutflows";
+import { selectBestMatchPerTransaction } from "@/lib/pendingOutflowMatching";
 
 interface BankTransactionListProps {
   transactions: BankTransaction[];
@@ -110,6 +112,9 @@ export function BankTransactionList({
   const deleteTransaction = useDeleteTransaction();
   const reconcile = useReconcileTransaction();
   const unreconcile = useUnreconcileTransaction();
+  const { confirmMatch } = usePendingOutflowMutations();
+  const { data: pendingOutflows } = usePendingOutflows();
+  const { data: pendingOutflowMatches } = usePendingOutflowMatches();
 
   const allSelected = transactions.length > 0 && transactions.every(t => selectedIds.has(t.id));
   const someSelected = transactions.some(t => selectedIds.has(t.id)) && !allSelected;
@@ -121,6 +126,16 @@ export function BankTransactionList({
     estimateSize: () => 56,
     overscan: 10,
   });
+
+  // Best pending-outflow match per bank transaction, keyed by bank_transaction_id.
+  const bestMatchByTransactionId = useMemo(() => {
+    const best = selectBestMatchPerTransaction(pendingOutflowMatches || []);
+    return new Map(best.map(match => [match.bank_transaction_id, match]));
+  }, [pendingOutflowMatches]);
+
+  const outflowById = useMemo(() => {
+    return new Map((pendingOutflows || []).map(outflow => [outflow.id, outflow]));
+  }, [pendingOutflows]);
 
   // Pre-compute display values for all transactions (memoized)
   const displayValuesMap = useMemo(() => {
@@ -134,6 +149,9 @@ export function BankTransactionList({
       const suggestedCategory = accounts?.find(a => a.id === txn.suggested_category_id);
       const currentCategory = accounts?.find(a => a.id === txn.category_id);
 
+      const bestMatch = status === 'for_review' ? bestMatchByTransactionId.get(txn.id) : undefined;
+      const matchedOutflow = bestMatch ? outflowById.get(bestMatch.pending_outflow_id) : undefined;
+
       map.set(txn.id, {
         isNegative: txn.amount < 0,
         formattedAmount: currencyFormatter.format(Math.abs(txn.amount)),
@@ -142,10 +160,17 @@ export function BankTransactionList({
         currentCategoryName: currentCategory?.account_name,
         hasSuggestion: !txn.is_categorized && !!suggestedCategory,
         linkedInfo: computeLinkedInfo(txn),
+        pendingOutflowMatch: matchedOutflow
+          ? {
+              pendingOutflowId: matchedOutflow.id,
+              vendorName: matchedOutflow.vendor_name,
+              referenceNumber: matchedOutflow.reference_number,
+            }
+          : null,
       });
     }
     return map;
-  }, [transactions, accounts, formatTransactionDate]);
+  }, [transactions, accounts, formatTransactionDate, status, bestMatchByTransactionId, outflowById]);
 
   // Stable callbacks for row actions
   const handleSelectAll = useCallback(() => {
@@ -191,6 +216,10 @@ export function BankTransactionList({
   const handleUnreconcile = useCallback((transactionId: string) => {
     unreconcile.mutate({ transactionId });
   }, [unreconcile]);
+
+  const handleConfirmMatch = useCallback((transactionId: string, pendingOutflowId: string) => {
+    confirmMatch.mutate({ pendingOutflowId, bankTransactionId: transactionId });
+  }, [confirmMatch]);
 
   const handleCloseDialog = useCallback(() => {
     setDialogType(null);
@@ -293,6 +322,9 @@ export function BankTransactionList({
                     isSelectionMode={isSelectionMode}
                     isSelected={selectedIds.has(transaction.id)}
                     isCategorizing={categorize.isPending}
+                    isConfirmingMatch={
+                      confirmMatch.variables?.bankTransactionId === transaction.id && confirmMatch.isPending
+                    }
                     onSelectionToggle={handleSelectionToggle}
                     onQuickAccept={handleQuickAccept}
                     onOpenDetail={handleOpenDetail}
@@ -301,6 +333,7 @@ export function BankTransactionList({
                     onCreateRule={handleCreateRule}
                     onReconcile={handleReconcile}
                     onUnreconcile={handleUnreconcile}
+                    onConfirmMatch={handleConfirmMatch}
                   />
                 </div>
               );

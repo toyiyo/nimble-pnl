@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format, startOfMonth, endOfMonth, eachMonthOfInterval, startOfWeek } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import { resolveLaborBasis } from '@/lib/combineCosts';
 import {
@@ -11,8 +11,7 @@ import {
 } from '@/services/cogsCalculations';
 import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
-import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { lookaheadPunchFetchRange, weekAlignedFetchStart, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { fetchFinancialCOGSRows, COGS_MAX_PAGES } from '@/services/cogsFetch';
 import { fetchTipSplitRows, sumTipsOwedByEmployee } from '@/services/tipsFetch';
@@ -361,17 +360,18 @@ export function useMonthlyMetrics(
       // clock-in-day clip drops shifts whose clock-in belongs outside the window.
       //
       // calculateActualLaborCostForMonth (below) buckets punches by ISO week and
-      // bands overtime over the FULL week. When dateFrom does not fall on a week
-      // boundary, the days before dateFrom in that same week must still be
-      // fetched, or the week's hour total comes out too low and hours that
-      // should band as overtime cost as straight time instead (same bug the
-      // dashboard labor-cost hook fixed — see useLaborCostsFromTimeTracking.tsx).
-      // No post-filter is needed here: calculateActualLaborCostForRange already
-      // drops a day's wages unless it falls inside [rangeStart, rangeEnd], so
-      // the extra look-back days feed OT banding only, never the totals.
-      const { fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-      const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
-      const otFetchStart = weekAlignedStart < dateFrom ? weekAlignedStart : dateFrom;
+      // bands overtime over the FULL week. When dateFrom or dateTo does not
+      // fall on a week boundary, the days outside [dateFrom, dateTo] in that
+      // same edge week must still be fetched, or the week's hour total comes
+      // out too low and hours that should band as overtime cost as straight
+      // time instead (same bug the dashboard labor-cost hook fixed — see
+      // useLaborCostsFromTimeTracking.tsx). No post-filter is needed here:
+      // calculateActualLaborCostForRange already drops a day's wages unless
+      // it falls inside [rangeStart, rangeEnd], so the extra look-back/
+      // look-ahead days feed OT banding only, never the totals.
+      const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
+      const otFetchStart = weekAlignedFetchStart(dateFrom, fetchStart);
+      const otFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
       //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // PostgREST caps an unpaginated response at 1,000 rows, which would
@@ -386,7 +386,7 @@ export function useMonthlyMetrics(
           .select('*')
           .eq('restaurant_id', restaurantId)
           .gte('punch_time', otFetchStart.toISOString())
-          .lte('punch_time', fetchEnd.toISOString())
+          .lte('punch_time', otFetchEnd.toISOString())
           .order('punch_time', { ascending: true })
           .order('id')
           .range(from, to),

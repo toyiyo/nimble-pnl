@@ -1,26 +1,28 @@
 /**
- * Regression: useMonthlyMetrics's time_punches DB fetch widens its lower
- * bound to the ISO week (WEEK_STARTS_ON) that contains dateFrom.
+ * Regression: useMonthlyMetrics's time_punches DB fetch widens on BOTH
+ * ends to the ISO week (WEEK_STARTS_ON) that contains dateFrom / dateTo.
  *
  * calculateActualLaborCostForMonth buckets punches by ISO week and bands
- * overtime over the FULL week. When dateFrom falls mid-week, the days
- * before dateFrom in that same week must still be fetched, or that week's
- * hour total comes out too low and hours that should band as overtime cost
- * as straight time instead (CodeRabbit finding, same bug class already
- * fixed in useLaborCostsFromTimeTracking.tsx — see
- * useLaborCostsFromTimeTracking.fetchRange.test.ts).
+ * overtime over the FULL week. When dateFrom or dateTo falls mid-week, the
+ * days outside [dateFrom, dateTo] in that same edge week must still be
+ * fetched, or that week's hour total comes out too low and hours that
+ * should band as overtime cost as straight time instead. The dateFrom side
+ * was a CodeRabbit finding (same bug class already fixed in
+ * useLaborCostsFromTimeTracking.tsx — see
+ * useLaborCostsFromTimeTracking.fetchRange.test.ts); the dateTo side is a
+ * sound-logic follow-up finding on this hook.
  *
  * No post-fetch filtering is required here (unlike the sibling hook):
  * calculateActualLaborCostForRange only counts a day's wages when that day
- * falls inside [rangeStart, rangeEnd], so the extra look-back days feed OT
- * banding only and never inflate a month's totals.
+ * falls inside [rangeStart, rangeEnd], so the extra look-back/look-ahead
+ * days feed OT banding only and never inflate a month's totals.
  */
 import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { startOfWeek } from 'date-fns';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { startOfWeek, endOfWeek } from 'date-fns';
+import { lookaheadPunchFetchRange, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 
 // useMonthlyMetrics now sources the restaurant timezone from
@@ -97,6 +99,7 @@ describe('useMonthlyMetrics time_punches fetch range (ISO-week OT banding)', () 
     const dateTo = new Date(2026, 6, 31, 23, 59, 59, 999);
     const { fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
     const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
+    const expectedFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
 
     const { result } = renderHook(
       () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
@@ -107,14 +110,63 @@ describe('useMonthlyMetrics time_punches fetch range (ISO-week OT banding)', () 
 
     expect(fromMock).toHaveBeenCalledWith('time_punches');
     expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', weekAlignedStart.toISOString());
-    expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', fetchEnd.toISOString());
+    expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', expectedFetchEnd.toISOString());
     // dateFrom is mid-week, so the widened start is strictly before it.
     expect(weekAlignedStart.getTime()).toBeLessThan(dateFrom.getTime());
-    // End keeps the look-ahead-only rule: +18h past dateTo.
-    expect(fetchEnd.getTime() - dateTo.getTime()).toBe(18 * 3600 * 1000);
+    // dateTo (Jul 31) is also mid-week for the week it falls in, so the
+    // end widens past the look-ahead-only +18h rule too.
+    expect(expectedFetchEnd.getTime()).toBeGreaterThan(fetchEnd.getTime());
   });
 
-  it('leaves the fetch start unchanged when dateFrom already falls on the week start', async () => {
+  it('widens the fetch end to the ISO week end when dateTo falls mid-week', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const timePunchesChain: any = {};
+    ['select', 'eq', 'order'].forEach((m) => {
+      timePunchesChain[m] = vi.fn(() => timePunchesChain);
+    });
+    timePunchesChain.gte = vi.fn(() => timePunchesChain);
+    timePunchesChain.lte = vi.fn(() => timePunchesChain);
+    timePunchesChain.range = vi.fn(() => Promise.resolve({ data: [], error: null }));
+
+    const fromMock = vi.fn((table: string) => {
+      if (table === 'time_punches') return timePunchesChain;
+      return makeChainable([]);
+    });
+    const rpcMock = vi.fn(() => Promise.resolve({ data: [], error: null }));
+
+    vi.doMock('@/integrations/supabase/client', () => ({
+      supabase: {
+        from: (...args: [string]) => fromMock(...args),
+        rpc: (...args: unknown[]) => rpcMock(...args),
+      },
+    }));
+
+    const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
+
+    // A Monday-start week runs Jul 20 - Jul 26, 2026. dateFrom sits on the
+    // week start; dateTo lands mid-week (Wednesday), so the DB fetch end
+    // must widen forward to Jul 26 (end of week), not stop at dateTo's
+    // look-ahead-only +18h.
+    const dateFrom = new Date(2026, 6, 20); // 2026-07-20, a Monday
+    const dateTo = new Date(2026, 6, 22, 23, 59, 59, 999); // 2026-07-22, a Wednesday
+    const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
+    const expectedFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+
+    const { result } = renderHook(
+      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', fetchStart.toISOString());
+    expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', expectedFetchEnd.toISOString());
+    // dateTo is mid-week, so the widened end is strictly after the
+    // look-ahead-only end.
+    expect(expectedFetchEnd.getTime()).toBeGreaterThan(fetchEnd.getTime());
+  });
+
+  it('leaves the fetch start and end unchanged when [dateFrom, dateTo] already spans a full week', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const timePunchesChain: any = {};
     ['select', 'eq', 'order'].forEach((m) => {

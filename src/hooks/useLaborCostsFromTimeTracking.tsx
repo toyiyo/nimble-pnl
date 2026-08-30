@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { startOfWeek } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
 import { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import { calculateActualLaborCost, calculateActualLaborCostForRange } from '@/services/laborCalculations';
-import { WEEK_STARTS_ON } from '@/lib/dateConfig';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { lookaheadPunchFetchRange, weekAlignedFetchStart, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { fetchTipSplitRows, sumTipsOwedByEmployee } from '@/services/tipsFetch';
@@ -98,15 +96,16 @@ export function useLaborCostsFromTimeTracking(
       const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
 
       // calculateActualLaborCostForRange (below) buckets punches by ISO week
-      // and bands overtime over the FULL week. When dateFrom does not fall on
-      // a week boundary, the days before dateFrom in that same week must
-      // still be fetched, or the week's hour total comes out too low and
-      // hours that should band as overtime cost as straight time instead.
-      // Widen the DB fetch back to the start of dateFrom's week for this.
+      // and bands overtime over the FULL week. When dateFrom or dateTo does
+      // not fall on a week boundary, the days outside [dateFrom, dateTo] in
+      // that same edge week must still be fetched, or the week's hour total
+      // comes out too low and hours that should band as overtime cost as
+      // straight time instead. Widen the DB fetch to cover both edge weeks
+      // whole — see src/utils/punchWindow.ts for the shared rule.
       // calculateActualLaborCost (the straight-time daily series) must NOT
       // see these extra days — see punchesForDailyCost below.
-      const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
-      const otFetchStart = weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;
+      const otFetchStart = weekAlignedFetchStart(dateFrom, fetchStart);
+      const otFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
 
       // The three fetches below are independent. Run them together so the
       // wait is the slowest fetch, not the sum. This hook backs the
@@ -122,7 +121,7 @@ export function useLaborCostsFromTimeTracking(
             .select('*')
             .eq('restaurant_id', restaurantId)
             .gte('punch_time', otFetchStart.toISOString())
-            .lte('punch_time', fetchEnd.toISOString())
+            .lte('punch_time', otFetchEnd.toISOString())
             .order('punch_time', { ascending: true })
             .order('id')
             .range(from, to),
@@ -167,13 +166,15 @@ export function useLaborCostsFromTimeTracking(
         : typedPunches;
 
       // calculateActualLaborCost attributes hours to every day a shift
-      // touches and does not drop shifts whose clock-in precedes the window,
-      // so it must not see the week look-back days — that would pull a
-      // prior-period shift into the first in-range day and overstate labor.
-      // Drop back to the punches the un-widened fetch would have returned.
-      const punchesForDailyCost = punchesForCost.filter(
-        (punch) => new Date(punch.punch_time).getTime() >= fetchStart.getTime()
-      );
+      // touches and does not drop shifts whose clock-in precedes or follows
+      // the window, so it must not see the week look-back or look-ahead
+      // days — those would pull a shift from outside the range into an
+      // in-range day and overstate labor. Drop back to the punches the
+      // un-widened fetch would have returned.
+      const punchesForDailyCost = punchesForCost.filter((punch) => {
+        const t = new Date(punch.punch_time).getTime();
+        return t >= fetchStart.getTime() && t <= fetchEnd.getTime();
+      });
 
       // 4. Use calculateActualLaborCost from laborCalculations.ts (same as payroll)
       // This ensures Dashboard and Payroll use identical calculation logic

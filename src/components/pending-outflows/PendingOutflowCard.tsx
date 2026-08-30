@@ -249,13 +249,22 @@ export const PendingOutflowCard = ({ outflow, onEdit, onPrintCheck }: PendingOut
                       </Badge>
                     )}
                   </div>
-                  {isResolved && hasCapability('edit:pending_outflows') && (
+                  {/* Gate on the link, not on auto_linked_at: the unlink RPC
+                      accepts manual matches too, and it rejects a cleared
+                      outflow with no linked transaction. */}
+                  {outflow.linked_bank_transaction_id && isResolved && hasCapability('edit:pending_outflows') && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         unlinkMatch.mutate(outflow.id);
+                      }}
+                      onKeyDown={(e) => {
+                        // The card is a role="button" with an Enter handler.
+                        // Stop the keydown here, or Enter on this button also
+                        // opens the edit dialog.
+                        e.stopPropagation();
                       }}
                       disabled={unlinkMatch.isPending && unlinkMatch.variables === outflow.id}
                       className="h-8 px-2 rounded-lg text-[13px] font-medium"

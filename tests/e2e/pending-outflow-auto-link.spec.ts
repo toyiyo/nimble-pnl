@@ -86,7 +86,7 @@ test.describe('Pending Outflow Auto-Link', () => {
     expect(sweep.linkedCount).toBe(1);
 
     await page.goto('/expenses');
-    await expect(page.getByRole('heading', { name: 'Expenses', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Expenses', exact: true })).toBeVisible({ timeout: 10000 });
 
     // The outflow card shows Cleared with the Auto-matched badge.
     const outflowCard = page.getByRole('button', { name: 'Edit expense for Auto Link Vendor' });

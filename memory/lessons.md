@@ -3073,7 +3073,7 @@
 - **Correction:** Each suite now pins the timezone: an explicit `UPDATE restaurants SET timezone = 'America/Chicago'`, or the value in the INSERT, with a comment that names the dependency.
 - **Rule:** When an expected value depends on a column value, set that value in the fixture. A schema default is not part of the test's contract.
 
-## Category: Workflow / PR Hygiene (continued)
+## Category: Workflow / PR Hygiene — Reviewer Agent Configuration
 
 ### [2026-08-30] The workflow script names a reviewer agentType that does not exist (PR #782)
 - **Mistake:** The Workflow script requested `agentType: 'feature-dev:code-reviewer'` for the four Phase 7a reviewers. That agent type does not exist in the session registry. Every reviewer call failed, the Verify gate looped 5 times, and the run stopped. Only the ocr-rules and codex reviews ran.
@@ -3092,7 +3092,7 @@
 - **Correction:** The gate now runs `npx tsc -p tsconfig.app.json --noEmit`.
 - **Rule:** Check what a type-check command compiles before you trust its exit code. A project file with `files: []` compiles nothing.
 
-## Category: Database Tests (pgTAP) (continued)
+## Category: Database Tests (pgTAP) — TAP Output Parsing
 
 ### [2026-08-30] psql wraps TAP output in result tables, so a plain grep counts zero (PR #782)
 - **Mistake:** A pass/fail grep for `^ok` counted 0 lines on a green suite. psql prints the TAP lines inside a result table with leading spaces and a column header.

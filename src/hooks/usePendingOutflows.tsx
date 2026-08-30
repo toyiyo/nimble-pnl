@@ -156,6 +156,9 @@ export function usePendingOutflowMutations() {
       pendingOutflowId: string; 
       bankTransactionId: string;
     }) => {
+      if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
+      const restaurantId = selectedRestaurant.restaurant_id;
+
       // Fetch pending outflow with invoice uploads
       const { data: pendingOutflow, error: fetchError } = await supabase
         .from('pending_outflows')
@@ -170,6 +173,7 @@ export function usePendingOutflowMutations() {
           )
         `)
         .eq('id', pendingOutflowId)
+        .eq('restaurant_id', restaurantId)
         .single();
 
       if (fetchError) throw fetchError;
@@ -188,6 +192,7 @@ export function usePendingOutflowMutations() {
         .from('bank_transactions')
         .select('notes, category_id, suggested_category_id, is_transfer, is_split, excluded_reason')
         .eq('id', bankTransactionId)
+        .eq('restaurant_id', restaurantId)
         .single();
 
       if (btFetchError) throw btFetchError;
@@ -224,6 +229,7 @@ export function usePendingOutflowMutations() {
           .select('id')
           .eq('reference_type', 'bank_transaction')
           .eq('reference_id', bankTransactionId)
+          .eq('restaurant_id', restaurantId)
           .maybeSingle();
 
         if (journalCheckError) throw journalCheckError;
@@ -289,7 +295,8 @@ export function usePendingOutflowMutations() {
       const { error: btError } = await supabase
         .from('bank_transactions')
         .update(bankTransactionUpdates)
-        .eq('id', bankTransactionId);
+        .eq('id', bankTransactionId)
+        .eq('restaurant_id', restaurantId);
 
       if (btError) throw btError;
 
@@ -321,6 +328,7 @@ export function usePendingOutflowMutations() {
         .from('pending_outflows')
         .update(pendingOutflowUpdates)
         .eq('id', pendingOutflowId)
+        .eq('restaurant_id', restaurantId)
         .in('status', MATCHABLE_OUTFLOW_STATUSES)
         .select('id')
         .maybeSingle();

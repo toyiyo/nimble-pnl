@@ -211,7 +211,11 @@ BEGIN
         v_claimed  := v_claimed  + COALESCE(n_claimed, 0);
         v_r_linked := v_r_linked + COALESCE(n_applied, 0);
         i := i + 1;
-        EXIT WHEN COALESCE(n_claimed, 0) = 0 OR i >= 5;
+        -- Exit on linked_count, not candidate_count. Auto-link has no
+        -- watermark: a pair a lock or a guard blocks keeps candidate_count
+        -- above zero forever, and an exit on candidate_count rescans that
+        -- same pair 5 times per tick.
+        EXIT WHEN COALESCE(n_applied, 0) = 0 OR i >= 5;
         IF clock_timestamp() - v_started > v_budget THEN
           v_budget_hit_link := true;
           EXIT;

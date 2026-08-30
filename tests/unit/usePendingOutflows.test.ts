@@ -96,7 +96,10 @@ function setupConfirmMatchMocks(
       options.onBankUpdate?.();
       return mockBankTransactionBuilder;
     }),
-    eq: vi.fn().mockResolvedValue({ error: null }),
+    // The update chain is update().eq('id').eq('restaurant_id') awaited.
+    eq: vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    }),
   };
 
   // Backs the pre-RPC "does a journal entry already exist" guard. Hit

@@ -11,6 +11,7 @@ interface DashboardMetricCardProps {
   variant?: 'default' | 'success' | 'warning' | 'danger';
   subtitle?: string;
   periodLabel?: string;
+  caption?: string;
 }
 
 export function DashboardMetricCard({
@@ -20,7 +21,8 @@ export function DashboardMetricCard({
   icon: Icon,
   variant = 'default',
   subtitle,
-  periodLabel
+  periodLabel,
+  caption
 }: DashboardMetricCardProps) {
   const getTrendIcon = () => {
     if (!trend) return null;
@@ -58,6 +60,9 @@ export function DashboardMetricCard({
         <p className="text-[22px] font-semibold tracking-tight text-foreground">{value}</p>
         {subtitle && (
           <p className="text-[12px] text-muted-foreground mt-0.5">{subtitle}</p>
+        )}
+        {caption && (
+          <p className="text-[11px] text-muted-foreground mt-1">{caption}</p>
         )}
       </div>
 

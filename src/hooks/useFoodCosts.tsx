@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { aggregateInventoryCOGSByDate } from '@/services/cogsCalculations';
+import { aggregateInventoryCOGSByDate, type InventoryTransactionRow } from '@/services/cogsCalculations';
+import { COGS_MAX_PAGES } from '@/services/cogsFetch';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export interface FoodCostData {
   date: string;
@@ -11,6 +13,7 @@ export interface FoodCostData {
 export interface FoodCostsResult {
   dailyCosts: FoodCostData[];
   totalCost: number;
+  capped: boolean;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -35,24 +38,30 @@ export function useFoodCosts(
     queryFn: async () => {
       if (!restaurantId) return null;
 
-      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
-      // to ensure we get all inventory usage transactions for accurate food cost calculations
-      const { data, error } = await supabase
-        .from('inventory_transactions')
-        .select('created_at, transaction_date, total_cost, transaction_type')
-        .eq('restaurant_id', restaurantId)
-        .eq('transaction_type', 'usage')
-        .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
-        .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`)
-        .order('created_at', { ascending: true })
-        .limit(10000); // Override Supabase's default 1000 row limit
+      const fromStr = format(dateFrom, 'yyyy-MM-dd');
+      const toStr = format(dateTo, 'yyyy-MM-dd');
 
-      if (error) throw error;
+      // Page through inventory_transactions with fetchAllRows() to defeat
+      // Supabase's default 1000-row cap on unpaginated responses.
+      const { rows, capped } = await fetchAllRows<InventoryTransactionRow>(
+        (from, to) =>
+          supabase
+            .from('inventory_transactions')
+            .select('created_at, transaction_date, total_cost')
+            .eq('restaurant_id', restaurantId)
+            .eq('transaction_type', 'usage')
+            .or(`transaction_date.gte.${fromStr},and(transaction_date.is.null,created_at.gte.${fromStr})`)
+            .or(`transaction_date.lte.${toStr},and(transaction_date.is.null,created_at.lte.${toStr}T23:59:59.999Z)`)
+            .order('created_at', { ascending: true })
+            .order('id')
+            .range(from, to),
+        { maxPages: COGS_MAX_PAGES }
+      );
 
       // Aggregate by date using shared pure helper (single source of truth).
       // Use transaction_date when present; fall back to created_at date part.
       // Math.abs() is applied inside the helper (costs may be stored as negatives).
-      const dailyMap = aggregateInventoryCOGSByDate(data ?? []);
+      const dailyMap = aggregateInventoryCOGSByDate(rows);
 
       const dailyCosts: FoodCostData[] = Array.from(dailyMap.entries())
         .map(([date, total_cost]) => ({ date, total_cost }))
@@ -60,7 +69,7 @@ export function useFoodCosts(
 
       const totalCost = dailyCosts.reduce((sum, day) => sum + day.total_cost, 0);
 
-      return { dailyCosts, totalCost };
+      return { dailyCosts, totalCost, capped };
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
@@ -71,6 +80,7 @@ export function useFoodCosts(
   return {
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
+    capped: data?.capped ?? false,
     isLoading,
     error: error as Error | null,
     refetch,

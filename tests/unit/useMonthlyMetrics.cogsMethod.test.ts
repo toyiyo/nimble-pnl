@@ -72,7 +72,7 @@ describe('useMonthlyMetrics COGS method normalization', () => {
         let lastIsSplit: unknown;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const chain: any = {};
-        ['select', 'in', 'gte', 'lte', 'lt', 'limit'].forEach((m) => {
+        ['select', 'in', 'gte', 'lte', 'lt', 'limit', 'order', 'range', 'or', 'is'].forEach((m) => {
           chain[m] = vi.fn(() => chain);
         });
         chain.eq = vi.fn((col: string, val: unknown) => {
@@ -123,7 +123,11 @@ describe('useMonthlyMetrics COGS method normalization', () => {
       wrapper: createWrapper(),
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => {
+      if (result.current.error) throw result.current.error;
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.data).not.toBeNull();
+    });
 
     const april = result.current.data?.find((m) => m.period === '2026-04');
     expect(april).toBeDefined();

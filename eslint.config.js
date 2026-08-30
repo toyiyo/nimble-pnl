@@ -4,6 +4,45 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
+// The timezone selectors, hoisted so later blocks can restate them.
+// Flat config resolves per rule: a later block's no-restricted-syntax value
+// REPLACES an earlier one for matching files, so every block that wants a
+// subset must list it in full.
+const restaurantClockSelectors = [
+  {
+    selector: "CallExpression[callee.name='format'] > Literal.arguments[value=/yyyy-MM-dd/]",
+    message:
+      "restaurant-clock: format(instant, 'yyyy-MM-dd') buckets by the VIEWER's timezone. Use toBusinessDay() from useRestaurantClock(), or toDateOnlyString() if this is a calendar-day token.",
+  },
+  {
+    selector: "MemberExpression[property.name=/^toLocale(Date|Time)?String$/]",
+    message:
+      "restaurant-clock: toLocale*String renders in the viewer's timezone. Use formatInstant() from useRestaurantClock().",
+  },
+  {
+    selector:
+      "CallExpression[callee.object.callee.property.name='toISOString'][callee.property.name='split']",
+    message:
+      "restaurant-clock: .toISOString().split('T')[0] is neither a calendar day nor a moment in time. Use toBusinessDay() or toDateOnlyString().",
+  },
+  // Both the bare `DateTimeFormat()` and the `Intl.`-qualified form. The
+  // latter nests a MemberExpression under `object.callee`, so a plain
+  // `object.callee.name` test silently matches nothing -- and
+  // `Intl.DateTimeFormat()` is the only form this codebase uses.
+  {
+    selector:
+      "MemberExpression[property.name='resolvedOptions']:matches([object.callee.name='DateTimeFormat'], [object.callee.property.name='DateTimeFormat'])",
+    message:
+      "restaurant-clock: never default to the viewer's timezone. Use safeTz(restaurant.timezone).",
+  },
+];
+
+const highVolumeLimitSelector = {
+  selector: "CallExpression[callee.property.name='limit'] > Literal.arguments[value=10000]",
+  message:
+    "Use fetchAllRows from '@/utils/fetchAllRows'. A fixed .limit(10000) truncates silently at the PostgREST 1,000-row cap.",
+};
+
 export default tseslint.config(
   // `.claude/workflows/*.js` are executed by the Workflow tool inside an async
   // wrapper, so a top-level `return` (the runtime's early-halt contract) sits
@@ -49,37 +88,7 @@ export default tseslint.config(
       "src/hooks/useRestaurantClock.ts",
     ],
     rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector:
-            "CallExpression[callee.name='format'] > Literal.arguments[value=/yyyy-MM-dd/]",
-          message:
-            "restaurant-clock: format(instant, 'yyyy-MM-dd') buckets by the VIEWER's timezone. Use toBusinessDay() from useRestaurantClock(), or toDateOnlyString() if this is a calendar-day token.",
-        },
-        {
-          selector:
-            "MemberExpression[property.name=/^toLocale(Date|Time)?String$/]",
-          message:
-            "restaurant-clock: toLocale*String renders in the viewer's timezone. Use formatInstant() from useRestaurantClock().",
-        },
-        {
-          selector:
-            "CallExpression[callee.object.callee.property.name='toISOString'][callee.property.name='split']",
-          message:
-            "restaurant-clock: .toISOString().split('T')[0] is neither a calendar day nor a moment in time. Use toBusinessDay() or toDateOnlyString().",
-        },
-        {
-          // Both the bare `DateTimeFormat()` and the `Intl.`-qualified form.
-          // The latter nests a MemberExpression under `object.callee`, so a
-          // plain `object.callee.name` test silently matches nothing -- and
-          // `Intl.DateTimeFormat()` is the only form this codebase uses.
-          selector:
-            "MemberExpression[property.name='resolvedOptions']:matches([object.callee.name='DateTimeFormat'], [object.callee.property.name='DateTimeFormat'])",
-          message:
-            "restaurant-clock: never default to the viewer's timezone. Use safeTz(restaurant.timezone).",
-        },
-      ],
+      "no-restricted-syntax": ["error", ...restaurantClockSelectors, highVolumeLimitSelector],
     },
   },
   // Migration allowlist. Every path here is a file still rendering instants in
@@ -238,6 +247,26 @@ export default tseslint.config(
       "src/utils/recurringShiftHelpers.ts",
       "src/utils/scheduleExport.ts",
     ],
-    rules: { "no-restricted-syntax": "off" },
+    rules: { "no-restricted-syntax": ["error", highVolumeLimitSelector] },
+  },
+  // .limit(10000) call sites that PR 1 does not convert. Remove a file from
+  // this list when a later PR converts it to fetchAllRows.
+  {
+    files: [
+      "src/hooks/useLaborCosts.tsx",
+      "src/hooks/useLaborCostsFromTransactions.tsx",
+      "src/hooks/useRevenueBreakdown.tsx",
+    ],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
+  // useBankStatementImport keeps its .limit(10000) exemption but is NOT in
+  // the timezone migration allowlist, so restate the timezone rules alone.
+  {
+    files: ["src/hooks/useBankStatementImport.tsx"],
+    rules: {
+      "no-restricted-syntax": ["error", ...restaurantClockSelectors],
+    },
   },
 );

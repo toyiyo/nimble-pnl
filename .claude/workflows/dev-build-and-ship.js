@@ -487,11 +487,11 @@ const FINDINGS = statusSchema(
 )
 
 const REVIEWERS = [
-  { key: 'security', promptFile: '.claude/agents/security-reviewer.md' },
-  { key: 'performance', promptFile: '.claude/agents/performance-reviewer.md' },
-  { key: 'maintainability', promptFile: '.claude/agents/maintainability-reviewer.md' },
-  { key: 'sound-logic', promptFile: '.claude/agents/sound-logic-reviewer.md' },
-  { key: 'ocr-rules', promptFile: '.claude/agents/ocr-rules-reviewer.md' },
+  { key: 'security', agentType: 'security-reviewer', promptFile: '.claude/agents/security-reviewer.md' },
+  { key: 'performance', agentType: 'performance-reviewer', promptFile: '.claude/agents/performance-reviewer.md' },
+  { key: 'maintainability', agentType: 'maintainability-reviewer', promptFile: '.claude/agents/maintainability-reviewer.md' },
+  { key: 'sound-logic', agentType: 'sound-logic-reviewer', promptFile: '.claude/agents/sound-logic-reviewer.md' },
+  { key: 'ocr-rules', agentType: 'ocr-rules-reviewer', promptFile: '.claude/agents/ocr-rules-reviewer.md' },
 ]
 function reviewerPrompt(d) {
   return envelope(
@@ -506,12 +506,10 @@ function reviewerPrompt(d) {
 // including the non-skippable ocr-rules reviewer, plus the best-effort Codex
 // adversarial reviewer.
 async function runReviewer(d) {
-  // ocr-rules enforces a strict rulebook (style violations included), so it must
-  // NOT run as feature-dev:code-reviewer, whose purpose is confidence-based
-  // filtering of low-priority findings — that would suppress exactly what this
-  // reviewer exists to catch. Use a faithful general-purpose reviewer for it;
-  // the judgment-based dimensions keep the bug-hunting reviewer.
-  const agentType = d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer'
+  // Each dimension runs as its registered agent type from .claude/agents/.
+  // The ocr-rules-reviewer type enforces the full rulebook without a
+  // confidence filter, so no dimension needs a general-purpose fallback.
+  const agentType = d.agentType
   // nullOnCrash: this path treats null as "reviewer produced nothing" and
   // retries exactly once, which is the bounded script-level retry the build
   // loop cannot have. But a null that came from a THROWN stall must NOT be
@@ -653,7 +651,7 @@ if (postSnap.diff && postSnap.diff.trim()) {
             'The changes below were committed AFTER the main review pass (Phase 7b/7c fixes and any late edits) and have NEVER been reviewed. Review ONLY this diff. Report findings with severity. DO NOT fix anything.\n\n' +
             '=== new commits ===\n' + postSnap.newCommits + '\n\n=== diff ===\n' + postSnap.diff,
         ),
-        { label: `re-review:${d.key}`, phase: 'Review', agentType: d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer', schema: FINDINGS },
+        { label: `re-review:${d.key}`, phase: 'Review', agentType: d.agentType, schema: FINDINGS },
         { nullOnCrash: true },
       ),
     ),

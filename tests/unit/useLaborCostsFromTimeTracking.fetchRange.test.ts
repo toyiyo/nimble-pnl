@@ -101,10 +101,17 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
   it('fetches time_punches widened to the ISO week start, with a look-ahead end (+18h)', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
-    // dateFrom lands mid-week (a Monday-start week runs Mar 2 - Mar 8), so
-    // the DB fetch start must widen back to Mar 2, NOT stay at dateFrom.
-    const dateFrom = new Date('2026-03-04T00:00:00.000Z');
-    const dateTo = new Date('2026-03-08T23:59:59.999Z');
+    // A Monday-start week runs Mar 2 - Mar 8, 2026. dateFrom is derived via
+    // startOfWeek (not a hardcoded UTC-midnight string) so it lands on the
+    // local week start under every host TZ the suite runs in — a raw
+    // '2026-03-04T00:00:00.000Z' shifts to a different local calendar day
+    // east or west of UTC (Pacific/Auckland: PLAT-42, sound-logic re-review).
+    // dateFrom lands mid-week (Wednesday), so the DB fetch start must widen
+    // back to Monday, NOT stay at dateFrom. dateTo is the week's last local
+    // instant (endOfWeek), also TZ-safe.
+    const weekStart = startOfWeek(new Date('2026-03-04T12:00:00.000Z'), { weekStartsOn: WEEK_STARTS_ON });
+    const dateFrom = new Date(weekStart.getTime() + 2 * 24 * 3600 * 1000);
+    const dateTo = endOfWeek(weekStart, { weekStartsOn: WEEK_STARTS_ON });
     const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
     const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
     const expectedFetchStart = weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;

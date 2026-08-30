@@ -21,21 +21,15 @@ const COGS_OPTIONS: {
 }[] = [
   {
     value: 'inventory',
-    label: 'Inventory (real-time)',
+    label: 'Inventory (consumption)',
     description:
-      'Uses recipe consumption data for real-time food cost tracking',
+      'Computes COGS from inventory usage: the cost of ingredients that your recipes consume.',
   },
   {
     value: 'financials',
-    label: 'Financials (bank transactions & expenses)',
+    label: 'Financials (purchases)',
     description:
-      'Uses transactions categorized as COGS for accounting accuracy',
-  },
-  {
-    value: 'combined',
-    label: 'Combined',
-    description:
-      'Sums both sources. May include overlap if purchases also flow through inventory.',
+      'Computes COGS from purchases: bank transactions, splits, and pending outflows in COGS categories.',
   },
 ];
 
@@ -76,7 +70,6 @@ export function COGSPreferenceSettings({
           <Skeleton className="h-4 w-72 mt-2" />
         </CardHeader>
         <CardContent className="space-y-4">
-          <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
         </CardContent>

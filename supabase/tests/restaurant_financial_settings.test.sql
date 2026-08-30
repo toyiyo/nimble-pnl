@@ -8,7 +8,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(16);
+SELECT plan(17);
 
 -- ============================================================================
 -- TEST CATEGORY 1: Table and Column Structure (Tests 1-6)
@@ -33,7 +33,7 @@ SELECT has_column('public', 'restaurant_financial_settings', 'created_at', 'shou
 SELECT has_column('public', 'restaurant_financial_settings', 'updated_at', 'should have updated_at column');
 
 -- ============================================================================
--- TEST CATEGORY 2: Default Value, CHECK, and UNIQUE Constraints (Tests 7-9)
+-- TEST CATEGORY 2: Default Value, CHECK, and UNIQUE Constraints (Tests 7-10)
 -- ============================================================================
 
 -- Setup: Disable RLS for direct constraint testing
@@ -69,7 +69,16 @@ SELECT throws_ok(
   'CHECK constraint should reject invalid cogs_calculation_method values'
 );
 
--- Test 9: UNIQUE constraint on restaurant_id prevents duplicates
+-- Test 9: CHECK constraint rejects the removed 'combined' value
+SELECT throws_ok(
+  $$INSERT INTO restaurant_financial_settings (restaurant_id, cogs_calculation_method)
+    VALUES ('f0000000-0000-0000-0000-000000000003', 'combined')$$,
+  '23514',
+  NULL,
+  'CHECK constraint should reject the removed combined value'
+);
+
+-- Test 10: UNIQUE constraint on restaurant_id prevents duplicates
 SELECT throws_ok(
   $$INSERT INTO restaurant_financial_settings (restaurant_id)
     VALUES ('f0000000-0000-0000-0000-000000000001')$$,
@@ -79,7 +88,7 @@ SELECT throws_ok(
 );
 
 -- ============================================================================
--- TEST CATEGORY 3: RLS Policies (Tests 10-15)
+-- TEST CATEGORY 3: RLS Policies (Tests 11-17)
 -- ============================================================================
 
 -- Create test auth users (as postgres)
@@ -110,7 +119,7 @@ ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_restaurants ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
--- Test 10: Restaurant member (owner) CAN SELECT their own settings
+-- Test 11: Restaurant member (owner) CAN SELECT their own settings
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -124,7 +133,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 11: Restaurant member (staff) CAN SELECT their restaurant settings
+-- Test 12: Restaurant member (staff) CAN SELECT their restaurant settings
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -138,7 +147,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 12: Non-member CANNOT SELECT any restaurant settings
+-- Test 13: Non-member CANNOT SELECT any restaurant settings
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -151,7 +160,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 13: Owner CAN INSERT settings for their restaurant
+-- Test 14: Owner CAN INSERT settings for their restaurant
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -159,25 +168,25 @@ SET LOCAL "request.jwt.claims" TO '{"sub": "f0000000-0000-0000-0000-000000000010
 
 SELECT lives_ok(
   $$INSERT INTO restaurant_financial_settings (restaurant_id, cogs_calculation_method)
-    VALUES ('f0000000-0000-0000-0000-000000000002', 'combined')$$,
+    VALUES ('f0000000-0000-0000-0000-000000000002', 'financials')$$,
   'Owner should be able to INSERT financial settings for their restaurant'
 );
 
 -- ============================================================================
--- Test 14: Owner CAN UPDATE settings for their restaurant
+-- Test 15: Owner CAN UPDATE settings for their restaurant
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
 SET LOCAL "request.jwt.claims" TO '{"sub": "f0000000-0000-0000-0000-000000000010", "role": "authenticated"}';
 
 SELECT lives_ok(
-  $$UPDATE restaurant_financial_settings SET cogs_calculation_method = 'combined'
+  $$UPDATE restaurant_financial_settings SET cogs_calculation_method = 'financials'
     WHERE restaurant_id = 'f0000000-0000-0000-0000-000000000001'$$,
   'Owner should be able to UPDATE financial settings for their restaurant'
 );
 
 -- ============================================================================
--- Test 15: Staff CANNOT INSERT settings (RLS blocks non-owner/manager writes)
+-- Test 16: Staff CANNOT INSERT settings (RLS blocks non-owner/manager writes)
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
@@ -194,18 +203,18 @@ SELECT throws_ok(
 );
 
 -- ============================================================================
--- Test 16: Staff UPDATE silently affects 0 rows (RLS filters out the row)
+-- Test 17: Staff UPDATE silently affects 0 rows (RLS filters out the row)
 -- ============================================================================
 
 SET LOCAL role TO authenticated;
 SET LOCAL "request.jwt.claims" TO '{"sub": "f0000000-0000-0000-0000-000000000020", "role": "authenticated"}';
 
 -- Staff can SELECT but not UPDATE — the ALL policy hides rows from UPDATE
--- so the UPDATE silently affects 0 rows (value stays 'inventory', not 'financials')
-UPDATE restaurant_financial_settings SET cogs_calculation_method = 'financials'
+-- so the UPDATE silently affects 0 rows (value stays 'financials', not 'inventory')
+UPDATE restaurant_financial_settings SET cogs_calculation_method = 'inventory'
   WHERE restaurant_id = 'f0000000-0000-0000-0000-000000000001';
 
--- Verify the value was NOT changed (still 'inventory' or whatever owner set it to)
+-- Verify the value was NOT changed (still 'financials', the value the owner set)
 -- Switch to owner to read the actual value
 SET LOCAL role TO authenticated;
 SET LOCAL "request.jwt.claims" TO '{"sub": "f0000000-0000-0000-0000-000000000010", "role": "authenticated"}';
@@ -213,7 +222,7 @@ SET LOCAL "request.jwt.claims" TO '{"sub": "f0000000-0000-0000-0000-000000000010
 SELECT is(
   (SELECT cogs_calculation_method FROM restaurant_financial_settings
    WHERE restaurant_id = 'f0000000-0000-0000-0000-000000000001'),
-  'combined',
+  'financials',
   'Staff should NOT be able to UPDATE financial settings (value unchanged from owner update)'
 );
 

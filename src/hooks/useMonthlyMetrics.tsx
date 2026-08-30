@@ -14,7 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange, weekAlignedFetchStart, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { fetchFinancialCOGSRows, COGS_MAX_PAGES } from '@/services/cogsFetch';
-import { fetchTipSplitRows, sumTipsOwedByEmployee } from '@/services/tipsFetch';
+import { fetchTipSplitRows, fetchTipPayoutRows, netTipsOwedByEmployee } from '@/services/tipsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { isCompensationHidden } from '@/lib/employeeMaskedFields';
@@ -414,6 +414,15 @@ export function useMonthlyMetrics(
         toStr
       );
 
+      // Tip payouts within the same window. Payouts reduce tips owed (same
+      // netting as Payroll — see netTipsOwedByEmployee).
+      const tipPayoutsPromise = fetchTipPayoutRows(
+        supabase,
+        restaurantId,
+        fromStr,
+        toStr
+      );
+
       const [
         { rows: foodCostsData, capped: inventoryCapped },
         financialCOGSRows,
@@ -423,6 +432,7 @@ export function useMonthlyMetrics(
         { data: employeesData, error: employeesError },
         { data: manualPaymentsData, error: manualPaymentsError },
         { rows: tipSplitsData, capped: tipsCapped },
+        { rows: tipPayoutsData, capped: tipPayoutsCapped },
       ] = await Promise.all([
         inventoryCOGSPromise,
         financialCOGSPromise,
@@ -432,6 +442,7 @@ export function useMonthlyMetrics(
         employeesPromise,
         manualPaymentsPromise,
         tipSplitsPromise,
+        tipPayoutsPromise,
       ]);
 
       // Warnings keep the same order as the serial version so the warning
@@ -487,6 +498,12 @@ export function useMonthlyMetrics(
         tipsCapped,
         'The tip rows hit the fetch limit. The labor cost figure is incomplete.',
         'tips fetch hit the page limit; the labor cost figure is incomplete.'
+      );
+
+      pushCapWarning(
+        tipPayoutsCapped,
+        'The tip payout rows hit the fetch limit. The labor cost figure is incomplete.',
+        'tip payouts fetch hit the page limit; the labor cost figure is incomplete.'
       );
 
       // Convert time punches to the expected format: cast punch_type to the union
@@ -555,12 +572,17 @@ export function useMonthlyMetrics(
         const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
         if (clampedStart > clampedEnd) continue;
 
-        // Build per-employee tipsOwed for *this* month from tipSplitsData.
+        // Build per-employee tipsOwed for *this* month from tipSplitsData,
+        // net of the month's payouts (same netting rule as Payroll).
         const monthTipRows = tipSplitsData.filter((row) => {
           const splitDate = new Date(row.tip_splits.split_date + 'T12:00:00');
           return splitDate >= clampedStart && splitDate <= clampedEnd;
         });
-        const tipsOwedByEmployee = sumTipsOwedByEmployee(monthTipRows);
+        const monthPayoutRows = tipPayoutsData.filter((row) => {
+          const payoutDate = new Date(row.payout_date + 'T12:00:00');
+          return payoutDate >= clampedStart && payoutDate <= clampedEnd;
+        });
+        const tipsOwedByEmployee = netTipsOwedByEmployee(monthTipRows, monthPayoutRows);
 
         // OT-D labor for this month (ISO-week banding + tipsOwed).
         const { actualLaborCents } = calculateActualLaborCostForMonth({

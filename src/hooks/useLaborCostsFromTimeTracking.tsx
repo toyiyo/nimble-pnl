@@ -6,7 +6,7 @@ import { calculateActualLaborCost, calculateActualLaborCostForRange } from '@/se
 import { lookaheadPunchFetchRange, weekAlignedFetchStart, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
-import { fetchTipSplitRows, sumTipsOwedByEmployee } from '@/services/tipsFetch';
+import { fetchTipSplitRows, fetchTipPayoutRows, netTipsOwedByEmployee } from '@/services/tipsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 
@@ -107,13 +107,14 @@ export function useLaborCostsFromTimeTracking(
       const otFetchStart = weekAlignedFetchStart(dateFrom, fetchStart);
       const otFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
 
-      // The three fetches below are independent. Run them together so the
+      // The four fetches below are independent. Run them together so the
       // wait is the slowest fetch, not the sum. This hook backs the
       // dashboard pills and reruns on every window refocus.
       const [
         { rows: punches, capped: punchesCapped },
         { data: manualPaymentsData, error: manualPaymentsError },
         { rows: tipRows, capped: tipsCapped },
+        { rows: tipPayoutRows, capped: tipPayoutsCapped },
       ] = await Promise.all([
         fetchAllRows<DBTimePunch>((from, to) =>
           supabase
@@ -142,11 +143,19 @@ export function useLaborCostsFromTimeTracking(
           toDateOnlyString(dateFrom),
           toDateOnlyString(dateTo)
         ),
+        // Payouts in the same window reduce tips owed (same netting as
+        // Payroll — see netTipsOwedByEmployee).
+        fetchTipPayoutRows(
+          supabase,
+          restaurantId,
+          toDateOnlyString(dateFrom),
+          toDateOnlyString(dateTo)
+        ),
       ]);
 
       if (manualPaymentsError) throw manualPaymentsError;
 
-      const tipsOwedByEmployee = sumTipsOwedByEmployee(tipRows);
+      const tipsOwedByEmployee = netTipsOwedByEmployee(tipRows, tipPayoutRows);
 
       // 3. Convert database punches to TimePunch type
       const typedPunches: TimePunch[] = (punches || []).map((punch: DBTimePunch) => ({
@@ -248,7 +257,7 @@ export function useLaborCostsFromTimeTracking(
 
       const totalCost = actualLaborCents / 100 + perJobDollars;
 
-      return { dailyCosts, totalCost, capped: punchesCapped || tipsCapped };
+      return { dailyCosts, totalCost, capped: punchesCapped || tipsCapped || tipPayoutsCapped };
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds

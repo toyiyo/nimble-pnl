@@ -1,6 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const RESTAURANT = 'rest-1';
@@ -64,9 +64,14 @@ function makeRangeChain(rows: unknown[]): any {
   return chain;
 }
 
+// Per-test payout fixture. Payouts reduce tips owed (netting, floored at
+// zero per employee) — the default is none so the base case stays $5 owed.
+const payoutRows: unknown[] = [];
+
 const fromMock = vi.fn((table: string) => {
   if (table === 'time_punches') return makeRangeChain(punches);
   if (table === 'tip_split_items') return makeRangeChain(tipRows);
+  if (table === 'tip_payouts') return makeRangeChain(payoutRows);
   return makeRangeChain([]);
 });
 
@@ -84,6 +89,10 @@ const createWrapper = () => {
 };
 
 describe('useLaborCostsFromTimeTracking payroll total with tips', () => {
+  beforeEach(() => {
+    payoutRows.length = 0;
+  });
+
   it('adds tips owed to the total but keeps dailyCosts straight-time', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
@@ -106,5 +115,49 @@ describe('useLaborCostsFromTimeTracking payroll total with tips', () => {
     // Payroll total: $80.00 wages + $5.00 tips owed = $85.00.
     expect(result.current.totalCost).toBeCloseTo(85, 2);
     expect(result.current.capped).toBe(false);
+  });
+
+  it('subtracts tip payouts in the window from tips owed', async () => {
+    // $2.00 already paid out to e1 → tips owed nets to $3.00.
+    payoutRows.push({ amount: 200, employee_id: 'e1', payout_date: '2026-07-06' });
+
+    const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
+
+    const { result } = renderHook(
+      () =>
+        useLaborCostsFromTimeTracking(
+          RESTAURANT,
+          new Date('2026-07-06T00:00:00.000Z'),
+          new Date('2026-07-06T23:59:59.999Z'),
+        ),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Payroll total: $80.00 wages + ($5.00 - $2.00) tips owed = $83.00.
+    expect(result.current.totalCost).toBeCloseTo(83, 2);
+  });
+
+  it('floors tips owed at zero when payouts exceed the splits', async () => {
+    // $9.00 paid out against $5.00 of splits → tips owed floors at $0.00.
+    payoutRows.push({ amount: 900, employee_id: 'e1', payout_date: '2026-07-06' });
+
+    const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
+
+    const { result } = renderHook(
+      () =>
+        useLaborCostsFromTimeTracking(
+          RESTAURANT,
+          new Date('2026-07-06T00:00:00.000Z'),
+          new Date('2026-07-06T23:59:59.999Z'),
+        ),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Wages only: the netting never turns tips owed negative.
+    expect(result.current.totalCost).toBeCloseTo(80, 2);
   });
 });

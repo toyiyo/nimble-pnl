@@ -114,6 +114,9 @@ describe('useLaborCostsFromTimeTracking payroll total with tips', () => {
 
     // Payroll total: $80.00 wages + $5.00 tips owed = $85.00.
     expect(result.current.totalCost).toBeCloseTo(85, 2);
+    // wageCost excludes tips: it is the basis input, so a period with only
+    // tips owed must not read as "has accrued labor".
+    expect(result.current.wageCost).toBeCloseTo(80, 2);
     expect(result.current.capped).toBe(false);
   });
 

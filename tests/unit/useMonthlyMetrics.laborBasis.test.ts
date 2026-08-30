@@ -121,11 +121,17 @@ function bankLaborRow(transaction_date: string, amountDollars: number): any {
   };
 }
 
-function mockSupabaseClient(opts: { timePunches: unknown[]; employees: unknown[]; bankLabor: unknown[] }) {
+function mockSupabaseClient(opts: {
+  timePunches: unknown[];
+  employees: unknown[];
+  bankLabor: unknown[];
+  tipSplits?: unknown[];
+}) {
   const fromMock = vi.fn((table: string) => {
     if (table === 'time_punches') return makeTimePunchesChain(opts.timePunches);
     if (table === 'employees_secure') return makeChainable(opts.employees);
     if (table === 'bank_transactions') return makeChainable(opts.bankLabor);
+    if (table === 'tip_split_items') return makeChainable(opts.tipSplits ?? []);
     return makeChainable([]);
   });
   const rpcMock = vi.fn(() => Promise.resolve({ data: [], error: null }));
@@ -206,6 +212,43 @@ describe('useMonthlyMetrics labor_cost emission (real renderHook coverage)', () 
     expect(july!.pending_labor_cost).toBe(0);
     expect(july!.actual_labor_cost).toBeCloseTo(45, 5);
     expect(july!.labor_cost).toBeCloseTo(july!.actual_labor_cost, 5);
+    expect(july!.labor_cost).toBeCloseTo(45, 5);
+  });
+
+  it('keeps the paid basis when a month has tips owed but no punch labor', async () => {
+    mockSupabaseClient({
+      timePunches: [], // no wage labor this month
+      employees: [employee],
+      bankLabor: [bankLaborRow('2026-07-20', 45)], // $45 paid via bank
+      // $5.00 of tips owed. Tips alone must NOT flip the month to the
+      // accrued basis — that would hide the $45 of paid labor behind $5.
+      tipSplits: [
+        {
+          amount: 500,
+          employee_id: EMPLOYEE_ID,
+          tip_splits: { restaurant_id: RESTAURANT, split_date: '2026-07-10' },
+        },
+      ],
+    });
+
+    const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
+
+    const { result } = renderHook(
+      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+
+    const july = result.current.data?.find((m) => m.period === '2026-07');
+    expect(july).toBeDefined();
+
+    // Tips owed still show in the accrued subtotal...
+    expect(july!.pending_labor_cost).toBeCloseTo(5, 5);
+    expect(july!.actual_labor_cost).toBeCloseTo(45, 5);
+    // ...but the emitted labor_cost stays on the paid basis: the basis
+    // decision uses wages (+ per-job payments) only.
     expect(july!.labor_cost).toBeCloseTo(45, 5);
   });
 });

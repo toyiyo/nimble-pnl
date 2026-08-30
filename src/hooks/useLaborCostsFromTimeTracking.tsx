@@ -22,6 +22,10 @@ export interface LaborCostData {
 export interface LaborCostsFromTimeTrackingResult {
   dailyCosts: LaborCostData[];
   totalCost: number;
+  /** Wages + per-job payments only, tips owed excluded. The labor-basis
+   * decision reads this — a period with only tips owed must not count as
+   * "has accrued labor" and hide paid (bank) labor. */
+  wageCost: number;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -75,9 +79,9 @@ export function useLaborCostsFromTimeTracking(
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['labor-costs-from-time-tracking', restaurantId, toDateOnlyString(dateFrom), toDateOnlyString(dateTo), throughNow, timezone],
-    queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; capped: boolean }> => {
+    queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; wageCost: number; capped: boolean }> => {
       if (!restaurantId) {
-        return { dailyCosts: [], totalCost: 0, capped: false };
+        return { dailyCosts: [], totalCost: 0, wageCost: 0, capped: false };
       }
 
       // 1. Fetch time punches for the period.
@@ -241,7 +245,7 @@ export function useLaborCostsFromTimeTracking(
       const rangeEnd = new Date(dateTo);
       rangeEnd.setHours(23, 59, 59, 999);
 
-      const { actualLaborCents } = calculateActualLaborCostForRange({
+      const { wagesCents, actualLaborCents } = calculateActualLaborCostForRange({
         employees,
         timePunches: punchesForCost,
         tipsOwedByEmployee,
@@ -256,8 +260,9 @@ export function useLaborCostsFromTimeTracking(
       );
 
       const totalCost = actualLaborCents / 100 + perJobDollars;
+      const wageCost = wagesCents / 100 + perJobDollars;
 
-      return { dailyCosts, totalCost, capped: punchesCapped || tipsCapped || tipPayoutsCapped };
+      return { dailyCosts, totalCost, wageCost, capped: punchesCapped || tipsCapped || tipPayoutsCapped };
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds
@@ -267,6 +272,7 @@ export function useLaborCostsFromTimeTracking(
   return {
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
+    wageCost: data?.wageCost || 0,
     isLoading,
     error,
     refetch: () => { refetch(); },

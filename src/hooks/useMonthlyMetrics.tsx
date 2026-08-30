@@ -215,6 +215,9 @@ export function useMonthlyMetrics(
         food_cost: number; // cents
         labor_cost: number; // cents
         pending_labor_cost: number; // cents
+        /** Wages + per-job payments only, tips owed excluded — the
+         * labor-basis input. Tips alone must not flip a month to accrued. */
+        pending_wage_cost: number; // cents
         actual_labor_cost: number; // cents
         has_data: boolean;
         /** True when a masked employee's window overlaps this month. Per-month, not roster-wide — see isEmployedDuringMonth. */
@@ -227,7 +230,7 @@ export function useMonthlyMetrics(
             period: monthKey,
             gross_revenue: 0, total_collected_at_pos: 0, net_revenue: 0,
             discounts: 0, refunds: 0, sales_tax: 0, tips: 0, other_liabilities: 0,
-            food_cost: 0, labor_cost: 0, pending_labor_cost: 0, actual_labor_cost: 0,
+            food_cost: 0, labor_cost: 0, pending_labor_cost: 0, pending_wage_cost: 0, actual_labor_cost: 0,
             has_data: false, labor_cost_hidden: false,
           });
         }
@@ -585,7 +588,7 @@ export function useMonthlyMetrics(
         const tipsOwedByEmployee = netTipsOwedByEmployee(monthTipRows, monthPayoutRows);
 
         // OT-D labor for this month (ISO-week banding + tipsOwed).
-        const { actualLaborCents } = calculateActualLaborCostForMonth({
+        const { wagesCents, actualLaborCents } = calculateActualLaborCostForMonth({
           employees: typedEmployees as any,
           timePunches: typedPunches,
           tipsOwedByEmployee,
@@ -607,6 +610,7 @@ export function useMonthlyMetrics(
 
         const month = ensureMonth(monthKey);
         month.pending_labor_cost += actualLaborCents + monthPerJobCents;
+        month.pending_wage_cost += wagesCents + monthPerJobCents;
         month.labor_cost += actualLaborCents + monthPerJobCents;
 
         // A masked pay column arrives as null from employees_secure, and a
@@ -656,7 +660,9 @@ export function useMonthlyMetrics(
         other_liabilities: Math.round(month.other_liabilities) / 100,
         food_cost: Math.round(month.food_cost) / 100,
         labor_cost:
-          resolveLaborBasis(month.pending_labor_cost) === 'accrued'
+          // The basis reads wages (+ per-job) only: a month with tips owed
+          // but no worked hours stays on the paid basis.
+          resolveLaborBasis(month.pending_wage_cost) === 'accrued'
             ? Math.round(month.pending_labor_cost) / 100
             : Math.round(month.actual_labor_cost) / 100,
         pending_labor_cost: Math.round(month.pending_labor_cost) / 100,

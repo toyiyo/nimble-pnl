@@ -97,9 +97,14 @@ TDD. Each task states: the test first, then the change, then the check.
      `'combined'`. Place it after Test 8. Update `plan(16)` to
      `plan(17)` and renumber comments if needed.
 2. Create
-   `supabase/migrations/<timestamp>_remove_combined_cogs_method.sql`
+   `supabase/migrations/20260830120000_remove_combined_cogs_method.sql`
    with the exact SQL from the design doc (UPDATE rows first, then
    drop and re-add the CHECK constraint).
+   Warning: use this exact timestamp. A parallel PR (pending-outflow
+   auto-link) claims 20260830100000, 20260830100100, and
+   20260830100200. The test
+   `tests/unit/migrationVersionUniqueness.test.ts` fails on a
+   duplicate prefix.
 3. Run `npm run db:reset`, then `npm run test:db`. All pgTAP tests must
    pass.
 

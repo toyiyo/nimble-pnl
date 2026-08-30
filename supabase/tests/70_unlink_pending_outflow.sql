@@ -7,7 +7,7 @@
 -- amount so auto-link candidate pairs never tie against each other.
 
 BEGIN;
-SELECT plan(32);
+SELECT plan(33);
 
 SET LOCAL role TO postgres;
 
@@ -233,6 +233,37 @@ SELECT is(
 SELECT is(
   (unlink_pending_outflow('00000000-0000-0000-0000-000000070521'::uuid)->>'status'),
   'stale_90', 'stale recompute: 91 days old becomes stale_90');
+
+-- Scenario F: linked_bank_transaction_id points at a row in another
+-- restaurant. This should never happen through normal writes (every write
+-- path scopes both rows to the same restaurant_id), but the RPC still
+-- filters the bank_transactions lookup by restaurant_id as defense in
+-- depth. Confirm the guard actually rejects a cross-restaurant row instead
+-- of trusting the outflow's stored id alone.
+SET LOCAL role TO postgres;
+INSERT INTO restaurants (id, name, timezone) VALUES
+  ('00000000-0000-0000-0000-000000070600'::uuid, 'Unlink Other Restaurant', 'America/Chicago')
+ON CONFLICT (id) DO UPDATE SET timezone = 'America/Chicago';
+
+INSERT INTO connected_banks (id, restaurant_id, stripe_financial_account_id, institution_name, status) VALUES
+  ('00000000-0000-0000-0000-000000070610'::uuid, '00000000-0000-0000-0000-000000070600'::uuid, 'fa_test_unlink_other_001', 'Other Bank', 'connected')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000070602'::uuid, '00000000-0000-0000-0000-000000070600'::uuid,
+   '00000000-0000-0000-0000-000000070610'::uuid, 'txn-unlink-other-restaurant',
+   now(), -601.00, 'OTHER RESTAURANT CO', NULL, 'posted', false, false, false, false);
+
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status, linked_bank_transaction_id, cleared_at, auto_linked_at) VALUES
+  ('00000000-0000-0000-0000-000000070601'::uuid, '00000000-0000-0000-0000-000000070000'::uuid,
+   'Cross Restaurant Co', '00000000-0000-0000-0000-000000070002'::uuid, 'ach', 601.00, CURRENT_DATE - 1, 'cleared',
+   '00000000-0000-0000-0000-000000070602'::uuid, now(), now());
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000070090","role":"authenticated"}', true);
+SELECT throws_ok(
+  $$SELECT unlink_pending_outflow('00000000-0000-0000-0000-000000070601'::uuid)$$,
+  'Linked bank transaction not found',
+  'cross-restaurant guard: bank_transactions lookup ignores a row from another restaurant');
 
 -- Grants -------------------------------------------------------------------------
 SET LOCAL role TO postgres;

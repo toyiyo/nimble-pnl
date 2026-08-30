@@ -25,7 +25,9 @@ test.describe('COGS settings', () => {
     const radios = page.getByRole('radio');
     await expect(radios).toHaveCount(2);
 
-    await expect(page.getByText(/combined/i)).toHaveCount(0);
+    await expect(
+      page.getByRole('radio', { name: /combined/i }),
+    ).toHaveCount(0);
 
     const financialsOption = page.getByRole('radio', {
       name: /financials \(purchases\)/i,

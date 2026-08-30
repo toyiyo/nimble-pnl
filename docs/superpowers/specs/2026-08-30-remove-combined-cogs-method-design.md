@@ -2,7 +2,7 @@
 
 Date: 2026-08-30
 Branch: `claude/angry-shirley-1fe1ad`
-Status: Draft for design review
+Status: Reviewed (supabase + frontend design reviewers, 2026-08-30)
 
 ## Problem
 
@@ -98,12 +98,15 @@ single cast point.
 ### 3. `src/hooks/useUnifiedCOGS.tsx`
 
 - Delete the `case 'combined'` block (src/hooks/useUnifiedCOGS.tsx:62-78).
+- Update the top JSDoc comment (src/hooks/useUnifiedCOGS.tsx:16-26). It
+  says the hook delegates to "both (combined)". Remove that clause.
 - Replace the switch with: `financials` selects the financial source;
   every other value selects the inventory source. This keeps a total
   function over the narrowed type.
 - Keep `breakdown` unchanged; it always exposes both sources
-  (src/hooks/useUnifiedCOGS.tsx:84-87) and the settings info box uses it
-  (src/components/settings/COGSPreferenceSettings.tsx:61-65).
+  (src/hooks/useUnifiedCOGS.tsx:84-87) and the settings info box shows
+  both values (src/components/settings/COGSPreferenceSettings.tsx:165,
+  171).
 
 ### 4. `src/hooks/useMonthlyMetrics.tsx`
 
@@ -166,17 +169,27 @@ same name.
 Unit (`tests/unit/`):
 - New `cogsMethod.test.ts`: `normalizeCOGSMethod` maps `'inventory'`,
   `'financials'`, `'combined'`, `null`, `undefined`, and garbage.
-- Update `useUnifiedCOGS.test.ts`: delete the four `combined` tests
-  (tests/unit/useUnifiedCOGS.test.ts:132, 148, 199, 352). Add one test:
-  the hook never adds the two sources.
+- Update `useUnifiedCOGS.test.ts`: delete the three standalone `combined`
+  tests (tests/unit/useUnifiedCOGS.test.ts:132, 148, 352) as whole `it()`
+  blocks. The block at line 199 is not a standalone test. It is the third
+  assertion group inside the shared test
+  `it('breakdown always shows both values regardless of method', ...)`
+  (tests/unit/useUnifiedCOGS.test.ts:170-212). Delete only lines 199-211;
+  keep the `inventory` and `financials` assertions. Add one test: the
+  hook never adds the two sources.
 - Update `useFinancialSettings.test.ts`: replace `combined` fixtures
   (tests/unit/useFinancialSettings.test.ts:118, 130, 135, 232) with
   `financials`. Add one test: a DB row with `combined` normalizes to
   `inventory`.
 
 pgTAP (`supabase/tests/restaurant_financial_settings.test.sql`):
-- Replace the `combined` inserts and update
-  (lines 162, 174, 216) with `financials`.
+- Replace the `combined` values with two DISTINCT valid values. Test 16
+  is an RLS regression test: the owner sets one value (line 174), the
+  staff attempts a different value (line 205), and the assertion at
+  line 216 checks the owner value survived. Identical values would make
+  the assertion pass even when RLS fails. Use: owner sets `financials`
+  at line 174, staff attempts `inventory` at line 205, assertion expects
+  `financials` at line 216. The insert at line 162 becomes `financials`.
 - Add one test: the CHECK constraint now rejects `combined`.
 - Adjust `plan(N)`.
 
@@ -196,11 +209,29 @@ src/hooks/useCostsFromSource.tsx:58. No change needed there.
 `combineCosts.ts` deduplicates labor, not COGS
 (src/lib/combineCosts.ts:53-94). No change needed.
 
+`usePOSTips.tsx` contains an unrelated `'combined'` literal. It is a tip
+source union member (src/hooks/usePOSTips.tsx:10), not a COGS method.
+No change needed.
+
 ## Decided trade-offs
 
 - The client fallback (`inventory`) and the migration rule (data-driven)
   can disagree for a restaurant without usage data during the deploy
   window. The window is short and the migration is the durable fix.
 - No E2E for the migrated-value path: pgTAP cannot insert `combined`
-  after the constraint tightens, so the UPDATE step is verified by
-  review and by the constraint test.
+  after the constraint tightens, so the review and the constraint test
+  cover the UPDATE step.
+- The new CHECK constraint validates immediately, without `NOT VALID` +
+  `VALIDATE CONSTRAINT`. This is acceptable here because the table holds
+  one row per restaurant. Do not copy this pattern to a large table.
+
+## Reviewer concerns declined (out of scope)
+
+- `COGSPreferenceSettings.tsx` groups its radio options with `<Label>` +
+  `<p>`, not `FieldSet` + `FieldLegend`. Pre-existing pattern. This
+  change only deletes one option and edits copy. Keep the structure.
+- `useFinancialSettings` exposes no `error` field; failures surface via
+  toast only. Pre-existing gap, untouched by this change.
+- No component-level unit test for `COGSPreferenceSettings`. UI
+  component tests are optional per CLAUDE.md. The new E2E test covers
+  the two-option render and the persisted selection.

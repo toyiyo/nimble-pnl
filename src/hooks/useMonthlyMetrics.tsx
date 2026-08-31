@@ -16,6 +16,8 @@ import { fetchTipSplitRows, fetchTipPayoutRows, netTipsOwedByEmployee } from '@/
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { isCompensationHidden } from '@/lib/employeeMaskedFields';
+import type { UsageDayRow } from '@/hooks/useInventoryUsageByDay';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -309,9 +311,9 @@ export function useMonthlyMetrics(
               })
               .then(({ data, error }) => {
                 if (error) throw error;
-                return (data ?? []) as { day: string; food_cost: number }[];
+                return (data ?? []) as UsageDayRow[];
               })
-          : Promise.resolve([] as { day: string; food_cost: number }[]);
+          : Promise.resolve([] as UsageDayRow[]);
 
       // Financial COGS rows, when the method uses financial data.
       const financialCOGSPromise =
@@ -684,12 +686,7 @@ export function useMonthlyMetrics(
     enabled: !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
-    // Keep the previous range's data on screen during a refetch, but never
-    // across a restaurant switch (queryKey[1] is the restaurant id).
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery && previousQuery.queryKey[1] !== restaurantId
-        ? undefined
-        : previousData,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {

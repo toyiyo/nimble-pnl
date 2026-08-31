@@ -9,6 +9,7 @@ import { fetchAllRows, asPagedRows } from '@/utils/fetchAllRows';
 import { fetchTipSplitRows, fetchTipPayoutRows, netTipsOwedByEmployee } from '@/services/tipsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface LaborCostData {
   date: string;
@@ -283,12 +284,7 @@ export function useLaborCostsFromTimeTracking(
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
-    // Keep the previous period's data on screen during a refetch, but never
-    // across a restaurant switch (queryKey[1] is the restaurant id).
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery && previousQuery.queryKey[1] !== restaurantId
-        ? undefined
-        : previousData,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { aggregateFinancialCOGSByDate } from '@/services/cogsCalculations';
 import { fetchFinancialCOGSRows } from '@/services/cogsFetch';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface FinancialCOGSData {
   date: string;
@@ -59,12 +60,7 @@ export function useCOGSFromFinancials(
     staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    // Keep the previous period's data on screen during a refetch, but never
-    // across a restaurant switch (queryKey[1] is the restaurant id).
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery && previousQuery.queryKey[1] !== restaurantId
-        ? undefined
-        : previousData,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {

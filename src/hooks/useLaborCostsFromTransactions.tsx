@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO } from 'date-fns';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface TransactionLaborCostData {
   date: string;
@@ -136,12 +137,7 @@ export function useLaborCostsFromTransactions(
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    // Keep the previous period's data on screen during a refetch, but never
-    // across a restaurant switch (queryKey[1] is the restaurant id).
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery && previousQuery.queryKey[1] !== restaurantId
-        ? undefined
-        : previousData,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {

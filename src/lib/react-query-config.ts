@@ -1,4 +1,4 @@
-import { QueryClientConfig } from "@tanstack/react-query";
+import { Query, QueryClientConfig } from "@tanstack/react-query";
 
 export const queryClientConfig: QueryClientConfig = {
   defaultOptions: {
@@ -35,3 +35,13 @@ export const queryClientConfig: QueryClientConfig = {
     },
   },
 };
+
+/**
+ * A `placeholderData` function for React Query. Keeps the previous period's
+ * data on screen during a refetch, but never across a restaurant switch.
+ * Assumes the query key's second element (`queryKey[1]`) is the restaurant id.
+ */
+export function keepDataUnlessRestaurantChanged<TData>(restaurantId: string | null) {
+  return (previousData: TData | undefined, previousQuery: Query | undefined): TData | undefined =>
+    previousQuery && previousQuery.queryKey[1] !== restaurantId ? undefined : previousData;
+}

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toDateOnlyString } from '@/lib/dateOnly';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface UsageDayRow {
   day: string;
@@ -50,11 +51,6 @@ export function useInventoryUsageByDay(
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    // Keep the previous period's data on screen during a refetch, but never
-    // across a restaurant switch (queryKey[1] is the restaurant id).
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery && previousQuery.queryKey[1] !== restaurantId
-        ? undefined
-        : previousData,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 }

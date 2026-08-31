@@ -3123,3 +3123,37 @@
 - **Mistake:** A pass/fail grep for `^ok` counted 0 lines on a green suite. psql prints the TAP lines inside a result table with leading spaces and a column header.
 - **Correction:** Run psql with `-qAt` (quiet, unaligned, tuples-only). The TAP lines then start at column one and the grep counts them.
 - **Rule:** Use `psql -qAt` for any script that parses query output.
+
+## Category: Testing / Playwright E2E
+
+### [2026-08-31] A perf speedup breaks E2E specs that read values immediately after a period switch
+- **Mistake:** PR #786 made the dashboard keep the previous period's numbers on screen, dimmed, while the "This Month" queries run (`placeholderData` in the period hooks). Two specs from #779 then failed deterministically. `labor-cost-alignment` read the labor card right after the period click and got the Today value (230 = 100 salary + 50 contractor + 80 punch). `dashboard-basis-labels` hit a strict-mode violation: the fast RPC path rendered `MonthlyBreakdownTable` before the read, so two elements carried the name "Monthly Performance". On slow main, a full-section skeleton hid both problems — the locators auto-waited.
+- **Correction:** Kept the assertions identical. Wrapped the two value reads in `expect.poll(...).toBeCloseTo(payrollRounded, 0)`. Scoped the heading locator with `{ level: 2 }`. Filed the duplicate-heading UI debt as a separate chip.
+- **Rule:** After a perf change, treat new E2E failures as timing assumptions first, not as product regressions. Confirm with arithmetic: match the received value to a seeded quantity (230 was exactly the Today labor). Use `expect.poll` for any value read after a period or filter switch when the UI keeps stale data on screen. A skeleton that disappears can also expose duplicate accessible names — scope locators with `level`/`exact` instead of `.first()` when the target is structural.
+
+---
+
+## Category: CI / Workflows
+
+### [2026-08-31] The pr-comment-response gate is stale at push time — reply to every finding BEFORE the push that must go green
+- **Mistake:** Every push to PR #786 re-ran `pr-comment-response`, which failed whenever a review comment lacked a verdict reply at that moment. Fix commits pushed before the triage replies guaranteed one extra red round.
+- **Correction:** Reordered the loop: fix → commit → reply to each comment with the SHA (`node dev-tools/pr-triage.js reply --commit <sha>`) → push. The push then triggers the gate with every comment already answered. The audit reports "cites an unknown commit" for an unpushed SHA — that reason clears on push; re-run `audit` after the push to confirm 0 unanswered.
+- **Rule:** Post the triage replies between the local commit and the push. A reply may cite a not-yet-pushed SHA; push immediately after so the citation resolves. Never push a fix and plan to reply "later" — that push burns a full CI round on a known-red gate.
+
+---
+
+## Category: Supabase Migrations
+
+### [2026-08-31] One CREATE INDEX CONCURRENTLY per migration file, and expect version collisions with sibling PRs
+- **Mistake:** A migration held two `CREATE INDEX CONCURRENTLY` statements. The Supabase preview runner refuses a second statement after a CONCURRENTLY statement (CONCURRENTLY cannot run inside a transaction). Separately, the migration's timestamp collided with a peer PR's migration; the collision applies silently — no error, wrong order.
+- **Correction:** Split the file: one CONCURRENTLY statement per migration, each with the `-- supabase: no-transaction` header (precedent: 20260830100300). Renamed the versions to free slots (20260830184218/20260830184219) and confirmed with `npm run db:reset`.
+- **Rule:** Give each `CREATE INDEX CONCURRENTLY` its own migration file with the `-- supabase: no-transaction` header. Before the final push, list `supabase/migrations/` on `origin/main` and check your timestamps against freshly merged peer migrations — a collision produces no error.
+
+---
+
+## Category: Tooling / gh CLI
+
+### [2026-08-31] `gh pr checks --watch` dies on TLS flakiness, and a pipe masks the failure
+- **Mistake:** Three watch/poll attempts on PR #786 died with `Post "https://api.github.com/graphql": net/http: TLS handshake timeout`. Piping the output (`gh pr checks | sort | uniq`) made `$?` report the LAST command in the pipe, so the shell printed exit 0 over a dead API call.
+- **Correction:** Replaced the watch with a capped background retry loop: up to 25 attempts, 90s apart, each attempt writes the full check table to a file, exits when no line contains `pending`. The loop treats a `Post "https` line in the output as a failed attempt and retries.
+- **Rule:** Do not trust `$?` after a pipe — grep the captured output for the error string instead. For CI waits on a flaky network, run a capped retry loop in the background (bounded attempts, bounded sleep) and read the result file; a single `--watch` is one TLS hiccup away from silent death. Cap every loop — this machine has no `timeout`/`gtimeout`.

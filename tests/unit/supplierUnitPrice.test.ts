@@ -4,6 +4,7 @@ import {
   compareSupplierUnitPrices,
   parsePackSizeInput,
   isPackSizePairIncomplete,
+  isPackSizeQtyInvalid,
   type SupplierPriceRow,
 } from "@/utils/supplierUnitPrice";
 
@@ -61,6 +62,37 @@ describe("isPackSizePairIncomplete", () => {
   it("treats whitespace-only input as blank", () => {
     expect(isPackSizePairIncomplete("  ", "  ")).toBe(false);
     expect(isPackSizePairIncomplete("30", "  ")).toBe(true);
+  });
+});
+
+describe("isPackSizeQtyInvalid", () => {
+  it("returns false for a blank input", () => {
+    expect(isPackSizeQtyInvalid("")).toBe(false);
+  });
+
+  it("returns false for whitespace-only input", () => {
+    expect(isPackSizeQtyInvalid("  ")).toBe(false);
+  });
+
+  it("returns false for a positive finite number", () => {
+    expect(isPackSizeQtyInvalid("30")).toBe(false);
+    expect(isPackSizeQtyInvalid("0.5")).toBe(false);
+  });
+
+  it("returns true for zero", () => {
+    expect(isPackSizeQtyInvalid("0")).toBe(true);
+  });
+
+  it("returns true for a negative number", () => {
+    expect(isPackSizeQtyInvalid("-5")).toBe(true);
+  });
+
+  it("returns true for non-numeric text", () => {
+    expect(isPackSizeQtyInvalid("abc")).toBe(true);
+  });
+
+  it("returns true for Infinity", () => {
+    expect(isPackSizeQtyInvalid("Infinity")).toBe(true);
   });
 });
 

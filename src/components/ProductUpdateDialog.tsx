@@ -44,7 +44,12 @@ import { useProductSuppliers, ProductSupplier } from '@/hooks/useProductSupplier
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
-import { compareSupplierUnitPrices, parsePackSizeInput, isPackSizePairIncomplete } from '@/utils/supplierUnitPrice';
+import {
+  compareSupplierUnitPrices,
+  parsePackSizeInput,
+  isPackSizePairIncomplete,
+  isPackSizeQtyInvalid,
+} from '@/utils/supplierUnitPrice';
 import {
   Table,
   TableBody,
@@ -484,6 +489,15 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
       toast({
         title: 'Incomplete pack size',
         description: 'Enter both the pack size quantity and unit, or leave both blank.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (isPackSizeQtyInvalid(priceUpdateDialog.pack_size_qty)) {
+      toast({
+        title: 'Invalid pack size',
+        description: 'Enter a pack size quantity greater than 0.',
         variant: 'destructive',
       });
       return;
@@ -1136,6 +1150,19 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               toast({
                                 title: 'Incomplete pack size',
                                 description: 'Enter both the pack size quantity and unit, or leave both blank.',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
+                            // Block a non-positive or non-finite quantity too — the DB
+                            // CHECK constraint requires pack_size_qty > 0, and on the
+                            // new-product path a rejected insert silently drops the
+                            // whole pending supplier link.
+                            if (isPackSizeQtyInvalid(newSupplier.pack_size_qty)) {
+                              toast({
+                                title: 'Invalid pack size',
+                                description: 'Enter a pack size quantity greater than 0.',
                                 variant: 'destructive',
                               });
                               return;

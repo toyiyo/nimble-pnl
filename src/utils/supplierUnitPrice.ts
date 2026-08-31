@@ -43,6 +43,17 @@ export function isPackSizePairIncomplete(qtyInput: string, unitInput: string): b
   return qtyFilled !== unitFilled;
 }
 
+/**
+ * True when the pack size quantity input is filled but not a positive
+ * finite number. The product_suppliers CHECK constraint rejects a
+ * pack_size_qty that is zero, negative, or non-finite — a caller must
+ * block submission on true, alongside isPackSizePairIncomplete.
+ */
+export function isPackSizeQtyInvalid(qtyInput: string): boolean {
+  if (qtyInput.trim() === "") return false;
+  return !isPositiveFiniteNumber(Number(qtyInput));
+}
+
 /** Per-unit price result for one supplier row, keyed by row id. */
 export interface SupplierUnitPrice {
   /** Price per pack unit, in the row's own unit. Null when it cannot compute. */
@@ -75,6 +86,56 @@ export function computeUnitPrice(
 }
 
 /**
+ * Computes one row's unit price, normalized to the comparison's base unit.
+ *
+ * Normalizes by converting the pack quantity (not the rate) to the base
+ * unit, then dividing price by the converted quantity. Converting the
+ * rate directly would invert the ratio (e.g. $/oz -> $/lb is a
+ * multiplication by 16, not the division convertUnits would apply to
+ * a plain quantity).
+ */
+function computeRowUnitPrice(
+  row: SupplierPriceRow,
+  baseUnit: string | null,
+  productName?: string
+): SupplierUnitPrice {
+  const unitPrice = computeUnitPrice(row.price, row.packSizeQty);
+  const unit = unitPrice !== null ? (row.packSizeUnit as string) : null;
+
+  let normalizedUnitPrice: number | null = null;
+  if (unitPrice !== null && unit !== null && baseUnit !== null) {
+    const convertedQty = convertUnits(row.packSizeQty as number, unit, baseUnit, productName);
+    if (convertedQty !== null && isPositiveFiniteNumber(convertedQty.value)) {
+      const candidate = (row.price as number) / convertedQty.value;
+      normalizedUnitPrice = isPositiveFiniteNumber(candidate) ? candidate : null;
+    }
+  }
+
+  return { unitPrice, unit, normalizedUnitPrice, isCheapest: false };
+}
+
+/** Flags the row with the lowest normalizedUnitPrice as isCheapest, in place. Needs 2+ priced rows. */
+function markCheapestRow(result: Map<string, SupplierUnitPrice>, rows: SupplierPriceRow[]): void {
+  const pricedRows = rows.filter((row) => result.get(row.id)?.normalizedUnitPrice !== null);
+  if (pricedRows.length < 2) return;
+
+  let cheapestId: string | null = null;
+  let cheapestPrice = Infinity;
+  for (const row of pricedRows) {
+    const price = result.get(row.id)!.normalizedUnitPrice as number;
+    if (price < cheapestPrice) {
+      cheapestPrice = price;
+      cheapestId = row.id;
+    }
+  }
+
+  if (cheapestId !== null) {
+    const entry = result.get(cheapestId)!;
+    result.set(cheapestId, { ...entry, isCheapest: true });
+  }
+}
+
+/**
  * Computes a per-unit price for each row and flags the cheapest one, after
  * normalizing every row to a common base unit.
  *
@@ -98,55 +159,10 @@ export function compareSupplierUnitPrices(
   const baseUnit = baseUnitRow?.packSizeUnit ?? null;
 
   for (const row of rows) {
-    const unitPrice = computeUnitPrice(row.price, row.packSizeQty);
-    const unit = unitPrice !== null ? (row.packSizeUnit as string) : null;
-
-    // Normalize by converting the pack quantity (not the rate) to the base
-    // unit, then dividing price by the converted quantity. Converting the
-    // rate directly would invert the ratio (e.g. $/oz -> $/lb is a
-    // multiplication by 16, not the division convertUnits would apply to
-    // a plain quantity).
-    let normalizedUnitPrice: number | null = null;
-    if (unitPrice !== null && unit !== null && baseUnit !== null) {
-      const convertedQty = convertUnits(
-        row.packSizeQty as number,
-        unit,
-        baseUnit,
-        productName
-      );
-      if (convertedQty !== null && isPositiveFiniteNumber(convertedQty.value)) {
-        const candidate = (row.price as number) / convertedQty.value;
-        normalizedUnitPrice = isPositiveFiniteNumber(candidate) ? candidate : null;
-      }
-    }
-
-    result.set(row.id, {
-      unitPrice,
-      unit,
-      normalizedUnitPrice,
-      isCheapest: false,
-    });
+    result.set(row.id, computeRowUnitPrice(row, baseUnit, productName));
   }
 
-  const withNormalizedPrice = rows.filter(
-    (row) => result.get(row.id)?.normalizedUnitPrice !== null
-  );
-
-  if (withNormalizedPrice.length >= 2) {
-    let cheapestId: string | null = null;
-    let cheapestPrice = Infinity;
-    for (const row of withNormalizedPrice) {
-      const price = result.get(row.id)!.normalizedUnitPrice as number;
-      if (price < cheapestPrice) {
-        cheapestPrice = price;
-        cheapestId = row.id;
-      }
-    }
-    if (cheapestId !== null) {
-      const entry = result.get(cheapestId)!;
-      result.set(cheapestId, { ...entry, isCheapest: true });
-    }
-  }
+  markCheapestRow(result, rows);
 
   return result;
 }

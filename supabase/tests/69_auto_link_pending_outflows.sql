@@ -243,7 +243,7 @@ SELECT is((SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-00
 SELECT is((SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069912'::uuid), 'pending', 'split transaction: outflow stays pending');
 SELECT is((SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069913'::uuid), 'pending', 'excluded transaction: outflow stays pending');
 SELECT is((SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069914'::uuid), 'pending', 'reconciled transaction: outflow stays pending');
-SELECT is((SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069915'::uuid), 'pending', 'already-categorized transaction: outflow stays pending');
+SELECT is((SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069915'::uuid), 'pending', 'categorized transaction without journal entry: outflow stays pending');
 SELECT is((SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069916'::uuid), 'pending', 'already-linked transaction: new outflow stays pending');
 
 -- Scenario 10: outflow-side status (cleared / voided) already excludes it --------

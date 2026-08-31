@@ -2,8 +2,43 @@ import { describe, it, expect } from "vitest";
 import {
   computeUnitPrice,
   compareSupplierUnitPrices,
+  parsePackSizeInput,
   type SupplierPriceRow,
 } from "@/utils/supplierUnitPrice";
+
+describe("parsePackSizeInput", () => {
+  it("parses a filled qty and unit", () => {
+    expect(parsePackSizeInput("30", "lb")).toEqual({
+      pack_size_qty: 30,
+      pack_size_unit: "lb",
+    });
+  });
+
+  it("returns null for both fields when both inputs are blank", () => {
+    expect(parsePackSizeInput("", "")).toEqual({
+      pack_size_qty: null,
+      pack_size_unit: null,
+    });
+  });
+
+  it("treats whitespace-only input as blank", () => {
+    expect(parsePackSizeInput("  ", "  ")).toEqual({
+      pack_size_qty: null,
+      pack_size_unit: null,
+    });
+  });
+
+  it("parses each field independently", () => {
+    expect(parsePackSizeInput("30", "")).toEqual({
+      pack_size_qty: 30,
+      pack_size_unit: null,
+    });
+    expect(parsePackSizeInput("", "lb")).toEqual({
+      pack_size_qty: null,
+      pack_size_unit: "lb",
+    });
+  });
+});
 
 describe("computeUnitPrice", () => {
   it("divides price by pack size qty", () => {

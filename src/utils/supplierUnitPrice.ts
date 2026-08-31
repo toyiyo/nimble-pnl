@@ -13,6 +13,24 @@ export interface SupplierPriceRow {
   packSizeUnit: string | null | undefined;
 }
 
+/** pack_size_qty / pack_size_unit values ready to write to product_suppliers. */
+export interface ParsedPackSize {
+  pack_size_qty: number | null;
+  pack_size_unit: string | null;
+}
+
+/**
+ * Parses raw pack size form inputs into the nullable DB shape.
+ * A blank field becomes null (never 0 or '') so the paired CHECK
+ * constraint on product_suppliers accepts an omitted pack size.
+ */
+export function parsePackSizeInput(qtyInput: string, unitInput: string): ParsedPackSize {
+  return {
+    pack_size_qty: qtyInput.trim() === "" ? null : Number(qtyInput),
+    pack_size_unit: unitInput.trim() === "" ? null : unitInput,
+  };
+}
+
 /** Per-unit price result for one supplier row, keyed by row id. */
 export interface SupplierUnitPrice {
   /** Price per pack unit, in the row's own unit. Null when it cannot compute. */

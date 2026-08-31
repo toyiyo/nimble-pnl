@@ -44,7 +44,7 @@ import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
-import { compareSupplierUnitPrices } from '@/utils/supplierUnitPrice';
+import { compareSupplierUnitPrices, parsePackSizeInput } from '@/utils/supplierUnitPrice';
 import {
   Table,
   TableBody,
@@ -110,6 +110,9 @@ const UNITS = [
 
 const PACK_SIZE_UNITS = [...WEIGHT_UNITS, ...VOLUME_UNITS, ...COUNT_UNITS];
 
+const EMPTY_NEW_SUPPLIER = { supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' };
+const CLOSED_PRICE_UPDATE_DIALOG = { open: false, supplier: null as any, price: '', pack_size_qty: '', pack_size_unit: '' };
+
 const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
   open,
   onOpenChange,
@@ -157,13 +160,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
         sku: product.supplier_sku || undefined,
       }
     : null);
-  const [newSupplier, setNewSupplier] = useState({
-    supplier_id: '',
-    cost: 0,
-    supplier_sku: '',
-    pack_size_qty: '',
-    pack_size_unit: '',
-  });
+  const [newSupplier, setNewSupplier] = useState(EMPTY_NEW_SUPPLIER);
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [priceUpdateDialog, setPriceUpdateDialog] = useState<{
@@ -172,13 +169,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
     price: string;
     pack_size_qty: string;
     pack_size_unit: string;
-  }>({
-    open: false,
-    supplier: null,
-    price: '',
-    pack_size_qty: '',
-    pack_size_unit: '',
-  });
+  }>(CLOSED_PRICE_UPDATE_DIALOG);
 
   const form = useForm<UpdateFormData>({
     resolver: zodResolver(updateSchema),
@@ -1012,13 +1003,10 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                             throw new Error('Supplier ID is empty after processing');
                           }
 
-                          // Pack size fields are optional; send null (never 0 or '') to satisfy the paired CHECK.
-                          const packSizeQtyValue = newSupplier.pack_size_qty.trim() === ''
-                            ? null
-                            : Number(newSupplier.pack_size_qty);
-                          const packSizeUnitValue = newSupplier.pack_size_unit.trim() === ''
-                            ? null
-                            : newSupplier.pack_size_unit;
+                          const {
+                            pack_size_qty: packSizeQtyValue,
+                            pack_size_unit: packSizeUnitValue,
+                          } = parsePackSizeInput(newSupplier.pack_size_qty, newSupplier.pack_size_unit);
 
                           // If the product has not been created yet, capture supplier details to apply on save
                           if (!product.id) {
@@ -1040,7 +1028,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               description: 'This supplier will be linked once the product is created.',
                             });
 
-                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' });
+                            setNewSupplier(EMPTY_NEW_SUPPLIER);
                             setIsNewSupplier(false);
                             setShowAddSupplier(false);
                             return;
@@ -1094,7 +1082,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                                 description: 'Successfully added supplier to product',
                               });
 
-                              setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' });
+                              setNewSupplier(EMPTY_NEW_SUPPLIER);
                               setIsNewSupplier(false);
                               setShowAddSupplier(false);
                               fetchSuppliers();
@@ -1126,7 +1114,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                           size="sm"
                           onClick={() => {
                             setShowAddSupplier(false);
-                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' });
+                            setNewSupplier(EMPTY_NEW_SUPPLIER);
                             setIsNewSupplier(false);
                           }}
                         >
@@ -1153,7 +1141,9 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {productSuppliers.map((ps) => (
+                        {productSuppliers.map((ps) => {
+                          const unitPriceInfo = supplierUnitPrices.get(ps.id);
+                          return (
                           <TableRow key={ps.id}>
                             <TableCell className="font-medium">
                               {ps.supplier_name}
@@ -1165,13 +1155,13 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               {ps.last_unit_cost ? `$${ps.last_unit_cost.toFixed(2)}` : '-'}
                             </TableCell>
                             <TableCell className="text-right">
-                              {supplierUnitPrices.get(ps.id)?.unitPrice != null ? (
+                              {unitPriceInfo?.unitPrice != null ? (
                                 <div className="flex items-center justify-end gap-1.5">
                                   <span>
-                                    ${supplierUnitPrices.get(ps.id)!.unitPrice!.toFixed(2)}/
-                                    {supplierUnitPrices.get(ps.id)!.unit}
+                                    ${unitPriceInfo.unitPrice.toFixed(2)}/
+                                    {unitPriceInfo.unit}
                                   </span>
-                                  {supplierUnitPrices.get(ps.id)?.isCheapest && (
+                                  {unitPriceInfo.isCheapest && (
                                     <Badge variant="secondary">Best price</Badge>
                                   )}
                                 </div>
@@ -1253,7 +1243,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               </div>
                             </TableCell>
                           </TableRow>
-                        ))}
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
@@ -1447,7 +1438,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setPriceUpdateDialog({ open: false, supplier: null, price: '', pack_size_qty: '', pack_size_unit: '' })}
+                onClick={() => setPriceUpdateDialog(CLOSED_PRICE_UPDATE_DIALOG)}
               >
                 Cancel
               </Button>
@@ -1480,13 +1471,10 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
 
                     if (rpcError) throw rpcError;
 
-                    // Pack size fields are optional; send null (never 0 or '') to satisfy the paired CHECK.
-                    const packSizeQtyValue = priceUpdateDialog.pack_size_qty.trim() === ''
-                      ? null
-                      : Number(priceUpdateDialog.pack_size_qty);
-                    const packSizeUnitValue = priceUpdateDialog.pack_size_unit.trim() === ''
-                      ? null
-                      : priceUpdateDialog.pack_size_unit;
+                    const {
+                      pack_size_qty: packSizeQtyValue,
+                      pack_size_unit: packSizeUnitValue,
+                    } = parsePackSizeInput(priceUpdateDialog.pack_size_qty, priceUpdateDialog.pack_size_unit);
 
                     const { error: packSizeError } = await supabase
                       .from('product_suppliers')
@@ -1526,7 +1514,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                     });
 
                     fetchSuppliers();
-                    setPriceUpdateDialog({ open: false, supplier: null, price: '', pack_size_qty: '', pack_size_unit: '' });
+                    setPriceUpdateDialog(CLOSED_PRICE_UPDATE_DIALOG);
                   } catch (error) {
                     console.error('Error updating supplier price:', error);
                     toast({

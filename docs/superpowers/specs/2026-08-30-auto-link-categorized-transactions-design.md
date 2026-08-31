@@ -14,7 +14,7 @@ the post-claim re-check repeats the same flag (`20260830100000:259`).
 The sweep runs the bank rules loop before the link loop
 (`supabase/migrations/20260830100200_sweep_auto_link_loop.sql`). The rules loop
 sets `is_categorized = true` and posts a journal entry
-(`supabase/migrations/20260820210300_sweep_local_entry_day.sql:212,325`). For a
+(`supabase/migrations/20260820210300_sweep_local_entry_day.sql:212,324`). For a
 vendor with an active rule, the rule always wins the race. The link loop then
 never claims the transaction. The result:
 
@@ -151,12 +151,28 @@ with `Matched pending outflow: `. Only the auto-link writes that prefix
 `Auto-categorized by rule: ` (`20260820210300:212`). The manual RPC writes
 `COALESCE(p_description, …)` forms
 (`supabase/migrations/20260820210100_categorize_local_entry_day.sql:176,218`).
-Each writer overwrites the description on a rewrite, so the current prefix
-identifies the last writer.
+A fourth writer exists: `bulk_categorize_bank_transactions` (current body in
+`supabase/migrations/20260821130000_bulk_categorize_guard_restore.sql`,
+original in `20260819231210_add_bulk_categorize_bank_transactions.sql`). Its
+non-reclassification branch overwrites the description with the plain
+transaction description; its reclassification branch inserts a separate
+`reference_type = 'reclassification'` row and does not touch the original
+entry. No writer other than the auto-link produces the
+`Matched pending outflow: ` prefix, so the marker stays reliable
+(supabase-design-review finding).
 
 For a Case A or Case B unlink, `v_can_revert` is false: the function keeps
 the categorization, clears the match metadata, and returns
 `category_kept = true` — the existing UI path for a kept category.
+
+The UI toast for `category_kept = true` says "Recategorize the transaction
+on the Banking page" (`src/hooks/usePendingOutflows.tsx:382-383`). That text
+was correct when a kept category signaled a race. After this change, a kept
+category is the normal outcome for a Case A or Case B unlink, and the
+category is already correct. Change the toast text to state that the
+transaction keeps its category. Update the pinned string assertion in
+`tests/unit/usePendingOutflows.test.ts:1074-1076` (frontend-design-review
+finding).
 
 ### 4.4 Index
 
@@ -164,9 +180,24 @@ The partial index `idx_bank_transactions_auto_link` includes
 `is_categorized = false` in its predicate
 (`supabase/migrations/20260830100300_idx_bank_transactions_auto_link.sql:10`),
 so it cannot serve the widened identity scan. A new `no-transaction`
-migration creates `idx_bank_transactions_auto_link_v2` with the same key
-columns (`restaurant_id`, `amount`, `transaction_date`) and the predicate
-without `is_categorized`, `CONCURRENTLY`, then drops the old index.
+migration:
+
+1. Runs `CREATE INDEX CONCURRENTLY idx_bank_transactions_auto_link_v2` with
+   the same key columns (`restaurant_id`, `amount`, `transaction_date`) and
+   the predicate `amount < 0 AND is_split = false AND is_transfer = false
+   AND excluded_reason IS NULL AND is_reconciled = false`. The `amount < 0`
+   term replaces `is_categorized = false`: the identity scan always
+   requires it (`20260830100000:170`), and it keeps deposits out of the
+   index.
+2. Runs `DROP INDEX CONCURRENTLY IF EXISTS idx_bank_transactions_auto_link`
+   after the create. A plain `DROP INDEX` takes an `ACCESS EXCLUSIVE` lock
+   on a hot table (supabase-design-review finding).
+
+Size evidence (production, read-only, 2026-08-30): `bank_transactions` has
+8,764 rows and a 14 MB total relation size. The old predicate covers 3,305
+rows (176 kB index). The new predicate covers 6,118 rows, so the v2 index
+lands near 350 kB. The write-side cost of the wider index is acceptable at
+this scale.
 
 ### 4.5 Sweep: no change
 
@@ -226,6 +257,15 @@ New scenarios:
 - Rebuild skip: a call that produces only Case A links leaves
   `current_balance` unchanged (mirror of scenario 13,
   `supabase/tests/69_auto_link_pending_outflows.sql:302-321`).
+- Marker vs `bulk_categorize_bank_transactions`: run the bulk RPC against a
+  transaction the auto-link linked earlier, then check
+  `unlink_pending_outflow` behavior (supabase-design-review finding).
+- Claim-window race: pgTAP cannot pause a function between the scan and
+  the claim, so pin the re-validation structurally. Assert with
+  `pg_get_functiondef` that the function recomputes the journal-entry
+  existence and the category agreement after the `FOR UPDATE` claim
+  (same technique as `supabase/tests/51_standing_categorization_sweep.sql`,
+  tests 8 and 10).
 
 ### Conformance: `supabase/tests/51_standing_categorization_sweep.sql`
 
@@ -233,17 +273,26 @@ No changes. Tests 10-11 must stay green as-is.
 
 ### Unit tests
 
-`tests/unit/migrationVersionUniqueness.test.ts` must pass with the new
-migration timestamps. Current maximum prefix: `20260830120000`. New
-migrations use `20260830130000` and later.
+- `tests/unit/migrationVersionUniqueness.test.ts` must pass with the new
+  migration timestamps. Current maximum prefix: `20260830120000`. New
+  migrations use `20260830130000` and later.
+- `tests/unit/usePendingOutflows.test.ts:1074-1076` pins the
+  `category_kept = true` toast string. Change the assertion together with
+  the toast text (§4.3).
 
 ## 7. Out of scope
 
 - Case C automatic relink or journal-entry replacement. The manual match
   flow (`confirmMatch`) already handles it with explicit user intent.
 - Any change to the rules sweep, the sweep loop order, or the budget flags.
-- Frontend changes. `usePendingOutflows` and the match UI keep their
-  behavior; the widened link only shrinks the manual queue.
+- Frontend behavior changes, with one exception: the `category_kept = true`
+  toast text in `usePendingOutflows.tsx` changes (§4.3). The match UI, the
+  suggestion list, and the query caches keep their behavior; the widened
+  link only shrinks the manual queue. Evidence from the frontend design
+  review: `PendingOutflowCard.tsx:235-242` gates the "Auto-matched" badge
+  on `auto_linked_at` alone, and the suggestion RPC
+  (`20260830100400_suggest_matches_per_transaction_rank.sql:93`) already
+  excludes categorized rows.
 - Suppressed pairs (`auto_link_suppressed_at` set) stay excluded.
 
 ## 8. Risks

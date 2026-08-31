@@ -152,10 +152,18 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
   });
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [savingSupplier, setSavingSupplier] = useState(false);
-  const [priceUpdateDialog, setPriceUpdateDialog] = useState<{ open: boolean; supplier: any; price: string }>({
+  const [priceUpdateDialog, setPriceUpdateDialog] = useState<{
+    open: boolean;
+    supplier: any;
+    price: string;
+    pack_size_qty: string;
+    pack_size_unit: string;
+  }>({
     open: false,
     supplier: null,
     price: '',
+    pack_size_qty: '',
+    pack_size_unit: '',
   });
 
   const form = useForm<UpdateFormData>({
@@ -1207,6 +1215,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                                       open: true,
                                       supplier: ps,
                                       price: ps.last_unit_cost?.toString() || '0',
+                                      pack_size_qty: ps.pack_size_qty?.toString() ?? '',
+                                      pack_size_unit: ps.pack_size_unit ?? '',
                                     });
                                   }}
                                 >
@@ -1387,11 +1397,57 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                 placeholder="0.00"
               />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label
+                  htmlFor="price-update-pack-size-qty"
+                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  Pack size
+                </Label>
+                <Input
+                  id="price-update-pack-size-qty"
+                  type="number"
+                  step="0.01"
+                  placeholder="e.g. 30"
+                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                  value={priceUpdateDialog.pack_size_qty}
+                  onChange={(e) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_qty: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label
+                  htmlFor="price-update-pack-size-unit"
+                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  Pack size unit
+                </Label>
+                <Select
+                  value={priceUpdateDialog.pack_size_unit}
+                  onValueChange={(value) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_unit: value })}
+                >
+                  <SelectTrigger
+                    id="price-update-pack-size-unit"
+                    aria-label="Pack size unit"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                  >
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PACK_SIZE_UNITS.map((unit) => (
+                      <SelectItem key={unit} value={unit}>
+                        {unit}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setPriceUpdateDialog({ open: false, supplier: null, price: '' })}
+                onClick={() => setPriceUpdateDialog({ open: false, supplier: null, price: '', pack_size_qty: '', pack_size_unit: '' })}
               >
                 Cancel
               </Button>
@@ -1424,6 +1480,27 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
 
                     if (rpcError) throw rpcError;
 
+                    // Pack size fields are optional; send null (never 0 or '') to satisfy the paired CHECK.
+                    const packSizeQtyValue = priceUpdateDialog.pack_size_qty.trim() === ''
+                      ? null
+                      : Number(priceUpdateDialog.pack_size_qty);
+                    const packSizeUnitValue = priceUpdateDialog.pack_size_unit.trim() === ''
+                      ? null
+                      : priceUpdateDialog.pack_size_unit;
+
+                    const { error: packSizeError } = await supabase
+                      .from('product_suppliers')
+                      .update({
+                        pack_size_qty: packSizeQtyValue,
+                        pack_size_unit: packSizeUnitValue,
+                      })
+                      .eq('id', ps.id)
+                      .eq('restaurant_id', restaurantId);
+
+                    if (packSizeError) {
+                      console.error('Failed to update pack size:', packSizeError);
+                    }
+
                     // If this is the preferred supplier, update product cost_per_unit
                     if (ps.is_preferred) {
                       const { error: updateError } = await supabase
@@ -1449,7 +1526,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                     });
 
                     fetchSuppliers();
-                    setPriceUpdateDialog({ open: false, supplier: null, price: '' });
+                    setPriceUpdateDialog({ open: false, supplier: null, price: '', pack_size_qty: '', pack_size_unit: '' });
                   } catch (error) {
                     console.error('Error updating supplier price:', error);
                     toast({

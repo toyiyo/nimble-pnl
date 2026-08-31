@@ -800,10 +800,12 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                       size="sm"
                       onClick={() => {
                         // Pre-populate with current product cost when opening
-                        setNewSupplier({ 
-                          supplier_id: '', 
-                          cost: form.getValues('cost_per_unit') || product.cost_per_unit || 0, 
-                          supplier_sku: form.getValues('supplier_sku') || '' 
+                        setNewSupplier({
+                          supplier_id: '',
+                          cost: form.getValues('cost_per_unit') || product.cost_per_unit || 0,
+                          supplier_sku: form.getValues('supplier_sku') || '',
+                          pack_size_qty: '',
+                          pack_size_unit: '',
                         });
                         setShowAddSupplier(!showAddSupplier);
                       }}

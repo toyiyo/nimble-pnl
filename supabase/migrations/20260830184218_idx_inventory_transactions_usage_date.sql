@@ -1,15 +1,12 @@
--- Partial indexes for get_inventory_usage_by_day, one per WHERE branch.
--- CREATE INDEX CONCURRENTLY cannot run inside a transaction, so this
--- migration contains only these statements (precedent: 20260708193107).
-
--- Branch 1: rows with transaction_date set. Bounds the day column the
--- function's date range filters on.
+-- supabase: no-transaction
+-- CONCURRENTLY cannot run inside a transaction. No BEGIN in this file.
+-- The Supabase preview runner refuses a second statement after a
+-- CONCURRENTLY statement, so each index gets its own migration file
+-- (precedent: 20260830100300).
+--
+-- Partial index for get_inventory_usage_by_day, branch 1: rows with
+-- transaction_date set. Bounds the day column the function's date
+-- range filters on.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_inventory_transactions_usage_date
   ON public.inventory_transactions (restaurant_id, transaction_date)
   WHERE transaction_type = 'usage';
-
--- Branch 2: rows with transaction_date NULL, where the function falls back
--- to created_at (UTC) for the day bucket and the date range filter.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_inventory_transactions_usage_created
-  ON public.inventory_transactions (restaurant_id, created_at)
-  WHERE transaction_type = 'usage' AND transaction_date IS NULL;

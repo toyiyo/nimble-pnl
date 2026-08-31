@@ -1171,7 +1171,7 @@ export const generateTestUser = (prefix: string = 'test') => {
 export async function signUpAndCreateRestaurant(
   page: Page,
   user: { email: string; password: string; fullName: string; restaurantName: string }
-) {
+): Promise<string> {
   const { expect } = await import('@playwright/test');
 
   await page.goto('/auth');
@@ -1238,4 +1238,6 @@ export async function signUpAndCreateRestaurant(
     throw new Error('Failed to set subscription tier to Pro: no restaurant ID found');
   }
   await setSubscriptionTier(restaurantId, 'pro', 'active');
+
+  return restaurantId;
 }

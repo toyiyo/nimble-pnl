@@ -138,6 +138,50 @@ export async function setSubscriptionTier(
 }
 
 /**
+ * Seed one product and its usage transactions for a restaurant.
+ * The dashboard COGS reads these rows through the
+ * get_inventory_usage_by_day RPC, which sums ABS(total_cost) for
+ * rows with transaction_type = 'usage'.
+ */
+export async function seedInventoryUsage(
+  restaurantId: string,
+  usageRows: Array<{ totalCost: number; transactionDate: string }>
+): Promise<void> {
+  const supabase = getServiceRoleClient();
+
+  const { data: product, error: productError } = await supabase
+    .from('products')
+    .insert({
+      restaurant_id: restaurantId,
+      sku: `E2E-COGS-${Date.now()}`,
+      name: 'E2E COGS Test Product',
+    })
+    .select('id')
+    .single();
+
+  if (productError || !product) {
+    throw new Error(`Failed to seed product: ${productError?.message}`);
+  }
+
+  const { error: txnError } = await supabase
+    .from('inventory_transactions')
+    .insert(
+      usageRows.map((row) => ({
+        restaurant_id: restaurantId,
+        product_id: product.id,
+        transaction_type: 'usage',
+        quantity: -5,
+        total_cost: row.totalCost,
+        transaction_date: row.transactionDate,
+      }))
+    );
+
+  if (txnError) {
+    throw new Error(`Failed to seed usage transactions: ${txnError.message}`);
+  }
+}
+
+/**
  * Run one auto-link sweep pass for a restaurant, as the service role.
  *
  * `auto_link_pending_outflows_internal` is granted to `service_role` only

@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
+import { useIsFetching } from '@tanstack/react-query';
 import { useUnifiedCOGS } from './useUnifiedCOGS';
 import { useLaborCostsFromTimeTracking } from './useLaborCostsFromTimeTracking';
 import { useLaborCostsFromTransactions } from './useLaborCostsFromTransactions';
+import { inventoryUsageByDayKey } from './useInventoryUsageByDay';
+import { cogsFinancialsKey } from './useCOGSFromFinancials';
 import {
   resolveLaborBasis,
   combineDailyCosts,
@@ -27,6 +30,7 @@ export interface CostsFromSourceResult {
   totalCost: number;
   capped: boolean;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
   refetch: () => void;
 }
@@ -62,6 +66,27 @@ export function useCostsFromSource(
 
   const isLoading = unifiedCOGS.isLoading || laborCosts.isLoading || transactionLaborCosts.isLoading;
   const error = unifiedCOGS.error || laborCosts.error || transactionLaborCosts.error;
+
+  // useUnifiedCOGS does not expose isFetching, and peer sessions own that
+  // file. Count its leaf queries through the query cache instead. The keys
+  // come from the owning hooks: useUnifiedCOGS passes this dateFrom/dateTo
+  // to useFoodCosts and useCOGSFromFinancials unchanged, and useFoodCosts
+  // passes them to useInventoryUsageByDay unchanged. So the built keys equal
+  // the leaf query keys exactly, and `exact: true` counts only these two
+  // queries, never a sibling period's cached fetch.
+  const cogsFetchCount =
+    useIsFetching({
+      queryKey: inventoryUsageByDayKey(restaurantId, dateFrom, dateTo).key,
+      exact: true,
+    }) +
+    useIsFetching({
+      queryKey: cogsFinancialsKey(restaurantId, dateFrom, dateTo).key,
+      exact: true,
+    });
+  const isFetching =
+    cogsFetchCount > 0 ||
+    laborCosts.isFetching ||
+    transactionLaborCosts.isFetching;
 
   // Per-period labor basis: accrued when the period has wage labor (worked
   // hours or per-job payments), else paid. wageCost excludes tips owed —
@@ -105,6 +130,7 @@ export function useCostsFromSource(
     totalCost: unifiedCOGS.totalCOGS + totalLaborCost,
     capped: unifiedCOGS.capped || laborCosts.capped,
     isLoading,
+    isFetching,
     error,
     refetch,
   };

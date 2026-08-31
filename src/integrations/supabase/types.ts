@@ -11582,6 +11582,17 @@ export type Database = {
         }
         Returns: number
       }
+      get_inventory_usage_by_day: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: {
+          day: string
+          food_cost: number
+        }[]
+      }
       get_labor_sales_analytics: {
         Args: {
           p_end_date: string

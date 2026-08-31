@@ -27,6 +27,7 @@ export interface LaborCostsFromTimeTrackingResult {
    * "has accrued labor" and hide paid (bank) labor. */
   wageCost: number;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
   refetch: () => void;
   /** True when any of the paged fetches (time punches, per-job payments,
@@ -78,7 +79,7 @@ export function useLaborCostsFromTimeTracking(
   // the clock. `throughNow` is in the query key so the two variants don't collide.
   const throughNow = options?.throughNow ?? false;
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['labor-costs-from-time-tracking', restaurantId, toDateOnlyString(dateFrom), toDateOnlyString(dateTo), throughNow, timezone],
     queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; wageCost: number; capped: boolean }> => {
       if (!restaurantId) {
@@ -295,6 +296,7 @@ export function useLaborCostsFromTimeTracking(
     totalCost: data?.totalCost || 0,
     wageCost: data?.wageCost || 0,
     isLoading,
+    isFetching,
     error,
     refetch: () => { refetch(); },
     capped: data?.capped ?? false,

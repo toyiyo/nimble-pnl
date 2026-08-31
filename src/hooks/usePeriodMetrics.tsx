@@ -86,6 +86,7 @@ export function usePeriodMetrics(
     laborBasis,
     capped,
     isLoading: costsLoading,
+    isFetching: costsFetching,
     refetch: refetchCosts,
     error: costsError,
   } = useCostsFromSource(restaurantId, dateFrom, dateTo);
@@ -150,7 +151,7 @@ export function usePeriodMetrics(
   return {
     data: metrics,
     isLoading: revenueLoading || costsLoading,
-    isFetching: revenueFetching,
+    isFetching: revenueFetching || costsFetching,
     error: revenueError ?? costsError ?? null,
     capped,
     refetch,

@@ -12,6 +12,7 @@ export interface LaborCostsFromTransactionsResult {
   dailyCosts: TransactionLaborCostData[];
   totalCost: number;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
   refetch: () => void;
 }
@@ -33,7 +34,7 @@ export function useLaborCostsFromTransactions(
   dateFrom: Date,
   dateTo: Date
 ): LaborCostsFromTransactionsResult {
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['labor-costs-from-transactions', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd')],
     queryFn: async () => {
       if (!restaurantId) return null;
@@ -147,6 +148,7 @@ export function useLaborCostsFromTransactions(
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
     isLoading,
+    isFetching,
     error: error as Error | null,
     refetch,
   };

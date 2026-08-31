@@ -6,6 +6,12 @@
 --     present, created_at (UTC) bounds when transaction_date is NULL.
 --   * The sum applies ABS per row, the same as the client Math.abs.
 --     This differs from get_inventory_usage_by_month (ABS of the SUM).
+--   * The WHERE clause writes the two branches as an OR of ANDs, one AND
+--     group per branch. This form lets the planner push each branch's
+--     date bounds into its own partial index (see
+--     idx_inventory_transactions_usage_date and
+--     idx_inventory_transactions_usage_created) as a BitmapOr, instead of
+--     a Filter over every usage row for the tenant.
 
 CREATE OR REPLACE FUNCTION public.get_inventory_usage_by_day(
   p_restaurant_id UUID,
@@ -25,13 +31,12 @@ AS $$
   WHERE it.restaurant_id = p_restaurant_id
     AND it.transaction_type = 'usage'
     AND (
-      it.transaction_date >= p_start_date
-      OR (it.transaction_date IS NULL
-        AND it.created_at >= (p_start_date::timestamp AT TIME ZONE 'UTC'))
-    )
-    AND (
-      it.transaction_date <= p_end_date
-      OR (it.transaction_date IS NULL
+      (it.transaction_date IS NOT NULL
+        AND it.transaction_date >= p_start_date
+        AND it.transaction_date <= p_end_date)
+      OR
+      (it.transaction_date IS NULL
+        AND it.created_at >= (p_start_date::timestamp AT TIME ZONE 'UTC')
         AND it.created_at <= ((p_end_date::timestamp AT TIME ZONE 'UTC') + interval '23:59:59.999'))
     )
   GROUP BY 1

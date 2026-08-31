@@ -3,6 +3,8 @@ import { useIsFetching } from '@tanstack/react-query';
 import { useUnifiedCOGS } from './useUnifiedCOGS';
 import { useLaborCostsFromTimeTracking } from './useLaborCostsFromTimeTracking';
 import { useLaborCostsFromTransactions } from './useLaborCostsFromTransactions';
+import { inventoryUsageByDayKey } from './useInventoryUsageByDay';
+import { cogsFinancialsKey } from './useCOGSFromFinancials';
 import {
   resolveLaborBasis,
   combineDailyCosts,
@@ -66,11 +68,21 @@ export function useCostsFromSource(
   const error = unifiedCOGS.error || laborCosts.error || transactionLaborCosts.error;
 
   // useUnifiedCOGS does not expose isFetching, and peer sessions own that
-  // file. Count its leaf queries through the query cache instead. The key
-  // prefix scopes the count to this restaurant.
+  // file. Count its leaf queries through the query cache instead. The keys
+  // come from the owning hooks: useUnifiedCOGS passes this dateFrom/dateTo
+  // to useFoodCosts and useCOGSFromFinancials unchanged, and useFoodCosts
+  // passes them to useInventoryUsageByDay unchanged. So the built keys equal
+  // the leaf query keys exactly, and `exact: true` counts only these two
+  // queries, never a sibling period's cached fetch.
   const cogsFetchCount =
-    useIsFetching({ queryKey: ['inventory-usage-by-day', restaurantId] }) +
-    useIsFetching({ queryKey: ['cogs-financials', restaurantId] });
+    useIsFetching({
+      queryKey: inventoryUsageByDayKey(restaurantId, dateFrom, dateTo),
+      exact: true,
+    }) +
+    useIsFetching({
+      queryKey: cogsFinancialsKey(restaurantId, dateFrom, dateTo),
+      exact: true,
+    });
   const isFetching =
     cogsFetchCount > 0 ||
     laborCosts.isFetching ||

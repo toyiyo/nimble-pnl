@@ -24,6 +24,38 @@ export function mapUsageRows(rows: UsageDayRow[]): UsageByDayData {
   return { dailyCosts, totalCost };
 }
 
+// The query key for this hook's data. Export it so other hooks that need to
+// watch this exact query (for example, an isFetching signal) build the same
+// key instead of copying the literal string.
+export function inventoryUsageByDayKey(
+  restaurantId: string | null,
+  dateFrom: Date,
+  dateTo: Date,
+) {
+  return [
+    'inventory-usage-by-day',
+    restaurantId,
+    toDateOnlyString(dateFrom),
+    toDateOnlyString(dateTo),
+  ] as const;
+}
+
+// Call the get_inventory_usage_by_day RPC and map the rows. Shared by this
+// hook's queryFn and by useMonthlyMetrics, so both call sites stay in sync.
+export async function fetchUsageByDay(
+  restaurantId: string,
+  fromStr: string,
+  toStr: string,
+): Promise<UsageByDayData> {
+  const { data, error } = await supabase.rpc('get_inventory_usage_by_day', {
+    p_restaurant_id: restaurantId,
+    p_start_date: fromStr,
+    p_end_date: toStr,
+  });
+  if (error) throw error;
+  return mapUsageRows((data ?? []) as UsageDayRow[]);
+}
+
 /**
  * Per-day inventory usage cost from the get_inventory_usage_by_day RPC.
  * The database aggregates, so one request replaces the old page loop.
@@ -37,16 +69,8 @@ export function useInventoryUsageByDay(
   const toStr = toDateOnlyString(dateTo);
 
   return useQuery({
-    queryKey: ['inventory-usage-by-day', restaurantId, fromStr, toStr],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_inventory_usage_by_day', {
-        p_restaurant_id: restaurantId!,
-        p_start_date: fromStr,
-        p_end_date: toStr,
-      });
-      if (error) throw error;
-      return mapUsageRows((data ?? []) as UsageDayRow[]);
-    },
+    queryKey: inventoryUsageByDayKey(restaurantId, dateFrom, dateTo),
+    queryFn: () => fetchUsageByDay(restaurantId!, fromStr, toStr),
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,

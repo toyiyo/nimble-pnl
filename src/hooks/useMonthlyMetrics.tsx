@@ -16,7 +16,7 @@ import { fetchTipSplitRows, fetchTipPayoutRows, netTipsOwedByEmployee } from '@/
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { isCompensationHidden } from '@/lib/employeeMaskedFields';
-import type { UsageDayRow } from '@/hooks/useInventoryUsageByDay';
+import { fetchUsageByDay, type UsageByDayData } from '@/hooks/useInventoryUsageByDay';
 import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface MonthlyMetrics {
@@ -301,19 +301,10 @@ export function useMonthlyMetrics(
       // Inventory COGS per day from the get_inventory_usage_by_day RPC,
       // when the method uses inventory data. The database aggregates, so
       // there is no page loop and no cap.
-      const inventoryCOGSPromise =
+      const inventoryCOGSPromise: Promise<UsageByDayData> =
         cogsMethod === 'inventory' || cogsMethod === 'combined'
-          ? supabase
-              .rpc('get_inventory_usage_by_day', {
-                p_restaurant_id: restaurantId,
-                p_start_date: fromStr,
-                p_end_date: toStr,
-              })
-              .then(({ data, error }) => {
-                if (error) throw error;
-                return (data ?? []) as UsageDayRow[];
-              })
-          : Promise.resolve([] as UsageDayRow[]);
+          ? fetchUsageByDay(restaurantId, fromStr, toStr)
+          : Promise.resolve({ dailyCosts: [], totalCost: 0 });
 
       // Financial COGS rows, when the method uses financial data.
       const financialCOGSPromise =
@@ -437,7 +428,7 @@ export function useMonthlyMetrics(
       );
 
       const [
-        inventoryUsageDays,
+        inventoryUsage,
         financialCOGSRows,
         { rows: bankLabor, capped: bankLaborCapped },
         { rows: pendingLabor, capped: pendingLaborCapped },
@@ -458,12 +449,11 @@ export function useMonthlyMetrics(
         tipPayoutsPromise,
       ]);
 
-      // Warnings keep the same order as the serial version so the warning
-      // text the UI joins stays stable.
-
       // financialCOGSByDay: yyyy-MM-dd → dollars (produced by shared pure helper)
       let financialCOGSByDay: Map<string, number> = new Map();
       if (financialCOGSRows) {
+        // Warnings keep the same order as the serial version so the warning
+        // text the UI joins stays stable.
         pushCapWarning(
           financialCOGSRows.capped,
           'The financial COGS rows hit the fetch limit. The food cost figure is incomplete.',
@@ -549,11 +539,11 @@ export function useMonthlyMetrics(
         contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
       }));
 
-      // Inventory COGS: the RPC returns day→dollars; bucket to months (cents).
+      // Inventory COGS: fetchUsageByDay returns date→dollars; bucket to months (cents).
       if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
-        for (const { day, food_cost } of inventoryUsageDays) {
-          const monthKey = day.slice(0, 7); // yyyy-MM-dd → yyyy-MM
-          ensureMonth(monthKey).food_cost += toC(Number(food_cost));
+        for (const { date, total_cost } of inventoryUsage.dailyCosts) {
+          const monthKey = date.slice(0, 7); // yyyy-MM-dd → yyyy-MM
+          ensureMonth(monthKey).food_cost += toC(total_cost);
         }
       }
 

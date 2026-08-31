@@ -30,6 +30,22 @@ export interface FinancialCOGSResult {
  * @param dateTo - End date for the period
  * @returns COGS data aggregated by date
  */
+// The query key for this hook's data. Export it so other hooks that need to
+// watch this exact query (for example, an isFetching signal) build the same
+// key instead of copying the literal string.
+export function cogsFinancialsKey(
+  restaurantId: string | null,
+  dateFrom: Date,
+  dateTo: Date,
+) {
+  return [
+    'cogs-financials',
+    restaurantId,
+    format(dateFrom, 'yyyy-MM-dd'),
+    format(dateTo, 'yyyy-MM-dd'),
+  ] as const;
+}
+
 export function useCOGSFromFinancials(
   restaurantId: string | null,
   dateFrom: Date,
@@ -39,7 +55,7 @@ export function useCOGSFromFinancials(
   const endDateStr = format(dateTo, 'yyyy-MM-dd');
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['cogs-financials', restaurantId, startDateStr, endDateStr],
+    queryKey: cogsFinancialsKey(restaurantId, dateFrom, dateTo),
     queryFn: async () => {
       if (!restaurantId) return null;
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -44,6 +44,7 @@ import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
+import { compareSupplierUnitPrices } from '@/utils/supplierUnitPrice';
 import {
   Table,
   TableBody,
@@ -121,6 +122,19 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
   const restaurantId = selectedRestaurant?.restaurant_id || selectedRestaurant?.restaurant?.id || null;
   const { suppliers: allSuppliers, createSupplier } = useSuppliers();
   const { suppliers: productSuppliers, loading: suppliersLoading, setPreferredSupplier, removeSupplier, fetchSuppliers } = useProductSuppliers(product.id, restaurantId);
+  const supplierUnitPrices = useMemo(
+    () =>
+      compareSupplierUnitPrices(
+        productSuppliers.map((ps) => ({
+          id: ps.id,
+          price: ps.last_unit_cost,
+          packSizeQty: ps.pack_size_qty,
+          packSizeUnit: ps.pack_size_unit,
+        })),
+        product.name
+      ),
+    [productSuppliers, product.name]
+  );
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhancedData, setEnhancedData] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
@@ -1145,6 +1159,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                         <TableRow>
                           <TableHead>Supplier</TableHead>
                           <TableHead className="text-right">Last Price</TableHead>
+                          <TableHead className="text-right">Per Unit</TableHead>
                           <TableHead className="text-right">Avg Price</TableHead>
                           <TableHead className="text-center">Purchases</TableHead>
                           <TableHead>Last Order</TableHead>
@@ -1163,6 +1178,21 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                             </TableCell>
                             <TableCell className="text-right">
                               {ps.last_unit_cost ? `$${ps.last_unit_cost.toFixed(2)}` : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {supplierUnitPrices.get(ps.id)?.unitPrice != null ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span>
+                                    ${supplierUnitPrices.get(ps.id)!.unitPrice!.toFixed(2)}/
+                                    {supplierUnitPrices.get(ps.id)!.unit}
+                                  </span>
+                                  {supplierUnitPrices.get(ps.id)?.isCheapest && (
+                                    <Badge variant="secondary">Best price</Badge>
+                                  )}
+                                </div>
+                              ) : (
+                                '-'
+                              )}
                             </TableCell>
                             <TableCell className="text-right">
                               {ps.average_unit_cost ? `$${ps.average_unit_cost.toFixed(2)}` : '-'}

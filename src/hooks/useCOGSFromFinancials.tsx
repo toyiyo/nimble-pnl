@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { aggregateFinancialCOGSByDate } from '@/services/cogsCalculations';
 import { fetchFinancialCOGSRows } from '@/services/cogsFetch';
 import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
@@ -41,8 +41,8 @@ export function cogsFinancialsKey(
   return [
     'cogs-financials',
     restaurantId,
-    format(dateFrom, 'yyyy-MM-dd'),
-    format(dateTo, 'yyyy-MM-dd'),
+    toDateOnlyString(dateFrom),
+    toDateOnlyString(dateTo),
   ] as const;
 }
 
@@ -51,11 +51,11 @@ export function useCOGSFromFinancials(
   dateFrom: Date,
   dateTo: Date
 ): FinancialCOGSResult {
-  const startDateStr = format(dateFrom, 'yyyy-MM-dd');
-  const endDateStr = format(dateTo, 'yyyy-MM-dd');
+  const key = cogsFinancialsKey(restaurantId, dateFrom, dateTo);
+  const [, , startDateStr, endDateStr] = key;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: cogsFinancialsKey(restaurantId, dateFrom, dateTo),
+    queryKey: key,
     queryFn: async () => {
       if (!restaurantId) return null;
 

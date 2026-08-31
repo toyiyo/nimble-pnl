@@ -191,7 +191,7 @@ const Index = () => {
 
   // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display
   // React Query will cache this with the same key, so no duplicate network requests
-  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+  const { data: revenueBreakdown, isLoading: revenueLoading, isFetching: revenueFetching } = useRevenueBreakdown(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -968,7 +968,7 @@ const Index = () => {
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
-                  <div className="space-y-4">
+                  <div className={`space-y-4 transition-opacity ${revenueFetching ? 'opacity-60' : ''}`}>
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-[17px] font-semibold text-foreground">Revenue Mix</h2>

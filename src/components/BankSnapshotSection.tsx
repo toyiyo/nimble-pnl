@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
@@ -10,7 +10,7 @@ interface BankSnapshotSectionProps {
   restaurantId: string;
 }
 
-function BankSnapshotSectionBase({ restaurantId }: BankSnapshotSectionProps) {
+export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) {
   // Use fixed date ranges for current state
   const today = endOfDay(new Date());
   const thirtyDaysAgo = subDays(today, 30);
@@ -145,5 +145,3 @@ function BankSnapshotSectionBase({ restaurantId }: BankSnapshotSectionProps) {
     </div>
   );
 }
-
-export const BankSnapshotSection = memo(BankSnapshotSectionBase);

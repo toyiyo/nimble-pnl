@@ -53,7 +53,7 @@ export async function fetchUsageByDay(
     p_end_date: toStr,
   });
   if (error) throw error;
-  return mapUsageRows((data ?? []) as UsageDayRow[]);
+  return mapUsageRows(data ?? []);
 }
 
 /**
@@ -65,11 +65,11 @@ export function useInventoryUsageByDay(
   dateFrom: Date,
   dateTo: Date
 ) {
-  const fromStr = toDateOnlyString(dateFrom);
-  const toStr = toDateOnlyString(dateTo);
+  const key = inventoryUsageByDayKey(restaurantId, dateFrom, dateTo);
+  const [, , fromStr, toStr] = key;
 
   return useQuery({
-    queryKey: inventoryUsageByDayKey(restaurantId, dateFrom, dateTo),
+    queryKey: key,
     queryFn: () => fetchUsageByDay(restaurantId!, fromStr, toStr),
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds

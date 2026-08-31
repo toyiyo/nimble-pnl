@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAiChatContext } from '@/contexts/AiChatContext';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAiChat } from '@/hooks/useAiChat';
@@ -286,9 +287,7 @@ export function AiChatPanel() {
                   <div className="space-y-4 py-4">
                     <Suspense
                       fallback={
-                        <Card className="max-w-[85%] px-3 py-2 bg-muted/50 border-0 shadow-none">
-                          <p className="text-[13px] text-muted-foreground">Loading messages…</p>
-                        </Card>
+                        <Skeleton className="h-9 w-[70%] max-w-[85%] rounded-lg" />
                       }
                     >
                       {messages.map((message) => (

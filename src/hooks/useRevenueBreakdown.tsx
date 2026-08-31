@@ -796,5 +796,11 @@ export function useRevenueBreakdown(
     staleTime: 300000, // 5 minutes - reduce refetch frequency
     refetchOnWindowFocus: false, // Disable automatic refetch on window focus
     refetchOnMount: false, // Disable automatic refetch on mount
+    // Keep the previous period's data on screen during a refetch, but never
+    // across a restaurant switch (queryKey[1] is the restaurant id).
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery && previousQuery.queryKey[1] !== restaurantId
+        ? undefined
+        : previousData,
   });
 }

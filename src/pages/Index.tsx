@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, startTransition, type ReactNode } from 'react';
 import posthog from 'posthog-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
@@ -170,7 +170,7 @@ const Index = () => {
     todayEnd
   );
 
-  const { data: periodMetrics, isLoading: periodLoading, capped: periodCapped } = usePeriodMetrics(
+  const { data: periodMetrics, isLoading: periodLoading, isFetching: periodFetching, capped: periodCapped } = usePeriodMetrics(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -180,6 +180,7 @@ const Index = () => {
   const {
     data: monthlyMetrics,
     isLoading: monthlyLoading,
+    isFetching: monthlyFetching,
     error: monthlyError,
     warnings: monthlyWarnings
   } = useMonthlyMetrics(
@@ -696,7 +697,7 @@ const Index = () => {
             <div className="h-px bg-border/40" />
           </div>
 
-          {todaysLoading || periodLoading || alertsLoading ? (
+          {alertsLoading || (todaysLoading && !todaysData) || (periodLoading && !periodData) ? (
             <DashboardSkeleton />
           ) : (
             <>
@@ -764,14 +765,17 @@ const Index = () => {
               {/* Period Selector - MOVED TO TOP */}
               <PeriodSelector
                 selectedPeriod={selectedPeriod}
-                onPeriodChange={setSelectedPeriod}
+                onPeriodChange={(period) => startTransition(() => setSelectedPeriod(period))}
               />
+              <output aria-live="polite" className="sr-only">
+                {periodFetching ? '' : `Dashboard updated for ${selectedPeriod.label}`}
+              </output>
 
               {/* ===== OPERATIONAL METRICS SECTION ===== */}
 
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`}>
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Performance Overview</h2>
                     <CollapsibleTrigger asChild>
@@ -923,7 +927,7 @@ const Index = () => {
 
               {/* Cashflow Visualization - Collapsible */}
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
@@ -943,7 +947,7 @@ const Index = () => {
 
               {/* Monthly Performance Table - Collapsible */}
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${monthlyFetching ? 'opacity-60' : ''}`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>

@@ -59,6 +59,7 @@ export function usePeriodMetrics(
 ): {
   data: PeriodMetrics | null;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
   capped: boolean;
   refetch: () => void;
@@ -67,6 +68,7 @@ export function usePeriodMetrics(
   const {
     data: revenueData,
     isLoading: revenueLoading,
+    isFetching: revenueFetching,
     refetch: refetchRevenue,
     error: revenueError,
   } = useRevenueBreakdown(
@@ -148,6 +150,7 @@ export function usePeriodMetrics(
   return {
     data: metrics,
     isLoading: revenueLoading || costsLoading,
+    isFetching: revenueFetching,
     error: revenueError ?? costsError ?? null,
     capped,
     refetch,

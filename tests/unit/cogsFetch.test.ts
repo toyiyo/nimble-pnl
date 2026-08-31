@@ -210,6 +210,18 @@ describe('fetchFinancialCOGSRows', () => {
 
     await fetchFinancialCOGSRows(makeClient(specs), 'rest-1', '2026-08-01', '2026-08-31');
 
+    // The start bound stays a bare date string. Postgres reads it as
+    // midnight UTC, the correct inclusive start of the first day.
+    expect(specs[`bank_transactions|${BANK_SELECT}`].calls).toContainEqual([
+      'gte',
+      'transaction_date',
+      '2026-08-01',
+    ]);
+    expect(specs[`bank_transactions|${PARENT_SELECT}`].calls).toContainEqual([
+      'gte',
+      'transaction_date',
+      '2026-08-01',
+    ]);
     expect(specs[`bank_transactions|${BANK_SELECT}`].calls).toContainEqual([
       'lte',
       'transaction_date',

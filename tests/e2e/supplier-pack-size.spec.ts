@@ -52,7 +52,7 @@ test('user can add a supplier with a pack size and see the per-unit price', asyn
   await page.getByText(`+ Create New Supplier: "${product.supplierName}"`).click();
 
   await editDialog.getByLabel('Cost per Unit ($)').fill('12');
-  await editDialog.getByLabel('Pack size').fill('4');
+  await editDialog.getByLabel('Pack size', { exact: true }).fill('4');
   await editDialog.getByRole('combobox', { name: 'Pack size unit' }).click();
   await page.getByRole('option', { name: 'lb', exact: true }).click();
 

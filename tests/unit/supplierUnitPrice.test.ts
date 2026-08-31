@@ -134,15 +134,28 @@ describe("compareSupplierUnitPrices", () => {
   it("excludes a row whose unit cannot convert to the base unit from the ranking", () => {
     const rows: SupplierPriceRow[] = [
       { id: "a", price: 10, packSizeQty: 10, packSizeUnit: "lb" },
+      { id: "b", price: 5, packSizeQty: 5, packSizeUnit: "lb" },
       // "each" is a count unit and does not convert to lb.
-      { id: "b", price: 1, packSizeQty: 1, packSizeUnit: "each" },
+      { id: "c", price: 1, packSizeQty: 1, packSizeUnit: "each" },
     ];
     const result = compareSupplierUnitPrices(rows);
 
     expect(result.get("a")?.normalizedUnitPrice).toBe(1);
-    expect(result.get("b")?.unitPrice).toBe(1);
-    expect(result.get("b")?.normalizedUnitPrice).toBeNull();
-    expect(result.get("a")?.isCheapest).toBe(true);
+    expect(result.get("b")?.normalizedUnitPrice).toBe(1);
+    expect(result.get("c")?.unitPrice).toBe(1);
+    expect(result.get("c")?.normalizedUnitPrice).toBeNull();
+    // "c" never competes for isCheapest: it has no normalizedUnitPrice.
+    expect(result.get("c")?.isCheapest).toBe(false);
+  });
+
+  it("does not set isCheapest when only one row has a normalizedUnitPrice", () => {
+    const rows: SupplierPriceRow[] = [
+      { id: "a", price: 10, packSizeQty: 10, packSizeUnit: "lb" },
+      // "each" is a count unit and does not convert to lb.
+      { id: "b", price: 1, packSizeQty: 1, packSizeUnit: "each" },
+    ];
+    const result = compareSupplierUnitPrices(rows);
+    expect(result.get("a")?.isCheapest).toBe(false);
     expect(result.get("b")?.isCheapest).toBe(false);
   });
 

@@ -563,6 +563,7 @@ BEGIN
   SELECT id INTO v_upload_id
   FROM expense_invoice_uploads
   WHERE pending_outflow_id = v_po.id
+    AND restaurant_id = v_po.restaurant_id
   ORDER BY created_at
   LIMIT 1;
 

@@ -287,7 +287,12 @@ export function AiChatPanel() {
                   <div className="space-y-4 py-4">
                     <Suspense
                       fallback={
-                        <Skeleton className="h-9 w-[70%] max-w-[85%] rounded-lg" />
+                        <Skeleton
+                          className="h-9 w-[70%] max-w-[85%] rounded-lg"
+                          role="status"
+                          aria-live="polite"
+                          aria-label="Loading messages"
+                        />
                       }
                     >
                       {messages.map((message) => (

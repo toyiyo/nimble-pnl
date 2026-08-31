@@ -20,14 +20,12 @@ test('Dashboard shows the COGS value for This Month from seeded inventory usage'
   ]);
 
   // Reload the dashboard so the queries run after the seed.
-  await page.goto('/');
+  await page.goto('/', { timeout: 10000 });
 
   // The dashboard default period is Today. Switch to This Month.
   await page.getByRole('button', { name: 'This Month' }).click();
 
-  // The COGS card is a div.group that holds a <p> with the exact text COGS.
-  const cogsCard = page
-    .locator('div.group')
-    .filter({ has: page.getByText('COGS', { exact: true }) });
+  // DashboardMetricCard exposes each card as a named region.
+  const cogsCard = page.getByRole('region', { name: 'COGS' });
   await expect(cogsCard.getByText('$187')).toBeVisible({ timeout: 30000 });
 });

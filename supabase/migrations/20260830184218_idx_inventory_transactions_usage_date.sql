@@ -9,4 +9,5 @@
 -- range filters on.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_inventory_transactions_usage_date
   ON public.inventory_transactions (restaurant_id, transaction_date)
-  WHERE transaction_type = 'usage';
+  WHERE transaction_type = 'usage'
+    AND transaction_date IS NOT NULL;

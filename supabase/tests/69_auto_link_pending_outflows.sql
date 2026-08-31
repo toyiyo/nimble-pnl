@@ -7,7 +7,7 @@
 -- amount so scenarios never tie against each other inside the same call.
 
 BEGIN;
-SELECT plan(90);
+SELECT plan(92);
 
 SET LOCAL role TO postgres;
 

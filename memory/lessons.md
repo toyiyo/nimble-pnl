@@ -3123,3 +3123,24 @@
 - **Mistake:** A pass/fail grep for `^ok` counted 0 lines on a green suite. psql prints the TAP lines inside a result table with leading spaces and a column header.
 - **Correction:** Run psql with `-qAt` (quiet, unaligned, tuples-only). The TAP lines then start at column one and the grep counts them.
 - **Rule:** Use `psql -qAt` for any script that parses query output.
+
+## Category: Design Docs — Premise Citations
+
+### [2026-08-31] A line number from a sibling checkout points at the wrong code (PR #785)
+- **Mistake:** The design doc cited `src/integrations/supabase/types.ts:4833` for the `product_suppliers` Row type. The read came from the main checkout on a different branch. In the task worktree, line 4833 sits inside `prep_recipes`. Both design reviewers flagged the citation as a false premise.
+- **Correction:** Re-read the file in the task worktree. The block starts at line 4908 there. The doc now cites the worktree.
+- **Rule:** Cite `file:line` from the checkout that the build will use. Before you write a citation, confirm the current Bash path or `Read` path points inside the task worktree.
+
+## Category: Data Flow — Pending State
+
+### [2026-08-31] A field captured into pending state is not a field that persists (PR #785)
+- **Mistake:** The add-supplier form captured the new pack-size fields into `pendingSupplierDetails` for a new product. The chain `onUpdate → handleUpdateProduct → createProduct` dropped the fields before the insert. Codex found the drop. A later review found the same drop on a second chain: `ScanSessionView → handleSessionUpdateProduct → persistProductUpsert`.
+- **Correction:** Thread the fields through both chains to the `product_suppliers` insert. The fix took two separate review rounds because each round found one chain.
+- **Rule:** When you add a field to a capture site, list every save path from that site to the database first. Then check the field on each path. A component with more than one caller has more than one save path.
+
+## Category: Validation — Client vs CHECK Constraint
+
+### [2026-08-31] A client guard that checks less than the CHECK constraint fails late and ugly (PR #785)
+- **Mistake:** The migration requires `pack_size_qty > 0` and both pack fields together. The first client guard checked the pair on one submit handler only, and no handler checked sign or finiteness. A `0` quantity tripped the constraint with a generic toast on an existing product. On a new product, the insert dropped the whole supplier link without an error.
+- **Correction:** Extract `isPackSizePairIncomplete` and `isPackSizeQtyInvalid` into `src/utils/supplierUnitPrice.ts`. Call both at both submit sites. Cover both with unit tests.
+- **Rule:** When a migration adds a CHECK constraint, write one shared client guard that mirrors the full constraint. Call the guard at every submit site that can write the column.

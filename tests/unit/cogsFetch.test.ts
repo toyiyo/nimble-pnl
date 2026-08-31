@@ -200,4 +200,30 @@ describe('fetchFinancialCOGSRows', () => {
     expect(result.capped).toBe(true);
     expect(specs[`bank_transactions|${BANK_SELECT}`].ranges).toHaveLength(COGS_MAX_PAGES);
   });
+
+  it('applies the inclusive day-end bound to both transaction_date filters', async () => {
+    const specs = {
+      [`bank_transactions|${BANK_SELECT}`]: spec([[bankRow]]),
+      [`bank_transactions|${PARENT_SELECT}`]: spec([[]]),
+      [`pending_outflows|${PENDING_SELECT}`]: spec([[]]),
+    };
+
+    await fetchFinancialCOGSRows(makeClient(specs), 'rest-1', '2026-08-01', '2026-08-31');
+
+    expect(specs[`bank_transactions|${BANK_SELECT}`].calls).toContainEqual([
+      'lte',
+      'transaction_date',
+      '2026-08-31T23:59:59.999Z',
+    ]);
+    expect(specs[`bank_transactions|${PARENT_SELECT}`].calls).toContainEqual([
+      'lte',
+      'transaction_date',
+      '2026-08-31T23:59:59.999Z',
+    ]);
+    expect(specs[`pending_outflows|${PENDING_SELECT}`].calls).toContainEqual([
+      'lte',
+      'issue_date',
+      '2026-08-31',
+    ]);
+  });
 });

@@ -422,7 +422,7 @@ SELECT is(
   (SELECT is_categorized FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069111'::uuid),
   true, 'Case A: transaction stays categorized');
 
--- Scenario 20: unlink after a Case A link -- kept category, entry survives
+-- Scenario 17: unlink after a Case A link -- kept category, entry survives
 -- (reuses the Case A fixtures above, design §6).
 SET LOCAL role TO postgres;
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000069090","role":"authenticated"}', true);
@@ -448,7 +448,7 @@ SELECT is(
 
 SET LOCAL role TO postgres;
 
--- Scenario 17: Case B -- categorized transaction, journal entry exists,
+-- Scenario 18: Case B -- categorized transaction, journal entry exists,
 -- outflow has no category -- link and copy the category (design §6).
 INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status) VALUES
   ('00000000-0000-0000-0000-000000069130'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
@@ -482,7 +482,7 @@ SELECT is(
   (SELECT count(*)::int FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069131'::uuid),
   1, 'Case B: journal entry count is unchanged');
 
--- Scenario 18: Case C -- categorized transaction, journal entry exists,
+-- Scenario 19: Case C -- categorized transaction, journal entry exists,
 -- categories disagree -- not linkable, no writes (design §6).
 INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status) VALUES
   ('00000000-0000-0000-0000-000000069150'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
@@ -516,7 +516,7 @@ SELECT is(
   (SELECT notes FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069151'::uuid),
   'BT note C', 'Case C: transaction notes are untouched (pair is not linkable, no writes)');
 
--- Scenario 19: uniqueness counts a categorized twin (design §4.1) -- a
+-- Scenario 20: uniqueness counts a categorized twin (design §4.1) -- a
 -- categorized transaction now counts toward the tie, so the outflow
 -- stays pending even though one twin is uncategorized and unique-eligible
 -- under the old predicate.
@@ -690,7 +690,7 @@ SELECT ok(
   regexp_replace(
     regexp_replace(pg_get_functiondef(p.oid), '/\*.*?\*/', '', 'gs'),
     '--[^\n]*', '', 'g'
-  ) ILIKE '%v_po.category_id IS NOT NULL AND v_po.category_id != v_bt.category_id%',
+  ) ILIKE '%v_po.category_id IS NOT NULL AND v_po.category_id IS DISTINCT FROM v_bt.category_id%',
   'auto_link_pending_outflows_internal rechecks category agreement on the locked rows after the claim'
 )
 FROM pg_proc p

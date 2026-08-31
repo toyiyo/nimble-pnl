@@ -92,10 +92,14 @@ BEGIN
   --
   -- Performance contract (performance review): the amount and the raw
   -- transaction_date predicates in the pairs join stay inline and
-  -- sargable, so the planner can drive the join through the partial
-  -- index idx_bank_transactions_auto_link (restaurant_id, amount,
-  -- transaction_date). Do not move them into a function. The post-claim
-  -- re-validation below mirrors the amount and window predicates.
+  -- sargable, so the planner can drive the join through a partial index
+  -- on (restaurant_id, amount, transaction_date). Do not move them into
+  -- a function. This file's widened predicate is served by
+  -- idx_bank_transactions_auto_link_v2 (20260830130100) once that
+  -- migration and the matching drop (20260830130200) both land; the old
+  -- idx_bank_transactions_auto_link no longer matches this query's
+  -- widened is_categorized scope. The post-claim re-validation below
+  -- mirrors the amount and window predicates.
   FOR v_pair IN
     WITH eligible_outflows AS (
       SELECT po.id,
@@ -279,7 +283,7 @@ BEGIN
                AND je.reference_id = v_bt.id
                AND je.restaurant_id = p_restaurant_id
            )
-           OR (v_po.category_id IS NOT NULL AND v_po.category_id != v_bt.category_id) THEN
+           OR (v_po.category_id IS NOT NULL AND v_po.category_id IS DISTINCT FROM v_bt.category_id) THEN
           CONTINUE;
         END IF;
       END IF;

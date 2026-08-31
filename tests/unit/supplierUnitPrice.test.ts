@@ -3,6 +3,7 @@ import {
   computeUnitPrice,
   compareSupplierUnitPrices,
   parsePackSizeInput,
+  isPackSizePairIncomplete,
   type SupplierPriceRow,
 } from "@/utils/supplierUnitPrice";
 
@@ -37,6 +38,29 @@ describe("parsePackSizeInput", () => {
       pack_size_qty: null,
       pack_size_unit: "lb",
     });
+  });
+});
+
+describe("isPackSizePairIncomplete", () => {
+  it("returns false when both fields are blank", () => {
+    expect(isPackSizePairIncomplete("", "")).toBe(false);
+  });
+
+  it("returns false when both fields are filled", () => {
+    expect(isPackSizePairIncomplete("30", "lb")).toBe(false);
+  });
+
+  it("returns true when only qty is filled", () => {
+    expect(isPackSizePairIncomplete("30", "")).toBe(true);
+  });
+
+  it("returns true when only unit is filled", () => {
+    expect(isPackSizePairIncomplete("", "lb")).toBe(true);
+  });
+
+  it("treats whitespace-only input as blank", () => {
+    expect(isPackSizePairIncomplete("  ", "  ")).toBe(false);
+    expect(isPackSizePairIncomplete("30", "  ")).toBe(true);
   });
 });
 

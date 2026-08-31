@@ -185,6 +185,10 @@ export const useProducts = (restaurantId: string | null) => {
       // (e.g., pos_item_name can be absent in some environments), and pull
       // out the pending-supplier pack size — it belongs on product_suppliers,
       // not products.
+      // `as any`: the generated products insert type does not list
+      // pos_item_name or the supplier_pack_size_* fields (they are not
+      // products columns), so a typed destructure here would fail to
+      // compile even though every field is read by name below.
       const {
         pos_item_name: _omitPosItemName,
         supplier_pack_size_qty,

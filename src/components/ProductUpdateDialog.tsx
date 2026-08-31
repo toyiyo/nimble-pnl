@@ -44,7 +44,7 @@ import { useProductSuppliers, ProductSupplier } from '@/hooks/useProductSupplier
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
-import { compareSupplierUnitPrices, parsePackSizeInput } from '@/utils/supplierUnitPrice';
+import { compareSupplierUnitPrices, parsePackSizeInput, isPackSizePairIncomplete } from '@/utils/supplierUnitPrice';
 import {
   Table,
   TableBody,
@@ -458,6 +458,113 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
 
     await onUpdate(updates, quantityToAdd, pendingSupplierPackSize);
     onOpenChange(false);
+  };
+
+  // Shared cleanup after the price-update dialog finishes, success or
+  // pack-size failure alike: refresh the supplier list and close the dialog.
+  const closeAndRefresh = () => {
+    fetchSuppliers();
+    setPriceUpdateDialog(CLOSED_PRICE_UPDATE_DIALOG);
+  };
+
+  const handleUpdatePrice = async () => {
+    const parsed = parseFloat(priceUpdateDialog.price);
+    const priceNum = Math.round((Number.isFinite(parsed) ? parsed : NaN) * 100) / 100;
+
+    if (!Number.isFinite(priceNum) || priceNum < 0) {
+      toast({
+        title: 'Invalid price',
+        description: 'Please enter a valid price',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (isPackSizePairIncomplete(priceUpdateDialog.pack_size_qty, priceUpdateDialog.pack_size_unit)) {
+      toast({
+        title: 'Incomplete pack size',
+        description: 'Enter both the pack size quantity and unit, or leave both blank.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const ps = priceUpdateDialog.supplier;
+      if (!ps) return;
+
+      // Use upsert_product_supplier RPC to track price changes
+      const { error: rpcError } = await supabase.rpc('upsert_product_supplier', {
+        p_restaurant_id: restaurantId,
+        p_product_id: product.id,
+        p_supplier_id: ps.supplier_id,
+        p_unit_cost: priceNum,
+        p_quantity: 1, // Manual price update, quantity=1
+      });
+
+      if (rpcError) throw rpcError;
+
+      // Sync product.cost_per_unit for the preferred supplier now, right
+      // after the price RPC succeeds. Do this before the pack size write
+      // below so a pack-size failure never leaves the just-saved price out
+      // of sync with product.cost_per_unit.
+      if (ps.is_preferred) {
+        const { error: updateError } = await supabase
+          .from('products')
+          .update({ cost_per_unit: priceNum })
+          .eq('id', product.id);
+
+        if (updateError) {
+          console.error('Failed to update product cost:', updateError);
+        }
+
+        // Reflect new cost locally to avoid prop mutation
+        try {
+          form.setValue('cost_per_unit', priceNum);
+        } catch (e) {
+          console.error('Failed to set form value for cost_per_unit:', e);
+        }
+      }
+
+      const {
+        pack_size_qty: packSizeQtyValue,
+        pack_size_unit: packSizeUnitValue,
+      } = parsePackSizeInput(priceUpdateDialog.pack_size_qty, priceUpdateDialog.pack_size_unit);
+
+      const { error: packSizeError } = await supabase
+        .from('product_suppliers')
+        .update({
+          pack_size_qty: packSizeQtyValue,
+          pack_size_unit: packSizeUnitValue,
+        })
+        .eq('id', ps.id)
+        .eq('restaurant_id', restaurantId);
+
+      if (packSizeError) {
+        console.error('Failed to update pack size:', packSizeError);
+        toast({
+          title: 'Price updated, pack size not saved',
+          description: 'The price saved. The pack size did not save. Try again.',
+          variant: 'destructive',
+        });
+        closeAndRefresh();
+        return;
+      }
+
+      toast({
+        title: 'Price updated',
+        description: `Updated ${ps.supplier_name} price to $${priceNum.toFixed(2)}`,
+      });
+
+      closeAndRefresh();
+    } catch (error) {
+      console.error('Error updating supplier price:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update supplier price',
+        variant: 'destructive',
+      });
+    }
   };
 
   const currentStock = product.current_stock || 0;
@@ -1021,6 +1128,19 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               return;
                             }
 
+                            // Block a mismatched pack size pair here too — the DB
+                            // CHECK constraint would reject it, and on the
+                            // new-product path a rejected insert silently drops
+                            // the whole pending supplier link.
+                            if (isPackSizePairIncomplete(newSupplier.pack_size_qty, newSupplier.pack_size_unit)) {
+                              toast({
+                                title: 'Incomplete pack size',
+                                description: 'Enter both the pack size quantity and unit, or leave both blank.',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+
                         if (savingSupplier) return; // Prevent double-clicks
                         
                         setSavingSupplier(true);
@@ -1469,109 +1589,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
               >
                 Cancel
               </Button>
-              <Button
-                type="button"
-                onClick={async () => {
-                  const parsed = parseFloat(priceUpdateDialog.price);
-                  const priceNum = Math.round((Number.isFinite(parsed) ? parsed : NaN) * 100) / 100;
-                  
-                  if (!Number.isFinite(priceNum) || priceNum < 0) {
-                    toast({
-                      title: 'Invalid price',
-                      description: 'Please enter a valid price',
-                      variant: 'destructive',
-                    });
-                    return;
-                  }
-
-                  const qtyFilled = priceUpdateDialog.pack_size_qty.trim() !== '';
-                  const unitFilled = priceUpdateDialog.pack_size_unit.trim() !== '';
-                  if (qtyFilled !== unitFilled) {
-                    toast({
-                      title: 'Incomplete pack size',
-                      description: 'Enter both the pack size quantity and unit, or leave both blank.',
-                      variant: 'destructive',
-                    });
-                    return;
-                  }
-
-                  try {
-                    const ps = priceUpdateDialog.supplier;
-                    if (!ps) return;
-
-                    // Use upsert_product_supplier RPC to track price changes
-                    const { error: rpcError } = await supabase.rpc('upsert_product_supplier', {
-                      p_restaurant_id: restaurantId,
-                      p_product_id: product.id,
-                      p_supplier_id: ps.supplier_id,
-                      p_unit_cost: priceNum,
-                      p_quantity: 1, // Manual price update, quantity=1
-                    });
-
-                    if (rpcError) throw rpcError;
-
-                    const {
-                      pack_size_qty: packSizeQtyValue,
-                      pack_size_unit: packSizeUnitValue,
-                    } = parsePackSizeInput(priceUpdateDialog.pack_size_qty, priceUpdateDialog.pack_size_unit);
-
-                    const { error: packSizeError } = await supabase
-                      .from('product_suppliers')
-                      .update({
-                        pack_size_qty: packSizeQtyValue,
-                        pack_size_unit: packSizeUnitValue,
-                      })
-                      .eq('id', ps.id)
-                      .eq('restaurant_id', restaurantId);
-
-                    if (packSizeError) {
-                      console.error('Failed to update pack size:', packSizeError);
-                      toast({
-                        title: 'Price updated, pack size not saved',
-                        description: 'The price saved. The pack size did not save. Try again.',
-                        variant: 'destructive',
-                      });
-                      fetchSuppliers();
-                      setPriceUpdateDialog(CLOSED_PRICE_UPDATE_DIALOG);
-                      return;
-                    }
-
-                    // If this is the preferred supplier, update product cost_per_unit
-                    if (ps.is_preferred) {
-                      const { error: updateError } = await supabase
-                        .from('products')
-                        .update({ cost_per_unit: priceNum })
-                        .eq('id', product.id);
-
-                      if (updateError) {
-                        console.error('Failed to update product cost:', updateError);
-                      }
-                      
-                      // Reflect new cost locally to avoid prop mutation
-                      try {
-                        form.setValue('cost_per_unit', priceNum);
-                      } catch (e) {
-                        console.error('Failed to set form value for cost_per_unit:', e);
-                      }
-                    }
-
-                    toast({
-                      title: 'Price updated',
-                      description: `Updated ${ps.supplier_name} price to $${priceNum.toFixed(2)}`,
-                    });
-
-                    fetchSuppliers();
-                    setPriceUpdateDialog(CLOSED_PRICE_UPDATE_DIALOG);
-                  } catch (error) {
-                    console.error('Error updating supplier price:', error);
-                    toast({
-                      title: 'Error',
-                      description: 'Failed to update supplier price',
-                      variant: 'destructive',
-                    });
-                  }
-                }}
-              >
+              <Button type="button" onClick={handleUpdatePrice}>
                 Update Price
               </Button>
             </div>

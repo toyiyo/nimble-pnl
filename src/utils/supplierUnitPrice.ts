@@ -31,6 +31,18 @@ export function parsePackSizeInput(qtyInput: string, unitInput: string): ParsedP
   };
 }
 
+/**
+ * True when exactly one of the pack size quantity/unit inputs is filled.
+ * A caller must block submission on true — the product_suppliers CHECK
+ * constraint rejects a half-filled pair, and parsePackSizeInput does not
+ * check pairing on its own.
+ */
+export function isPackSizePairIncomplete(qtyInput: string, unitInput: string): boolean {
+  const qtyFilled = qtyInput.trim() !== "";
+  const unitFilled = unitInput.trim() !== "";
+  return qtyFilled !== unitFilled;
+}
+
 /** Per-unit price result for one supplier row, keyed by row id. */
 export interface SupplierUnitPrice {
   /** Price per pack unit, in the row's own unit. Null when it cannot compute. */

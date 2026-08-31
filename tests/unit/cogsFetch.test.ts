@@ -201,7 +201,7 @@ describe('fetchFinancialCOGSRows', () => {
     expect(specs[`bank_transactions|${BANK_SELECT}`].ranges).toHaveLength(COGS_MAX_PAGES);
   });
 
-  it('keeps the transaction_date gte/lte bounds and the issue_date lte bound correct', async () => {
+  it('CRITICAL: keeps the transaction_date gte/lte bounds and the issue_date lte bound correct', async () => {
     const specs = {
       [`bank_transactions|${BANK_SELECT}`]: spec([[bankRow]]),
       [`bank_transactions|${PARENT_SELECT}`]: spec([[]]),

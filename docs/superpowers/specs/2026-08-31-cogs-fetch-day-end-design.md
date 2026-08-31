@@ -17,11 +17,12 @@ Two query sites carry the bug:
 - The split-parent query: `.lte('transaction_date', endDateStr)`
   (`src/services/cogsFetch.ts:78`).
 
-Confirmed production impact (2026-08-31): for restaurant
-`7c0c76e3-e770-401b-a2a9-c1edd407efed` (Wetzel's - Cold Stone - Alamo Ranch),
-August 2026, the filter drops one $57.71 `food_cost` transaction with
-timestamp `2026-08-31 00:35:56 UTC`. The dashboard shows COGS $15,902.71.
-The correct value is $15,960.42.
+Confirmed production impact (2026-08-31): for one production restaurant,
+August 2026, the filter drops one `food_cost` transaction. The transaction
+timestamp is after midnight UTC on the last day of the period. The
+dashboard shows a COGS total that is low by the amount of that
+transaction. The tenant identifier and the exact values stay out of this
+public repository.
 
 ## Facts about the current code
 

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 export interface UsageDayRow {
   day: string;
@@ -32,8 +32,8 @@ export function useInventoryUsageByDay(
   dateFrom: Date,
   dateTo: Date
 ) {
-  const fromStr = format(dateFrom, 'yyyy-MM-dd');
-  const toStr = format(dateTo, 'yyyy-MM-dd');
+  const fromStr = toDateOnlyString(dateFrom);
+  const toStr = toDateOnlyString(dateTo);
 
   return useQuery({
     queryKey: ['inventory-usage-by-day', restaurantId, fromStr, toStr],

@@ -70,6 +70,23 @@ The test fails with the bare-date filter. It passes with `toInclusiveDayEnd`.
   affected.
 - No migration, no RLS change, no edge-function change, no UI change.
 
+## Decided trade-offs (Phase 2.5 review)
+
+The supabase-design-reviewer confirmed every premise and the production row.
+It reported two scope findings:
+
+- **Major, deferred:** `src/hooks/useMonthlyMetrics.tsx:331-332` filters the
+  same `timestamptz` column with a bare `.lte('transaction_date', toStr)` in
+  the labor-cost query. The task scope is `src/services/cogsFetch.ts` only,
+  per the confirmed COGS impact. A follow-up task covers the labor query.
+- **Minor, deferred:** the same bare-date pattern exists in
+  `src/hooks/useLaborCostsFromTransactions.tsx:58`,
+  `src/hooks/usePredictiveMetrics.tsx:61`, `src/hooks/useTopVendors.tsx:43`,
+  `src/hooks/useUncategorizedTotals.tsx:41`,
+  `src/lib/expenseDataFetcher.ts:116`, and
+  `supabase/functions/ai-execute-tool/index.ts:321` and `:923`. The same
+  follow-up task covers the sweep.
+
 ## Trade-offs
 
 - `T23:59:59.999Z` leaves a 1-millisecond gap before midnight. Supabase

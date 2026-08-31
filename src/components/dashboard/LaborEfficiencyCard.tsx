@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -44,7 +44,7 @@ export function buildSparklineData(points: SplhPoint[]): SparklineDatum[] {
  * heading + collapsible trigger live in the page that mounts this card
  * (`Index.tsx`, plan Task 15), matching the Cashflow-block convention.
  */
-export function LaborEfficiencyCard({ restaurantId }: LaborEfficiencyCardProps) {
+function LaborEfficiencyCardBase({ restaurantId }: LaborEfficiencyCardProps) {
   const navigate = useNavigate();
   const { summary, sparkline, target, isLoading, isError, hasData, refetch } = useSplhSummary(restaurantId);
   const sparklineData = useMemo(() => buildSparklineData(sparkline), [sparkline]);
@@ -136,3 +136,5 @@ export function LaborEfficiencyCard({ restaurantId }: LaborEfficiencyCardProps) 
     </div>
   );
 }
+
+export const LaborEfficiencyCard = memo(LaborEfficiencyCardBase);

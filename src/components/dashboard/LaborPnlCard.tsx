@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 
 import { Link } from 'react-router-dom';
 
@@ -41,7 +41,7 @@ export function buildLaborSparklineData(points: readonly FinancialPoint[]): Labo
  * `LaborEfficiencyCard`'s structure for the scheduling surface. Distinct
  * financial `--labor-*` tone tokens (never `--splh-lean/slack`) per design §7.
  */
-export function LaborPnlCard({ restaurantId }: LaborPnlCardProps) {
+function LaborPnlCardBase({ restaurantId }: LaborPnlCardProps) {
   const { summary, sparkline, targetPct, isLoading, isError, hasData, refetch } = useLaborPnlSummary(restaurantId);
   const sparklineData = useMemo(() => buildLaborSparklineData(sparkline), [sparkline]);
   const toneClass = balanceStateClassName(summary.verdictTone);
@@ -130,3 +130,5 @@ export function LaborPnlCard({ restaurantId }: LaborPnlCardProps) {
     </div>
   );
 }
+
+export const LaborPnlCard = memo(LaborPnlCardBase);

@@ -60,6 +60,7 @@ DECLARE
   v_upload_id                UUID;
   v_entry_number            TEXT;
   v_wrote_ledger            BOOLEAN := false;
+  v_link_only               BOOLEAN;
 BEGIN
   IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
     RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;
@@ -299,20 +300,14 @@ BEGIN
       ORDER BY created_at
       LIMIT 1;
 
-      IF v_bt.is_categorized THEN
-        -- Case A/B: the transaction is already categorized and
-        -- journal-backed (checked above). Link only -- merge notes and
-        -- match metadata, and leave the journal entry, category_id,
-        -- is_categorized, and suggested_category_id untouched.
-        UPDATE bank_transactions
-        SET notes                      = v_merged_notes,
-            matched_at                 = now(),
-            matched_by                 = NULL,
-            expense_invoice_upload_id  = COALESCE(v_upload_id, expense_invoice_upload_id),
-            updated_at                 = now()
-        WHERE id = v_bt.id
-          AND restaurant_id = p_restaurant_id;
-      ELSE
+      -- v_link_only decides which UPDATE runs below: Case A/B (the
+      -- transaction is already categorized, checked above) and "no
+      -- usable category" both merge notes and match metadata only,
+      -- leaving the transaction's category untouched -- one shared
+      -- write instead of two copies of the same UPDATE.
+      v_link_only := true;
+
+      IF NOT v_bt.is_categorized THEN
         v_category_id := NULL;
         v_category_name := NULL;
         IF v_po.category_id IS NOT NULL THEN
@@ -324,6 +319,8 @@ BEGIN
         END IF;
 
         IF v_category_id IS NOT NULL THEN
+          v_link_only := false;
+
           -- Category branch: post the journal entry, categorize the
           -- transaction. v_entry_day was already computed above during the
           -- match re-validation.
@@ -394,18 +391,26 @@ BEGIN
               updated_at            = now()
           WHERE id = v_bt.id
             AND restaurant_id = p_restaurant_id;
-        ELSE
-          -- No usable category (none set, or the set category is inactive):
-          -- write the merged notes only. The transaction stays in For Review.
-          UPDATE bank_transactions
-          SET notes                 = v_merged_notes,
-              matched_at            = now(),
-              matched_by            = NULL,
-              expense_invoice_upload_id = COALESCE(v_upload_id, expense_invoice_upload_id),
-              updated_at            = now()
-          WHERE id = v_bt.id
-            AND restaurant_id = p_restaurant_id;
         END IF;
+        -- No usable category (none set, or the set category is inactive)
+        -- falls through with v_link_only still true: the shared UPDATE
+        -- below writes the merged notes only, and the transaction stays
+        -- in For Review.
+      END IF;
+
+      IF v_link_only THEN
+        -- Case A/B (already categorized) or no usable category resolved
+        -- above: merge notes and match metadata only, leaving the
+        -- transaction's journal entry, category_id, is_categorized, and
+        -- suggested_category_id untouched.
+        UPDATE bank_transactions
+        SET notes                      = v_merged_notes,
+            matched_at                 = now(),
+            matched_by                 = NULL,
+            expense_invoice_upload_id  = COALESCE(v_upload_id, expense_invoice_upload_id),
+            updated_at                 = now()
+        WHERE id = v_bt.id
+          AND restaurant_id = p_restaurant_id;
       END IF;
 
       UPDATE pending_outflows

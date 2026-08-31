@@ -43,6 +43,7 @@ import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storage
 import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
+import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
 import {
   Table,
   TableBody,
@@ -106,6 +107,8 @@ const UNITS = [
   'case', 'box', 'bag', 'bottle', 'can', 'jar', 'pack',
 ];
 
+const PACK_SIZE_UNITS = [...WEIGHT_UNITS, ...VOLUME_UNITS, ...COUNT_UNITS];
+
 const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
   open,
   onOpenChange,
@@ -130,6 +133,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
     name: string;
     cost?: number;
     sku?: string;
+    packSizeQty?: number;
+    packSizeUnit?: string;
   } | null>(product.supplier_id
     ? {
         id: product.supplier_id,
@@ -138,7 +143,13 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
         sku: product.supplier_sku || undefined,
       }
     : null);
-  const [newSupplier, setNewSupplier] = useState({ supplier_id: '', cost: 0, supplier_sku: '' });
+  const [newSupplier, setNewSupplier] = useState({
+    supplier_id: '',
+    cost: 0,
+    supplier_sku: '',
+    pack_size_qty: '',
+    pack_size_unit: '',
+  });
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [priceUpdateDialog, setPriceUpdateDialog] = useState<{ open: boolean; supplier: any; price: string }>({
@@ -862,8 +873,9 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Cost per Unit ($)</Label>
+                          <Label htmlFor="new-supplier-cost">Cost per Unit ($)</Label>
                           <Input
+                            id="new-supplier-cost"
                             type="number"
                             step="0.01"
                             placeholder="0.00"
@@ -872,12 +884,57 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Supplier SKU</Label>
+                          <Label htmlFor="new-supplier-sku">Supplier SKU</Label>
                           <Input
+                            id="new-supplier-sku"
                             placeholder="Supplier's code"
                             value={newSupplier.supplier_sku}
                             onChange={(e) => setNewSupplier({ ...newSupplier, supplier_sku: e.target.value })}
                           />
+                        </div>
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="new-supplier-pack-size-qty"
+                            className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                          >
+                            Pack size
+                          </Label>
+                          <Input
+                            id="new-supplier-pack-size-qty"
+                            type="number"
+                            step="0.01"
+                            placeholder="e.g. 30"
+                            className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            value={newSupplier.pack_size_qty}
+                            onChange={(e) => setNewSupplier({ ...newSupplier, pack_size_qty: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="new-supplier-pack-size-unit"
+                            className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                          >
+                            Pack size unit
+                          </Label>
+                          <Select
+                            value={newSupplier.pack_size_unit}
+                            onValueChange={(value) => setNewSupplier({ ...newSupplier, pack_size_unit: value })}
+                          >
+                            <SelectTrigger
+                              id="new-supplier-pack-size-unit"
+                              aria-label="Pack size unit"
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                            >
+                              <SelectValue placeholder="Select unit" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PACK_SIZE_UNITS.map((unit) => (
+                                <SelectItem key={unit} value={unit}>
+                                  {unit}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -946,6 +1003,14 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                             throw new Error('Supplier ID is empty after processing');
                           }
 
+                          // Pack size fields are optional; send null (never 0 or '') to satisfy the paired CHECK.
+                          const packSizeQtyValue = newSupplier.pack_size_qty.trim() === ''
+                            ? null
+                            : Number(newSupplier.pack_size_qty);
+                          const packSizeUnitValue = newSupplier.pack_size_unit.trim() === ''
+                            ? null
+                            : newSupplier.pack_size_unit;
+
                           // If the product has not been created yet, capture supplier details to apply on save
                           if (!product.id) {
                             setPendingSupplierId(supplierIdToUse);
@@ -954,6 +1019,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               name: supplierNameToUse,
                               cost: newSupplier.cost || undefined,
                               sku: newSupplier.supplier_sku || undefined,
+                              packSizeQty: packSizeQtyValue ?? undefined,
+                              packSizeUnit: packSizeUnitValue ?? undefined,
                             });
                             form.setValue('supplier_name', supplierNameToUse);
                             form.setValue('supplier_sku', newSupplier.supplier_sku);
@@ -964,7 +1031,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               description: 'This supplier will be linked once the product is created.',
                             });
 
-                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' });
                             setIsNewSupplier(false);
                             setShowAddSupplier(false);
                             return;
@@ -981,6 +1048,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                                   last_unit_cost: newSupplier.cost,
                                   supplier_sku: newSupplier.supplier_sku,
                                   is_preferred: isFirstSupplier,
+                                  pack_size_qty: packSizeQtyValue,
+                                  pack_size_unit: packSizeUnitValue,
                                 });
 
                               if (error) {
@@ -1016,7 +1085,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                                 description: 'Successfully added supplier to product',
                               });
 
-                              setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                              setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' });
                               setIsNewSupplier(false);
                               setShowAddSupplier(false);
                               fetchSuppliers();
@@ -1048,7 +1117,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                           size="sm"
                           onClick={() => {
                             setShowAddSupplier(false);
-                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' });
                             setIsNewSupplier(false);
                           }}
                         >

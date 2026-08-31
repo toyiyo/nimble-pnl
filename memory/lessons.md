@@ -3073,6 +3073,31 @@
 - **Correction:** Each suite now pins the timezone: an explicit `UPDATE restaurants SET timezone = 'America/Chicago'`, or the value in the INSERT, with a comment that names the dependency.
 - **Rule:** When an expected value depends on a column value, set that value in the fixture. A schema default is not part of the test's contract.
 
+## Category: Data Accuracy (continued)
+
+### [2026-08-30] Two money tables store one flow with opposite signs (PR #779 investigation)
+- **Mistake:** The first duplicate-match query joined `pending_outflows.amount` to `bank_transactions.amount` directly. It found 0 matches. Pending outflows store positive amounts. Bank outflows store negative amounts. The zero result looked like "no duplicates" while $7,157.24 of double-counted COGS sat in the month.
+- **Correction:** The predicate became `p.amount = abs(b.amount)`. The re-run found 8 duplicate pairs. Those pairs explain most of the $20K COGS the user reported against ~$12K of real transactions.
+- **Rule:** Before you write a cross-table match on money, select one sample row from each table and print the signs. Put the sign rule in a comment next to the predicate.
+
+## Category: Code Review (continued)
+
+### [2026-08-30] A textbook optimization can fight a recorded decision (PR #779 audit)
+- **Mistake:** A 25-finding performance audit contained 6 findings that a verify pass refuted. Three examples: lazy-load the `Index` route (the repo eager-loads the landing route on purpose, PR #704); defer `posthog-js` (it already loads at the entry point in `main.tsx`); avoid the `lucide-react` barrel import (the package sets `"sideEffects": false`, so Vite tree-shakes it).
+- **Correction:** One adversarial verify agent per finding checked each claim against the build output and the repo history. Only the 19 confirmed findings went into the fix plan.
+- **Rule:** Check a textbook optimization against the build output and the repo's recorded decisions before you propose it. Run one refute pass over an audit before you act on it.
+
+### [2026-08-30] Three Sonar majors after four green reviewers, one shared shape (PR #779)
+- **Mistake:** Commit-ready code used `role="status"` on a `div`, chained `.sort()` inside a larger expression, and copied one test block three times with one changed value. The four Phase 7 reviewers passed all three. SonarCloud flagged all three as major, after the PR was open, and the Done Gate held the branch.
+- **Correction:** Commit 4e609118 fixed all three: the `<output>` element carries the status role natively; the sort moved to its own statement; the three test copies became one `it.each` table.
+- **Rule:** Reach for the platform primitive before the ARIA attribute, keep a mutating call as its own statement, and write repeated test cases as an `it.each` table. The Phase 7 reviewers do not run the Sonar rule set — expect Sonar to add findings after the push, and keep the Done Gate open until its queue is empty.
+
+## Category: Workflow / PR Hygiene (continued)
+
+### [2026-08-30] The GitHub org name is not the account login (PR #779)
+- **Mistake:** A reply-count probe filtered review comments with `user.login == "toyiyo"`. That string is the org name, not the login of the account that replied. The count came back 0 and looked like 12 unanswered review threads on a PR that had answered all 12.
+- **Correction:** The `pr-comment-response` CI check and the workflow audit both showed "0 unanswered · 12 answered · 0 skipped". The probe was wrong, not the replies.
+- **Rule:** Resolve the login with `gh api user --jq .login` before you filter by `user.login`. When a purpose-built check exists for the question, trust the check over a hand-rolled count.
 ## Category: Workflow / PR Hygiene — Reviewer Agent Configuration
 
 ### [2026-08-30] The workflow script names a reviewer agentType that does not exist (PR #782)

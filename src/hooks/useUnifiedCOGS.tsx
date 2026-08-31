@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 
 import { useFoodCosts } from '@/hooks/useFoodCosts';
 import { useCOGSFromFinancials } from '@/hooks/useCOGSFromFinancials';
-import { useFinancialSettings, COGSMethod } from '@/hooks/useFinancialSettings';
+import { useFinancialSettings } from '@/hooks/useFinancialSettings';
+import { type COGSMethod } from '@/lib/cogsMethod';
 
 export interface UnifiedCOGSResult {
   totalCOGS: number;
@@ -17,8 +18,7 @@ export interface UnifiedCOGSResult {
 /**
  * Orchestrator hook that reads the COGS calculation preference from
  * restaurant_financial_settings and delegates to the appropriate data
- * fetcher(s): inventory (useFoodCosts), financials (useCOGSFromFinancials),
- * or both (combined).
+ * fetcher: inventory (useFoodCosts) or financials (useCOGSFromFinancials).
  *
  * Both source hooks always run (React hooks cannot be called conditionally).
  * The `method` setting determines which data populates `totalCOGS` and
@@ -62,25 +62,6 @@ export function useUnifiedCOGS(
         }));
         capped = financialCosts.capped;
         break;
-
-      case 'combined': {
-        totalCOGS = inventoryCosts.totalCost + financialCosts.totalCost;
-
-        // Merge daily data by date
-        const dateMap = new Map<string, number>();
-        inventoryCosts.dailyCosts.forEach((d) =>
-          dateMap.set(d.date, (dateMap.get(d.date) || 0) + d.total_cost),
-        );
-        financialCosts.dailyCosts.forEach((d) =>
-          dateMap.set(d.date, (dateMap.get(d.date) || 0) + d.total_cost),
-        );
-
-        dailyCOGS = Array.from(dateMap.entries())
-          .map(([date, amount]) => ({ date, amount }))
-          .sort((a, b) => a.date.localeCompare(b.date));
-        capped = inventoryCosts.capped || financialCosts.capped;
-        break;
-      }
     }
 
     return {

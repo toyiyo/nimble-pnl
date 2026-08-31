@@ -24,6 +24,7 @@ vi.mock('@/hooks/usePendingOutflows', () => ({
     voidPendingOutflow: { mutate: vi.fn() },
     deletePendingOutflow: { mutate: vi.fn() },
     updatePendingOutflow: { mutateAsync: vi.fn() },
+    unlinkMatch: { mutate: vi.fn(), isPending: false, variables: undefined },
   }),
   usePendingOutflowMatches: () => ({ data: [] }),
 }));
@@ -49,6 +50,8 @@ const baseClearedOutflow: PendingOutflow = {
   status: 'cleared',
   linked_bank_transaction_id: 'bank-txn-1',
   cleared_at: '2026-07-10T00:00:00.000Z',
+  auto_linked_at: null,
+  auto_link_suppressed_at: null,
   voided_at: null,
   voided_reason: null,
   created_at: '2026-07-01T00:00:00.000Z',

@@ -422,6 +422,13 @@ export type Database = {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "auth_audit_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -516,6 +523,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_exceptions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -1939,6 +1953,13 @@ export type Database = {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_labor_allocations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -2284,6 +2305,13 @@ export type Database = {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_availability_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -2346,14 +2374,14 @@ export type Database = {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "inactive_employees"
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "employees_secure"
+            referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
@@ -2412,6 +2440,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_integration_mappings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -2489,6 +2524,13 @@ export type Database = {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_pins_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -2557,6 +2599,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_tips_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -3590,6 +3639,13 @@ export type Database = {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -4256,6 +4312,13 @@ export type Database = {
             foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
             columns: ["claimed_by_employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -4403,6 +4466,13 @@ export type Database = {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_adjustments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -4468,6 +4538,8 @@ export type Database = {
       pending_outflows: {
         Row: {
           amount: number
+          auto_link_suppressed_at: string | null
+          auto_linked_at: string | null
           category_id: string | null
           check_bank_account_id: string | null
           cleared_at: string | null
@@ -4488,6 +4560,8 @@ export type Database = {
         }
         Insert: {
           amount: number
+          auto_link_suppressed_at?: string | null
+          auto_linked_at?: string | null
           category_id?: string | null
           check_bank_account_id?: string | null
           cleared_at?: string | null
@@ -4508,6 +4582,8 @@ export type Database = {
         }
         Update: {
           amount?: number
+          auto_link_suppressed_at?: string | null
+          auto_linked_at?: string | null
           category_id?: string | null
           check_bank_account_id?: string | null
           cleared_at?: string | null
@@ -6645,6 +6721,7 @@ export type Database = {
           created_at: string | null
           employee_id: string | null
           id: string
+          notified_at: string | null
           reason: string | null
           restaurant_id: string
           shift_id: string | null
@@ -6659,6 +6736,7 @@ export type Database = {
           created_at?: string | null
           employee_id?: string | null
           id?: string
+          notified_at?: string | null
           reason?: string | null
           restaurant_id: string
           shift_id?: string | null
@@ -6673,6 +6751,7 @@ export type Database = {
           created_at?: string | null
           employee_id?: string | null
           id?: string
+          notified_at?: string | null
           reason?: string | null
           restaurant_id?: string
           shift_id?: string | null
@@ -6690,6 +6769,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_change_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -7168,6 +7254,13 @@ export type Database = {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
+            columns: ["accepted_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -7183,6 +7276,13 @@ export type Database = {
             columns: ["offered_by_employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
+            columns: ["offered_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -7225,6 +7325,13 @@ export type Database = {
             columns: ["target_employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_trades_target_employee_id_fkey"
+            columns: ["target_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -7585,6 +7692,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -8721,6 +8835,13 @@ export type Database = {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_off_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -8801,6 +8922,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_punches_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -8948,6 +9076,13 @@ export type Database = {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_disputes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -9017,6 +9152,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_payouts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
@@ -9190,6 +9332,13 @@ export type Database = {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_server_earnings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -9299,6 +9448,13 @@ export type Database = {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_split_items_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -9381,6 +9537,7 @@ export type Database = {
           last_error_at: string | null
           last_sync_time: string | null
           restaurant_id: string
+          rollup_source_watermark: string | null
           sync_cursor: number | null
           sync_page: number | null
           toast_restaurant_guid: string
@@ -9404,6 +9561,7 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id: string
+          rollup_source_watermark?: string | null
           sync_cursor?: number | null
           sync_page?: number | null
           toast_restaurant_guid: string
@@ -9427,6 +9585,7 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id?: string
+          rollup_source_watermark?: string | null
           sync_cursor?: number | null
           sync_page?: number | null
           toast_restaurant_guid?: string
@@ -10665,6 +10824,18 @@ export type Database = {
         Args: { p_membership_id: string; p_role: string; p_role_id?: string }
         Returns: undefined
       }
+      auto_link_pending_outflows_internal: {
+        Args: {
+          p_batch_limit?: number
+          p_restaurant_id: string
+          p_skip_rebuild?: boolean
+        }
+        Returns: {
+          candidate_count: number
+          linked_count: number
+        }[]
+      }
+      backfill_bank_transaction_journal_entries: { Args: never; Returns: Json }
       backfill_user_restaurants_role_id: { Args: never; Returns: undefined }
       bank_reauth_cohort_a_candidates: {
         Args: never
@@ -10701,7 +10872,7 @@ export type Database = {
         }[]
       }
       bank_txn_entry_day: {
-        Args: { p_ts: string; p_tz: string | null }
+        Args: { p_ts: string; p_tz: string }
         Returns: string
       }
       builtin_role_id_for: { Args: { p_role: string }; Returns: string }
@@ -11273,6 +11444,64 @@ export type Database = {
       }
       generate_po_number: { Args: { p_restaurant_id: string }; Returns: string }
       get_account_subtypes: { Args: never; Returns: Json }
+      get_bank_spending_by_category: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+          p_statuses?: string[]
+        }
+        Returns: {
+          category_id: string
+          category_name: string
+          spend: number
+          tx_count: number
+        }[]
+      }
+      get_bank_transaction_summary: {
+        Args: {
+          p_bank_account_id?: string
+          p_end_date: string
+          p_min_inflow?: number
+          p_restaurant_id: string
+          p_start_date: string
+          p_statuses?: string[]
+        }
+        Returns: {
+          avg_inflow: number
+          floored_inflow: number
+          inflow: number
+          inflow_count: number
+          max_inflow: number
+          net: number
+          outflow: number
+          outflow_count: number
+          tx_count: number
+        }[]
+      }
+      get_bank_transactions_daily: {
+        Args: {
+          p_bank_account_id?: string
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: {
+          day: string
+          inflow: number
+          net: number
+          outflow: number
+        }[]
+      }
+      get_cash_flow_metrics: {
+        Args: {
+          p_bank_account_id?: string
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: Json
+      }
       get_check_bank_account_secrets: {
         Args: { p_id: string }
         Returns: {
@@ -11309,14 +11538,49 @@ export type Database = {
           on_break: boolean
         }[]
       }
-      get_cash_flow_metrics: {
+      get_expense_health_metrics: {
         Args: {
-          p_bank_account_id?: string | null
+          p_bank_account_id?: string
+          p_end_date: string
+          p_fee_patterns: string[]
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: {
+          food_cost: number
+          labor_cost: number
+          processing_fees: number
+          revenue: number
+          total_outflows: number
+          uncategorized_spend: number
+        }[]
+      }
+      get_inventory_usage_by_month: {
+        Args: {
           p_end_date: string
           p_restaurant_id: string
           p_start_date: string
         }
-        Returns: Json
+        Returns: {
+          food_cost: number
+          period: string
+        }[]
+      }
+      get_inventory_valuation: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          item_count: number
+          low_stock_count: number
+          total_value: number
+        }[]
+      }
+      get_journal_expense_total: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: number
       }
       get_inventory_usage_by_day: {
         Args: {
@@ -11349,6 +11613,7 @@ export type Database = {
           gross_revenue: number
           other_liabilities: number
           period: string
+          refunds: number
           sales_tax: number
           tips: number
         }[]
@@ -11430,6 +11695,19 @@ export type Database = {
           transaction_count: number
         }[]
       }
+      get_sales_by_category: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: {
+          category_id: string
+          category_name: string
+          item_count: number
+          revenue: number
+        }[]
+      }
       get_sales_trends: {
         Args: {
           p_end_date?: string
@@ -11444,6 +11722,20 @@ export type Database = {
         Returns: {
           locked_count: number
           series_count: number
+        }[]
+      }
+      get_top_sold_items: {
+        Args: {
+          p_end_date: string
+          p_limit?: number
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: {
+          item_name: string
+          quantity: number
+          revenue: number
+          sale_count: number
         }[]
       }
       get_uncovered_bank_patterns: {
@@ -11647,6 +11939,7 @@ export type Database = {
         Returns: string
       }
       no_plan: { Args: never; Returns: boolean[] }
+      normalize_match_text: { Args: { p_text: string }; Returns: string }
       num_failed: { Args: never; Returns: number }
       os_name: { Args: never; Returns: string }
       pass:
@@ -11864,6 +12157,16 @@ export type Database = {
           unread_count: number
         }[]
       }
+      review_response_submit_followup: {
+        Args: {
+          p_comment: string
+          p_consent: boolean
+          p_email: string
+          p_name: string
+          p_response_id: string
+        }
+        Returns: boolean
+      }
       role_member_counts: {
         Args: { p_restaurant_id: string }
         Returns: {
@@ -12080,6 +12383,10 @@ export type Database = {
       unaccent: { Args: { "": string }; Returns: string }
       undo_template_hours_cascade: {
         Args: { p_batch_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      unlink_pending_outflow: {
+        Args: { p_pending_outflow_id: string }
         Returns: Json
       }
       unpublish_schedule: {

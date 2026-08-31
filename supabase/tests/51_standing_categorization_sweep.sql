@@ -9,11 +9,12 @@
 --   * the drain cannot reacquire the ability to retire   (test 2)
 --   * the sweep carries no pos_system predicate          (tests 3, 5)
 --   * neither loop can starve the other of the budget    (tests 8, 9)
+--   * the link loop shares no budget flag with POS/bank  (tests 10, 11)
 --
 -- If a future change breaks one of these, the failure message says which
 -- property was lost and why it mattered.
 --
--- Test plan (9 tests):
+-- Test plan (11 tests):
 --  1  the migration scheduled a standing */5 categorization-backlog-drain job
 --  2  drain_categorization_backlog contains no cron.unschedule
 --  3  apply_rules_to_pos_sales_internal contains no pos_system predicate
@@ -23,14 +24,17 @@
 --  7  one tick covers both tables
 --  8  the POS and bank loops each track their own budget-hit flag
 --  9  a POS loop that hits query_canceled still leaves the bank loop to sweep
+-- 10  the link loop tracks its own budget-hit flag, sharing none with POS/bank
+-- 11  a bank loop that hits query_canceled still leaves the link loop to run
 --
 -- NOTE: tests run out of numeric order below -- 1, 2, 3, 5, 6, 7, then 4, then
--- 8 and 9. Test 4 must run after the backlog-exhausting ticks used by 5/6/7 so
--- it asserts the job survives post-convergence; see the comment at test 4.
--- Tests 8 and 9 are last because 9 stubs out apply_rules_to_pos_sales_internal.
+-- 8, 9, 10, 11. Test 4 must run after the backlog-exhausting ticks used by
+-- 5/6/7 so it asserts the job survives post-convergence; see the comment at
+-- test 4. Tests 8-11 are last because 9 and 11 stub out the POS and bank
+-- internal functions respectively, for the rest of this transaction.
 
 BEGIN;
-SELECT plan(9);
+SELECT plan(11);
 
 -- Test 1: the job the migration created is really there, on the real schedule.
 -- Unlike 50_categorization_backlog_drain.sql this does NOT re-schedule the job
@@ -295,6 +299,98 @@ SELECT ok(
   (SELECT is_categorized AND category_id = 'dddddddd-0000-0000-0000-0000000000c1'
    FROM bank_transactions WHERE id = 'dddddddd-0000-0000-0000-0000000000e2'),
   'a POS loop that hits query_canceled still leaves the bank loop to sweep'
+);
+
+-- ---------------------------------------------------------------------------
+-- Tests 10/11: the third loop (pending-outflow auto-link), added by
+-- 20260830100200_sweep_auto_link_loop.sql. Mirrors of tests 8/9 for the same
+-- reason: the pre-existing pattern of one shared budget flag starving a
+-- later loop is exactly the bug those two tests already guard against for
+-- POS vs bank, and the design requires the same isolation for the link loop
+-- (docs/superpowers/specs/2026-08-30-pending-outflow-auto-link-design.md §4).
+-- ---------------------------------------------------------------------------
+
+-- Test 10: structural, mirror of test 8. The link loop must reference its
+-- own v_budget_hit_link flag, and neither v_budget_hit_pos nor
+-- v_budget_hit_bank -- so a POS or bank cancellation does not spend the
+-- link loop's turn. Isolated with 'pending_outflows', the first place that
+-- literal appears in the function body: the link loop selects restaurants
+-- directly from pending_outflows, with no categorization_rules involved, so
+-- nothing before the link loop can match it.
+WITH def AS (
+  SELECT regexp_replace(
+    regexp_replace(pg_get_functiondef(p.oid), '/\*.*?\*/', '', 'gs'),
+    '--[^\n]*', '', 'g'
+  ) AS src
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'drain_categorization_backlog'
+), marks AS (
+  SELECT
+    src,
+    strpos(src, '''bank_transactions''')  AS p_bank,
+    strpos(src, 'pending_outflows')       AS p_link,
+    strpos(src, 'categorization drain: applied') AS p_log
+  FROM def
+), half AS (
+  SELECT
+    p_bank > 0 AND p_link > p_bank AND p_log > p_link AS markers_ok,
+    substr(src, p_link, p_log - p_link) AS link_half
+  FROM marks
+)
+SELECT ok(
+  markers_ok
+  AND link_half LIKE     '%v_budget_hit_link%'
+  AND link_half NOT LIKE '%v_budget_hit_pos%'
+  AND link_half NOT LIKE '%v_budget_hit_bank%'
+  AND link_half NOT LIKE '%v_budget_pos%',
+  'the link loop tracks its own budget-hit flag, sharing none with POS/bank'
+)
+FROM half;
+
+-- Test 11: the behavioural twin of test 10 -- a bank loop that gives up
+-- still leaves the link loop to run. Exercised through query_canceled on
+-- the bank internal function for the same reasons test 9 exercises it on
+-- POS: instant, deterministic, and the likelier real-world trigger
+-- (statement_timeout). The restaurant still has an active bank rule
+-- (f2), so the bank loop selects it and hits the stub.
+--
+-- The DEFAULT must be restated: CREATE OR REPLACE refuses to drop an
+-- existing parameter default.
+CREATE OR REPLACE FUNCTION public.apply_rules_to_bank_transactions_internal(
+  p_restaurant_id uuid, p_batch_limit integer DEFAULT 100, p_skip_rebuild boolean DEFAULT false
+) RETURNS TABLE(applied_count integer, total_count integer)
+LANGUAGE plpgsql
+AS $stub$
+BEGIN
+  RAISE EXCEPTION 'simulated statement timeout' USING ERRCODE = '57014';
+END;
+$stub$;
+
+-- A fresh, unrelated pending outflow and its matching bank transaction. No
+-- categorization rule matches either row's description/vendor, so this pair
+-- is a link-loop candidate only -- the point is to prove the link loop runs,
+-- not to entangle it with the (now-stubbed) bank rules loop.
+INSERT INTO pending_outflows
+  (id, restaurant_id, vendor_name, payment_method, amount, issue_date, status)
+VALUES
+  ('dddddddd-0000-0000-0000-0000000000a2', 'dddddddd-0000-0000-0000-0000000000a1',
+   'AUTO LINK VENDOR CO', 'ach', 44.00, CURRENT_DATE, 'pending');
+
+INSERT INTO bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id,
+   transaction_date, description, amount)
+VALUES
+  ('dddddddd-0000-0000-0000-0000000000e3', 'dddddddd-0000-0000-0000-0000000000a1',
+   'dddddddd-0000-0000-0000-0000000000b1', 'txn_link_loop_starvation',
+   CURRENT_DATE, 'AUTO LINK VENDOR CO', -44.00);
+
+SELECT public.drain_categorization_backlog();
+
+SELECT ok(
+  (SELECT status = 'cleared' AND linked_bank_transaction_id = 'dddddddd-0000-0000-0000-0000000000e3'
+   FROM pending_outflows WHERE id = 'dddddddd-0000-0000-0000-0000000000a2'),
+  'a bank loop that hits query_canceled still leaves the link loop to run'
 );
 
 SELECT * FROM finish();

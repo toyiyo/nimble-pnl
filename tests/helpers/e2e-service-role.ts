@@ -180,3 +180,32 @@ export async function seedInventoryUsage(
     throw new Error(`Failed to seed usage transactions: ${txnError.message}`);
   }
 }
+
+/**
+ * Run one auto-link sweep pass for a restaurant, as the service role.
+ *
+ * `auto_link_pending_outflows_internal` is granted to `service_role` only
+ * (supabase/migrations/20260830100000_auto_link_pending_outflows.sql), so a
+ * spec must call it through this client instead of the page's normal
+ * browser session, and instead of waiting for the cron tick that calls it
+ * in production.
+ */
+export async function runAutoLinkPendingOutflows(
+  restaurantId: string
+): Promise<{ linkedCount: number; candidateCount: number }> {
+  const supabase = getServiceRoleClient();
+
+  const { data, error } = await supabase.rpc('auto_link_pending_outflows_internal', {
+    p_restaurant_id: restaurantId,
+  });
+
+  if (error) {
+    throw new Error(`Failed to run auto_link_pending_outflows_internal: ${error.message}`);
+  }
+
+  const row = data?.[0];
+  return {
+    linkedCount: row?.linked_count ?? 0,
+    candidateCount: row?.candidate_count ?? 0,
+  };
+}

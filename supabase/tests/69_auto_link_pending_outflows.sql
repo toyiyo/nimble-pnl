@@ -7,7 +7,7 @@
 -- amount so scenarios never tie against each other inside the same call.
 
 BEGIN;
-SELECT plan(47);
+SELECT plan(90);
 
 SET LOCAL role TO postgres;
 
@@ -31,6 +31,22 @@ INSERT INTO fiscal_periods (id, restaurant_id, period_start, period_end, is_clos
   ('00000000-0000-0000-0000-000000069020'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
    DATE '2026-05-01', DATE '2026-05-31', true, now())
 ON CONFLICT (id) DO UPDATE SET is_closed = true;
+
+-- Second active category, used by the categorized-eligibility scenarios
+-- (Case C category mismatch, the bulk-categorize marker scenario).
+INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance, is_active) VALUES
+  ('00000000-0000-0000-0000-000000069004'::uuid, '00000000-0000-0000-0000-000000069000'::uuid, '6002', 'Repairs Expense', 'expense', 'operating_expenses', 'debit', true)
+ON CONFLICT (id) DO UPDATE SET is_active = true;
+
+-- Owner user, used by unlink_pending_outflow and bulk_categorize_bank_transactions
+-- calls below (both require an authenticated caller with restaurant access).
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-0000-0000-000000069090'::uuid, 'autolink-owner@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('00000000-0000-0000-0000-000000069090'::uuid, '00000000-0000-0000-0000-000000069000'::uuid, 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 
 -- normalize_match_text --------------------------------------------------------
 SELECT is(normalize_match_text('Sysco Foods, LLC.'), 'syscofoodsllc', 'normalize_match_text lowercases and strips punctuation');
@@ -353,6 +369,333 @@ SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-00000
 SELECT is(
   (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069981'::uuid),
   'pending', 'short vendor across a word boundary: outflow stays pending');
+
+-- Scenario 16: Case A -- categorized transaction, journal entry exists,
+-- categories agree -- link only, journal entry untouched (design §6).
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status, notes) VALUES
+  ('00000000-0000-0000-0000-000000069110'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Case A Vendor', '00000000-0000-0000-0000-000000069002'::uuid, 'ach', 1601.60, CURRENT_DATE - 1, 'pending', 'PO note A');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, category_id, is_transfer, is_split, is_reconciled, notes) VALUES
+  ('00000000-0000-0000-0000-000000069111'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-case-a',
+   now(), -1601.60, 'CASE A VENDOR 001', NULL, 'posted', true, '00000000-0000-0000-0000-000000069002'::uuid, false, false, false, 'BT note A');
+
+INSERT INTO journal_entries (id, restaurant_id, entry_date, entry_number, description, reference_type, reference_id, total_debit, total_credit) VALUES
+  ('00000000-0000-0000-0000-000000069112'::uuid, '00000000-0000-0000-0000-000000069000'::uuid, CURRENT_DATE,
+   'RULE-CASE-A-001', 'Pre-existing categorization A', 'bank_transaction', '00000000-0000-0000-0000-000000069111'::uuid, 1601.60, 1601.60);
+
+INSERT INTO journal_entry_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, description) VALUES
+  ('00000000-0000-0000-0000-000000069113'::uuid, '00000000-0000-0000-0000-000000069112'::uuid, '00000000-0000-0000-0000-000000069002'::uuid, 1601.60, 0, 'Food Cost'),
+  ('00000000-0000-0000-0000-000000069114'::uuid, '00000000-0000-0000-0000-000000069112'::uuid, '00000000-0000-0000-0000-000000069001'::uuid, 0, 1601.60, 'Cash payment');
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069110'::uuid),
+  'cleared', 'Case A: outflow clears');
+SELECT is(
+  (SELECT linked_bank_transaction_id FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069110'::uuid),
+  '00000000-0000-0000-0000-000000069111'::uuid, 'Case A: outflow links to the transaction');
+SELECT is(
+  (SELECT category_id FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069110'::uuid),
+  '00000000-0000-0000-0000-000000069002'::uuid, 'Case A: outflow category is unchanged (already agreed)');
+SELECT isnt(
+  (SELECT matched_at FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069111'::uuid),
+  NULL, 'Case A: matched_at is set');
+SELECT is(
+  (SELECT notes FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069111'::uuid),
+  'BT note A' || E'\n\n' || 'PO note A', 'Case A: notes merged');
+SELECT is(
+  (SELECT id FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069111'::uuid),
+  '00000000-0000-0000-0000-000000069112'::uuid, 'Case A: journal entry id is unchanged (same id)');
+SELECT is(
+  (SELECT description FROM journal_entries WHERE id = '00000000-0000-0000-0000-000000069112'::uuid),
+  'Pre-existing categorization A', 'Case A: journal entry description is untouched');
+SELECT is(
+  (SELECT count(*)::int FROM journal_entry_lines WHERE journal_entry_id = '00000000-0000-0000-0000-000000069112'::uuid),
+  2, 'Case A: journal entry line count is unchanged');
+SELECT is(
+  (SELECT category_id FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069111'::uuid),
+  '00000000-0000-0000-0000-000000069002'::uuid, 'Case A: transaction category_id is unchanged');
+SELECT is(
+  (SELECT is_categorized FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069111'::uuid),
+  true, 'Case A: transaction stays categorized');
+
+-- Scenario 20: unlink after a Case A link -- kept category, entry survives
+-- (reuses the Case A fixtures above, design §6).
+SET LOCAL role TO postgres;
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000069090","role":"authenticated"}', true);
+
+SELECT is(
+  (unlink_pending_outflow('00000000-0000-0000-0000-000000069110'::uuid)->>'category_kept')::boolean,
+  true, 'unlink after Case A: category_kept is true');
+SELECT is(
+  (SELECT count(*)::int FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069111'::uuid),
+  1, 'unlink after Case A: journal entry survives');
+SELECT is(
+  (SELECT is_categorized FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069111'::uuid),
+  true, 'unlink after Case A: transaction stays categorized');
+SELECT isnt(
+  (SELECT auto_link_suppressed_at FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069110'::uuid),
+  NULL, 'unlink after Case A: auto_link_suppressed_at is set');
+SELECT is(
+  (SELECT linked_bank_transaction_id FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069110'::uuid),
+  NULL, 'unlink after Case A: outflow unlinked');
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069110'::uuid),
+  'pending', 'unlink after Case A: status recomputes to pending for a recent issue_date');
+
+SET LOCAL role TO postgres;
+
+-- Scenario 17: Case B -- categorized transaction, journal entry exists,
+-- outflow has no category -- link and copy the category (design §6).
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069130'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Case B Vendor', NULL, 'ach', 1701.70, DATE '2026-01-01', 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, category_id, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000069131'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-case-b',
+   TIMESTAMPTZ '2026-01-05 12:00:00+00', -1701.70, 'CASE B VENDOR 002', NULL, 'posted', true, '00000000-0000-0000-0000-000000069002'::uuid, false, false, false);
+
+INSERT INTO journal_entries (id, restaurant_id, entry_date, entry_number, description, reference_type, reference_id, total_debit, total_credit) VALUES
+  ('00000000-0000-0000-0000-000000069132'::uuid, '00000000-0000-0000-0000-000000069000'::uuid, DATE '2026-01-05',
+   'RULE-CASE-B-001', 'Pre-existing categorization B', 'bank_transaction', '00000000-0000-0000-0000-000000069131'::uuid, 1701.70, 1701.70);
+
+INSERT INTO journal_entry_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, description) VALUES
+  ('00000000-0000-0000-0000-000000069133'::uuid, '00000000-0000-0000-0000-000000069132'::uuid, '00000000-0000-0000-0000-000000069002'::uuid, 1701.70, 0, 'Food Cost'),
+  ('00000000-0000-0000-0000-000000069134'::uuid, '00000000-0000-0000-0000-000000069132'::uuid, '00000000-0000-0000-0000-000000069001'::uuid, 0, 1701.70, 'Cash payment');
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069130'::uuid),
+  'cleared', 'Case B: outflow clears');
+SELECT is(
+  (SELECT linked_bank_transaction_id FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069130'::uuid),
+  '00000000-0000-0000-0000-000000069131'::uuid, 'Case B: outflow links to the transaction');
+SELECT is(
+  (SELECT category_id FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069130'::uuid),
+  '00000000-0000-0000-0000-000000069002'::uuid, 'Case B: outflow receives the transaction category');
+SELECT is(
+  (SELECT count(*)::int FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069131'::uuid),
+  1, 'Case B: journal entry count is unchanged');
+
+-- Scenario 18: Case C -- categorized transaction, journal entry exists,
+-- categories disagree -- not linkable, no writes (design §6).
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069150'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Case C Vendor', '00000000-0000-0000-0000-000000069002'::uuid, 'ach', 1801.80, DATE '2026-01-01', 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, category_id, is_transfer, is_split, is_reconciled, notes) VALUES
+  ('00000000-0000-0000-0000-000000069151'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-case-c',
+   TIMESTAMPTZ '2026-01-05 12:00:00+00', -1801.80, 'CASE C VENDOR 003', NULL, 'posted', true, '00000000-0000-0000-0000-000000069004'::uuid, false, false, false, 'BT note C');
+
+INSERT INTO journal_entries (id, restaurant_id, entry_date, entry_number, description, reference_type, reference_id, total_debit, total_credit) VALUES
+  ('00000000-0000-0000-0000-000000069152'::uuid, '00000000-0000-0000-0000-000000069000'::uuid, DATE '2026-01-05',
+   'RULE-CASE-C-001', 'Pre-existing categorization C', 'bank_transaction', '00000000-0000-0000-0000-000000069151'::uuid, 1801.80, 1801.80);
+
+INSERT INTO journal_entry_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, description) VALUES
+  ('00000000-0000-0000-0000-000000069153'::uuid, '00000000-0000-0000-0000-000000069152'::uuid, '00000000-0000-0000-0000-000000069004'::uuid, 1801.80, 0, 'Repairs Expense'),
+  ('00000000-0000-0000-0000-000000069154'::uuid, '00000000-0000-0000-0000-000000069152'::uuid, '00000000-0000-0000-0000-000000069001'::uuid, 0, 1801.80, 'Cash payment');
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069150'::uuid),
+  'pending', 'Case C: outflow stays pending');
+SELECT is(
+  (SELECT linked_bank_transaction_id FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069150'::uuid),
+  NULL, 'Case C: outflow stays unlinked');
+SELECT is(
+  (SELECT category_id FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069151'::uuid),
+  '00000000-0000-0000-0000-000000069004'::uuid, 'Case C: transaction category is unchanged');
+SELECT is(
+  (SELECT notes FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069151'::uuid),
+  'BT note C', 'Case C: transaction notes are untouched (pair is not linkable, no writes)');
+
+-- Scenario 19: uniqueness counts a categorized twin (design §4.1) -- a
+-- categorized transaction now counts toward the tie, so the outflow
+-- stays pending even though one twin is uncategorized and unique-eligible
+-- under the old predicate.
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069161'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Tie Categorized Co', 'ach', 1901.90, DATE '2026-01-01', 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, category_id, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000069162'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-tie-cat-a',
+   TIMESTAMPTZ '2026-01-05 12:00:00+00', -1901.90, 'TIE CATEGORIZED CO A', NULL, 'posted', true, '00000000-0000-0000-0000-000000069002'::uuid, false, false, false),
+  ('00000000-0000-0000-0000-000000069163'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-tie-cat-b',
+   TIMESTAMPTZ '2026-01-06 12:00:00+00', -1901.90, 'TIE CATEGORIZED CO B', NULL, 'posted', false, NULL, false, false, false);
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069161'::uuid),
+  'pending', 'uniqueness counts a categorized twin: outflow stays pending');
+
+-- Scenario 21: unlink after an original-path link -- the auto-link wrote
+-- the entry itself, so the marker check passes and the revert still
+-- works (category_kept = false, design §6).
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069180'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Original Path Co', '00000000-0000-0000-0000-000000069002'::uuid, 'ach', 2101.21, CURRENT_DATE - 1, 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000069181'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-original-path',
+   now(), -2101.21, 'ORIGINAL PATH CO', NULL, 'posted', false, false, false, false);
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069180'::uuid),
+  'cleared', 'original-path setup: auto-link cleared the outflow');
+SELECT is(
+  (SELECT description FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069181'::uuid),
+  'Matched pending outflow: Original Path Co', 'original-path setup: the auto-link wrote the marker description');
+
+SET LOCAL role TO postgres;
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000069090","role":"authenticated"}', true);
+
+SELECT is(
+  (unlink_pending_outflow('00000000-0000-0000-0000-000000069180'::uuid)->>'category_kept')::boolean,
+  false, 'unlink after original-path link: category_kept is false, the marker pins the revert');
+SELECT is(
+  (SELECT count(*)::int FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069181'::uuid),
+  0, 'unlink after original-path link: journal entry is deleted');
+SELECT is(
+  (SELECT is_categorized FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069181'::uuid),
+  false, 'unlink after original-path link: transaction is uncategorized');
+SELECT is(
+  (SELECT linked_bank_transaction_id FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069180'::uuid),
+  NULL, 'unlink after original-path link: outflow unlinked');
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069180'::uuid),
+  'pending', 'unlink after original-path link: status recomputes to pending');
+
+SET LOCAL role TO postgres;
+
+-- Scenario 22: rebuild skip on a Case-A-only call -- a call that
+-- produces only a Case A link leaves current_balance unchanged, mirroring
+-- scenario 13 for the categorized-eligibility path (design §6).
+UPDATE chart_of_accounts SET current_balance = 0 WHERE id = '00000000-0000-0000-0000-000000069002'::uuid;
+
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069191'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Rebuild Skip Cat Co', '00000000-0000-0000-0000-000000069002'::uuid, 'ach', 2201.22, DATE '2026-01-01', 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, category_id, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000069192'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-rebuild-skip-cat',
+   TIMESTAMPTZ '2026-01-05 12:00:00+00', -2201.22, 'REBUILD SKIP CAT CO', NULL, 'posted', true, '00000000-0000-0000-0000-000000069002'::uuid, false, false, false);
+
+INSERT INTO journal_entries (id, restaurant_id, entry_date, entry_number, description, reference_type, reference_id, total_debit, total_credit) VALUES
+  ('00000000-0000-0000-0000-000000069193'::uuid, '00000000-0000-0000-0000-000000069000'::uuid, DATE '2026-01-05',
+   'RULE-REBUILD-SKIP-001', 'Pre-existing categorization D', 'bank_transaction', '00000000-0000-0000-0000-000000069192'::uuid, 2201.22, 2201.22);
+
+INSERT INTO journal_entry_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, description) VALUES
+  ('00000000-0000-0000-0000-000000069194'::uuid, '00000000-0000-0000-0000-000000069193'::uuid, '00000000-0000-0000-0000-000000069002'::uuid, 2201.22, 0, 'Food Cost'),
+  ('00000000-0000-0000-0000-000000069195'::uuid, '00000000-0000-0000-0000-000000069193'::uuid, '00000000-0000-0000-0000-000000069001'::uuid, 0, 2201.22, 'Cash payment');
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid, 100, false);
+
+SELECT is(
+  (SELECT status FROM pending_outflows WHERE id = '00000000-0000-0000-0000-000000069191'::uuid),
+  'cleared', 'rebuild skip (Case A only): the pair still links');
+SELECT is(
+  (SELECT current_balance FROM chart_of_accounts WHERE id = '00000000-0000-0000-0000-000000069002'::uuid),
+  0::numeric, 'rebuild skip (Case A only): current_balance is not rebuilt');
+
+-- Scenario 23: the marker survives bulk_categorize_bank_transactions --
+-- the reclassification branch does not touch the original entry, and the
+-- resulting category mismatch (not the marker) blocks the later unlink
+-- from reverting a category bulk_categorize now owns (design §6,
+-- supabase-design-review finding).
+INSERT INTO pending_outflows (id, restaurant_id, vendor_name, category_id, payment_method, amount, issue_date, status) VALUES
+  ('00000000-0000-0000-0000-000000069203'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   'Bulk Marker Co', '00000000-0000-0000-0000-000000069002'::uuid, 'ach', 2301.23, CURRENT_DATE - 1, 'pending');
+
+INSERT INTO bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, amount, description, merchant_name, status, is_categorized, is_transfer, is_split, is_reconciled) VALUES
+  ('00000000-0000-0000-0000-000000069204'::uuid, '00000000-0000-0000-0000-000000069000'::uuid,
+   '00000000-0000-0000-0000-000000069010'::uuid, 'txn-autolink-bulk-marker',
+   now(), -2301.23, 'BULK MARKER CO', NULL, 'posted', false, false, false, false);
+
+SELECT * FROM auto_link_pending_outflows_internal('00000000-0000-0000-0000-000000069000'::uuid);
+
+SELECT is(
+  (SELECT description FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069204'::uuid),
+  'Matched pending outflow: Bulk Marker Co', 'bulk-categorize marker setup: the auto-link wrote the marker description');
+
+SET LOCAL role TO postgres;
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000069090","role":"authenticated"}', true);
+
+SELECT is(
+  (SELECT (bulk_categorize_bank_transactions(
+     ARRAY['00000000-0000-0000-0000-000000069204'::uuid],
+     '00000000-0000-0000-0000-000000069004'::uuid,
+     '00000000-0000-0000-0000-000000069000'::uuid,
+     false
+   )->>'reclassified_count')::int),
+  1, 'bulk-categorize marker: reclassifies the auto-linked transaction');
+SELECT is(
+  (SELECT category_id FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069204'::uuid),
+  '00000000-0000-0000-0000-000000069004'::uuid, 'bulk-categorize marker: transaction category changes');
+SELECT is(
+  (SELECT description FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069204'::uuid),
+  'Matched pending outflow: Bulk Marker Co', 'bulk-categorize marker: the reclassification branch leaves the original entry untouched');
+SELECT is(
+  (SELECT count(*)::int FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069204'::uuid),
+  1, 'bulk-categorize marker: no duplicate bank_transaction entry');
+SELECT is(
+  (SELECT count(*)::int FROM journal_entries WHERE reference_type = 'reclassification' AND entry_number LIKE 'RECLASS-00000000-0000-0000-0000-000000069204-%'),
+  1, 'bulk-categorize marker: a separate reclassification entry is inserted');
+
+SET LOCAL role TO postgres;
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000069090","role":"authenticated"}', true);
+
+SELECT is(
+  (unlink_pending_outflow('00000000-0000-0000-0000-000000069203'::uuid)->>'category_kept')::boolean,
+  true, 'bulk-categorize marker: unlink keeps the category (mismatch blocks the revert, not the marker)');
+SELECT is(
+  (SELECT count(*)::int FROM journal_entries WHERE reference_type = 'bank_transaction' AND reference_id = '00000000-0000-0000-0000-000000069204'::uuid),
+  1, 'bulk-categorize marker: unlink does not delete the marked entry');
+SELECT is(
+  (SELECT category_id FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000069204'::uuid),
+  '00000000-0000-0000-0000-000000069004'::uuid, 'bulk-categorize marker: unlink leaves the bulk-categorized category in place');
+
+SET LOCAL role TO postgres;
+
+-- Structural pin: the post-claim re-validation recomputes journal-entry
+-- existence and category agreement on the locked rows (design §6, same
+-- technique as supabase/tests/51_standing_categorization_sweep.sql tests
+-- 8 and 10). pgTAP cannot pause a function mid-transaction to test the
+-- claim-window race behaviourally, so this pins the code structurally.
+SELECT ok(
+  regexp_replace(
+    regexp_replace(pg_get_functiondef(p.oid), '/\*.*?\*/', '', 'gs'),
+    '--[^\n]*', '', 'g'
+  ) ILIKE '%v_bt.is_categorized THEN%journal_entries%reference_id = v_bt.id%',
+  'auto_link_pending_outflows_internal rechecks journal-entry existence on the locked transaction after the claim'
+)
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'auto_link_pending_outflows_internal';
+
+SELECT ok(
+  regexp_replace(
+    regexp_replace(pg_get_functiondef(p.oid), '/\*.*?\*/', '', 'gs'),
+    '--[^\n]*', '', 'g'
+  ) ILIKE '%v_po.category_id IS NOT NULL AND v_po.category_id != v_bt.category_id%',
+  'auto_link_pending_outflows_internal rechecks category agreement on the locked rows after the claim'
+)
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'auto_link_pending_outflows_internal';
 
 -- Grants -------------------------------------------------------------------------
 SELECT ok(

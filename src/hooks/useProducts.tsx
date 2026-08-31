@@ -84,6 +84,13 @@ export interface CreateProductData {
   pos_item_name?: string | null;
   image_url?: string | null;
   barcode_data?: any | null;
+  /**
+   * Pack size for the initial product_suppliers row, from the pending-supplier
+   * form on a new product. Not a products-table column — createProduct pulls
+   * these out before the products insert and writes them to product_suppliers.
+   */
+  supplier_pack_size_qty?: number | null;
+  supplier_pack_size_unit?: string | null;
 }
 
 export const useProducts = (restaurantId: string | null) => {
@@ -175,8 +182,15 @@ export const useProducts = (restaurantId: string | null) => {
 
     try {
       // Avoid sending fields that might not exist in the DB schema
-      // (e.g., pos_item_name can be absent in some environments)
-      const { pos_item_name: _omitPosItemName, ...insertData } = productData as any;
+      // (e.g., pos_item_name can be absent in some environments), and pull
+      // out the pending-supplier pack size — it belongs on product_suppliers,
+      // not products.
+      const {
+        pos_item_name: _omitPosItemName,
+        supplier_pack_size_qty,
+        supplier_pack_size_unit,
+        ...insertData
+      } = productData as any;
 
       const { data, error } = await supabase
         .from('products')
@@ -197,6 +211,8 @@ export const useProducts = (restaurantId: string | null) => {
             last_unit_cost: productData.cost_per_unit ?? null,
             supplier_sku: productData.supplier_sku,
             is_preferred: true,  // First supplier is default preferred
+            pack_size_qty: supplier_pack_size_qty ?? null,
+            pack_size_unit: supplier_pack_size_unit ?? null,
           });
 
         if (supplierError) {

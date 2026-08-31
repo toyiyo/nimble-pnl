@@ -17,7 +17,7 @@ import { OCRBarcodeScanner } from '@/components/OCRBarcodeScanner';
 import { KeyboardBarcodeScanner } from '@/components/KeyboardBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductCard } from '@/components/ProductCard';
-import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
+import { ProductUpdateDialog, PendingSupplierPackSize } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { WasteDialog } from '@/components/WasteDialog';
 import { TransferDialog } from '@/components/TransferDialog';
@@ -827,9 +827,13 @@ export const Inventory: React.FC = () => {
     setShowUpdateDialog(true);
   };
 
-  const handleUpdateProduct = async (updates: Partial<Product>, quantityToAdd: number) => {
+  const handleUpdateProduct = async (
+    updates: Partial<Product>,
+    quantityToAdd: number,
+    pendingSupplierPackSize?: PendingSupplierPackSize
+  ) => {
     if (!selectedProduct) return;
-    
+
     // Check if this is a new product (no ID) or existing product
     if (!selectedProduct.id) {
       // Create new product
@@ -855,6 +859,8 @@ export const Inventory: React.FC = () => {
         supplier_name: updates.supplier_name || selectedProduct.supplier_name,
         supplier_sku: updates.supplier_sku || selectedProduct.supplier_sku, // FIX: Use updates.supplier_sku first
         supplier_id: updates.supplier_id ?? selectedProduct.supplier_id ?? null,
+        supplier_pack_size_qty: pendingSupplierPackSize?.packSizeQty ?? null,
+        supplier_pack_size_unit: pendingSupplierPackSize?.packSizeUnit ?? null,
         barcode_data: selectedProduct.barcode_data,
       };
 

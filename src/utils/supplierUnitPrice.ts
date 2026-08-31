@@ -58,7 +58,8 @@ export function computeUnitPrice(
   if (!isPositiveFiniteNumber(price) || !isPositiveFiniteNumber(qty)) {
     return null;
   }
-  return price / qty;
+  const result = price / qty;
+  return isPositiveFiniteNumber(result) ? result : null;
 }
 
 /**
@@ -101,10 +102,10 @@ export function compareSupplierUnitPrices(
         baseUnit,
         productName
       );
-      normalizedUnitPrice =
-        convertedQty !== null && isPositiveFiniteNumber(convertedQty.value)
-          ? (row.price as number) / convertedQty.value
-          : null;
+      if (convertedQty !== null && isPositiveFiniteNumber(convertedQty.value)) {
+        const candidate = (row.price as number) / convertedQty.value;
+        normalizedUnitPrice = isPositiveFiniteNumber(candidate) ? candidate : null;
+      }
     }
 
     result.set(row.id, {

@@ -40,7 +40,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
-import { useProductSuppliers } from '@/hooks/useProductSuppliers';
+import { useProductSuppliers, ProductSupplier } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
@@ -82,11 +82,21 @@ const updateSchema = z.object({
 
 type UpdateFormData = z.infer<typeof updateSchema>;
 
+/** Pack size for the supplier a caller links to a brand-new product on create. */
+export interface PendingSupplierPackSize {
+  packSizeQty?: number;
+  packSizeUnit?: string;
+}
+
 interface ProductUpdateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product: Product;
-  onUpdate: (updates: Partial<Product>, quantityToAdd: number) => Promise<void>;
+  onUpdate: (
+    updates: Partial<Product>,
+    quantityToAdd: number,
+    pendingSupplierPackSize?: PendingSupplierPackSize
+  ) => Promise<void>;
   onEnhance?: (product: Product) => Promise<any>;
 }
 
@@ -111,7 +121,53 @@ const UNITS = [
 const PACK_SIZE_UNITS = [...WEIGHT_UNITS, ...VOLUME_UNITS, ...COUNT_UNITS];
 
 const EMPTY_NEW_SUPPLIER = { supplier_id: '', cost: 0, supplier_sku: '', pack_size_qty: '', pack_size_unit: '' };
-const CLOSED_PRICE_UPDATE_DIALOG = { open: false, supplier: null as any, price: '', pack_size_qty: '', pack_size_unit: '' };
+const CLOSED_PRICE_UPDATE_DIALOG = {
+  open: false,
+  supplier: null as ProductSupplier | null,
+  price: '',
+  pack_size_qty: '',
+  pack_size_unit: '',
+};
+
+interface PackSizeFieldsProps {
+  idPrefix: string;
+  qty: string;
+  unit: string;
+  onQtyChange: (value: string) => void;
+  onUnitChange: (value: string) => void;
+}
+
+/** Pack size quantity input + unit select, shared by the add-supplier form and the price update dialog. */
+const PackSizeFields: React.FC<PackSizeFieldsProps> = ({ idPrefix, qty, unit, onQtyChange, onUnitChange }) => (
+  <>
+    <div className="space-y-2">
+      <Label htmlFor={`${idPrefix}-pack-size-qty`}>Pack size</Label>
+      <Input
+        id={`${idPrefix}-pack-size-qty`}
+        type="number"
+        step="0.01"
+        placeholder="e.g. 30"
+        value={qty}
+        onChange={(e) => onQtyChange(e.target.value)}
+      />
+    </div>
+    <div className="space-y-2">
+      <Label htmlFor={`${idPrefix}-pack-size-unit`}>Pack size unit</Label>
+      <Select value={unit} onValueChange={onUnitChange}>
+        <SelectTrigger id={`${idPrefix}-pack-size-unit`}>
+          <SelectValue placeholder="Select unit" />
+        </SelectTrigger>
+        <SelectContent>
+          {PACK_SIZE_UNITS.map((u) => (
+            <SelectItem key={u} value={u}>
+              {u}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  </>
+);
 
 const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
   open,
@@ -130,7 +186,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
       compareSupplierUnitPrices(
         productSuppliers.map((ps) => ({
           id: ps.id,
-          price: ps.last_unit_cost,
+          price: ps.last_unit_cost ?? ps.average_unit_cost,
           packSizeQty: ps.pack_size_qty,
           packSizeUnit: ps.pack_size_unit,
         })),
@@ -165,7 +221,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [priceUpdateDialog, setPriceUpdateDialog] = useState<{
     open: boolean;
-    supplier: any;
+    supplier: ProductSupplier | null;
     price: string;
     pack_size_qty: string;
     pack_size_unit: string;
@@ -388,7 +444,19 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
     console.log('[ProductUpdateDialog] updates object being sent:', updates);
     console.log('[ProductUpdateDialog] updates.sku specifically:', updates.sku);
 
-    await onUpdate(updates, quantityToAdd);
+    // On the new-product path, the pending supplier's pack size lives only in
+    // pendingSupplierDetails (it is not a products-table column) — pass it
+    // through so the caller can apply it to the product_suppliers row it
+    // creates. See design doc section 3, "new-product pending-supplier path".
+    const pendingSupplierPackSize: PendingSupplierPackSize | undefined =
+      isNewProduct && pendingSupplierDetails
+        ? {
+            packSizeQty: pendingSupplierDetails.packSizeQty,
+            packSizeUnit: pendingSupplierDetails.packSizeUnit,
+          }
+        : undefined;
+
+    await onUpdate(updates, quantityToAdd, pendingSupplierPackSize);
     onOpenChange(false);
   };
 
@@ -840,6 +908,9 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                           <p className="text-sm text-muted-foreground">
                             {pendingSupplierDetails.sku ? `SKU: ${pendingSupplierDetails.sku}` : 'No supplier SKU set'}
                             {pendingSupplierDetails.cost !== undefined ? ` • $${pendingSupplierDetails.cost.toFixed(2)} per unit` : ''}
+                            {pendingSupplierDetails.packSizeQty !== undefined && pendingSupplierDetails.packSizeUnit
+                              ? ` • Pack size: ${pendingSupplierDetails.packSizeQty} ${pendingSupplierDetails.packSizeUnit}`
+                              : ''}
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -907,35 +978,13 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                             onChange={(e) => setNewSupplier({ ...newSupplier, supplier_sku: e.target.value })}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="new-supplier-pack-size-qty">Pack size</Label>
-                          <Input
-                            id="new-supplier-pack-size-qty"
-                            type="number"
-                            step="0.01"
-                            placeholder="e.g. 30"
-                            value={newSupplier.pack_size_qty}
-                            onChange={(e) => setNewSupplier({ ...newSupplier, pack_size_qty: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="new-supplier-pack-size-unit">Pack size unit</Label>
-                          <Select
-                            value={newSupplier.pack_size_unit}
-                            onValueChange={(value) => setNewSupplier({ ...newSupplier, pack_size_unit: value })}
-                          >
-                            <SelectTrigger id="new-supplier-pack-size-unit" aria-label="Pack size unit">
-                              <SelectValue placeholder="Select unit" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PACK_SIZE_UNITS.map((unit) => (
-                                <SelectItem key={unit} value={unit}>
-                                  {unit}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <PackSizeFields
+                          idPrefix="new-supplier"
+                          qty={newSupplier.pack_size_qty}
+                          unit={newSupplier.pack_size_unit}
+                          onQtyChange={(value) => setNewSupplier({ ...newSupplier, pack_size_qty: value })}
+                          onUnitChange={(value) => setNewSupplier({ ...newSupplier, pack_size_unit: value })}
+                        />
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -1142,7 +1191,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                       </TableHeader>
                       <TableBody>
                         {productSuppliers.map((ps) => {
-                          const unitPriceInfo = supplierUnitPrices.get(ps.id);
+                          const unitPriceEntry = supplierUnitPrices.get(ps.id);
                           return (
                           <TableRow key={ps.id}>
                             <TableCell className="font-medium">
@@ -1155,13 +1204,13 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                               {ps.last_unit_cost ? `$${ps.last_unit_cost.toFixed(2)}` : '-'}
                             </TableCell>
                             <TableCell className="text-right">
-                              {unitPriceInfo?.unitPrice != null ? (
+                              {typeof unitPriceEntry?.unitPrice === 'number' ? (
                                 <div className="flex items-center justify-end gap-1.5">
                                   <span>
-                                    ${unitPriceInfo.unitPrice.toFixed(2)}/
-                                    {unitPriceInfo.unit}
+                                    ${unitPriceEntry.unitPrice.toFixed(2)}/
+                                    {unitPriceEntry.unit}
                                   </span>
-                                  {unitPriceInfo.isCheapest && (
+                                  {unitPriceEntry.isCheapest && (
                                     <Badge variant="secondary">Best price</Badge>
                                   )}
                                 </div>
@@ -1404,35 +1453,13 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price-update-pack-size-qty">Pack size</Label>
-                <Input
-                  id="price-update-pack-size-qty"
-                  type="number"
-                  step="0.01"
-                  placeholder="e.g. 30"
-                  value={priceUpdateDialog.pack_size_qty}
-                  onChange={(e) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_qty: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="price-update-pack-size-unit">Pack size unit</Label>
-                <Select
-                  value={priceUpdateDialog.pack_size_unit}
-                  onValueChange={(value) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_unit: value })}
-                >
-                  <SelectTrigger id="price-update-pack-size-unit" aria-label="Pack size unit">
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PACK_SIZE_UNITS.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <PackSizeFields
+                idPrefix="price-update"
+                qty={priceUpdateDialog.pack_size_qty}
+                unit={priceUpdateDialog.pack_size_unit}
+                onQtyChange={(value) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_qty: value })}
+                onUnitChange={(value) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_unit: value })}
+              />
             </div>
             <div className="flex justify-end gap-2">
               <Button
@@ -1456,10 +1483,22 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                     });
                     return;
                   }
-                  
+
+                  const qtyFilled = priceUpdateDialog.pack_size_qty.trim() !== '';
+                  const unitFilled = priceUpdateDialog.pack_size_unit.trim() !== '';
+                  if (qtyFilled !== unitFilled) {
+                    toast({
+                      title: 'Incomplete pack size',
+                      description: 'Enter both the pack size quantity and unit, or leave both blank.',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+
                   try {
                     const ps = priceUpdateDialog.supplier;
-                    
+                    if (!ps) return;
+
                     // Use upsert_product_supplier RPC to track price changes
                     const { error: rpcError } = await supabase.rpc('upsert_product_supplier', {
                       p_restaurant_id: restaurantId,
@@ -1487,6 +1526,14 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
 
                     if (packSizeError) {
                       console.error('Failed to update pack size:', packSizeError);
+                      toast({
+                        title: 'Price updated, pack size not saved',
+                        description: 'The price saved. The pack size did not save. Try again.',
+                        variant: 'destructive',
+                      });
+                      fetchSuppliers();
+                      setPriceUpdateDialog(CLOSED_PRICE_UPDATE_DIALOG);
+                      return;
                     }
 
                     // If this is the preferred supplier, update product cost_per_unit

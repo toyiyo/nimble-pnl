@@ -76,11 +76,11 @@ export function useCostsFromSource(
   // queries, never a sibling period's cached fetch.
   const cogsFetchCount =
     useIsFetching({
-      queryKey: inventoryUsageByDayKey(restaurantId, dateFrom, dateTo),
+      queryKey: inventoryUsageByDayKey(restaurantId, dateFrom, dateTo).key,
       exact: true,
     }) +
     useIsFetching({
-      queryKey: cogsFinancialsKey(restaurantId, dateFrom, dateTo),
+      queryKey: cogsFinancialsKey(restaurantId, dateFrom, dateTo).key,
       exact: true,
     });
   const isFetching =

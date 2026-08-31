@@ -48,6 +48,7 @@ import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenSt
 import { useOpsInboxCount } from '@/hooks/useOpsInbox';
 import { useSubscription } from '@/hooks/useSubscription';
 import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
+import { periodStatusMessage } from '@/utils/periodAnnouncement';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
@@ -170,7 +171,7 @@ const Index = () => {
     todayEnd
   );
 
-  const { data: periodMetrics, isLoading: periodLoading, isFetching: periodFetching, capped: periodCapped } = usePeriodMetrics(
+  const { data: periodMetrics, isLoading: periodLoading, isFetching: periodFetching, error: periodError, capped: periodCapped } = usePeriodMetrics(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -768,14 +769,14 @@ const Index = () => {
                 onPeriodChange={(period) => startTransition(() => setSelectedPeriod(period))}
               />
               <output aria-live="polite" className="sr-only">
-                {periodFetching ? '' : `Dashboard updated for ${selectedPeriod.label}`}
+                {periodStatusMessage(periodFetching, periodError, selectedPeriod.label)}
               </output>
 
               {/* ===== OPERATIONAL METRICS SECTION ===== */}
 
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
-                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`}>
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Performance Overview</h2>
                     <CollapsibleTrigger asChild>
@@ -927,7 +928,7 @@ const Index = () => {
 
               {/* Cashflow Visualization - Collapsible */}
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
-                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`}>
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
@@ -947,7 +948,7 @@ const Index = () => {
 
               {/* Monthly Performance Table - Collapsible */}
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
-                <div className={`space-y-4 transition-opacity ${monthlyFetching ? 'opacity-60' : ''}`}>
+                <div className={`space-y-4 transition-opacity ${monthlyFetching ? 'opacity-60' : ''}`} aria-busy={monthlyFetching}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
@@ -968,7 +969,7 @@ const Index = () => {
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
-                  <div className={`space-y-4 transition-opacity ${revenueFetching ? 'opacity-60' : ''}`}>
+                  <div className={`space-y-4 transition-opacity ${revenueFetching ? 'opacity-60' : ''}`} aria-busy={revenueFetching}>
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-[17px] font-semibold text-foreground">Revenue Mix</h2>

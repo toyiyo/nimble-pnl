@@ -32,18 +32,20 @@ export interface FinancialCOGSResult {
  */
 // The query key for this hook's data. Export it so other hooks that need to
 // watch this exact query (for example, an isFetching signal) build the same
-// key instead of copying the literal string.
+// key instead of copying the literal string. Return fromStr and toStr beside
+// the key, so a caller reads them by name instead of a tuple position.
 export function cogsFinancialsKey(
   restaurantId: string | null,
   dateFrom: Date,
   dateTo: Date,
 ) {
-  return [
-    'cogs-financials',
-    restaurantId,
-    toDateOnlyString(dateFrom),
-    toDateOnlyString(dateTo),
-  ] as const;
+  const fromStr = toDateOnlyString(dateFrom);
+  const toStr = toDateOnlyString(dateTo);
+  return {
+    key: ['cogs-financials', restaurantId, fromStr, toStr] as const,
+    fromStr,
+    toStr,
+  };
 }
 
 export function useCOGSFromFinancials(
@@ -51,8 +53,7 @@ export function useCOGSFromFinancials(
   dateFrom: Date,
   dateTo: Date
 ): FinancialCOGSResult {
-  const key = cogsFinancialsKey(restaurantId, dateFrom, dateTo);
-  const [, , startDateStr, endDateStr] = key;
+  const { key, fromStr, toStr } = cogsFinancialsKey(restaurantId, dateFrom, dateTo);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: key,
@@ -60,7 +61,7 @@ export function useCOGSFromFinancials(
       if (!restaurantId) return null;
 
       const { bankTxns, splitItems, parentDateMap, pendingTxns, capped } =
-        await fetchFinancialCOGSRows(supabase, restaurantId, startDateStr, endDateStr);
+        await fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr);
 
       const dateMap = aggregateFinancialCOGSByDate({ bankTxns, splitItems, parentDateMap, pendingTxns });
 

@@ -26,18 +26,20 @@ export function mapUsageRows(rows: UsageDayRow[]): UsageByDayData {
 
 // The query key for this hook's data. Export it so other hooks that need to
 // watch this exact query (for example, an isFetching signal) build the same
-// key instead of copying the literal string.
+// key instead of copying the literal string. Return fromStr and toStr beside
+// the key, so a caller reads them by name instead of a tuple position.
 export function inventoryUsageByDayKey(
   restaurantId: string | null,
   dateFrom: Date,
   dateTo: Date,
 ) {
-  return [
-    'inventory-usage-by-day',
-    restaurantId,
-    toDateOnlyString(dateFrom),
-    toDateOnlyString(dateTo),
-  ] as const;
+  const fromStr = toDateOnlyString(dateFrom);
+  const toStr = toDateOnlyString(dateTo);
+  return {
+    key: ['inventory-usage-by-day', restaurantId, fromStr, toStr] as const,
+    fromStr,
+    toStr,
+  };
 }
 
 // Call the get_inventory_usage_by_day RPC and map the rows. Shared by this
@@ -65,8 +67,7 @@ export function useInventoryUsageByDay(
   dateFrom: Date,
   dateTo: Date
 ) {
-  const key = inventoryUsageByDayKey(restaurantId, dateFrom, dateTo);
-  const [, , fromStr, toStr] = key;
+  const { key, fromStr, toStr } = inventoryUsageByDayKey(restaurantId, dateFrom, dateTo);
 
   return useQuery({
     queryKey: key,

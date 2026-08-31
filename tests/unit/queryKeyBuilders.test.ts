@@ -17,18 +17,21 @@ describe('inventoryUsageByDayKey', () => {
   it('builds the exact key for a known date pair', () => {
     const dateFrom = new Date(2026, 7, 1); // 2026-08-01
     const dateTo = new Date(2026, 7, 27); // 2026-08-27
-    expect(inventoryUsageByDayKey('rest-1', dateFrom, dateTo)).toEqual([
+    const built = inventoryUsageByDayKey('rest-1', dateFrom, dateTo);
+    expect(built.key).toEqual([
       'inventory-usage-by-day',
       'rest-1',
       '2026-08-01',
       '2026-08-27',
     ]);
+    expect(built.fromStr).toBe(built.key[2]);
+    expect(built.toStr).toBe(built.key[3]);
   });
 
   it('keeps a null restaurantId in the key', () => {
     const dateFrom = new Date(2026, 7, 1);
     const dateTo = new Date(2026, 7, 27);
-    expect(inventoryUsageByDayKey(null, dateFrom, dateTo)).toEqual([
+    expect(inventoryUsageByDayKey(null, dateFrom, dateTo).key).toEqual([
       'inventory-usage-by-day',
       null,
       '2026-08-01',
@@ -41,18 +44,21 @@ describe('cogsFinancialsKey', () => {
   it('builds the exact key for a known date pair', () => {
     const dateFrom = new Date(2026, 7, 1); // 2026-08-01
     const dateTo = new Date(2026, 7, 27); // 2026-08-27
-    expect(cogsFinancialsKey('rest-1', dateFrom, dateTo)).toEqual([
+    const built = cogsFinancialsKey('rest-1', dateFrom, dateTo);
+    expect(built.key).toEqual([
       'cogs-financials',
       'rest-1',
       '2026-08-01',
       '2026-08-27',
     ]);
+    expect(built.fromStr).toBe(built.key[2]);
+    expect(built.toStr).toBe(built.key[3]);
   });
 
   it('keeps a null restaurantId in the key', () => {
     const dateFrom = new Date(2026, 7, 1);
     const dateTo = new Date(2026, 7, 27);
-    expect(cogsFinancialsKey(null, dateFrom, dateTo)).toEqual([
+    expect(cogsFinancialsKey(null, dateFrom, dateTo).key).toEqual([
       'cogs-financials',
       null,
       '2026-08-01',

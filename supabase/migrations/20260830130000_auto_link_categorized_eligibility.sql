@@ -59,7 +59,7 @@ DECLARE
   v_merged_notes            TEXT;
   v_upload_id                UUID;
   v_entry_number            TEXT;
-  v_wrote_ledger            BOOLEAN;
+  v_wrote_ledger            BOOLEAN := false;
 BEGIN
   IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
     RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;
@@ -298,8 +298,6 @@ BEGIN
         AND restaurant_id = p_restaurant_id
       ORDER BY created_at
       LIMIT 1;
-
-      v_wrote_ledger := false;
 
       IF v_bt.is_categorized THEN
         -- Case A/B: the transaction is already categorized and

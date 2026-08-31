@@ -917,38 +917,23 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label
-                            htmlFor="new-supplier-pack-size-qty"
-                            className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                          >
-                            Pack size
-                          </Label>
+                          <Label htmlFor="new-supplier-pack-size-qty">Pack size</Label>
                           <Input
                             id="new-supplier-pack-size-qty"
                             type="number"
                             step="0.01"
                             placeholder="e.g. 30"
-                            className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                             value={newSupplier.pack_size_qty}
                             onChange={(e) => setNewSupplier({ ...newSupplier, pack_size_qty: e.target.value })}
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label
-                            htmlFor="new-supplier-pack-size-unit"
-                            className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                          >
-                            Pack size unit
-                          </Label>
+                          <Label htmlFor="new-supplier-pack-size-unit">Pack size unit</Label>
                           <Select
                             value={newSupplier.pack_size_unit}
                             onValueChange={(value) => setNewSupplier({ ...newSupplier, pack_size_unit: value })}
                           >
-                            <SelectTrigger
-                              id="new-supplier-pack-size-unit"
-                              aria-label="Pack size unit"
-                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
-                            >
+                            <SelectTrigger id="new-supplier-pack-size-unit" aria-label="Pack size unit">
                               <SelectValue placeholder="Select unit" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1429,38 +1414,23 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label
-                  htmlFor="price-update-pack-size-qty"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Pack size
-                </Label>
+                <Label htmlFor="price-update-pack-size-qty">Pack size</Label>
                 <Input
                   id="price-update-pack-size-qty"
                   type="number"
                   step="0.01"
                   placeholder="e.g. 30"
-                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   value={priceUpdateDialog.pack_size_qty}
                   onChange={(e) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_qty: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label
-                  htmlFor="price-update-pack-size-unit"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Pack size unit
-                </Label>
+                <Label htmlFor="price-update-pack-size-unit">Pack size unit</Label>
                 <Select
                   value={priceUpdateDialog.pack_size_unit}
                   onValueChange={(value) => setPriceUpdateDialog({ ...priceUpdateDialog, pack_size_unit: value })}
                 >
-                  <SelectTrigger
-                    id="price-update-pack-size-unit"
-                    aria-label="Pack size unit"
-                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
-                  >
+                  <SelectTrigger id="price-update-pack-size-unit" aria-label="Pack size unit">
                     <SelectValue placeholder="Select unit" />
                   </SelectTrigger>
                   <SelectContent>

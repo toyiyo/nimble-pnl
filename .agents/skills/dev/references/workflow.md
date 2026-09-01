@@ -3,8 +3,9 @@
 ## Scope
 
 This skill replaces the Claude `/dev` runtime with a Codex skill and a Node
-state machine. Phases 0 through 3 stay interactive. Phases 4 through 9 run
-autonomously after the user approves the plan.
+state machine. The design and planning phases stay interactive. The nine
+post-approval phases run autonomously in this order: `build`, `ui-review`,
+`simplify`, `review`, `verify`, `ship`, `ci`, `triage`, and `done`.
 
 The state machine stores run data in the worktree's Git administrative path.
 It writes `progress.md` as a human-readable recovery file. Neither file belongs
@@ -26,23 +27,26 @@ root checkout. Bootstrap the worktree before design or code work:
 npm install --no-audit --no-fund
 cp <root>/.env.local .env.local
 test -x node_modules/.bin/vite
-grep -Eq '^[[:space:]]*VITE_SUPABASE_URL[[:space:]]*=[[:space:]]*"?http://(127\.0\.0\.1|localhost):54321' .env.local
+node .agents/skills/dev/scripts/orchestrate.mjs check-ready
 ```
 
 Stop if the readiness check fails. Never run E2E against production Supabase.
 
 ### Phase 2: Design
 
-Use `$brainstorming`. Cite `file:line` for each claim about existing code.
-Commit the approved design on the feature branch.
+Inspect the existing implementation and clarify requirements one question at a
+time. Compare viable approaches, recommend one with explicit tradeoffs, and
+cite `file:line` for each claim about existing code. Commit the approved design
+on the feature branch.
 
 Run applicable Supabase and frontend design reviews. Both reviews must check
 the design's existing-code claims. Fix or document every material concern.
 
 ### Phase 3: Plan
 
-Use `$writing-plans`. Write small TDD tasks with exact files and commands.
-Commit the plan. Request explicit plan approval.
+Write small TDD tasks with exact files and commands. Each task must specify its
+RED test, minimal GREEN implementation, focused verification, and explicit-path
+commit. Commit the plan. Request explicit plan approval.
 
 ## Autonomous Phases
 
@@ -84,8 +88,9 @@ record `{ "status": "skipped", "reason": "No UI files changed" }`.
 
 ### Simplify
 
-Use `$code-simplifier` on the changed code. Preserve behavior. Run affected
-tests and commit explicit paths. Record `{ "status": "completed", ... }`.
+Review the changed code for unnecessary complexity, duplication, unclear names,
+and deviations from existing repository patterns. Preserve behavior. Run
+affected tests and commit explicit paths. Record `{ "status": "completed", ... }`.
 
 ### Review
 
@@ -144,6 +149,10 @@ Run the deterministic full suite:
 node .agents/skills/dev/scripts/orchestrate.mjs verify
 ```
 
+Immediately before the suite, the orchestrator revalidates `.env.local` and
+forces its local URL into both `VITE_SUPABASE_URL` and `SUPABASE_URL` for the
+E2E child process. This overrides inherited or mode-specific production URLs.
+
 It runs, in order:
 
 1. `npm run test`
@@ -170,6 +179,13 @@ Record ship evidence on the current SHA:
 
 Watch required checks. Fix failures locally, commit, push, and repeat. Record
 the final passing SHA and iteration. Stop after five failed CI iterations.
+
+When a CI fix creates a commit, restart the revision-scoped gates before
+rerunning CI:
+
+```bash
+node .agents/skills/dev/scripts/orchestrate.mjs recheck
+```
 
 ```json
 { "status": "passed", "sha": "<current HEAD>" }
@@ -200,7 +216,8 @@ on the PR with the reason for declining it. Rerun affected checks after fixes.
 }
 ```
 
-If triage creates a commit, return to CI before completing triage.
+If triage creates a commit, run `recheck`, repeat verification and shipping,
+return to CI, then perform triage again on the new SHA.
 
 ### Done
 

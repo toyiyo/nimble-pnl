@@ -63,15 +63,15 @@ write({});
 function deniedCommandReason(command) {
   const normalized = command.replace(/\\\s*\n/g, ' ');
   const gitCommands = normalized.matchAll(/\bgit\b([^;&|\n]*)/g);
-  const protectedCommands = ['add', 'commit', 'reset', 'clean', 'checkout'];
+  const protectedCommands = ['add', 'stage', 'commit', 'reset', 'clean', 'checkout', 'restore'];
   for (const match of gitCommands) {
     const tokens = tokenize(match[1]);
-    const commandIndex = tokens.findIndex((token) => protectedCommands.includes(token));
-    if (commandIndex < 0) continue;
+    const commandIndex = gitSubcommandIndex(tokens);
+    if (commandIndex < 0 || !protectedCommands.includes(tokens[commandIndex])) continue;
     const subcommand = tokens[commandIndex];
     const args = tokens.slice(commandIndex + 1);
 
-    if (subcommand === 'add' && args.some((arg) => ['-A', '--all', '-u', '--update', '.', ':/'].includes(arg)
+    if (['add', 'stage'].includes(subcommand) && args.some((arg) => ['-A', '--all', '-u', '--update', '.', ':/'].includes(arg)
       || arg.startsWith(':(top)')
       || /[*?\[]/.test(arg))) {
       return 'Broad Git staging is blocked. Stage explicit paths.';
@@ -85,11 +85,35 @@ function deniedCommandReason(command) {
     if (subcommand === 'clean' && args.some((arg) => arg === '--force' || /^-[^-]*f/.test(arg))) {
       return 'git clean with force is blocked by repository policy.';
     }
-    if (subcommand === 'checkout' && args.includes('--')) {
-      return 'git checkout -- is blocked because it can discard user changes.';
+    if (subcommand === 'checkout') {
+      return 'git checkout is blocked because it can discard user changes. Use git switch for branches.';
+    }
+    if (subcommand === 'restore') {
+      return 'git restore is blocked because it can discard user changes.';
     }
   }
   return null;
+}
+
+function gitSubcommandIndex(tokens) {
+  const optionsWithValues = new Set([
+    '-c',
+    '-C',
+    '--config-env',
+    '--git-dir',
+    '--namespace',
+    '--work-tree',
+  ]);
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (optionsWithValues.has(token)) {
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('-')) continue;
+    return index;
+  }
+  return -1;
 }
 
 function tokenize(command) {

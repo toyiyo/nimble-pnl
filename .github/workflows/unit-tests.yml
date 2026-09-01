@@ -51,6 +51,9 @@ jobs:
       - name: Run unit tests with coverage
         run: npm run test:coverage
 
+      - name: Run development workflow tests
+        run: npm run test:dev-workflow
+
       # Also consumed by the `sonarcloud` job below.
       - name: Upload coverage report
         if: always()

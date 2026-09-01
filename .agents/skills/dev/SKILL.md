@@ -14,8 +14,10 @@ start. Treat its hard gates as requirements, not guidance.
 1. Read `memory/lessons.md` and any active `progress.md`.
 2. Resume only when the progress file, branch, design, and plan agree.
 3. Create an isolated `codex/<topic>` worktree before new design or code work.
-4. Use `$brainstorming` for the design and `$writing-plans` for the plan.
-5. Get user approval for the plan before the autonomous build phases.
+4. Inspect the existing code, clarify requirements one question at a time, compare
+   viable approaches, and document the recommended design with its tradeoffs.
+5. Write an executable TDD plan with exact files, commands, and small tasks.
+6. Get user approval for the plan before the autonomous build phases.
 
 For an approved design without a plan, review the design first. Then create the
 plan and request approval. Do not treat design approval as plan approval.
@@ -42,7 +44,8 @@ node .agents/skills/dev/scripts/orchestrate.mjs complete build
 ```
 
 Use `status --json` after interruptions. Use `halt` for a genuine blocker. Use
-`resume` only after the blocker has been resolved.
+`resume` only after the blocker has been resolved. When a CI or triage fix
+creates a commit, run `recheck` to bind verification and CI to the new revision.
 
 ## Non-Negotiable Rules
 

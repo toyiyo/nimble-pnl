@@ -8,6 +8,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -45,6 +46,7 @@ export const REQUIRED_CHECKS = [
 const CHECK_COMMANDS = Object.fromEntries(
   REQUIRED_CHECKS.map((name) => [name, ['npm', ['run', name]]]),
 );
+const VERIFY_MAX_BUFFER = 64 * 1024 * 1024;
 const TERMINAL_PHASE_STATUSES = new Set(['completed']);
 const HALT_STATUSES = new Set(['needs_human', 'failed']);
 const SECTION_PHASES = {
@@ -97,6 +99,35 @@ export function advancePhase(state, phase) {
   state.phases[phase] = { status: 'in_progress', startedAt: new Date().toISOString() };
   state.currentPhase = phase;
   addEvent(state, 'phase_started', { phase });
+  return state;
+}
+
+export function restartVerification(state, headSha) {
+  if (!['ci', 'triage'].includes(state.currentPhase)) {
+    throw new Error('Verification can restart only from an active CI or triage phase.');
+  }
+  const verifiedSha = state.phases.verify?.sha;
+  if (!isNonEmptyString(verifiedSha)) {
+    throw new Error('Cannot restart without a previously completed verification phase.');
+  }
+  if (verifiedSha === headSha) {
+    throw new Error('Verification restart requires a new revision.');
+  }
+
+  for (const phase of PHASES.slice(PHASES.indexOf('verify'))) {
+    state.phases[phase] = { status: 'pending' };
+  }
+  state.phases.verify = { status: 'in_progress', startedAt: new Date().toISOString() };
+  state.evidence.verify = { attempt: 0, checks: {} };
+  state.evidence.ship = {};
+  state.evidence.ci = {};
+  state.evidence.triage = {};
+  state.evidence.done = {};
+  state.currentPhase = 'verify';
+  state.status = 'active';
+  state.context.headSha = headSha;
+  delete state.reason;
+  addEvent(state, 'verification_restarted', { sha: headSha });
   return state;
 }
 
@@ -302,7 +333,22 @@ function getStatePath(cwd) {
 function loadState(cwd) {
   const statePath = getStatePath(cwd);
   if (!existsSync(statePath)) throw new Error('No active $dev state. Run init first.');
-  return { statePath, state: JSON.parse(readFileSync(statePath, 'utf8')) };
+  const state = JSON.parse(readFileSync(statePath, 'utf8'));
+  validateStateContext(cwd, state);
+  return { statePath, state };
+}
+
+function validateStateContext(cwd, state) {
+  const branch = git(cwd, ['branch', '--show-current']);
+  const worktree = realpathSync(git(cwd, ['rev-parse', '--show-toplevel']));
+  const expectedBranch = state.context?.branch;
+  const expectedWorktree = realpathSync(state.context?.worktreePath ?? '');
+  if (branch !== expectedBranch) {
+    throw new Error(`$dev state belongs to branch ${expectedBranch}; current branch is ${branch || 'detached HEAD'}.`);
+  }
+  if (worktree !== expectedWorktree) {
+    throw new Error(`$dev state belongs to worktree ${expectedWorktree}; current worktree is ${worktree}.`);
+  }
 }
 
 function saveState(cwd, statePath, state) {
@@ -377,8 +423,46 @@ function checkWorktreeReady(cwd) {
   accessSync(vite, constants.X_OK);
   const envPath = path.join(cwd, '.env.local');
   const env = readFileSync(envPath, 'utf8');
-  const localSupabase = /^\s*VITE_SUPABASE_URL\s*=\s*"?http:\/\/(127\.0\.0\.1|localhost):54321/m;
-  if (!localSupabase.test(env)) throw new Error('.env.local does not target local Supabase on port 54321.');
+  const assignments = env
+    .split(/\r?\n/)
+    .filter((line) => /^\s*(?:export\s+)?VITE_SUPABASE_URL\s*=/.test(line));
+  if (assignments.length !== 1) {
+    throw new Error('.env.local must contain exactly one VITE_SUPABASE_URL assignment.');
+  }
+  const match = assignments[0].match(/^\s*(?:export\s+)?VITE_SUPABASE_URL\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s#]+))\s*(?:#.*)?$/);
+  const supabaseUrl = match?.[1] ?? match?.[2] ?? match?.[3];
+  if (!isLocalSupabaseUrl(supabaseUrl)) {
+    throw new Error('.env.local does not target local Supabase on port 54321.');
+  }
+  return supabaseUrl;
+}
+
+function printReadiness(cwd) {
+  checkWorktreeReady(cwd);
+  process.stdout.write('Worktree dependencies and local Supabase URL are ready.\n');
+}
+
+export function isLocalSupabaseUrl(value) {
+  if (!isNonEmptyString(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:'
+      && ['localhost', '127.0.0.1'].includes(url.hostname)
+      && url.port === '54321'
+      && url.username === ''
+      && url.password === '';
+  } catch {
+    return false;
+  }
+}
+
+export function environmentForCheck(name, localSupabaseUrl, baseEnv = process.env) {
+  if (name !== 'test:e2e') return baseEnv;
+  return {
+    ...baseEnv,
+    SUPABASE_URL: localSupabaseUrl,
+    VITE_SUPABASE_URL: localSupabaseUrl,
+  };
 }
 
 function checkDependency(command, required = true) {
@@ -392,7 +476,7 @@ function initialize(options) {
     if (!options[key]) throw new Error(`init requires --${key}.`);
   }
 
-  const cwd = path.resolve(options.worktree);
+  const cwd = realpathSync(path.resolve(options.worktree));
   const branch = git(cwd, ['branch', '--show-current']);
   if (branch !== options.branch) throw new Error(`Expected branch ${options.branch}; found ${branch}.`);
   if (['main', 'master'].includes(branch)) throw new Error('The $dev workflow cannot run on the trunk branch.');
@@ -485,6 +569,26 @@ export function validateEvidenceArtifacts(cwd, section, payload, headSha) {
   }
 }
 
+export function runBufferedCommand(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    ...options,
+    encoding: 'utf8',
+    maxBuffer: VERIFY_MAX_BUFFER,
+  });
+  const launchError = result.error
+    ? `${result.error.code ?? result.error.name}: ${result.error.message}`
+    : null;
+  const failure = launchError
+    ?? (result.status === 0
+      ? null
+      : result.signal
+        ? `terminated by signal ${result.signal}`
+        : `exit code ${String(result.status)}`);
+  const diagnostic = launchError ? `\n[spawn error] ${launchError}\n` : '';
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}${diagnostic}`;
+  return { result, output, failure };
+}
+
 function runVerification(cwd, dryRun) {
   if (dryRun) {
     for (const name of REQUIRED_CHECKS) {
@@ -498,6 +602,8 @@ function runVerification(cwd, dryRun) {
   if (state.currentPhase !== 'verify' || state.phases.verify.status !== 'in_progress') {
     throw new Error('Begin verify before running the full suite.');
   }
+  requireCleanWorktree(cwd);
+  const localSupabaseUrl = checkWorktreeReady(cwd);
   const attempt = Number(state.evidence.verify.attempt ?? 0) + 1;
   if (attempt > 5) throw new Error('Verify exhausted the five-attempt limit. Halt with needs_human.');
 
@@ -511,21 +617,24 @@ function runVerification(cwd, dryRun) {
     const [command, args] = CHECK_COMMANDS[name];
     const started = Date.now();
     process.stdout.write(`\n[$dev verify ${attempt}/5] ${command} ${args.join(' ')}\n`);
-    const result = spawnSync(command, args, { cwd, encoding: 'utf8', env: process.env });
-    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+    const { result, output, failure } = runBufferedCommand(command, args, {
+      cwd,
+      env: environmentForCheck(name, localSupabaseUrl),
+    });
     process.stdout.write(output);
     const log = path.join(logDir, `${name.replaceAll(':', '-')}.log`);
     writeFileSync(log, output);
     state.evidence.verify.checks[name] = {
-      status: result.status === 0 ? 'passed' : 'failed',
+      status: failure === null ? 'passed' : 'failed',
       sha,
       log,
       durationMs: Date.now() - started,
       exitCode: result.status,
+      errorCode: result.error?.code ?? null,
     };
     saveState(cwd, statePath, state);
-    if (result.status !== 0) {
-      throw new Error(`${command} ${args.join(' ')} failed. See ${log}.`);
+    if (failure !== null) {
+      throw new Error(`${command} ${args.join(' ')} failed (${failure}). See ${log}.`);
     }
   }
 
@@ -595,6 +704,13 @@ function resume(cwd) {
   saveState(cwd, statePath, state);
 }
 
+function recheck(cwd) {
+  const { statePath, state } = loadState(cwd);
+  restartVerification(state, currentHead(cwd));
+  saveState(cwd, statePath, state);
+  process.stdout.write('Revision changed after verification. Restarted at verify.\n');
+}
+
 function printStatus(cwd, json) {
   const { state } = loadState(cwd);
   if (json) process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
@@ -608,11 +724,13 @@ function printStatus(cwd, json) {
 function showHelp() {
   process.stdout.write(`Usage:
   orchestrate.mjs init --worktree PATH --branch NAME --design PATH --plan PATH
+  orchestrate.mjs check-ready
   orchestrate.mjs status [--json]
   orchestrate.mjs begin PHASE
   orchestrate.mjs evidence SECTION --file PATH
   orchestrate.mjs e2e --status covered|exception --detail TEXT
   orchestrate.mjs verify [--dry-run]
+  orchestrate.mjs recheck
   orchestrate.mjs complete PHASE
   orchestrate.mjs halt --status needs_human|failed --reason TEXT
   orchestrate.mjs resume
@@ -627,6 +745,9 @@ async function main() {
   switch (command) {
     case 'init':
       initialize(options);
+      break;
+    case 'check-ready':
+      printReadiness(cwd);
       break;
     case 'status':
       printStatus(cwd, options.json);
@@ -646,6 +767,9 @@ async function main() {
       break;
     case 'verify':
       runVerification(cwd, options.dryRun);
+      break;
+    case 'recheck':
+      recheck(cwd);
       break;
     case 'complete':
       completePhase(cwd, options._[0]);

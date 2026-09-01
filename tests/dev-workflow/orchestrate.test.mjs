@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -18,6 +26,10 @@ const {
   advancePhase,
   applyEvidence,
   createInitialState,
+  environmentForCheck,
+  isLocalSupabaseUrl,
+  restartVerification,
+  runBufferedCommand,
   validateEvidenceArtifacts,
   validateCompletion,
 } = await import(orchestratorPath);
@@ -25,10 +37,16 @@ const {
 test('skill metadata exposes the repository workflow as $dev', () => {
   const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
   const agent = readFileSync(path.join(skillRoot, 'agents/openai.yaml'), 'utf8');
+  const workflow = readFileSync(path.join(skillRoot, 'references/workflow.md'), 'utf8');
 
   assert.match(skill, /^---\nname: dev\n/m);
   assert.match(skill, /description: Use when /);
   assert.match(skill, /scripts\/orchestrate\.mjs init/);
+  assert.doesNotMatch(skill, /Use `\$(brainstorming|writing-plans|code-simplifier)`/);
+  assert.match(
+    workflow.replace(/\s+/g, ' '),
+    /build`, `ui-review`, `simplify`, `review`, `verify`, `ship`, `ci`, `triage`, and `done`/,
+  );
   assert.match(agent, /default_prompt: "Use \$dev /);
 });
 
@@ -133,6 +151,30 @@ test('CI and triage evidence are mandatory before done', () => {
   assert.doesNotThrow(() => validateCompletion(triageState, 'triage', 'ship-sha'));
 });
 
+test('a post-CI or triage commit restarts verification on the new revision', () => {
+  const state = stateAt('triage', 'old-sha');
+  state.phases.verify.sha = 'old-sha';
+  state.evidence.verify = {
+    attempt: 1,
+    checks: Object.fromEntries(
+      REQUIRED_CHECKS.map((name) => [name, { status: 'passed', sha: 'old-sha' }]),
+    ),
+  };
+  state.evidence.ship = { prNumber: 123, sha: 'old-sha' };
+  state.evidence.ci = { status: 'passed', sha: 'old-sha', iteration: 1 };
+
+  restartVerification(state, 'new-sha');
+
+  assert.equal(state.currentPhase, 'verify');
+  assert.equal(state.phases.verify.status, 'in_progress');
+  assert.equal(state.phases.ship.status, 'pending');
+  assert.equal(state.phases.ci.status, 'pending');
+  assert.equal(state.phases.triage.status, 'pending');
+  assert.deepEqual(state.evidence.verify, { attempt: 0, checks: {} });
+  assert.deepEqual(state.evidence.ci, {});
+  assert.throws(() => restartVerification(state, 'newer-sha'), /CI or triage/);
+});
+
 test('evidence is phase-scoped, revision-scoped, and counts CI attempts', () => {
   const buildState = stateAt('build', 'build-sha');
   assert.throws(
@@ -224,9 +266,136 @@ test('init creates resumable state in a real feature worktree', () => {
     assert.equal(state.currentPhase, 'build');
     assert.equal(state.context.branch, 'codex/example');
     assert.match(readFileSync(path.join(temp, 'progress.md'), 'utf8'), /## Status: Active/);
+
+    writeFileSync(path.join(temp, '.env.local'), [
+      'VITE_SUPABASE_URL=http://127.0.0.1:54321',
+      'export VITE_SUPABASE_URL=https://production.example.com',
+      '',
+    ].join('\n'));
+    const duplicateEnv = spawnSync('node', [orchestratorPath, 'check-ready'], {
+      cwd: temp,
+      encoding: 'utf8',
+      env,
+    });
+    assert.notEqual(duplicateEnv.status, 0);
+    assert.match(duplicateEnv.stderr, /exactly one VITE_SUPABASE_URL/);
+
+    execFileSync('git', ['checkout', '-qb', 'codex/other'], { cwd: temp });
+    const wrongBranch = spawnSync('node', [orchestratorPath, 'status', '--json'], {
+      cwd: temp,
+      encoding: 'utf8',
+      env,
+    });
+    assert.notEqual(wrongBranch.status, 0);
+    assert.match(wrongBranch.stderr, /belongs to branch codex\/example/);
+
+    execFileSync('git', ['checkout', '-q', 'codex/example'], { cwd: temp });
+    const statePath = path.join(temp, '.git/codex-dev/state.json');
+    const wrongWorktreeState = JSON.parse(readFileSync(statePath, 'utf8'));
+    mkdirSync(path.join(temp, 'other-worktree'));
+    wrongWorktreeState.context.worktreePath = path.join(temp, 'other-worktree');
+    writeFileSync(statePath, JSON.stringify(wrongWorktreeState));
+    const wrongWorktree = spawnSync('node', [orchestratorPath, 'status', '--json'], {
+      cwd: temp,
+      encoding: 'utf8',
+      env,
+    });
+    assert.notEqual(wrongWorktree.status, 0);
+    assert.match(wrongWorktree.stderr, /belongs to worktree/);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test('local Supabase validation parses the complete URL', () => {
+  for (const url of [
+    'http://localhost:54321',
+    'http://127.0.0.1:54321',
+  ]) {
+    assert.equal(isLocalSupabaseUrl(url), true, url);
+  }
+
+  for (const url of [
+    'http://localhost:54321@prod.example.com',
+    'http://user:password@localhost:54321',
+    'https://localhost:54321',
+    'http://localhost:54322',
+    'http://prod.example.com:54321',
+  ]) {
+    assert.equal(isLocalSupabaseUrl(url), false, url);
+  }
+});
+
+test('E2E checks override inherited Supabase URLs with the validated local URL', () => {
+  const baseEnv = {
+    KEEP_ME: 'yes',
+    SUPABASE_URL: 'https://production.example.com',
+    VITE_SUPABASE_URL: 'https://production.example.com',
+  };
+  const localUrl = 'http://127.0.0.1:54321';
+  const e2eEnv = environmentForCheck('test:e2e', localUrl, baseEnv);
+
+  assert.notEqual(e2eEnv, baseEnv);
+  assert.equal(e2eEnv.KEEP_ME, 'yes');
+  assert.equal(e2eEnv.SUPABASE_URL, localUrl);
+  assert.equal(e2eEnv.VITE_SUPABASE_URL, localUrl);
+  assert.equal(environmentForCheck('test', localUrl, baseEnv), baseEnv);
+});
+
+test('verification refuses to attribute a dirty worktree to HEAD', () => {
+  const temp = mkdtempSync(path.join(tmpdir(), 'codex-dev-verify-'));
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: temp });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: temp });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: temp });
+    mkdirSync(path.join(temp, 'bin'));
+    writeFileSync(path.join(temp, '.gitignore'), 'bin\nmarker\n');
+    writeFileSync(path.join(temp, 'tracked.txt'), 'tracked\n');
+    writeFileSync(path.join(temp, 'bin/npm'), '#!/bin/sh\ntouch "$MARKER"\nexit 0\n');
+    chmodSync(path.join(temp, 'bin/npm'), 0o755);
+    execFileSync('git', ['add', '.gitignore', 'tracked.txt'], { cwd: temp });
+    execFileSync('git', ['commit', '-qm', 'test fixture'], { cwd: temp });
+    execFileSync('git', ['checkout', '-qb', 'codex/example'], { cwd: temp });
+
+    const state = stateAt('verify', execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: temp,
+      encoding: 'utf8',
+    }).trim());
+    state.context.branch = 'codex/example';
+    state.context.worktreePath = temp;
+    mkdirSync(path.join(temp, '.git/codex-dev'), { recursive: true });
+    writeFileSync(path.join(temp, '.git/codex-dev/state.json'), JSON.stringify(state));
+    writeFileSync(path.join(temp, 'dirty.txt'), 'not committed\n');
+
+    const marker = path.join(temp, 'marker');
+    const result = spawnSync('node', [orchestratorPath, 'verify'], {
+      cwd: temp,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${path.join(temp, 'bin')}:${process.env.PATH}`, MARKER: marker },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Worktree must be clean before this gate/);
+    assert.equal(existsSync(marker), false);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('verification command capture handles large output and launch errors', () => {
+  const large = runBufferedCommand(process.execPath, [
+    '-e',
+    "process.stdout.write('x'.repeat(2 * 1024 * 1024))",
+  ], { cwd: repoRoot, env: process.env });
+  assert.equal(large.failure, null);
+  assert.equal(large.result.status, 0);
+  assert.equal(large.output.length, 2 * 1024 * 1024);
+
+  const missing = runBufferedCommand('codex-command-that-does-not-exist', [], {
+    cwd: repoRoot,
+    env: process.env,
+  });
+  assert.match(missing.failure, /ENOENT/);
+  assert.match(missing.output, /ENOENT/);
 });
 
 test('verification dry-run prints every mandatory command without executing it', () => {
@@ -257,6 +426,12 @@ test('pre-tool hook rejects broad staging and permits explicit staging', () => {
     'echo "$(git add .)"',
     'git add *',
     "git add '**/*'",
+    'git stage -A',
+    'git checkout .',
+    'git checkout -- src/example.ts',
+    'git checkout HEAD src/example.ts',
+    'git restore src/example.ts',
+    'git restore --source HEAD .',
   ]) {
     const denied = runHook('pre-tool', {
       tool_name: 'Bash',
@@ -270,6 +445,23 @@ test('pre-tool hook rejects broad staging and permits explicit staging', () => {
     tool_input: { command: 'git add src/example.ts tests/example.test.ts' },
   });
   assert.deepEqual(allowed, {});
+
+  const branchSwitch = runHook('pre-tool', {
+    tool_name: 'Bash',
+    tool_input: { command: 'git switch codex/other' },
+  });
+  assert.deepEqual(branchSwitch, {});
+
+  const branchNamedCheckout = runHook('pre-tool', {
+    tool_name: 'Bash',
+    tool_input: { command: 'git switch checkout' },
+  });
+  assert.deepEqual(branchNamedCheckout, {});
+});
+
+test('the repository CI job runs the workflow regression suite', () => {
+  const ci = readFileSync(path.join(repoRoot, '.github/workflows/unit-tests.yml'), 'utf8');
+  assert.match(ci, /run: npm run test:dev-workflow/);
 });
 
 test('stop hook continues an incomplete workflow at most once', () => {

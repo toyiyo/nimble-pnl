@@ -7,6 +7,7 @@ import {
   type SplitItemRow,
 } from '@/services/cogsCalculations';
 import { fetchAllRows, asPagedRows } from '@/utils/fetchAllRows';
+import { toInclusiveDayEnd } from '@/lib/dateOnly';
 
 // COGS windows can exceed the default 20-page budget (a 90-day window held
 // 31,813 inventory rows in production). 50 pages covers 50,000 rows.
@@ -45,6 +46,7 @@ export async function fetchFinancialCOGSRows(
   // bank, parents, and pending are independent queries — run them together
   // instead of one round trip at a time. splits still waits on parents,
   // since it needs the parent ids.
+  const transactionDateEnd = toInclusiveDayEnd(endDateStr);
   const [bank, parents, pending] = await Promise.all([
     fetchAllRows<BankTransactionRow>(
       (from, to) =>
@@ -58,7 +60,7 @@ export async function fetchFinancialCOGSRows(
             .eq('is_split', false)
             .lt('amount', 0)
             .gte('transaction_date', startDateStr)
-            .lte('transaction_date', endDateStr)
+            .lte('transaction_date', transactionDateEnd)
             .order('transaction_date', { ascending: true })
             .order('id')
             .range(from, to)
@@ -75,7 +77,7 @@ export async function fetchFinancialCOGSRows(
           .in('status', ['posted', 'pending'])
           .eq('is_transfer', false)
           .gte('transaction_date', startDateStr)
-          .lte('transaction_date', endDateStr)
+          .lte('transaction_date', transactionDateEnd)
           .order('transaction_date', { ascending: true })
           .order('id')
           .range(from, to),

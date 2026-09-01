@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["status", "reason", "summary", "evidence"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["completed", "needs_human", "failed"]
+    },
+    "reason": { "type": "string" },
+    "summary": { "type": "string" },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

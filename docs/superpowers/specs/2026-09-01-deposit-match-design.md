@@ -79,15 +79,18 @@ MVP adapters, from the normalized tables in the repository:
   src/integrations/supabase/types.ts:3350). Settlement proved gross.
 - `toast`: `toast_payments` (`payment_date`, `payment_type`;
   src/integrations/supabase/types.ts:9811). Settlement proved net.
-- `square`: `square_payments` minus `square_refunds`. The tender type sits in
+- `square`: `square_payments` minus `square_refunds`
+  (src/integrations/supabase/types.ts:8145,8198). The tender type sits in
   `raw_json` — the build phase must check the field name on real rows before
   it writes the filter.
 - `revel`: `revel_payments` (`payment_date`, `payment_type`, `amount`,
-  `tip_amount`).
-- `shift4`: `shift4_charges` minus `shift4_refunds` (`service_date`).
+  `tip_amount`; src/integrations/supabase/types.ts:6242).
+- `shift4`: `shift4_charges` minus `shift4_refunds` (`service_date`;
+  src/integrations/supabase/types.ts:7239,7393).
 - `clover`: no normalized tender rows exist (`clover_orders` holds order
-  totals only). The Clover adapter returns zero rows, and the UI shows the
-  source as "not yet supported". No fake card split.
+  totals only; src/integrations/supabase/types.ts:1600). The Clover adapter
+  returns zero rows, and the UI shows the source as "not yet supported". No
+  fake card split.
 
 The engine trusts a rule, not an adapter, for settlement behavior (gross or
 net, lag, fee band). The setup dialog proposes per-source defaults. Until an
@@ -127,9 +130,16 @@ turn `late` or `short`. This keeps unproved processors honest.
 
 Three restaurant-scoped tables. All tables carry UUID primary keys,
 `restaurant_id`, timestamps, and indexes on `(restaurant_id, business_date)`
-where a date exists. RLS on every table: SELECT requires `view:banking` AND
-`view:pos_sales`; INSERT/UPDATE/DELETE requires `edit:banking`. Policies call
-`user_has_capability`.
+where a date exists.
+
+RLS: each table gets exactly ONE permissive SELECT policy. Its single
+`USING` clause is
+`user_has_capability(restaurant_id, 'view:banking') AND
+user_has_capability(restaurant_id, 'view:pos_sales')`. Do not write two
+SELECT policies — permissive policies OR together, and two policies would
+widen access to either capability alone (`memory/lessons.md:848`,
+2026-07-03). INSERT/UPDATE/DELETE each get one policy that requires
+`edit:banking`.
 
 ### `deposit_match_rules`
 
@@ -147,6 +157,11 @@ One row per restaurant, POS source, and rail. MVP rails: `card` only.
   `focus`: `{"card_tender_names": ["Visa","MC","Amex","Discover"]}`);
 - `descriptor_pattern` (optional, case-insensitive);
 - `active` flag.
+
+A trigger checks that the `connected_bank_id` row belongs to the rule's own
+`restaurant_id`. The FK alone does not check the tenant, and the refresh
+function is SECURITY DEFINER — a cross-tenant bank id would expose another
+restaurant's bank rows.
 
 The setup dialog proposes defaults per source. A rule must exist before the
 engine can mark an item `late` or `short`.
@@ -176,18 +191,50 @@ Allocations between items and `bank_transactions`.
 - `item_id` FK, `bank_transaction_id` FK, `allocated_amount`;
 - `method` (`auto` | `manual`), `state` (`suggested` | `confirmed`),
   `match_reason`;
-- unique on `(item_id, bank_transaction_id)`.
+- unique on `(item_id, bank_transaction_id)`;
+- an index on `(bank_transaction_id, state)` for the allocation-cap check.
 
-A trigger-backed check keeps the sum of confirmed `allocated_amount` per bank
-transaction at or below the transaction amount. Only confirmed links add to
-`received_amount`.
+A trigger keeps the sum of confirmed `allocated_amount` per bank transaction
+at or below the transaction amount. The trigger first takes
+`pg_advisory_xact_lock` on the bank transaction id, so two concurrent
+confirms cannot both pass the sum check (pattern:
+supabase/migrations/20260705130000_claim_open_shift_active_guard.sql:58).
+Only confirmed links add to `received_amount`.
+
+`bank_transaction_id` is `ON DELETE CASCADE`. A user can delete a bank
+transaction elsewhere in the app. The cascade deletes the link, and the next
+refresh recomputes `received_amount` and the status. The item's `resolution`
+survives, because it lives on the item, not on the link.
 
 ## Matching engine
 
 One SQL function: `refresh_deposit_matches(p_restaurant_id, p_start_date,
 p_end_date)`. SECURITY DEFINER with `SET search_path = public`. The first
 statement checks `view:banking` AND `view:pos_sales` with
-`user_has_capability`, before any data read.
+`user_has_capability`, before any data read. Every new function (refresh,
+report, dispatcher, adapters) states `SECURITY DEFINER SET search_path =
+public`; the read-only ones are also `STABLE`. Every read of
+`bank_transactions` and of the POS tables filters on
+`restaurant_id = p_restaurant_id`, as defense in depth on top of the rule's
+`connected_bank_id`.
+
+A future cron caller has no `auth.uid()`, so `user_has_capability` returns
+FALSE for it. A cron needs one auth change later: a service-role clause in
+the check. The schema needs no change for a cron.
+
+The refresh visits EVERY rule of the restaurant, not only the active ones:
+
+- an inactive rule does not run the match steps; the refresh sets its items
+  to `incomplete` with `status_reason = 'rule_inactive'`;
+- each rule runs inside its own `BEGIN ... EXCEPTION` block. One bad rule
+  (example: an unknown `pos_source`) cannot abort the refresh of the other
+  rules. The failure lands in the report as `status_reason = 'rule_error'`.
+
+The dispatcher rejects an unknown `pos_source` with an explicit
+`ELSE RAISE EXCEPTION` that names the bad value. An adapter raises when a
+required `source_config` key is absent — a missing key must not read as a
+zero card total, because a silent zero hides the exact shortfall this
+feature exists to catch.
 
 Steps per active rule:
 
@@ -199,9 +246,9 @@ Steps per active rule:
    pattern when set.
 3. Build all candidate (item, transaction) pairs. Score each pair by amount
    fit: `abs(expected_or_net - amount)`. Assign the best-scored pairs first,
-   one transaction per item. Do NOT assign greedily in date order — the
-   greedy-order bug in `memory/lessons.md` (PR #760) put a boundary resource
-   on the wrong owner.
+   one transaction per item. Do NOT assign greedily in date order. Lesson:
+   "Greedy first-come matching steals a boundary resource from its true
+   owner (PR #760)" (`memory/lessons.md:2864`).
 4. Auto-confirm a link only when the fit is exact (gross) or the implied fee
    sits inside `[fee_pct_min, fee_pct_max]` (net) AND no second candidate
    scores within the tolerance. An ambiguous pair becomes a `suggested` link
@@ -217,7 +264,8 @@ Steps per active rule:
      A stale bank can never produce `late` or `short`.
 
 The engine never deletes a confirmed manual link and never clears a
-resolution.
+resolution. One exception: a bank transaction delete cascades to its links
+(see the data model), and the next refresh recomputes the item.
 
 ## Read RPC
 

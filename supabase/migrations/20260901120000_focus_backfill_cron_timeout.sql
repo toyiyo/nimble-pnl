@@ -11,6 +11,13 @@
 --
 -- WARNING: cron.unschedule + cron.schedule assigns a new jobid.
 -- Key monitoring on jobname = 'focus-backfill-sync', not on the old id 28.
+--
+-- Verification note: Supabase's pg_net docs list timeout_milliseconds as a
+-- plain int parameter with no documented upper bound
+-- (https://supabase.com/docs/guides/database/extensions/pg_net). After this
+-- migration ships, watch cron.job_run_details and the edge function logs
+-- across one real backfill run (50-90 s) to confirm the request completes
+-- and the duplicate-worker race is gone.
 -- =====================================================
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;

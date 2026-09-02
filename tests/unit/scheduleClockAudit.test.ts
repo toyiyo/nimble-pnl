@@ -476,6 +476,122 @@ describe('auditScheduleAgainstClocks', () => {
     expect(result.rows[0].status).toBe('in_progress');
     expect(result.summary.inProgress).toBe(1);
   });
+
+  it('produces a draft row with the full pairing when a past draft shift has a closed matched session', () => {
+    // Test plan item 1.
+    const result = audit(
+      [shift({ id: 's1', is_published: false })],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T14:55:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T23:05:00Z'),
+      ],
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].status).toBe('draft');
+    expect(result.rows[0].workedMinutes).toBe(490);
+    expect(result.rows[0].inDeltaMinutes).toBe(-5);
+    expect(result.rows[0].outDeltaMinutes).toBe(5);
+    expect(result.summary.unscheduledClock).toBe(0);
+  });
+
+  it('produces no row for a past draft shift with no sessions', () => {
+    // Test plan item 2.
+    const result = audit([shift({ id: 's1', is_published: false })], []);
+    expect(result.rows).toHaveLength(0);
+  });
+
+  it('keeps a future-ending draft shift excluded, its session unscheduled_clock', () => {
+    // Test plan item 3.
+    const result = audit(
+      [
+        shift({
+          id: 's1',
+          is_published: false,
+          start_time: '2026-08-15T08:00:00Z',
+          end_time: '2026-08-15T20:00:00Z',
+        }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T20:00:00Z'),
+      ],
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].status).toBe('unscheduled_clock');
+  });
+
+  it('keeps a draft row as draft even with a large delta, never time_mismatch', () => {
+    // Test plan item 4.
+    const result = audit(
+      [shift({ id: 's1', is_published: false })],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:45:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T23:00:00Z'),
+      ],
+    );
+    expect(result.rows[0].status).toBe('draft');
+    expect(result.rows[0].inDeltaMinutes).toBe(45);
+  });
+
+  it('produces a draft row without workedMinutes when the matched session is open', () => {
+    // Test plan item 5.
+    const result = audit(
+      [shift({ id: 's1', is_published: false })],
+      [punch('emp1', 'clock_in', '2026-08-12T15:00:00Z')],
+    );
+    expect(result.rows[0].status).toBe('draft');
+    expect(result.rows[0].workedMinutes).toBeUndefined();
+  });
+
+  it('counts draft rows in summary.draft', () => {
+    // Test plan item 6.
+    const result = audit(
+      [shift({ id: 's1', is_published: false })],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T23:00:00Z'),
+      ],
+    );
+    expect(result.summary.draft).toBe(1);
+  });
+
+  it('attaches a session with a shift_id link to its past-ended draft shift', () => {
+    // Test plan item 8.
+    const result = audit(
+      [
+        shift({ id: 'a', is_published: false, start_time: '2026-08-12T15:00:00Z', end_time: '2026-08-12T23:00:00Z' }),
+        shift({ id: 'b', is_published: false, start_time: '2026-08-12T15:01:00Z', end_time: '2026-08-12T23:01:00Z' }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z', 'b'),
+        punch('emp1', 'clock_out', '2026-08-12T23:00:00Z'),
+      ],
+    );
+    const byKey = new Map(result.rows.map((row) => [row.key, row]));
+    expect(byKey.get('shift-b')?.status).toBe('draft');
+    expect(byKey.get('shift-a')?.status).toBeUndefined();
+  });
+
+  it('regression: the Danika Warren draft shift matches its session as one draft row, zero unscheduled_clock rows', () => {
+    const result = audit(
+      [
+        shift({
+          id: '15195d23-29ab-4c24-9d0a-72f59feecf4a',
+          is_published: false,
+          start_time: '2026-08-12T15:00:00Z',
+          end_time: '2026-08-12T21:30:00Z',
+        }),
+      ],
+      [
+        punch('emp1', 'clock_in', '2026-08-12T15:00:00Z'),
+        punch('emp1', 'clock_out', '2026-08-12T21:50:00Z'),
+      ],
+    );
+    const statuses = result.rows.map((r) => r.status);
+    expect(statuses).toEqual(['draft']);
+    expect(result.summary.unscheduledClock).toBe(0);
+    expect(result.summary.draft).toBe(1);
+  });
 });
 
 describe('rollupAuditRowsByEmployee', () => {

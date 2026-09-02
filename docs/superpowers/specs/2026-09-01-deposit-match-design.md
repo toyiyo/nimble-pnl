@@ -80,15 +80,15 @@ MVP adapters, from the normalized tables in the repository:
 - `toast`: `toast_payments` (`payment_date`, `payment_type`;
   src/integrations/supabase/types.ts:9811). Settlement proved net.
 - `square`: `square_payments` minus `square_refunds`
-  (src/integrations/supabase/types.ts:8145,8198). The tender type sits in
+  (src/integrations/supabase/types.ts:8259,8312). The tender type sits in
   `raw_json` — the build phase must check the field name on real rows before
   it writes the filter.
 - `revel`: `revel_payments` (`payment_date`, `payment_type`, `amount`,
-  `tip_amount`; src/integrations/supabase/types.ts:6242).
+  `tip_amount`; src/integrations/supabase/types.ts:6318).
 - `shift4`: `shift4_charges` minus `shift4_refunds` (`service_date`;
-  src/integrations/supabase/types.ts:7239,7393).
+  src/integrations/supabase/types.ts:7346,7500).
 - `clover`: no normalized tender rows exist (`clover_orders` holds order
-  totals only; src/integrations/supabase/types.ts:1600). The Clover adapter
+  totals only; src/integrations/supabase/types.ts:1614). The Clover adapter
   returns zero rows, and the UI shows the source as "not yet supported". No
   fake card split.
 
@@ -246,9 +246,12 @@ Steps per active rule:
    pattern when set.
 3. Build all candidate (item, transaction) pairs. Score each pair by amount
    fit: `abs(expected_or_net - amount)`. Assign the best-scored pairs first,
-   one transaction per item. Do NOT assign greedily in date order. Lesson:
-   "Greedy first-come matching steals a boundary resource from its true
-   owner (PR #760)" (`memory/lessons.md:2864`).
+   one transaction per item. Do NOT assign greedily in date order. A greedy
+   date-order pass lets an earlier day take the deposit that fits the next
+   day exactly; the next day then shows a false shortfall. The auto-memory
+   lessons file records this bug class on 2026-08-18 ("Greedy first-come
+   matching steals a boundary resource from its true owner", PR #760); the
+   entry is not yet in the repo copy of `memory/lessons.md`.
 4. Auto-confirm a link only when the fit is exact (gross) or the implied fee
    sits inside `[fee_pct_min, fee_pct_max]` (net) AND no second candidate
    scores within the tolerance. An ambiguous pair becomes a `suggested` link
@@ -287,7 +290,14 @@ Files:
 - `src/pages/DepositMatch.tsx` — page, date-range control (7/30/90 days),
   tabs;
 - `src/hooks/useDepositMatch.ts` — React Query hook, key
-  `['deposit-match', restaurantId, start, end]`, `staleTime` 30000;
+  `['deposit-match', restaurantId, start, end]`, `staleTime` 30000. Do not
+  add `placeholderData`/`keepPreviousData` to this hook — on this key shape
+  it shows the old restaurant's data during a switch
+  (`memory/lessons.md:1895-1898`). The refresh RPC is a mutation, NOT part
+  of the `queryFn`. One effect runs it once per `(restaurantId, range)`
+  change; on success it invalidates the read key. The read query keeps
+  `refetchOnWindowFocus: true`; a focus refetch re-runs only the read RPC,
+  never the refresh;
 - `src/types/depositMatch.ts` — payload and status contracts;
 - `src/components/deposit-match/VerdictBanner.tsx` — one plain-language
   answer ("Aug 4 is short $745.68 from Shift4" / all-clear);
@@ -298,19 +308,31 @@ Files:
   cards and the ledger tabs come from the report payload. The UI hardcodes
   no POS source name;
 - `src/components/deposit-match/DailyLedger.tsx` — per-day rows with status
-  chips, one tab per stream;
+  chips, one tab per stream. The tabs come from a `.map()` over the payload
+  streams. `activeTab` holds a dynamic stream id (string), not a literal
+  union. The first stream is the default tab. When a refetch deletes the
+  active stream, the tab state falls back to the first stream. Each
+  `TabsTrigger` keys on the stream id;
 - `src/components/deposit-match/ReviewDayDialog.tsx` — short days with an
   Accept / Dispute action per row (writes `resolution`);
 - `src/components/deposit-match/DisputeDialog.tsx` — evidence table from the
   POS card tender rows, neighbor-day proof, "Copy as email" text. PDF export
-  is out of scope for the MVP;
-- `src/components/deposit-match/SetupDialog.tsx` — create or edit rules with
-  proposed defaults.
+  is out of scope for the MVP. ONE instance of each dialog renders at page
+  level, driven by one `activeItem` state (CLAUDE.md Single Dialog Pattern).
+  A ledger or review row sets the state; no dialog renders per row;
+- `src/components/deposit-match/SetupDialog.tsx` — create or edit rules.
+  Defaults for `focus` and `toast` come from the measured production
+  behavior in this doc. Defaults for the other sources are labeled guesses;
+  the dialog copy says "Suggested values — check them against your bank"
+  for those sources. The dialog follows the CLAUDE.md dialog structure
+  (icon box, `DialogTitle`, `DialogDescription`).
 
 Style follows the CLAUDE.md Apple/Notion tokens. Status chips use semantic
 tokens, not direct colors. All states render: loading skeleton, error, empty
 (no rules / no bank / no POS), and all-clear. The ledger scrolls inside its
-own container on narrow screens.
+own container on narrow screens. Icon-only controls carry an `aria-label`.
+The dialogs trap focus and return focus to the control that opened them
+(the shadcn Dialog primitive provides both).
 
 The mockup at `scratchpad/deposit-match.html` (published artifact) is the
 approved visual reference.

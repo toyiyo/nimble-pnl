@@ -19,6 +19,8 @@ import {
 import { useInsideScrollLock } from "@/components/ui/scroll-lock-boundary";
 import { Supplier } from '@/hooks/useSuppliers';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface SearchableSupplierSelectorProps {
   value?: string;
   onValueChange: (value: string, isNew: boolean) => void;
@@ -62,7 +64,12 @@ export function SearchableSupplierSelector({
   }, [searchValue, fuse, suppliers]);
 
   const selectedSupplier = suppliers.find((supplier) => supplier.id === value);
-  
+  // The value is a staged new-supplier name when it is not empty, not the
+  // 'new_supplier' sentinel, matches no known supplier, and is not a UUID
+  // (a UUID means the supplier list has not loaded yet).
+  const isStagedNewName =
+    !!value?.trim() && value !== 'new_supplier' && !selectedSupplier && !UUID_RE.test(value);
+
   // Handle display for special values
   const getDisplayValue = () => {
     if (value === 'new_supplier') {
@@ -70,6 +77,7 @@ export function SearchableSupplierSelector({
       return pendingNewName || searchValue || '+ Create New Supplier';
     }
     if (selectedSupplier) return selectedSupplier.name;
+    if (isStagedNewName) return value;
     return placeholder;
   };
 
@@ -100,11 +108,11 @@ export function SearchableSupplierSelector({
           >
             <span className={cn(
               "truncate",
-              value === 'new_supplier' && "text-blue-600 font-medium"
+              (value === 'new_supplier' || isStagedNewName) && "text-primary font-medium"
             )}>
               {getDisplayValue()}
-              {showNewIndicator && value === 'new_supplier' && (
-                <span className="ml-2 text-xs text-muted-foreground">(new)</span>
+              {showNewIndicator && (value === 'new_supplier' || isStagedNewName) && (
+                <span className="ml-2 text-xs text-muted-foreground"> (new)</span>
               )}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

@@ -31,6 +31,15 @@ SELECT raw_json FROM square_payments LIMIT 5;
   the rule ships inactive by default. Record the decision in the migration
   comment.
 
+**Result (checked on production, 2026-09-01):** the tender field is
+`raw_json->>'source_type'`. Production holds 146 rows, all with
+`source_type = 'CASH'`. No card row exists yet. Decision: the `square`
+adapter filters on `raw_json->>'source_type'` with the value list from
+`p_config->'card_source_types'` (default `["CARD","WALLET"]`, from the
+Square API contract). The adapter raises when the key is absent. The
+default Square rule template ships with `active = false`, because no
+production card row proves the settlement behavior.
+
 ### Task 1 — Migration: tables, RLS, triggers
 
 One migration file. Pick the timestamp prefix AFTER a check against the

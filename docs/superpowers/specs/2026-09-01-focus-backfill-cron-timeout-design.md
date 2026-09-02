@@ -76,7 +76,7 @@ on merge to `main`.
 
 ## Tests
 
-One new pgTAP file: `supabase/tests/52_focus_backfill_cron_timeout.sql`.
+One new pgTAP file: `supabase/tests/56_focus_backfill_cron_timeout.sql`.
 It follows the pattern of
 [supabase/tests/49_focus_backfill_reliability.sql:24-41](../../../supabase/tests/49_focus_backfill_reliability.sql):
 

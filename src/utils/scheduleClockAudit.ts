@@ -349,6 +349,28 @@ const assignSessionsToShifts = (
   return { sessionsByShift, matchedSessions };
 };
 
+/** Worked minutes, end-time delta, and inter-session gap for a closed-out shift. */
+const computePairingMetrics = (
+  shift: AuditShift,
+  ordered: WorkSession[],
+  lastSession: WorkSession,
+) => {
+  const outDeltaMinutes = minutesBetween(shift.end_time, lastSession.clockOut as string);
+  const workedMinutes = ordered.reduce(
+    (sum, session) =>
+      sum + minutesBetween(session.clockIn, session.clockOut as string) - session.breakMinutes,
+    0,
+  );
+  let gapMinutes: number | undefined;
+  if (ordered.length > 1) {
+    gapMinutes = 0;
+    for (let i = 1; i < ordered.length; i++) {
+      gapMinutes += minutesBetween(ordered[i - 1].clockOut as string, ordered[i].clockIn);
+    }
+  }
+  return { outDeltaMinutes, workedMinutes, gapMinutes };
+};
+
 const buildShiftRow = (
   shift: AuditShift,
   sessions: WorkSession[] | undefined,
@@ -394,19 +416,11 @@ const buildShiftRow = (
     if (!lastSession.clockOut) {
       return { ...base, status: 'draft', sessions: ordered, inDeltaMinutes };
     }
-    const outDeltaMinutes = minutesBetween(shift.end_time, lastSession.clockOut);
-    const workedMinutes = ordered.reduce(
-      (sum, session) =>
-        sum + minutesBetween(session.clockIn, session.clockOut as string) - session.breakMinutes,
-      0,
+    const { outDeltaMinutes, workedMinutes, gapMinutes } = computePairingMetrics(
+      shift,
+      ordered,
+      lastSession,
     );
-    let gapMinutes: number | undefined;
-    if (ordered.length > 1) {
-      gapMinutes = 0;
-      for (let i = 1; i < ordered.length; i++) {
-        gapMinutes += minutesBetween(ordered[i - 1].clockOut as string, ordered[i].clockIn);
-      }
-    }
     return {
       ...base,
       status: 'draft',
@@ -422,22 +436,11 @@ const buildShiftRow = (
     return { ...base, status: 'open_clock', sessions: ordered, inDeltaMinutes };
   }
 
-  const outDeltaMinutes = minutesBetween(shift.end_time, lastSession.clockOut);
-  const workedMinutes = ordered.reduce(
-    (sum, session) =>
-      sum + minutesBetween(session.clockIn, session.clockOut as string) - session.breakMinutes,
-    0,
+  const { outDeltaMinutes, workedMinutes, gapMinutes } = computePairingMetrics(
+    shift,
+    ordered,
+    lastSession,
   );
-  let gapMinutes: number | undefined;
-  if (ordered.length > 1) {
-    gapMinutes = 0;
-    for (let i = 1; i < ordered.length; i++) {
-      gapMinutes += minutesBetween(
-        ordered[i - 1].clockOut as string,
-        ordered[i].clockIn,
-      );
-    }
-  }
   const mismatch =
     Math.abs(inDeltaMinutes) > tolerance || Math.abs(outDeltaMinutes) > tolerance;
 

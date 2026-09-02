@@ -353,11 +353,11 @@ const assignSessionsToShifts = (
  * Worked minutes, end-time delta, and inter-session gap for a closed-out shift.
  *
  * A double clock-in (no clock-out between them) leaves an EARLIER session in
- * `ordered` with `clockOut: null`, even when `lastSession` -- the caller's
- * only guard -- is closed. Skip any such open session in the worked-minutes
- * sum and the gap loop instead of casting its null `clockOut` to `string`:
- * that cast let `differenceInMinutes` read `null` as the 1970 epoch and
- * silently add a huge bogus delta to `workedMinutes`.
+ * `ordered` with `clockOut: null`. This can happen even when `lastSession`
+ * -- the caller's only guard -- is closed. Skip any such open session in the
+ * worked-minutes sum and the gap loop. Do not cast its null `clockOut` to
+ * `string`. That cast let `differenceInMinutes` read `null` as the 1970
+ * epoch. It silently added a huge bogus delta to `workedMinutes`.
  */
 const computePairingMetrics = (
   shift: AuditShift,

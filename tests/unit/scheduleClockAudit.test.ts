@@ -560,13 +560,14 @@ describe('auditScheduleAgainstClocks', () => {
   });
 
   it('regression: an open interior session contributes zero minutes, not a bogus epoch delta', () => {
-    // Codex review finding (Phase 7b). A double clock-in with no clock-out
-    // between the two `clock_in` punches leaves an earlier session with
-    // `clockOut: null` (buildWorkSessions), even though the LAST session
-    // here is closed and passes the caller's guard. computePairingMetrics
-    // used to cast that null to a string, so `differenceInMinutes` read the
-    // 1970 epoch and workedMinutes came out as a huge negative number
-    // instead of counting only the closed second session (7h = 420 min).
+    // A double clock-in with no clock-out between the two `clock_in` punches
+    // leaves an earlier session with `clockOut: null` (buildWorkSessions).
+    // The LAST session here is closed and passes the caller's guard.
+    // computePairingMetrics used to cast the null to a string. That let
+    // `differenceInMinutes` read the 1970 epoch. workedMinutes came out as
+    // a huge negative number instead of the closed second session alone
+    // (7h = 420 min). The gap loop has the same null guard: it must skip
+    // the open first session and report zero gap, not a bogus epoch delta.
     const result = audit(
       [shift({ id: 's1', is_published: false })],
       [
@@ -578,6 +579,7 @@ describe('auditScheduleAgainstClocks', () => {
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].status).toBe('draft');
     expect(result.rows[0].workedMinutes).toBe(420);
+    expect(result.rows[0].gapMinutes).toBe(0);
   });
 
   it('attaches a session with a shift_id link to its past-ended draft shift', () => {

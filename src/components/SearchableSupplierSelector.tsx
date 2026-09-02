@@ -81,6 +81,8 @@ export function SearchableSupplierSelector({
     return placeholder;
   };
 
+  const showNewStyling = value === 'new_supplier' || isStagedNewName;
+
   const handleSelect = (supplierId: string) => {
     if (supplierId === 'new_supplier') {
       onValueChange(searchValue, true);
@@ -108,10 +110,10 @@ export function SearchableSupplierSelector({
           >
             <span className={cn(
               "truncate",
-              (value === 'new_supplier' || isStagedNewName) && "text-primary font-medium"
+              showNewStyling && "text-primary font-medium"
             )}>
               {getDisplayValue()}
-              {showNewIndicator && (value === 'new_supplier' || isStagedNewName) && (
+              {showNewIndicator && showNewStyling && (
                 <span className="ml-2 text-xs text-muted-foreground"> (new)</span>
               )}
             </span>

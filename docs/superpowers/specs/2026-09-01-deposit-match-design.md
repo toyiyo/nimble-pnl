@@ -29,9 +29,10 @@ shippable PR. Adopted decisions:
 
 Deviations, with reasons:
 
-- **Card rails only.** The MVP covers Focus→Shift4 (gross) and Toast (net).
-  Cash, Square, Revel, and Clover come in follow-up PRs. Reason: we verified
-  the settlement rules for these two rails against 68 days of production data.
+- **Card rail only, every POS source.** The MVP covers the card rail for
+  every POS source with normalized payment rows. The cash rail comes in a
+  follow-up PR. An adapter contract (below) makes each future POS source one
+  small migration, with no schema change.
 - **Three tables, not four.** The adjustments table waits for the cash rail.
   For card rails, the fee is a derived value: `expected - received` on a net
   rail, and separate `PROC FEE` bank debits on a gross rail.
@@ -49,11 +50,49 @@ Deviations, with reasons:
 - **Toast.** One deposit per business date, net of a 1.6%-3.1% fee. The
   descriptor holds a date label ("DEP AUG 24"). The label date equals the
   business date plus one day.
-- Card tender literals (verified on production): Focus card tenders are
+- Card tender literals (checked on production): Focus card tenders are
   `name IN ('Visa','MC','Amex','Discover')`; Toast card tenders are
   `payment_type = 'CREDIT'`. Other tender names (cash denominations, gift,
-  `Online Ordering`) settle outside these rails. The rules table stores the
-  tender list, because other restaurants can use different names.
+  `Online Ordering`) settle outside these rails. The rule stores the tender
+  list in `source_config`, because other restaurants can use different names.
+
+## POS source coverage (current and future)
+
+The feature must support every POS source, current and future. One adapter
+per source hides the source-specific tender logic. The adapter contract is
+one SQL function with a fixed signature:
+
+```sql
+deposit_match_source_<source>(
+  p_restaurant_id uuid, p_start date, p_end date, p_config jsonb
+) RETURNS TABLE (business_date date, expected_amount numeric, row_count int)
+```
+
+A dispatcher function maps `deposit_match_rules.pos_source` to the adapter
+with a static `CASE`. No dynamic SQL. To add a POS source later: write one
+adapter function, add one `CASE` arm, and add one default-rule template. No
+table changes.
+
+MVP adapters, from the normalized tables in the repository:
+
+- `focus`: `focus_payments` (`business_date`, `name`, `amount`;
+  src/integrations/supabase/types.ts:3350). Settlement proved gross.
+- `toast`: `toast_payments` (`payment_date`, `payment_type`;
+  src/integrations/supabase/types.ts:9811). Settlement proved net.
+- `square`: `square_payments` minus `square_refunds`. The tender type sits in
+  `raw_json` — the build phase must check the field name on real rows before
+  it writes the filter.
+- `revel`: `revel_payments` (`payment_date`, `payment_type`, `amount`,
+  `tip_amount`).
+- `shift4`: `shift4_charges` minus `shift4_refunds` (`service_date`).
+- `clover`: no normalized tender rows exist (`clover_orders` holds order
+  totals only). The Clover adapter returns zero rows, and the UI shows the
+  source as "not yet supported". No fake card split.
+
+The engine trusts a rule, not an adapter, for settlement behavior (gross or
+net, lag, fee band). The setup dialog proposes per-source defaults. Until an
+owner confirms a rule, items from that source stay `incomplete` and never
+turn `late` or `short`. This keeps unproved processors honest.
 
 ## Existing code this design builds on
 
@@ -96,13 +135,16 @@ where a date exists. RLS on every table: SELECT requires `view:banking` AND
 
 One row per restaurant, POS source, and rail. MVP rails: `card` only.
 
-- `pos_source` (`focus` | `toast`), `rail` (`card`);
+- `pos_source text` — an adapter name; the dispatcher rejects an unknown
+  value;
+- `rail` (`card`);
 - `connected_bank_id` FK → `connected_banks`;
 - `settlement` (`gross` | `net`);
 - `lag_days_min`, `lag_days_max` (banking days);
 - `fee_pct_min`, `fee_pct_max` (net rails; gross rails use 0-0);
 - `amount_tolerance` (dollars) and `amount_tolerance_pct`;
-- `card_tender_names text[]` (Focus) or `card_payment_types text[]` (Toast);
+- `source_config jsonb` — source-specific tender filters (example for
+  `focus`: `{"card_tender_names": ["Visa","MC","Amex","Discover"]}`);
 - `descriptor_pattern` (optional, case-insensitive);
 - `active` flag.
 
@@ -149,7 +191,8 @@ statement checks `view:banking` AND `view:pos_sales` with
 
 Steps per active rule:
 
-1. Upsert items: aggregate the POS card tenders per business date.
+1. Upsert items: call the dispatcher, which calls the rule's adapter. The
+   adapter returns the card total per business date.
 2. Collect candidate bank transactions: positive amount, `is_transfer` is not
    true, the rule's `connected_bank_id`, date inside
    `[business_date + lag_min, business_date + lag_max]`, and the descriptor
@@ -203,7 +246,9 @@ Files:
 - `src/components/deposit-match/MoneyWaterfall.tsx` — POS card total =
   deposited + settling + fees + needs review;
 - `src/components/deposit-match/AttentionQueue.tsx` — exceptions by urgency;
-- `src/components/deposit-match/StreamCards.tsx` — one card per rule;
+- `src/components/deposit-match/StreamCards.tsx` — one card per rule. The
+  cards and the ledger tabs come from the report payload. The UI hardcodes
+  no POS source name;
 - `src/components/deposit-match/DailyLedger.tsx` — per-day rows with status
   chips, one tab per stream;
 - `src/components/deposit-match/ReviewDayDialog.tsx` — short days with an
@@ -234,7 +279,9 @@ exists, the label is "unknown". The mockup's inferred labels do not ship.
   idempotent refresh; greedy-order regression (two adjacent days where the
   wrong-order assignment fails); stale bank never yields `late`/`short`;
   confirmed-allocation cap; resolution survives refresh; summary equals the
-  ledger sum.
+  ledger sum; one fixture per adapter (focus, toast, square, revel, shift4)
+  with known card totals; the dispatcher rejects an unknown `pos_source`;
+  an unconfirmed rule keeps items `incomplete`.
 - Vitest (`tests/unit/`): status/fee helpers, hook query key, payload
   parsing.
 - Playwright (`tests/e2e/`): open the page, set up a rule, see the ledger,
@@ -243,7 +290,8 @@ exists, the label is "unknown". The mockup's inferred labels do not ship.
 
 ## Non-goals (MVP)
 
-- Cash rail, Square/Revel/Clover adapters, manual amount adjustments.
+- Cash rail and manual amount adjustments.
+- Clover card reconciliation, until normalized Clover tender rows exist.
 - PDF dispute export (copy-as-email text ships instead).
 - Nightly cron refresh — the page triggers the refresh RPC on load. A cron
   job can come later without a schema change.

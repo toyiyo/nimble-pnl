@@ -71,15 +71,22 @@ Add a `draft` value to `AuditRowStatus`
    punch with a `shift_id` link to a draft also resolves now.
 
 3. **Classify** ([scheduleClockAudit.ts:347-413](../../../src/utils/scheduleClockAudit.ts)):
-   in `buildShiftRow`, branch on `shift.is_published === false`:
-   - Draft with no sessions: return `null`. No row. Today the draft
-     produces no row, and a "missed draft shift" flag would flood the
-     panel at a restaurant that drafts speculative schedules.
-   - Draft with sessions: return status `draft`. Compute `sessions`,
-     `workedMinutes`, `gapMinutes`, `inDeltaMinutes`, `outDeltaMinutes`
-     as for a closed row, so the detail line shows the full pairing. An
-     open last session leaves `workedMinutes` and `outDeltaMinutes`
-     absent, as the open-session rules already do.
+   in `buildShiftRow`, branch on `shift.is_published === false` **once**,
+   not at each return point. The filter and `buildShiftRow` share the
+   same `now`, so every draft that reaches `buildShiftRow` has
+   `shiftEnded === true`. Two branches cover all cases:
+   - Draft with no sessions: return `null` before the `missing_clock`
+     return. No row. Today the draft produces no row, and a "missed
+     draft shift" flag would flood the panel at a restaurant that
+     drafts speculative schedules.
+   - Draft with sessions: return status `draft` after the
+     `ordered`/`firstSession`/`lastSession` computation and before the
+     `!lastSession.clockOut` check, so the later branches never see a
+     draft. Compute `sessions`, `workedMinutes`, `gapMinutes`,
+     `inDeltaMinutes`, `outDeltaMinutes` as for a closed row, so the
+     detail line shows the full pairing. An open last session leaves
+     `workedMinutes` and `outDeltaMinutes` absent, as the open-session
+     rules already do.
    - A draft row never gets `missing_clock`, `time_mismatch`,
      `open_clock`, `matched`, or `in_progress`.
 
@@ -88,7 +95,10 @@ Add a `draft` value to `AuditRowStatus`
 
 5. **Rollup** ([scheduleClockAudit.ts:477-495](../../../src/utils/scheduleClockAudit.ts)):
    count `draft` rows in `info`. The doc comment on `info` changes to
-   "unscheduled_clock + in_progress + draft count".
+   "unscheduled_clock + in_progress + draft count". Warning: the rollup
+   is a plain `if` chain, and the compiler does not force a new branch
+   for a new status. Test plan item 7 is the only guard. Write that
+   test first.
 
 6. **UI**:
    - [ClockAuditBar.tsx:52](../../../src/components/payroll/ClockAuditBar.tsx):
@@ -137,6 +147,16 @@ overnight shifts.
   fixtures that assert the full summary object gain the `draft` field.
 - **No new fetch**: `useScheduleClockAudit` already selects
   `is_published` ([useScheduleClockAudit.ts:83](../../../src/hooks/useScheduleClockAudit.ts)).
+- **Per-employee chip**: a draft-only employee shows the generic
+  "N info" chip ([Payroll.tsx:107-119](../../../src/pages/Payroll.tsx)).
+  This fold-in is intended. It matches the existing fold-in of
+  `unscheduled_clock` and `in_progress`, and the expanded detail row
+  shows the distinct "Draft" label.
+- **No repair dialog for drafts**: `onEnterClock` fires only from a
+  button gated by `ACTION_LABEL[row.status]`
+  ([EmployeeAuditDetail.tsx:38-41](../../../src/components/payroll/EmployeeAuditDetail.tsx)).
+  `draft` gets no entry, so `RecordShiftClockDialog` cannot open for a
+  draft row.
 
 ## Test plan
 
@@ -162,7 +182,9 @@ Unit tests in `tests/unit/scheduleClockAudit.test.ts`:
 Component tests:
 
 - `tests/unit/ClockAuditBar.test.tsx`: the info chip count includes
-  `summary.draft`.
+  `summary.draft`. Also add `draft: <n>` to the existing `summary` and
+  `zeroSummary` literals (lines 44-59). They are typed `AuditSummary`
+  and fail to compile without the new field.
 - `tests/unit/EmployeeAuditDetail.test.tsx`: a `draft` row shows the
   label "Draft" and no action button.
 

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(18);
+SELECT plan(17);
 
 -- Fixture: one restaurant, one business date, known card and non-card rows
 -- per POS source. Each adapter test sums only the card rows.
@@ -7,6 +7,11 @@ INSERT INTO public.restaurants (id, name) VALUES
   ('44444444-1000-0000-0000-000000000001', 'Deposit Match Adapters');
 
 -- focus: card tenders 'Visa' (100.00) + 'MC' (50.00) = 150.00, cash excluded.
+-- focus_payments_order_fk requires a matching focus_orders row per check.
+INSERT INTO public.focus_orders (restaurant_id, business_date, focus_check_id, total) VALUES
+  ('44444444-1000-0000-0000-000000000001', '2026-08-25', 'chk-1', 100.00),
+  ('44444444-1000-0000-0000-000000000001', '2026-08-25', 'chk-2', 50.00),
+  ('44444444-1000-0000-0000-000000000001', '2026-08-25', 'chk-3', 20.00);
 INSERT INTO public.focus_payments
   (restaurant_id, business_date, focus_check_id, payment_key, name, amount, tip)
 VALUES
@@ -46,9 +51,9 @@ INSERT INTO public.shift4_charges
 VALUES
   ('44444444-1000-0000-0000-000000000001', 'ch-1', 'merch-1', 10000, 'USD', 'successful', 1700000000, '2026-08-25T12:00:00Z', '2026-08-25');
 INSERT INTO public.shift4_refunds
-  (restaurant_id, refund_id, charge_id, merchant_id, amount, currency, created_at_ts, created_time, service_date)
+  (restaurant_id, refund_id, charge_id, merchant_id, amount, currency, status, created_at_ts, created_time, service_date)
 VALUES
-  ('44444444-1000-0000-0000-000000000001', 'rf-1', 'ch-1', 'merch-1', 2000, 'USD', 1700000001, '2026-08-25T13:00:00Z', '2026-08-25');
+  ('44444444-1000-0000-0000-000000000001', 'rf-1', 'ch-1', 'merch-1', 2000, 'USD', 'successful', 1700000001, '2026-08-25T13:00:00Z', '2026-08-25');
 
 -- focus adapter: sums only the configured card tender names.
 SELECT is(

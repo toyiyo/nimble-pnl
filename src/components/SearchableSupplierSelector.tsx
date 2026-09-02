@@ -64,9 +64,7 @@ export function SearchableSupplierSelector({
   }, [searchValue, fuse, suppliers]);
 
   const selectedSupplier = suppliers.find((supplier) => supplier.id === value);
-  // The value is a staged new-supplier name when it is not empty, not the
-  // 'new_supplier' sentinel, matches no known supplier, and is not a UUID
-  // (a UUID means the supplier list has not loaded yet).
+  // A UUID here means the supplier list has not loaded yet.
   const isStagedNewName =
     !!value?.trim() && value !== 'new_supplier' && !selectedSupplier && !UUID_RE.test(value);
 

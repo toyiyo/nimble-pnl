@@ -349,23 +349,33 @@ const assignSessionsToShifts = (
   return { sessionsByShift, matchedSessions };
 };
 
-/** Worked minutes, end-time delta, and inter-session gap for a closed-out shift. */
+/**
+ * Worked minutes, end-time delta, and inter-session gap for a closed-out shift.
+ *
+ * A double clock-in (no clock-out between them) leaves an EARLIER session in
+ * `ordered` with `clockOut: null`, even when `lastSession` -- the caller's
+ * only guard -- is closed. Skip any such open session in the worked-minutes
+ * sum and the gap loop instead of casting its null `clockOut` to `string`:
+ * that cast let `differenceInMinutes` read `null` as the 1970 epoch and
+ * silently add a huge bogus delta to `workedMinutes`.
+ */
 const computePairingMetrics = (
   shift: AuditShift,
   ordered: WorkSession[],
   lastSession: WorkSession,
 ) => {
   const outDeltaMinutes = minutesBetween(shift.end_time, lastSession.clockOut as string);
-  const workedMinutes = ordered.reduce(
-    (sum, session) =>
-      sum + minutesBetween(session.clockIn, session.clockOut as string) - session.breakMinutes,
-    0,
-  );
+  const workedMinutes = ordered.reduce((sum, session) => {
+    if (!session.clockOut) return sum;
+    return sum + minutesBetween(session.clockIn, session.clockOut) - session.breakMinutes;
+  }, 0);
   let gapMinutes: number | undefined;
   if (ordered.length > 1) {
     gapMinutes = 0;
     for (let i = 1; i < ordered.length; i++) {
-      gapMinutes += minutesBetween(ordered[i - 1].clockOut as string, ordered[i].clockIn);
+      const previousClockOut = ordered[i - 1].clockOut;
+      if (!previousClockOut) continue;
+      gapMinutes += minutesBetween(previousClockOut, ordered[i].clockIn);
     }
   }
   return { outDeltaMinutes, workedMinutes, gapMinutes };
@@ -381,6 +391,7 @@ const buildShiftRow = (
     minutesBetween(shift.start_time, shift.end_time) - (shift.break_duration ?? 0);
   const base = { key: `shift-${shift.id}`, employeeId: shift.employee_id, shift, scheduledMinutes };
   const shiftEnded = new Date(shift.end_time).getTime() <= now.getTime();
+  const isDraft = shift.is_published === false;
 
   if (!sessions || sessions.length === 0) {
     // A shift that has not ended yet is still in progress -- the employee
@@ -391,7 +402,7 @@ const buildShiftRow = (
     // A draft shift with no sessions gets no row -- a "missed draft shift"
     // flag would flood the panel at a restaurant that drafts speculative
     // schedules.
-    if (shift.is_published === false) return null;
+    if (isDraft) return null;
     return { ...base, status: 'missing_clock' };
   }
 
@@ -412,7 +423,7 @@ const buildShiftRow = (
   // A draft shift with sessions is tentative, not a payroll error. Report
   // it as `draft` with the full pairing -- never `missing_clock`,
   // `time_mismatch`, `open_clock`, `matched`, or `in_progress`.
-  if (shift.is_published === false) {
+  if (isDraft) {
     if (!lastSession.clockOut) {
       return { ...base, status: 'draft', sessions: ordered, inDeltaMinutes };
     }

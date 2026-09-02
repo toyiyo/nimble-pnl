@@ -51,8 +51,11 @@ Add a derived flag:
 ```ts
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isStagedNewName =
-  !!value && value !== 'new_supplier' && !selectedSupplier && !UUID_RE.test(value);
+  !!value?.trim() && value !== 'new_supplier' && !selectedSupplier && !UUID_RE.test(value);
 ```
+
+The `trim()` call excludes a space-only value. Without it, a
+space-only search stages a blank name next to a clear button.
 
 Display rules, in order:
 
@@ -66,7 +69,22 @@ Indicator and style rules:
 
 - Show the `(new)` suffix when `showNewIndicator` is true and the value
   is `'new_supplier'` or `isStagedNewName`.
-- Apply the existing new-supplier text style to both new cases.
+- Put a literal space before `(new)`. Without it, the accessible name
+  reads as one word, for example "Sysco Foods(new)".
+- Style both new cases with `text-primary font-medium`. The trigger
+  span now uses `text-blue-600`
+  (src/components/SearchableSupplierSelector.tsx:103). CLAUDE.md
+  forbids direct color classes. Replace the class on the span the fix
+  touches. The dropdown row at line 136 also uses `text-blue-600`; it
+  is out of scope for this fix.
+
+Clear button rule:
+
+- The clear button shows for a staged name
+  (src/components/SearchableSupplierSelector.tsx:183). This is
+  intentional. The user can clear a staged new supplier. The
+  `'new_supplier'` sentinel case keeps the button hidden; the sentinel
+  parents own the pending state and clear it themselves.
 
 ## Why the UUID guard
 
@@ -80,12 +98,20 @@ these two shapes in `ProductUpdateDialog`
 ## Effect on parents
 
 - Raw-name parents (`ProductUpdateDialog`, `ProductDialog`,
-  `ReceiptMappingReview`, `AddPendingOutflowDialog`,
-  `EnhancedCategoryRulesDialog`, `TransactionDetailSheet`): the trigger
-  now shows the staged name. This is the fix.
+  `AddPendingOutflowDialog`): these parents store the raw typed name
+  as the value (claims 3 and 4;
+  src/components/pending-outflows/AddPendingOutflowDialog.tsx:39-40).
+  The trigger now shows the staged name. This is the fix.
 - Sentinel parents (`AddExpenseSheet`, `EditExpenseSheet`): rule 1 is
-  unchanged. Rule 3 also covers their short raw-name window before the
-  create resolves (claim 5).
+  unchanged. Rule 3 also covers the short raw-name window in
+  `AddExpenseSheet` before the create resolves (claim 5).
+- Create-first parents (`ReceiptMappingReview`,
+  `EnhancedCategoryRulesDialog`, `TransactionDetailSheet`): these
+  parents call `createSupplier` and write state only after the call
+  resolves (src/components/banking/EnhancedCategoryRulesDialog.tsx:134-138).
+  The value never holds the raw name. The fix does not change their
+  behavior. Their short no-feedback window during the network call is
+  out of scope.
 
 ## Alternatives considered
 
@@ -100,11 +126,22 @@ these two shapes in `ProductUpdateDialog`
 Unit tests for the component in
 `tests/unit/searchableSupplierSelector.test.tsx`:
 
-1. A staged new name shows in the trigger with the `(new)` suffix.
-2. A selected existing supplier shows its name.
-3. An unmatched UUID value shows the placeholder.
-4. The `'new_supplier'` sentinel with `pendingNewName` shows that name.
-5. An empty value shows the placeholder.
+1. A staged new name shows in the trigger with the `(new)` suffix when
+   `showNewIndicator` is true.
+2. A staged new name shows no `(new)` suffix when `showNewIndicator`
+   is false.
+3. A selected existing supplier shows its name.
+4. An unmatched UUID value shows the placeholder.
+5. The `'new_supplier'` sentinel with `pendingNewName` shows that name.
+6. An empty value shows the placeholder.
+7. A space-only value shows the placeholder.
+8. The staged-name span carries the `text-primary` class.
+9. With a staged name, the clear button renders. A click calls
+   `onValueChange('', false)`.
+
+Follow the render convention from
+`tests/unit/SearchableAccountSelector.ariaLabel.test.tsx`: plain
+`render` and `screen.getByRole('combobox')` with no provider wrapper.
 
 This is a display-only change inside one component. No route, RPC, or
 record flow changes. E2E coverage is not applicable; the unit tests

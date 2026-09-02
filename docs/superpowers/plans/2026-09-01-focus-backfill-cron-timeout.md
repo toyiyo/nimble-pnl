@@ -22,7 +22,7 @@
 
 **Files:**
 - Create: `supabase/migrations/20260901120000_focus_backfill_cron_timeout.sql`
-- Test: `supabase/tests/52_focus_backfill_cron_timeout.sql`
+- Test: `supabase/tests/56_focus_backfill_cron_timeout.sql`
 
 **Interfaces:**
 - Consumes: the `focus-backfill-sync` and `focus-bulk-sync` rows in `cron.job`, created by `supabase/migrations/20260703120000_focus_backfill_reliability.sql` and `supabase/migrations/20260704200320_focus_sync_frequency.sql`.
@@ -30,7 +30,7 @@
 
 - [ ] **Step 1: Write the failing test**
 
-Create `supabase/tests/52_focus_backfill_cron_timeout.sql`:
+Create `supabase/tests/56_focus_backfill_cron_timeout.sql`:
 
 ```sql
 -- Tests for the focus-backfill-sync cron timeout raise
@@ -97,7 +97,7 @@ ROLLBACK;
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npm run db:reset && npm run test:db`
-Expected: FAIL on tests 2 and 3 in file 52 (the job still carries `timeout_milliseconds := 5000`). Tests 1, 4, 5, 6 pass.
+Expected: FAIL on tests 2 and 3 in file 56 (the job still carries `timeout_milliseconds := 5000`). Tests 1, 4, 5, 6 pass.
 
 - [ ] **Step 3: Write the migration**
 
@@ -146,11 +146,11 @@ SELECT cron.schedule(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm run db:reset && npm run test:db`
-Expected: PASS — all 6 tests in file 52, and no regression in files 48, 49, 51.
+Expected: PASS — all 6 tests in file 56, and no regression in files 48, 49, 51.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260901120000_focus_backfill_cron_timeout.sql supabase/tests/52_focus_backfill_cron_timeout.sql
+git add supabase/migrations/20260901120000_focus_backfill_cron_timeout.sql supabase/tests/56_focus_backfill_cron_timeout.sql
 git commit -m "fix(focus): raise the backfill cron timeout to 120 s"
 ```

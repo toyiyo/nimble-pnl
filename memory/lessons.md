@@ -3243,3 +3243,22 @@
 - **Mistake:** The trade-accept warning went into `TradeMarketplace` — the component whose name matches the feature. A repo search showed no route mounts it; `/employee/shifts` renders `AvailableShiftsPage`, so employees never saw the warning. Codex flagged it as a P1.
 - **Correction:** Moved the gate into `AvailableShiftsPage.handleAcceptTrade` (confirm dialog + block handling) and kept the `TradeMarketplace` panel for parity.
 - **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A component that no route renders passes its own tests, but users never see it.
+
+## Category: Design Docs / Premise Checks
+
+### [2026-09-03] Check a column type in the table DDL, not in a nearby function signature (PR #796)
+- **Mistake:** The design doc stated `bank_transactions.transaction_date` "is a plain `DATE`". The claim came from a tombstone function parameter, not from the table DDL. The column is `TIMESTAMPTZ` (migration `20251021195308`). The sound-logic reviewer caught the wrong bound before the PR.
+- **Correction:** The migration kept the sargable comparison and added an explicit upper bound: `bt.transaction_date >= CURRENT_DATE - 90 AND bt.transaction_date < CURRENT_DATE + 1`, with a comment that names the real type.
+- **Rule:** Before a design doc asserts a column type, read the `CREATE TABLE` or `ALTER TABLE` line for that exact table. A parameter type in a related function is not evidence.
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] Re-run the stale pr-comment-response check-run with `gh run rerun` (PR #796)
+- **Mistake:** The build workflow stopped with "CI not green after triage fix push". The only red check was `pr-comment-response`. The audit ran before the triage replies landed, and no later event refreshed it. `node dev-tools/pr-triage.js list` showed zero unanswered findings.
+- **Correction:** `gh run rerun <run-id>` on the audit's workflow run refreshed the check-run to green in under a minute. No new commit was necessary. This extends the 2026-09-03 gate lesson: a push is one re-audit trigger, and a rerun of the existing run is a cheaper one when the code needs no change.
+- **Rule:** When `pr-comment-response` is the only red check, compare its `completed_at` with the reply timestamps. When the replies are newer and `pr-triage.js list` shows zero unanswered, run `gh run rerun <run-id>` — do not push a filler commit.
+
+### [2026-09-03] Set the workflow token ceiling to match the task size at launch (PR #796)
+- **Mistake:** The five-task build with the full review panel spent ~2.09M output tokens and hit the default 2M ceiling at the Verify phase. The run stopped one phase before the ship.
+- **Correction:** Relaunched with `resumeFromRunId` and `args.tokenCeiling: 4000000`. All 25 finished agents replayed from the cache, so the resume cost nothing extra for the completed phases.
+- **Rule:** For a multi-task /dev build (4+ plan tasks with the review panel), pass `tokenCeiling: 4000000` in the launch args. On a ceiling stop, resume with the identical args plus the raised ceiling — never relaunch fresh.

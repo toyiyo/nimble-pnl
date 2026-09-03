@@ -1,4 +1,5 @@
 import type { ShiftTradeStatus } from '@/hooks/useShiftTrades';
+import { AUTO_EXPIRED_NOTE } from '@/lib/shiftTradeStatus';
 
 export type TradeStepState = 'done' | 'current' | 'upcoming' | 'rejected';
 
@@ -83,7 +84,7 @@ export function getPosterTradeProgress(trade: {
       // An auto-expired trade (expire_stale_shift_trades sets the marker)
       // must tell the poster the shift is still theirs. A plain cancel is
       // defensive only — the activity query excludes those.
-      if (trade.manager_note === 'auto_expired') {
+      if (trade.manager_note === AUTO_EXPIRED_NOTE) {
         return {
           steps: [
             { key: 'posted', label: 'Posted', state: 'done' },

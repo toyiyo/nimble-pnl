@@ -170,7 +170,7 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
               {coverageImpact.isLoading && (
                 <Skeleton className="h-14 w-full rounded-lg" />
               )}
-              {coverageImpact.error != null && (
+              {coverageImpact.error !== null && (
                 <p className="text-[13px] text-muted-foreground">
                   Could not load the coverage detail.
                 </p>

@@ -18,6 +18,11 @@ export interface ShiftProtectionSettings {
   coverage_floor_mode: ProtectionMode;
 }
 
+/**
+ * Keep in sync with the two server copies: the column defaults
+ * (20260903034500_shift_protection_settings.sql) and the no-row fallback
+ * in get_shift_protection_settings (20260903034600).
+ */
 export const SHIFT_PROTECTION_DEFAULTS: ShiftProtectionSettings = {
   trade_deadline_mode: 'off',
   trade_deadline_hours: 24,
@@ -29,7 +34,19 @@ export const SHIFT_PROTECTION_DEFAULTS: ShiftProtectionSettings = {
   coverage_floor_mode: 'off',
 };
 
-export type ProtectionRule = 'trade_deadline' | 'timeoff_notice' | 'timeoff_sameday' | 'coverage_floor';
+/**
+ * Every rule a finding can carry. The first four come from the settings
+ * knobs; the last three are approval-time re-checks that
+ * approve_shift_trade sends regardless of any knob.
+ */
+export type ProtectionRule =
+  | 'trade_deadline'
+  | 'timeoff_notice'
+  | 'timeoff_sameday'
+  | 'coverage_floor'
+  | 'shift_started'
+  | 'overlap'
+  | 'timeoff_conflict';
 
 export interface PolicyFinding {
   rule: ProtectionRule;
@@ -39,8 +56,8 @@ export interface PolicyFinding {
 
 /**
  * Deadline check for a trade post or accept. Returns a finding when the
- * shift starts inside the deadline window (strictly inside — a shift
- * exactly at the boundary passes).
+ * shift starts inside the deadline window. The boundary instant flags,
+ * which matches the server checks (`now() >= start - window`).
  */
 export function tradeDeadlineFinding(
   settings: ShiftProtectionSettings,
@@ -55,7 +72,7 @@ export function tradeDeadlineFinding(
 
   const windowMs = settings.trade_deadline_hours * 60 * 60 * 1000;
   const msUntilStart = start - now.getTime();
-  if (msUntilStart >= windowMs) return null;
+  if (msUntilStart > windowMs) return null;
 
   const mode = settings.trade_deadline_mode;
   if (msUntilStart <= 0) {
@@ -67,6 +84,21 @@ export function tradeDeadlineFinding(
     mode,
     message: `This shift starts in ${hoursUntil} hours. The trade window closes ${settings.trade_deadline_hours} hours before a shift.`,
   };
+}
+
+/**
+ * Today as YYYY-MM-DD in the given IANA timezone, else the device zone.
+ * The server rules run on the RESTAURANT day (check_timeoff_conflict
+ * pattern), so the client must compare in the same frame — a device a
+ * timezone ahead would otherwise warn or block one day early.
+ */
+export function dateOnlyInTimeZone(date: Date, timeZone?: string | null): string {
+  try {
+    // en-CA formats as YYYY-MM-DD.
+    return new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || undefined }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('en-CA').format(date);
+  }
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

@@ -125,7 +125,7 @@ export const ShiftProtectionSettingsDialog = ({
   onOpenChange,
   restaurantId,
 }: ShiftProtectionSettingsDialogProps) => {
-  const { effectiveSettings, isLoading, error, updateSettings, isSaving } =
+  const { effectiveSettings, isLoading, error, refetch, updateSettings, isSaving } =
     useStaffingSettings(restaurantId);
   const invalidateShiftProtection = useInvalidateShiftProtection();
   const { toast } = useToast();
@@ -199,10 +199,20 @@ export const ShiftProtectionSettingsDialog = ({
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-5">
-          {error != null ? (
-            <p className="text-[13px] text-destructive" role="alert">
-              Could not load the rules. Close the dialog and retry.
-            </p>
+          {error !== null ? (
+            <div className="space-y-3">
+              <p className="text-[13px] text-destructive" role="alert">
+                Could not load the rules.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                onClick={() => refetch()}
+              >
+                Retry
+              </Button>
+            </div>
           ) : isLoading || !draft ? (
             <div className="space-y-3">
               <Skeleton className="h-16 w-full rounded-xl" />

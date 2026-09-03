@@ -1,7 +1,13 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { PolicyWarningError, throwIfPolicyBlocked, type RpcPolicyResult } from '@/lib/shiftProtection';
+import { AUTO_EXPIRED_NOTE } from '@/lib/shiftTradeStatus';
+import {
+  PolicyWarningError,
+  parseShiftProtectionError,
+  throwIfPolicyBlocked,
+  type RpcPolicyResult,
+} from '@/lib/shiftProtection';
 
 export interface ShiftTrade {
   id: string;
@@ -210,7 +216,7 @@ const MY_TRADE_ACTIVITY_STATUSES: ShiftTradeStatus[] = [
 
 const MY_TRADE_ACTIVITY_STATUS_FILTER =
   `status.in.(${MY_TRADE_ACTIVITY_STATUSES.join(',')}),` +
-  `and(status.eq.cancelled,manager_note.eq.auto_expired)`;
+  `and(status.eq.cancelled,manager_note.eq.${AUTO_EXPIRED_NOTE})`;
 
 /**
  * Trades the employee is a party to (poster or claimant), across the active
@@ -352,9 +358,12 @@ export const useCreateShiftTrade = () => {
       });
     },
     onError: (error: Error) => {
+      // A block-mode trigger raises 'shift_protection:<rule> <text>';
+      // show the text alone, not the raw Postgres decoration.
+      const parsed = parseShiftProtectionError(error.message);
       toast({
-        title: 'Error posting trade',
-        description: error.message,
+        title: parsed ? 'Trade blocked by a shift protection rule' : 'Error posting trade',
+        description: parsed ? parsed.message : error.message,
         variant: 'destructive',
       });
     },
@@ -402,9 +411,12 @@ export const useCreateShiftTradeForEmployee = () => {
       });
     },
     onError: (error: Error) => {
+      // A block-mode trigger raises 'shift_protection:<rule> <text>';
+      // show the text alone, not the raw Postgres decoration.
+      const parsed = parseShiftProtectionError(error.message);
       toast({
-        title: 'Error posting trade',
-        description: error.message,
+        title: parsed ? 'Trade blocked by a shift protection rule' : 'Error posting trade',
+        description: parsed ? parsed.message : error.message,
         variant: 'destructive',
       });
     },

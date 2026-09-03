@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PolicyWarningError,
   SHIFT_PROTECTION_DEFAULTS,
+  dateOnlyInTimeZone,
   throwIfPolicyBlocked,
   tradeDeadlineFinding,
   timeoffNoticeFinding,
@@ -30,10 +31,10 @@ describe('tradeDeadlineFinding', () => {
     expect(tradeDeadlineFinding(s, '2026-09-05T12:00:00Z', now)).toBeNull();
   });
 
-  it('returns null exactly at the window boundary', () => {
+  it('flags exactly at the window boundary, like the server checks', () => {
     const s = settings({ trade_deadline_mode: 'warn', trade_deadline_hours: 24 });
-    // Starts in exactly 24 hours.
-    expect(tradeDeadlineFinding(s, '2026-09-04T12:00:00Z', now)).toBeNull();
+    // Starts in exactly 24 hours; the server flags `now() >= start - window`.
+    expect(tradeDeadlineFinding(s, '2026-09-04T12:00:00Z', now)).not.toBeNull();
   });
 
   it('returns a warn finding inside the window', () => {
@@ -99,6 +100,20 @@ describe('timeoffNoticeFinding', () => {
     const s = settings({ timeoff_notice_mode: 'warn', timeoff_notice_days: 7 });
     expect(timeoffNoticeFinding(s, 'nope', today)).toBeNull();
     expect(timeoffNoticeFinding(s, undefined, today)).toBeNull();
+  });
+});
+
+describe('dateOnlyInTimeZone', () => {
+  it('formats the date in the given timezone', () => {
+    // 2026-09-03T03:00Z is still 2026-09-02 in Chicago.
+    const instant = new Date('2026-09-03T03:00:00Z');
+    expect(dateOnlyInTimeZone(instant, 'America/Chicago')).toBe('2026-09-02');
+    expect(dateOnlyInTimeZone(instant, 'UTC')).toBe('2026-09-03');
+  });
+
+  it('falls back to the device zone for a garbage timezone', () => {
+    const instant = new Date('2026-09-03T12:00:00Z');
+    expect(dateOnlyInTimeZone(instant, 'Not/AZone')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 

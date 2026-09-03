@@ -99,6 +99,13 @@ export const useUpdateTimeOffRequest = () => {
     queryKey: 'time-off-requests',
     entityName: 'Time-off request',
     getRestaurantId: (data) => data.restaurant_id,
+    // A block-mode trigger can refuse a date edit; show its text, not
+    // the raw 'shift_protection:<rule> ...' Postgres message.
+    formatError: (error) => {
+      const parsed = parseShiftProtectionError(error.message);
+      if (!parsed) return null;
+      return { title: 'Request blocked by a shift protection rule', description: parsed.message };
+    },
   });
 };
 

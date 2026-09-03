@@ -16,7 +16,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(13);
 
 SET LOCAL role TO postgres;
 
@@ -29,7 +29,8 @@ ALTER TABLE shifts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE shift_trades DISABLE ROW LEVEL SECURITY;
 
 INSERT INTO restaurants (id, name, timezone) VALUES
-  ('74000000-0000-0000-0000-000000000001', 'Trade Recheck Restaurant', 'America/Chicago')
+  ('74000000-0000-0000-0000-000000000001', 'Trade Recheck Restaurant', 'America/Chicago'),
+  ('74000000-0000-0000-0000-000000000002', 'Trade Recheck Restaurant B', 'America/Chicago')
 ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
 
 INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
@@ -80,6 +81,22 @@ DELETE FROM time_off_requests WHERE restaurant_id = '74000000-0000-0000-0000-000
 INSERT INTO time_off_requests (id, restaurant_id, employee_id, start_date, end_date, status)
 VALUES ('74000000-0000-0000-0000-000000000051', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000022',
         (now() AT TIME ZONE 'America/Chicago')::date + 10, (now() AT TIME ZONE 'America/Chicago')::date + 10, 'approved');
+
+-- Cross-restaurant fixture: a shift in restaurant B, referenced by a
+-- trade in restaurant A. The insert trigger's tenant bind refuses such a
+-- row, so disable that trigger for this one seed insert — the point is
+-- to prove approve_shift_trade ALSO refuses it (defense in depth).
+INSERT INTO employees (id, restaurant_id, user_id, name, email, position, is_active) VALUES
+  ('74000000-0000-0000-0000-000000000023', '74000000-0000-0000-0000-000000000002', NULL, 'Server B1', 'tr-b1-74@test.com', 'Server', true)
+ON CONFLICT (id) DO UPDATE SET is_active = true;
+INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, position, break_duration, status) VALUES
+  ('74000000-0000-0000-0000-000000000050', '74000000-0000-0000-0000-000000000002', '74000000-0000-0000-0000-000000000023', (((now() AT TIME ZONE 'America/Chicago')::date + 15) + TIME '12:00') AT TIME ZONE 'America/Chicago', (((now() AT TIME ZONE 'America/Chicago')::date + 15) + TIME '18:00') AT TIME ZONE 'America/Chicago', 'Server', 30, 'scheduled')
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE shift_trades DISABLE TRIGGER trg_shift_protection_trade_insert;
+INSERT INTO shift_trades (id, restaurant_id, offered_shift_id, offered_by_employee_id, accepted_by_employee_id, status) VALUES
+  ('74000000-0000-0000-0000-000000000069', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000050', '74000000-0000-0000-0000-000000000021', '74000000-0000-0000-0000-000000000022', 'pending_approval');
+ALTER TABLE shift_trades ENABLE TRIGGER trg_shift_protection_trade_insert;
 
 -- Trades: t1..t5 pending_approval (AE accepted), t6..t8 open.
 DELETE FROM shift_trades WHERE restaurant_id = '74000000-0000-0000-0000-000000000001';
@@ -149,6 +166,13 @@ SELECT is(
   (SELECT approve_shift_trade('74000000-0000-0000-0000-000000000065', '74000000-0000-0000-0000-000000000011')->'warnings'->0->>'rule'),
   'shift_started',
   'a started shift returns the shift_started finding'
+);
+
+-- 7b. Cross-restaurant shift: approve refuses before any transfer.
+SELECT is(
+  (SELECT approve_shift_trade('74000000-0000-0000-0000-000000000069', '74000000-0000-0000-0000-000000000011', NULL, true)->>'error'),
+  'Shift does not belong to this restaurant',
+  'approve refuses a trade whose shift lives in another restaurant, even with the override'
 );
 
 -- ============================================================================

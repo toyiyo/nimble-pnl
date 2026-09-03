@@ -9,11 +9,12 @@ import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
 import { useCreateTimeOffRequest, useUpdateTimeOffRequest } from '@/hooks/useTimeOffRequests';
 import { useShiftProtection, useTimeoffDayCounts } from '@/hooks/useShiftProtection';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TimeOffRequest } from '@/types/scheduling';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { EmployeeSelector } from './scheduling/EmployeeSelector';
 import { ShiftProtectionWarning } from './scheduling/ShiftProtectionWarning';
-import { timeoffNoticeFinding } from '@/lib/shiftProtection';
+import { dateOnlyInTimeZone, timeoffNoticeFinding } from '@/lib/shiftProtection';
 
 interface TimeOffRequestDialogProps {
   open: boolean;
@@ -43,11 +44,14 @@ export const TimeOffRequestDialog = ({
   // server triggers apply the same exemption.
   const { protection } = useShiftProtection(restaurantId);
   const { hasCapability, isResolved } = usePermissions();
+  const { selectedRestaurant } = useRestaurantContext();
   const isExempt = isResolved && hasCapability('edit:scheduling');
 
   const startStr = startDate ? toDateOnlyString(startDate) : null;
   const endStr = endDate ? toDateOnlyString(endDate) : null;
-  const todayStr = toDateOnlyString(new Date());
+  // The server rules run on the restaurant-local day; compare in the
+  // same frame or a device a timezone ahead warns one day early.
+  const todayStr = dateOnlyInTimeZone(new Date(), selectedRestaurant?.restaurant?.timezone);
 
   const noticeFinding = useMemo(
     () => timeoffNoticeFinding(protection, startStr ?? undefined, todayStr),
@@ -190,7 +194,7 @@ export const TimeOffRequestDialog = ({
               Checking the coverage rules…
             </p>
           )}
-          {countsEnabled && dayCounts.error != null && (
+          {countsEnabled && dayCounts.error !== null && (
             <p className="text-[13px] text-muted-foreground">
               Could not check the coverage rules. You can still submit.
             </p>

@@ -17,7 +17,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(11);
+SELECT plan(14);
 
 SET LOCAL role TO postgres;
 
@@ -30,7 +30,8 @@ ALTER TABLE shifts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE shift_trades DISABLE ROW LEVEL SECURITY;
 
 INSERT INTO restaurants (id, name, timezone) VALUES
-  ('75000000-0000-0000-0000-000000000001', 'Trigger Guard Restaurant', 'America/Chicago')
+  ('75000000-0000-0000-0000-000000000001', 'Trigger Guard Restaurant', 'America/Chicago'),
+  ('75000000-0000-0000-0000-000000000002', 'Trigger Guard Restaurant B', 'America/Chicago')
 ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
 
 INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
@@ -45,14 +46,16 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 INSERT INTO employees (id, restaurant_id, user_id, name, email, position, is_active) VALUES
   ('75000000-0000-0000-0000-000000000021', '75000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000012', 'Server E1', 'tg-e1-75@test.com', 'Server', true),
-  ('75000000-0000-0000-0000-000000000022', '75000000-0000-0000-0000-000000000001', NULL, 'Server E2', 'tg-e2-75@test.com', 'Server', true)
+  ('75000000-0000-0000-0000-000000000022', '75000000-0000-0000-0000-000000000001', NULL, 'Server E2', 'tg-e2-75@test.com', 'Server', true),
+  ('75000000-0000-0000-0000-000000000023', '75000000-0000-0000-0000-000000000002', NULL, 'Server B1', 'tg-b1-75@test.com', 'Server', true)
 ON CONFLICT (id) DO UPDATE SET is_active = true;
 
 -- E1's shifts: near (12h out) and far (local day +20).
 INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, position, break_duration, status) VALUES
   ('75000000-0000-0000-0000-000000000041', '75000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000021', now() + interval '12 hours', now() + interval '18 hours', 'Server', 30, 'scheduled'),
   ('75000000-0000-0000-0000-000000000042', '75000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000021', (((now() AT TIME ZONE 'America/Chicago')::date + 20) + TIME '12:00') AT TIME ZONE 'America/Chicago', (((now() AT TIME ZONE 'America/Chicago')::date + 20) + TIME '18:00') AT TIME ZONE 'America/Chicago', 'Server', 30, 'scheduled'),
-  ('75000000-0000-0000-0000-000000000043', '75000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000021', now() + interval '20 hours', now() + interval '23 hours', 'Server', 30, 'scheduled')
+  ('75000000-0000-0000-0000-000000000043', '75000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000021', now() + interval '20 hours', now() + interval '23 hours', 'Server', 30, 'scheduled'),
+  ('75000000-0000-0000-0000-000000000044', '75000000-0000-0000-0000-000000000002', '75000000-0000-0000-0000-000000000023', (((now() AT TIME ZONE 'America/Chicago')::date + 20) + TIME '12:00') AT TIME ZONE 'America/Chicago', (((now() AT TIME ZONE 'America/Chicago')::date + 20) + TIME '18:00') AT TIME ZONE 'America/Chicago', 'Server', 30, 'scheduled')
 ON CONFLICT (id) DO NOTHING;
 
 -- Fixture rows that must not hit the block triggers: insert them under
@@ -209,6 +212,48 @@ SELECT lives_ok(
     VALUES ('75000000-0000-0000-0000-000000000063', '75000000-0000-0000-0000-000000000001',
             '75000000-0000-0000-0000-000000000041', '75000000-0000-0000-0000-000000000021', 'open')$$,
   'warn mode does not raise on a trade post inside the window'
+);
+
+-- ============================================================================
+-- Tenant binds and the date-preserving edit
+-- ============================================================================
+
+-- 12. A trade cannot reference a shift of another restaurant — even for a
+-- capability holder (the bind runs before the exemption).
+SELECT set_config('request.jwt.claims', '{"sub":"75000000-0000-0000-0000-000000000011","role":"authenticated"}', true);
+SELECT throws_ok(
+  $$INSERT INTO shift_trades (restaurant_id, offered_shift_id, offered_by_employee_id, status)
+    VALUES ('75000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000044',
+            '75000000-0000-0000-0000-000000000021', 'open')$$,
+  'P0001',
+  'shift_protection:invalid_trade The offered shift is not in this restaurant.',
+  'a trade with a cross-restaurant shift is refused'
+);
+
+-- 13. A time-off row cannot carry a foreign restaurant_id.
+SELECT throws_ok(
+  $$INSERT INTO time_off_requests (restaurant_id, employee_id, start_date, end_date, status)
+    VALUES ('75000000-0000-0000-0000-000000000002', '75000000-0000-0000-0000-000000000021',
+            (now() AT TIME ZONE 'America/Chicago')::date + 40,
+            (now() AT TIME ZONE 'America/Chicago')::date + 40, 'pending')$$,
+  'P0001',
+  'shift_protection:invalid_request The employee is not in this restaurant.',
+  'a time-off row with a foreign restaurant_id is refused'
+);
+
+-- 14. A date-preserving edit passes even in block mode. Re-enable block,
+-- then edit the reason of E1's short-notice warn-mode request (…54) with
+-- both dates in the SET list but unchanged.
+UPDATE staffing_settings
+SET trade_deadline_mode = 'block', timeoff_notice_mode = 'block', timeoff_sameday_mode = 'block'
+WHERE restaurant_id = '75000000-0000-0000-0000-000000000001';
+
+SELECT set_config('request.jwt.claims', '{"sub":"75000000-0000-0000-0000-000000000012","role":"authenticated"}', true);
+SELECT lives_ok(
+  $$UPDATE time_off_requests
+    SET start_date = start_date, end_date = end_date, reason = 'typo fix'
+    WHERE id = '75000000-0000-0000-0000-000000000054'$$,
+  'a date-preserving edit does not re-run the block rules'
 );
 
 RESET ROLE;

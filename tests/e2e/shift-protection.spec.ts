@@ -22,12 +22,12 @@ test.describe('Shift Protection (warn rules)', () => {
     await signUpAndCreateRestaurant(page, owner);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId()); // any: test helper injected by exposeSupabaseHelpers
     expect(restaurantId).toBeTruthy();
 
     // Seed: one employee and the warn rule.
     await page.evaluate(async ({ restId }) => {
-      const supabase = (window as any).__supabase;
+      const supabase = (window as any).__supabase; // any: test helper injected by exposeSupabaseHelpers
       const userId = (await supabase.auth.getUser()).data.user?.id;
       if (!userId) throw new Error('No session');
 
@@ -97,7 +97,7 @@ test.describe('Shift Protection (warn rules)', () => {
       .poll(
         async () =>
           page.evaluate(async (restId: string) => {
-            const supabase = (window as any).__supabase;
+            const supabase = (window as any).__supabase; // any: test helper injected by exposeSupabaseHelpers
             const { data } = await supabase
               .from('time_off_requests')
               .select('status')

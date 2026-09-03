@@ -34,10 +34,22 @@ DECLARE
   v_settings staffing_settings;
   v_start TIMESTAMPTZ;
 BEGIN
-  IF user_has_capability(NEW.restaurant_id, 'edit:scheduling') THEN
-    RETURN NEW;
+  -- Tenant bind first, unconditionally. The self-service INSERT policy
+  -- does not bind offered_shift_id to the trade's restaurant, and an
+  -- unbound read here would leak shift timing across tenants (Phase 7a
+  -- security finding). The FK guarantees the shift exists, so a NULL
+  -- read means a cross-restaurant shift id.
+  SELECT start_time INTO v_start
+  FROM shifts
+  WHERE id = NEW.offered_shift_id
+    AND restaurant_id = NEW.restaurant_id;
+
+  IF v_start IS NULL THEN
+    RAISE EXCEPTION 'shift_protection:invalid_trade The offered shift is not in this restaurant.';
   END IF;
 
+  -- Settings before the capability lookup: almost every tenant runs with
+  -- the default 'off', so skip the costlier check when no block applies.
   SELECT * INTO v_settings
   FROM staffing_settings
   WHERE restaurant_id = NEW.restaurant_id;
@@ -46,12 +58,11 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT start_time INTO v_start
-  FROM shifts
-  WHERE id = NEW.offered_shift_id;
+  IF user_has_capability(NEW.restaurant_id, 'edit:scheduling') THEN
+    RETURN NEW;
+  END IF;
 
-  IF v_start IS NOT NULL
-     AND now() >= v_start - make_interval(hours => v_settings.trade_deadline_hours) THEN
+  IF now() >= v_start - make_interval(hours => v_settings.trade_deadline_hours) THEN
     RAISE EXCEPTION 'shift_protection:trade_deadline Trades close % hours before a shift starts.',
       v_settings.trade_deadline_hours;
   END IF;
@@ -86,16 +97,39 @@ DECLARE
   v_position TEXT;
   v_max_sameday INTEGER;
 BEGIN
-  IF user_has_capability(NEW.restaurant_id, 'edit:scheduling') THEN
+  -- Tenant bind first, unconditionally. The self-service policies bind
+  -- only employee_id, so a forged restaurant_id could park the row under
+  -- a tenant whose rules exempt the caller (Phase 7a security finding).
+  IF NOT EXISTS (
+    SELECT 1 FROM employees e
+    WHERE e.id = NEW.employee_id
+      AND e.restaurant_id = NEW.restaurant_id
+  ) THEN
+    RAISE EXCEPTION 'shift_protection:invalid_request The employee is not in this restaurant.';
+  END IF;
+
+  -- A date-preserving edit (for example a reason typo fix) must not
+  -- re-run the rules — a manager-submitted short-notice request would
+  -- otherwise lock the employee out of their own pending row.
+  IF TG_OP = 'UPDATE'
+     AND NEW.start_date = OLD.start_date
+     AND NEW.end_date = OLD.end_date
+     AND NEW.restaurant_id = OLD.restaurant_id THEN
     RETURN NEW;
   END IF;
 
+  -- Settings before the capability lookup: almost every tenant runs with
+  -- the default 'off', so skip the costlier check when no block applies.
   SELECT * INTO v_settings
   FROM staffing_settings
   WHERE restaurant_id = NEW.restaurant_id;
 
   IF COALESCE(v_settings.timeoff_notice_mode, 'off') != 'block'
      AND COALESCE(v_settings.timeoff_sameday_mode, 'off') != 'block' THEN
+    RETURN NEW;
+  END IF;
+
+  IF user_has_capability(NEW.restaurant_id, 'edit:scheduling') THEN
     RETURN NEW;
   END IF;
 
@@ -149,9 +183,11 @@ BEGIN
 END;
 $$;
 
+-- restaurant_id is in the UPDATE OF list so a tenant flip after insert
+-- cannot dodge the guard (the tenant bind above re-checks it).
 DROP TRIGGER IF EXISTS trg_shift_protection_timeoff ON time_off_requests;
 CREATE TRIGGER trg_shift_protection_timeoff
-  BEFORE INSERT OR UPDATE OF start_date, end_date ON time_off_requests
+  BEFORE INSERT OR UPDATE OF start_date, end_date, restaurant_id ON time_off_requests
   FOR EACH ROW
   EXECUTE FUNCTION shift_protection_timeoff_guard();
 

@@ -89,6 +89,8 @@ BEGIN
     END IF;
 
     -- Rule: same-day limit per position. Scan is bounded to 92 days.
+    -- Keep the scan in sync with get_timeoff_day_counts (20260903034600)
+    -- and shift_protection_timeoff_guard (20260903034900).
     IF COALESCE(v_settings.timeoff_sameday_mode, 'off') != 'off' THEN
       SELECT e.position INTO v_position
       FROM employees e WHERE e.id = v_request.employee_id;
@@ -140,12 +142,16 @@ BEGIN
           AND (s.start_time AT TIME ZONE v_tz)::date
               BETWEEN v_request.start_date AND v_request.end_date
           AND (
+            -- Same sargable bounds as get_timeoff_coverage_impact
+            -- (20260903034600): keep the two copies identical.
             SELECT COUNT(DISTINCT o.employee_id)
             FROM shifts o
             WHERE o.restaurant_id = s.restaurant_id
               AND o.position = s.position
               AND o.status IN ('scheduled', 'confirmed')
-              AND (o.start_time, o.end_time) OVERLAPS (s.start_time, s.end_time)
+              AND o.start_time < s.end_time
+              AND o.start_time > s.start_time - INTERVAL '24 hours'
+              AND o.end_time > s.start_time
           ) - 1 < COALESCE(st.capacity, 1)
       ) short;
 

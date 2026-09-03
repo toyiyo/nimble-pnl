@@ -21,6 +21,7 @@ import {
 import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
 import { useCreateShiftTrade, useCreateShiftTradeForEmployee } from '@/hooks/useShiftTrades';
 import { useShiftProtection } from '@/hooks/useShiftProtection';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useEmployees } from '@/hooks/useEmployees';
 import { ArrowRightLeft, Users, Loader2, Shield } from 'lucide-react';
 import { tradeDeadlineFinding } from '@/lib/shiftProtection';
@@ -65,11 +66,14 @@ export const TradeRequestDialog = ({
 
   const { employees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId);
 
-  // Shift Protection: the deadline rule for this shift. Manager mode is
-  // exempt from block, matching the server triggers.
+  // Shift Protection: the deadline rule for this shift. Manager mode and
+  // any edit:scheduling holder are exempt from block, matching the
+  // server triggers (an owner who posts their own shift stays exempt).
   const { protection } = useShiftProtection(restaurantId);
+  const { hasCapability, isResolved } = usePermissions();
+  const isExempt = isManagerMode || (isResolved && hasCapability('edit:scheduling'));
   const deadlineFinding = tradeDeadlineFinding(protection, shift?.start_time, new Date());
-  const postBlocked = deadlineFinding?.mode === 'block' && !isManagerMode;
+  const postBlocked = deadlineFinding?.mode === 'block' && !isExempt;
 
   // The offerer is the on-behalf employee in manager mode, else the signed-in
   // employee.

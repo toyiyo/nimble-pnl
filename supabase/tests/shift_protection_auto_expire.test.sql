@@ -62,11 +62,13 @@ ALTER TABLE staffing_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shift_trades ENABLE ROW LEVEL SECURITY;
 
--- 1. Exactly one trade expires.
-SELECT is(
-  (SELECT expire_stale_shift_trades()),
-  1,
-  'exactly one trade expires'
+-- 1. At least one trade expires. The function scans every restaurant,
+-- so another seeded tenant can raise the count above the fixture's own
+-- row (Phase 7a logic finding) — the per-row assertions below pin the
+-- fixture outcomes exactly.
+SELECT ok(
+  (SELECT expire_stale_shift_trades()) >= 1,
+  'the expiry run cancels at least the fixture trade'
 );
 
 -- 2. The expired trade carries the visible marker.

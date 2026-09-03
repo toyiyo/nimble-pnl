@@ -53,7 +53,9 @@ BEGIN
   FROM staffing_settings s
   WHERE s.restaurant_id = p_restaurant_id;
 
-  -- No settings row yet: return the column defaults.
+  -- No settings row yet: return the column defaults. Keep this copy in
+  -- sync with 20260903034500 and SHIFT_PROTECTION_DEFAULTS
+  -- (src/lib/shiftProtection.ts).
   IF v_result IS NULL THEN
     v_result := jsonb_build_object(
       'trade_deadline_mode', 'off',
@@ -98,7 +100,10 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 
-  IF p_end < p_start OR p_end - p_start > 62 THEN
+  -- One shared cap across the three same-day scans: this guard, the
+  -- review_time_off_request scan, and the trigger scan all stop at a
+  -- 92-day span (Phase 7a consistency finding).
+  IF p_end < p_start OR p_end - p_start > 92 THEN
     RAISE EXCEPTION 'Invalid date range';
   END IF;
 
@@ -111,6 +116,9 @@ BEGIN
     RAISE EXCEPTION 'Employee not found';
   END IF;
 
+  -- Same-day scan. Keep in sync with the copies in
+  -- review_time_off_request (20260903034700) and
+  -- shift_protection_timeoff_guard (20260903034900).
   RETURN QUERY
   SELECT d::date AS day,
          COUNT(DISTINCT tor.employee_id)::integer AS approved_count
@@ -189,12 +197,19 @@ BEGIN
            (s.start_time AT TIME ZONE v_tz)::date AS local_date,
            COALESCE(st.capacity, 1) AS required,
            (
+             -- Sargable time bounds replace OVERLAPS so the
+             -- (restaurant_id, position, start_time) index prunes the
+             -- scan. The 24-hour lower bound assumes no shift is longer
+             -- than a day; a longer shift drops out of the count, which
+             -- is acceptable for a warning preview (Phase 7a finding).
              SELECT COUNT(DISTINCT o.employee_id)::integer
              FROM shifts o
              WHERE o.restaurant_id = s.restaurant_id
                AND o.position = s.position
                AND o.status IN ('scheduled', 'confirmed')
-               AND (o.start_time, o.end_time) OVERLAPS (s.start_time, s.end_time)
+               AND o.start_time < s.end_time
+               AND o.start_time > s.start_time - INTERVAL '24 hours'
+               AND o.end_time > s.start_time
            ) AS current_count
     FROM shifts s
     LEFT JOIN shift_templates st ON st.id = s.shift_template_id

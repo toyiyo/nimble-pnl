@@ -21,29 +21,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // Hoisted mocks — must appear before any import that uses them
 // ---------------------------------------------------------------------------
 
-// Shift Protection reads run through React Query in the real hook; these
-// component tests render without a QueryClientProvider, so stub the hook
-// family with everything-off defaults.
-vi.mock('@/hooks/useShiftProtection', () => ({
-  shiftProtectionQueryKey: (id: string | null) => ['shift-protection', id],
-  useShiftProtection: () => ({
-    protection: {
-      trade_deadline_mode: 'off',
-      trade_deadline_hours: 24,
-      trade_auto_expire: false,
-      timeoff_notice_mode: 'off',
-      timeoff_notice_days: 7,
-      timeoff_sameday_mode: 'off',
-      timeoff_sameday_limit: 2,
-      coverage_floor_mode: 'off',
-    },
-    isLoading: false,
-    error: null,
-  }),
-  useInvalidateShiftProtection: () => () => {},
-  useTimeoffDayCounts: () => ({ data: [], isLoading: false, error: null }),
-  useTimeoffCoverageImpact: () => ({ data: null, isLoading: false, error: null }),
-}));
+// Shared stub: the real hooks need a QueryClientProvider these tests lack.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
 
 vi.mock('@/hooks/useShiftTrades', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/useShiftTrades')>();

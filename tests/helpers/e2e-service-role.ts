@@ -13,6 +13,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types';
 import type { SubscriptionTier, SubscriptionStatus } from '@/lib/subscriptionPlans';
@@ -178,6 +179,35 @@ export async function seedInventoryUsage(
 
   if (txnError) {
     throw new Error(`Failed to seed usage transactions: ${txnError.message}`);
+  }
+}
+
+/**
+ * Seed one Toast card payment for a restaurant, as the service role.
+ *
+ * `toast_payments` only carries a member SELECT policy (supabase/migrations/
+ * 20251116100100_toast_integration.sql) — writes come from the sync edge
+ * functions, which use the service-role key. A spec must seed through this
+ * helper instead of the page's own browser session.
+ */
+export async function seedToastPayment(
+  restaurantId: string,
+  input: { paymentDate: string; amount: number; tipAmount?: number; paymentType?: string }
+): Promise<void> {
+  const supabase = getServiceRoleClient();
+
+  const { error } = await supabase.from('toast_payments').insert({
+    restaurant_id: restaurantId,
+    toast_payment_guid: `e2e-pay-${randomUUID()}`,
+    toast_order_guid: `e2e-order-${randomUUID()}`,
+    payment_type: input.paymentType ?? 'CREDIT',
+    amount: input.amount,
+    tip_amount: input.tipAmount ?? 0,
+    payment_date: input.paymentDate,
+  });
+
+  if (error) {
+    throw new Error(`Failed to seed Toast payment: ${error.message}`);
   }
 }
 

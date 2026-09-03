@@ -4,6 +4,12 @@ import { TimeOffRequest } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { useCreateEntity, useUpdateEntity, useDeleteEntity } from './useCRUDEntity';
 import { EMPLOYEE_EMBED_COLUMNS } from '@/lib/employeeMaskedFields';
+import {
+  PolicyWarningError,
+  parseShiftProtectionError,
+  throwIfPolicyBlocked,
+  type RpcPolicyResult,
+} from '@/lib/shiftProtection';
 
 export const useTimeOffRequests = (restaurantId: string | null) => {
   const { data, isLoading, error } = useQuery({
@@ -75,9 +81,12 @@ export const useCreateTimeOffRequest = () => {
       }
     },
     onError: (error: Error) => {
+      // A block-mode trigger raises 'shift_protection:<rule> <text>';
+      // show the text alone, not the raw Postgres decoration.
+      const parsed = parseShiftProtectionError(error.message);
       toast({
-        title: 'Error creating time-off request',
-        description: error.message,
+        title: parsed ? 'Request blocked by a shift protection rule' : 'Error creating time-off request',
+        description: parsed ? parsed.message : error.message,
         variant: 'destructive',
       });
     },
@@ -93,7 +102,11 @@ export const useUpdateTimeOffRequest = () => {
   });
 };
 
-// Shared hook for approving/rejecting time-off requests
+// Shared hook for approving/rejecting time-off requests through the
+// review_time_off_request RPC (Shift Protection). A policy_warning
+// response throws PolicyWarningError BEFORE the toast and the
+// notification; the caller shows the findings and can retry with
+// override: true ("Approve anyway").
 const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -102,23 +115,25 @@ const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
   const actionPastTense = action === 'approved' ? 'approved' : 'rejected';
 
   return useMutation({
-    mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('time_off_requests')
-        .update({
-          status: action,
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: user.id,
-        })
-        .eq('id', id)
-        .select()
-        .single();
+    mutationFn: async ({
+      id,
+      override,
+    }: {
+      id: string;
+      restaurantId: string;
+      /** Retry through a policy_warning response ("Approve anyway"). */
+      override?: boolean;
+    }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types yet
+      const { data, error } = await (supabase.rpc as any)('review_time_off_request', {
+        p_request_id: id,
+        p_action: action,
+        p_override: override ?? false,
+      });
 
       if (error) throw error;
-      return data;
+      throwIfPolicyBlocked(data as RpcPolicyResult | null, `Failed to ${actionLabel} time-off`);
+      return { id };
     },
     onSuccess: async (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['time-off-requests', variables.restaurantId] });
@@ -141,6 +156,8 @@ const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
       }
     },
     onError: (error: Error) => {
+      // The queue renders policy findings with an "Approve anyway" action.
+      if (error instanceof PolicyWarningError) return;
       toast({
         title: `Error ${actionLabel} time-off`,
         description: error.message,

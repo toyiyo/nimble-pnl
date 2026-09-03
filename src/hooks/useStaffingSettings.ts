@@ -16,6 +16,14 @@ const DEFAULTS: Omit<StaffingSettings, 'id' | 'restaurant_id' | 'created_at' | '
   min_crew: null,
   open_shifts_enabled: false,
   require_shift_claim_approval: false,
+  trade_deadline_mode: 'off',
+  trade_deadline_hours: 24,
+  trade_auto_expire: false,
+  timeoff_notice_mode: 'off',
+  timeoff_notice_days: 7,
+  timeoff_sameday_mode: 'off',
+  timeoff_sameday_limit: 2,
+  coverage_floor_mode: 'off',
 };
 
 export function useStaffingSettings(restaurantId: string | null) {
@@ -28,7 +36,7 @@ export function useStaffingSettings(restaurantId: string | null) {
       if (!restaurantId) return null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
       const { data, error } = await (supabase.from as any)('staffing_settings')
-        .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, min_crew, open_shifts_enabled, require_shift_claim_approval, created_at, updated_at')
+        .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, min_crew, open_shifts_enabled, require_shift_claim_approval, trade_deadline_mode, trade_deadline_hours, trade_auto_expire, timeoff_notice_mode, timeoff_notice_days, timeoff_sameday_mode, timeoff_sameday_limit, coverage_floor_mode, created_at, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 

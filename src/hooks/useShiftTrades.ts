@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { PolicyWarningError, throwIfPolicyBlocked, type RpcPolicyResult } from '@/lib/shiftProtection';
 
 export interface ShiftTrade {
   id: string;
@@ -94,10 +95,10 @@ const executeShiftTradeAction = async ({
 
   if (error) throw error;
 
-  const result = data as { success?: boolean; error?: string } | null;
-  if (!result || !result.success) {
-    throw new Error(result?.error || failureMessage);
-  }
+  // A policy_warning response throws PolicyWarningError (findings attached)
+  // BEFORE the notification call, so no email fires for a blocked action.
+  const result = data as RpcPolicyResult | null;
+  throwIfPolicyBlocked(result, failureMessage);
 
   await sendShiftTradeNotification(tradeId, action);
 
@@ -454,10 +455,13 @@ export const useApproveShiftTrade = () => {
       tradeId,
       managerNote,
       managerUserId,
+      override,
     }: {
       tradeId: string;
       managerNote?: string;
       managerUserId: string;
+      /** Retry through a policy_warning response ("Approve anyway"). */
+      override?: boolean;
     }) => {
       return executeShiftTradeAction({
         rpc: 'approve_shift_trade',
@@ -465,6 +469,7 @@ export const useApproveShiftTrade = () => {
           p_trade_id: tradeId,
           p_manager_user_id: managerUserId,
           p_manager_note: managerNote || null,
+          p_override: override ?? false,
         },
         tradeId,
         action: 'approved',
@@ -480,6 +485,9 @@ export const useApproveShiftTrade = () => {
       });
     },
     onError: (error: Error) => {
+      // A PolicyWarningError is not a failure toast: the approval queue
+      // renders the findings with an "Approve anyway" action instead.
+      if (error instanceof PolicyWarningError) return;
       toast({
         title: 'Error approving trade',
         description: error.message,

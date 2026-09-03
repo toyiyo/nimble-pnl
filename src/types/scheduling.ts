@@ -1,3 +1,5 @@
+import type { ProtectionMode } from '@/lib/shiftProtection';
+
 // Compensation types for employees
 export type CompensationType = 'hourly' | 'salary' | 'contractor' | 'daily_rate';
 export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
@@ -312,6 +314,14 @@ export interface StaffingSettings {
   min_crew: MinCrew | null;
   open_shifts_enabled: boolean;
   require_shift_claim_approval: boolean;
+  trade_deadline_mode: ProtectionMode;
+  trade_deadline_hours: number;
+  trade_auto_expire: boolean;
+  timeoff_notice_mode: ProtectionMode;
+  timeoff_notice_days: number;
+  timeoff_sameday_mode: ProtectionMode;
+  timeoff_sameday_limit: number;
+  coverage_floor_mode: ProtectionMode;
   created_at: string;
   updated_at: string;
 }

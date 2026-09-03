@@ -104,6 +104,43 @@ export function timeoffNoticeFinding(
   };
 }
 
+/**
+ * Thrown when a review RPC answers {success:false, code:'policy_warning'}.
+ * The caller shows the findings and offers "Approve anyway".
+ */
+export class PolicyWarningError extends Error {
+  readonly warnings: PolicyFinding[];
+
+  constructor(warnings: PolicyFinding[]) {
+    super(warnings.map((w) => w.message).join(' ') || 'Policy warning');
+    this.name = 'PolicyWarningError';
+    this.warnings = warnings;
+  }
+}
+
+export interface RpcPolicyResult {
+  success?: boolean;
+  code?: string;
+  warnings?: PolicyFinding[];
+  error?: string;
+}
+
+/**
+ * Shared result check for RPCs that can answer with policy findings.
+ * Returns on success; throws PolicyWarningError on 'policy_warning';
+ * throws a plain Error otherwise.
+ */
+export function throwIfPolicyBlocked(
+  result: RpcPolicyResult | null | undefined,
+  fallbackMessage: string
+): void {
+  if (result?.success) return;
+  if (result?.code === 'policy_warning') {
+    throw new PolicyWarningError(result.warnings ?? []);
+  }
+  throw new Error(result?.error || fallbackMessage);
+}
+
 const SHIFT_PROTECTION_ERROR = /shift_protection:(\w+)\s+(.+)/;
 
 /**

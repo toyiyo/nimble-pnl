@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  PolicyWarningError,
   SHIFT_PROTECTION_DEFAULTS,
+  throwIfPolicyBlocked,
   tradeDeadlineFinding,
   timeoffNoticeFinding,
   parseShiftProtectionError,
+  type PolicyFinding,
   type ShiftProtectionSettings,
 } from '@/lib/shiftProtection';
 
@@ -96,6 +99,39 @@ describe('timeoffNoticeFinding', () => {
     const s = settings({ timeoff_notice_mode: 'warn', timeoff_notice_days: 7 });
     expect(timeoffNoticeFinding(s, 'nope', today)).toBeNull();
     expect(timeoffNoticeFinding(s, undefined, today)).toBeNull();
+  });
+});
+
+describe('throwIfPolicyBlocked', () => {
+  const finding: PolicyFinding = {
+    rule: 'timeoff_notice',
+    mode: 'warn',
+    message: 'Too short notice.',
+  };
+
+  it('returns on a success result', () => {
+    expect(() => throwIfPolicyBlocked({ success: true }, 'fallback')).not.toThrow();
+  });
+
+  it('throws PolicyWarningError with the findings on policy_warning', () => {
+    let caught: unknown;
+    try {
+      throwIfPolicyBlocked({ success: false, code: 'policy_warning', warnings: [finding] }, 'fallback');
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(PolicyWarningError);
+    expect((caught as PolicyWarningError).warnings).toEqual([finding]);
+    expect((caught as PolicyWarningError).message).toBe('Too short notice.');
+  });
+
+  it('throws a plain Error with the server message', () => {
+    expect(() => throwIfPolicyBlocked({ success: false, error: 'Request not found' }, 'fallback'))
+      .toThrowError('Request not found');
+  });
+
+  it('throws the fallback for a null result', () => {
+    expect(() => throwIfPolicyBlocked(null, 'fallback')).toThrowError('fallback');
   });
 });
 

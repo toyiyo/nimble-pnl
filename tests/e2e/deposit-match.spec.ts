@@ -144,16 +144,17 @@ test.describe('Deposit Match', () => {
     await expect(reviewDialog).toBeHidden({ timeout: 10000 });
 
     // Verify the resolution persisted through the page's own session.
-    const resolution = await page.evaluate(async ({ businessDateIso }) => {
+    const resolution = await page.evaluate(async ({ businessDateIso, restaurantId }) => {
       const win = window as unknown as E2EHelperWindow;
       const { data, error } = await win.__supabase
         .from('deposit_match_items')
         .select('resolution')
         .eq('business_date', businessDateIso)
+        .eq('restaurant_id', restaurantId)
         .single();
       if (error) throw error;
       return data?.resolution ?? null;
-    }, { businessDateIso });
+    }, { businessDateIso, restaurantId });
 
     expect(resolution).toBe('accepted');
   });

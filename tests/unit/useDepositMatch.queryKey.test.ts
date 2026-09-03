@@ -12,7 +12,12 @@ describe('depositMatchQueryKey', () => {
     ]);
   });
 
-  it('carries a null or undefined restaurant/range through unchanged, so React Query treats each as its own key', () => {
+  // React Query hashes an array key with JSON.stringify, which serializes
+  // an undefined entry as null — so a null-arg call and an undefined-arg
+  // call land on the SAME cache key. This test only checks that the
+  // helper passes each raw arg through unchanged; it makes no claim about
+  // cache isolation between the two.
+  it('carries a null or undefined restaurant/range through unchanged, as its own raw tuple', () => {
     expect(depositMatchQueryKey(null, null, null)).toEqual(['deposit-match', null, null, null]);
     expect(depositMatchQueryKey(undefined, undefined, undefined)).toEqual([
       'deposit-match',

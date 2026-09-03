@@ -60,4 +60,27 @@ describe('DisputeDialog', () => {
 
     expect(screen.getByLabelText(/note \(optional\)/i)).toHaveValue('');
   });
+
+  it('clears the note when the dialog closes and reopens for the same item', async () => {
+    const item = makeItem({ item_id: 'item-1', business_date: '2026-08-01' });
+
+    const { rerender } = render(
+      <DisputeDialog item={item} report={report} open onOpenChange={vi.fn()} restaurantId="rest-1" />
+    );
+
+    const textarea = screen.getByLabelText(/note \(optional\)/i);
+    await userEvent.type(textarea, 'Draft note, never sent.');
+    expect(textarea).toHaveValue('Draft note, never sent.');
+
+    // Close without submitting. The page keeps the same activeItem after
+    // close, so item_id alone would not change on this path.
+    rerender(
+      <DisputeDialog item={item} report={report} open={false} onOpenChange={vi.fn()} restaurantId="rest-1" />
+    );
+    rerender(
+      <DisputeDialog item={item} report={report} open onOpenChange={vi.fn()} restaurantId="rest-1" />
+    );
+
+    expect(screen.getByLabelText(/note \(optional\)/i)).toHaveValue('');
+  });
 });

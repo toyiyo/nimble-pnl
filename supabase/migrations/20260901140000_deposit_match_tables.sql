@@ -178,11 +178,18 @@ CREATE POLICY deposit_match_links_select ON public.deposit_match_links
 -- through the REST API. deposit_match_link_is_same_tenant() holds the
 -- check once so the INSERT and UPDATE policies below cannot drift apart
 -- on it.
+-- SECURITY DEFINER: collaborator_accountant holds edit:banking and
+-- view:banking but not view:pos_sales, so under the caller's own RLS this
+-- check could not see the deposit_match_items row and would reject a valid
+-- same-restaurant link. The definer's own privilege only ever confirms a
+-- restaurant_id match on two rows the WITH CHECK clause already scoped to
+-- the caller's restaurant_id — it grants no read of any other column.
 CREATE OR REPLACE FUNCTION public.deposit_match_link_is_same_tenant(
   p_restaurant_id uuid, p_item_id uuid, p_bank_transaction_id uuid
 ) RETURNS boolean
 LANGUAGE sql
 STABLE
+SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
   SELECT EXISTS (
@@ -194,6 +201,9 @@ AS $$
     WHERE bt.id = p_bank_transaction_id AND bt.restaurant_id = p_restaurant_id
   );
 $$;
+
+REVOKE ALL ON FUNCTION public.deposit_match_link_is_same_tenant(uuid, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.deposit_match_link_is_same_tenant(uuid, uuid, uuid) TO authenticated;
 
 CREATE POLICY deposit_match_links_insert ON public.deposit_match_links
   FOR INSERT TO authenticated

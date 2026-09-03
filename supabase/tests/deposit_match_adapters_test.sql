@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(20);
+SELECT plan(23);
 
 -- Fixture: one restaurant, one business date, known card and non-card rows
 -- per POS source. Each adapter test sums only the card rows.
@@ -121,6 +121,26 @@ SELECT throws_like(
   '%card_payment_type%',
   'toast adapter raises when card_payment_type is absent from source_config'
 );
+-- A JSON null or a blank string is a present key, so the absent-key guard
+-- above cannot catch it. Without its own check, the filtered query
+-- silently returns zero rows — a new rule then reports an expected total
+-- of zero instead of raising.
+SELECT throws_like(
+  $$SELECT * FROM public.deposit_match_source_toast(
+    '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
+    '{"card_payment_type": null}'::jsonb
+  )$$,
+  '%card_payment_type%',
+  'toast adapter raises when card_payment_type is a JSON null, not a silent zero'
+);
+SELECT throws_like(
+  $$SELECT * FROM public.deposit_match_source_toast(
+    '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
+    '{"card_payment_type": "   "}'::jsonb
+  )$$,
+  '%card_payment_type%',
+  'toast adapter raises when card_payment_type is blank, not a silent zero'
+);
 
 -- square adapter: card payments minus card refunds, keyed off raw_json source_type.
 SELECT is(
@@ -159,6 +179,26 @@ SELECT throws_like(
   '%card_source_types%',
   'square adapter raises when card_source_types is an empty array, not a silent zero'
 );
+
+-- square adapter: business_date must stay pinned to UTC even when the
+-- session TimeZone is not UTC. A payment at 2026-08-25T02:00:00Z reads as
+-- 2026-08-24 18:00 in America/Los_Angeles — a plain ::date cast on
+-- created_at would file it under August 24 and drop it from an August 25
+-- query range.
+INSERT INTO public.square_payments
+  (restaurant_id, payment_id, location_id, amount_money, created_at, raw_json)
+VALUES
+  ('44444444-1000-0000-0000-000000000001', 'sqp-tz-1', 'loc-1', 30.00, '2026-08-25T02:00:00Z', '{"source_type":"CARD"}');
+SET LOCAL TIME ZONE 'America/Los_Angeles';
+SELECT is(
+  (SELECT expected_amount FROM public.deposit_match_source_square(
+    '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
+    '{"card_source_types": ["CARD", "WALLET"]}'::jsonb
+  )),
+  115.00::numeric,
+  'square adapter keeps a near-midnight-UTC payment in its UTC business date under a non-UTC session TimeZone'
+);
+RESET TIME ZONE;
 
 -- revel adapter: sums amount + tip_amount for the configured
 -- raw_json->>'payment_type' values, ignoring the stored payment_type

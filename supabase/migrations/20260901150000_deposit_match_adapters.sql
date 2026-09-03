@@ -100,7 +100,14 @@ BEGIN
   IF NOT (p_config ? 'card_payment_type') THEN
     RAISE EXCEPTION 'deposit_match_source_toast: source_config is missing required key "card_payment_type"';
   END IF;
-  v_payment_type := p_config->>'card_payment_type';
+  -- source_config is arbitrary JSON, so a JSON null or an all-whitespace
+  -- string can reach this point. Either one would make the filter below
+  -- match zero rows and silently report an expected total of zero, rather
+  -- than raising, so normalize and reject blank up front.
+  v_payment_type := NULLIF(btrim(p_config->>'card_payment_type'), '');
+  IF v_payment_type IS NULL THEN
+    RAISE EXCEPTION 'deposit_match_source_toast: source_config key "card_payment_type" cannot be null or blank';
+  END IF;
 
   RETURN QUERY
   SELECT tp.payment_date, SUM(tp.amount + COALESCE(tp.tip_amount, 0))::numeric AS expected_amount,
@@ -141,20 +148,26 @@ BEGIN
   );
 
   RETURN QUERY
+  -- Pin both the range bounds and the business_date cast to UTC. A plain
+  -- ::date / ::timestamptz cast reads the session TimeZone setting, which
+  -- can silently shift a payment into the wrong business day if that
+  -- setting ever drifts (same class of bug as the refresh engine's
+  -- freshness-cutoff pin above it, and this codebase's documented history
+  -- of timezone off-by-one bugs, CLAUDE.md).
   SELECT d.business_date, SUM(d.amount)::numeric AS expected_amount, COUNT(*)::int AS row_count
   FROM (
-    SELECT (sp.created_at::date) AS business_date, sp.amount_money AS amount
+    SELECT ((sp.created_at AT TIME ZONE 'UTC')::date) AS business_date, sp.amount_money AS amount
     FROM public.square_payments sp
     WHERE sp.restaurant_id = p_restaurant_id
-      AND sp.created_at >= p_start::timestamptz
-      AND sp.created_at < (p_end + 1)::timestamptz
+      AND sp.created_at >= (p_start::timestamp AT TIME ZONE 'UTC')
+      AND sp.created_at < ((p_end + 1)::timestamp AT TIME ZONE 'UTC')
       AND (sp.raw_json->>'source_type') = ANY(v_source_types)
     UNION ALL
-    SELECT (sr.created_at::date) AS business_date, -sr.amount_money AS amount
+    SELECT ((sr.created_at AT TIME ZONE 'UTC')::date) AS business_date, -sr.amount_money AS amount
     FROM public.square_refunds sr
     WHERE sr.restaurant_id = p_restaurant_id
-      AND sr.created_at >= p_start::timestamptz
-      AND sr.created_at < (p_end + 1)::timestamptz
+      AND sr.created_at >= (p_start::timestamp AT TIME ZONE 'UTC')
+      AND sr.created_at < ((p_end + 1)::timestamp AT TIME ZONE 'UTC')
       AND (sr.raw_json->>'source_type') = ANY(v_source_types)
   ) d
   GROUP BY d.business_date;

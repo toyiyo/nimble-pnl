@@ -73,11 +73,14 @@ export function DisputeDialog({ item, report, open, onOpenChange, restaurantId }
       .slice(0, 2);
   }, [item, report]);
 
-  // Reset the note when the dialog opens for a different item — otherwise
-  // a note typed for one day's dispute leaks into the next day's dialog.
+  // Reset the note on every open and on a different item — otherwise a
+  // note typed for one day's dispute leaks into the next day's dialog, or
+  // survives a close-without-submit and reappears on reopening the same
+  // item (the parent keeps the same activeItem after close, so item_id
+  // alone does not change on that path).
   useEffect(() => {
-    setNote('');
-  }, [item?.item_id]);
+    if (open) setNote('');
+  }, [open, item?.item_id]);
 
   if (!item) {
     return (

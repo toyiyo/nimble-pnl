@@ -61,6 +61,28 @@ describe('getPosterTradeProgress', () => {
     expect(p.steps.slice(1).every((s) => s.state === 'upcoming')).toBe(true);
   });
 
+  it('cancelled + auto_expired marker → expired outcome with the ownership copy', () => {
+    const p = getPosterTradeProgress({
+      status: 'cancelled',
+      accepted_by: null,
+      manager_note: 'auto_expired',
+    });
+    expect(p.outcome).toBe('expired');
+    expect(p.summary).toBe(
+      'Expired — nobody accepted before the shift started. The shift is still yours.'
+    );
+    expect(p.steps[1]).toEqual({ key: 'claimed', label: 'Nobody accepted', state: 'rejected' });
+  });
+
+  it('cancelled with an unrelated manager note stays withdrawn', () => {
+    const p = getPosterTradeProgress({
+      status: 'cancelled',
+      accepted_by: null,
+      manager_note: 'other note',
+    });
+    expect(p.outcome).toBe('withdrawn');
+  });
+
   it('always returns exactly four steps in canonical order', () => {
     for (const status of ['open', 'pending_approval', 'approved', 'rejected', 'cancelled'] as const) {
       const p = getPosterTradeProgress({ status, accepted_by: CLAIMANT });

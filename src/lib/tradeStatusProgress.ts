@@ -13,7 +13,7 @@ export interface PosterTradeProgress {
   steps: TradeStep[];
   /** One-line status used as the stepper's accessible name and visible summary. */
   summary: string;
-  outcome: 'active' | 'approved' | 'rejected' | 'withdrawn';
+  outcome: 'active' | 'approved' | 'rejected' | 'withdrawn' | 'expired';
 }
 
 const FALLBACK_CLAIMANT = 'a teammate';
@@ -29,6 +29,7 @@ const FALLBACK_CLAIMANT = 'a teammate';
 export function getPosterTradeProgress(trade: {
   status: ShiftTradeStatus;
   accepted_by?: { name: string } | null;
+  manager_note?: string | null;
 }): PosterTradeProgress {
   const claimant = trade.accepted_by?.name ?? FALLBACK_CLAIMANT;
   const claimedLabel = `Claimed by ${claimant}`;
@@ -79,7 +80,21 @@ export function getPosterTradeProgress(trade: {
         outcome: 'rejected',
       };
     case 'cancelled':
-      // Defensive only — the activity query excludes cancelled trades.
+      // An auto-expired trade (expire_stale_shift_trades sets the marker)
+      // must tell the poster the shift is still theirs. A plain cancel is
+      // defensive only — the activity query excludes those.
+      if (trade.manager_note === 'auto_expired') {
+        return {
+          steps: [
+            { key: 'posted', label: 'Posted', state: 'done' },
+            { key: 'claimed', label: 'Nobody accepted', state: 'rejected' },
+            { key: 'review', label: 'Manager review', state: 'upcoming' },
+            { key: 'transferred', label: 'Transferred', state: 'upcoming' },
+          ],
+          summary: 'Expired — nobody accepted before the shift started. The shift is still yours.',
+          outcome: 'expired',
+        };
+      }
       return {
         steps: [
           { key: 'posted', label: 'Posted', state: 'done' },

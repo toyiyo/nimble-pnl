@@ -197,13 +197,20 @@ export const useShiftTrades = (
 };
 
 /** Statuses shown in the "My shift trades" activity view. `cancelled` is
- * deliberately excluded — the poster withdrew it themselves. */
+ * deliberately excluded — the poster withdrew it themselves. The one
+ * exception is an AUTO-EXPIRED trade (cancelled + manager_note
+ * 'auto_expired', set only by expire_stale_shift_trades): the poster must
+ * see that nobody accepted and the shift is still theirs. */
 const MY_TRADE_ACTIVITY_STATUSES: ShiftTradeStatus[] = [
   'open',
   'pending_approval',
   'approved',
   'rejected',
 ];
+
+const MY_TRADE_ACTIVITY_STATUS_FILTER =
+  `status.in.(${MY_TRADE_ACTIVITY_STATUSES.join(',')}),` +
+  `and(status.eq.cancelled,manager_note.eq.auto_expired)`;
 
 /**
  * Trades the employee is a party to (poster or claimant), across the active
@@ -273,7 +280,11 @@ export const useMyTradeActivity = (
         .or(
           `offered_by_employee_id.eq.${employeeId},accepted_by_employee_id.eq.${employeeId}`
         )
-        .in('status', MY_TRADE_ACTIVITY_STATUSES)
+        // Sibling .or() params AND together (see the comment above), so
+        // this stays one OR group: the active statuses, or an auto-expired
+        // cancel. Auto-expiry sets reviewed_at, so the recency window below
+        // bounds expired rows the same way as approved/rejected ones.
+        .or(MY_TRADE_ACTIVITY_STATUS_FILTER)
         .or(`reviewed_at.is.null,reviewed_at.gte.${cutoffIso}`)
         .order('created_at', { ascending: false });
 

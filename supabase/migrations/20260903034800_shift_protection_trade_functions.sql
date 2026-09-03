@@ -93,7 +93,7 @@ BEGIN
 
   -- The trade INSERT policy does not bind offered_shift_id to the trade's
   -- restaurant. Re-check here: this SECURITY DEFINER body must never
-  -- transfer another tenant's shift (Phase 7a security finding).
+  -- transfer another tenant's shift.
   IF v_shift.restaurant_id != v_trade.restaurant_id THEN
     RETURN jsonb_build_object('success', false, 'error', 'Shift does not belong to this restaurant');
   END IF;
@@ -221,7 +221,7 @@ BEGIN
   -- behalf of another employee (or across restaurants). SECURITY DEFINER bypasses
   -- RLS, so this is the authorization boundary. This check runs BEFORE the
   -- status check so a probing outsider cannot read a trade's status from the
-  -- error message (Phase 7a security finding).
+  -- error message.
   IF NOT EXISTS (
     SELECT 1 FROM employees e
     WHERE e.id = p_accepting_employee_id

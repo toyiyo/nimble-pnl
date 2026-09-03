@@ -197,3 +197,15 @@ export function parseShiftProtectionError(
   if (!match) return null;
   return { rule: match[1], message: match[2].trim() };
 }
+
+/**
+ * Toast content for a block-mode trigger refusal, or null for any other
+ * error (the caller then shows its own default toast).
+ */
+export function shiftProtectionErrorToast(
+  error: Error
+): { title: string; description: string } | null {
+  const parsed = parseShiftProtectionError(error.message);
+  if (!parsed) return null;
+  return { title: 'Blocked by a shift protection rule', description: parsed.message };
+}

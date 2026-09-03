@@ -4,7 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AUTO_EXPIRED_NOTE } from '@/lib/shiftTradeStatus';
 import {
   PolicyWarningError,
-  parseShiftProtectionError,
+  shiftProtectionErrorToast,
   throwIfPolicyBlocked,
   type RpcPolicyResult,
 } from '@/lib/shiftProtection';
@@ -358,12 +358,10 @@ export const useCreateShiftTrade = () => {
       });
     },
     onError: (error: Error) => {
-      // A block-mode trigger raises 'shift_protection:<rule> <text>';
-      // show the text alone, not the raw Postgres decoration.
-      const parsed = parseShiftProtectionError(error.message);
+      const blocked = shiftProtectionErrorToast(error);
       toast({
-        title: parsed ? 'Trade blocked by a shift protection rule' : 'Error posting trade',
-        description: parsed ? parsed.message : error.message,
+        title: blocked?.title ?? 'Error posting trade',
+        description: blocked?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -411,12 +409,10 @@ export const useCreateShiftTradeForEmployee = () => {
       });
     },
     onError: (error: Error) => {
-      // A block-mode trigger raises 'shift_protection:<rule> <text>';
-      // show the text alone, not the raw Postgres decoration.
-      const parsed = parseShiftProtectionError(error.message);
+      const blocked = shiftProtectionErrorToast(error);
       toast({
-        title: parsed ? 'Trade blocked by a shift protection rule' : 'Error posting trade',
-        description: parsed ? parsed.message : error.message,
+        title: blocked?.title ?? 'Error posting trade',
+        description: blocked?.description ?? error.message,
         variant: 'destructive',
       });
     },

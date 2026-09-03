@@ -39,9 +39,10 @@ export function useCreateEntity<T>(config: CRUDHookConfig<T>) {
       });
     },
     onError: (error: Error) => {
+      const formatted = config.formatError?.(error) ?? null;
       toast({
-        title: `Error creating ${config.entityName.toLowerCase()}`,
-        description: error.message,
+        title: formatted?.title ?? `Error creating ${config.entityName.toLowerCase()}`,
+        description: formatted?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -106,9 +107,10 @@ export function useDeleteEntity<T>(config: CRUDHookConfig<T>) {
       });
     },
     onError: (error: Error) => {
+      const formatted = config.formatError?.(error) ?? null;
       toast({
-        title: `Error deleting ${config.entityName.toLowerCase()}`,
-        description: error.message,
+        title: formatted?.title ?? `Error deleting ${config.entityName.toLowerCase()}`,
+        description: formatted?.description ?? error.message,
         variant: 'destructive',
       });
     },

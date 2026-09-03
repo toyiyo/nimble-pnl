@@ -64,7 +64,7 @@ ALTER TABLE shift_trades ENABLE ROW LEVEL SECURITY;
 
 -- 1. At least one trade expires. The function scans every restaurant,
 -- so another seeded tenant can raise the count above the fixture's own
--- row (Phase 7a logic finding) — the per-row assertions below pin the
+-- row — the per-row assertions below pin the
 -- fixture outcomes exactly.
 SELECT ok(
   (SELECT expire_stale_shift_trades()) >= 1,

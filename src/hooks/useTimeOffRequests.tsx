@@ -6,7 +6,7 @@ import { useCreateEntity, useUpdateEntity, useDeleteEntity } from './useCRUDEnti
 import { EMPLOYEE_EMBED_COLUMNS } from '@/lib/employeeMaskedFields';
 import {
   PolicyWarningError,
-  parseShiftProtectionError,
+  shiftProtectionErrorToast,
   throwIfPolicyBlocked,
   type RpcPolicyResult,
 } from '@/lib/shiftProtection';
@@ -81,12 +81,10 @@ export const useCreateTimeOffRequest = () => {
       }
     },
     onError: (error: Error) => {
-      // A block-mode trigger raises 'shift_protection:<rule> <text>';
-      // show the text alone, not the raw Postgres decoration.
-      const parsed = parseShiftProtectionError(error.message);
+      const blocked = shiftProtectionErrorToast(error);
       toast({
-        title: parsed ? 'Request blocked by a shift protection rule' : 'Error creating time-off request',
-        description: parsed ? parsed.message : error.message,
+        title: blocked?.title ?? 'Error creating time-off request',
+        description: blocked?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -101,11 +99,7 @@ export const useUpdateTimeOffRequest = () => {
     getRestaurantId: (data) => data.restaurant_id,
     // A block-mode trigger can refuse a date edit; show its text, not
     // the raw 'shift_protection:<rule> ...' Postgres message.
-    formatError: (error) => {
-      const parsed = parseShiftProtectionError(error.message);
-      if (!parsed) return null;
-      return { title: 'Request blocked by a shift protection rule', description: parsed.message };
-    },
+    formatError: shiftProtectionErrorToast,
   });
 };
 

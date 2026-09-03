@@ -36,9 +36,10 @@ DECLARE
 BEGIN
   -- Tenant bind first, unconditionally. The self-service INSERT policy
   -- does not bind offered_shift_id to the trade's restaurant, and an
-  -- unbound read here would leak shift timing across tenants (Phase 7a
-  -- security finding). The FK guarantees the shift exists, so a NULL
-  -- read means a cross-restaurant shift id.
+  -- unbound read here would leak shift timing across tenants.
+  -- A BEFORE trigger runs before the FK check, so a
+  -- NULL read means a missing OR cross-restaurant shift id — both get
+  -- the same message, which keeps the two cases indistinguishable.
   SELECT start_time INTO v_start
   FROM shifts
   WHERE id = NEW.offered_shift_id
@@ -99,7 +100,7 @@ DECLARE
 BEGIN
   -- Tenant bind first, unconditionally. The self-service policies bind
   -- only employee_id, so a forged restaurant_id could park the row under
-  -- a tenant whose rules exempt the caller (Phase 7a security finding).
+  -- a tenant whose rules exempt the caller.
   IF NOT EXISTS (
     SELECT 1 FROM employees e
     WHERE e.id = NEW.employee_id
@@ -183,11 +184,12 @@ BEGIN
 END;
 $$;
 
--- restaurant_id is in the UPDATE OF list so a tenant flip after insert
--- cannot dodge the guard (the tenant bind above re-checks it).
+-- restaurant_id and employee_id are in the UPDATE OF list so a tenant
+-- or subject flip after insert cannot dodge the guard (the tenant bind
+-- above re-checks the pair).
 DROP TRIGGER IF EXISTS trg_shift_protection_timeoff ON time_off_requests;
 CREATE TRIGGER trg_shift_protection_timeoff
-  BEFORE INSERT OR UPDATE OF start_date, end_date, restaurant_id ON time_off_requests
+  BEFORE INSERT OR UPDATE OF start_date, end_date, restaurant_id, employee_id ON time_off_requests
   FOR EACH ROW
   EXECUTE FUNCTION shift_protection_timeoff_guard();
 

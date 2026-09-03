@@ -7,7 +7,7 @@
 -- window. The existing (restaurant_id, position, status) index has no
 -- time column, so the count read every non-cancelled shift of the
 -- position. This partial index matches the queries' status filter and
--- prunes by start_time (Phase 7a performance finding).
+-- prunes by start_time.
 --
 -- One CREATE INDEX CONCURRENTLY per file with the no-transaction header
 -- (lesson: 2026-08-31).

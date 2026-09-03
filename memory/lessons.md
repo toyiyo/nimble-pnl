@@ -3157,3 +3157,31 @@
 - **Mistake:** Three watch/poll attempts on PR #786 died with `Post "https://api.github.com/graphql": net/http: TLS handshake timeout`. Piping the output (`gh pr checks | sort | uniq`) made `$?` report the LAST command in the pipe, so the shell printed exit 0 over a dead API call.
 - **Correction:** Replaced the watch with a capped background retry loop: up to 25 attempts, 90s apart, each attempt writes the full check table to a file, exits when no line contains `pending`. The loop treats a `Post "https` line in the output as a failed attempt and retries.
 - **Rule:** Do not trust `$?` after a pipe — grep the captured output for the error string instead. For CI waits on a flaky network, run a capped retry loop in the background (bounded attempts, bounded sleep) and read the result file; a single `--watch` is one TLS hiccup away from silent death. Cap every loop — this machine has no `timeout`/`gtimeout`.
+
+## Category: Testing / pgTAP Fixtures
+
+### [2026-09-03] A new timing check breaks sibling suites that seed past-dated fixtures (PR #794)
+- **Mistake:** `approve_shift_trade` gained a `shift_started` re-check. Suite 65 seeded its shifts at the literal date `'2026-09-01 09:00:00+00'`. The calendar passed that date, the new check fired, and the suite's `success = true` assertion failed in CI only.
+- **Correction:** Seeded the fixture shifts at `now() + interval '3..6 days'`. Then grepped every suite for date literals and read each one: only a suite that asserts success on a timing-checked function needs relative dates; RLS-only suites do not.
+- **Rule:** When you add a timing check to a SQL function, grep `supabase/tests/` for `'20[0-9][0-9]-` and audit every suite that calls the function. Convert the fixtures that assert success to relative dates. Write new fixtures with relative dates from the start.
+
+## Category: Testing / Unit
+
+### [2026-09-03] A new React Query hook in a page breaks every test file that renders the page (PR #794)
+- **Mistake:** A review fix added `useShiftProtection` to `AvailableShiftsPage`. `tests/unit/AvailableShiftsPage.tradeCard.test.tsx` renders the full page without a `QueryClientProvider`. All 12 tests failed in CI with `No QueryClient set, use QueryClientProvider to set one` — the Unit job and all three Timezone Matrix jobs went red at once.
+- **Correction:** Added `vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'))` to the file, the same shared helper the other component tests use.
+- **Rule:** Before you push a change that adds a hook to a page or component, grep `tests/unit/` for files that import that page. Add the shared mock to each one and run those files locally.
+
+## Category: CI / Workflows
+
+### [2026-09-03] The pr-comment-response gate parses a verdict format — prose replies do not count (PR #794)
+- **Mistake:** Review replies read "Fixed in c60e3cd. ..." — clear to a human, invisible to the gate. `dev-tools/pr-triage.js` accepts a reply only when it carries the `<!-- pr-triage: agreed -->` marker or its first line opens with a verdict word ("Agreed — ..."), plus a backticked commit sha (≥7 hex chars) that exists on the PR. The check stayed red after the replies.
+- **Correction:** Posted marker-format replies: `<!-- pr-triage: agreed -->` newline `**✅ Agreed** — <rationale ≥10 chars>. Fixed in \`<sha>\`.` Also note the re-audit path: the `*/30` cron fires only every 2-3 hours in practice, and `workflow_dispatch` returns 403 for the bot token — the reliable trigger is the next push (`pull_request_target: synchronize`).
+- **Rule:** Write every review reply in the pr-triage format from the start: the marker line, the verdict word, a rationale, and the backticked sha. Follow the 2026-08-31 lesson's order — fix, commit, reply, push — so the push both carries the fix and re-runs the gate.
+
+## Category: Frontend / Routing
+
+### [2026-09-03] Wire a feature into the ROUTED component, not the best-named one (PR #794)
+- **Mistake:** The trade-accept warning went into `TradeMarketplace` — the component whose name matches the feature. A repo search showed no route mounts it; `/employee/shifts` renders `AvailableShiftsPage`, so employees never saw the warning. Codex flagged it as a P1.
+- **Correction:** Moved the gate into `AvailableShiftsPage.handleAcceptTrade` (confirm dialog + block handling) and kept the `TradeMarketplace` panel for parity.
+- **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A well-named orphan component passes its own tests and ships nothing.

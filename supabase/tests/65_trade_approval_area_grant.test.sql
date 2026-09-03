@@ -92,10 +92,14 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id
 -- Four shifts owned by OE, one per trade, so the unique-active-trade-per-
 -- shift index never blocks a fixture insert.
 INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, position, break_duration) VALUES
-  ('65000000-0000-0000-0000-000000000041', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', '2026-09-01 09:00:00+00', '2026-09-01 17:00:00+00', 'Server', 30),
-  ('65000000-0000-0000-0000-000000000042', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', '2026-09-02 09:00:00+00', '2026-09-02 17:00:00+00', 'Server', 30),
-  ('65000000-0000-0000-0000-000000000043', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', '2026-09-03 09:00:00+00', '2026-09-03 17:00:00+00', 'Server', 30),
-  ('65000000-0000-0000-0000-000000000044', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', '2026-09-04 09:00:00+00', '2026-09-04 17:00:00+00', 'Server', 30)
+  -- Relative dates (lesson: hardcoded dates rot). The original literal
+  -- dates went stale and approve_shift_trade now reports a shift_started
+  -- finding for a past shift, which fails the authz assertions for the
+  -- wrong reason. Far-future starts keep every deadline rule quiet too.
+  ('65000000-0000-0000-0000-000000000041', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', now() + interval '3 days', now() + interval '3 days 8 hours', 'Server', 30),
+  ('65000000-0000-0000-0000-000000000042', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', now() + interval '4 days', now() + interval '4 days 8 hours', 'Server', 30),
+  ('65000000-0000-0000-0000-000000000043', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', now() + interval '5 days', now() + interval '5 days 8 hours', 'Server', 30),
+  ('65000000-0000-0000-0000-000000000044', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', now() + interval '6 days', now() + interval '6 days 8 hours', 'Server', 30)
 ON CONFLICT (id) DO UPDATE SET position = 'Server';
 
 DELETE FROM shift_trades WHERE restaurant_id = '65000000-0000-0000-0000-000000000001';

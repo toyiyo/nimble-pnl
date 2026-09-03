@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/utils';
 import { settlingAmount } from '@/types/depositMatch';
 import type { DepositMatchStreamSummary } from '@/types/depositMatch';
 
@@ -5,15 +6,6 @@ interface StreamCardsProps {
   streams: DepositMatchStreamSummary[];
   activeStreamId: string | null;
   onSelectStream: (ruleId: string) => void;
-}
-
-function formatMoney(amount: number): string {
-  return amount.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 /**
@@ -47,11 +39,11 @@ export function StreamCards({ streams, activeStreamId, onSelectStream }: StreamC
               )}
             </div>
             <p className="text-[17px] font-semibold text-foreground mt-1">
-              {formatMoney(stream.received_total)}
+              {formatCurrency(stream.received_total)}
             </p>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              of {formatMoney(stream.expected_total)} expected
-              {remaining > 0.005 ? ` · ${formatMoney(remaining)} settling` : ''}
+              of {formatCurrency(stream.expected_total)} expected
+              {remaining > 0.005 ? ` · ${formatCurrency(remaining)} settling` : ''}
             </p>
             <p className="text-[12px] text-muted-foreground">{stream.item_count} days</p>
           </button>

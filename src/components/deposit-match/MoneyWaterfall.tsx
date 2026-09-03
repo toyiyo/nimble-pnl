@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/lib/utils';
 import { waterfallSegments } from '@/lib/depositMatchUi';
 import type { DepositMatchReport } from '@/types/depositMatch';
 
@@ -11,15 +12,6 @@ const SEGMENT_COLOR: Record<string, string> = {
   fees: 'bg-muted-foreground/40',
   needs_review: 'bg-amber-500',
 };
-
-function formatMoney(amount: number): string {
-  return amount.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 /** POS card total = deposited + settling + fees + needs review. */
 export function MoneyWaterfall({ report }: MoneyWaterfallProps) {
@@ -37,7 +29,7 @@ export function MoneyWaterfall({ report }: MoneyWaterfallProps) {
               key={segment.key}
               className={SEGMENT_COLOR[segment.key]}
               style={{ width: `${widthPct}%` }}
-              title={`${segment.label}: ${formatMoney(segment.amount)}`}
+              title={`${segment.label}: ${formatCurrency(segment.amount)}`}
             />
           );
         })}
@@ -49,11 +41,11 @@ export function MoneyWaterfall({ report }: MoneyWaterfallProps) {
               <span className={`h-2 w-2 rounded-full ${SEGMENT_COLOR[segment.key]}`} aria-hidden="true" />
               <span className="text-[12px] text-muted-foreground">{segment.label}</span>
             </div>
-            <p className="text-[14px] font-medium text-foreground">{formatMoney(segment.amount)}</p>
+            <p className="text-[14px] font-medium text-foreground">{formatCurrency(segment.amount)}</p>
           </div>
         ))}
       </div>
-      <p className="text-[12px] text-muted-foreground">POS card total: {formatMoney(total)}</p>
+      <p className="text-[12px] text-muted-foreground">POS card total: {formatCurrency(total)}</p>
     </div>
   );
 }

@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useSetDepositMatchResolution } from '@/hooks/useDepositMatch';
+import { formatCurrency } from '@/lib/utils';
+import { formatBusinessDate } from '@/lib/depositMatchUi';
 import type { DepositMatchLedgerRow } from '@/types/depositMatch';
 import { StatusChip } from './StatusChip';
 
@@ -20,15 +22,6 @@ interface ReviewDayDialogProps {
   onOpenChange: (open: boolean) => void;
   restaurantId: string | null | undefined;
   onDispute: (item: DepositMatchLedgerRow) => void;
-}
-
-function formatMoney(amount: number): string {
-  return amount.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 /**

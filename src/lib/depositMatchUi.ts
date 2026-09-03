@@ -60,6 +60,26 @@ export function sortAttentionQueue(
     });
 }
 
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/**
+ * Renders a `business_date` ("YYYY-MM-DD") as "Aug 4" without going through
+ * `Date`/`Intl` — `business_date` is a calendar day, not an instant, and
+ * parsing it as one risks a viewer-timezone shift by a day (restaurant-clock
+ * eslint rule). Falls back to the raw string on an unexpected shape.
+ */
+export function formatBusinessDate(businessDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(businessDate);
+  if (!match) return businessDate;
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const month = SHORT_MONTHS[monthIndex];
+  if (!month || Number.isNaN(day)) return businessDate;
+  return `${month} ${day}`;
+}
+
 export interface DepositMatchVerdict {
   tone: 'alert' | 'clear';
   headline: string;
@@ -76,10 +96,7 @@ export function buildVerdict(report: DepositMatchReport): DepositMatchVerdict {
     return { tone: 'clear', headline: 'All deposits match. Nothing needs your attention.' };
   }
 
-  const date = new Date(`${worst.business_date}T00:00:00`);
-  const dateLabel = Number.isNaN(date.getTime())
-    ? worst.business_date
-    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const dateLabel = formatBusinessDate(worst.business_date);
   const gap = Math.abs(worst.expected_amount - worst.received_amount - worst.fee_amount);
   const gapLabel = gap.toFixed(2);
 

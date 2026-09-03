@@ -1,22 +1,14 @@
 import { useEffect, useState } from 'react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { pickActiveTab } from '@/lib/depositMatchUi';
+import { formatCurrency } from '@/lib/utils';
+import { formatBusinessDate, pickActiveTab } from '@/lib/depositMatchUi';
 import type { DepositMatchLedgerRow, DepositMatchReport } from '@/types/depositMatch';
 import { StatusChip } from './StatusChip';
 
 interface DailyLedgerProps {
   report: DepositMatchReport;
   onSelectItem: (row: DepositMatchLedgerRow) => void;
-}
-
-function formatMoney(amount: number): string {
-  return amount.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 /**
@@ -89,19 +81,19 @@ export function DailyLedger({ report, onSelectItem }: DailyLedgerProps) {
                   <tbody>
                     {rows.map((row) => (
                       <tr key={row.item_id} className="border-b border-border/40 last:border-b-0">
-                        <td className="px-4 py-2.5 text-[14px] text-foreground">{row.business_date}</td>
+                        <td className="px-4 py-2.5 text-[14px] text-foreground">{formatBusinessDate(row.business_date)}</td>
                         <td className="px-4 py-2.5 text-[14px] text-foreground">
-                          {formatMoney(row.expected_amount)}
+                          {formatCurrency(row.expected_amount)}
                         </td>
                         <td className="px-4 py-2.5 text-[14px] text-foreground">
-                          {formatMoney(row.received_amount)}
+                          {formatCurrency(row.received_amount)}
                         </td>
                         <td className="px-4 py-2.5">
                           <button
                             type="button"
                             onClick={() => onSelectItem(row)}
                             className="inline-flex"
-                            aria-label={`Review ${row.business_date} for ${stream.pos_source}`}
+                            aria-label={`Review ${formatBusinessDate(row.business_date)} for ${stream.pos_source}`}
                           >
                             <StatusChip status={row.status} />
                           </button>

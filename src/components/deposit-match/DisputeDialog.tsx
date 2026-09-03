@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useSetDepositMatchResolution } from '@/hooks/useDepositMatch';
-import { causeLabel } from '@/lib/depositMatchUi';
+import { formatCurrency } from '@/lib/utils';
+import { causeLabel, formatBusinessDate } from '@/lib/depositMatchUi';
 import type { DepositMatchLedgerRow, DepositMatchReport } from '@/types/depositMatch';
 
 interface DisputeDialogProps {
@@ -25,28 +26,21 @@ interface DisputeDialogProps {
   restaurantId: string | null | undefined;
 }
 
-function formatMoney(amount: number): string {
-  return amount.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 function buildEmailText(item: DepositMatchLedgerRow, neighbors: DepositMatchLedgerRow[]): string {
   const lines = [
-    `Deposit dispute — ${item.pos_source}, business date ${item.business_date}`,
-    `Expected: ${formatMoney(item.expected_amount)}`,
-    `Received: ${formatMoney(item.received_amount)}`,
-    `Fees: ${formatMoney(item.fee_amount)}`,
+    `Deposit dispute — ${item.pos_source}, business date ${formatBusinessDate(item.business_date)}`,
+    `Expected: ${formatCurrency(item.expected_amount)}`,
+    `Received: ${formatCurrency(item.received_amount)}`,
+    `Fees: ${formatCurrency(item.fee_amount)}`,
     `Probable cause: ${causeLabel(item)}`,
   ];
   if (neighbors.length > 0) {
     lines.push('', 'Neighboring days:');
     for (const neighbor of neighbors) {
       lines.push(
-        `  ${neighbor.business_date}: expected ${formatMoney(neighbor.expected_amount)}, received ${formatMoney(
+        `  ${formatBusinessDate(neighbor.business_date)}: expected ${formatCurrency(
+          neighbor.expected_amount
+        )}, received ${formatCurrency(
           neighbor.received_amount
         )} (${neighbor.status})`
       );
@@ -123,7 +117,7 @@ export function DisputeDialog({ item, report, open, onOpenChange, restaurantId }
             <div>
               <DialogTitle className="text-[17px] font-semibold text-foreground">Prepare dispute</DialogTitle>
               <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
-                {item.business_date} · {item.pos_source}
+                {formatBusinessDate(item.business_date)} · {item.pos_source}
               </DialogDescription>
             </div>
           </div>
@@ -136,15 +130,15 @@ export function DisputeDialog({ item, report, open, onOpenChange, restaurantId }
             <div className="p-4 grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4">
               <div>
                 <p className="text-muted-foreground">Expected</p>
-                <p className="text-foreground font-medium">{formatMoney(item.expected_amount)}</p>
+                <p className="text-foreground font-medium">{formatCurrency(item.expected_amount)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Received</p>
-                <p className="text-foreground font-medium">{formatMoney(item.received_amount)}</p>
+                <p className="text-foreground font-medium">{formatCurrency(item.received_amount)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Fees</p>
-                <p className="text-foreground font-medium">{formatMoney(item.fee_amount)}</p>
+                <p className="text-foreground font-medium">{formatCurrency(item.fee_amount)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Probable cause</p>
@@ -161,9 +155,9 @@ export function DisputeDialog({ item, report, open, onOpenChange, restaurantId }
               <div className="p-4 space-y-2">
                 {neighbors.map((neighbor) => (
                   <div key={neighbor.item_id} className="flex items-center justify-between text-[13px]">
-                    <span className="text-muted-foreground">{neighbor.business_date}</span>
+                    <span className="text-muted-foreground">{formatBusinessDate(neighbor.business_date)}</span>
                     <span className="text-foreground">
-                      {formatMoney(neighbor.received_amount)} of {formatMoney(neighbor.expected_amount)}
+                      {formatCurrency(neighbor.received_amount)} of {formatCurrency(neighbor.expected_amount)}
                     </span>
                   </div>
                 ))}

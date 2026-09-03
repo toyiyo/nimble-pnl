@@ -5,6 +5,7 @@ import {
   DEPOSIT_MATCH_SUGGESTED_VALUES_NOTE,
   buildVerdict,
   causeLabel,
+  formatBusinessDate,
   pickActiveTab,
   ruleDefaultsNote,
   sortAttentionQueue,
@@ -139,6 +140,19 @@ describe('waterfallSegments', () => {
     expect(segments.find((s) => s.key === 'settling')?.amount).toBeCloseTo(200, 5);
     expect(segments.find((s) => s.key === 'fees')?.amount).toBeCloseTo(10, 5);
     expect(segments.find((s) => s.key === 'needs_review')?.amount).toBeCloseTo(100, 5);
+  });
+});
+
+describe('formatBusinessDate', () => {
+  it('renders a business_date as month and day, with no timezone shift', () => {
+    expect(formatBusinessDate('2026-08-04')).toBe('Aug 4');
+    expect(formatBusinessDate('2026-01-01')).toBe('Jan 1');
+    expect(formatBusinessDate('2026-12-31')).toBe('Dec 31');
+  });
+
+  it('falls back to the raw string on an unexpected shape', () => {
+    expect(formatBusinessDate('not-a-date')).toBe('not-a-date');
+    expect(formatBusinessDate('2026-13-01')).toBe('2026-13-01');
   });
 });
 

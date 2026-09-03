@@ -133,7 +133,11 @@ BEGIN
                bt.id AS txn_id, bt.amount,
                CASE WHEN v_rule.settlement = 'gross'
                     THEN abs(i.expected_amount - bt.amount)
-                    ELSE abs(i.expected_amount * (1 - (v_rule.fee_pct_min + v_rule.fee_pct_max) / 2.0) - bt.amount)
+                    -- fee_pct_min/max are percentage points (1.6 means 1.6%,
+                    -- per the setup form and the design doc's "1.6%-3.1%
+                    -- fee"), so divide by 100 to get the fraction this
+                    -- formula needs.
+                    ELSE abs(i.expected_amount * (1 - (v_rule.fee_pct_min + v_rule.fee_pct_max) / 2.0 / 100.0) - bt.amount)
                END AS fit_score
         FROM public.deposit_match_items i
         JOIN public.bank_transactions bt
@@ -163,8 +167,10 @@ BEGIN
         ELSE
           v_implied_fee := CASE WHEN v_cand.expected_amount = 0 THEN NULL
                                  ELSE (v_cand.expected_amount - v_cand.amount) / v_cand.expected_amount END;
+          -- v_implied_fee is a fraction (0.02 for 2%); fee_pct_min/max are
+          -- percentage points (1.6 for 1.6%), so divide by 100 to compare.
           v_is_match := v_implied_fee IS NOT NULL
-            AND v_implied_fee BETWEEN v_rule.fee_pct_min AND v_rule.fee_pct_max;
+            AND v_implied_fee BETWEEN v_rule.fee_pct_min / 100.0 AND v_rule.fee_pct_max / 100.0;
         END IF;
 
         -- Step 4: only a matching pair becomes a link. A pair that does not
@@ -190,7 +196,7 @@ BEGIN
                  THEN abs(v_cand.expected_amount - bt2.amount) <= v_tol
                  ELSE v_cand.expected_amount <> 0
                    AND ((v_cand.expected_amount - bt2.amount) / v_cand.expected_amount)
-                       BETWEEN v_rule.fee_pct_min AND v_rule.fee_pct_max
+                       BETWEEN v_rule.fee_pct_min / 100.0 AND v_rule.fee_pct_max / 100.0
             END
           );
 

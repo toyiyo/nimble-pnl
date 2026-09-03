@@ -7,6 +7,18 @@ import {
 } from '../helpers/e2e-supabase';
 import { seedToastPayment } from '../helpers/e2e-service-role';
 
+// Mirrors `formatBusinessDate` in `src/lib/depositMatchUi.ts` — the UI shows
+// "Aug 31", never the raw "2026-08-31" ISO string. Kept as a local copy
+// (not an import) because Playwright specs do not resolve the `@/` alias.
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function formatBusinessDateLabel(businessDateIso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(businessDateIso);
+  if (!match) return businessDateIso;
+  const month = SHORT_MONTHS[Number(match[2]) - 1];
+  const day = Number(match[3]);
+  return `${month} ${day}`;
+}
+
 test.describe('Deposit Match', () => {
   test('create a rule, see the ledger, and accept a short day', async ({ page }) => {
     test.slow();
@@ -107,7 +119,7 @@ test.describe('Deposit Match', () => {
     await expect(page.getByText(/needs attention/i)).toBeVisible({ timeout: 15000 });
     const attentionRow = page
       .getByRole('button')
-      .filter({ hasText: businessDateIso })
+      .filter({ hasText: formatBusinessDateLabel(businessDateIso) })
       .filter({ hasText: 'toast' });
     await expect(attentionRow).toBeVisible();
     await expect(attentionRow.getByText('Short')).toBeVisible();

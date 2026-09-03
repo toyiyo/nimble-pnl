@@ -24,6 +24,12 @@ interface ReviewDayDialogProps {
   onDispute: (item: DepositMatchLedgerRow) => void;
 }
 
+function gapLabel(value: number): string {
+  if (value > 0.005) return `Short ${formatCurrency(value)}`;
+  if (value < -0.005) return `Over ${formatCurrency(-value)}`;
+  return 'No gap';
+}
+
 /**
  * The one instance of the review dialog, driven by `activeItem` at the
  * page level (CLAUDE.md Single Dialog Pattern). Offers Accept / Dispute on
@@ -50,12 +56,6 @@ export function ReviewDayDialog({ item, open, onOpenChange, restaurantId, onDisp
   };
 
   const gap = item ? item.expected_amount - item.received_amount - item.fee_amount : 0;
-
-  function gapLabel(value: number): string {
-    if (value > 0.005) return `Short ${formatCurrency(value)}`;
-    if (value < -0.005) return `Over ${formatCurrency(-value)}`;
-    return 'No gap';
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

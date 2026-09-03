@@ -18,6 +18,41 @@
 -- guessing its id (memory/lessons.md:1933, 2026-07-29).
 
 -- ─────────────────────────────────────────────────────────────────────
+-- Shared guard: a config array value must be present AND non-empty.
+-- An empty array (`[]`) is a present key, so a plain `p_config ? p_key`
+-- check does not catch it: array_agg over zero rows returns NULL, and
+-- `= ANY(NULL)` is NULL (never true) for every row, so the caller reads
+-- a silent zero card total instead of a raised error. The design bars
+-- this ("a missing key must not read as a zero card total"). The focus,
+-- square, and revel adapters below each call this once, so the rule
+-- cannot drift between them.
+-- ─────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.deposit_match_require_nonempty_array(
+  p_config jsonb, p_key text, p_fn text
+) RETURNS text[]
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+STABLE
+AS $$
+DECLARE
+  v_arr text[];
+BEGIN
+  IF NOT (p_config ? p_key) THEN
+    RAISE EXCEPTION '%: source_config is missing required key "%"', p_fn, p_key;
+  END IF;
+  SELECT array_agg(v) INTO v_arr
+  FROM jsonb_array_elements_text(p_config->p_key) AS v;
+  IF v_arr IS NULL OR array_length(v_arr, 1) = 0 THEN
+    RAISE EXCEPTION '%: source_config "%" is empty; add at least one value', p_fn, p_key;
+  END IF;
+  RETURN v_arr;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.deposit_match_require_nonempty_array(jsonb, text, text) FROM PUBLIC, anon, authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────
 -- focus: sum focus_payments.amount for the configured card tender names.
 -- amount already includes the tip (settlement proved gross on production).
 -- ─────────────────────────────────────────────────────────────────────
@@ -32,19 +67,9 @@ AS $$
 DECLARE
   v_tender_names text[];
 BEGIN
-  IF NOT (p_config ? 'card_tender_names') THEN
-    RAISE EXCEPTION 'deposit_match_source_focus: source_config is missing required key "card_tender_names"';
-  END IF;
-  SELECT array_agg(v) INTO v_tender_names
-  FROM jsonb_array_elements_text(p_config->'card_tender_names') AS v;
-  -- An empty array (`[]`) is present, so the key-absent guard above does
-  -- not catch it, but array_agg over zero rows returns NULL, which makes
-  -- `= ANY(v_tender_names)` NULL for every row — a silent zero total, not
-  -- a raised error. The design bars exactly this ("a missing key must not
-  -- read as a zero card total").
-  IF v_tender_names IS NULL OR array_length(v_tender_names, 1) = 0 THEN
-    RAISE EXCEPTION 'deposit_match_source_focus: source_config "card_tender_names" is empty; add at least one tender name';
-  END IF;
+  v_tender_names := public.deposit_match_require_nonempty_array(
+    p_config, 'card_tender_names', 'deposit_match_source_focus'
+  );
 
   RETURN QUERY
   SELECT fp.business_date, SUM(fp.amount)::numeric AS expected_amount, COUNT(*)::int AS row_count
@@ -96,7 +121,8 @@ REVOKE ALL ON FUNCTION public.deposit_match_source_toast(uuid, date, date, jsonb
 -- created_at is cast to date. row_count covers both payment and refund rows.
 -- The WHERE clause bounds created_at with a timestamptz range instead of
 -- casting created_at::date, so the composite (restaurant_id, created_at)
--- index (20260901170000_deposit_match_square_perf.sql) stays sargable —
+-- indexes (20260901170000_deposit_match_idx_square_payments.sql,
+-- 20260901170100_deposit_match_idx_square_refunds.sql) stay sargable —
 -- a ::date cast on the column would force a full-history scan per refresh.
 -- ─────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.deposit_match_source_square(
@@ -110,19 +136,9 @@ AS $$
 DECLARE
   v_source_types text[];
 BEGIN
-  IF NOT (p_config ? 'card_source_types') THEN
-    RAISE EXCEPTION 'deposit_match_source_square: source_config is missing required key "card_source_types"';
-  END IF;
-  SELECT array_agg(v) INTO v_source_types
-  FROM jsonb_array_elements_text(p_config->'card_source_types') AS v;
-  -- An empty array (`[]`) is present, so the key-absent guard above does
-  -- not catch it, but array_agg over zero rows returns NULL, which makes
-  -- `= ANY(v_source_types)` NULL for every row — a silent zero total, not
-  -- a raised error. The design bars exactly this ("a missing key must not
-  -- read as a zero card total").
-  IF v_source_types IS NULL OR array_length(v_source_types, 1) = 0 THEN
-    RAISE EXCEPTION 'deposit_match_source_square: source_config "card_source_types" is empty; add at least one source type';
-  END IF;
+  v_source_types := public.deposit_match_require_nonempty_array(
+    p_config, 'card_source_types', 'deposit_match_source_square'
+  );
 
   RETURN QUERY
   SELECT d.business_date, SUM(d.amount)::numeric AS expected_amount, COUNT(*)::int AS row_count
@@ -161,19 +177,9 @@ AS $$
 DECLARE
   v_payment_types text[];
 BEGIN
-  IF NOT (p_config ? 'card_payment_types') THEN
-    RAISE EXCEPTION 'deposit_match_source_revel: source_config is missing required key "card_payment_types"';
-  END IF;
-  SELECT array_agg(v) INTO v_payment_types
-  FROM jsonb_array_elements_text(p_config->'card_payment_types') AS v;
-  -- An empty array (`[]`) is present, so the key-absent guard above does
-  -- not catch it, but array_agg over zero rows returns NULL, which makes
-  -- `= ANY(v_payment_types)` NULL for every row — a silent zero total, not
-  -- a raised error. The design bars exactly this ("a missing key must not
-  -- read as a zero card total").
-  IF v_payment_types IS NULL OR array_length(v_payment_types, 1) = 0 THEN
-    RAISE EXCEPTION 'deposit_match_source_revel: source_config "card_payment_types" is empty; add at least one payment type';
-  END IF;
+  v_payment_types := public.deposit_match_require_nonempty_array(
+    p_config, 'card_payment_types', 'deposit_match_source_revel'
+  );
 
   RETURN QUERY
   SELECT rp.payment_date, SUM(rp.amount + COALESCE(rp.tip_amount, 0))::numeric AS expected_amount,

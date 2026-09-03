@@ -168,26 +168,38 @@ CREATE POLICY deposit_match_links_select ON public.deposit_match_links
 
 -- The capability check alone is not enough: the FKs on item_id and
 -- bank_transaction_id only require the referenced row to exist, in ANY
--- tenant. Without the two EXISTS clauses below, an authenticated user of
+-- tenant. Without the same-tenant check below, an authenticated user of
 -- restaurant A could INSERT a row with restaurant_id = A, item_id = one
 -- of A's own items, and bank_transaction_id belonging to restaurant B —
 -- a cross-tenant allocation the capability check alone cannot see
--- (Codex adversarial review, 2026-09-02). The app itself never inserts
--- into this table directly (only the SECURITY DEFINER
--- refresh_deposit_matches does), but the table GRANT still lets a caller
--- reach this policy through the REST API.
+-- (Codex adversarial review). The app itself never inserts into this
+-- table directly (only the SECURITY DEFINER refresh_deposit_matches
+-- does), but the table GRANT still lets a caller reach this policy
+-- through the REST API. deposit_match_link_is_same_tenant() holds the
+-- check once so the INSERT and UPDATE policies below cannot drift apart
+-- on it.
+CREATE OR REPLACE FUNCTION public.deposit_match_link_is_same_tenant(
+  p_restaurant_id uuid, p_item_id uuid, p_bank_transaction_id uuid
+) RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.deposit_match_items i
+    WHERE i.id = p_item_id AND i.restaurant_id = p_restaurant_id
+  )
+  AND EXISTS (
+    SELECT 1 FROM public.bank_transactions bt
+    WHERE bt.id = p_bank_transaction_id AND bt.restaurant_id = p_restaurant_id
+  );
+$$;
+
 CREATE POLICY deposit_match_links_insert ON public.deposit_match_links
   FOR INSERT TO authenticated
   WITH CHECK (
     user_has_capability(restaurant_id, 'edit:banking')
-    AND EXISTS (
-      SELECT 1 FROM public.deposit_match_items i
-      WHERE i.id = item_id AND i.restaurant_id = deposit_match_links.restaurant_id
-    )
-    AND EXISTS (
-      SELECT 1 FROM public.bank_transactions bt
-      WHERE bt.id = bank_transaction_id AND bt.restaurant_id = deposit_match_links.restaurant_id
-    )
+    AND public.deposit_match_link_is_same_tenant(restaurant_id, item_id, bank_transaction_id)
   );
 
 -- Same cross-tenant gap as the INSERT policy above, but on a re-point:
@@ -199,14 +211,7 @@ CREATE POLICY deposit_match_links_update ON public.deposit_match_links
   USING (user_has_capability(restaurant_id, 'edit:banking'))
   WITH CHECK (
     user_has_capability(restaurant_id, 'edit:banking')
-    AND EXISTS (
-      SELECT 1 FROM public.deposit_match_items i
-      WHERE i.id = item_id AND i.restaurant_id = deposit_match_links.restaurant_id
-    )
-    AND EXISTS (
-      SELECT 1 FROM public.bank_transactions bt
-      WHERE bt.id = bank_transaction_id AND bt.restaurant_id = deposit_match_links.restaurant_id
-    )
+    AND public.deposit_match_link_is_same_tenant(restaurant_id, item_id, bank_transaction_id)
   );
 
 CREATE POLICY deposit_match_links_delete ON public.deposit_match_links

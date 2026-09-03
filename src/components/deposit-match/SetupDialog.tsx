@@ -111,7 +111,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onS
     // by type (a rule's restaurant never changes after create), but that
     // guard only fires against an object literal — spreading one shared
     // `const` into both calls would let it ride along into every update
-    // silently, past the type check (maintainability review, 2026-09-02).
+    // silently, past the type check.
     const ruleFields = {
       pos_source: form.pos_source,
       rail: 'card' as const,

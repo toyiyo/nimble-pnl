@@ -82,8 +82,7 @@ SELECT throws_like(
 -- An empty array is a present key, so the absent-key guard above cannot
 -- catch it. Without its own check, array_agg over zero rows returns NULL,
 -- and `= ANY(NULL)` is NULL (never true) for every row — a silent zero
--- card total, which the design explicitly bars (sound-logic review,
--- 2026-09-02).
+-- card total, which the design explicitly bars.
 SELECT throws_like(
   $$SELECT * FROM public.deposit_match_source_focus(
     '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,

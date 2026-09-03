@@ -27,8 +27,7 @@ export function DailyLedger({ report, onSelectItem }: DailyLedgerProps) {
   }, [report.streams]);
 
   // One grouping pass per `report.ledger` change, not a fresh filter+sort
-  // of the whole ledger for every stream on every render (performance
-  // review, 2026-09-02).
+  // of the whole ledger for every stream on every render.
   const rowsByStream = useMemo(() => {
     const map = new Map<string, DepositMatchLedgerRow[]>();
     for (const row of report.ledger) {

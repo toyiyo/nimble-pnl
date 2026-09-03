@@ -82,10 +82,10 @@ SELECT throws_like(
   'owner of A cannot insert a rule for restaurant B'
 );
 
--- deposit_match_links cross-tenant checks (Codex adversarial review,
--- 2026-09-02): the FK on bank_transaction_id only requires the row to
--- exist in ANY tenant, so the policy's own EXISTS clauses must be what
--- blocks a same-tenant item paired with another tenant's bank transaction.
+-- deposit_match_links cross-tenant checks: the FK on bank_transaction_id
+-- only requires the row to exist in ANY tenant, so the policy's own
+-- same-tenant check must be what blocks a same-tenant item paired with
+-- another tenant's bank transaction.
 SELECT throws_like(
   $$INSERT INTO public.deposit_match_links
       (id, restaurant_id, item_id, bank_transaction_id, allocated_amount, method)

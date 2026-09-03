@@ -90,7 +90,7 @@ describe('useDepositMatch refreshNow', () => {
     // rule stayed empty until the (restaurantId, startDate, endDate) key
     // changed. `refreshNow` (returned by this hook, wired into
     // `SetupDialog`'s `onSaved`) lets a caller force a re-run without
-    // waiting on the range to change (sound-logic review, 2026-09-02).
+    // waiting on the range to change.
     const { result } = renderHook(
       () => useDepositMatch({ restaurantId: 'rest-1', startDate: '2026-08-01', endDate: '2026-08-31' }),
       { wrapper: createWrapper() }

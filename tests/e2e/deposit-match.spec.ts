@@ -20,7 +20,7 @@ function formatBusinessDateLabel(businessDateIso: string): string {
 }
 
 test.describe('Deposit Match', () => {
-  test('create a rule, see the ledger, and accept a short day', async ({ page }) => {
+  test('create a rule, see the ledger, and accept a late day', async ({ page }) => {
     test.slow();
     const user = generateTestUser('deposit-match');
     await signUpAndCreateRestaurant(page, user);
@@ -38,10 +38,16 @@ test.describe('Deposit Match', () => {
     if (!restaurantId) throw new Error('No restaurant');
 
     // Three business days back, one Toast card payment ($200). The bank
-    // deposit ($196) implies a 2% fee, inside the `toast` rule's default
-    // 1.6%-3.1% fee band, so the engine confirms the link — but the $4 gap
-    // clears the rule's $0 amount tolerance, so the day settles as short,
-    // not matched.
+    // deposit ($150) implies a 25% fee, well outside the `toast` rule's
+    // default 1.6%-3.1% fee band, so the refresh engine never confirms a
+    // link for it (`supabase/migrations/20260901160000_deposit_match_refresh_engine.sql`,
+    // step 4: `v_implied_fee BETWEEN fee_pct_min/100 AND fee_pct_max/100`).
+    // With no confirmed link and the business date already past the rule's
+    // lag window, the item lands on `late` — the only auto-refresh status
+    // this fee-band-aware engine can still reach for an unmatched net rule
+    // (a `short`/`over` classification now needs a confirmed link outside
+    // the fee band, which only a manual override, not auto-refresh, can
+    // produce).
     const businessDate = new Date();
     businessDate.setDate(businessDate.getDate() - 3);
     const businessDateIso = businessDate.toISOString().slice(0, 10);
@@ -79,7 +85,7 @@ test.describe('Deposit Match', () => {
           connected_bank_id: bank.id,
           stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
           description: 'Card batch deposit',
-          amount: 196,
+          amount: 150,
           transaction_date: transactionDateIso,
           is_categorized: false,
         });
@@ -112,7 +118,7 @@ test.describe('Deposit Match', () => {
     // Creating a rule invalidates the read query, but the refresh RPC fires
     // only once per (restaurant, date range) key — reload for a fresh
     // mount so refresh runs again now that the rule exists, and the
-    // seeded short day gets computed.
+    // seeded late day gets computed.
     await page.reload();
     await page.waitForLoadState('networkidle');
 
@@ -122,12 +128,16 @@ test.describe('Deposit Match', () => {
       .filter({ hasText: formatBusinessDateLabel(businessDateIso) })
       .filter({ hasText: 'toast' });
     await expect(attentionRow).toBeVisible();
-    await expect(attentionRow.getByText('Short')).toBeVisible();
+    await expect(attentionRow.getByText('Late')).toBeVisible();
 
     await attentionRow.click();
     const reviewDialog = page.getByRole('dialog');
     await expect(reviewDialog.getByRole('heading', { name: 'Review day' })).toBeVisible();
-    await expect(reviewDialog.getByText('Short $4.00')).toBeVisible();
+    // No confirmed link, so received and fee are both 0 — the full $200
+    // expected amount is the gap (`ReviewDayDialog`'s `gapLabel` always
+    // prefixes a positive gap "Short", independent of the row's own
+    // status chip, which reads "Late").
+    await expect(reviewDialog.getByText('Short $200.00')).toBeVisible();
 
     await reviewDialog.getByRole('button', { name: 'Accept' }).click();
     await expect(page.getByText('You accepted this day.')).toBeVisible({ timeout: 10000 });

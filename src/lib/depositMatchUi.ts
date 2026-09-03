@@ -12,6 +12,7 @@
 import { formatCurrency } from '@/lib/utils';
 import {
   needsAttention,
+  type DepositMatchBank,
   type DepositMatchLedgerRow,
   type DepositMatchReport,
   type DepositMatchStreamSummary,
@@ -310,4 +311,57 @@ export function cardTenderListKey(posSource: string): string | undefined {
     default:
       return undefined;
   }
+}
+
+/**
+ * The connected bank's dropdown label: "Mercury ••9866" when a mask
+ * exists, or the plain institution name otherwise. Defensive against a
+ * stale payload from an old RPC version — `account_mask` may be null,
+ * undefined, or an empty string. The mask is `text`, not a fixed-width
+ * type (supabase/migrations/20260723130000_connected_banks_reauth_columns.sql:10),
+ * so the `••` prefix works at any length.
+ */
+export function bankLabel(bank: Pick<DepositMatchBank, 'institution_name' | 'account_mask'>): string {
+  const mask = bank.account_mask;
+  if (!mask) return bank.institution_name;
+  return `${bank.institution_name} ••${mask}`;
+}
+
+/**
+ * The connected bank with the highest hit count in `suggested_sources`
+ * for `posSource`, or null when no bank has a hit. Defensive against a
+ * stale payload from an old RPC version: reads `bank.suggested_sources
+ * ?? {}` on every row, so a bank missing the field is simply skipped.
+ */
+export function suggestedBankForSource<T extends Pick<DepositMatchBank, 'suggested_sources'>>(
+  banks: readonly T[],
+  posSource: string
+): T | null {
+  let best: T | null = null;
+  let bestCount = 0;
+  for (const bank of banks) {
+    const count = (bank.suggested_sources ?? {})[posSource];
+    if (typeof count === 'number' && count > bestCount) {
+      bestCount = count;
+      best = bank;
+    }
+  }
+  return best;
+}
+
+// The descriptor label the amber suggestion panel names — not the POS
+// source id. Several sources share one descriptor (focus and shift4 both
+// settle through Shift4 Payments rails), so the panel names the bank
+// descriptor, never the POS source.
+export const DEPOSIT_MATCH_SOURCE_DESCRIPTOR_LABELS: Record<string, string> = {
+  focus: 'Shift4',
+  shift4: 'Shift4',
+  toast: 'TST*',
+  square: 'SQ*',
+  clover: 'Clover',
+};
+
+/** The panel's descriptor name for a POS source, or the raw source id when unknown. */
+export function sourceDescriptorLabel(posSource: string): string {
+  return DEPOSIT_MATCH_SOURCE_DESCRIPTOR_LABELS[posSource] ?? posSource;
 }

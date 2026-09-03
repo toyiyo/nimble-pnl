@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { SetupDialog } from '@/components/deposit-match/SetupDialog';
@@ -172,5 +172,81 @@ describe('SetupDialog', () => {
     expect(screen.getByText(/no normalized card-tender rows yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add rule/i })).toBeDisabled();
     expect(createMutate).not.toHaveBeenCalled();
+  });
+
+  describe('bank picker: mask label and suggestion panel', () => {
+    const banksWithSuggestion: DepositMatchBank[] = [
+      {
+        connected_bank_id: 'bank-1',
+        institution_name: 'Mercury',
+        account_mask: '9866',
+        suggested_sources: {},
+      } as DepositMatchBank,
+      {
+        connected_bank_id: 'bank-2',
+        institution_name: 'Mercury',
+        account_mask: '9510',
+        suggested_sources: { toast: 71 },
+      } as DepositMatchBank,
+    ];
+
+    async function selectToastSource() {
+      await userEvent.click(screen.getByRole('combobox', { name: /pos source/i }));
+      await waitFor(() => expect(screen.getByRole('option', { name: 'toast' })).toBeInTheDocument());
+      await userEvent.click(screen.getByRole('option', { name: 'toast' }));
+    }
+
+    it('shows the ••mask label and the Suggested badge on the suggested option only', async () => {
+      render(<SetupDialog {...baseProps} banks={banksWithSuggestion} />);
+      await selectToastSource();
+
+      await userEvent.click(screen.getByRole('combobox', { name: /bank account/i }));
+      const plainOption = await screen.findByRole('option', { name: 'Mercury ••9866' });
+      const suggestedOption = screen.getByRole('option', { name: 'Mercury ••9510' });
+
+      expect(within(suggestedOption).getByText('Suggested')).toBeInTheDocument();
+      expect(within(plainOption).queryByText('Suggested')).not.toBeInTheDocument();
+    });
+
+    it('shows the amber suggestion panel when the picked bank differs from the suggestion', async () => {
+      render(<SetupDialog {...baseProps} banks={banksWithSuggestion} />);
+      await selectToastSource();
+
+      expect(screen.getByRole('status')).toHaveTextContent('We see TST* deposits in Mercury ••9510.');
+      expect(screen.getByRole('button', { name: /use this bank/i })).toBeInTheDocument();
+    });
+
+    it('picks the suggested bank and hides the panel when "Use this bank" is clicked', async () => {
+      render(<SetupDialog {...baseProps} banks={banksWithSuggestion} />);
+      await selectToastSource();
+
+      await userEvent.click(screen.getByRole('button', { name: /use this bank/i }));
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /bank account/i })).toHaveTextContent('Mercury ••9510');
+    });
+
+    it('hides the panel once the suggested bank is already picked directly from the dropdown', async () => {
+      render(<SetupDialog {...baseProps} banks={banksWithSuggestion} />);
+      await selectToastSource();
+
+      await userEvent.click(screen.getByRole('combobox', { name: /bank account/i }));
+      await userEvent.click(await screen.findByRole('option', { name: 'Mercury ••9510' }));
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('"Use this bank" works from the keyboard: Tab to focus, Enter to activate', async () => {
+      render(<SetupDialog {...baseProps} banks={banksWithSuggestion} />);
+      await selectToastSource();
+
+      const useThisBankButton = screen.getByRole('button', { name: /use this bank/i });
+      useThisBankButton.focus();
+      expect(useThisBankButton).toHaveFocus();
+      await userEvent.keyboard('{Enter}');
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /bank account/i })).toHaveTextContent('Mercury ••9510');
+    });
   });
 });

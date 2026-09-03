@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Settings2, X } from 'lucide-react';
+import * as SelectPrimitive from '@radix-ui/react-select';
+import { Check, Settings2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -17,8 +18,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useCreateDepositMatchRule, useUpdateDepositMatchRule } from '@/hooks/useDepositMatch';
-import { cardTenderListKey, DEPOSIT_MATCH_SOURCE_DEFAULTS, ruleDefaultsNote } from '@/lib/depositMatchUi';
+import {
+  bankLabel,
+  cardTenderListKey,
+  DEPOSIT_MATCH_SOURCE_DEFAULTS,
+  ruleDefaultsNote,
+  sourceDescriptorLabel,
+  suggestedBankForSource,
+} from '@/lib/depositMatchUi';
 import type { DepositMatchBank, DepositMatchRule } from '@/types/depositMatch';
+
+/**
+ * A `SelectItem` for one bank option. Built on `SelectPrimitive.Item`
+ * directly (not the shared `SelectItem`) because the shadcn item mirrors
+ * its children into the closed trigger via `ItemText` — a `Suggested`
+ * badge placed there would leak into the trigger. Here `ItemText` holds
+ * only the plain label, and the badge is a decorative sibling.
+ */
+function BankSelectItem({ bank, isSuggested }: { bank: DepositMatchBank; isSuggested: boolean }) {
+  return (
+    <SelectPrimitive.Item
+      value={bank.connected_bank_id}
+      className="relative flex w-full cursor-default select-none items-center justify-between gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground"
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <Check className="h-4 w-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+      <SelectPrimitive.ItemText>{bankLabel(bank)}</SelectPrimitive.ItemText>
+      {isSuggested && (
+        <span aria-hidden="true" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-foreground">
+          Suggested
+        </span>
+      )}
+    </SelectPrimitive.Item>
+  );
+}
 
 interface SetupDialogProps {
   open: boolean;
@@ -139,6 +175,13 @@ export function SetupDialog({
     }));
     setTenderInput('');
   };
+
+  const suggestedBank = suggestedBankForSource(banks, form.pos_source);
+  // Gated view of `suggestedBank`: null once it is already the picked bank,
+  // so the panel below can check one variable instead of a boolean flag
+  // plus a non-null assertion on every read.
+  const bankSuggestionToShow =
+    suggestedBank && suggestedBank.connected_bank_id !== form.connected_bank_id ? suggestedBank : null;
 
   const tenderKey = cardTenderListKey(form.pos_source);
   const tenderValues = tenderKey ? tenderListValues(form.source_config, tenderKey) : [];
@@ -359,12 +402,31 @@ export function SetupDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {banks.map((bank) => (
-                        <SelectItem key={bank.connected_bank_id} value={bank.connected_bank_id}>
-                          {bank.institution_name}
-                        </SelectItem>
+                        <BankSelectItem
+                          key={bank.connected_bank_id}
+                          bank={bank}
+                          isSuggested={suggestedBank?.connected_bank_id === bank.connected_bank_id}
+                        />
                       ))}
                     </SelectContent>
                   </Select>
+                )}
+                {bankSuggestionToShow && (
+                  <output className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <p className="text-[13px] text-amber-700 dark:text-amber-400">
+                      We see {sourceDescriptorLabel(form.pos_source)} deposits in {bankLabel(bankSuggestionToShow)}.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        setForm((prev) => ({ ...prev, connected_bank_id: bankSuggestionToShow.connected_bank_id }))
+                      }
+                      className="h-8 px-3 rounded-lg text-[13px] font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300"
+                    >
+                      Use this bank
+                    </Button>
+                  </output>
                 )}
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border/40 bg-background p-3">

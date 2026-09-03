@@ -37,12 +37,17 @@ INSERT INTO public.square_refunds
 VALUES
   ('44444444-1000-0000-0000-000000000001', 'sqr-1', 15.00, '2026-08-25T13:00:00Z', '{"source_type":"CARD"}');
 
--- revel: CREDITCARD amount 60.00 + tip 5.00 = 65.00, CASH row excluded.
+-- revel: raw_json->>'payment_type' '2' (card) amount 60.00 + tip 5.00 =
+-- 65.00, '1' (cash) row excluded. The stored payment_type column carries
+-- the SAME digits on both rows on purpose — revelOrderProcessor.ts:172
+-- writes card_type over it, so this column cannot tell card from cash. The
+-- adapter must filter on raw_json, not this column (design doc addendum,
+-- 2026-09-03).
 INSERT INTO public.revel_payments
-  (restaurant_id, revel_payment_id, revel_order_id, payment_type, amount, tip_amount, payment_date)
+  (restaurant_id, revel_payment_id, revel_order_id, payment_type, amount, tip_amount, payment_date, raw_json)
 VALUES
-  ('44444444-1000-0000-0000-000000000001', 'rp-1', 'ro-1', 'CREDITCARD', 60.00, 5.00, '2026-08-25'),
-  ('44444444-1000-0000-0000-000000000001', 'rp-2', 'ro-2', 'CASH', 10.00, 0, '2026-08-25');
+  ('44444444-1000-0000-0000-000000000001', 'rp-1', 'ro-1', '2', 60.00, 5.00, '2026-08-25', '{"payment_type":"2"}'),
+  ('44444444-1000-0000-0000-000000000001', 'rp-2', 'ro-2', '2', 10.00, 0, '2026-08-25', '{"payment_type":"1"}');
 
 -- shift4: amounts are stored in cents. Charge 10000 (100.00) minus refund
 -- 2000 (20.00) = 80.00.
@@ -155,22 +160,24 @@ SELECT throws_like(
   'square adapter raises when card_source_types is an empty array, not a silent zero'
 );
 
--- revel adapter: sums amount + tip_amount for the configured payment types.
+-- revel adapter: sums amount + tip_amount for the configured
+-- raw_json->>'payment_type' values, ignoring the stored payment_type
+-- column (which carries '2' on both the card and the cash row here).
 SELECT is(
   (SELECT expected_amount FROM public.deposit_match_source_revel(
     '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
-    '{"card_payment_types": ["CREDITCARD"]}'::jsonb
+    '{"card_payment_types": ["2"]}'::jsonb
   )),
   65.00::numeric,
-  'revel adapter sums amount + tip_amount for the configured payment types'
+  'revel adapter sums amount + tip_amount for the configured raw_json payment types'
 );
 SELECT is(
   (SELECT row_count FROM public.deposit_match_source_revel(
     '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
-    '{"card_payment_types": ["CREDITCARD"]}'::jsonb
+    '{"card_payment_types": ["2"]}'::jsonb
   )),
   1,
-  'revel adapter counts only the configured payment type rows'
+  'revel adapter counts only the raw_json card payment type rows, not the stored column'
 );
 SELECT throws_like(
   $$SELECT * FROM public.deposit_match_source_revel(
@@ -179,9 +186,9 @@ SELECT throws_like(
   '%card_payment_types%',
   'revel adapter raises when card_payment_types is absent from source_config'
 );
--- Same empty-array gap as the focus and square adapters above. The
--- shipped `SetupDialog`'s default `source_config` for a new Revel rule is
--- `{"card_payment_types": []}`.
+-- Same empty-array gap as the focus and square adapters above. The guard
+-- still applies if a user clears the SetupDialog's card tender list editor
+-- down to zero values.
 SELECT throws_like(
   $$SELECT * FROM public.deposit_match_source_revel(
     '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,

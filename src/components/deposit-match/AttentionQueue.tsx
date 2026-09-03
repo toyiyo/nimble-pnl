@@ -1,6 +1,7 @@
 import { CheckCircle2 } from 'lucide-react';
 
-import { sortAttentionQueue } from '@/lib/depositMatchUi';
+import { formatCurrency } from '@/lib/utils';
+import { formatBusinessDate, sortAttentionQueue } from '@/lib/depositMatchUi';
 import type { DepositMatchLedgerRow, DepositMatchReport } from '@/types/depositMatch';
 import { StatusChip } from './StatusChip';
 
@@ -16,7 +17,7 @@ export function AttentionQueue({ report, onSelectItem }: AttentionQueueProps) {
   if (queue.length === 0) {
     return (
       <div className="rounded-xl border border-border/40 bg-muted/30 p-6 text-center">
-        <CheckCircle2 className="h-6 w-6 text-emerald-600 mx-auto mb-2" aria-hidden="true" />
+        <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" aria-hidden="true" />
         <p className="text-[13px] text-muted-foreground">Nothing needs your attention.</p>
       </div>
     );
@@ -37,10 +38,10 @@ export function AttentionQueue({ report, onSelectItem }: AttentionQueueProps) {
             >
               <div className="min-w-0">
                 <p className="text-[14px] font-medium text-foreground">
-                  {row.business_date} &middot; {row.pos_source}
+                  {formatBusinessDate(row.business_date)} &middot; {row.pos_source}
                 </p>
                 <p className="text-[12px] text-muted-foreground">
-                  Expected ${row.expected_amount.toFixed(2)}, received ${row.received_amount.toFixed(2)}
+                  Expected {formatCurrency(row.expected_amount)}, received {formatCurrency(row.received_amount)}
                 </p>
               </div>
               <StatusChip status={row.status} />

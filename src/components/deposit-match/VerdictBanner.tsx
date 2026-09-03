@@ -27,9 +27,9 @@ export function VerdictBanner({ report }: VerdictBannerProps) {
         }`}
       >
         {isClear ? (
-          <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
         ) : (
-          <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
+          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
         )}
       </div>
       <p className="text-[15px] font-medium text-foreground">{verdict.headline}</p>

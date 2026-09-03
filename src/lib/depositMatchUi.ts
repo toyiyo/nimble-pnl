@@ -9,6 +9,7 @@
  * invents a new grand total.
  */
 
+import { formatCurrency } from '@/lib/utils';
 import {
   needsAttention,
   type DepositMatchLedgerRow,
@@ -98,18 +99,18 @@ export function buildVerdict(report: DepositMatchReport): DepositMatchVerdict {
 
   const dateLabel = formatBusinessDate(worst.business_date);
   const gap = Math.abs(worst.expected_amount - worst.received_amount - worst.fee_amount);
-  const gapLabel = gap.toFixed(2);
+  const gapLabel = formatCurrency(gap);
 
   switch (worst.status) {
     case 'short':
       return {
         tone: 'alert',
-        headline: `${dateLabel} is short $${gapLabel} from ${worst.pos_source}.`,
+        headline: `${dateLabel} is short ${gapLabel} from ${worst.pos_source}.`,
       };
     case 'over':
       return {
         tone: 'alert',
-        headline: `${dateLabel} received $${gapLabel} more than expected from ${worst.pos_source}.`,
+        headline: `${dateLabel} received ${gapLabel} more than expected from ${worst.pos_source}.`,
       };
     case 'late':
       return {

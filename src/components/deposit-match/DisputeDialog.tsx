@@ -166,10 +166,11 @@ export function DisputeDialog({ item, report, open, onOpenChange, restaurantId }
           )}
 
           <div className="space-y-1.5">
-            <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Label htmlFor="deposit_match_dispute_note" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Note (optional)
             </Label>
             <Textarea
+              id="deposit_match_dispute_note"
               value={note}
               onChange={(event) => setNote(event.target.value)}
               className="text-[14px] bg-muted/30 border-border/40 rounded-lg"

@@ -62,7 +62,7 @@ export function ReviewDayDialog({ item, open, onOpenChange, restaurantId, onDisp
             <div>
               <DialogTitle className="text-[17px] font-semibold text-foreground">Review day</DialogTitle>
               <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
-                {item ? `${item.business_date} · ${item.pos_source}` : ''}
+                {item ? `${formatBusinessDate(item.business_date)} · ${item.pos_source}` : ''}
               </DialogDescription>
             </div>
           </div>

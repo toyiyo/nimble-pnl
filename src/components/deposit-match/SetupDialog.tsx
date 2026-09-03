@@ -163,7 +163,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
             </div>
             <div className="p-4 space-y-4">
               <div className="space-y-1.5">
-                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                <Label htmlFor="deposit_match_pos_source" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                   POS source
                 </Label>
                 <Select
@@ -171,7 +171,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
                   onValueChange={applySourceDefaults}
                   disabled={isEdit}
                 >
-                  <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                  <SelectTrigger id="deposit_match_pos_source" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -189,7 +189,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                <Label htmlFor="deposit_match_bank" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                   Bank account
                 </Label>
                 {banks.length === 0 ? (
@@ -201,7 +201,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
                     value={form.connected_bank_id}
                     onValueChange={(value) => setForm((prev) => ({ ...prev, connected_bank_id: value }))}
                   >
-                    <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                    <SelectTrigger id="deposit_match_bank" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                       <SelectValue placeholder="Pick a bank" />
                     </SelectTrigger>
                     <SelectContent>
@@ -227,10 +227,11 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="deposit_match_lag_min" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Lag days, min
                   </Label>
                   <Input
+                    id="deposit_match_lag_min"
                     type="number"
                     value={form.lag_days_min}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_min: event.target.value }))}
@@ -238,10 +239,11 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="deposit_match_lag_max" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Lag days, max
                   </Label>
                   <Input
+                    id="deposit_match_lag_max"
                     type="number"
                     value={form.lag_days_max}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_max: event.target.value }))}
@@ -249,10 +251,11 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="deposit_match_fee_min" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Fee %, min
                   </Label>
                   <Input
+                    id="deposit_match_fee_min"
                     type="number"
                     step="0.1"
                     value={form.fee_pct_min}
@@ -261,10 +264,11 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="deposit_match_fee_max" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Fee %, max
                   </Label>
                   <Input
+                    id="deposit_match_fee_max"
                     type="number"
                     step="0.1"
                     value={form.fee_pct_max}

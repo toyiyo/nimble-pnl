@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(6);
+SELECT plan(9);
 
 -- Fixture: two restaurants. Owner (view:banking + view:pos_sales) and chef
 -- (view:pos_sales only, no view:banking at all) both in restaurant A.
@@ -33,6 +33,23 @@ VALUES
    'square', 'card', '22222222-1000-0000-0000-000000000001', 'gross', 1, 3),
   ('33333333-1000-0000-0000-000000000002', '11111111-1000-0000-0000-000000000002',
    'square', 'card', '22222222-1000-0000-0000-000000000002', 'gross', 1, 3);
+
+-- Fixture for the deposit_match_links cross-tenant tests below: one item
+-- that belongs to A's own rule, and one bank transaction that belongs to
+-- B, so a link between the two is a cross-tenant allocation.
+INSERT INTO public.deposit_match_items
+  (id, restaurant_id, rule_id, business_date, expected_amount, received_amount, fee_amount, status)
+VALUES
+  ('44444444-1000-0000-0000-000000000001', '11111111-1000-0000-0000-000000000001',
+   '33333333-1000-0000-0000-000000000001', '2026-08-25', 100, 0, 0, 'pending');
+
+INSERT INTO public.bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
+VALUES
+  ('55555555-1000-0000-0000-000000000001', '11111111-1000-0000-0000-000000000001',
+   '22222222-1000-0000-0000-000000000001', 'dm_rls_txn_a_1', '2026-08-26', 'Test deposit A', 100),
+  ('55555555-1000-0000-0000-000000000002', '11111111-1000-0000-0000-000000000002',
+   '22222222-1000-0000-0000-000000000002', 'dm_rls_txn_b_1', '2026-08-26', 'Test deposit B', 100);
 RESET role;
 
 SET LOCAL role TO authenticated;
@@ -63,6 +80,38 @@ SELECT throws_like(
             'toast', 'card', '22222222-1000-0000-0000-000000000002', 'net', 1, 3)$$,
   '%row-level security policy%',
   'owner of A cannot insert a rule for restaurant B'
+);
+
+-- deposit_match_links cross-tenant checks (Codex adversarial review,
+-- 2026-09-02): the FK on bank_transaction_id only requires the row to
+-- exist in ANY tenant, so the policy's own EXISTS clauses must be what
+-- blocks a same-tenant item paired with another tenant's bank transaction.
+SELECT throws_like(
+  $$INSERT INTO public.deposit_match_links
+      (id, restaurant_id, item_id, bank_transaction_id, allocated_amount, method)
+    VALUES ('66666666-1000-0000-0000-000000000001', '11111111-1000-0000-0000-000000000001',
+            '44444444-1000-0000-0000-000000000001', '55555555-1000-0000-0000-000000000002',
+            100, 'manual')$$,
+  '%row-level security policy%',
+  'owner of A cannot link A''s own item to restaurant B''s bank transaction'
+);
+
+-- Same-tenant link is allowed, and doubles as the UPDATE test's fixture.
+SELECT lives_ok(
+  $$INSERT INTO public.deposit_match_links
+      (id, restaurant_id, item_id, bank_transaction_id, allocated_amount, method)
+    VALUES ('66666666-1000-0000-0000-000000000002', '11111111-1000-0000-0000-000000000001',
+            '44444444-1000-0000-0000-000000000001', '55555555-1000-0000-0000-000000000001',
+            100, 'manual')$$,
+  'owner of A can link A''s own item to A''s own bank transaction'
+);
+
+SELECT throws_like(
+  $$UPDATE public.deposit_match_links
+    SET bank_transaction_id = '55555555-1000-0000-0000-000000000002'
+    WHERE id = '66666666-1000-0000-0000-000000000002'$$,
+  '%row-level security policy%',
+  'owner of A cannot re-point an existing link to restaurant B''s bank transaction'
 );
 
 -- Switch to the chef: view:pos_sales only, no view:banking at all. The

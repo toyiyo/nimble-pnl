@@ -70,7 +70,7 @@ the real prefix at file creation and check
       (`src/types/scheduling.ts`), `DEFAULTS` + select list
       (`src/hooks/useStaffingSettings.ts`); new `useShiftProtection`
       hook (key `['shift-protection', restaurantId]`, staleTime 60s).
-- [ ] B3. RPC plumbing: `ShiftTradePolicyWarning` typed error in
+- [ ] B3. RPC plumbing: `PolicyWarningError` typed error in
       `executeShiftTradeAction`; `useReviewTimeOffRequest` calls
       `review_time_off_request` and checks `success` before the toast
       and the notification. Unit tests for both behaviors.
@@ -82,7 +82,7 @@ the real prefix at file creation and check
       `aria-describedby`, `role="status"`, `max-h-[80vh] overflow-y-auto`.
 - [ ] B6. `TradeRequestDialog`: deadline warning + responsibility note +
       height cap. Accept confirm flow shows the same deadline finding.
-- [ ] B7. `TradeApprovalQueue`: catch `ShiftTradePolicyWarning`, list
+- [ ] B7. `TradeApprovalQueue`: catch `PolicyWarningError`, list
       findings in the existing confirm dialog, "Approve anyway" retries
       with `p_override = true`; client-side "Late" chip.
 - [ ] B8. `PendingQueue`: approve/reject through the new RPC hook;

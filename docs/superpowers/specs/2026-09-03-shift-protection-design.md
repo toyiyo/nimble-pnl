@@ -346,7 +346,7 @@ to friendly copy. Unit tests cover all of it.
 `new Error(result?.error || failureMessage)` on every `success: false`
 (`src/hooks/useShiftTrades.ts:97-100`), which would swallow the
 `policy_warning` payload. Change: on `code = 'policy_warning'` the
-helper throws a typed `ShiftTradePolicyWarning` error that carries the
+helper throws a typed `PolicyWarningError` that carries the
 warnings; the notification call stays skipped on that path (the throw
 already skips it). `useReviewTimeOffRequest` checks `success` on the
 RPC result before the toast and the notification (section 2).
@@ -384,7 +384,7 @@ RPC result before the toast and the notification (section 2).
   (`src/components/schedule/TradeRequestDialog.tsx:157` has no height
   cap). The accept confirm flow shows the same client-side deadline
   finding, so the accepter also sees the rule in `warn` mode.
-- `TradeApprovalQueue`: a `ShiftTradePolicyWarning` opens the existing
+- `TradeApprovalQueue`: a `PolicyWarningError` opens the existing
   approve/reject confirm dialog
   (`src/components/schedule/TradeApprovalQueue.tsx:55,124,793-900`)
   with the findings listed and an "Approve anyway" action that retries

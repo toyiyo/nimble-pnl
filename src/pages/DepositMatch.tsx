@@ -5,8 +5,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { usePermissions } from '@/hooks/usePermissions';
-import { useDepositMatch } from '@/hooks/useDepositMatch';
+import { useDepositMatch, useDepositMatchRule } from '@/hooks/useDepositMatch';
+import { addDaysToDateStr } from '@/lib/restaurantClock';
 import type { DepositMatchLedgerRow } from '@/types/depositMatch';
 
 import { VerdictBanner } from '@/components/deposit-match/VerdictBanner';
@@ -21,31 +23,40 @@ import { SetupDialog } from '@/components/deposit-match/SetupDialog';
 const REQUIRED_CAPABILITIES = ['view:banking', 'view:pos_sales'] as const;
 const RANGE_OPTIONS = [7, 30, 90] as const;
 
-function isoDateDaysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
-}
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function DepositMatch() {
   const { selectedRestaurant, loading: restaurantLoading } = useRestaurantContext();
   const { hasAllCapabilities, isResolved } = usePermissions();
   const restaurantId = selectedRestaurant?.restaurant_id ?? null;
+  // The restaurant's own calendar day, not the viewer's browser clock — a
+  // viewer west of the restaurant (or past midnight UTC) must see the same
+  // "last 30 days" window the restaurant's owner sees.
+  const { today } = useRestaurantClock();
 
   const [rangeDays, setRangeDays] = useState<(typeof RANGE_OPTIONS)[number]>(30);
   const [pageTab, setPageTab] = useState<'overview' | 'ledger'>('overview');
   const [activeItem, setActiveItem] = useState<DepositMatchLedgerRow | null>(null);
   const [dialogMode, setDialogMode] = useState<'review' | 'dispute' | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
+  // Null means "add a new rule"; a rule_id means "edit this rule".
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
 
-  const startDate = useMemo(() => isoDateDaysAgo(rangeDays), [rangeDays]);
-  const endDate = todayIso();
+  const startDate = useMemo(() => addDaysToDateStr(today, -rangeDays), [today, rangeDays]);
+  const endDate = today;
 
   const { report, isLoading, error, refreshNow } = useDepositMatch({ restaurantId, startDate, endDate });
+  const { data: editingRule, isLoading: editingRuleLoading } = useDepositMatchRule(
+    setupOpen ? editingRuleId : null
+  );
+
+  const openAddRule = () => {
+    setEditingRuleId(null);
+    setSetupOpen(true);
+  };
+
+  const openEditRule = (ruleId: string) => {
+    setEditingRuleId(ruleId);
+    setSetupOpen(true);
+  };
 
   const openReview = (item: DepositMatchLedgerRow) => {
     setActiveItem(item);
@@ -98,7 +109,7 @@ export default function DepositMatch() {
         actions={
           <Button
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-            onClick={() => setSetupOpen(true)}
+            onClick={openAddRule}
           >
             <Plus className="h-4 w-4 mr-1.5" aria-hidden="true" />
             Add rule
@@ -147,7 +158,7 @@ export default function DepositMatch() {
           </p>
           <Button
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium mt-4"
-            onClick={() => setSetupOpen(true)}
+            onClick={openAddRule}
           >
             Add rule
           </Button>
@@ -176,7 +187,12 @@ export default function DepositMatch() {
             <div className="space-y-4">
               <VerdictBanner report={report} />
               <MoneyWaterfall report={report} />
-              <StreamCards streams={report.streams} activeStreamId={null} onSelectStream={() => setPageTab('ledger')} />
+              <StreamCards
+                streams={report.streams}
+                activeStreamId={null}
+                onSelectStream={() => setPageTab('ledger')}
+                onEditStream={openEditRule}
+              />
               <AttentionQueue report={report} onSelectItem={openReview} />
             </div>
           )}
@@ -204,7 +220,8 @@ export default function DepositMatch() {
         onOpenChange={setSetupOpen}
         restaurantId={restaurantId}
         banks={report?.banks ?? []}
-        rule={null}
+        rule={editingRuleId ? editingRule ?? null : null}
+        isLoadingRule={editingRuleId !== null && editingRuleLoading}
         onSaved={refreshNow}
       />
     </div>

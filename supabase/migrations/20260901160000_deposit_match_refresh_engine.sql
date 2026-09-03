@@ -64,6 +64,8 @@ DECLARE
   v_received        numeric;
   v_diff            numeric;
   v_fee             numeric;
+  v_fee_lo          numeric;
+  v_fee_hi          numeric;
   v_expected_by     date;
   v_bank_stale      boolean;
   v_status          text;
@@ -151,6 +153,16 @@ BEGIN
         WHERE i.rule_id = v_rule.id
           AND i.business_date BETWEEN p_start_date AND p_end_date
           AND NOT EXISTS (SELECT 1 FROM public.deposit_match_links l2 WHERE l2.item_id = i.id)
+          -- A bank transaction already confirmed for another rule (or a
+          -- manual link) is not open capacity: every confirmed link
+          -- allocates the transaction's full amount, so a second confirmed
+          -- link on the same transaction would always exceed the
+          -- allocation-cap trigger's ceiling and roll back this whole
+          -- rule's refresh (found in review, chatgpt-codex-connector).
+          AND NOT EXISTS (
+            SELECT 1 FROM public.deposit_match_links l3
+            WHERE l3.bank_transaction_id = bt.id AND l3.state = 'confirmed'
+          )
           AND v_bank.status = 'connected'
           AND v_bank.data_current_through IS NOT NULL
           -- Pin midnight of the cutoff date to UTC explicitly. A plain
@@ -194,6 +206,10 @@ BEGIN
           AND bt2.is_transfer IS NOT TRUE
           AND bt2.id <> v_cand.txn_id
           AND NOT (bt2.id = ANY(v_assigned_txns))
+          AND NOT EXISTS (
+            SELECT 1 FROM public.deposit_match_links l4
+            WHERE l4.bank_transaction_id = bt2.id AND l4.state = 'confirmed'
+          )
           AND bt2.transaction_date BETWEEN (v_cand.business_date + v_rule.lag_days_min)
                                         AND (v_cand.business_date + v_rule.lag_days_max)
           AND (v_rule.descriptor_pattern IS NULL OR bt2.description ~* v_rule.descriptor_pattern)
@@ -229,6 +245,18 @@ BEGIN
 
         v_tol := GREATEST(v_rule.amount_tolerance, v_item.expected_amount * v_rule.amount_tolerance_pct);
         v_diff := v_item.expected_amount - v_received;
+        -- The accepted band for v_diff is the rule's fee band, as an amount
+        -- (fee_pct_min/max are percentage points, same conversion Step 3/4
+        -- use), widened by the amount tolerance on each side. A gross rule
+        -- always carries fee_pct_min = fee_pct_max = 0 (the table default),
+        -- so the band collapses to [-v_tol, v_tol] and this matches the
+        -- old gross-only check exactly. Without this, a net rule's normal
+        -- processing fee (diff > 0 but within the fee band already used to
+        -- confirm the link in Step 4) fell outside the zero-width default
+        -- tolerance and was misclassified short with no fee recorded
+        -- (found in review, chatgpt-codex-connector).
+        v_fee_lo := v_item.expected_amount * v_rule.fee_pct_min / 100.0;
+        v_fee_hi := v_item.expected_amount * v_rule.fee_pct_max / 100.0;
         v_expected_by := v_item.business_date + v_rule.lag_days_max;
         v_bank_stale := v_bank.status IS DISTINCT FROM 'connected'
           OR v_bank.data_current_through IS NULL
@@ -236,11 +264,11 @@ BEGIN
           OR v_bank.data_current_through < (v_expected_by::timestamp AT TIME ZONE 'UTC');
 
         IF v_received > 0 THEN
-          IF abs(v_diff) <= v_tol THEN
+          IF v_diff BETWEEN (v_fee_lo - v_tol) AND (v_fee_hi + v_tol) THEN
             v_status := CASE WHEN v_rule.settlement = 'net' THEN 'matched_net' ELSE 'matched' END;
             v_reason := 'within_tolerance';
             v_fee := CASE WHEN v_rule.settlement = 'net' THEN GREATEST(v_diff, 0) ELSE 0 END;
-          ELSIF v_diff > v_tol THEN
+          ELSIF v_diff > (v_fee_hi + v_tol) THEN
             v_status := 'short'; v_reason := 'short_confirmed'; v_fee := 0;
           ELSE
             v_status := 'over'; v_reason := 'over_confirmed'; v_fee := 0;

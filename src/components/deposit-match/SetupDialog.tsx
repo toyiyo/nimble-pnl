@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useCreateDepositMatchRule, useUpdateDepositMatchRule } from '@/hooks/useDepositMatch';
 import { cardTenderListKey, DEPOSIT_MATCH_SOURCE_DEFAULTS, ruleDefaultsNote } from '@/lib/depositMatchUi';
@@ -26,6 +27,8 @@ interface SetupDialogProps {
   banks: DepositMatchBank[];
   /** Rule being edited, or null to create a new one. */
   rule: DepositMatchRule | null;
+  /** True while the edit target's rule row is still loading. */
+  isLoadingRule?: boolean;
   /** Called after a create or update commits, so the page can force a refresh. */
   onSaved?: () => void;
 }
@@ -85,7 +88,15 @@ function tenderListValues(sourceConfig: Record<string, unknown>, key: string): s
  * against your bank" (design: only `focus` and `toast` come from measured
  * production behavior).
  */
-export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onSaved }: SetupDialogProps) {
+export function SetupDialog({
+  open,
+  onOpenChange,
+  restaurantId,
+  banks,
+  rule,
+  isLoadingRule,
+  onSaved,
+}: SetupDialogProps) {
   const [form, setForm] = useState<FormState>(() => initialFormState(rule));
   const [tenderInput, setTenderInput] = useState('');
   const createMutation = useCreateDepositMatchRule();
@@ -139,6 +150,10 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onS
 
   const handleSubmit = () => {
     if (!restaurantId) return;
+    if (DEPOSIT_MATCH_SOURCE_DEFAULTS[form.pos_source]?.unsupported) {
+      toast.error('This source has no normalized card-tender rows yet. You cannot save a rule for it.');
+      return;
+    }
     if (!form.connected_bank_id) {
       toast.error('Pick the bank that receives this deposit.');
       return;
@@ -191,6 +206,35 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onS
     submitLabel = 'Save changes';
   } else {
     submitLabel = 'Add rule';
+  }
+
+  if (isLoadingRule) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                <Settings2 className="h-5 w-5 text-foreground" aria-hidden="true" />
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  Edit deposit-match rule
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  The rule is loading.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="px-6 py-5 space-y-4">
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   return (
@@ -421,7 +465,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onS
           <Button
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             onClick={handleSubmit}
-            disabled={isPending}
+            disabled={isPending || unsupported}
           >
             {submitLabel}
           </Button>

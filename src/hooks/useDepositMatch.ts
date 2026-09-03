@@ -8,6 +8,7 @@ import {
   type DepositMatchLinkConfirmInput,
   type DepositMatchReport,
   type DepositMatchResolutionInput,
+  type DepositMatchRule,
   type DepositMatchRuleInput,
   type DepositMatchRuleUpdate,
 } from '@/types/depositMatch';
@@ -111,6 +112,24 @@ export function useDepositMatch({ restaurantId, startDate, endDate }: UseDeposit
     // this, adding a rule leaves the ledger empty until the range changes.
     refreshNow: () => refreshMutation.mutate(),
   };
+}
+
+/** Reads one rule by id, for the edit form. */
+export function useDepositMatchRule(ruleId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['deposit-match-rule', ruleId],
+    queryFn: async (): Promise<DepositMatchRule> => {
+      const { data, error } = await supabase
+        .from('deposit_match_rules' as any)
+        .select('*')
+        .eq('id', ruleId)
+        .single();
+      if (error) throw error;
+      return data as unknown as DepositMatchRule;
+    },
+    enabled: Boolean(ruleId),
+    staleTime: 30000,
+  });
 }
 
 export function useCreateDepositMatchRule() {

@@ -26,6 +26,7 @@ import {
   useUpdateDepositMatchRule,
   useSetDepositMatchResolution,
   useConfirmDepositMatchLink,
+  useDepositMatchRule,
 } from '@/hooks/useDepositMatch';
 import type { DepositMatchRuleInput } from '@/types/depositMatch';
 
@@ -50,6 +51,14 @@ function makeUpdateChain(resolved: { data: unknown; error: unknown }) {
   const eq = vi.fn(() => ({ select }));
   const update = vi.fn(() => ({ eq }));
   return { update, eq, select, single };
+}
+
+/** select('*').eq('id', id).single() */
+function makeSelectByIdChain(resolved: { data: unknown; error: unknown }) {
+  const single = vi.fn().mockResolvedValue(resolved);
+  const eq = vi.fn(() => ({ single }));
+  const select = vi.fn(() => ({ eq }));
+  return { select, eq, single };
 }
 
 function createWrapper(queryClient: QueryClient) {
@@ -212,6 +221,46 @@ describe('useSetDepositMatchResolution', () => {
     expect(chain.update).toHaveBeenCalledWith(
       expect.objectContaining({ resolution_note: 'chargeback pending' })
     );
+  });
+});
+
+describe('useDepositMatchRule', () => {
+  it('fetches the rule by id when a ruleId is given', async () => {
+    const chain = makeSelectByIdChain({ data: { id: 'rule-1', pos_source: 'toast' }, error: null });
+    fromMock.mockReturnValue(chain);
+
+    const { result } = renderHook(() => useDepositMatchRule('rule-1'), {
+      wrapper: createWrapper(makeQueryClient()),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(fromMock).toHaveBeenCalledWith('deposit_match_rules');
+    expect(chain.select).toHaveBeenCalledWith('*');
+    expect(chain.eq).toHaveBeenCalledWith('id', 'rule-1');
+    expect(result.current.data).toEqual({ id: 'rule-1', pos_source: 'toast' });
+  });
+
+  it('stays disabled and never queries when ruleId is null', () => {
+    const { result } = renderHook(() => useDepositMatchRule(null), {
+      wrapper: createWrapper(makeQueryClient()),
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the row read returns an error', async () => {
+    const chain = makeSelectByIdChain({ data: null, error: new Error('not found') });
+    fromMock.mockReturnValue(chain);
+
+    const { result } = renderHook(() => useDepositMatchRule('missing'), {
+      wrapper: createWrapper(makeQueryClient()),
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toEqual(new Error('not found'));
   });
 });
 

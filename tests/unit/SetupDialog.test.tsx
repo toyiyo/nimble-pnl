@@ -148,4 +148,21 @@ describe('SetupDialog', () => {
     expect(screen.queryByText('WALLET')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /pos source/i })).toBeDisabled();
   });
+
+  it('shows a loading skeleton instead of the form while the edit target rule is still loading', () => {
+    render(<SetupDialog {...baseProps} rule={null} isLoadingRule />);
+    expect(screen.getByText(/the rule is loading/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /pos source/i })).not.toBeInTheDocument();
+  });
+
+  it('disables Save and blocks the submit for an unsupported source (Clover)', async () => {
+    render(<SetupDialog {...baseProps} />);
+    await userEvent.click(screen.getByRole('combobox', { name: /pos source/i }));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'clover' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('option', { name: 'clover' }));
+
+    expect(screen.getByText(/no normalized card-tender rows yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add rule/i })).toBeDisabled();
+    expect(createMutate).not.toHaveBeenCalled();
+  });
 });

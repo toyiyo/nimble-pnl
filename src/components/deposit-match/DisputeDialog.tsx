@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -73,6 +73,12 @@ export function DisputeDialog({ item, report, open, onOpenChange, restaurantId }
       .slice(0, 2);
   }, [item, report]);
 
+  // Reset the note when the dialog opens for a different item — otherwise
+  // a note typed for one day's dispute leaks into the next day's dialog.
+  useEffect(() => {
+    setNote('');
+  }, [item?.item_id]);
+
   if (!item) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -98,6 +104,7 @@ export function DisputeDialog({ item, report, open, onOpenChange, restaurantId }
         onSuccess: () => {
           toast.success('You marked this day disputed.');
           onOpenChange(false);
+          setNote('');
         },
         onError: (error) => {
           toast.error(`The dispute did not save: ${error.message}`);

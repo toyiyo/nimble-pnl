@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEPOSIT_MATCH_SOURCE_DEFAULTS,
   DEPOSIT_MATCH_SUGGESTED_VALUES_NOTE,
+  bankLabel,
   buildVerdict,
   cardTenderListKey,
   causeLabel,
@@ -10,9 +11,10 @@ import {
   pickActiveTab,
   ruleDefaultsNote,
   sortAttentionQueue,
+  suggestedBankForSource,
   waterfallSegments,
 } from '@/lib/depositMatchUi';
-import type { DepositMatchLedgerRow, DepositMatchReport } from '@/types/depositMatch';
+import type { DepositMatchBank, DepositMatchLedgerRow, DepositMatchReport } from '@/types/depositMatch';
 
 function row(overrides: Partial<DepositMatchLedgerRow>): DepositMatchLedgerRow {
   return {
@@ -211,5 +213,60 @@ describe('cardTenderListKey', () => {
     expect(cardTenderListKey('toast')).toBeUndefined();
     expect(cardTenderListKey('shift4')).toBeUndefined();
     expect(cardTenderListKey('clover')).toBeUndefined();
+  });
+});
+
+function bank(overrides: Partial<DepositMatchBank>): DepositMatchBank {
+  return {
+    connected_bank_id: 'bank-1',
+    institution_name: 'Mercury',
+    status: 'active',
+    data_current_through: '2026-08-04',
+    account_mask: null,
+    suggested_sources: {},
+    ...overrides,
+  };
+}
+
+describe('bankLabel', () => {
+  it('appends the masked account number when a mask exists', () => {
+    expect(bankLabel(bank({ account_mask: '9866' }))).toBe('Mercury ••9866');
+  });
+
+  it('shows the plain institution name when there is no mask', () => {
+    expect(bankLabel(bank({ account_mask: null }))).toBe('Mercury');
+  });
+
+  it('shows the plain institution name when the mask is an empty string', () => {
+    expect(bankLabel(bank({ account_mask: '' }))).toBe('Mercury');
+  });
+
+  it('shows the plain institution name when the mask field is missing (stale payload)', () => {
+    const stale = { institution_name: 'Mercury' } as DepositMatchBank;
+    expect(bankLabel(stale)).toBe('Mercury');
+  });
+});
+
+describe('suggestedBankForSource', () => {
+  it('picks the bank with the highest hit count for the source', () => {
+    const banks = [
+      bank({ connected_bank_id: 'low', suggested_sources: { toast: 2 } }),
+      bank({ connected_bank_id: 'high', suggested_sources: { toast: 5 } }),
+    ];
+    expect(suggestedBankForSource(banks, 'toast')?.connected_bank_id).toBe('high');
+  });
+
+  it('returns null for a source no bank has hits for', () => {
+    const banks = [bank({ suggested_sources: { toast: 5 } })];
+    expect(suggestedBankForSource(banks, 'square')).toBeNull();
+  });
+
+  it('returns null for an empty bank list', () => {
+    expect(suggestedBankForSource([], 'toast')).toBeNull();
+  });
+
+  it('returns null when the field is missing on every bank row (stale payload)', () => {
+    const stale = [{ connected_bank_id: 'bank-1' } as DepositMatchBank];
+    expect(suggestedBankForSource(stale, 'toast')).toBeNull();
   });
 });

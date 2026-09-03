@@ -253,14 +253,16 @@ BEGIN
   END IF;
 
   -- Shift Protection: block-mode deadline. warn mode does not change the
-  -- accept; the client shows the finding.
+  -- accept; the client shows the finding. A caller with edit:scheduling
+  -- is exempt, matching the trigger guards and the create RPC.
   SELECT * INTO v_settings
   FROM staffing_settings
   WHERE restaurant_id = v_trade.restaurant_id;
 
   IF COALESCE(v_settings.trade_deadline_mode, 'off') = 'block'
      AND now() >= v_shift.start_time
-         - make_interval(hours => v_settings.trade_deadline_hours) THEN
+         - make_interval(hours => v_settings.trade_deadline_hours)
+     AND NOT user_has_capability(v_trade.restaurant_id, 'edit:scheduling') THEN
     RETURN jsonb_build_object(
       'success', false,
       'error', format(

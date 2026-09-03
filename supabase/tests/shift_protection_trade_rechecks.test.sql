@@ -6,7 +6,7 @@
 -- approves through findings; the 3-arg overload is gone; EXECUTE is
 -- granted on the new signature.
 -- accept_shift_trade: warn mode accepts; block mode refuses inside the
--- window and accepts outside it.
+-- window, accepts outside it, and exempts a capability holder.
 --
 -- Migration under test: 20260903034800_shift_protection_trade_functions.sql
 -- Design: docs/superpowers/specs/2026-09-03-shift-protection-design.md
@@ -16,7 +16,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(13);
+SELECT plan(14);
 
 SET LOCAL role TO postgres;
 
@@ -76,6 +76,16 @@ INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, positi
   ('74000000-0000-0000-0000-000000000049', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000022', (((now() AT TIME ZONE 'America/Chicago')::date + 9) + TIME '13:00') AT TIME ZONE 'America/Chicago', (((now() AT TIME ZONE 'America/Chicago')::date + 9) + TIME '17:00') AT TIME ZONE 'America/Chicago', 'Server', 30, 'scheduled')
 ON CONFLICT (id) DO NOTHING;
 
+-- The owner M also holds an employee row (ME), for the capability-exempt
+-- accept assertion. s10 starts in 12 hours; t10 (seeded below, after the
+-- DELETE) offers it.
+INSERT INTO employees (id, restaurant_id, user_id, name, email, position, is_active) VALUES
+  ('74000000-0000-0000-0000-000000000024', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000011', 'Manager ME', 'tr-m-74@test.com', 'Server', true)
+ON CONFLICT (id) DO UPDATE SET is_active = true;
+INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, position, break_duration, status) VALUES
+  ('74000000-0000-0000-0000-000000000051', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000021', now() + interval '12 hours', now() + interval '15 hours', 'Server', 30, 'scheduled')
+ON CONFLICT (id) DO NOTHING;
+
 -- AE approved time off exactly on the local day of s4.
 DELETE FROM time_off_requests WHERE restaurant_id = '74000000-0000-0000-0000-000000000001';
 INSERT INTO time_off_requests (id, restaurant_id, employee_id, start_date, end_date, status)
@@ -92,7 +102,8 @@ INSERT INTO shift_trades (id, restaurant_id, offered_shift_id, offered_by_employ
   ('74000000-0000-0000-0000-000000000065', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000045', '74000000-0000-0000-0000-000000000021', '74000000-0000-0000-0000-000000000022', 'pending_approval'),
   ('74000000-0000-0000-0000-000000000066', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000046', '74000000-0000-0000-0000-000000000021', NULL, 'open'),
   ('74000000-0000-0000-0000-000000000067', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000047', '74000000-0000-0000-0000-000000000021', NULL, 'open'),
-  ('74000000-0000-0000-0000-000000000068', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000048', '74000000-0000-0000-0000-000000000021', NULL, 'open');
+  ('74000000-0000-0000-0000-000000000068', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000048', '74000000-0000-0000-0000-000000000021', NULL, 'open'),
+  ('74000000-0000-0000-0000-000000000070', '74000000-0000-0000-0000-000000000001', '74000000-0000-0000-0000-000000000051', '74000000-0000-0000-0000-000000000021', NULL, 'open');
 
 -- Cross-restaurant fixture: a shift in restaurant B, referenced by a
 -- trade in restaurant A. Seeded AFTER the DELETE above so the cleanup
@@ -203,6 +214,14 @@ SELECT is(
   (SELECT (accept_shift_trade('74000000-0000-0000-0000-000000000068', '74000000-0000-0000-0000-000000000022')->>'success')::boolean),
   true,
   'block mode accepts a shift outside the window'
+);
+
+-- 10b. A capability holder is exempt from the block-mode deadline.
+SELECT set_config('request.jwt.claims', '{"sub":"74000000-0000-0000-0000-000000000011","role":"authenticated"}', true);
+SELECT is(
+  (SELECT (accept_shift_trade('74000000-0000-0000-0000-000000000070', '74000000-0000-0000-0000-000000000024')->>'success')::boolean),
+  true,
+  'a capability holder accepts inside the window in block mode'
 );
 
 -- ============================================================================

@@ -255,9 +255,10 @@ Each `RAISE EXCEPTION` message starts with the stable prefix
 `accept_shift_trade` gets one addition (new migration, body copied from
 `supabase/migrations/20260713010000_harden_accept_shift_trade.sql:32-117`):
 refuse the accept when `trade_deadline_mode = 'block'` and the shift is
-inside the window, with a clear message. `warn` mode does not change
-accept behavior on the server; the accept UI shows the client-side
-finding (section 8).
+inside the window, with a clear message; a caller with `edit:scheduling`
+is exempt, like the trigger guards. `warn` mode does not change accept
+behavior on the server; the accept UI shows the client-side finding
+(section 8).
 
 ### 5. Auto-expire open trades
 

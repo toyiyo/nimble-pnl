@@ -3139,6 +3139,7 @@
 - **Mistake:** Every push to PR #786 re-ran `pr-comment-response`, which failed whenever a review comment lacked a verdict reply at that moment. Fix commits pushed before the triage replies guaranteed one extra red round.
 - **Correction:** Reordered the loop: fix → commit → reply to each comment with the SHA (`node dev-tools/pr-triage.js reply --commit <sha>`) → push. The push then triggers the gate with every comment already answered. The audit reports "cites an unknown commit" for an unpushed SHA — that reason clears on push; re-run `audit` after the push to confirm 0 unanswered.
 - **Rule:** Post the triage replies between the local commit and the push. A reply may cite a not-yet-pushed SHA; push immediately after so the citation resolves. Never push a fix and plan to reply "later" — that push burns a full CI round on a known-red gate.
+- **Confirmed:** [2026-09-03] PR #795. The CI-loop agent pushed fix commits with no replies. The gate stayed red until the resumed agent posted the replies and re-ran the audit.
 
 ---
 
@@ -3157,3 +3158,36 @@
 - **Mistake:** Three watch/poll attempts on PR #786 died with `Post "https://api.github.com/graphql": net/http: TLS handshake timeout`. Piping the output (`gh pr checks | sort | uniq`) made `$?` report the LAST command in the pipe, so the shell printed exit 0 over a dead API call.
 - **Correction:** Replaced the watch with a capped background retry loop: up to 25 attempts, 90s apart, each attempt writes the full check table to a file, exits when no line contains `pending`. The loop treats a `Post "https` line in the output as a failed attempt and retries.
 - **Rule:** Do not trust `$?` after a pipe — grep the captured output for the error string instead. For CI waits on a flaky network, run a capped retry loop in the background (bounded attempts, bounded sleep) and read the result file; a single `--watch` is one TLS hiccup away from silent death. Cap every loop — this machine has no `timeout`/`gtimeout`.
+- **Confirmed:** [2026-09-03] PR #795. `gh pr checks --watch` also trips the workflow 180 s watchdog — see the watchdog lesson below.
+
+---
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] A blocking command in a workflow-agent prompt is a stall factory (PR #795)
+- **Mistake:** The CI-loop prompt in `.claude/workflows/dev-build-and-ship.js` said: "Run: gh pr checks --watch (blocks until checks finish)". The watch blocks 15+ minutes with no tool call. The workflow watchdog kills an agent after 180 s without a tool call. The runtime retried six times with the identical prompt and reproduced the identical stall — ~269k tokens gone. Build task-3 died the same way earlier: whole-file reads plus one long response.
+- **Correction:** Fixed the CI red myself in the main session. Then added a `ciResolutionNote` hook into the CI-loop prompt and resumed the run. The note forbids blocking watches and requires single bounded polls (`gh pr checks` with a Bash timeout of 120000 ms or less).
+- **Rule:** Never put a blocking watch in a workflow-agent prompt; each poll must be one bounded tool call. Give EVERY phase a resolution-note hook — the resume cache keys on (prompt, opts), so a phase without a hook replays its stall verbatim. When a phase stalls, diagnose and fix in the main session first, then resume with a note that records the fix.
+
+### [2026-09-03] A workflow resume needs the previous args verbatim (PR #795)
+- **Mistake:** The resume args carry every prior resolution note. A one-character drift in any note changes that agent's prompt, misses the cache, and re-runs a finished phase live.
+- **Correction:** Recovered the exact previous args from the session transcript (`grep resumeFromRunId ~/.claude/projects/<session>.jsonl`), then added only the new note.
+- **Rule:** Before a resume, recover the previous `args` verbatim from the transcript or the task output file. Add new keys; never retype old ones.
+
+---
+
+## Category: Domain — POS Integrations
+
+### [2026-09-03] `revel_payments.payment_type` does not hold the payment type (PR #795)
+- **Mistake:** The deposit-match Revel adapter first filtered card rows on the stored `payment_type` column. That column is polluted: `supabase/functions/_shared/revelOrderProcessor.ts:172` writes `card_type ?? payment_type ?? ...` into it, so a cash row and a card row can carry the same digits.
+- **Correction:** Filter on `raw_json->>'payment_type'` instead. Production evidence: all 2,231 rows with a card brand carry `raw_json->>'payment_type' = '2'`; cash rows carry `'1'`.
+- **Rule:** Before you filter on a POS mirror column, read the order-processor line that writes it. When the processor coalesces two source fields into one column, filter on `raw_json` and say why in a function comment.
+
+---
+
+## Category: Testing / Playwright E2E (continued)
+
+### [2026-09-03] A review fix that changes engine semantics silently breaks the test seed premise (PR #795)
+- **Mistake:** Commit 901ecb89 (a Codex review finding) widened the deposit-match accepted gap to the rule fee band. The e2e seed ($196 deposit on $200 sales, a 2% implied fee) then sat INSIDE the band, the day settled `matched_net`, and the "needs attention" assertion failed on both CI runs. The commit went out without a local run of the dependent spec.
+- **Correction:** Re-seeded the test outside the new band ($150 deposit, 25% implied fee → no link → `late`) and asserted the Late path. Ran the spec locally (2/2 in 19 s) before the push.
+- **Rule:** A test seed encodes a premise about the engine's thresholds. After any fix that moves a threshold or a band, list the tests whose seeds sit near it and run them locally before the push. A deterministic both-runs CI failure on your own spec means the premise moved, not the infrastructure.

@@ -213,7 +213,15 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     lag_days_max: 2,
     fee_pct_min: 2.6,
     fee_pct_max: 2.9,
-    source_config: { card_source_types: [] },
+    // ["CARD","WALLET"] is not a guess. Task 0 of the build plan
+    // (docs/superpowers/plans/2026-09-01-deposit-match-plan.md) checked
+    // production and recorded this exact value list as the Square API
+    // contract's card/wallet source types. An empty array here made
+    // deposit_match_source_square raise on every Square rule — the
+    // adapter's own empty-array guard cannot tell "no config" from "an
+    // administrator picked zero types" and correctly refuses to treat
+    // the two the same way.
+    source_config: { card_source_types: ['CARD', 'WALLET'] },
   },
   revel: {
     measured: false,

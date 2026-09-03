@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 
+import { SHIFT_PROTECTION_DEFAULTS } from '@/lib/shiftProtection';
+
 import type { StaffingSettings } from '@/types/scheduling';
 
 const DEFAULTS: Omit<StaffingSettings, 'id' | 'restaurant_id' | 'created_at' | 'updated_at'> = {
@@ -16,14 +18,8 @@ const DEFAULTS: Omit<StaffingSettings, 'id' | 'restaurant_id' | 'created_at' | '
   min_crew: null,
   open_shifts_enabled: false,
   require_shift_claim_approval: false,
-  trade_deadline_mode: 'off',
-  trade_deadline_hours: 24,
-  trade_auto_expire: false,
-  timeoff_notice_mode: 'off',
-  timeoff_notice_days: 7,
-  timeoff_sameday_mode: 'off',
-  timeoff_sameday_limit: 2,
-  coverage_floor_mode: 'off',
+  // The Shift Protection rules keep one default set, in @/lib/shiftProtection.
+  ...SHIFT_PROTECTION_DEFAULTS,
 };
 
 export function useStaffingSettings(restaurantId: string | null) {

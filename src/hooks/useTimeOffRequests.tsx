@@ -111,9 +111,6 @@ const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const actionLabel = action === 'approved' ? 'approved' : 'rejected';
-  const actionPastTense = action === 'approved' ? 'approved' : 'rejected';
-
   return useMutation({
     mutationFn: async ({
       id,
@@ -132,14 +129,14 @@ const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
       });
 
       if (error) throw error;
-      throwIfPolicyBlocked(data as RpcPolicyResult | null, `Failed to ${actionLabel} time-off`);
+      throwIfPolicyBlocked(data as RpcPolicyResult | null, `Failed to ${action} time-off`);
       return { id };
     },
     onSuccess: async (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['time-off-requests', variables.restaurantId] });
       toast({
-        title: `Time-off ${actionPastTense}`,
-        description: `The time-off request has been ${actionPastTense}.`,
+        title: `Time-off ${action}`,
+        description: `The time-off request has been ${action}.`,
       });
 
       // Send notification
@@ -159,7 +156,7 @@ const useReviewTimeOffRequest = (action: 'approved' | 'rejected') => {
       // The queue renders policy findings with an "Approve anyway" action.
       if (error instanceof PolicyWarningError) return;
       toast({
-        title: `Error ${actionLabel} time-off`,
+        title: `Error ${action} time-off`,
         description: error.message,
         variant: 'destructive',
       });

@@ -17,6 +17,7 @@ import { tradeDeadlineFinding } from '@/lib/shiftProtection';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
+import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
 import {
   Store,
   Clock,
@@ -247,21 +248,15 @@ export const TradeMarketplace = () => {
               )}
 
               {acceptFinding && (
-                <div
+                <ShiftProtectionWarning
                   id="accept-policy-warning"
-                  role="status"
-                  className="flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20"
-                >
-                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
-                  <div className="space-y-1">
-                    <p className="text-[13px] text-foreground">{acceptFinding.message}</p>
-                    <p className="text-[12px] text-muted-foreground">
-                      {acceptBlocked
-                        ? 'A shift protection rule closed this trade for accepts.'
-                        : 'A manager must still approve this late trade.'}
-                    </p>
-                  </div>
-                </div>
+                  messages={[acceptFinding.message]}
+                  footnote={
+                    acceptBlocked
+                      ? 'A shift protection rule closed this trade for accepts.'
+                      : 'A manager must still approve this late trade.'
+                  }
+                />
               )}
             </div>
           )}

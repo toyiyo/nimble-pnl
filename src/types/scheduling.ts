@@ -1,4 +1,4 @@
-import type { ProtectionMode } from '@/lib/shiftProtection';
+import type { ShiftProtectionSettings } from '@/lib/shiftProtection';
 
 // Compensation types for employees
 export type CompensationType = 'hourly' | 'salary' | 'contractor' | 'daily_rate';
@@ -302,7 +302,9 @@ export interface MinCrew {
   [position: string]: number;
 }
 
-export interface StaffingSettings {
+// The row also holds the 8 Shift Protection rule columns. They keep one
+// definition, in @/lib/shiftProtection.
+export interface StaffingSettings extends ShiftProtectionSettings {
   id: string;
   restaurant_id: string;
   target_splh: number;
@@ -314,14 +316,6 @@ export interface StaffingSettings {
   min_crew: MinCrew | null;
   open_shifts_enabled: boolean;
   require_shift_claim_approval: boolean;
-  trade_deadline_mode: ProtectionMode;
-  trade_deadline_hours: number;
-  trade_auto_expire: boolean;
-  timeoff_notice_mode: ProtectionMode;
-  timeoff_notice_days: number;
-  timeoff_sameday_mode: ProtectionMode;
-  timeoff_sameday_limit: number;
-  coverage_floor_mode: ProtectionMode;
   created_at: string;
   updated_at: string;
 }

@@ -12,10 +12,12 @@ import {
 } from '@/hooks/useTimeOffRequests';
 import { useTimeoffCoverageImpact } from '@/hooks/useShiftProtection';
 import { PolicyWarningError, type PolicyFinding } from '@/lib/shiftProtection';
+import { ShiftProtectionWarning } from './scheduling/ShiftProtectionWarning';
 import { TimeOffRequestDialog } from './TimeOffRequestDialog';
 import { PendingQueue } from './timeoff/PendingQueue';
 import { DecidedHistory } from './timeoff/DecidedHistory';
 import { partitionByStatus } from '@/lib/timeOffUtils';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -161,16 +163,9 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
 
           {policyTarget && (
             <div className="space-y-3">
-              <div
-                role="status"
-                className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-1"
-              >
-                {policyTarget.warnings.map((warning) => (
-                  <p key={warning.rule} className="text-[13px] text-foreground">
-                    {warning.message}
-                  </p>
-                ))}
-              </div>
+              <ShiftProtectionWarning
+                messages={policyTarget.warnings.map((warning) => warning.message)}
+              />
 
               {coverageImpact.isLoading && (
                 <Skeleton className="h-14 w-full rounded-lg" />
@@ -194,7 +189,12 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
                       <p key={shift.shift_id} className="text-[13px] text-foreground">
                         {shift.position}, {format(new Date(shift.start_time), 'EEE MMM d, h:mm a')}:{' '}
                         {shift.current_count} →{' '}
-                        <span className={shift.after_count < shift.required ? 'font-semibold text-destructive' : 'font-semibold'}>
+                        <span
+                          className={cn(
+                            'font-semibold',
+                            shift.after_count < shift.required && 'text-destructive'
+                          )}
+                        >
                           {shift.after_count}
                         </span>{' '}
                         (needs {shift.required})
@@ -203,9 +203,9 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
                   )}
                   {coverageImpact.data.overlapping_approved > 0 && (
                     <p className="text-[12px] text-muted-foreground">
-                      {coverageImpact.data.overlapping_approved} other approved request
-                      {coverageImpact.data.overlapping_approved === 1 ? '' : 's'} overlap
-                      {coverageImpact.data.overlapping_approved === 1 ? 's' : ''} these days.
+                      {coverageImpact.data.overlapping_approved === 1
+                        ? '1 other approved request overlaps these days.'
+                        : `${coverageImpact.data.overlapping_approved} other approved requests overlap these days.`}
                     </p>
                   )}
                 </div>

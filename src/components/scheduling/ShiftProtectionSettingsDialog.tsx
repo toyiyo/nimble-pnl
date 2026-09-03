@@ -20,7 +20,7 @@ import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useInvalidateShiftProtection } from '@/hooks/useShiftProtection';
 import { useToast } from '@/hooks/use-toast';
 
-import type { ProtectionMode } from '@/lib/shiftProtection';
+import type { ProtectionMode, ShiftProtectionSettings } from '@/lib/shiftProtection';
 
 interface ShiftProtectionSettingsDialogProps {
   open: boolean;
@@ -28,16 +28,8 @@ interface ShiftProtectionSettingsDialogProps {
   restaurantId: string;
 }
 
-interface DraftRules {
-  trade_deadline_mode: ProtectionMode;
-  trade_deadline_hours: number;
-  trade_auto_expire: boolean;
-  timeoff_notice_mode: ProtectionMode;
-  timeoff_notice_days: number;
-  timeoff_sameday_mode: ProtectionMode;
-  timeoff_sameday_limit: number;
-  coverage_floor_mode: ProtectionMode;
-}
+/** The dialog edits the rule set, and nothing else in staffing_settings. */
+type DraftRules = ShiftProtectionSettings;
 
 const MODE_OPTIONS: { value: ProtectionMode; label: string }[] = [
   { value: 'off', label: 'Off' },
@@ -75,6 +67,35 @@ function ModePicker({
         </div>
       ))}
     </RadioGroup>
+  );
+}
+
+function ThresholdInput({
+  id,
+  label,
+  value,
+  unit,
+  onChange,
+}: Readonly<{
+  id: string;
+  label: string;
+  value: number;
+  unit: string;
+  onChange: (threshold: number) => void;
+}>) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Input
+        id={id}
+        type="number"
+        min={1}
+        value={Number.isNaN(value) ? '' : value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        className="h-10 w-16 text-[14px] bg-muted/30 border-border/40 rounded-lg text-center focus-visible:ring-1 focus-visible:ring-border"
+        aria-label={label}
+      />
+      <span className="text-[12px] text-muted-foreground">{unit}</span>
+    </div>
   );
 }
 
@@ -158,27 +179,6 @@ export const ShiftProtectionSettingsDialog = ({
   const setField = <K extends keyof DraftRules>(key: K, value: DraftRules[K]) =>
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
 
-  const numberInput = (
-    id: string,
-    label: string,
-    value: number,
-    onChange: (n: number) => void,
-    unit: string
-  ) => (
-    <div className="flex items-center gap-1.5">
-      <Input
-        id={id}
-        type="number"
-        min={1}
-        value={Number.isNaN(value) ? '' : value}
-        onChange={(e) => onChange(parseInt(e.target.value, 10))}
-        className="h-10 w-16 text-[14px] bg-muted/30 border-border/40 rounded-lg text-center focus-visible:ring-1 focus-visible:ring-border"
-        aria-label={label}
-      />
-      <span className="text-[12px] text-muted-foreground">{unit}</span>
-    </div>
-  );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
@@ -219,8 +219,19 @@ export const ShiftProtectionSettingsDialog = ({
                   title="Trade deadline"
                   description="Applies to trades posted or accepted inside the window before a shift starts."
                 >
-                  {numberInput('trade-deadline-hours', 'Trade deadline hours', draft.trade_deadline_hours, (n) => setField('trade_deadline_hours', n), 'hours')}
-                  <ModePicker id="trade-deadline" title="Trade deadline" value={draft.trade_deadline_mode} onChange={(m) => setField('trade_deadline_mode', m)} />
+                  <ThresholdInput
+                    id="trade-deadline-hours"
+                    label="Trade deadline hours"
+                    value={draft.trade_deadline_hours}
+                    unit="hours"
+                    onChange={(hours) => setField('trade_deadline_hours', hours)}
+                  />
+                  <ModePicker
+                    id="trade-deadline"
+                    title="Trade deadline"
+                    value={draft.trade_deadline_mode}
+                    onChange={(mode) => setField('trade_deadline_mode', mode)}
+                  />
                 </RuleRow>
                 <RuleRow
                   title="Auto-expire unaccepted trades"
@@ -243,21 +254,48 @@ export const ShiftProtectionSettingsDialog = ({
                   title="Minimum notice"
                   description="Applies to requests that start inside the notice period."
                 >
-                  {numberInput('timeoff-notice-days', 'Minimum notice days', draft.timeoff_notice_days, (n) => setField('timeoff_notice_days', n), 'days')}
-                  <ModePicker id="timeoff-notice" title="Minimum notice" value={draft.timeoff_notice_mode} onChange={(m) => setField('timeoff_notice_mode', m)} />
+                  <ThresholdInput
+                    id="timeoff-notice-days"
+                    label="Minimum notice days"
+                    value={draft.timeoff_notice_days}
+                    unit="days"
+                    onChange={(days) => setField('timeoff_notice_days', days)}
+                  />
+                  <ModePicker
+                    id="timeoff-notice"
+                    title="Minimum notice"
+                    value={draft.timeoff_notice_mode}
+                    onChange={(mode) => setField('timeoff_notice_mode', mode)}
+                  />
                 </RuleRow>
                 <RuleRow
                   title="Coverage floor"
                   description="Applies when an approval drops a day below the template staff count."
                 >
-                  <ModePicker id="coverage-floor" title="Coverage floor" value={draft.coverage_floor_mode} onChange={(m) => setField('coverage_floor_mode', m)} />
+                  <ModePicker
+                    id="coverage-floor"
+                    title="Coverage floor"
+                    value={draft.coverage_floor_mode}
+                    onChange={(mode) => setField('coverage_floor_mode', mode)}
+                  />
                 </RuleRow>
                 <RuleRow
                   title="Same-day limit"
                   description="Applies past this many approved requests per day, per position."
                 >
-                  {numberInput('timeoff-sameday-limit', 'Same-day request limit', draft.timeoff_sameday_limit, (n) => setField('timeoff_sameday_limit', n), 'requests')}
-                  <ModePicker id="timeoff-sameday" title="Same-day limit" value={draft.timeoff_sameday_mode} onChange={(m) => setField('timeoff_sameday_mode', m)} />
+                  <ThresholdInput
+                    id="timeoff-sameday-limit"
+                    label="Same-day request limit"
+                    value={draft.timeoff_sameday_limit}
+                    unit="requests"
+                    onChange={(limit) => setField('timeoff_sameday_limit', limit)}
+                  />
+                  <ModePicker
+                    id="timeoff-sameday"
+                    title="Same-day limit"
+                    value={draft.timeoff_sameday_mode}
+                    onChange={(mode) => setField('timeoff_sameday_mode', mode)}
+                  />
                 </RuleRow>
               </div>
 

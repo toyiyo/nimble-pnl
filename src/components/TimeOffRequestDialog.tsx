@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { DatePicker } from '@/components/ui/date-picker';
 import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
 import { useCreateTimeOffRequest, useUpdateTimeOffRequest } from '@/hooks/useTimeOffRequests';
@@ -12,6 +12,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { TimeOffRequest } from '@/types/scheduling';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { EmployeeSelector } from './scheduling/EmployeeSelector';
+import { ShiftProtectionWarning } from './scheduling/ShiftProtectionWarning';
 import { timeoffNoticeFinding } from '@/lib/shiftProtection';
 
 interface TimeOffRequestDialogProps {
@@ -68,9 +69,17 @@ export const TimeOffRequestDialog = ({
 
   const blocked =
     !isExempt &&
-    ((noticeFinding?.mode === 'block') ||
+    (noticeFinding?.mode === 'block' ||
       (samedayHit && protection.timeoff_sameday_mode === 'block'));
-  const hasPolicyWarning = !!noticeFinding || samedayHit;
+
+  const policyMessages = [
+    noticeFinding?.message,
+    samedayHit
+      ? `${maxSameday} coworker${maxSameday === 1 ? '' : 's'} with the same position ` +
+        `already have approved time off on a requested day ` +
+        `(limit ${protection.timeoff_sameday_limit}).`
+      : undefined,
+  ].filter((message): message is string => !!message);
 
   useEffect(() => {
     if (request) {
@@ -187,31 +196,16 @@ export const TimeOffRequestDialog = ({
             </p>
           )}
 
-          {hasPolicyWarning && (
-            <div
+          {policyMessages.length > 0 && (
+            <ShiftProtectionWarning
               id="time-off-policy-warning"
-              role="status"
-              className="flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20"
-            >
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="space-y-1">
-                {noticeFinding && (
-                  <p className="text-[13px] text-foreground">{noticeFinding.message}</p>
-                )}
-                {samedayHit && (
-                  <p className="text-[13px] text-foreground">
-                    {maxSameday} coworker{maxSameday === 1 ? '' : 's'} with the same position
-                    already have approved time off on a requested day
-                    (limit {protection.timeoff_sameday_limit}).
-                  </p>
-                )}
-                <p className="text-[12px] text-muted-foreground">
-                  {blocked
-                    ? 'A shift protection rule blocks this request. Ask your manager to submit it for you.'
-                    : 'You can still submit. Your manager sees this warning with your request.'}
-                </p>
-              </div>
-            </div>
+              messages={policyMessages}
+              footnote={
+                blocked
+                  ? 'A shift protection rule blocks this request. Ask your manager to submit it for you.'
+                  : 'You can still submit. Your manager sees this warning with your request.'
+              }
+            />
           )}
 
           <div className="space-y-2">

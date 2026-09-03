@@ -35,6 +35,7 @@ import {
 } from '@/hooks/useOpenShiftClaims';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
+import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
 import { supabase } from '@/integrations/supabase/client';
 import { isTradeExpired } from '@/lib/shiftTradeStatus';
 import { useShiftProtection } from '@/hooks/useShiftProtection';
@@ -925,36 +926,21 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                 />
               </div>
 
-              {actionType === 'approve' && policyWarnings && (
-                <div
-                  role="status"
-                  className="flex items-start gap-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3"
-                >
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" aria-hidden="true" />
-                  <div className="space-y-1">
-                    <p className="text-[13px] font-semibold text-foreground">
-                      Shift protection findings
-                    </p>
-                    {policyWarnings.map((warning) => (
-                      <p key={warning.rule} className="text-[13px] text-foreground">
-                        {warning.message}
-                      </p>
-                    ))}
-                    <p className="text-[12px] text-muted-foreground">
-                      Click "Approve anyway" to approve through these findings.
+              {actionType === 'approve' &&
+                (policyWarnings ? (
+                  <ShiftProtectionWarning
+                    title="Shift protection findings"
+                    messages={policyWarnings.map((warning) => warning.message)}
+                    footnote='Click "Approve anyway" to approve through these findings.'
+                  />
+                ) : (
+                  <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                    <p className="text-[13px] text-green-700 dark:text-green-300">
+                      Both employees will be notified via email of your decision.
                     </p>
                   </div>
-                </div>
-              )}
-
-              {actionType === 'approve' && !policyWarnings && (
-                <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
-                  <p className="text-[13px] text-green-700 dark:text-green-300">
-                    Both employees will be notified via email of your decision.
-                  </p>
-                </div>
-              )}
+                ))}
 
               <DialogFooter>
                 <Button

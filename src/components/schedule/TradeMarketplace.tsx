@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useMarketplaceTrades, useAcceptShiftTrade } from '@/hooks/useShiftTrades';
+import { useShiftProtection } from '@/hooks/useShiftProtection';
+import { tradeDeadlineFinding } from '@/lib/shiftProtection';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
@@ -60,6 +62,13 @@ export const TradeMarketplace = () => {
 
   const [selectedTrade, setSelectedTrade] = useState<TradeWithConflict | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+
+  // Shift Protection: show the deadline rule before the accept commits.
+  const { protection } = useShiftProtection(restaurantId);
+  const acceptFinding = selectedTrade
+    ? tradeDeadlineFinding(protection, selectedTrade.offered_shift.start_time, new Date())
+    : null;
+  const acceptBlocked = acceptFinding?.mode === 'block';
 
   const handleAcceptClick = (trade: TradeWithConflict) => {
     if (trade.hasConflict) {
@@ -236,6 +245,23 @@ export const TradeMarketplace = () => {
                   </p>
                 </div>
               )}
+
+              {acceptFinding && (
+                <div
+                  role="status"
+                  className="flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20"
+                >
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
+                  <div className="space-y-1">
+                    <p className="text-[13px] text-foreground">{acceptFinding.message}</p>
+                    <p className="text-[12px] text-muted-foreground">
+                      {acceptBlocked
+                        ? 'A shift protection rule closed this trade for accepts.'
+                        : 'A manager must still approve this late trade.'}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -247,7 +273,7 @@ export const TradeMarketplace = () => {
             >
               Cancel
             </Button>
-            <Button onClick={handleConfirmAccept} disabled={isAccepting}>
+            <Button onClick={handleConfirmAccept} disabled={isAccepting || acceptBlocked}>
               {isAccepting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

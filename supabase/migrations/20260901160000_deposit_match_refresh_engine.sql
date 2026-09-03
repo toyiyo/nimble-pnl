@@ -153,7 +153,13 @@ BEGIN
           AND NOT EXISTS (SELECT 1 FROM public.deposit_match_links l2 WHERE l2.item_id = i.id)
           AND v_bank.status = 'connected'
           AND v_bank.data_current_through IS NOT NULL
-          AND v_bank.data_current_through >= (i.business_date + v_rule.lag_days_max)::timestamptz
+          -- Pin midnight of the cutoff date to UTC explicitly. A plain
+          -- ::timestamptz cast on a date reads the session TimeZone
+          -- setting, which can silently shift the freshness cutoff by a
+          -- day if that setting ever drifts from what wrote
+          -- data_current_through (this codebase's documented history of
+          -- timezone off-by-one bugs, CLAUDE.md).
+          AND v_bank.data_current_through >= ((i.business_date + v_rule.lag_days_max)::timestamp AT TIME ZONE 'UTC')
         ORDER BY fit_score ASC, i.business_date ASC, bt.transaction_date ASC, bt.id ASC
       LOOP
         IF v_cand.item_id = ANY(v_assigned_items) OR v_cand.txn_id = ANY(v_assigned_txns) THEN
@@ -226,7 +232,8 @@ BEGIN
         v_expected_by := v_item.business_date + v_rule.lag_days_max;
         v_bank_stale := v_bank.status IS DISTINCT FROM 'connected'
           OR v_bank.data_current_through IS NULL
-          OR v_bank.data_current_through < v_expected_by::timestamptz;
+          -- Same UTC pin as the candidate-collection filter above.
+          OR v_bank.data_current_through < (v_expected_by::timestamp AT TIME ZONE 'UTC');
 
         IF v_received > 0 THEN
           IF abs(v_diff) <= v_tol THEN

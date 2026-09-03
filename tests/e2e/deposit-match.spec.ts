@@ -73,6 +73,7 @@ test.describe('Deposit Match', () => {
             restaurant_id: restaurantId,
             stripe_financial_account_id: `test-bank-${crypto.randomUUID()}`,
             institution_name: bankName,
+            account_mask: '9510',
             status: 'connected',
             data_current_through: new Date().toISOString(),
           })
@@ -80,15 +81,40 @@ test.describe('Deposit Match', () => {
           .single();
         if (bankError) throw new Error('bankError: ' + JSON.stringify(bankError));
 
-        const { error: txnError } = await win.__supabase.from('bank_transactions').insert({
-          restaurant_id: restaurantId,
-          connected_bank_id: bank.id,
-          stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
-          description: 'Card batch deposit',
-          amount: 150,
-          transaction_date: transactionDateIso,
-          is_categorized: false,
-        });
+        // The ledger row (`TST*` so the refresh engine's own descriptor
+        // scan sees it too) plus two more positive `TST*` rows inside the
+        // 90-day suggestion window — the bank-picker suggestion needs 3
+        // hits (`get_deposit_match_report`'s `suggested_sources` filters
+        // on `hits >= 3`).
+        const { error: txnError } = await win.__supabase.from('bank_transactions').insert([
+          {
+            restaurant_id: restaurantId,
+            connected_bank_id: bank.id,
+            stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
+            description: 'TST* Card batch deposit',
+            amount: 150,
+            transaction_date: transactionDateIso,
+            is_categorized: false,
+          },
+          {
+            restaurant_id: restaurantId,
+            connected_bank_id: bank.id,
+            stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
+            description: 'TST* Card batch deposit',
+            amount: 120,
+            transaction_date: transactionDateIso,
+            is_categorized: false,
+          },
+          {
+            restaurant_id: restaurantId,
+            connected_bank_id: bank.id,
+            stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
+            description: 'TST* Card batch deposit',
+            amount: 130,
+            transaction_date: transactionDateIso,
+            is_categorized: false,
+          },
+        ]);
         if (txnError) throw new Error('txnError: ' + JSON.stringify(txnError));
 
         return { bankName };
@@ -108,8 +134,25 @@ test.describe('Deposit Match', () => {
     await dialog.getByRole('combobox').filter({ hasText: 'focus' }).click();
     await page.getByRole('option', { name: 'toast', exact: true }).click();
 
+    // The amber suggestion panel appears once toast is picked: three
+    // `TST*` deposits landed in the seeded bank inside the 90-day scan
+    // window (`get_deposit_match_report`'s `suggested_sources`, threshold
+    // `hits >= 3`).
+    await expect(dialog.getByRole('status')).toContainText(
+      `We see TST* deposits in ${seed.bankName} ••9510.`
+    );
+
+    // The bank picker's own option carries the same masked label. The
+    // existing selector (`seed.bankName`, no `exact`) is a substring match
+    // and still finds it once the mask suffix is appended.
     await dialog.getByRole('combobox').filter({ hasText: 'Pick a bank' }).click();
-    await page.getByRole('option', { name: seed.bankName }).click();
+    await expect(page.getByRole('option', { name: seed.bankName })).toContainText('••9510');
+    await page.keyboard.press('Escape');
+
+    // "Use this bank" picks the suggested bank and hides the panel.
+    await dialog.getByRole('button', { name: 'Use this bank' }).click();
+    await expect(dialog.getByRole('status')).toHaveCount(0);
+    await expect(dialog.getByRole('combobox').filter({ hasText: seed.bankName })).toBeVisible();
 
     await dialog.getByRole('button', { name: 'Add rule' }).click();
     await expect(page.getByText('You added the rule.')).toBeVisible({ timeout: 10000 });

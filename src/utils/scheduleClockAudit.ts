@@ -53,7 +53,8 @@ export type AuditRowStatus =
   | 'time_mismatch'
   | 'matched'
   | 'unscheduled_clock'
-  | 'in_progress';
+  | 'in_progress'
+  | 'draft';
 
 export interface AuditRow {
   key: string;
@@ -84,6 +85,7 @@ export interface AuditSummary {
   unscheduledClock: number;
   matched: number;
   inProgress: number;
+  draft: number;
 }
 
 export interface AuditResult {
@@ -232,7 +234,10 @@ const filterAuditableShifts = (
 ): AuditShift[] =>
   shifts
     .filter((shift) => shift.status !== 'cancelled')
-    .filter((shift) => shift.is_published !== false)
+    .filter(
+      (shift) =>
+        shift.is_published !== false || new Date(shift.end_time).getTime() <= now.getTime(),
+    )
     .filter((shift) => new Date(shift.start_time).getTime() <= now.getTime())
     // Only shifts that overlap [rangeStart, rangeEnd] count (inclusive bounds,
     // matching Supabase .gte/.lte semantics). This also guards a shift the
@@ -344,6 +349,38 @@ const assignSessionsToShifts = (
   return { sessionsByShift, matchedSessions };
 };
 
+/**
+ * Worked minutes, end-time delta, and inter-session gap for a closed-out shift.
+ *
+ * A double clock-in (no clock-out between them) leaves an EARLIER session in
+ * `ordered` with `clockOut: null`. This can happen even when `lastSession`
+ * -- the caller's only guard -- is closed. Skip any such open session in the
+ * worked-minutes sum and the gap loop. Do not cast its null `clockOut` to
+ * `string`. That cast let `differenceInMinutes` read `null` as the 1970
+ * epoch. It silently added a huge bogus delta to `workedMinutes`.
+ */
+const computePairingMetrics = (
+  shift: AuditShift,
+  ordered: WorkSession[],
+  lastSession: WorkSession,
+) => {
+  const outDeltaMinutes = minutesBetween(shift.end_time, lastSession.clockOut as string);
+  const workedMinutes = ordered.reduce((sum, session) => {
+    if (!session.clockOut) return sum;
+    return sum + minutesBetween(session.clockIn, session.clockOut) - session.breakMinutes;
+  }, 0);
+  let gapMinutes: number | undefined;
+  if (ordered.length > 1) {
+    gapMinutes = 0;
+    for (let i = 1; i < ordered.length; i++) {
+      const previousClockOut = ordered[i - 1].clockOut;
+      if (!previousClockOut) continue;
+      gapMinutes += minutesBetween(previousClockOut, ordered[i].clockIn);
+    }
+  }
+  return { outDeltaMinutes, workedMinutes, gapMinutes };
+};
+
 const buildShiftRow = (
   shift: AuditShift,
   sessions: WorkSession[] | undefined,
@@ -354,6 +391,7 @@ const buildShiftRow = (
     minutesBetween(shift.start_time, shift.end_time) - (shift.break_duration ?? 0);
   const base = { key: `shift-${shift.id}`, employeeId: shift.employee_id, shift, scheduledMinutes };
   const shiftEnded = new Date(shift.end_time).getTime() <= now.getTime();
+  const isDraft = shift.is_published === false;
 
   if (!sessions || sessions.length === 0) {
     // A shift that has not ended yet is still in progress -- the employee
@@ -361,6 +399,10 @@ const buildShiftRow = (
     // is already in the past, with no punches at all, counts as a missed
     // clock-in.
     if (!shiftEnded) return null;
+    // A draft shift with no sessions gets no row -- a "missed draft shift"
+    // flag would flood the panel at a restaurant that drafts speculative
+    // schedules.
+    if (isDraft) return null;
     return { ...base, status: 'missing_clock' };
   }
 
@@ -378,26 +420,38 @@ const buildShiftRow = (
     return { ...base, status: 'in_progress', sessions: ordered, inDeltaMinutes };
   }
 
+  // A draft shift with sessions is tentative, not a payroll error. Report
+  // it as `draft` with the full pairing -- never `missing_clock`,
+  // `time_mismatch`, `open_clock`, `matched`, or `in_progress`.
+  if (isDraft) {
+    if (!lastSession.clockOut) {
+      return { ...base, status: 'draft', sessions: ordered, inDeltaMinutes };
+    }
+    const { outDeltaMinutes, workedMinutes, gapMinutes } = computePairingMetrics(
+      shift,
+      ordered,
+      lastSession,
+    );
+    return {
+      ...base,
+      status: 'draft',
+      sessions: ordered,
+      workedMinutes,
+      gapMinutes,
+      inDeltaMinutes,
+      outDeltaMinutes,
+    };
+  }
+
   if (!lastSession.clockOut) {
     return { ...base, status: 'open_clock', sessions: ordered, inDeltaMinutes };
   }
 
-  const outDeltaMinutes = minutesBetween(shift.end_time, lastSession.clockOut);
-  const workedMinutes = ordered.reduce(
-    (sum, session) =>
-      sum + minutesBetween(session.clockIn, session.clockOut as string) - session.breakMinutes,
-    0,
+  const { outDeltaMinutes, workedMinutes, gapMinutes } = computePairingMetrics(
+    shift,
+    ordered,
+    lastSession,
   );
-  let gapMinutes: number | undefined;
-  if (ordered.length > 1) {
-    gapMinutes = 0;
-    for (let i = 1; i < ordered.length; i++) {
-      gapMinutes += minutesBetween(
-        ordered[i - 1].clockOut as string,
-        ordered[i].clockIn,
-      );
-    }
-  }
   const mismatch =
     Math.abs(inDeltaMinutes) > tolerance || Math.abs(outDeltaMinutes) > tolerance;
 
@@ -446,6 +500,7 @@ const SUMMARY_KEY: Record<AuditRowStatus, keyof AuditSummary> = {
   unscheduled_clock: 'unscheduledClock',
   matched: 'matched',
   in_progress: 'inProgress',
+  draft: 'draft',
 };
 
 const summarizeRows = (rows: AuditRow[]): AuditSummary => {
@@ -456,6 +511,7 @@ const summarizeRows = (rows: AuditRow[]): AuditSummary => {
     unscheduledClock: 0,
     matched: 0,
     inProgress: 0,
+    draft: 0,
   };
   for (const row of rows) summary[SUMMARY_KEY[row.status]] += 1;
   return summary;
@@ -468,7 +524,7 @@ export interface EmployeeAuditRollup {
   toFix: number;
   /** open_clock count. */
   open: number;
-  /** unscheduled_clock + in_progress count. */
+  /** unscheduled_clock + in_progress + draft count. */
   info: number;
   /** Sum of scheduledMinutes over missing_clock rows. */
   missingMinutes: number;
@@ -487,7 +543,12 @@ export function rollupAuditRowsByEmployee(rows: AuditRow[]): Map<string, Employe
     entry.rows.push(row);
     if (row.status === 'missing_clock' || row.status === 'time_mismatch') entry.toFix += 1;
     if (row.status === 'open_clock') entry.open += 1;
-    if (row.status === 'unscheduled_clock' || row.status === 'in_progress') entry.info += 1;
+    if (
+      row.status === 'unscheduled_clock' ||
+      row.status === 'in_progress' ||
+      row.status === 'draft'
+    )
+      entry.info += 1;
     if (row.status === 'missing_clock') entry.missingMinutes += row.scheduledMinutes ?? 0;
     rollup.set(row.employeeId, entry);
   }

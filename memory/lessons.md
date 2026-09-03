@@ -3162,6 +3162,30 @@
 
 ---
 
+## Category: Data Accuracy (continued)
+
+### [2026-09-02] Any session in a list can be open, not only the last one (PR #793)
+- **Mistake:** `computePairingMetrics` in `src/utils/scheduleClockAudit.ts` cast every `session.clockOut` to `string`. The call sites guarded only `lastSession.clockOut`. A double clock-in makes `buildWorkSessions` close the FIRST session as open (`clockOut: null`) while the last session is closed. `differenceInMinutes` then read the null as the 1970 epoch and added a huge bogus delta to `workedMinutes`. Codex found it in review; the tests missed it.
+- **Correction:** Skip any session with a null `clockOut` in the worked-minutes reduce and the gap loop. Add a double-clock-in regression test.
+- **Rule:** A guard on the last element does not cover the list. When a fold reads an optional field, handle the null inside the fold, not at the call site.
+
+## Category: Testing — Test Design (continued)
+
+### [2026-09-02] An exclusion test must build the case that passes without the rule (PR #793)
+- **Mistake:** The test "keeps a future-ending draft shift excluded" used a punch three days before the shift. The punch never overlapped the shift window, so the test passed with or without the `end_time <= now` gate it claimed to guard.
+- **Correction:** Move the punch inside the shift's own padded window. The test now fails when the gate is deleted.
+- **Rule:** Before you accept a test for a filter or gate, delete the gate mentally: the test must then fail. A fixture that cannot reach the gate proves nothing.
+
+## Category: Dev workflow / Workflow Orchestration
+
+### [2026-09-02] Give every fixed-prompt workflow agent an operator-notes passthrough (run wf_aa3e857e-0a7)
+- **Mistake:** The Phase 8 `verify` agent in `.claude/workflows/dev-build-and-ship.js` stalled on all 6 runtime attempts. The runtime retries a stalled agent with a byte-identical prompt, and the script's `resolutionNotes` lever covered only the Build-phase plan tasks. The verify prompt was a fixed string, so a plain resume reproduced the stall.
+- **Correction:** Added a `ctx.verifyNotes` passthrough that appends operator guidance to the verify prompt. The changed bytes forced a fresh run; the notes cut the workload (known-green facts, one command per turn) and verify passed first try.
+- **Rule:** In a workflow script, append an optional per-run notes arg to every fixed agent prompt. A stall is only recoverable by a prompt change, so every phase needs a prompt-change lever.
+- **Confirmed:** [2026-09-03] PR #795. The CI-loop phase stalled the same way; a `ciResolutionNote` hook fixed it — see the watchdog lesson below.
+
+---
+
 ## Category: CI / Workflows (continued)
 
 ### [2026-09-03] A blocking command in a workflow-agent prompt causes repeated watchdog stalls (PR #795)

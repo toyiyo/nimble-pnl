@@ -37,6 +37,12 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { isTradeExpired } from '@/lib/shiftTradeStatus';
+import { useShiftProtection } from '@/hooks/useShiftProtection';
+import {
+  PolicyWarningError,
+  tradeDeadlineFinding,
+  type PolicyFinding,
+} from '@/lib/shiftProtection';
 import {
   CheckCircle,
   XCircle,
@@ -122,6 +128,11 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
   const [selectedTrade, setSelectedTrade] = useState<ShiftTrade | null>(null);
   const [actionType, setActionType] = useState<ActionType>(null);
   const [managerNote, setManagerNote] = useState('');
+  // Shift Protection findings from a policy_warning approve response.
+  // While set, the confirm button reads "Approve anyway" and retries
+  // with the override.
+  const [policyWarnings, setPolicyWarnings] = useState<PolicyFinding[] | null>(null);
+  const { protection } = useShiftProtection(restaurantId);
   const [openSectionExpanded, setOpenSectionExpanded] = useState(true);
 
   // Claim dialog state
@@ -279,6 +290,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
     setSelectedTrade(trade);
     setActionType(action);
     setManagerNote('');
+    setPolicyWarnings(null);
   };
 
   const handleConfirm = async () => {
@@ -298,19 +310,30 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
     };
 
     if (actionType === 'approve') {
-      approveTrade(payload, {
-        onSuccess: () => {
-          setSelectedTrade(null);
-          setActionType(null);
-          setManagerNote('');
-        },
-      });
+      approveTrade(
+        // Findings shown: the second click is the explicit override.
+        { ...payload, override: policyWarnings !== null },
+        {
+          onSuccess: () => {
+            setSelectedTrade(null);
+            setActionType(null);
+            setManagerNote('');
+            setPolicyWarnings(null);
+          },
+          onError: (error) => {
+            if (error instanceof PolicyWarningError) {
+              setPolicyWarnings(error.warnings);
+            }
+          },
+        }
+      );
     } else {
       rejectTrade(payload, {
         onSuccess: () => {
           setSelectedTrade(null);
           setActionType(null);
           setManagerNote('');
+          setPolicyWarnings(null);
         },
       });
     }
@@ -320,6 +343,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
     setSelectedTrade(null);
     setActionType(null);
     setManagerNote('');
+    setPolicyWarnings(null);
   };
 
   const handleClaimAction = (claim: OpenShiftClaimWithJoins, action: 'approve' | 'reject') => {
@@ -439,6 +463,11 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
             <TradeRequestCard
               key={trade.id}
               trade={trade}
+              lateFinding={tradeDeadlineFinding(
+                protection,
+                trade.offered_shift?.start_time,
+                nowProp ?? new Date()
+              )}
               onApprove={() => handleAction(trade, 'approve')}
               onReject={() => handleAction(trade, 'reject')}
               disabled={isApproving || isRejecting}
@@ -896,7 +925,29 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                 />
               </div>
 
-              {actionType === 'approve' && (
+              {actionType === 'approve' && policyWarnings && (
+                <div
+                  role="status"
+                  className="flex items-start gap-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" aria-hidden="true" />
+                  <div className="space-y-1">
+                    <p className="text-[13px] font-semibold text-foreground">
+                      Shift protection findings
+                    </p>
+                    {policyWarnings.map((warning) => (
+                      <p key={warning.rule} className="text-[13px] text-foreground">
+                        {warning.message}
+                      </p>
+                    ))}
+                    <p className="text-[12px] text-muted-foreground">
+                      Click "Approve anyway" to approve through these findings.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {actionType === 'approve' && !policyWarnings && (
                 <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
                   <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
                   <p className="text-[13px] text-green-700 dark:text-green-300">
@@ -920,7 +971,14 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                   variant={actionType === 'approve' ? 'default' : 'destructive'}
                   className="h-9 px-4 rounded-lg text-[13px] font-medium"
                 >
-                  {renderConfirmButtonContent(actionType, isApproving || isRejecting)}
+                  {actionType === 'approve' && policyWarnings && !isApproving ? (
+                    <>
+                      <AlertCircle className="mr-2 h-4 w-4" />
+                      Approve anyway
+                    </>
+                  ) : (
+                    renderConfirmButtonContent(actionType, isApproving || isRejecting)
+                  )}
                 </Button>
               </DialogFooter>
             </div>
@@ -934,12 +992,14 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
 // Individual Trade Request Card
 interface TradeRequestCardProps {
   trade: ShiftTrade;
+  /** Client-side deadline finding for the "Late" chip; null when clean. */
+  lateFinding: PolicyFinding | null;
   onApprove: () => void;
   onReject: () => void;
   disabled: boolean;
 }
 
-const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequestCardProps) => {
+const TradeRequestCard = ({ trade, lateFinding, onApprove, onReject, disabled }: TradeRequestCardProps) => {
   if (!trade.offered_shift || !trade.offered_by || !trade.accepted_by) {
     return null;
   }
@@ -952,7 +1012,17 @@ const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequest
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-[17px] font-semibold text-foreground">{trade.offered_shift.position}</CardTitle>
+            <CardTitle className="text-[17px] font-semibold text-foreground flex items-center gap-2">
+              {trade.offered_shift.position}
+              {lateFinding && (
+                <Badge
+                  variant="outline"
+                  className="text-[11px] font-medium bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400"
+                >
+                  Late · inside the trade window
+                </Badge>
+              )}
+            </CardTitle>
             {trade.offered_shift.is_published === false && <TentativeDraftBadge />}
             <CardDescription className="text-[13px] mt-1">
               {format(shiftStart, 'EEEE, MMMM d, yyyy')}

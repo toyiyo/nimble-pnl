@@ -135,6 +135,8 @@ export interface DepositMatchBank {
   institution_name: string;
   status: string;
   data_current_through: string | null;
+  account_mask: string | null;
+  suggested_sources: Record<string, number>;
 }
 
 export interface DepositMatchReport {

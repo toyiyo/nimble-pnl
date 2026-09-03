@@ -368,6 +368,36 @@ exists, the label is "unknown". The mockup's inferred labels do not ship.
 - Bank-holiday calendars; `lag_days_max` absorbs them.
 - Cross-restaurant aggregation.
 
+## Addendum (2026-09-03, after the Phase 7d re-review)
+
+Two additions close the re-review findings. Both stay inside the adapter
+contract; no schema change.
+
+**Revel card filter (production-verified).** The stored
+`revel_payments.payment_type` column is not usable for the card filter.
+`supabase/functions/_shared/revelOrderProcessor.ts:172` writes
+`card_type ?? payment_type ?? ...` into it, so a card row carries a brand
+code and a cash row can carry the same digits. The reliable field is
+`raw_json->>'payment_type'`: on production, all 2,231 rows with a card
+brand carry the value `'2'` (credit), and cash rows carry `'1'`. The Revel
+adapter filters `raw_json->>'payment_type'` with the values from
+`p_config->'card_payment_types'`. The default is `["2"]`. The Revel
+default rule ships with `active = false`, because no measured settlement
+behavior exists for Revel.
+
+**SetupDialog gains two controls.**
+
+- An `active` switch. The plan requires inactive default rules for the
+  unproved sources (square, revel), and the owner needs a control to turn
+  a rule on after a check against the bank. A new rule from an unproved
+  source template starts with `active = false`.
+- A card tender list editor. The rule stores the tender list in
+  `source_config` because restaurants differ; without an editor, a wrong
+  list locks every item on `status_reason = 'rule_error'` with no UI
+  recovery. The editor is a simple editable value list bound to the
+  source-specific key (`card_tender_names`, `card_source_types`,
+  `card_payment_types`). It is not a raw JSON editor.
+
 ## Risks
 
 - **False alarms:** the freshness gate and the `incomplete` status block a

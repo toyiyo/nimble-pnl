@@ -80,6 +80,14 @@ gains one field:
 'account_mask', cb.account_mask,
 ```
 
+The replacement restates the exact function header from
+`supabase/migrations/20260901160000_deposit_match_refresh_engine.sql:312-318`:
+`SECURITY DEFINER`, `STABLE`, and `SET search_path = public, pg_temp`.
+`CREATE OR REPLACE FUNCTION` does not inherit these. The migration also
+restates the `REVOKE`/`GRANT` pair, per the pattern at
+`supabase/migrations/20260901160000_deposit_match_refresh_engine.sql:426-427`.
+A pgTAP test checks `prosecdef` for the function after the replace.
+
 ### TypeScript
 
 - `DepositMatchBank` gains `account_mask: string | null`.
@@ -111,12 +119,26 @@ A per-source regex, inline in the function:
 
 A source with no pattern gets no suggestion.
 
+The `focus` and `shift4` patterns are identical, so both sources point at
+the same bank. This is an accepted limitation: the descriptor identifies
+the settlement rail, not the POS product. The amber panel copy names the
+descriptor ("Shift4 deposits", "TST* deposits"), not the POS source, so the
+copy stays true for both.
+
 ### Scan shape
 
-For each connected bank, count positive `bank_transactions` rows from the
-last 90 days whose `description` matches each pattern. Keep a source only
-when the count is 3 or more. The threshold cuts one-off noise, for example
-a refund from a marketplace with a similar name.
+For each connected bank, count `bank_transactions` rows whose `description`
+matches each pattern. The row filter is: `bt.amount > 0`,
+`bt.is_transfer IS NOT TRUE` (the same candidate filter the match engine
+uses at
+`supabase/migrations/20260901160000_deposit_match_refresh_engine.sql:149`),
+and `bt.transaction_date >= CURRENT_DATE - 90`. The column is a plain
+`DATE`, so the bound uses `CURRENT_DATE`, not `now()`. Compute all
+per-source counts in one pass per bank with `count(*) FILTER (WHERE ...)`
+clauses, on the `idx_bank_transactions_bank_date` index
+(`supabase/migrations/20260723130000_connected_banks_reauth_columns.sql:52-53`).
+Keep a source only when the count is 3 or more. The threshold cuts one-off
+noise, for example a refund from a marketplace with a similar name.
 
 The `banks` payload gains one field per bank:
 
@@ -133,17 +155,41 @@ restaurant's 90-day window. Cost: a few hundred to a few thousand rows.
 - A new helper `suggestedBankForSource(banks, pos_source)` in
   `src/lib/depositMatchUi.ts` returns the bank with the highest hit count
   for the source, or `null`.
+- Both helpers are defensive against a stale payload from an old RPC
+  version: `suggestedBankForSource` reads
+  `bank.suggested_sources ?? {}`, and `bankLabel` shows the plain
+  institution name when `account_mask` is null, undefined, or empty. The
+  mask is `text`, not a fixed-width type
+  (`supabase/migrations/20260723130000_connected_banks_reauth_columns.sql:10`);
+  the helper prefixes `••` to any non-empty mask, at any length.
+- A display-label map gives the panel its descriptor name: `focus` and
+  `shift4` show "Shift4", `toast` shows "TST*", `square` shows "SQ*",
+  `clover` shows "Clover".
 
 ### UI (SetupDialog)
 
 - The dropdown option of a suggested bank gets a `Suggested` badge
-  (`text-[11px] px-1.5 py-0.5 rounded-md bg-muted` per the CLAUDE.md badge
-  scale).
+  (`text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-foreground`,
+  matching the tender chip at
+  `src/components/deposit-match/SetupDialog.tsx:406`).
+- The shadcn `SelectItem` passes its children into
+  `SelectPrimitive.ItemText` (`src/components/ui/select.tsx:107-124`).
+  Radix mirrors `ItemText` into the closed trigger, so a badge placed in
+  the children leaks into the trigger. The bank list therefore uses a
+  small local `BankSelectItem` built on `SelectPrimitive.Item`: the
+  `ItemText` holds only the label from `bankLabel(bank)`, and the badge is
+  a decorative sibling with `aria-hidden="true"`. It copies the shadcn
+  item classes. The shared `src/components/ui/select.tsx` stays unchanged.
 - When a suggestion exists and the picked bank differs from it, show an
-  amber panel under the picker:
-  "We see deposits that match `toast` in Mercury ••9510." with a button
-  "Use this bank". The button sets `connected_bank_id`. The panel uses the
-  house amber suggestion classes.
+  amber panel under the picker: "We see Shift4 deposits in Mercury ••9866."
+  with a button "Use this bank". The button sets `connected_bank_id`. The
+  panel uses the house amber suggestion classes.
+- The panel renders as an `<output>` element, which carries the implicit
+  `status` role, so a screen reader announces its appearance. This follows
+  the PR #795 precedent for the verdict banner.
+- The "Use this bank" button uses the secondary style from CLAUDE.md:
+  `h-8 px-3 rounded-lg text-[13px] font-medium`, amber-tinted text to
+  match the panel.
 - The suggestion never auto-selects a bank. The user stays in control.
 - The panel is hidden when no suggestion exists, or when the suggested bank
   is already picked.
@@ -154,15 +200,30 @@ restaurant's 90-day window. Cost: a few hundred to a few thousand rows.
   pattern changes engine match semantics — a recorded lesson
   (`memory/lessons.md`, 2026-09-03, "A review fix that changes engine
   semantics silently breaks the test seed premise").
-- No new index. The `restaurant_id` index bounds the scan.
+- No new index. The `idx_bank_transactions_bank_date` index bounds the scan.
 - No Revel pattern until a real descriptor is confirmed in production.
+
+## Decided trade-offs
+
+- The dialog footer stays non-sticky
+  (`src/components/deposit-match/SetupDialog.tsx:296` and `:511`). The new
+  panel can push the footer below the fold on a small viewport. The dialog
+  already scrolls inside `max-h-[80vh]`, and a sticky footer is a separate
+  change for every dialog in the app. Accepted for consistency.
+- The `focus` and `shift4` sources share one pattern, so one bank can carry
+  a suggestion for both. The panel copy names the descriptor, not the POS
+  source, so the copy stays true. Accepted; a per-processor mapping is a
+  later change.
 
 ## Tests
 
 - pgTAP (`supabase/tests/deposit_match_report_banks_test.sql`): seed a bank
   with `account_mask` and 3+ transactions with a `TST*` description. Check
   the payload carries `account_mask` and `suggested_sources` with the
-  count. Check the threshold: 2 matching rows produce no suggestion.
+  count. Check the threshold both ways: 2 matching rows produce no
+  suggestion, and exactly 3 rows produce one. Check the dual-source case:
+  3+ `SHIFT4` rows put both `focus` and `shift4` in `suggested_sources`.
+  Check `prosecdef` and the search path on the replaced function.
 - Unit (`tests/unit/depositMatchUi.test.ts`): `bankLabel` with and without
   a mask; `suggestedBankForSource` picks the highest count, returns `null`
   for an unknown source and an empty bank list.
@@ -170,7 +231,8 @@ restaurant's 90-day window. Cost: a few hundred to a few thousand rows.
   new fields through.
 - Unit (`tests/unit/SetupDialog.test.tsx`): badge shows on the suggested
   option; amber panel shows and its button picks the bank; panel hides when
-  the suggested bank is picked.
+  the suggested bank is picked; the "Use this bank" button works with the
+  keyboard only (Tab to focus, Enter to activate).
 - E2E (`tests/e2e/deposit-match.spec.ts`): seed the bank with
   `account_mask: '9510'` and give the seeded transaction a `TST*`
   description plus two more `TST*` rows. Check the option label shows

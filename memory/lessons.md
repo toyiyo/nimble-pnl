@@ -3164,7 +3164,7 @@
 
 ## Category: CI / Workflows (continued)
 
-### [2026-09-03] A blocking command in a workflow-agent prompt is a stall factory (PR #795)
+### [2026-09-03] A blocking command in a workflow-agent prompt causes repeated watchdog stalls (PR #795)
 - **Mistake:** The CI-loop prompt in `.claude/workflows/dev-build-and-ship.js` said: "Run: gh pr checks --watch (blocks until checks finish)". The watch blocks 15+ minutes with no tool call. The workflow watchdog kills an agent after 180 s without a tool call. The runtime retried six times with the identical prompt and reproduced the identical stall — ~269k tokens gone. Build task-3 died the same way earlier: whole-file reads plus one long response.
 - **Correction:** Fixed the CI red myself in the main session. Then added a `ciResolutionNote` hook into the CI-loop prompt and resumed the run. The note forbids blocking watches and requires single bounded polls (`gh pr checks` with a Bash timeout of 120000 ms or less).
 - **Rule:** Never put a blocking watch in a workflow-agent prompt; each poll must be one bounded tool call. Give EVERY phase a resolution-note hook — the resume cache keys on (prompt, opts), so a phase without a hook replays its stall verbatim. When a phase stalls, diagnose and fix in the main session first, then resume with a note that records the fix.
@@ -3196,7 +3196,7 @@
 
 ### [2026-09-03] A new timing check breaks sibling suites that seed past-dated fixtures (PR #794)
 - **Mistake:** `approve_shift_trade` gained a `shift_started` re-check. Suite 65 seeded its shifts at the literal date `'2026-09-01 09:00:00+00'`. The calendar passed that date, the new check fired, and the suite's `success = true` assertion failed in CI only.
-- **Correction:** Seeded the fixture shifts at `now() + interval '3..6 days'`. Then grepped every suite for date literals and read each one: only a suite that asserts success on a timing-checked function needs relative dates; RLS-only suites do not.
+- **Correction:** Seeded the fixture shifts at `now() + interval '3 days'` up to `now() + interval '6 days'`, one day apart. Then grepped every suite for date literals and read each one: only a suite that asserts success on a timing-checked function needs relative dates; RLS-only suites do not.
 - **Rule:** When you add a timing check to a SQL function, grep `supabase/tests/` for `'20[0-9][0-9]-` and audit every suite that calls the function. Convert the fixtures that assert success to relative dates. Write new fixtures with relative dates from the start.
 
 ## Category: Testing / Unit
@@ -3206,7 +3206,7 @@
 - **Correction:** Added `vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'))` to the file, the same shared helper the other component tests use.
 - **Rule:** Before you push a change that adds a hook to a page or component, grep `tests/unit/` for files that import that page. Add the shared mock to each one and run those files locally.
 
-## Category: CI / Workflows
+## Category: CI / Workflows (continued)
 
 ### [2026-09-03] The pr-comment-response gate parses a verdict format — prose replies do not count (PR #794)
 - **Mistake:** Review replies read "Fixed in c60e3cd. ..." — clear to a human, invisible to the gate. `dev-tools/pr-triage.js` accepts a reply only when it carries the `<!-- pr-triage: agreed -->` marker or its first line opens with a verdict word ("Agreed — ..."), plus a backticked commit sha (≥7 hex chars) that exists on the PR. The check stayed red after the replies.
@@ -3218,4 +3218,4 @@
 ### [2026-09-03] Wire a feature into the ROUTED component, not the best-named one (PR #794)
 - **Mistake:** The trade-accept warning went into `TradeMarketplace` — the component whose name matches the feature. A repo search showed no route mounts it; `/employee/shifts` renders `AvailableShiftsPage`, so employees never saw the warning. Codex flagged it as a P1.
 - **Correction:** Moved the gate into `AvailableShiftsPage.handleAcceptTrade` (confirm dialog + block handling) and kept the `TradeMarketplace` panel for parity.
-- **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A well-named orphan component passes its own tests and ships nothing.
+- **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A component that no route renders passes its own tests, but users never see it.

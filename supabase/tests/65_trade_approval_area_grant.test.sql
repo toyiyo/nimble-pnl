@@ -100,7 +100,10 @@ INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, positi
   ('65000000-0000-0000-0000-000000000042', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', now() + interval '4 days', now() + interval '4 days 8 hours', 'Server', 30),
   ('65000000-0000-0000-0000-000000000043', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', now() + interval '5 days', now() + interval '5 days 8 hours', 'Server', 30),
   ('65000000-0000-0000-0000-000000000044', '65000000-0000-0000-0000-000000000001', '65000000-0000-0000-0000-000000000021', now() + interval '6 days', now() + interval '6 days 8 hours', 'Server', 30)
-ON CONFLICT (id) DO UPDATE SET position = 'Server';
+ON CONFLICT (id) DO UPDATE SET
+  start_time = EXCLUDED.start_time,
+  end_time = EXCLUDED.end_time,
+  position = EXCLUDED.position;
 
 DELETE FROM shift_trades WHERE restaurant_id = '65000000-0000-0000-0000-000000000001';
 

@@ -121,9 +121,12 @@ describe('TimeOffRequestDialog — Shift Protection branches', () => {
   });
 
   it('shows the same-day count line at the limit', () => {
+    // One computed date for both fields: a second dateOnly(30) call could
+    // land after UTC midnight and split the count day from the request day.
+    const targetDate = dateOnly(30);
     policyState.protection = { timeoff_sameday_mode: 'warn', timeoff_sameday_limit: 2 };
-    policyState.dayCounts = [{ day: dateOnly(30), approved_count: 2 }];
-    renderDialog(makeRequest(30));
+    policyState.dayCounts = [{ day: targetDate, approved_count: 2 }];
+    renderDialog({ ...makeRequest(30), start_date: targetDate, end_date: targetDate });
 
     expect(screen.getByRole('status')).toHaveTextContent(
       '2 coworkers with the same position already have approved time off'

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatCurrency } from '@/lib/utils';
@@ -26,6 +26,25 @@ export function DailyLedger({ report, onSelectItem }: DailyLedgerProps) {
     setActiveTab((current) => pickActiveTab(report.streams, current));
   }, [report.streams]);
 
+  // One grouping pass per `report.ledger` change, not a fresh filter+sort
+  // of the whole ledger for every stream on every render (performance
+  // review, 2026-09-02).
+  const rowsByStream = useMemo(() => {
+    const map = new Map<string, DepositMatchLedgerRow[]>();
+    for (const row of report.ledger) {
+      const rows = map.get(row.rule_id);
+      if (rows) {
+        rows.push(row);
+      } else {
+        map.set(row.rule_id, [row]);
+      }
+    }
+    for (const rows of map.values()) {
+      rows.sort((a, b) => a.business_date.localeCompare(b.business_date));
+    }
+    return map;
+  }, [report.ledger]);
+
   if (report.streams.length === 0 || !activeTab) {
     return (
       <div className="rounded-xl border border-border/40 bg-muted/30 p-6 text-center">
@@ -48,10 +67,7 @@ export function DailyLedger({ report, onSelectItem }: DailyLedgerProps) {
         ))}
       </TabsList>
       {report.streams.map((stream) => {
-        const rows = report.ledger
-          .filter((row) => row.rule_id === stream.rule_id)
-          .slice()
-          .sort((a, b) => a.business_date.localeCompare(b.business_date));
+        const rows = rowsByStream.get(stream.rule_id) ?? [];
 
         return (
           <TabsContent key={stream.rule_id} value={stream.rule_id} className="mt-3">

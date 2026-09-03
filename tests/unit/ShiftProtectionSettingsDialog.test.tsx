@@ -103,10 +103,13 @@ describe('ShiftProtectionSettingsDialog', () => {
     expect(mockRefetch).toHaveBeenCalled();
   });
 
-  it('disables Save and shows the message for a zero threshold', () => {
+  it.each([
+    ['a zero threshold', '0'],
+    ['a decimal threshold', '1.5'],
+  ])('disables Save and shows the message for %s', (_label, value) => {
     renderDialog();
 
-    fireEvent.change(screen.getByLabelText('Trade deadline hours'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('Trade deadline hours'), { target: { value } });
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Every threshold needs a whole number above zero.'

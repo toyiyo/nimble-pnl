@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
+import {
+  signUpAndCreateRestaurant,
+  exposeSupabaseHelpers,
+  generateTestUser,
+  type E2EHelperWindow,
+} from '../helpers/e2e-supabase';
 
 /**
  * Shift Protection E2E (warn mode, end to end):
@@ -22,12 +27,12 @@ test.describe('Shift Protection (warn rules)', () => {
     await signUpAndCreateRestaurant(page, owner);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId()); // any: test helper injected by exposeSupabaseHelpers
+    const restaurantId = await page.evaluate(() => (window as E2EHelperWindow).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
     // Seed: one employee and the warn rule.
     await page.evaluate(async ({ restId }) => {
-      const supabase = (window as any).__supabase; // any: test helper injected by exposeSupabaseHelpers
+      const supabase = (window as E2EHelperWindow).__supabase;
       const userId = (await supabase.auth.getUser()).data.user?.id;
       if (!userId) throw new Error('No session');
 
@@ -54,7 +59,7 @@ test.describe('Shift Protection (warn rules)', () => {
     await expect(dialog).toBeVisible({ timeout: 10000 });
 
     // Pick the employee.
-    await dialog.locator('#employee').click();
+    await dialog.getByLabel(/employee/i).click();
     await page.getByRole('option', { name: /riley server/i }).click();
 
     // Pick dates (mid-month days are always clickable — see
@@ -69,7 +74,7 @@ test.describe('Shift Protection (warn rules)', () => {
 
     // The warning panel appears and names the notice rule, and the submit
     // stays enabled (warn mode).
-    const warningPanel = dialog.locator('#time-off-policy-warning');
+    const warningPanel = dialog.getByRole('status');
     await expect(warningPanel).toBeVisible({ timeout: 10000 });
     await expect(warningPanel).toContainText(/days of notice/i);
 
@@ -97,7 +102,7 @@ test.describe('Shift Protection (warn rules)', () => {
       .poll(
         async () =>
           page.evaluate(async (restId: string) => {
-            const supabase = (window as any).__supabase; // any: test helper injected by exposeSupabaseHelpers
+            const supabase = (window as E2EHelperWindow).__supabase;
             const { data } = await supabase
               .from('time_off_requests')
               .select('status')

@@ -90,7 +90,9 @@ function ThresholdInput({
         type="number"
         min={1}
         value={Number.isNaN(value) ? '' : value}
-        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        onChange={(e) =>
+          onChange(e.currentTarget.value === '' ? Number.NaN : e.currentTarget.valueAsNumber)
+        }
         className="h-10 w-16 text-[14px] bg-muted/30 border-border/40 rounded-lg text-center focus-visible:ring-1 focus-visible:ring-border"
         aria-label={label}
       />

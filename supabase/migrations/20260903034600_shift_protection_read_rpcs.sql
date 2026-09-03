@@ -132,6 +132,7 @@ BEGIN
    AND EXISTS (
      SELECT 1 FROM employees oe
      WHERE oe.id = tor.employee_id
+       AND oe.restaurant_id = p_restaurant_id
        AND oe.position = v_position
    )
   GROUP BY d::date

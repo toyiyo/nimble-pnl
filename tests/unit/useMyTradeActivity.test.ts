@@ -81,7 +81,7 @@ describe('useMyTradeActivity', () => {
     vi.clearAllMocks();
   });
 
-  it('builds the query with restaurant eq, TWO sibling or-groups, status IN, and created_at desc order', async () => {
+  it('builds the query with restaurant eq, THREE sibling or-groups, and created_at desc order', async () => {
     const builder = createSelectQueryBuilder([makeTrade({})]);
     mockSupabase.from.mockReturnValue(builder);
 
@@ -92,19 +92,18 @@ describe('useMyTradeActivity', () => {
 
     expect(mockSupabase.from).toHaveBeenCalledWith('shift_trades');
     expect(builder.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
-    expect(builder.in).toHaveBeenCalledWith('status', [
-      'open',
-      'pending_approval',
-      'approved',
-      'rejected',
-    ]);
     expect(builder.order).toHaveBeenCalledWith('created_at', { ascending: false });
 
-    // The two or-groups MUST be separate sibling calls (AND-ed by PostgREST).
-    expect(builder.or).toHaveBeenCalledTimes(2);
+    // The or-groups MUST be separate sibling calls (AND-ed by PostgREST).
+    // Group 2 replaces the old status IN: the active statuses OR an
+    // auto-expired cancel (Shift Protection expiry stays visible).
+    expect(builder.or).toHaveBeenCalledTimes(3);
     const orArgs = builder.or.mock.calls.map((c) => c[0] as string);
     expect(orArgs[0]).toBe('offered_by_employee_id.eq.emp-1,accepted_by_employee_id.eq.emp-1');
-    expect(orArgs[1]).toMatch(/^reviewed_at\.is\.null,reviewed_at\.gte\./);
+    expect(orArgs[1]).toBe(
+      'status.in.(open,pending_approval,approved,rejected),and(status.eq.cancelled,manager_note.eq.auto_expired)'
+    );
+    expect(orArgs[2]).toMatch(/^reviewed_at\.is\.null,reviewed_at\.gte\./);
   });
 
   it('computes the resolved-window cutoff ~7 days back, inside queryFn', async () => {
@@ -118,7 +117,7 @@ describe('useMyTradeActivity', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     const after = Date.now();
 
-    const windowArg = builder.or.mock.calls.map((c) => c[0] as string)[1];
+    const windowArg = builder.or.mock.calls.map((c) => c[0] as string)[2];
     const iso = windowArg.replace('reviewed_at.is.null,reviewed_at.gte.', '');
     const cutoff = new Date(iso).getTime();
     const sevenDays = 7 * 24 * 60 * 60 * 1000;

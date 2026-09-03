@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { AUTO_EXPIRED_NOTE } from '@/lib/shiftTradeStatus';
+import {
+  PolicyWarningError,
+  shiftProtectionErrorToast,
+  throwIfPolicyBlocked,
+  type RpcPolicyResult,
+} from '@/lib/shiftProtection';
 
 export interface ShiftTrade {
   id: string;
@@ -94,10 +101,10 @@ const executeShiftTradeAction = async ({
 
   if (error) throw error;
 
-  const result = data as { success?: boolean; error?: string } | null;
-  if (!result || !result.success) {
-    throw new Error(result?.error || failureMessage);
-  }
+  // A policy_warning response throws PolicyWarningError (findings attached)
+  // BEFORE the notification call, so no email fires for a blocked action.
+  const result = data as RpcPolicyResult | null;
+  throwIfPolicyBlocked(result, failureMessage);
 
   await sendShiftTradeNotification(tradeId, action);
 
@@ -196,13 +203,20 @@ export const useShiftTrades = (
 };
 
 /** Statuses shown in the "My shift trades" activity view. `cancelled` is
- * deliberately excluded — the poster withdrew it themselves. */
+ * deliberately excluded — the poster withdrew it themselves. The one
+ * exception is an AUTO-EXPIRED trade (cancelled + manager_note
+ * 'auto_expired', set only by expire_stale_shift_trades): the poster must
+ * see that nobody accepted and the shift is still theirs. */
 const MY_TRADE_ACTIVITY_STATUSES: ShiftTradeStatus[] = [
   'open',
   'pending_approval',
   'approved',
   'rejected',
 ];
+
+const MY_TRADE_ACTIVITY_STATUS_FILTER =
+  `status.in.(${MY_TRADE_ACTIVITY_STATUSES.join(',')}),` +
+  `and(status.eq.cancelled,manager_note.eq.${AUTO_EXPIRED_NOTE})`;
 
 /**
  * Trades the employee is a party to (poster or claimant), across the active
@@ -272,7 +286,11 @@ export const useMyTradeActivity = (
         .or(
           `offered_by_employee_id.eq.${employeeId},accepted_by_employee_id.eq.${employeeId}`
         )
-        .in('status', MY_TRADE_ACTIVITY_STATUSES)
+        // Sibling .or() params AND together (see the comment above), so
+        // this stays one OR group: the active statuses, or an auto-expired
+        // cancel. Auto-expiry sets reviewed_at, so the recency window below
+        // bounds expired rows the same way as approved/rejected ones.
+        .or(MY_TRADE_ACTIVITY_STATUS_FILTER)
         .or(`reviewed_at.is.null,reviewed_at.gte.${cutoffIso}`)
         .order('created_at', { ascending: false });
 
@@ -340,9 +358,10 @@ export const useCreateShiftTrade = () => {
       });
     },
     onError: (error: Error) => {
+      const blocked = shiftProtectionErrorToast(error);
       toast({
-        title: 'Error posting trade',
-        description: error.message,
+        title: blocked?.title ?? 'Error posting trade',
+        description: blocked?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -390,9 +409,10 @@ export const useCreateShiftTradeForEmployee = () => {
       });
     },
     onError: (error: Error) => {
+      const blocked = shiftProtectionErrorToast(error);
       toast({
-        title: 'Error posting trade',
-        description: error.message,
+        title: blocked?.title ?? 'Error posting trade',
+        description: blocked?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -454,10 +474,13 @@ export const useApproveShiftTrade = () => {
       tradeId,
       managerNote,
       managerUserId,
+      override,
     }: {
       tradeId: string;
       managerNote?: string;
       managerUserId: string;
+      /** Retry through a policy_warning response ("Approve anyway"). */
+      override?: boolean;
     }) => {
       return executeShiftTradeAction({
         rpc: 'approve_shift_trade',
@@ -465,6 +488,7 @@ export const useApproveShiftTrade = () => {
           p_trade_id: tradeId,
           p_manager_user_id: managerUserId,
           p_manager_note: managerNote || null,
+          p_override: override ?? false,
         },
         tradeId,
         action: 'approved',
@@ -480,6 +504,9 @@ export const useApproveShiftTrade = () => {
       });
     },
     onError: (error: Error) => {
+      // A PolicyWarningError is not a failure toast: the approval queue
+      // renders the findings with an "Approve anyway" action instead.
+      if (error instanceof PolicyWarningError) return;
       toast({
         title: 'Error approving trade',
         description: error.message,

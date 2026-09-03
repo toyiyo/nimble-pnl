@@ -18,9 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
 import { useCreateShiftTrade, useCreateShiftTradeForEmployee } from '@/hooks/useShiftTrades';
+import { useShiftProtection } from '@/hooks/useShiftProtection';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useEmployees } from '@/hooks/useEmployees';
-import { ArrowRightLeft, Users, Loader2 } from 'lucide-react';
+import { ArrowRightLeft, Users, Loader2, Shield } from 'lucide-react';
+import { tradeDeadlineFinding } from '@/lib/shiftProtection';
 
 interface Shift {
   id: string;
@@ -61,6 +65,15 @@ export const TradeRequestDialog = ({
   const { mutate: createTrade, isPending } = isManagerMode ? managerMutation : selfMutation;
 
   const { employees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId);
+
+  // Shift Protection: the deadline rule for this shift. Manager mode and
+  // any edit:scheduling holder are exempt from block, matching the
+  // server triggers (an owner who posts their own shift stays exempt).
+  const { protection } = useShiftProtection(restaurantId);
+  const { hasCapability, isResolved } = usePermissions();
+  const isExempt = isManagerMode || (isResolved && hasCapability('edit:scheduling'));
+  const deadlineFinding = tradeDeadlineFinding(protection, shift?.start_time, new Date());
+  const postBlocked = deadlineFinding?.mode === 'block' && !isExempt;
 
   // The offerer is the on-behalf employee in manager mode, else the signed-in
   // employee.
@@ -154,7 +167,7 @@ export const TradeRequestDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
@@ -188,6 +201,28 @@ export const TradeRequestDialog = ({
             </p>
           </div>
         </div>
+
+        {deadlineFinding && (
+          <ShiftProtectionWarning
+            id="trade-policy-warning"
+            messages={[deadlineFinding.message]}
+            footnote={
+              postBlocked
+                ? 'A shift protection rule blocks this trade. Ask your manager to post it for you.'
+                : 'Your manager sees this warning with the trade.'
+            }
+          />
+        )}
+
+        {!isManagerMode && (
+          <div className="flex gap-2.5 p-3 rounded-lg bg-muted/50 border border-border/40">
+            <Shield className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-[13px] text-foreground leading-relaxed">
+              <span className="font-semibold">This shift stays yours</span> until a manager
+              approves the trade. If nobody accepts, you work it.
+            </p>
+          </div>
+        )}
 
         {/* Trade Type Selection */}
         <div className="space-y-4">
@@ -269,8 +304,9 @@ export const TradeRequestDialog = ({
           <Button
             onClick={handleSubmit}
             disabled={
-              isPending || (tradeType === 'directed' && !targetEmployeeId)
+              isPending || postBlocked || (tradeType === 'directed' && !targetEmployeeId)
             }
+            aria-describedby={postBlocked ? 'trade-policy-warning' : undefined}
             className="min-w-[120px]"
           >
             {isPending ? (

@@ -51,6 +51,12 @@ export function ReviewDayDialog({ item, open, onOpenChange, restaurantId, onDisp
 
   const gap = item ? item.expected_amount - item.received_amount - item.fee_amount : 0;
 
+  function gapLabel(value: number): string {
+    if (value > 0.005) return `Short ${formatCurrency(value)}`;
+    if (value < -0.005) return `Over ${formatCurrency(-value)}`;
+    return 'No gap';
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg p-0 gap-0 border-border/40">
@@ -72,7 +78,7 @@ export function ReviewDayDialog({ item, open, onOpenChange, restaurantId, onDisp
             <div className="flex items-center justify-between">
               <StatusChip status={item.status} />
               <p className="text-[14px] font-medium text-foreground">
-                {gap > 0.005 ? `Short ${formatCurrency(gap)}` : gap < -0.005 ? `Over ${formatCurrency(-gap)}` : 'No gap'}
+                {gapLabel(gap)}
               </p>
             </div>
             <div className="grid grid-cols-3 gap-3 text-[13px]">

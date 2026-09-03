@@ -3139,6 +3139,7 @@
 - **Mistake:** Every push to PR #786 re-ran `pr-comment-response`, which failed whenever a review comment lacked a verdict reply at that moment. Fix commits pushed before the triage replies guaranteed one extra red round.
 - **Correction:** Reordered the loop: fix → commit → reply to each comment with the SHA (`node dev-tools/pr-triage.js reply --commit <sha>`) → push. The push then triggers the gate with every comment already answered. The audit reports "cites an unknown commit" for an unpushed SHA — that reason clears on push; re-run `audit` after the push to confirm 0 unanswered.
 - **Rule:** Post the triage replies between the local commit and the push. A reply may cite a not-yet-pushed SHA; push immediately after so the citation resolves. Never push a fix and plan to reply "later" — that push burns a full CI round on a known-red gate.
+- **Confirmed:** [2026-09-03] PR #795. The CI-loop agent pushed fix commits with no replies. The gate stayed red until the resumed agent posted the replies and re-ran the audit.
 
 ---
 
@@ -3157,6 +3158,7 @@
 - **Mistake:** Three watch/poll attempts on PR #786 died with `Post "https://api.github.com/graphql": net/http: TLS handshake timeout`. Piping the output (`gh pr checks | sort | uniq`) made `$?` report the LAST command in the pipe, so the shell printed exit 0 over a dead API call.
 - **Correction:** Replaced the watch with a capped background retry loop: up to 25 attempts, 90s apart, each attempt writes the full check table to a file, exits when no line contains `pending`. The loop treats a `Post "https` line in the output as a failed attempt and retries.
 - **Rule:** Do not trust `$?` after a pipe — grep the captured output for the error string instead. For CI waits on a flaky network, run a capped retry loop in the background (bounded attempts, bounded sleep) and read the result file; a single `--watch` is one TLS hiccup away from silent death. Cap every loop — this machine has no `timeout`/`gtimeout`.
+- **Confirmed:** [2026-09-03] PR #795. `gh pr checks --watch` also trips the workflow 180 s watchdog — see the watchdog lesson below.
 
 ---
 
@@ -3180,3 +3182,64 @@
 - **Mistake:** The Phase 8 `verify` agent in `.claude/workflows/dev-build-and-ship.js` stalled on all 6 runtime attempts. The runtime retries a stalled agent with a byte-identical prompt, and the script's `resolutionNotes` lever covered only the Build-phase plan tasks. The verify prompt was a fixed string, so a plain resume reproduced the stall.
 - **Correction:** Added a `ctx.verifyNotes` passthrough that appends operator guidance to the verify prompt. The changed bytes forced a fresh run; the notes cut the workload (known-green facts, one command per turn) and verify passed first try.
 - **Rule:** In a workflow script, append an optional per-run notes arg to every fixed agent prompt. A stall is only recoverable by a prompt change, so every phase needs a prompt-change lever.
+- **Confirmed:** [2026-09-03] PR #795. The CI-loop phase stalled the same way; a `ciResolutionNote` hook fixed it — see the watchdog lesson below.
+
+---
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] A blocking command in a workflow-agent prompt causes repeated watchdog stalls (PR #795)
+- **Mistake:** The CI-loop prompt in `.claude/workflows/dev-build-and-ship.js` said: "Run: gh pr checks --watch (blocks until checks finish)". The watch blocks 15+ minutes with no tool call. The workflow watchdog kills an agent after 180 s without a tool call. The runtime retried six times with the identical prompt and reproduced the identical stall — ~269k tokens gone. Build task-3 died the same way earlier: whole-file reads plus one long response.
+- **Correction:** Fixed the CI red myself in the main session. Then added a `ciResolutionNote` hook into the CI-loop prompt and resumed the run. The note forbids blocking watches and requires single bounded polls (`gh pr checks` with a Bash timeout of 120000 ms or less).
+- **Rule:** Never put a blocking watch in a workflow-agent prompt; each poll must be one bounded tool call. Give EVERY phase a resolution-note hook — the resume cache keys on (prompt, opts), so a phase without a hook replays its stall verbatim. When a phase stalls, diagnose and fix in the main session first, then resume with a note that records the fix.
+
+### [2026-09-03] A workflow resume needs the previous args verbatim (PR #795)
+- **Mistake:** The resume args carry every prior resolution note. A one-character drift in any note changes that agent's prompt, misses the cache, and re-runs a finished phase live.
+- **Correction:** Recovered the exact previous args from the session transcript (`grep resumeFromRunId ~/.claude/projects/<session>.jsonl`), then added only the new note.
+- **Rule:** Before a resume, recover the previous `args` verbatim from the transcript or the task output file. Add new keys; never retype old ones.
+
+---
+
+## Category: Domain — POS Integrations
+
+### [2026-09-03] `revel_payments.payment_type` does not hold the payment type (PR #795)
+- **Mistake:** The deposit-match Revel adapter first filtered card rows on the stored `payment_type` column. That column is polluted: `supabase/functions/_shared/revelOrderProcessor.ts:172` writes `card_type ?? payment_type ?? ...` into it, so a cash row and a card row can carry the same digits.
+- **Correction:** Filter on `raw_json->>'payment_type'` instead. Production evidence: all 2,231 rows with a card brand carry `raw_json->>'payment_type' = '2'`; cash rows carry `'1'`.
+- **Rule:** Before you filter on a POS mirror column, read the order-processor line that writes it. When the processor coalesces two source fields into one column, filter on `raw_json` and say why in a function comment.
+
+---
+
+## Category: Testing / Playwright E2E (continued)
+
+### [2026-09-03] A review fix that changes engine semantics silently breaks the test seed premise (PR #795)
+- **Mistake:** Commit 901ecb89 (a Codex review finding) widened the deposit-match accepted gap to the rule fee band. The e2e seed ($196 deposit on $200 sales, a 2% implied fee) then sat INSIDE the band, the day settled `matched_net`, and the "needs attention" assertion failed on both CI runs. The commit went out without a local run of the dependent spec.
+- **Correction:** Re-seeded the test outside the new band ($150 deposit, 25% implied fee → no link → `late`) and asserted the Late path. Ran the spec locally (2/2 in 19 s) before the push.
+- **Rule:** A test seed encodes a premise about the engine's thresholds. After any fix that moves a threshold or a band, list the tests whose seeds sit near it and run them locally before the push. A deterministic both-runs CI failure on your own spec means the premise moved, not the infrastructure.
+
+## Category: Testing / pgTAP Fixtures
+
+### [2026-09-03] A new timing check breaks sibling suites that seed past-dated fixtures (PR #794)
+- **Mistake:** `approve_shift_trade` gained a `shift_started` re-check. Suite 65 seeded its shifts at the literal date `'2026-09-01 09:00:00+00'`. The calendar passed that date, the new check fired, and the suite's `success = true` assertion failed in CI only.
+- **Correction:** Seeded the fixture shifts at `now() + interval '3 days'` up to `now() + interval '6 days'`, one day apart. Then grepped every suite for date literals and read each one: only a suite that asserts success on a timing-checked function needs relative dates; RLS-only suites do not.
+- **Rule:** When you add a timing check to a SQL function, grep `supabase/tests/` for `'20[0-9][0-9]-` and audit every suite that calls the function. Convert the fixtures that assert success to relative dates. Write new fixtures with relative dates from the start.
+
+## Category: Testing / Unit
+
+### [2026-09-03] A new React Query hook in a page breaks every test file that renders the page (PR #794)
+- **Mistake:** A review fix added `useShiftProtection` to `AvailableShiftsPage`. `tests/unit/AvailableShiftsPage.tradeCard.test.tsx` renders the full page without a `QueryClientProvider`. All 12 tests failed in CI with `No QueryClient set, use QueryClientProvider to set one` — the Unit job and all three Timezone Matrix jobs went red at once.
+- **Correction:** Added `vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'))` to the file, the same shared helper the other component tests use.
+- **Rule:** Before you push a change that adds a hook to a page or component, grep `tests/unit/` for files that import that page. Add the shared mock to each one and run those files locally.
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] The pr-comment-response gate parses a verdict format — prose replies do not count (PR #794)
+- **Mistake:** Review replies read "Fixed in c60e3cd. ..." — clear to a human, invisible to the gate. `dev-tools/pr-triage.js` accepts a reply only when it carries the `<!-- pr-triage: agreed -->` marker or its first line opens with a verdict word ("Agreed — ..."), plus a backticked commit sha (≥7 hex chars) that exists on the PR. The check stayed red after the replies.
+- **Correction:** Posted marker-format replies: `<!-- pr-triage: agreed -->` newline `**✅ Agreed** — <rationale ≥10 chars>. Fixed in \`<sha>\`.` Also note the re-audit path: the `*/30` cron fires only every 2-3 hours in practice, and `workflow_dispatch` returns 403 for the bot token — the reliable trigger is the next push (`pull_request_target: synchronize`).
+- **Rule:** Write every review reply in the pr-triage format from the start: the marker line, the verdict word, a rationale, and the backticked sha. Follow the 2026-08-31 lesson's order — fix, commit, reply, push — so the push both carries the fix and re-runs the gate.
+
+## Category: Frontend / Routing
+
+### [2026-09-03] Wire a feature into the ROUTED component, not the best-named one (PR #794)
+- **Mistake:** The trade-accept warning went into `TradeMarketplace` — the component whose name matches the feature. A repo search showed no route mounts it; `/employee/shifts` renders `AvailableShiftsPage`, so employees never saw the warning. Codex flagged it as a P1.
+- **Correction:** Moved the gate into `AvailableShiftsPage.handleAcceptTrade` (confirm dialog + block handling) and kept the `TradeMarketplace` panel for parity.
+- **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A component that no route renders passes its own tests, but users never see it.

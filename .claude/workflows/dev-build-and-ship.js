@@ -663,6 +663,12 @@ if (postSnap.diff && postSnap.diff.trim()) {
         'PHASE 7d (fold re-review). The findings below come from re-reviewing code committed AFTER the main review pass. Deduplicate by file:line. FIX actionable critical/major findings and commit ("fix(review): <area> — addresses <reviewer> re-review"). ' +
           'Fix trivially-safe minors too; return EVERY unfixed minor/info in `deferred[]` with a reason. Never discard a finding silently. ' +
           'If a fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human — do NOT improvise.\n\n' +
+          // Same pattern as ctx.foldResolutionNote in Phase 7b: a distinct note
+          // re-keys the agent cache, so resumeFromRunId re-runs a halted 7d
+          // fold instead of replaying its cached halt.
+          (ctx.reFoldResolutionNote
+            ? 'RESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.reFoldResolutionNote + '\n\n'
+            : '') +
           '=== findings JSON ===\n' + JSON.stringify(reFindings),
       ),
       { label: 're-review-fold', phase: 'Review', schema: DEFERRED },
@@ -729,7 +735,10 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
       `PHASE 9b (CI) iteration ${it}/5 for PR #${PR}. Run: gh pr checks ${PR} --watch (blocks until checks finish). Then run dev-tools/refresh-queue.sh --pr ${PR} --skip-tests and check the SonarCloud quality gate (poll up to 3x with 60s gaps if Sonar lags CI).\n` +
         '- If all checks pass AND the Sonar gate passes (or Sonar is unconfigured — note it), return ciGreen=true.\n' +
         '- If checks fail, fix the actionable failures, commit, push, and return ciGreen=false (we re-run).\n' +
-        '- If a review item genuinely needs human clarification, return status=needs_human with the items.',
+        '- If a review item genuinely needs human clarification, return status=needs_human with the items.' +
+        (ctx.ciResolutionNote
+          ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.ciResolutionNote
+          : ''),
     ),
     { label: `ci:${it}`, phase: 'CI Loop', schema: statusSchema({ ciGreen: { type: 'boolean' } }, ['ciGreen']) },
   )

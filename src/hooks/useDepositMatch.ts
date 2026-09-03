@@ -28,6 +28,16 @@ export function depositMatchQueryKey(
   return ['deposit-match', restaurantId, startDate, endDate] as const;
 }
 
+/**
+ * The partial key every write mutation invalidates on success. React Query
+ * matches this prefix against every `depositMatchQueryKey(restaurantId, ...)`
+ * entry, so one invalidation covers every date range cached for the
+ * restaurant.
+ */
+function depositMatchInvalidationKey(restaurantId: string | null | undefined) {
+  return ['deposit-match', restaurantId] as const;
+}
+
 interface UseDepositMatchArgs {
   restaurantId: string | null | undefined;
   startDate: string | null | undefined;
@@ -110,7 +120,7 @@ export function useCreateDepositMatchRule() {
       return data;
     },
     onSuccess: (_data, input) => {
-      queryClient.invalidateQueries({ queryKey: ['deposit-match', input.restaurant_id] });
+      queryClient.invalidateQueries({ queryKey: depositMatchInvalidationKey(input.restaurant_id) });
     },
   });
 }
@@ -129,7 +139,7 @@ export function useUpdateDepositMatchRule(restaurantId: string | null | undefine
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deposit-match', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: depositMatchInvalidationKey(restaurantId) });
     },
   });
 }
@@ -155,7 +165,7 @@ export function useSetDepositMatchResolution(restaurantId: string | null | undef
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deposit-match', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: depositMatchInvalidationKey(restaurantId) });
     },
   });
 }
@@ -175,7 +185,7 @@ export function useConfirmDepositMatchLink(restaurantId: string | null | undefin
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deposit-match', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: depositMatchInvalidationKey(restaurantId) });
     },
   });
 }

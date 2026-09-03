@@ -1,12 +1,12 @@
 import { formatCurrency } from '@/lib/utils';
-import { waterfallSegments } from '@/lib/depositMatchUi';
+import { waterfallSegments, type DepositMatchWaterfallSegment } from '@/lib/depositMatchUi';
 import type { DepositMatchReport } from '@/types/depositMatch';
 
 interface MoneyWaterfallProps {
   report: DepositMatchReport;
 }
 
-const SEGMENT_COLOR: Record<string, string> = {
+const SEGMENT_COLOR: Record<DepositMatchWaterfallSegment['key'], string> = {
   deposited: 'bg-emerald-500',
   settling: 'bg-blue-500',
   fees: 'bg-muted-foreground/40',

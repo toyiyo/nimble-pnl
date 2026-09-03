@@ -92,13 +92,23 @@ export function tradeDeadlineFinding(
  * pattern), so the client must compare in the same frame — a device a
  * timezone ahead would otherwise warn or block one day early.
  */
+const dateOnlyFormatters = new Map<string, Intl.DateTimeFormat>();
+
 export function dateOnlyInTimeZone(date: Date, timeZone?: string | null): string {
-  try {
-    // en-CA formats as YYYY-MM-DD.
-    return new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || undefined }).format(date);
-  } catch {
-    return new Intl.DateTimeFormat('en-CA').format(date);
+  // Formatter construction is the expensive part of Intl; cache one per
+  // timezone (callers run per render).
+  const key = timeZone || '';
+  let formatter = dateOnlyFormatters.get(key);
+  if (!formatter) {
+    try {
+      // en-CA formats as YYYY-MM-DD.
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || undefined });
+    } catch {
+      formatter = new Intl.DateTimeFormat('en-CA');
+    }
+    dateOnlyFormatters.set(key, formatter);
   }
+  return formatter.format(date);
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

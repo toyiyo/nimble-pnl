@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
-import { Calendar } from 'lucide-react';
+import { AlertTriangle, Calendar } from 'lucide-react';
 import { TimeOffRequest } from '@/types/scheduling';
 import {
   useTimeOffRequests,
@@ -9,6 +10,8 @@ import {
   useRejectTimeOffRequest,
   useDeleteTimeOffRequest,
 } from '@/hooks/useTimeOffRequests';
+import { useTimeoffCoverageImpact } from '@/hooks/useShiftProtection';
+import { PolicyWarningError, type PolicyFinding } from '@/lib/shiftProtection';
 import { TimeOffRequestDialog } from './TimeOffRequestDialog';
 import { PendingQueue } from './timeoff/PendingQueue';
 import { DecidedHistory } from './timeoff/DecidedHistory';
@@ -38,12 +41,37 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [requestToDelete, setRequestToDelete] = useState<TimeOffRequest | null>(null);
 
+  // Shift Protection: an approve that answers policy_warning lands here.
+  // The dialog shows the findings plus the coverage impact (fetched
+  // lazily, only for this one request) and offers "Approve anyway".
+  const [policyTarget, setPolicyTarget] = useState<{
+    request: TimeOffRequest;
+    warnings: PolicyFinding[];
+  } | null>(null);
+  const coverageImpact = useTimeoffCoverageImpact(policyTarget?.request.id ?? null);
+
   function handleEdit(request: TimeOffRequest) {
     setEditingRequest(request);
     setDialogOpen(true);
   }
   function handleApprove(request: TimeOffRequest) {
-    approveRequest.mutate({ id: request.id, restaurantId });
+    approveRequest.mutate(
+      { id: request.id, restaurantId },
+      {
+        onError: (error) => {
+          if (error instanceof PolicyWarningError) {
+            setPolicyTarget({ request, warnings: error.warnings });
+          }
+        },
+      }
+    );
+  }
+  function handleApproveAnyway() {
+    if (!policyTarget) return;
+    approveRequest.mutate(
+      { id: policyTarget.request.id, restaurantId, override: true },
+      { onSuccess: () => setPolicyTarget(null) }
+    );
   }
   function handleReject(request: TimeOffRequest) {
     rejectRequest.mutate({ id: request.id, restaurantId });
@@ -118,6 +146,88 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
         restaurantId={restaurantId}
         request={editingRequest}
       />
+
+      <AlertDialog open={!!policyTarget} onOpenChange={(open) => { if (!open) setPolicyTarget(null); }}>
+        <AlertDialogContent className="max-h-[80vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" aria-hidden="true" />
+              Shift protection findings
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The rules flag this approval. You can approve anyway.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {policyTarget && (
+            <div className="space-y-3">
+              <div
+                role="status"
+                className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-1"
+              >
+                {policyTarget.warnings.map((warning) => (
+                  <p key={warning.rule} className="text-[13px] text-foreground">
+                    {warning.message}
+                  </p>
+                ))}
+              </div>
+
+              {coverageImpact.isLoading && (
+                <Skeleton className="h-14 w-full rounded-lg" />
+              )}
+              {coverageImpact.error != null && (
+                <p className="text-[13px] text-muted-foreground">
+                  Could not load the coverage detail.
+                </p>
+              )}
+              {coverageImpact.data && (
+                <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-1.5">
+                  <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                    Coverage impact
+                  </p>
+                  {coverageImpact.data.shifts.length === 0 ? (
+                    <p className="text-[13px] text-muted-foreground">
+                      No scheduled shifts fall inside this request.
+                    </p>
+                  ) : (
+                    coverageImpact.data.shifts.map((shift) => (
+                      <p key={shift.shift_id} className="text-[13px] text-foreground">
+                        {shift.position}, {format(new Date(shift.start_time), 'EEE MMM d, h:mm a')}:{' '}
+                        {shift.current_count} →{' '}
+                        <span className={shift.after_count < shift.required ? 'font-semibold text-destructive' : 'font-semibold'}>
+                          {shift.after_count}
+                        </span>{' '}
+                        (needs {shift.required})
+                      </p>
+                    ))
+                  )}
+                  {coverageImpact.data.overlapping_approved > 0 && (
+                    <p className="text-[12px] text-muted-foreground">
+                      {coverageImpact.data.overlapping_approved} other approved request
+                      {coverageImpact.data.overlapping_approved === 1 ? '' : 's'} overlap
+                      {coverageImpact.data.overlapping_approved === 1 ? 's' : ''} these days.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={approveRequest.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleApproveAnyway();
+              }}
+              disabled={approveRequest.isPending}
+              className="bg-warning text-warning-foreground hover:bg-warning/90"
+            >
+              {approveRequest.isPending ? 'Approving…' : 'Approve anyway'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!requestToDelete} onOpenChange={() => setRequestToDelete(null)}>
         <AlertDialogContent>

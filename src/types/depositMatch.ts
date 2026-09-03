@@ -136,7 +136,12 @@ export interface DepositMatchBank {
   status: string;
   data_current_through: string | null;
   account_mask: string | null;
-  suggested_sources: Record<string, number>;
+  // Optional, not required: parseDepositMatchReport casts the payload with
+  // no per-field checks, and every real consumer already reads
+  // `bank.suggested_sources ?? {}` to guard a stale payload from an old RPC
+  // version. A required type here would promise a guarantee the code does
+  // not trust.
+  suggested_sources?: Record<string, number>;
 }
 
 export interface DepositMatchReport {

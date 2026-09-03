@@ -12,8 +12,12 @@
 -- The scan runs one pass per bank with count(*) FILTER (WHERE ...)
 -- clauses, on idx_bank_transactions_bank_date. The row filter matches the
 -- refresh engine's own candidate filter (bt.amount > 0, bt.is_transfer IS
--- NOT TRUE) plus a 90-day window on transaction_date. A source is kept
--- only when its count is 3 or more, to cut one-off noise.
+-- NOT TRUE) plus a 90-day window on transaction_date, bound above and
+-- below. A source is kept only when its count is 3 or more, to cut
+-- one-off noise. The scan runs only for a bank with status = 'connected',
+-- since the refresh engine never matches deposits against any other
+-- status; a disconnected bank still appears in the payload, with an empty
+-- suggested_sources.
 --
 -- Not in scope (design "Not in scope"): no change to
 -- deposit_match_rules.descriptor_pattern defaults, no new index, no Revel
@@ -109,13 +113,18 @@ BEGIN
 
   -- Every bank the restaurant has connected, not only banks an existing
   -- rule already references. A rule-gated join left the SetupDialog's bank
-  -- picker empty for the very first rule, so no user could ever create one
-  -- (found writing the Task 6 E2E test).
+  -- picker empty for the very first rule, so no user could ever create one.
   --
   -- suggested_sources: one 90-day scan per bank, one pass with a
   -- count(*) FILTER per pattern. focus and shift4 share one pattern
   -- (SHIFT.?4), since both settle through Shift4 Payments; a source with
   -- no confirmed descriptor (revel) gets no pattern and so never appears.
+  -- The scan runs only for a bank whose status is 'connected'. The refresh
+  -- engine only matches deposits against a 'connected' bank (see
+  -- supabase/migrations/20260901160000_deposit_match_refresh_engine.sql:167),
+  -- so a suggestion pointing at a disconnected or reauth-needed bank would
+  -- pick a bank that can never actually match. The bank itself still
+  -- appears in the payload either way, so the picker still lists it.
   SELECT COALESCE(jsonb_agg(b), '[]'::jsonb) INTO v_banks
   FROM (
     SELECT jsonb_build_object(
@@ -124,7 +133,7 @@ BEGIN
       'status', cb.status,
       'data_current_through', cb.data_current_through,
       'account_mask', cb.account_mask,
-      'suggested_sources', (
+      'suggested_sources', CASE WHEN cb.status = 'connected' THEN (
         SELECT COALESCE(
           jsonb_object_agg(src.source, src.hits) FILTER (WHERE src.hits >= 3),
           '{}'::jsonb
@@ -141,6 +150,7 @@ BEGIN
             AND bt.amount > 0
             AND bt.is_transfer IS NOT TRUE
             AND bt.transaction_date >= CURRENT_DATE - 90
+            AND bt.transaction_date <= CURRENT_DATE
         ) counts
         CROSS JOIN LATERAL (
           VALUES
@@ -150,7 +160,7 @@ BEGIN
             ('square', counts.square_hits),
             ('clover', counts.clover_hits)
         ) AS src(source, hits)
-      )
+      ) ELSE '{}'::jsonb END
     ) AS b
     FROM public.connected_banks cb
     WHERE cb.restaurant_id = p_restaurant_id

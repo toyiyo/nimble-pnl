@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 -- Fixture: one restaurant, one owner (view:banking + view:pos_sales via the
 -- 'owner' role), four connected banks. Each bank isolates one scan case, so
@@ -22,6 +22,9 @@ INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALU
 -- Bank 4: 3 TST* rows, but only one is a real candidate — one is a
 -- negative refund, one is a transfer — so the count that reaches the
 -- threshold check is 1, not 3.
+-- Bank 5: status 'requires_reauth', 3 TST* rows that would otherwise clear
+-- the threshold — the scan must skip a bank the refresh engine cannot
+-- match against, so suggested_sources stays empty regardless of hits.
 INSERT INTO public.connected_banks
   (id, restaurant_id, stripe_financial_account_id, institution_name, status, account_mask)
 VALUES
@@ -32,7 +35,9 @@ VALUES
   ('22222222-5000-0000-0000-000000000003', '11111111-5000-0000-0000-000000000001',
    'fca_banks_3', 'Citizens', 'connected', NULL),
   ('22222222-5000-0000-0000-000000000004', '11111111-5000-0000-0000-000000000001',
-   'fca_banks_4', 'Wells', 'connected', NULL);
+   'fca_banks_4', 'Wells', 'connected', NULL),
+  ('22222222-5000-0000-0000-000000000005', '11111111-5000-0000-0000-000000000001',
+   'fca_banks_5', 'Ally', 'requires_reauth', '4471');
 
 -- Bank transactions are seeded as postgres (bypasses RLS) so the tests
 -- below exercise the report function, not the RLS policies.
@@ -80,6 +85,18 @@ VALUES
    '22222222-5000-0000-0000-000000000004', 'stxn_banks_4_2', CURRENT_DATE - 2, 'TST* Nimble Diner', -20.00, false),
   ('55555555-5000-0000-0000-000000000011', '11111111-5000-0000-0000-000000000001',
    '22222222-5000-0000-0000-000000000004', 'stxn_banks_4_3', CURRENT_DATE - 3, 'TST* Nimble Diner', 21.00, true);
+
+-- Bank 5: 3 TST* rows, positive, not a transfer — would clear the
+-- threshold if the bank were 'connected'. It is 'requires_reauth'.
+INSERT INTO public.bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
+VALUES
+  ('55555555-5000-0000-0000-000000000012', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000005', 'stxn_banks_5_1', CURRENT_DATE - 1, 'TST* Nimble Diner', 50.00),
+  ('55555555-5000-0000-0000-000000000013', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000005', 'stxn_banks_5_2', CURRENT_DATE - 2, 'TST* Nimble Diner', 51.00),
+  ('55555555-5000-0000-0000-000000000014', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000005', 'stxn_banks_5_3', CURRENT_DATE - 3, 'TST* Nimble Diner', 52.00);
 
 RESET role;
 
@@ -176,6 +193,23 @@ SELECT ok(
       WHERE b->>'connected_bank_id' = '22222222-5000-0000-0000-000000000004')
   ),
   'a negative-amount row and a transfer row do not count — no toast key in suggested_sources'
+);
+
+-- ---------------------------------------------------------------------
+-- A bank that is not 'connected' gets no suggestion, even with 3+ hits --
+-- the refresh engine can never match against it.
+-- ---------------------------------------------------------------------
+SELECT ok(
+  NOT (
+    (SELECT b->'suggested_sources' ? 'toast'
+       FROM jsonb_array_elements(
+         public.get_deposit_match_report(
+           '11111111-5000-0000-0000-000000000001', '2020-01-01', '2026-12-31'
+         )->'banks'
+       ) b
+      WHERE b->>'connected_bank_id' = '22222222-5000-0000-0000-000000000005')
+  ),
+  'a requires_reauth bank gets no suggestion, even with 3 TST* rows'
 );
 
 -- ---------------------------------------------------------------------

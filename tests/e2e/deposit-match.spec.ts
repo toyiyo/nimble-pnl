@@ -86,35 +86,17 @@ test.describe('Deposit Match', () => {
         // 90-day suggestion window — the bank-picker suggestion needs 3
         // hits (`get_deposit_match_report`'s `suggested_sources` filters
         // on `hits >= 3`).
-        const { error: txnError } = await win.__supabase.from('bank_transactions').insert([
-          {
+        const { error: txnError } = await win.__supabase.from('bank_transactions').insert(
+          [150, 120, 130].map((amount) => ({
             restaurant_id: restaurantId,
             connected_bank_id: bank.id,
             stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
             description: 'TST* Card batch deposit',
-            amount: 150,
+            amount,
             transaction_date: transactionDateIso,
             is_categorized: false,
-          },
-          {
-            restaurant_id: restaurantId,
-            connected_bank_id: bank.id,
-            stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
-            description: 'TST* Card batch deposit',
-            amount: 120,
-            transaction_date: transactionDateIso,
-            is_categorized: false,
-          },
-          {
-            restaurant_id: restaurantId,
-            connected_bank_id: bank.id,
-            stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
-            description: 'TST* Card batch deposit',
-            amount: 130,
-            transaction_date: transactionDateIso,
-            is_categorized: false,
-          },
-        ]);
+          }))
+        );
         if (txnError) throw new Error('txnError: ' + JSON.stringify(txnError));
 
         return { bankName };

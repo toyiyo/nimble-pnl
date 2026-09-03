@@ -180,6 +180,13 @@ export interface DepositMatchSourceDefault {
   fee_pct_min: number;
   fee_pct_max: number;
   source_config: Record<string, unknown>;
+  /**
+   * Starting state of the `active` switch for a new rule from this
+   * source's template. False for a source with no production-verified
+   * settlement behavior (design doc addendum, 2026-09-03) — the owner
+   * turns it on after a check against the bank.
+   */
+  active: boolean;
   /** True when the adapter has no card-tender data to split (Clover). */
   unsupported?: boolean;
 }
@@ -196,6 +203,7 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     fee_pct_min: 0,
     fee_pct_max: 0,
     source_config: { card_tender_names: ['Visa', 'MC', 'Amex', 'Discover'] },
+    active: true,
   },
   toast: {
     measured: true,
@@ -205,6 +213,7 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     fee_pct_min: 1.6,
     fee_pct_max: 3.1,
     source_config: { card_payment_type: 'CREDIT' },
+    active: true,
   },
   square: {
     measured: false,
@@ -222,6 +231,10 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     // administrator picked zero types" and correctly refuses to treat
     // the two the same way.
     source_config: { card_source_types: ['CARD', 'WALLET'] },
+    // No measured settlement behavior exists for Square yet (design doc
+    // addendum, 2026-09-03). A new rule starts off; the owner turns it on
+    // after checking the card tender list and lag/fee band against the bank.
+    active: false,
   },
   revel: {
     measured: false,
@@ -230,7 +243,18 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     lag_days_max: 2,
     fee_pct_min: 0,
     fee_pct_max: 0,
-    source_config: { card_payment_types: [] },
+    // '2' is production-verified, not a guess: on production, all 2,231
+    // revel_payments rows with a card brand carry
+    // raw_json->>'payment_type' = '2' (credit); cash rows carry '1'
+    // (design doc addendum, 2026-09-03). The stored payment_type COLUMN
+    // cannot make this split — revelOrderProcessor.ts:172 writes card_type
+    // over it, so a cash row and a card row can carry the same digits
+    // there. The adapter filters raw_json, never that column.
+    source_config: { card_payment_types: ['2'] },
+    // No measured settlement behavior exists for Revel yet (design doc
+    // addendum, 2026-09-03). A new rule starts off; the owner turns it on
+    // after checking the lag/fee band against the bank.
+    active: false,
   },
   shift4: {
     measured: false,
@@ -240,6 +264,7 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     fee_pct_min: 0,
     fee_pct_max: 0,
     source_config: {},
+    active: true,
   },
   clover: {
     measured: false,
@@ -249,6 +274,7 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     fee_pct_min: 0,
     fee_pct_max: 0,
     source_config: {},
+    active: true,
     unsupported: true,
   },
 };
@@ -261,4 +287,27 @@ export function ruleDefaultsNote(posSource: string): string | undefined {
   const entry = DEPOSIT_MATCH_SOURCE_DEFAULTS[posSource];
   if (!entry || entry.measured) return undefined;
   return DEPOSIT_MATCH_SUGGESTED_VALUES_NOTE;
+}
+
+/**
+ * The `source_config` key that holds a POS source's card tender list, or
+ * undefined when the source has no such list. Only these three adapters
+ * (`deposit_match_source_focus`, `_square`, `_revel`) read an array key
+ * out of `source_config` and raise on an empty one — `SetupDialog`'s card
+ * tender list editor targets exactly this key so a restaurant-specific
+ * value list never has to go through a raw JSON editor. `toast`'s
+ * `card_payment_type` is a single measured string, not a list, so it is
+ * excluded on purpose.
+ */
+export function cardTenderListKey(posSource: string): string | undefined {
+  switch (posSource) {
+    case 'focus':
+      return 'card_tender_names';
+    case 'square':
+      return 'card_source_types';
+    case 'revel':
+      return 'card_payment_types';
+    default:
+      return undefined;
+  }
 }

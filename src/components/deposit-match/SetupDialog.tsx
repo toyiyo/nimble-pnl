@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings2 } from 'lucide-react';
+import { Settings2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -14,8 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useCreateDepositMatchRule, useUpdateDepositMatchRule } from '@/hooks/useDepositMatch';
-import { DEPOSIT_MATCH_SOURCE_DEFAULTS, ruleDefaultsNote } from '@/lib/depositMatchUi';
+import { cardTenderListKey, DEPOSIT_MATCH_SOURCE_DEFAULTS, ruleDefaultsNote } from '@/lib/depositMatchUi';
 import type { DepositMatchBank, DepositMatchRule } from '@/types/depositMatch';
 
 interface SetupDialogProps {
@@ -38,6 +39,7 @@ interface FormState {
   fee_pct_min: string;
   fee_pct_max: string;
   active: boolean;
+  source_config: Record<string, unknown>;
 }
 
 const SOURCE_OPTIONS = Object.entries(DEPOSIT_MATCH_SOURCE_DEFAULTS);
@@ -53,6 +55,7 @@ function initialFormState(rule: DepositMatchRule | null): FormState {
       fee_pct_min: String(rule.fee_pct_min),
       fee_pct_max: String(rule.fee_pct_max),
       active: rule.active,
+      source_config: rule.source_config,
     };
   }
   const first = SOURCE_OPTIONS[0];
@@ -65,8 +68,15 @@ function initialFormState(rule: DepositMatchRule | null): FormState {
     lag_days_max: String(defaults.lag_days_max),
     fee_pct_min: String(defaults.fee_pct_min),
     fee_pct_max: String(defaults.fee_pct_max),
-    active: true,
+    active: defaults.active,
+    source_config: defaults.source_config,
   };
+}
+
+/** Reads a card tender list editor's list values out of `source_config`. */
+function tenderListValues(sourceConfig: Record<string, unknown>, key: string): string[] {
+  const raw = sourceConfig[key];
+  return Array.isArray(raw) ? raw.filter((value): value is string => typeof value === 'string') : [];
 }
 
 /**
@@ -77,13 +87,17 @@ function initialFormState(rule: DepositMatchRule | null): FormState {
  */
 export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onSaved }: SetupDialogProps) {
   const [form, setForm] = useState<FormState>(() => initialFormState(rule));
+  const [tenderInput, setTenderInput] = useState('');
   const createMutation = useCreateDepositMatchRule();
   const updateMutation = useUpdateDepositMatchRule(restaurantId);
   const isEdit = Boolean(rule);
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
-    if (open) setForm(initialFormState(rule));
+    if (open) {
+      setForm(initialFormState(rule));
+      setTenderInput('');
+    }
   }, [open, rule]);
 
   const applySourceDefaults = (pos_source: string) => {
@@ -96,6 +110,30 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onS
       lag_days_max: defaults ? String(defaults.lag_days_max) : prev.lag_days_max,
       fee_pct_min: defaults ? String(defaults.fee_pct_min) : prev.fee_pct_min,
       fee_pct_max: defaults ? String(defaults.fee_pct_max) : prev.fee_pct_max,
+      active: defaults ? defaults.active : prev.active,
+      source_config: defaults ? defaults.source_config : prev.source_config,
+    }));
+    setTenderInput('');
+  };
+
+  const tenderKey = cardTenderListKey(form.pos_source);
+  const tenderValues = tenderKey ? tenderListValues(form.source_config, tenderKey) : [];
+
+  const addTenderValue = () => {
+    const value = tenderInput.trim();
+    if (!tenderKey || !value || tenderValues.includes(value)) return;
+    setForm((prev) => ({
+      ...prev,
+      source_config: { ...prev.source_config, [tenderKey]: [...tenderValues, value] },
+    }));
+    setTenderInput('');
+  };
+
+  const removeTenderValue = (value: string) => {
+    if (!tenderKey) return;
+    setForm((prev) => ({
+      ...prev,
+      source_config: { ...prev.source_config, [tenderKey]: tenderValues.filter((v) => v !== value) },
     }));
   };
 
@@ -121,7 +159,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onS
       lag_days_max: Number(form.lag_days_max),
       fee_pct_min: Number(form.fee_pct_min),
       fee_pct_max: Number(form.fee_pct_max),
-      source_config: DEPOSIT_MATCH_SOURCE_DEFAULTS[form.pos_source]?.source_config ?? {},
+      source_config: form.source_config,
       active: form.active,
     };
 
@@ -231,8 +269,83 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onS
                   </Select>
                 )}
               </div>
+              <div className="flex items-center justify-between rounded-lg border border-border/40 bg-background p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="deposit_match_active" className="text-[14px] font-medium text-foreground cursor-pointer">
+                    Active
+                  </Label>
+                  <p className="text-[13px] text-muted-foreground">
+                    An inactive rule skips the refresh. Its items show as incomplete.
+                  </p>
+                </div>
+                <Switch
+                  id="deposit_match_active"
+                  checked={form.active}
+                  onCheckedChange={(checked) => setForm((prev) => ({ ...prev, active: checked }))}
+                  className="data-[state=checked]:bg-foreground"
+                  aria-label="Turn this deposit-match rule on or off"
+                />
+              </div>
             </div>
           </div>
+
+          {tenderKey && (
+            <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                <h3 className="text-[13px] font-semibold text-foreground">Card tenders</h3>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-[13px] text-muted-foreground">
+                  The engine sums only these values. An empty list stops the rule with an error.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {tenderValues.length === 0 ? (
+                    <p className="text-[13px] text-muted-foreground">No values yet. Add at least one below.</p>
+                  ) : (
+                    tenderValues.map((value) => (
+                      <span
+                        key={value}
+                        className="inline-flex items-center gap-1 text-[13px] px-2.5 py-1 rounded-md bg-muted text-foreground"
+                      >
+                        {value}
+                        <button
+                          type="button"
+                          onClick={() => removeTenderValue(value)}
+                          aria-label={`Remove ${value}`}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={tenderInput}
+                    onChange={(event) => setTenderInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addTenderValue();
+                      }
+                    }}
+                    placeholder="Add a value"
+                    aria-label="New card tender value"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={addTenderValue}
+                    className="h-10 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
             <div className="px-4 py-3 border-b border-border/40 bg-muted/50">

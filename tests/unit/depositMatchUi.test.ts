@@ -4,6 +4,7 @@ import {
   DEPOSIT_MATCH_SOURCE_DEFAULTS,
   DEPOSIT_MATCH_SUGGESTED_VALUES_NOTE,
   buildVerdict,
+  cardTenderListKey,
   causeLabel,
   formatBusinessDate,
   pickActiveTab,
@@ -180,5 +181,35 @@ describe('deposit match source defaults', () => {
 
   it('flags clover as unsupported (no normalized card tender rows)', () => {
     expect(DEPOSIT_MATCH_SOURCE_DEFAULTS.clover.unsupported).toBe(true);
+  });
+
+  it('starts a new rule off for the unproved sources, on for the proved ones', () => {
+    expect(DEPOSIT_MATCH_SOURCE_DEFAULTS.focus.active).toBe(true);
+    expect(DEPOSIT_MATCH_SOURCE_DEFAULTS.toast.active).toBe(true);
+    expect(DEPOSIT_MATCH_SOURCE_DEFAULTS.square.active).toBe(false);
+    expect(DEPOSIT_MATCH_SOURCE_DEFAULTS.revel.active).toBe(false);
+  });
+
+  it('sets the Revel default card_payment_types to the production-verified raw_json code', () => {
+    // raw_json->>'payment_type' = '2' is the card code on production; the
+    // stored payment_type COLUMN cannot make this split (design doc
+    // addendum, 2026-09-03).
+    expect(DEPOSIT_MATCH_SOURCE_DEFAULTS.revel.source_config).toEqual({
+      card_payment_types: ['2'],
+    });
+  });
+});
+
+describe('cardTenderListKey', () => {
+  it('names the source_config list key for each list-based adapter', () => {
+    expect(cardTenderListKey('focus')).toBe('card_tender_names');
+    expect(cardTenderListKey('square')).toBe('card_source_types');
+    expect(cardTenderListKey('revel')).toBe('card_payment_types');
+  });
+
+  it('is undefined for a source with no list-shaped config (toast, shift4, clover)', () => {
+    expect(cardTenderListKey('toast')).toBeUndefined();
+    expect(cardTenderListKey('shift4')).toBeUndefined();
+    expect(cardTenderListKey('clover')).toBeUndefined();
   });
 });

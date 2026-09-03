@@ -27,8 +27,19 @@ interface SetupDialogProps {
   banks: DepositMatchBank[];
   /** Rule being edited, or null to create a new one. */
   rule: DepositMatchRule | null;
+  /**
+   * The id of the rule the caller intends to edit, or null to create a new
+   * one. This is the source of truth for edit intent — NOT `Boolean(rule)`.
+   * `rule` can be null while `ruleId` is set (the fetch is still loading, or
+   * it failed), and treating that as "create" would silently insert a
+   * duplicate row instead of updating the one the user opened (found in
+   * review, coderabbitai).
+   */
+  ruleId?: string | null;
   /** True while the edit target's rule row is still loading. */
   isLoadingRule?: boolean;
+  /** True when the edit target's rule row failed to load. */
+  ruleLoadError?: boolean;
   /** Called after a create or update commits, so the page can force a refresh. */
   onSaved?: () => void;
 }
@@ -94,14 +105,16 @@ export function SetupDialog({
   restaurantId,
   banks,
   rule,
+  ruleId = null,
   isLoadingRule,
+  ruleLoadError,
   onSaved,
 }: SetupDialogProps) {
   const [form, setForm] = useState<FormState>(() => initialFormState(rule));
   const [tenderInput, setTenderInput] = useState('');
   const createMutation = useCreateDepositMatchRule();
   const updateMutation = useUpdateDepositMatchRule(restaurantId);
-  const isEdit = Boolean(rule);
+  const isEdit = Boolean(ruleId);
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
@@ -150,6 +163,10 @@ export function SetupDialog({
 
   const handleSubmit = () => {
     if (!restaurantId) return;
+    // Edit intent with no loaded rule (a failed or still-loading fetch)
+    // must never fall through to create — that would insert a duplicate
+    // instead of updating the row the user opened.
+    if (isEdit && !rule) return;
     if (DEPOSIT_MATCH_SOURCE_DEFAULTS[form.pos_source]?.unsupported) {
       toast.error('This source has no normalized card-tender rows yet. You cannot save a rule for it.');
       return;
@@ -232,6 +249,43 @@ export function SetupDialog({
             <Skeleton className="h-10 w-full rounded-lg" />
             <Skeleton className="h-24 w-full rounded-lg" />
           </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (isEdit && (ruleLoadError || !rule)) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                <Settings2 className="h-5 w-5 text-foreground" aria-hidden="true" />
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  Edit deposit-match rule
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  The rule did not load.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="px-6 py-5 space-y-4">
+            <p className="text-[13px] text-muted-foreground">
+              Close this dialog and open the rule again from its card.
+            </p>
+          </div>
+          <DialogFooter className="px-6 py-4 border-t border-border/40">
+            <Button
+              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+              onClick={() => onOpenChange(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     );

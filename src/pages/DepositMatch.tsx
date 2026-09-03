@@ -44,9 +44,11 @@ export default function DepositMatch() {
   const endDate = today;
 
   const { report, isLoading, error, refreshNow } = useDepositMatch({ restaurantId, startDate, endDate });
-  const { data: editingRule, isLoading: editingRuleLoading } = useDepositMatchRule(
-    setupOpen ? editingRuleId : null
-  );
+  const {
+    data: editingRule,
+    isLoading: editingRuleLoading,
+    error: editingRuleError,
+  } = useDepositMatchRule(setupOpen ? editingRuleId : null, restaurantId);
 
   const openAddRule = () => {
     setEditingRuleId(null);
@@ -221,7 +223,9 @@ export default function DepositMatch() {
         restaurantId={restaurantId}
         banks={report?.banks ?? []}
         rule={editingRuleId ? editingRule ?? null : null}
+        ruleId={editingRuleId}
         isLoadingRule={editingRuleId !== null && editingRuleLoading}
+        ruleLoadError={editingRuleId !== null && Boolean(editingRuleError)}
         onSaved={refreshNow}
       />
     </div>

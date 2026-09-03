@@ -114,20 +114,28 @@ export function useDepositMatch({ restaurantId, startDate, endDate }: UseDeposit
   };
 }
 
-/** Reads one rule by id, for the edit form. */
-export function useDepositMatchRule(ruleId: string | null | undefined) {
+/**
+ * Reads one rule by id, for the edit form. Filters by restaurant so a
+ * cached row never leaks across a restaurant switch (the cache key
+ * includes `restaurantId`, and the query itself is scoped the same way).
+ */
+export function useDepositMatchRule(
+  ruleId: string | null | undefined,
+  restaurantId: string | null | undefined
+) {
   return useQuery({
-    queryKey: ['deposit-match-rule', ruleId],
+    queryKey: ['deposit-match-rule', restaurantId, ruleId],
     queryFn: async (): Promise<DepositMatchRule> => {
       const { data, error } = await supabase
         .from('deposit_match_rules' as any)
         .select('*')
         .eq('id', ruleId)
+        .eq('restaurant_id', restaurantId)
         .single();
       if (error) throw error;
       return data as unknown as DepositMatchRule;
     },
-    enabled: Boolean(ruleId),
+    enabled: Boolean(ruleId && restaurantId),
     staleTime: 30000,
   });
 }
@@ -154,10 +162,20 @@ export function useUpdateDepositMatchRule(restaurantId: string | null | undefine
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, update }: { id: string; update: DepositMatchRuleUpdate }) => {
+      if (!restaurantId) {
+        throw new Error('No restaurant is selected. Pick a restaurant before you update a rule.');
+      }
+      // Scope the match to the caller's own restaurant. RLS already limits
+      // which rows the update can touch, but a bare `.eq('id', id)` still
+      // matches the row for whichever restaurant it belongs to — a
+      // multi-restaurant collaborator's request for restaurant A could
+      // otherwise update a rule that belongs to restaurant B (found in
+      // review, coderabbitai).
       const { data, error } = await supabase
         .from('deposit_match_rules' as any)
         .update(update as any)
         .eq('id', id)
+        .eq('restaurant_id', restaurantId)
         .select()
         .single();
       if (error) throw error;

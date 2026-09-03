@@ -53,12 +53,23 @@ function makeUpdateChain(resolved: { data: unknown; error: unknown }) {
   return { update, eq, select, single };
 }
 
-/** select('*').eq('id', id).single() */
+/** update(...).eq('id', id).eq('restaurant_id', restaurantId).select().single() */
+function makeUpdateChainWithRestaurant(resolved: { data: unknown; error: unknown }) {
+  const single = vi.fn().mockResolvedValue(resolved);
+  const select = vi.fn(() => ({ single }));
+  const eqRestaurant = vi.fn(() => ({ select }));
+  const eqId = vi.fn(() => ({ eq: eqRestaurant }));
+  const update = vi.fn(() => ({ eq: eqId }));
+  return { update, eqId, eqRestaurant, select, single };
+}
+
+/** select('*').eq('id', id).eq('restaurant_id', restaurantId).single() */
 function makeSelectByIdChain(resolved: { data: unknown; error: unknown }) {
   const single = vi.fn().mockResolvedValue(resolved);
-  const eq = vi.fn(() => ({ single }));
-  const select = vi.fn(() => ({ eq }));
-  return { select, eq, single };
+  const eqRestaurant = vi.fn(() => ({ single }));
+  const eqId = vi.fn(() => ({ eq: eqRestaurant }));
+  const select = vi.fn(() => ({ eq: eqId }));
+  return { select, eqId, eqRestaurant, single };
 }
 
 function createWrapper(queryClient: QueryClient) {
@@ -132,8 +143,8 @@ describe('useCreateDepositMatchRule', () => {
 });
 
 describe('useUpdateDepositMatchRule', () => {
-  it('updates the rule by id and invalidates the given restaurant queries', async () => {
-    const chain = makeUpdateChain({ data: { id: 'rule-1', active: false }, error: null });
+  it('updates the rule by id, scoped to the caller restaurant, and invalidates its queries', async () => {
+    const chain = makeUpdateChainWithRestaurant({ data: { id: 'rule-1', active: false }, error: null });
     fromMock.mockReturnValue(chain);
 
     const queryClient = makeQueryClient();
@@ -149,13 +160,14 @@ describe('useUpdateDepositMatchRule', () => {
 
     expect(fromMock).toHaveBeenCalledWith('deposit_match_rules');
     expect(chain.update).toHaveBeenCalledWith({ active: false });
-    expect(chain.eq).toHaveBeenCalledWith('id', 'rule-1');
+    expect(chain.eqId).toHaveBeenCalledWith('id', 'rule-1');
+    expect(chain.eqRestaurant).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     expect(updated).toEqual({ id: 'rule-1', active: false });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['deposit-match', 'rest-1'] });
   });
 
   it('rejects when the update returns an error', async () => {
-    const chain = makeUpdateChain({ data: null, error: new Error('not found') });
+    const chain = makeUpdateChainWithRestaurant({ data: null, error: new Error('not found') });
     fromMock.mockReturnValue(chain);
 
     const { result } = renderHook(() => useUpdateDepositMatchRule('rest-1'), {
@@ -167,6 +179,20 @@ describe('useUpdateDepositMatchRule', () => {
         result.current.mutateAsync({ id: 'missing', update: { active: false } })
       ).rejects.toThrow('not found');
     });
+  });
+
+  it('rejects without querying Supabase when no restaurant is selected', async () => {
+    const { result } = renderHook(() => useUpdateDepositMatchRule(null), {
+      wrapper: createWrapper(makeQueryClient()),
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({ id: 'rule-1', update: { active: false } })
+      ).rejects.toThrow('No restaurant is selected');
+    });
+
+    expect(fromMock).not.toHaveBeenCalled();
   });
 });
 
@@ -225,11 +251,11 @@ describe('useSetDepositMatchResolution', () => {
 });
 
 describe('useDepositMatchRule', () => {
-  it('fetches the rule by id when a ruleId is given', async () => {
+  it('fetches the rule by id, scoped to the given restaurant', async () => {
     const chain = makeSelectByIdChain({ data: { id: 'rule-1', pos_source: 'toast' }, error: null });
     fromMock.mockReturnValue(chain);
 
-    const { result } = renderHook(() => useDepositMatchRule('rule-1'), {
+    const { result } = renderHook(() => useDepositMatchRule('rule-1', 'rest-1'), {
       wrapper: createWrapper(makeQueryClient()),
     });
 
@@ -237,12 +263,23 @@ describe('useDepositMatchRule', () => {
 
     expect(fromMock).toHaveBeenCalledWith('deposit_match_rules');
     expect(chain.select).toHaveBeenCalledWith('*');
-    expect(chain.eq).toHaveBeenCalledWith('id', 'rule-1');
+    expect(chain.eqId).toHaveBeenCalledWith('id', 'rule-1');
+    expect(chain.eqRestaurant).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     expect(result.current.data).toEqual({ id: 'rule-1', pos_source: 'toast' });
   });
 
   it('stays disabled and never queries when ruleId is null', () => {
-    const { result } = renderHook(() => useDepositMatchRule(null), {
+    const { result } = renderHook(() => useDepositMatchRule(null, 'rest-1'), {
+      wrapper: createWrapper(makeQueryClient()),
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('stays disabled and never queries when restaurantId is null', () => {
+    const { result } = renderHook(() => useDepositMatchRule('rule-1', null), {
       wrapper: createWrapper(makeQueryClient()),
     });
 
@@ -255,7 +292,7 @@ describe('useDepositMatchRule', () => {
     const chain = makeSelectByIdChain({ data: null, error: new Error('not found') });
     fromMock.mockReturnValue(chain);
 
-    const { result } = renderHook(() => useDepositMatchRule('missing'), {
+    const { result } = renderHook(() => useDepositMatchRule('missing', 'rest-1'), {
       wrapper: createWrapper(makeQueryClient()),
     });
 

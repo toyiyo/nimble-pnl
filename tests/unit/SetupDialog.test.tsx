@@ -142,11 +142,19 @@ describe('SetupDialog', () => {
       updated_at: '',
     } as DepositMatchRule;
 
-    render(<SetupDialog {...baseProps} rule={rule} />);
+    render(<SetupDialog {...baseProps} rule={rule} ruleId={rule.id} />);
     expect(screen.getByRole('switch', { name: /turn this deposit-match rule on or off/i })).toBeChecked();
     expect(screen.getByText('CARD')).toBeInTheDocument();
     expect(screen.queryByText('WALLET')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /pos source/i })).toBeDisabled();
+  });
+
+  it('shows an error state and blocks submission when the edit target rule fails to load', () => {
+    render(<SetupDialog {...baseProps} rule={null} ruleId="rule-1" ruleLoadError />);
+    expect(screen.getByText(/the rule did not load/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /pos source/i })).not.toBeInTheDocument();
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(updateMutate).not.toHaveBeenCalled();
   });
 
   it('shows a loading skeleton instead of the form while the edit target rule is still loading', () => {

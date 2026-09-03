@@ -162,6 +162,7 @@ BEGIN
           AND NOT EXISTS (
             SELECT 1 FROM public.deposit_match_links l3
             WHERE l3.bank_transaction_id = bt.id AND l3.state = 'confirmed'
+              AND l3.restaurant_id = p_restaurant_id
           )
           AND v_bank.status = 'connected'
           AND v_bank.data_current_through IS NOT NULL
@@ -209,6 +210,7 @@ BEGIN
           AND NOT EXISTS (
             SELECT 1 FROM public.deposit_match_links l4
             WHERE l4.bank_transaction_id = bt2.id AND l4.state = 'confirmed'
+              AND l4.restaurant_id = p_restaurant_id
           )
           AND bt2.transaction_date BETWEEN (v_cand.business_date + v_rule.lag_days_min)
                                         AND (v_cand.business_date + v_rule.lag_days_max)

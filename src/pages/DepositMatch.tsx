@@ -93,7 +93,7 @@ export default function DepositMatch() {
         icon={Landmark}
         iconVariant="blue"
         title="Deposit Match"
-        restaurantName={selectedRestaurant?.restaurant_name}
+        restaurantName={selectedRestaurant?.restaurant?.name}
         subtitle="Check that your card money reached the bank."
         actions={
           <Button

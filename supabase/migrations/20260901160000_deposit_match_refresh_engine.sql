@@ -354,7 +354,11 @@ BEGIN
     ORDER BY i.business_date, r.pos_source
   ) y;
 
-  SELECT COALESCE(jsonb_agg(DISTINCT b), '[]'::jsonb) INTO v_banks
+  -- Every bank the restaurant has connected, not only banks an existing
+  -- rule already references. A rule-gated join left the SetupDialog's bank
+  -- picker empty for the very first rule, so no user could ever create one
+  -- (found writing the Task 6 E2E test).
+  SELECT COALESCE(jsonb_agg(b), '[]'::jsonb) INTO v_banks
   FROM (
     SELECT jsonb_build_object(
       'connected_bank_id', cb.id,
@@ -363,8 +367,8 @@ BEGIN
       'data_current_through', cb.data_current_through
     ) AS b
     FROM public.connected_banks cb
-    JOIN public.deposit_match_rules r ON r.connected_bank_id = cb.id
-    WHERE r.restaurant_id = p_restaurant_id
+    WHERE cb.restaurant_id = p_restaurant_id
+    ORDER BY cb.institution_name
   ) z;
 
   RETURN jsonb_build_object(

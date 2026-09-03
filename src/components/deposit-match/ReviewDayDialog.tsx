@@ -72,21 +72,21 @@ export function ReviewDayDialog({ item, open, onOpenChange, restaurantId, onDisp
             <div className="flex items-center justify-between">
               <StatusChip status={item.status} />
               <p className="text-[14px] font-medium text-foreground">
-                {gap > 0.005 ? `Short ${formatMoney(gap)}` : gap < -0.005 ? `Over ${formatMoney(-gap)}` : 'No gap'}
+                {gap > 0.005 ? `Short ${formatCurrency(gap)}` : gap < -0.005 ? `Over ${formatCurrency(-gap)}` : 'No gap'}
               </p>
             </div>
             <div className="grid grid-cols-3 gap-3 text-[13px]">
               <div>
                 <p className="text-muted-foreground">Expected</p>
-                <p className="text-foreground font-medium">{formatMoney(item.expected_amount)}</p>
+                <p className="text-foreground font-medium">{formatCurrency(item.expected_amount)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Received</p>
-                <p className="text-foreground font-medium">{formatMoney(item.received_amount)}</p>
+                <p className="text-foreground font-medium">{formatCurrency(item.received_amount)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Fees</p>
-                <p className="text-foreground font-medium">{formatMoney(item.fee_amount)}</p>
+                <p className="text-foreground font-medium">{formatCurrency(item.fee_amount)}</p>
               </div>
             </div>
             {item.resolution && (

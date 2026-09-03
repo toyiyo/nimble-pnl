@@ -248,6 +248,7 @@ export const TradeMarketplace = () => {
 
               {acceptFinding && (
                 <div
+                  id="accept-policy-warning"
                   role="status"
                   className="flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20"
                 >
@@ -273,7 +274,11 @@ export const TradeMarketplace = () => {
             >
               Cancel
             </Button>
-            <Button onClick={handleConfirmAccept} disabled={isAccepting || acceptBlocked}>
+            <Button
+              onClick={handleConfirmAccept}
+              disabled={isAccepting || acceptBlocked}
+              aria-describedby={acceptBlocked ? 'accept-policy-warning' : undefined}
+            >
               {isAccepting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

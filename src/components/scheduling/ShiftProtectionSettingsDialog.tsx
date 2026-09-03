@@ -47,20 +47,29 @@ const MODE_OPTIONS: { value: ProtectionMode; label: string }[] = [
 
 function ModePicker({
   id,
+  title,
   value,
   onChange,
-}: Readonly<{ id: string; value: ProtectionMode; onChange: (mode: ProtectionMode) => void }>) {
+}: Readonly<{
+  id: string;
+  title: string;
+  value: ProtectionMode;
+  onChange: (mode: ProtectionMode) => void;
+}>) {
   return (
     <RadioGroup
       value={value}
       onValueChange={(mode: ProtectionMode) => onChange(mode)}
       className="flex items-center gap-3"
-      aria-label={`Rule mode for ${id}`}
+      aria-label={`Rule mode for ${title}`}
     >
       {MODE_OPTIONS.map((option) => (
         <div key={option.value} className="flex items-center gap-1.5">
           <RadioGroupItem value={option.value} id={`${id}-${option.value}`} />
-          <Label htmlFor={`${id}-${option.value}`} className="text-[13px] font-medium cursor-pointer">
+          <Label
+            htmlFor={`${id}-${option.value}`}
+            className="text-[12px] font-medium uppercase tracking-wider cursor-pointer"
+          >
             {option.label}
           </Label>
         </div>
@@ -95,7 +104,7 @@ export const ShiftProtectionSettingsDialog = ({
   onOpenChange,
   restaurantId,
 }: ShiftProtectionSettingsDialogProps) => {
-  const { effectiveSettings, isLoading, updateSettings, isSaving } =
+  const { effectiveSettings, isLoading, error, updateSettings, isSaving } =
     useStaffingSettings(restaurantId);
   const invalidateShiftProtection = useInvalidateShiftProtection();
   const { toast } = useToast();
@@ -103,8 +112,10 @@ export const ShiftProtectionSettingsDialog = ({
   const [draft, setDraft] = useState<DraftRules | null>(null);
 
   // Seed the draft when the dialog opens (and when the row arrives).
+  // Never seed from a failed load: a save would write the defaults over
+  // the real rules.
   useEffect(() => {
-    if (!open || isLoading) return;
+    if (!open || isLoading || error) return;
     setDraft({
       trade_deadline_mode: effectiveSettings.trade_deadline_mode,
       trade_deadline_hours: effectiveSettings.trade_deadline_hours,
@@ -117,7 +128,7 @@ export const ShiftProtectionSettingsDialog = ({
     });
     // Re-seed only on open; a background refetch must not clobber edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isLoading]);
+  }, [open, isLoading, error]);
 
   const numbersValid =
     !!draft &&
@@ -149,6 +160,7 @@ export const ShiftProtectionSettingsDialog = ({
 
   const numberInput = (
     id: string,
+    label: string,
     value: number,
     onChange: (n: number) => void,
     unit: string
@@ -160,8 +172,8 @@ export const ShiftProtectionSettingsDialog = ({
         min={1}
         value={Number.isNaN(value) ? '' : value}
         onChange={(e) => onChange(parseInt(e.target.value, 10))}
-        className="h-9 w-16 text-[14px] bg-muted/30 border-border/40 rounded-lg text-center"
-        aria-label={`${unit} value`}
+        className="h-10 w-16 text-[14px] bg-muted/30 border-border/40 rounded-lg text-center focus-visible:ring-1 focus-visible:ring-border"
+        aria-label={label}
       />
       <span className="text-[12px] text-muted-foreground">{unit}</span>
     </div>
@@ -187,7 +199,11 @@ export const ShiftProtectionSettingsDialog = ({
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-5">
-          {isLoading || !draft ? (
+          {error != null ? (
+            <p className="text-[13px] text-destructive" role="alert">
+              Could not load the rules. Close the dialog and retry.
+            </p>
+          ) : isLoading || !draft ? (
             <div className="space-y-3">
               <Skeleton className="h-16 w-full rounded-xl" />
               <Skeleton className="h-16 w-full rounded-xl" />
@@ -203,8 +219,8 @@ export const ShiftProtectionSettingsDialog = ({
                   title="Trade deadline"
                   description="Applies to trades posted or accepted inside the window before a shift starts."
                 >
-                  {numberInput('trade-deadline-hours', draft.trade_deadline_hours, (n) => setField('trade_deadline_hours', n), 'hours')}
-                  <ModePicker id="trade-deadline" value={draft.trade_deadline_mode} onChange={(m) => setField('trade_deadline_mode', m)} />
+                  {numberInput('trade-deadline-hours', 'Trade deadline hours', draft.trade_deadline_hours, (n) => setField('trade_deadline_hours', n), 'hours')}
+                  <ModePicker id="trade-deadline" title="Trade deadline" value={draft.trade_deadline_mode} onChange={(m) => setField('trade_deadline_mode', m)} />
                 </RuleRow>
                 <RuleRow
                   title="Auto-expire unaccepted trades"
@@ -227,21 +243,21 @@ export const ShiftProtectionSettingsDialog = ({
                   title="Minimum notice"
                   description="Applies to requests that start inside the notice period."
                 >
-                  {numberInput('timeoff-notice-days', draft.timeoff_notice_days, (n) => setField('timeoff_notice_days', n), 'days')}
-                  <ModePicker id="timeoff-notice" value={draft.timeoff_notice_mode} onChange={(m) => setField('timeoff_notice_mode', m)} />
+                  {numberInput('timeoff-notice-days', 'Minimum notice days', draft.timeoff_notice_days, (n) => setField('timeoff_notice_days', n), 'days')}
+                  <ModePicker id="timeoff-notice" title="Minimum notice" value={draft.timeoff_notice_mode} onChange={(m) => setField('timeoff_notice_mode', m)} />
                 </RuleRow>
                 <RuleRow
                   title="Coverage floor"
                   description="Applies when an approval drops a day below the template staff count."
                 >
-                  <ModePicker id="coverage-floor" value={draft.coverage_floor_mode} onChange={(m) => setField('coverage_floor_mode', m)} />
+                  <ModePicker id="coverage-floor" title="Coverage floor" value={draft.coverage_floor_mode} onChange={(m) => setField('coverage_floor_mode', m)} />
                 </RuleRow>
                 <RuleRow
                   title="Same-day limit"
                   description="Applies past this many approved requests per day, per position."
                 >
-                  {numberInput('timeoff-sameday-limit', draft.timeoff_sameday_limit, (n) => setField('timeoff_sameday_limit', n), 'requests')}
-                  <ModePicker id="timeoff-sameday" value={draft.timeoff_sameday_mode} onChange={(m) => setField('timeoff_sameday_mode', m)} />
+                  {numberInput('timeoff-sameday-limit', 'Same-day request limit', draft.timeoff_sameday_limit, (n) => setField('timeoff_sameday_limit', n), 'requests')}
+                  <ModePicker id="timeoff-sameday" title="Same-day limit" value={draft.timeoff_sameday_mode} onChange={(m) => setField('timeoff_sameday_mode', m)} />
                 </RuleRow>
               </div>
 

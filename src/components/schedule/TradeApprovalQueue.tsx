@@ -1012,17 +1012,17 @@ const TradeRequestCard = ({ trade, lateFinding, onApprove, onReject, disabled }:
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-[17px] font-semibold text-foreground flex items-center gap-2">
+            <CardTitle className="text-[17px] font-semibold text-foreground">
               {trade.offered_shift.position}
-              {lateFinding && (
-                <Badge
-                  variant="outline"
-                  className="text-[11px] font-medium bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400"
-                >
-                  Late · inside the trade window
-                </Badge>
-              )}
             </CardTitle>
+            {lateFinding && (
+              <Badge
+                variant="outline"
+                className="text-[11px] font-medium bg-warning/15 text-warning border-warning/30"
+              >
+                Late · inside the trade window
+              </Badge>
+            )}
             {trade.offered_shift.is_published === false && <TentativeDraftBadge />}
             <CardDescription className="text-[13px] mt-1">
               {format(shiftStart, 'EEEE, MMMM d, yyyy')}

@@ -30,7 +30,7 @@ export function useStaffingSettings(restaurantId: string | null) {
   const queryClient = useQueryClient();
   const queryKey = ['staffing-settings', restaurantId];
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading, error } = useQuery({
     queryKey,
     queryFn: async () => {
       if (!restaurantId) return null;
@@ -75,6 +75,7 @@ export function useStaffingSettings(restaurantId: string | null) {
     settings,
     effectiveSettings,
     isLoading,
+    error,
     updateSettings: upsertMutation.mutateAsync,
     isSaving: upsertMutation.isPending,
   };

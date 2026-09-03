@@ -1606,7 +1606,6 @@ const Scheduling = () => {
                     <Button
                       variant="outline"
                       onClick={() => setProtectionDialogOpen(true)}
-                      aria-label="Open the shift protection rules"
                     >
                       <Shield className="h-4 w-4 mr-2" />
                       Protection Rules
@@ -1693,7 +1692,6 @@ const Scheduling = () => {
                   <Button
                     variant="outline"
                     onClick={() => setProtectionDialogOpen(true)}
-                    aria-label="Open the shift protection rules"
                   >
                     <Shield className="h-4 w-4 mr-2" />
                     Protection Rules

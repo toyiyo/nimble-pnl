@@ -414,6 +414,7 @@ export function SetupDialog({
                     </p>
                     <Button
                       type="button"
+                      variant="ghost"
                       onClick={() =>
                         setForm((prev) => ({ ...prev, connected_bank_id: suggestedBank!.connected_bank_id }))
                       }

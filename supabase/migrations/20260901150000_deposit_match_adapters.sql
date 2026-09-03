@@ -37,6 +37,14 @@ BEGIN
   END IF;
   SELECT array_agg(v) INTO v_tender_names
   FROM jsonb_array_elements_text(p_config->'card_tender_names') AS v;
+  -- An empty array (`[]`) is present, so the key-absent guard above does
+  -- not catch it, but array_agg over zero rows returns NULL, which makes
+  -- `= ANY(v_tender_names)` NULL for every row — a silent zero total, not
+  -- a raised error. The design bars exactly this ("a missing key must not
+  -- read as a zero card total").
+  IF v_tender_names IS NULL OR array_length(v_tender_names, 1) = 0 THEN
+    RAISE EXCEPTION 'deposit_match_source_focus: source_config "card_tender_names" is empty; add at least one tender name';
+  END IF;
 
   RETURN QUERY
   SELECT fp.business_date, SUM(fp.amount)::numeric AS expected_amount, COUNT(*)::int AS row_count
@@ -86,6 +94,10 @@ REVOKE ALL ON FUNCTION public.deposit_match_source_toast(uuid, date, date, jsonb
 -- square: card payments minus card refunds, keyed on raw_json->>'source_type'
 -- (Task 0 finding, 2026-09-01). Neither table has a business_date column;
 -- created_at is cast to date. row_count covers both payment and refund rows.
+-- The WHERE clause bounds created_at with a timestamptz range instead of
+-- casting created_at::date, so the composite (restaurant_id, created_at)
+-- index (20260901170000_deposit_match_square_perf.sql) stays sargable —
+-- a ::date cast on the column would force a full-history scan per refresh.
 -- ─────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.deposit_match_source_square(
   p_restaurant_id uuid, p_start date, p_end date, p_config jsonb
@@ -103,6 +115,14 @@ BEGIN
   END IF;
   SELECT array_agg(v) INTO v_source_types
   FROM jsonb_array_elements_text(p_config->'card_source_types') AS v;
+  -- An empty array (`[]`) is present, so the key-absent guard above does
+  -- not catch it, but array_agg over zero rows returns NULL, which makes
+  -- `= ANY(v_source_types)` NULL for every row — a silent zero total, not
+  -- a raised error. The design bars exactly this ("a missing key must not
+  -- read as a zero card total").
+  IF v_source_types IS NULL OR array_length(v_source_types, 1) = 0 THEN
+    RAISE EXCEPTION 'deposit_match_source_square: source_config "card_source_types" is empty; add at least one source type';
+  END IF;
 
   RETURN QUERY
   SELECT d.business_date, SUM(d.amount)::numeric AS expected_amount, COUNT(*)::int AS row_count
@@ -110,13 +130,15 @@ BEGIN
     SELECT (sp.created_at::date) AS business_date, sp.amount_money AS amount
     FROM public.square_payments sp
     WHERE sp.restaurant_id = p_restaurant_id
-      AND sp.created_at::date BETWEEN p_start AND p_end
+      AND sp.created_at >= p_start::timestamptz
+      AND sp.created_at < (p_end + 1)::timestamptz
       AND (sp.raw_json->>'source_type') = ANY(v_source_types)
     UNION ALL
     SELECT (sr.created_at::date) AS business_date, -sr.amount_money AS amount
     FROM public.square_refunds sr
     WHERE sr.restaurant_id = p_restaurant_id
-      AND sr.created_at::date BETWEEN p_start AND p_end
+      AND sr.created_at >= p_start::timestamptz
+      AND sr.created_at < (p_end + 1)::timestamptz
       AND (sr.raw_json->>'source_type') = ANY(v_source_types)
   ) d
   GROUP BY d.business_date;
@@ -144,6 +166,14 @@ BEGIN
   END IF;
   SELECT array_agg(v) INTO v_payment_types
   FROM jsonb_array_elements_text(p_config->'card_payment_types') AS v;
+  -- An empty array (`[]`) is present, so the key-absent guard above does
+  -- not catch it, but array_agg over zero rows returns NULL, which makes
+  -- `= ANY(v_payment_types)` NULL for every row — a silent zero total, not
+  -- a raised error. The design bars exactly this ("a missing key must not
+  -- read as a zero card total").
+  IF v_payment_types IS NULL OR array_length(v_payment_types, 1) = 0 THEN
+    RAISE EXCEPTION 'deposit_match_source_revel: source_config "card_payment_types" is empty; add at least one payment type';
+  END IF;
 
   RETURN QUERY
   SELECT rp.payment_date, SUM(rp.amount + COALESCE(rp.tip_amount, 0))::numeric AS expected_amount,

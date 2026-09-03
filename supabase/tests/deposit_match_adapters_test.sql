@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(17);
+SELECT plan(20);
 
 -- Fixture: one restaurant, one business date, known card and non-card rows
 -- per POS source. Each adapter test sums only the card rows.
@@ -79,6 +79,19 @@ SELECT throws_like(
   '%card_tender_names%',
   'focus adapter raises when card_tender_names is absent from source_config'
 );
+-- An empty array is a present key, so the absent-key guard above cannot
+-- catch it. Without its own check, array_agg over zero rows returns NULL,
+-- and `= ANY(NULL)` is NULL (never true) for every row — a silent zero
+-- card total, which the design explicitly bars (sound-logic review,
+-- 2026-09-02).
+SELECT throws_like(
+  $$SELECT * FROM public.deposit_match_source_focus(
+    '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
+    '{"card_tender_names": []}'::jsonb
+  )$$,
+  '%card_tender_names%',
+  'focus adapter raises when card_tender_names is an empty array, not a silent zero'
+);
 
 -- toast adapter: sums amount + tip_amount for the configured payment type.
 SELECT is(
@@ -129,6 +142,19 @@ SELECT throws_like(
   '%card_source_types%',
   'square adapter raises when card_source_types is absent from source_config'
 );
+-- Same empty-array gap as the focus adapter above. This is the case the
+-- shipped `SetupDialog` hits for a new Square rule today: its default
+-- `source_config` is `{"card_source_types": []}` (no production card row
+-- proves the real tender values yet), so the raise must fire here, not
+-- read as a zero every refresh.
+SELECT throws_like(
+  $$SELECT * FROM public.deposit_match_source_square(
+    '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
+    '{"card_source_types": []}'::jsonb
+  )$$,
+  '%card_source_types%',
+  'square adapter raises when card_source_types is an empty array, not a silent zero'
+);
 
 -- revel adapter: sums amount + tip_amount for the configured payment types.
 SELECT is(
@@ -153,6 +179,17 @@ SELECT throws_like(
   )$$,
   '%card_payment_types%',
   'revel adapter raises when card_payment_types is absent from source_config'
+);
+-- Same empty-array gap as the focus and square adapters above. The
+-- shipped `SetupDialog`'s default `source_config` for a new Revel rule is
+-- `{"card_payment_types": []}`.
+SELECT throws_like(
+  $$SELECT * FROM public.deposit_match_source_revel(
+    '44444444-1000-0000-0000-000000000001'::uuid, '2026-08-25'::date, '2026-08-25'::date,
+    '{"card_payment_types": []}'::jsonb
+  )$$,
+  '%card_payment_types%',
+  'revel adapter raises when card_payment_types is an empty array, not a silent zero'
 );
 
 -- shift4 adapter: charges minus refunds by service_date, converted from cents.

@@ -183,11 +183,11 @@ describe('parseDepositMatchReport', () => {
   it('passes account_mask and suggested_sources through on a bank row', () => {
     const withMask = validReport();
     withMask.banks[0].account_mask = '4321';
-    withMask.banks[0].suggested_sources = { focus: 0.82, toast: 0.1 };
+    withMask.banks[0].suggested_sources = { focus: 3, toast: 4 };
 
     const report = parseDepositMatchReport(withMask);
 
     expect(report.banks[0].account_mask).toBe('4321');
-    expect(report.banks[0].suggested_sources).toEqual({ focus: 0.82, toast: 0.1 });
+    expect(report.banks[0].suggested_sources).toEqual({ focus: 3, toast: 4 });
   });
 });

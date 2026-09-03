@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(10);
+SELECT plan(14);
 
 -- Fixture: one restaurant, one owner (view:banking + view:pos_sales via the
 -- 'owner' role), four connected banks. Each bank isolates one scan case, so
@@ -28,6 +28,10 @@ INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALU
 -- Bank 6: 3 TST* rows all dated with today's timestamp (now()), not
 -- CURRENT_DATE - N — the scan's upper bound must include a transaction
 -- posted later today, not only transactions from a prior day.
+-- Bank 7: 3 TST* rows dated exactly CURRENT_DATE - 90 — the lower bound
+-- is inclusive, so this bank must still clear the threshold.
+-- Bank 8: 3 TST* rows dated CURRENT_DATE - 91, one day outside the
+-- 90-day window — the lower bound must exclude these.
 INSERT INTO public.connected_banks
   (id, restaurant_id, stripe_financial_account_id, institution_name, status, account_mask)
 VALUES
@@ -42,7 +46,11 @@ VALUES
   ('22222222-5000-0000-0000-000000000005', '11111111-5000-0000-0000-000000000001',
    'fca_banks_5', 'Ally', 'requires_reauth', '4471'),
   ('22222222-5000-0000-0000-000000000006', '11111111-5000-0000-0000-000000000001',
-   'fca_banks_6', 'Bluevine', 'connected', '3302');
+   'fca_banks_6', 'Bluevine', 'connected', '3302'),
+  ('22222222-5000-0000-0000-000000000007', '11111111-5000-0000-0000-000000000001',
+   'fca_banks_7', 'Novo', 'connected', '7788'),
+  ('22222222-5000-0000-0000-000000000008', '11111111-5000-0000-0000-000000000001',
+   'fca_banks_8', 'Axos', 'connected', '6699');
 
 -- Bank transactions are seeded as postgres (bypasses RLS) so the tests
 -- below exercise the report function, not the RLS policies.
@@ -114,6 +122,30 @@ VALUES
    '22222222-5000-0000-0000-000000000006', 'stxn_banks_6_2', now(), 'TST* Nimble Diner', 61.00),
   ('55555555-5000-0000-0000-000000000017', '11111111-5000-0000-0000-000000000001',
    '22222222-5000-0000-0000-000000000006', 'stxn_banks_6_3', now(), 'TST* Nimble Diner', 62.00);
+
+-- Bank 7: 3 TST* rows dated exactly CURRENT_DATE - 90 — the inclusive
+-- lower bound.
+INSERT INTO public.bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
+VALUES
+  ('55555555-5000-0000-0000-000000000018', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000007', 'stxn_banks_7_1', CURRENT_DATE - 90, 'TST* Nimble Diner', 80.00),
+  ('55555555-5000-0000-0000-000000000019', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000007', 'stxn_banks_7_2', CURRENT_DATE - 90, 'TST* Nimble Diner', 81.00),
+  ('55555555-5000-0000-0000-000000000020', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000007', 'stxn_banks_7_3', CURRENT_DATE - 90, 'TST* Nimble Diner', 82.00);
+
+-- Bank 8: 3 TST* rows dated CURRENT_DATE - 91 — one day past the lower
+-- bound, so the scan must exclude all three.
+INSERT INTO public.bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
+VALUES
+  ('55555555-5000-0000-0000-000000000021', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000008', 'stxn_banks_8_1', CURRENT_DATE - 91, 'TST* Nimble Diner', 90.00),
+  ('55555555-5000-0000-0000-000000000022', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000008', 'stxn_banks_8_2', CURRENT_DATE - 91, 'TST* Nimble Diner', 91.00),
+  ('55555555-5000-0000-0000-000000000023', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000008', 'stxn_banks_8_3', CURRENT_DATE - 91, 'TST* Nimble Diner', 92.00);
 
 RESET role;
 
@@ -246,6 +278,39 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------
+-- The 90-day lower bound is inclusive: a row dated exactly
+-- CURRENT_DATE - 90 still clears the threshold.
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT (b->'suggested_sources'->>'toast')::int
+     FROM jsonb_array_elements(
+       public.get_deposit_match_report(
+         '11111111-5000-0000-0000-000000000001', '2020-01-01', '2026-12-31'
+       )->'banks'
+     ) b
+    WHERE b->>'connected_bank_id' = '22222222-5000-0000-0000-000000000007'),
+  3,
+  '3 TST* rows dated CURRENT_DATE - 90 give suggested_sources.toast = 3 (inclusive lower bound)'
+);
+
+-- ---------------------------------------------------------------------
+-- The 90-day lower bound excludes CURRENT_DATE - 91 — one day past the
+-- window, so no toast key appears even with 3 rows.
+-- ---------------------------------------------------------------------
+SELECT ok(
+  NOT (
+    (SELECT b->'suggested_sources' ? 'toast'
+       FROM jsonb_array_elements(
+         public.get_deposit_match_report(
+           '11111111-5000-0000-0000-000000000001', '2020-01-01', '2026-12-31'
+         )->'banks'
+       ) b
+      WHERE b->>'connected_bank_id' = '22222222-5000-0000-0000-000000000008')
+  ),
+  '3 TST* rows dated CURRENT_DATE - 91 fall outside the window — no toast key in suggested_sources'
+);
+
+-- ---------------------------------------------------------------------
 -- The replaced function keeps SECURITY DEFINER and its pinned search_path.
 -- ---------------------------------------------------------------------
 SELECT ok(
@@ -263,6 +328,25 @@ SELECT ok(
        AND 'search_path=public, pg_temp' = ANY(p.proconfig)
   ),
   'get_deposit_match_report has SET search_path = public, pg_temp'
+);
+
+-- ---------------------------------------------------------------------
+-- Execution grants: authenticated can call the report, anon cannot.
+-- ---------------------------------------------------------------------
+SELECT ok(
+  has_function_privilege(
+    'authenticated',
+    'public.get_deposit_match_report(uuid,date,date)',
+    'EXECUTE'),
+  'authenticated role CAN EXECUTE get_deposit_match_report'
+);
+
+SELECT ok(
+  NOT has_function_privilege(
+    'anon',
+    'public.get_deposit_match_report(uuid,date,date)',
+    'EXECUTE'),
+  'anon cannot EXECUTE get_deposit_match_report'
 );
 
 SELECT * FROM finish();

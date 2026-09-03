@@ -53,9 +53,12 @@ reviewers checked every citation against the code.
   (`src/hooks/useTimeOffRequests.tsx:109-118`). The mutation's
   `onSuccess` fires the toast and the notification edge function
   (`src/hooks/useTimeOffRequests.tsx:123-142`).
-- The manager UPDATE RLS policy is `role IN ('owner','manager')`
-  (`supabase/migrations/20251114100000_create_scheduling_tables.sql:239-248`).
-  The SELECT policy admits any `user_restaurants` member (lines 218-226).
+- The manager INSERT/UPDATE/DELETE policies already sit on
+  `user_has_capability(restaurant_id, 'edit:scheduling')`
+  (`supabase/migrations/20260730150000_rewrite_collaborator_policies.sql:162-186`,
+  the latest definitions by filename order). The SELECT policy admits any
+  `user_restaurants` member
+  (`supabase/migrations/20251114100000_create_scheduling_tables.sql:218-226`).
 - An employee can edit the dates of a `pending` request; the `WITH CHECK`
   keeps the status at `pending`
   (`supabase/migrations/20251123100100_add_employee_self_service_rls.sql:36-45`).
@@ -79,9 +82,12 @@ reviewers checked every citation against the code.
 ### Settings
 
 - `staffing_settings` is the per-restaurant scheduling policy table with
-  a `UNIQUE (restaurant_id)` row. Members can SELECT; the write policy is
-  `role IN ('owner','manager')`
-  (`supabase/migrations/20260306000000_create_staffing_settings.sql:22,33-42`).
+  a `UNIQUE (restaurant_id)` row. Members can SELECT
+  (`supabase/migrations/20260306000000_create_staffing_settings.sql:22-30`).
+  The write policy already sits on
+  `user_has_capability(restaurant_id, 'edit:scheduling')`
+  (`supabase/migrations/20260730150000_rewrite_collaborator_policies.sql:154-160`,
+  the latest definition by filename order).
   The hook merges defaults and upserts on `restaurant_id`
   (`src/hooks/useStaffingSettings.ts:42-59`). The typed shape is
   `StaffingSettings` (`src/types/scheduling.ts:303-317`).
@@ -133,16 +139,12 @@ Rationale: `staffing_settings` already carries scheduling policy
 (`open_shifts_enabled`, `require_shift_claim_approval` —
 `src/hooks/useStaffingSettings.ts:31`), has RLS, and has an upsert hook.
 
-The same migration re-creates the `staffing_settings` write policy on
-`user_has_capability(restaurant_id, 'edit:scheduling')`. Reason: the new
-settings dialog is gated on that capability, and today a capability-only
-role (e.g. `operations_manager`) would pass the gate and then fail the
-`role IN ('owner','manager')` write RLS
-(`supabase/migrations/20260306000000_create_staffing_settings.sql:33-42`).
-Copy the original policy body verbatim and swap only the role check
-(lesson: widen by copying, never re-derive). Add a pgTAP residual scan
-over `pg_policies` that asserts the old predicate is gone (lesson:
-`DROP POLICY IF EXISTS` on a wrong name is a silent no-op).
+No policy change is needed: the write policy already sits on the
+`edit:scheduling` capability
+(`supabase/migrations/20260730150000_rewrite_collaborator_policies.sql:154-160`),
+so the capability-gated settings dialog and the write RLS agree today.
+(Rev 2 planned a policy swap from a stale citation of the original
+migration; rev 3 corrects it.)
 
 ### 2. New RPC: `review_time_off_request`
 
@@ -184,13 +186,11 @@ The manager UPDATE RLS policy stays unchanged so the date-edit flow in
 `TimeOffRequestDialog` keeps its path
 (`src/components/TimeOffRequestDialog.tsx:68-76`).
 
-**Audience note.** The RPC widens the approval audience from
-`role IN ('owner','manager')` to `edit:scheduling`. This is deliberate
-and copies the shift-trade precedent
-(`supabase/migrations/20260821120000_trade_approval_area_grant.sql:1-4`).
-The SELECT policy already admits all members
-(`supabase/migrations/20251114100000_create_scheduling_tables.sql:218-226`),
-so readers of the queue and actors on the queue stay in sync.
+**Audience note.** The RPC guard matches the audience of the deployed
+manager UPDATE policy — both use `edit:scheduling`
+(`supabase/migrations/20260730150000_rewrite_collaborator_policies.sql:172-178`).
+No audience change happens; the RPC adds findings and the override to
+the same actors (lesson: derive the guard from the deployed policy).
 
 ### 3. Rebuild `approve_shift_trade` with re-checks and an override
 
@@ -415,9 +415,7 @@ RPC result before the toast and the notification (section 2).
   bypass UPDATE paths; does not fire for a capability holder; cancel
   and cron transitions unaffected), `expire_stale_shift_trades`
   (only `open` + opted-in restaurants; sets the `auto_expired` marker),
-  the read RPC guards (cross-restaurant caller denied on all three),
-  and the `staffing_settings` policy swap (capability write allowed,
-  residual scan over `pg_policies` shows the old role predicate gone).
+  and the read RPC guards (cross-restaurant caller denied on all three).
   Update existing suites that call the changed functions
   (`supabase/tests/17_shift_trade_functions_security.sql`,
   `54_accept_shift_trade_authz.sql`, `65_trade_approval_area_grant.test.sql`).

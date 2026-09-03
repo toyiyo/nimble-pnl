@@ -17,13 +17,11 @@ the real prefix at file creation and check
 ### A. Database
 
 - [ ] A1. Migration `shift_protection_settings`: add the 8 NOT NULL
-      policy columns to `staffing_settings`; re-create the write policy
-      on `user_has_capability(restaurant_id, 'edit:scheduling')` (copy
-      the original body, swap the role check).
+      policy columns to `staffing_settings`. No policy change — the
+      write policy already sits on `edit:scheduling`
+      (`20260730150000_rewrite_collaborator_policies.sql:154-160`).
       Test: `supabase/tests/shift_protection_settings.test.sql` —
-      columns exist with defaults, capability write allowed,
-      owner/manager write still allowed, residual `pg_policies` scan
-      shows the old role predicate gone.
+      columns exist with defaults, NOT NULL, and CHECK bounds.
 - [ ] A2. Migration `shift_protection_read_rpcs`:
       `get_shift_protection_settings`, `get_timeoff_day_counts`,
       `get_timeoff_coverage_impact` (SECURITY DEFINER, STABLE, pinned

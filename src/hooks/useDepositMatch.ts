@@ -104,6 +104,12 @@ export function useDepositMatch({ restaurantId, startDate, endDate }: UseDeposit
     error: readQuery.error,
     isRefreshing: refreshMutation.isPending,
     refreshError: refreshMutation.error,
+    // Lets a rule create/update force a re-run for the current range. A new
+    // or newly active rule has zero `deposit_match_items` rows until
+    // `refresh_deposit_matches` runs — only the effect above calls it, and
+    // only once per distinct (restaurantId, startDate, endDate). Without
+    // this, adding a rule leaves the ledger empty until the range changes.
+    refreshNow: () => refreshMutation.mutate(),
   };
 }
 

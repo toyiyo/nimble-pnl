@@ -45,7 +45,7 @@ export default function DepositMatch() {
   const startDate = useMemo(() => isoDateDaysAgo(rangeDays), [rangeDays]);
   const endDate = todayIso();
 
-  const { report, isLoading, error } = useDepositMatch({ restaurantId, startDate, endDate });
+  const { report, isLoading, error, refreshNow } = useDepositMatch({ restaurantId, startDate, endDate });
 
   const openReview = (item: DepositMatchLedgerRow) => {
     setActiveItem(item);
@@ -205,6 +205,7 @@ export default function DepositMatch() {
         restaurantId={restaurantId}
         banks={report?.banks ?? []}
         rule={null}
+        onSaved={refreshNow}
       />
     </div>
   );

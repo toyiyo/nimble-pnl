@@ -25,6 +25,8 @@ interface SetupDialogProps {
   banks: DepositMatchBank[];
   /** Rule being edited, or null to create a new one. */
   rule: DepositMatchRule | null;
+  /** Called after a create or update commits, so the page can force a refresh. */
+  onSaved?: () => void;
 }
 
 interface FormState {
@@ -73,7 +75,7 @@ function initialFormState(rule: DepositMatchRule | null): FormState {
  * against your bank" (design: only `focus` and `toast` come from measured
  * production behavior).
  */
-export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: SetupDialogProps) {
+export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule, onSaved }: SetupDialogProps) {
   const [form, setForm] = useState<FormState>(() => initialFormState(rule));
   const createMutation = useCreateDepositMatchRule();
   const updateMutation = useUpdateDepositMatchRule(restaurantId);
@@ -104,8 +106,13 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
       return;
     }
 
-    const payload = {
-      restaurant_id: restaurantId,
+    // Fields shared by create and update. `restaurant_id` is NOT here: it
+    // belongs only on the create payload. `DepositMatchRuleUpdate` omits it
+    // by type (a rule's restaurant never changes after create), but that
+    // guard only fires against an object literal — spreading one shared
+    // `const` into both calls would let it ride along into every update
+    // silently, past the type check (maintainability review, 2026-09-02).
+    const ruleFields = {
       pos_source: form.pos_source,
       rail: 'card' as const,
       connected_bank_id: form.connected_bank_id,
@@ -122,6 +129,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
       onSuccess: () => {
         toast.success(isEdit ? 'You updated the rule.' : 'You added the rule.');
         onOpenChange(false);
+        onSaved?.();
       },
       onError: (error: Error) => {
         toast.error(`The save did not work: ${error.message}`);
@@ -129,14 +137,23 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
     };
 
     if (isEdit && rule) {
-      updateMutation.mutate({ id: rule.id, update: payload }, onSettled);
+      updateMutation.mutate({ id: rule.id, update: ruleFields }, onSettled);
     } else {
-      createMutation.mutate(payload, onSettled);
+      createMutation.mutate({ restaurant_id: restaurantId, ...ruleFields }, onSettled);
     }
   };
 
   const note = ruleDefaultsNote(form.pos_source);
   const unsupported = DEPOSIT_MATCH_SOURCE_DEFAULTS[form.pos_source]?.unsupported;
+
+  let submitLabel: string;
+  if (isPending) {
+    submitLabel = 'Saving…';
+  } else if (isEdit) {
+    submitLabel = 'Save changes';
+  } else {
+    submitLabel = 'Add rule';
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -293,7 +310,7 @@ export function SetupDialog({ open, onOpenChange, restaurantId, banks, rule }: S
             onClick={handleSubmit}
             disabled={isPending}
           >
-            {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Add rule'}
+            {submitLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(9);
+SELECT plan(10);
 
 -- Fixture: one restaurant, one owner (view:banking + view:pos_sales via the
 -- 'owner' role), four connected banks. Each bank isolates one scan case, so
@@ -25,6 +25,9 @@ INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALU
 -- Bank 5: status 'requires_reauth', 3 TST* rows that would otherwise clear
 -- the threshold — the scan must skip a bank the refresh engine cannot
 -- match against, so suggested_sources stays empty regardless of hits.
+-- Bank 6: 3 TST* rows all dated with today's timestamp (now()), not
+-- CURRENT_DATE - N — the scan's upper bound must include a transaction
+-- posted later today, not only transactions from a prior day.
 INSERT INTO public.connected_banks
   (id, restaurant_id, stripe_financial_account_id, institution_name, status, account_mask)
 VALUES
@@ -37,7 +40,9 @@ VALUES
   ('22222222-5000-0000-0000-000000000004', '11111111-5000-0000-0000-000000000001',
    'fca_banks_4', 'Wells', 'connected', NULL),
   ('22222222-5000-0000-0000-000000000005', '11111111-5000-0000-0000-000000000001',
-   'fca_banks_5', 'Ally', 'requires_reauth', '4471');
+   'fca_banks_5', 'Ally', 'requires_reauth', '4471'),
+  ('22222222-5000-0000-0000-000000000006', '11111111-5000-0000-0000-000000000001',
+   'fca_banks_6', 'Bluevine', 'connected', '3302');
 
 -- Bank transactions are seeded as postgres (bypasses RLS) so the tests
 -- below exercise the report function, not the RLS policies.
@@ -97,6 +102,18 @@ VALUES
    '22222222-5000-0000-0000-000000000005', 'stxn_banks_5_2', CURRENT_DATE - 2, 'TST* Nimble Diner', 51.00),
   ('55555555-5000-0000-0000-000000000014', '11111111-5000-0000-0000-000000000001',
    '22222222-5000-0000-0000-000000000005', 'stxn_banks_5_3', CURRENT_DATE - 3, 'TST* Nimble Diner', 52.00);
+
+-- Bank 6: 3 TST* rows, all timestamped with now() (today, after midnight
+-- UTC) — the upper bound of the scan window must not drop these.
+INSERT INTO public.bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
+VALUES
+  ('55555555-5000-0000-0000-000000000015', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000006', 'stxn_banks_6_1', now(), 'TST* Nimble Diner', 60.00),
+  ('55555555-5000-0000-0000-000000000016', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000006', 'stxn_banks_6_2', now(), 'TST* Nimble Diner', 61.00),
+  ('55555555-5000-0000-0000-000000000017', '11111111-5000-0000-0000-000000000001',
+   '22222222-5000-0000-0000-000000000006', 'stxn_banks_6_3', now(), 'TST* Nimble Diner', 62.00);
 
 RESET role;
 
@@ -210,6 +227,22 @@ SELECT ok(
       WHERE b->>'connected_bank_id' = '22222222-5000-0000-0000-000000000005')
   ),
   'a requires_reauth bank gets no suggestion, even with 3 TST* rows'
+);
+
+-- ---------------------------------------------------------------------
+-- The scan's upper bound includes today: 3 TST* rows timestamped with
+-- now() still clear the threshold, so suggested_sources.toast = 3.
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT (b->'suggested_sources'->>'toast')::int
+     FROM jsonb_array_elements(
+       public.get_deposit_match_report(
+         '11111111-5000-0000-0000-000000000001', '2020-01-01', '2026-12-31'
+       )->'banks'
+     ) b
+    WHERE b->>'connected_bank_id' = '22222222-5000-0000-0000-000000000006'),
+  3,
+  '3 TST* rows timestamped today (now()) give suggested_sources.toast = 3'
 );
 
 -- ---------------------------------------------------------------------

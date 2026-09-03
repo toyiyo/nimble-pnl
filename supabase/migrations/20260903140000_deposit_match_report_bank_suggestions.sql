@@ -120,11 +120,21 @@ BEGIN
   -- (SHIFT.?4), since both settle through Shift4 Payments; a source with
   -- no confirmed descriptor (revel) gets no pattern and so never appears.
   -- The scan runs only for a bank whose status is 'connected'. The refresh
-  -- engine only matches deposits against a 'connected' bank (see
-  -- supabase/migrations/20260901160000_deposit_match_refresh_engine.sql:167),
+  -- engine only matches deposits against a bank whose status is
+  -- 'connected' (see the `v_bank.status = 'connected'` gate in the
+  -- refresh engine's candidate CTE, in
+  -- supabase/migrations/20260901160000_deposit_match_refresh_engine.sql),
   -- so a suggestion pointing at a disconnected or reauth-needed bank would
   -- pick a bank that can never actually match. The bank itself still
   -- appears in the payload either way, so the picker still lists it.
+  --
+  -- bt.transaction_date is TIMESTAMPTZ (migration 20251021195308), not
+  -- DATE, so the upper bound stays exclusive: `< CURRENT_DATE + 1`, not
+  -- `<= CURRENT_DATE`. An inclusive `<=` casts CURRENT_DATE to today's
+  -- midnight, so it drops every transaction posted later today. Both
+  -- bounds still compare the column against a scalar timestamptz — no
+  -- AT TIME ZONE or ::date wrap on bt.transaction_date — so the scan
+  -- keeps using idx_bank_transactions_bank_date for a range scan.
   SELECT COALESCE(jsonb_agg(b), '[]'::jsonb) INTO v_banks
   FROM (
     SELECT jsonb_build_object(
@@ -150,7 +160,7 @@ BEGIN
             AND bt.amount > 0
             AND bt.is_transfer IS NOT TRUE
             AND bt.transaction_date >= CURRENT_DATE - 90
-            AND bt.transaction_date <= CURRENT_DATE
+            AND bt.transaction_date < CURRENT_DATE + 1
         ) counts
         CROSS JOIN LATERAL (
           VALUES

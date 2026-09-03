@@ -13,13 +13,12 @@ export function VerdictBanner({ report }: VerdictBannerProps) {
   const isClear = verdict.tone === 'clear';
 
   return (
-    <div
+    <output
       className={`flex items-center gap-3 p-4 rounded-xl border ${
         isClear
           ? 'bg-emerald-500/10 border-emerald-500/20'
           : 'bg-amber-500/10 border-amber-500/20'
       }`}
-      role="status"
     >
       <div
         className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${
@@ -33,6 +32,6 @@ export function VerdictBanner({ report }: VerdictBannerProps) {
         )}
       </div>
       <p className="text-[15px] font-medium text-foreground">{verdict.headline}</p>
-    </div>
+    </output>
   );
 }

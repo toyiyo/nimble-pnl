@@ -128,7 +128,9 @@ export function useDepositMatchRule(
     queryFn: async (): Promise<DepositMatchRule> => {
       const { data, error } = await supabase
         .from('deposit_match_rules' as any)
-        .select('*')
+        .select(
+          'id, pos_source, connected_bank_id, settlement, lag_days_min, lag_days_max, fee_pct_min, fee_pct_max, active, source_config'
+        )
         .eq('id', ruleId)
         .eq('restaurant_id', restaurantId)
         .single();
@@ -137,6 +139,8 @@ export function useDepositMatchRule(
     },
     enabled: Boolean(ruleId && restaurantId),
     staleTime: 30000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 }
 

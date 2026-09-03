@@ -262,7 +262,9 @@ describe('useDepositMatchRule', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(fromMock).toHaveBeenCalledWith('deposit_match_rules');
-    expect(chain.select).toHaveBeenCalledWith('*');
+    expect(chain.select).toHaveBeenCalledWith(
+      'id, pos_source, connected_bank_id, settlement, lag_days_min, lag_days_max, fee_pct_min, fee_pct_max, active, source_config'
+    );
     expect(chain.eqId).toHaveBeenCalledWith('id', 'rule-1');
     expect(chain.eqRestaurant).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     expect(result.current.data).toEqual({ id: 'rule-1', pos_source: 'toast' });

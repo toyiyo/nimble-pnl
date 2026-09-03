@@ -50,6 +50,7 @@ import ChartOfAccounts from "./pages/ChartOfAccounts";
 import FinancialStatements from "./pages/FinancialStatements";
 import Accounting from "./pages/Accounting";
 import Banking from "./pages/Banking";
+import DepositMatch from "./pages/DepositMatch";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
 import Scheduling from "./pages/Scheduling";
 import Employees from "./pages/Employees";
@@ -413,6 +414,7 @@ const App = () => (
           <Route path="/invoices/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
           <Route path="/stripe-account" element={<ProtectedRoute><StripeAccountManagement /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
+          <Route path="/banking/deposit-match" element={<ProtectedRoute><DepositMatch /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
           <Route path="/print-checks" element={<ProtectedRoute><PrintChecks /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />

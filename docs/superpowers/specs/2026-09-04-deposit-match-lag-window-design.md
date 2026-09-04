@@ -95,6 +95,28 @@ Mark it `IMMUTABLE` so the planner can inline it. Grant `EXECUTE` to
 engine migration uses at
 `20260901160000_deposit_match_refresh_engine.sql:306-307`.
 
+### Bound the lag columns
+
+The lag columns carry no CHECK constraint
+(`supabase/migrations/20260901140000_deposit_match_tables.sql:25-26`).
+The helper builds a `generate_series` over the lag span. An unbounded
+value would make the series huge on every candidate row. Add these
+constraints in the new migration:
+
+```sql
+ALTER TABLE public.deposit_match_rules
+  ADD CONSTRAINT deposit_match_rules_lag_min_range
+    CHECK (lag_days_min BETWEEN 0 AND 30),
+  ADD CONSTRAINT deposit_match_rules_lag_max_range
+    CHECK (lag_days_max BETWEEN 0 AND 30),
+  ADD CONSTRAINT deposit_match_rules_lag_order
+    CHECK (lag_days_max >= lag_days_min);
+```
+
+Every production rule holds lag 1–2, so the constraints add cleanly.
+The helper runs once per candidate row with a series of at most ~45
+rows, which is cheap.
+
 ### Replace `refresh_deposit_matches` only
 
 `CREATE OR REPLACE` with the full header restated: `SECURITY DEFINER`,
@@ -176,6 +198,22 @@ deposit due on day D syncs on D+1 at 01:02, and `data_current_through`
 then passes the `(v_expected_by + 1)` cutoff. `late` is at most one sync
 cycle behind reality, and never a false positive.
 
+Two known behavior notes, both accepted:
+
+- A connected bank whose sync falls behind now shows `pending` inside
+  the window, where the old order showed `incomplete`. Nothing is due
+  inside the window, and the item flips to `incomplete` / `bank_stale`
+  when the window closes without data.
+- A deposit stamped with a non-UTC offset near local midnight can land
+  in the next UTC day and leave the window. This edge exists in the
+  current code too. The business-day window is wider, so the risk
+  shrinks.
+
+The self-correction argument for the site 2 gate is proved by the code:
+step 2 deletes every auto link in the range on each run
+(`20260901160000_deposit_match_refresh_engine.sql:114-121`), so an early
+match is re-derived from full data on the next refresh.
+
 ### Column comments
 
 Add `COMMENT ON COLUMN` for `deposit_match_rules.lag_days_min` and
@@ -191,14 +229,22 @@ Logic does not change. `useDepositMatch.ts:132` and
 1. `src/components/deposit-match/SetupDialog.tsx:520-522,532-534`:
    change the labels "Lag days, min" and "Lag days, max" to
    "Lag business days, min" and "Lag business days, max". Keep the
-   input ids.
+   input ids. Check that the longer uppercase labels do not wrap in the
+   half-width grid column; shorten to "Lag, business days (min)" only
+   if they wrap. Add `min={0}` and `max={30}` to both number inputs, so
+   the form mirrors the new CHECK constraints.
 2. Add one helper line under the Settlement section header: "The lag
    counts business days, Monday to Friday. Weekend sales settle on the
    next business days." Style it
-   `text-[12px] text-muted-foreground`.
-3. `src/lib/depositMatchUi.ts`: update the comments around the defaults
-   (line 176 and the per-source notes) to state the unit is business
-   days. The numeric defaults stay 1–2.
+   `text-[12px] text-muted-foreground`. Place it above the conditional
+   amber `note` paragraph (`SetupDialog.tsx:515-517`), so the fixed
+   context does not read as part of the warning.
+3. `src/lib/depositMatchUi.ts`: change the comment blocks that describe
+   the lag values, so they state the unit is business days. The correct
+   sites are the top-of-object comment at lines 195-197 and the
+   per-source inline comments near lines 226-233, 237, 247-253, and
+   255-257. Do not change the `measured` JSDoc at line 176. The numeric
+   defaults stay 1–2.
 
 ## Test plan
 
@@ -221,9 +267,16 @@ business date to a named weekday. Known anchors: 2026-08-10 is a Monday,
 5. Ladder order: window still open and bank healthy → `pending`;
    window closed and `data_current_through` short of the full last
    day → `incomplete` / `bank_stale`, not `late`.
-6. `prosecdef` is true and the search path is `public, pg_temp` for
+6. Ambiguity-window parity: seed two candidate deposits for one item,
+   the second with an intraday timestamp on the last lag business day.
+   The engine must count the second candidate and write the link as
+   `suggested`, not `confirmed`. This guards the site 1 and site 3
+   windows against divergence.
+7. New CHECK constraints: an insert with `lag_days_max = 45` fails; an
+   insert with `lag_days_min > lag_days_max` fails.
+8. `prosecdef` is true and the search path is `public, pg_temp` for
    `refresh_deposit_matches` after the replace.
-7. `get_deposit_match_report` still returns `suggested_sources` in the
+9. `get_deposit_match_report` still returns `suggested_sources` in the
    banks payload (guards against a replace from stale function text).
 
 Review the existing seeds in

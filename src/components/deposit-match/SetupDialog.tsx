@@ -512,17 +512,23 @@ export function SetupDialog({
               <h3 className="text-[13px] font-semibold text-foreground">Settlement</h3>
             </div>
             <div className="p-4 space-y-4">
+              <p className="text-[12px] text-muted-foreground">
+                The lag counts business days, Monday to Friday. Weekend sales settle on the
+                next business days.
+              </p>
               {note && (
                 <p className="text-[12px] text-amber-700 dark:text-amber-400">{note}</p>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="deposit_match_lag_min" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Lag days, min
+                    Lag business days, min
                   </Label>
                   <Input
                     id="deposit_match_lag_min"
                     type="number"
+                    min={0}
+                    max={30}
                     value={form.lag_days_min}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_min: event.target.value }))}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
@@ -530,11 +536,13 @@ export function SetupDialog({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="deposit_match_lag_max" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Lag days, max
+                    Lag business days, max
                   </Label>
                   <Input
                     id="deposit_match_lag_max"
                     type="number"
+                    min={0}
+                    max={30}
                     value={form.lag_days_max}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_max: event.target.value }))}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"

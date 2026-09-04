@@ -51,6 +51,37 @@ REVOKE ALL ON FUNCTION public.deposit_match_business_days_after(date, integer) F
 GRANT EXECUTE ON FUNCTION public.deposit_match_business_days_after(date, integer) TO authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════
+-- deposit_match_lag_window_start / _end: the inclusive-start and
+-- exclusive-end UTC timestamps of the half-open business-day window built
+-- from a business_date and a lag (in business days). Every lag-sensitive
+-- site in refresh_deposit_matches below calls these two functions instead
+-- of writing the business_days_after(...)::timestamp AT TIME ZONE 'UTC'
+-- cast inline — the candidate join (site 1) and the ambiguity count
+-- (site 3) then use the identical window by construction, not by a
+-- comment asking two separate call sites to stay in sync.
+-- ═══════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION public.deposit_match_lag_window_start(
+  p_date date, p_days integer
+) RETURNS timestamptz
+LANGUAGE sql IMMUTABLE STRICT
+AS $$
+  SELECT (public.deposit_match_business_days_after(p_date, p_days))::timestamp AT TIME ZONE 'UTC'
+$$;
+
+CREATE OR REPLACE FUNCTION public.deposit_match_lag_window_end(
+  p_date date, p_days integer
+) RETURNS timestamptz
+LANGUAGE sql IMMUTABLE STRICT
+AS $$
+  SELECT (public.deposit_match_business_days_after(p_date, p_days) + 1)::timestamp AT TIME ZONE 'UTC'
+$$;
+
+REVOKE ALL ON FUNCTION public.deposit_match_lag_window_start(date, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.deposit_match_lag_window_start(date, integer) TO authenticated;
+REVOKE ALL ON FUNCTION public.deposit_match_lag_window_end(date, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.deposit_match_lag_window_end(date, integer) TO authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════
 -- Bound the lag columns. The helper builds a generate_series over the lag
 -- span, so an unbounded value would make that series huge on every
 -- candidate row.
@@ -185,11 +216,9 @@ BEGIN
           -- business day, so an intraday deposit on that last day still
           -- falls inside the window (defect 1 in the design doc).
           AND bt.transaction_date >=
-            (public.deposit_match_business_days_after(i.business_date, v_rule.lag_days_min))::timestamp
-              AT TIME ZONE 'UTC'
+            public.deposit_match_lag_window_start(i.business_date, v_rule.lag_days_min)
           AND bt.transaction_date <
-            (public.deposit_match_business_days_after(i.business_date, v_rule.lag_days_max)
-              + 1)::timestamp AT TIME ZONE 'UTC'
+            public.deposit_match_lag_window_end(i.business_date, v_rule.lag_days_max)
           AND (v_rule.descriptor_pattern IS NULL OR bt.description ~* v_rule.descriptor_pattern)
         WHERE i.rule_id = v_rule.id
           AND i.business_date BETWEEN p_start_date AND p_end_date
@@ -217,8 +246,7 @@ BEGIN
           -- refresh self-corrects on the next run because Step 2 clears
           -- every auto link in range before this loop runs again.
           AND v_bank.data_current_through >=
-            (public.deposit_match_business_days_after(i.business_date, v_rule.lag_days_max))::timestamp
-              AT TIME ZONE 'UTC'
+            public.deposit_match_lag_window_start(i.business_date, v_rule.lag_days_max)
         ORDER BY fit_score ASC, i.business_date ASC, bt.transaction_date ASC, bt.id ASC
       LOOP
         IF v_cand.item_id = ANY(v_assigned_items) OR v_cand.txn_id = ANY(v_assigned_txns) THEN
@@ -258,16 +286,13 @@ BEGIN
             WHERE l4.bank_transaction_id = bt2.id AND l4.state = 'confirmed'
               AND l4.restaurant_id = p_restaurant_id
           )
-          -- Same half-open business-day window as the candidate join above.
-          -- The two windows must stay identical, or the ambiguity count
-          -- diverges from the candidate set the assignment loop actually
-          -- used (design doc, site 3).
+          -- Same half-open business-day window as the candidate join above
+          -- (design doc, site 3) — the shared deposit_match_lag_window_*
+          -- functions keep the two windows identical by construction.
           AND bt2.transaction_date >=
-            (public.deposit_match_business_days_after(v_cand.business_date, v_rule.lag_days_min))::timestamp
-              AT TIME ZONE 'UTC'
+            public.deposit_match_lag_window_start(v_cand.business_date, v_rule.lag_days_min)
           AND bt2.transaction_date <
-            (public.deposit_match_business_days_after(v_cand.business_date, v_rule.lag_days_max)
-              + 1)::timestamp AT TIME ZONE 'UTC'
+            public.deposit_match_lag_window_end(v_cand.business_date, v_rule.lag_days_max)
           AND (v_rule.descriptor_pattern IS NULL OR bt2.description ~* v_rule.descriptor_pattern)
           AND (
             CASE WHEN v_rule.settlement = 'gross'

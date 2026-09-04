@@ -93,12 +93,16 @@ VALUES
 -- deposit lands on Wed Aug12 — the lag_max business day — at 12:30 UTC.
 -- Under the old DATE-cast BETWEEN bound this deposit fell outside the
 -- window; the half-open TIMESTAMPTZ bound now includes it.
+-- source_config carries card_tender_names: deposit_match_source_focus
+-- requires this key, or the dispatch step raises and the whole rule lands
+-- on status_reason = rule_error instead of exercising the lag window.
 INSERT INTO public.deposit_match_rules
   (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
-   lag_days_min, lag_days_max, amount_tolerance)
+   lag_days_min, lag_days_max, amount_tolerance, source_config)
 VALUES
   ('33333333-6000-0000-0000-000000000001', '11111111-6000-0000-0000-000000000001',
-   'focus', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50);
+   'focus', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50,
+   '{"card_tender_names": ["Visa"]}'::jsonb);
 
 INSERT INTO public.deposit_match_items
   (id, restaurant_id, rule_id, business_date, expected_amount, status)
@@ -117,12 +121,15 @@ VALUES
 -- business date Fri 2026-08-14. Window is [Mon Aug17, Wed Aug19) UTC. The
 -- deposit is a bare date on Mon Aug17 — the next business day after the
 -- weekend. A calendar lag of 1-2 could never reach a Monday from a Friday.
+-- source_config carries card_payment_type: deposit_match_source_toast
+-- requires this key, or the dispatch step raises.
 INSERT INTO public.deposit_match_rules
   (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
-   lag_days_min, lag_days_max, amount_tolerance)
+   lag_days_min, lag_days_max, amount_tolerance, source_config)
 VALUES
   ('33333333-6000-0000-0000-000000000002', '11111111-6000-0000-0000-000000000001',
-   'toast', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50);
+   'toast', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50,
+   '{"card_payment_type": "CREDIT"}'::jsonb);
 
 INSERT INTO public.deposit_match_items
   (id, restaurant_id, rule_id, business_date, expected_amount, status)
@@ -140,12 +147,15 @@ VALUES
 -- Rule 3b (case 3, weekend rollover, Thu anchor): lag 1-2, business date
 -- Thu 2026-08-13. Window is [Fri Aug14, Tue Aug18) UTC. Deposit is a bare
 -- date on Mon Aug17.
+-- source_config carries card_source_types: deposit_match_source_square
+-- requires this key, or the dispatch step raises.
 INSERT INTO public.deposit_match_rules
   (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
-   lag_days_min, lag_days_max, amount_tolerance)
+   lag_days_min, lag_days_max, amount_tolerance, source_config)
 VALUES
   ('33333333-6000-0000-0000-000000000003', '11111111-6000-0000-0000-000000000001',
-   'square', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50);
+   'square', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50,
+   '{"card_source_types": ["CARD"]}'::jsonb);
 
 INSERT INTO public.deposit_match_items
   (id, restaurant_id, rule_id, business_date, expected_amount, status)
@@ -167,12 +177,15 @@ VALUES
 -- must not match. The bank is fully fresh and CURRENT_DATE is long past
 -- the window, so the item must land on late/past_lag_max, not pending or
 -- incomplete.
+-- source_config carries card_payment_types: deposit_match_source_revel
+-- requires this key, or the dispatch step raises.
 INSERT INTO public.deposit_match_rules
   (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
-   lag_days_min, lag_days_max, amount_tolerance)
+   lag_days_min, lag_days_max, amount_tolerance, source_config)
 VALUES
   ('33333333-6000-0000-0000-000000000004', '11111111-6000-0000-0000-000000000001',
-   'revel', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50);
+   'revel', 'card', '22222222-6000-0000-0000-000000000001', 'gross', 1, 2, 0.50,
+   '{"card_payment_types": ["credit_card"]}'::jsonb);
 
 INSERT INTO public.deposit_match_items
   (id, restaurant_id, rule_id, business_date, expected_amount, status)
@@ -229,12 +242,14 @@ VALUES
 -- engine must count the second one and write the winning link as
 -- suggested, not confirmed. If site 1 (candidate join) and site 3
 -- (ambiguity count) ever used different windows, this diverges.
+-- source_config carries card_tender_names, same requirement as rule 2.
 INSERT INTO public.deposit_match_rules
   (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
-   lag_days_min, lag_days_max, amount_tolerance)
+   lag_days_min, lag_days_max, amount_tolerance, source_config)
 VALUES
   ('33333333-6000-0000-0000-000000000007', '11111111-6000-0000-0000-000000000002',
-   'focus', 'card', '22222222-6000-0000-0000-000000000003', 'gross', 1, 2, 1.00);
+   'focus', 'card', '22222222-6000-0000-0000-000000000003', 'gross', 1, 2, 1.00,
+   '{"card_tender_names": ["Visa"]}'::jsonb);
 
 INSERT INTO public.deposit_match_items
   (id, restaurant_id, rule_id, business_date, expected_amount, status)

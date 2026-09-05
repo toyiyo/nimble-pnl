@@ -94,6 +94,15 @@ interface FormState {
 
 const SOURCE_OPTIONS = Object.entries(DEPOSIT_MATCH_SOURCE_DEFAULTS);
 
+// Lower and upper bound for lag_days_min/lag_days_max. Must match the
+// `deposit_match_rules_lag_min_range` / `_lag_max_range` CHECK constraints
+// in supabase/migrations/20260904150000_deposit_match_business_day_lag.sql.
+// One pair of constants for the four in-file spots that need this range
+// (the two validation checks in handleSubmit and the two Input min/max
+// props below), so a future range change has one place to edit here.
+const LAG_DAYS_MIN = 0;
+const LAG_DAYS_MAX = 30;
+
 function initialFormState(rule: DepositMatchRule | null): FormState {
   if (rule) {
     return {
@@ -219,6 +228,36 @@ export function SetupDialog({
       return;
     }
 
+    // The `min`/`max` attributes on the lag inputs are HTML hints only —
+    // they do not block a bare onClick handler. Check the range here so a
+    // bad value shows a plain-language toast instead of the raw Postgres
+    // CHECK-constraint error from `deposit_match_rules_lag_max_range`.
+    //
+    // Check the blank string first: `Number('')` is `0`, an integer, so a
+    // cleared field would otherwise pass every check below and save silently
+    // as an explicit lag of 0 instead of being caught as missing input.
+    if (form.lag_days_min.trim() === '' || form.lag_days_max.trim() === '') {
+      toast.error('Set the lag business days between 0 and 30, with min at or below max.');
+      return;
+    }
+    const lagMin = Number(form.lag_days_min);
+    const lagMax = Number(form.lag_days_max);
+    // All four bounds are written out, not inferred from the ordering
+    // check below, so this line stays correct on its own if a later edit
+    // drops or reorders a clause.
+    if (
+      !Number.isInteger(lagMin) ||
+      !Number.isInteger(lagMax) ||
+      lagMin < LAG_DAYS_MIN ||
+      lagMin > LAG_DAYS_MAX ||
+      lagMax < LAG_DAYS_MIN ||
+      lagMax > LAG_DAYS_MAX ||
+      lagMin > lagMax
+    ) {
+      toast.error('Set the lag business days between 0 and 30, with min at or below max.');
+      return;
+    }
+
     // Fields shared by create and update. `restaurant_id` is NOT here: it
     // belongs only on the create payload. `DepositMatchRuleUpdate` omits it
     // by type (a rule's restaurant never changes after create), but that
@@ -230,8 +269,8 @@ export function SetupDialog({
       rail: 'card' as const,
       connected_bank_id: form.connected_bank_id,
       settlement: form.settlement,
-      lag_days_min: Number(form.lag_days_min),
-      lag_days_max: Number(form.lag_days_max),
+      lag_days_min: lagMin,
+      lag_days_max: lagMax,
       fee_pct_min: Number(form.fee_pct_min),
       fee_pct_max: Number(form.fee_pct_max),
       source_config: form.source_config,
@@ -512,17 +551,23 @@ export function SetupDialog({
               <h3 className="text-[13px] font-semibold text-foreground">Settlement</h3>
             </div>
             <div className="p-4 space-y-4">
+              <p className="text-[12px] text-muted-foreground">
+                The lag counts business days, Monday to Friday. Weekend sales settle on the
+                next business days.
+              </p>
               {note && (
                 <p className="text-[12px] text-amber-700 dark:text-amber-400">{note}</p>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="deposit_match_lag_min" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Lag days, min
+                    Lag business days, min
                   </Label>
                   <Input
                     id="deposit_match_lag_min"
                     type="number"
+                    min={LAG_DAYS_MIN}
+                    max={LAG_DAYS_MAX}
                     value={form.lag_days_min}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_min: event.target.value }))}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
@@ -530,11 +575,13 @@ export function SetupDialog({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="deposit_match_lag_max" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Lag days, max
+                    Lag business days, max
                   </Label>
                   <Input
                     id="deposit_match_lag_max"
                     type="number"
+                    min={LAG_DAYS_MIN}
+                    max={LAG_DAYS_MAX}
                     value={form.lag_days_max}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_max: event.target.value }))}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"

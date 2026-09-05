@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(26);
+SELECT plan(27);
 
 -- Design ref: docs/superpowers/specs/2026-09-04-deposit-match-lag-window-design.md
 -- ("Test plan" section). Named-weekday anchors from the design:
@@ -295,6 +295,16 @@ SELECT throws_ok(
        '22222222-6000-0000-0000-000000000003', 'gross', 3, 1)$$,
   '23514', NULL,
   'lag_days_min > lag_days_max violates the ordering CHECK constraint'
+);
+
+SELECT throws_ok(
+  $$INSERT INTO public.deposit_match_rules
+      (restaurant_id, pos_source, rail, connected_bank_id, settlement, lag_days_min, lag_days_max)
+    VALUES
+      ('11111111-6000-0000-0000-000000000002', 'shift4', 'card',
+       '22222222-6000-0000-0000-000000000003', 'gross', -1, 0)$$,
+  '23514', NULL,
+  'lag_days_min = -1 violates the 0-30 range CHECK constraint'
 );
 
 RESET role;

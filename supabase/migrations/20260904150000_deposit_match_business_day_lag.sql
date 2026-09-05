@@ -348,10 +348,14 @@ BEGIN
         --   v_bank_stale — the window has closed, but the bank feed does
         --                  not yet cover the full last lag day. Declare
         --                  late only from complete data.
+        -- v_bank_stale reuses v_expected_by (same value
+        -- deposit_match_lag_window_end would derive) instead of calling
+        -- that function again, so the business-day search does not run
+        -- twice per item per loop iteration.
         v_bank_dead := v_bank.status IS DISTINCT FROM 'connected'
           OR v_bank.data_current_through IS NULL;
         v_bank_stale := v_bank.data_current_through <
-          public.deposit_match_lag_window_end(v_item.business_date, v_rule.lag_days_max);
+          (v_expected_by + 1)::timestamp AT TIME ZONE 'UTC';
 
         IF v_received > 0 THEN
           IF v_diff BETWEEN (v_fee_lo - v_tol) AND (v_fee_hi + v_tol) THEN

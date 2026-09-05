@@ -192,7 +192,13 @@ export async function seedInventoryUsage(
  */
 export async function seedToastPayment(
   restaurantId: string,
-  input: { paymentDate: string; amount: number; tipAmount?: number; paymentType?: string }
+  input: {
+    paymentDate: string;
+    amount: number;
+    tipAmount?: number;
+    paymentType?: string;
+    paymentStatus?: string;
+  }
 ): Promise<void> {
   const supabase = getServiceRoleClient();
 
@@ -204,6 +210,12 @@ export async function seedToastPayment(
     amount: input.amount,
     tip_amount: input.tipAmount ?? 0,
     payment_date: input.paymentDate,
+    // The deposit-match Toast adapter now counts only settled payments
+    // (`AND tp.payment_status = 'CAPTURED'` in
+    // `supabase/migrations/20260905090000_deposit_match_toast_captured.sql`).
+    // Default to a settled payment so a spec that does not care about
+    // `payment_status` still models a real, batch-closed Toast payment.
+    payment_status: input.paymentStatus ?? 'CAPTURED',
   });
 
   if (error) {

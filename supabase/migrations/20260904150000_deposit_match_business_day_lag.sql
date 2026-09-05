@@ -47,8 +47,16 @@ AS $$
   END
 $$;
 
+-- No GRANT to authenticated. Only refresh_deposit_matches calls this
+-- helper, and that call runs as the SECURITY DEFINER function's owner, not
+-- the invoking role, so authenticated needs no direct EXECUTE grant here.
+-- p_days comes only from lag_days_min/lag_days_max, already bound to 0-30
+-- by the CHECK constraints below — but that bound is a table constraint,
+-- not a function guard. A direct RPC call by an authenticated user could
+-- still pass an unbounded p_days and force a huge generate_series (found
+-- in review, chatgpt-codex-connector and coderabbitai). No EXECUTE grant
+-- closes that path outright, without needing a guard inside the function.
 REVOKE ALL ON FUNCTION public.deposit_match_business_days_after(date, integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.deposit_match_business_days_after(date, integer) TO authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- deposit_match_lag_window_start / _end: the inclusive-start and
@@ -76,10 +84,11 @@ AS $$
   SELECT (public.deposit_match_business_days_after(p_date, p_days) + 1)::timestamp AT TIME ZONE 'UTC'
 $$;
 
+-- Same reasoning as deposit_match_business_days_after above: only
+-- refresh_deposit_matches calls these, as the SECURITY DEFINER owner, so
+-- no GRANT to authenticated.
 REVOKE ALL ON FUNCTION public.deposit_match_lag_window_start(date, integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.deposit_match_lag_window_start(date, integer) TO authenticated;
 REVOKE ALL ON FUNCTION public.deposit_match_lag_window_end(date, integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.deposit_match_lag_window_end(date, integer) TO authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- Bound the lag columns. The helper builds a generate_series over the lag

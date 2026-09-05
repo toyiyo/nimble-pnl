@@ -94,7 +94,7 @@ default.
 
 ## Change
 
-One new migration: `supabase/migrations/20260905TTTTTT_deposit_match_toast_captured.sql`
+One new migration: `supabase/migrations/20260905090000_deposit_match_toast_captured.sql`
 (pick a unique 14-digit prefix; check against merged main before push).
 
 - Copy `public.deposit_match_source_toast` whole from

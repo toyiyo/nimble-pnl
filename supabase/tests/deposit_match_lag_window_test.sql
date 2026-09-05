@@ -77,7 +77,11 @@ INSERT INTO public.connected_banks
   (id, restaurant_id, stripe_financial_account_id, institution_name, status, data_current_through)
 VALUES
   ('22222222-6000-0000-0000-000000000001', '11111111-6000-0000-0000-000000000001',
-   'fca_lag_fresh', 'Fresh Bank', 'connected', '2026-12-31T00:00:00Z'),
+   -- A relative future date, not a hardcoded one — the fixed date
+   -- 2026-12-31 would drift stale once wall-clock time passed it, flipping
+   -- these fresh-bank cases from matched/needs_review to incomplete/late
+   -- (found in review, sound-logic).
+   'fca_lag_fresh', 'Fresh Bank', 'connected', (CURRENT_DATE + interval '1 year')),
   ('22222222-6000-0000-0000-000000000002', '11111111-6000-0000-0000-000000000001',
    'fca_lag_partial', 'Partial Sync Bank', 'connected',
    -- Covers only 12 hours past the start of the last lag business day for
@@ -86,7 +90,7 @@ VALUES
    (public.deposit_match_business_days_after((CURRENT_DATE - 10), 2))::timestamp
      AT TIME ZONE 'UTC' + interval '12 hours'),
   ('22222222-6000-0000-0000-000000000003', '11111111-6000-0000-0000-000000000002',
-   'fca_lag_fresh_2', 'Fresh Bank 2', 'connected', '2026-12-31T00:00:00Z');
+   'fca_lag_fresh_2', 'Fresh Bank 2', 'connected', (CURRENT_DATE + interval '1 year'));
 
 -- Rule 2 (case 2, intraday regression / defect 1): lag 1-2, business date
 -- Mon 2026-08-10. Window is [Tue Aug11 00:00, Thu Aug13 00:00) UTC. The

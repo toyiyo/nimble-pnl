@@ -94,6 +94,15 @@ interface FormState {
 
 const SOURCE_OPTIONS = Object.entries(DEPOSIT_MATCH_SOURCE_DEFAULTS);
 
+// Lower and upper bound for lag_days_min/lag_days_max. Must match the
+// `deposit_match_rules_lag_min_range` / `_lag_max_range` CHECK constraints
+// in supabase/migrations/20260904150000_deposit_match_business_day_lag.sql.
+// One pair of constants for the four in-file spots that need this range
+// (the two validation checks in handleSubmit and the two Input min/max
+// props below), so a future range change has one place to edit here.
+const LAG_DAYS_MIN = 0;
+const LAG_DAYS_MAX = 30;
+
 function initialFormState(rule: DepositMatchRule | null): FormState {
   if (rule) {
     return {
@@ -223,13 +232,26 @@ export function SetupDialog({
     // they do not block a bare onClick handler. Check the range here so a
     // bad value shows a plain-language toast instead of the raw Postgres
     // CHECK-constraint error from `deposit_match_rules_lag_max_range`.
+    //
+    // Check the blank string first: `Number('')` is `0`, an integer, so a
+    // cleared field would otherwise pass every check below and save silently
+    // as an explicit lag of 0 instead of being caught as missing input.
+    if (form.lag_days_min.trim() === '' || form.lag_days_max.trim() === '') {
+      toast.error('Set the lag business days between 0 and 30, with min at or below max.');
+      return;
+    }
     const lagMin = Number(form.lag_days_min);
     const lagMax = Number(form.lag_days_max);
+    // All four bounds are written out, not inferred from the ordering
+    // check below, so this line stays correct on its own if a later edit
+    // drops or reorders a clause.
     if (
       !Number.isInteger(lagMin) ||
       !Number.isInteger(lagMax) ||
-      lagMin < 0 ||
-      lagMax > 30 ||
+      lagMin < LAG_DAYS_MIN ||
+      lagMin > LAG_DAYS_MAX ||
+      lagMax < LAG_DAYS_MIN ||
+      lagMax > LAG_DAYS_MAX ||
       lagMin > lagMax
     ) {
       toast.error('Set the lag business days between 0 and 30, with min at or below max.');
@@ -544,8 +566,8 @@ export function SetupDialog({
                   <Input
                     id="deposit_match_lag_min"
                     type="number"
-                    min={0}
-                    max={30}
+                    min={LAG_DAYS_MIN}
+                    max={LAG_DAYS_MAX}
                     value={form.lag_days_min}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_min: event.target.value }))}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
@@ -558,8 +580,8 @@ export function SetupDialog({
                   <Input
                     id="deposit_match_lag_max"
                     type="number"
-                    min={0}
-                    max={30}
+                    min={LAG_DAYS_MIN}
+                    max={LAG_DAYS_MAX}
                     value={form.lag_days_max}
                     onChange={(event) => setForm((prev) => ({ ...prev, lag_days_max: event.target.value }))}
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"

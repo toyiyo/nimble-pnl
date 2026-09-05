@@ -232,8 +232,7 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     // deposit_match_source_square raise on every Square rule — the
     // adapter's own empty-array guard cannot tell "no config" from "an
     // administrator picked zero types" and correctly refuses to treat
-    // the two the same way. The lag_days_min/lag_days_max above count
-    // business days, not calendar days.
+    // the two the same way.
     source_config: { card_source_types: ['CARD', 'WALLET'] },
     // No measured settlement behavior exists for Square yet (design doc
     // addendum, 2026-09-03). A new rule starts off; the owner turns it on
@@ -254,9 +253,7 @@ export const DEPOSIT_MATCH_SOURCE_DEFAULTS: Record<string, DepositMatchSourceDef
     // (design doc addendum, 2026-09-03). The stored payment_type COLUMN
     // cannot make this split — revelOrderProcessor.ts:172 writes card_type
     // over it, so a cash row and a card row can carry the same digits
-    // there. The adapter filters raw_json, never that column. The
-    // lag_days_min/lag_days_max above count business days, not calendar
-    // days.
+    // there. The adapter filters raw_json, never that column.
     source_config: { card_payment_types: ['2'] },
     // No measured settlement behavior exists for Revel yet (design doc
     // addendum, 2026-09-03). A new rule starts off; the owner turns it on

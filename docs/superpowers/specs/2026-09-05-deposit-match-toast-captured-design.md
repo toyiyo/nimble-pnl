@@ -83,9 +83,14 @@ lag band is at least one business day.
 
 ### NULL payment_status
 
-The filter `payment_status = 'CAPTURED'` excludes NULL rows. The Toast
-sync always writes a status, so production has no NULL CREDIT rows. A
-NULL row has no settlement proof, so exclusion is the safe default.
+The filter `payment_status = 'CAPTURED'` excludes NULL rows. The column
+is TEXT, nullable, no default
+(`supabase/migrations/20251116100100_toast_integration.sql:80`). The
+sync has a null fallback: `toastOrderProcessor.ts:198` writes
+`payment.paymentStatus || payment.status || null`. A production query on
+2026-09-05 found no NULL CREDIT rows (24,670 rows, all eight statuses
+above). A NULL row has no settlement proof, so exclusion is the safe
+default.
 
 ## Change
 
@@ -115,18 +120,21 @@ Extend `supabase/tests/deposit_match_adapters_test.sql`:
    (`supabase/tests/deposit_match_adapters_test.sql:23-27`): mark the
    CREDIT row and the CASH row CAPTURED. The current sum assertions
    (90.00, row_count 1) must not change.
-2. Add fixture rows on the same date: one DENIED CREDIT row, one VOIDED
-   CREDIT row, one AUTHORIZED CREDIT row, and one CREDIT row with a NULL
-   `payment_status`.
-3. Assert the expected amount stays 90.00 and the row count stays 1.
-   One assertion pair proves the adapter excludes all four
-   non-CAPTURED cases.
-4. Update `plan(N)`.
+2. Add fixture rows on the same date, in the same top-of-file fixture
+   block: one DENIED CREDIT row, one VOIDED CREDIT row, one AUTHORIZED
+   CREDIT row, and one CREDIT row with a NULL `payment_status`.
+3. The existing assertions at
+   `supabase/tests/deposit_match_adapters_test.sql:101-116` then prove
+   the exclusion: the expected amount stays 90.00 and the row count
+   stays 1. Do not add duplicate assertions. `plan(N)` stays 23.
 
 The dispatcher test and the other adapter tests do not change.
-`supabase/tests/deposit_match_lag_window_test.sql` also calls the toast
-adapter; check its fixtures and add `payment_status = 'CAPTURED'` there
-if the schema requires it or the test fails after the change.
+`supabase/tests/deposit_match_lag_window_test.sql` needs no fixture
+change — that test inserts no `toast_payments` rows, so the CAPTURED
+filter cannot change its result. Its toast rule item
+(`expected_amount = 200.00` at line 142) is a hardcoded fixture value,
+and the refresh engine leaves it untouched when the dispatcher returns
+zero rows.
 
 ## Scope limits
 

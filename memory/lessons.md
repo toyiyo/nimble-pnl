@@ -3243,3 +3243,33 @@
 - **Mistake:** The trade-accept warning went into `TradeMarketplace` — the component whose name matches the feature. A repo search showed no route mounts it; `/employee/shifts` renders `AvailableShiftsPage`, so employees never saw the warning. Codex flagged it as a P1.
 - **Correction:** Moved the gate into `AvailableShiftsPage.handleAcceptTrade` (confirm dialog + block handling) and kept the `TradeMarketplace` panel for parity.
 - **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A component that no route renders passes its own tests, but users never see it.
+
+### [2026-09-04] A DATE upper bound cuts a TIMESTAMPTZ window short (PR #798)
+
+- **Mistake:** `refresh_deposit_matches` filtered `bt.transaction_date` (TIMESTAMPTZ) with `BETWEEN` and DATE arithmetic. The upper DATE casts to midnight at the start of the last lag day. Intraday deposits on that day fell out of the window. Production showed $0 deposited against $10,436 in card sales. The pgTAP seeds used bare dates, which cast to midnight, so every test stayed green.
+- **Correction:** Change the filter to half-open bounds pinned to UTC: `>= start::timestamp AT TIME ZONE 'UTC'` and `< (end + 1)::timestamp AT TIME ZONE 'UTC'`. Seed at least one test row with an intraday timestamp (12:30 UTC) on the last day of the window.
+- **Rule:** When a filter compares a TIMESTAMPTZ column with DATE arithmetic, write half-open bounds and add one intraday test row on the boundary day. A bare-date seed cannot catch a midnight-cast bug.
+
+### [2026-09-04] A settlement lag counts business days, not calendar days (PR #798)
+
+- **Mistake:** `deposit_match_rules` lag 1-2 counted calendar days. Shift4 settles in T+2 business days and rolls a weekend batch to Monday. Weekend sales never matched, and the ledger showed five false `Late` days.
+- **Correction:** The engine now computes the window with `deposit_match_business_days_after(date, integer)`. The defaults stay 1-2. All eight observed production deposits fit business-day lag 1-2.
+- **Rule:** Model a payment-processor timeline in business days. Before you pick the unit for a lag rule, check it against real deposit timestamps that cross a weekend.
+
+### [2026-09-04] The host computer's sleep kills background agents (run wf and Phase 2.5)
+
+- **Mistake:** A Phase 2.5 review agent stalled with "no progress for 600s", and a relaunch died with "API Error: Your computer went to sleep mid-response". Two resume attempts died the same way. Three launches produced zero review output.
+- **Correction:** Ran the review inline in the main session. The inline review completed and found two should-fix items that went into the design.
+- **Rule:** After two agent deaths with a sleep or watchdog error, stop the relaunch loop and do the work inline. Before a long background run, tell the user to keep the machine awake, and resume a stalled workflow with `resumeFromRunId` instead of a fresh launch.
+
+### [2026-09-04] A relative E2E seed date breaks under weekday-dependent logic (PR #798)
+
+- **Mistake:** The deposit-match E2E spec seeded `businessDate = today - 3` and asserted the `Late` chip. Under business-day lag, `today - 3` is still inside the window when the suite runs on Sunday, Monday, or Tuesday. The spec would pass in review week and fail three days out of seven forever after.
+- **Correction:** Moved the seed to `today - 7` before the build started. Seven calendar days back covers at least five business days on every weekday, so `expected_by` always sits in the past.
+- **Rule:** When a feature makes status depend on the weekday, walk every relative test date through all seven start days. Push the seed far enough back that the worst-case weekday still satisfies the assertion, and write the reason in the spec comment.
+
+### [2026-09-04] Verify every file:line citation before the design commit (PR #798)
+
+- **Mistake:** The design doc cited `depositMatchUi.ts:176` as a lag comment site. That line is the JSDoc for the unrelated `measured` boolean. The frontend reviewer caught it; an agent that trusted the citation would have edited the wrong block.
+- **Correction:** Re-read the file and pointed the design at lines 195-197 and the per-source comment sites.
+- **Rule:** Read each cited line immediately before you write it into a design doc. A citation from memory or from an earlier read of a changed file is a build hazard.

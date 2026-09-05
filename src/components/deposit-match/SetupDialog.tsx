@@ -219,6 +219,23 @@ export function SetupDialog({
       return;
     }
 
+    // The `min`/`max` attributes on the lag inputs are HTML hints only —
+    // they do not block a bare onClick handler. Check the range here so a
+    // bad value shows a plain-language toast instead of the raw Postgres
+    // CHECK-constraint error from `deposit_match_rules_lag_max_range`.
+    const lagMin = Number(form.lag_days_min);
+    const lagMax = Number(form.lag_days_max);
+    if (
+      !Number.isInteger(lagMin) ||
+      !Number.isInteger(lagMax) ||
+      lagMin < 0 ||
+      lagMax > 30 ||
+      lagMin > lagMax
+    ) {
+      toast.error('Set the lag business days between 0 and 30, with min at or below max.');
+      return;
+    }
+
     // Fields shared by create and update. `restaurant_id` is NOT here: it
     // belongs only on the create payload. `DepositMatchRuleUpdate` omits it
     // by type (a rule's restaurant never changes after create), but that
@@ -230,8 +247,8 @@ export function SetupDialog({
       rail: 'card' as const,
       connected_bank_id: form.connected_bank_id,
       settlement: form.settlement,
-      lag_days_min: Number(form.lag_days_min),
-      lag_days_max: Number(form.lag_days_max),
+      lag_days_min: lagMin,
+      lag_days_max: lagMax,
       fee_pct_min: Number(form.fee_pct_min),
       fee_pct_max: Number(form.fee_pct_max),
       source_config: form.source_config,

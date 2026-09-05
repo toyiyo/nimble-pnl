@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 
 import { SetupDialog } from '@/components/deposit-match/SetupDialog';
 import type { DepositMatchBank, DepositMatchRule } from '@/types/depositMatch';
+import { toast } from 'sonner';
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
@@ -88,6 +89,38 @@ describe('SetupDialog', () => {
     const [payload] = createMutate.mock.calls[0];
     expect(payload.active).toBe(true);
     expect(payload.pos_source).toBe('square');
+  });
+
+  it('blocks the save and shows a plain-language toast when the lag max is out of range', async () => {
+    render(<SetupDialog {...baseProps} />);
+    await userEvent.click(screen.getByRole('combobox', { name: /bank account/i }));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'First Bank' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('option', { name: 'First Bank' }));
+
+    const lagMax = screen.getByLabelText(/lag business days, max/i);
+    await userEvent.clear(lagMax);
+    await userEvent.type(lagMax, '45');
+
+    await userEvent.click(screen.getByRole('button', { name: /add rule/i }));
+
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith('Set the lag business days between 0 and 30, with min at or below max.');
+  });
+
+  it('blocks the save when the lag min is set above the lag max', async () => {
+    render(<SetupDialog {...baseProps} />);
+    await userEvent.click(screen.getByRole('combobox', { name: /bank account/i }));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'First Bank' })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('option', { name: 'First Bank' }));
+
+    const lagMin = screen.getByLabelText(/lag business days, min/i);
+    await userEvent.clear(lagMin);
+    await userEvent.type(lagMin, '5');
+
+    await userEvent.click(screen.getByRole('button', { name: /add rule/i }));
+
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith('Set the lag business days between 0 and 30, with min at or below max.');
   });
 
   it('removes a value from the card tender list and adds a new one', async () => {

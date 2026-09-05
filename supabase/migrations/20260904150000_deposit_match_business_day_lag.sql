@@ -351,7 +351,7 @@ BEGIN
         v_bank_dead := v_bank.status IS DISTINCT FROM 'connected'
           OR v_bank.data_current_through IS NULL;
         v_bank_stale := v_bank.data_current_through <
-          ((v_expected_by + 1)::timestamp AT TIME ZONE 'UTC');
+          public.deposit_match_lag_window_end(v_item.business_date, v_rule.lag_days_max);
 
         IF v_received > 0 THEN
           IF v_diff BETWEEN (v_fee_lo - v_tol) AND (v_fee_hi + v_tol) THEN

@@ -4917,6 +4917,8 @@ export type Database = {
           lead_time_days: number | null
           minimum_order_quantity: number | null
           notes: string | null
+          pack_size_qty: number | null
+          pack_size_unit: string | null
           product_id: string
           purchase_count: number | null
           restaurant_id: string
@@ -4936,6 +4938,8 @@ export type Database = {
           lead_time_days?: number | null
           minimum_order_quantity?: number | null
           notes?: string | null
+          pack_size_qty?: number | null
+          pack_size_unit?: string | null
           product_id: string
           purchase_count?: number | null
           restaurant_id: string
@@ -4955,6 +4959,8 @@ export type Database = {
           lead_time_days?: number | null
           minimum_order_quantity?: number | null
           notes?: string | null
+          pack_size_qty?: number | null
+          pack_size_unit?: string | null
           product_id?: string
           purchase_count?: number | null
           restaurant_id?: string

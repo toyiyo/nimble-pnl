@@ -2,7 +2,7 @@ import { memo } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-import { ChevronLeft, ChevronRight, Calendar, Printer, Sparkles } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Calendar, Printer, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PlannerHeaderProps {
@@ -15,6 +15,11 @@ interface PlannerHeaderProps {
   onExport?: () => void;
   onGenerate?: () => void;
   isGenerating?: boolean;
+  /** Number of shifts this week with at least one conflict. Zero hides the pill. */
+  conflictCount?: number;
+  /** True when the time-off query errored — the pill would be a false
+   *  all-clear, so a muted note renders instead. */
+  conflictsUnavailable?: boolean;
 }
 
 /**
@@ -37,6 +42,8 @@ export const PlannerHeader = memo(function PlannerHeader({
   onExport,
   onGenerate,
   isGenerating,
+  conflictCount = 0,
+  conflictsUnavailable,
 }: PlannerHeaderProps) {
   return (
     <div className="flex items-center justify-between px-1 py-2">
@@ -79,6 +86,19 @@ export const PlannerHeader = memo(function PlannerHeader({
 
       {/* Right: summary stat + export */}
       <div className="flex items-center gap-2">
+        {conflictsUnavailable ? (
+          <span className="text-[13px] text-muted-foreground">Conflicts unavailable</span>
+        ) : (
+          conflictCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              aria-label={`${conflictCount} scheduling ${conflictCount === 1 ? 'conflict' : 'conflicts'} this week`}
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              {conflictCount === 1 ? '1 conflict' : `${conflictCount} conflicts`}
+            </span>
+          )
+        )}
         <span className="text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">{totalHours}h</span> scheduled
         </span>

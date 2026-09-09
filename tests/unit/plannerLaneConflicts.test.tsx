@@ -46,7 +46,7 @@ describe('OffTemplateRow — conflict indicator', () => {
   const shiftsByDay = new Map([['2026-04-20', [shift]]]);
 
   it('renders the badge and the amber border for a conflicted shift', () => {
-    const { container } = wrap(
+    wrap(
       <OffTemplateRow
         area="Kitchen"
         weekDays={WEEK}
@@ -55,8 +55,9 @@ describe('OffTemplateRow — conflict indicator', () => {
         conflictsByShiftId={new Map([[shift.id, LINES]])}
       />,
     );
-    expect(screen.getByRole('button', { name: /^Conflicts:/ })).toBeTruthy();
-    expect(container.querySelector('.border-l-warning')).not.toBeNull();
+    // Start from the accessible badge button; its parent is the lane row.
+    const row = screen.getByRole('button', { name: /^Conflicts:/ }).parentElement;
+    expect(row?.className).toContain('border-l-warning');
   });
 
   it('renders no badge without an entry', () => {
@@ -79,7 +80,7 @@ describe('HiddenTemplatesRow — conflict indicator', () => {
   const shiftsByDay = new Map([['2026-04-20', [shift]]]);
 
   it('renders the badge and the amber border for a conflicted shift', () => {
-    const { container } = wrap(
+    wrap(
       <HiddenTemplatesRow
         weekDays={WEEK}
         shiftsByDay={shiftsByDay}
@@ -88,8 +89,9 @@ describe('HiddenTemplatesRow — conflict indicator', () => {
         conflictsByShiftId={new Map([[shift.id, LINES]])}
       />,
     );
-    expect(screen.getByRole('button', { name: /^Conflicts:/ })).toBeTruthy();
-    expect(container.querySelector('.border-l-warning')).not.toBeNull();
+    // Start from the accessible badge button; its parent is the lane row.
+    const row = screen.getByRole('button', { name: /^Conflicts:/ }).parentElement;
+    expect(row?.className).toContain('border-l-warning');
   });
 
   it('renders no badge without the map', () => {

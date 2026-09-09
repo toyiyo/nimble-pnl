@@ -3247,7 +3247,7 @@
 ## Category: Development Workflow (remote container)
 
 ### [2026-09-09] A grep pipeline hid a test failure, and the commit chained through it
-- **Mistake:** During the Phase 5 UI fix on PR #803, the command was `vitest run ... 2>&1 | grep -E "Test Files|Tests " && git commit ...`. The suite had a startup error (a `{/* */}` JSX comment placed in an expression position — only a JS `//` comment parses there). The grep still matched the "Test Files ... failed" line, exited 0, and the commit landed on a broken tree. The same shape hid an earlier failure: `npm run typecheck | tail -3` reported exit 0 (tail's exit) while tsc printed TS2307 errors.
+- **Mistake:** During the Phase 5 UI fix on PR #803, the command was `vitest run ... 2>&1 | grep -E "Test Files|Tests " && git commit ...`. The suite had a startup error: a `{/* */}` JSX comment wrapper placed in a JavaScript expression position, where it does not parse. A plain `/* ... */` block comment or a `//` line comment parses there; the `{...}` JSX wrapper does not. The grep still matched the "Test Files ... failed" line, exited 0, and the commit landed on a broken tree. The same shape hid an earlier failure: `npm run typecheck | tail -3` reported exit 0 (tail's exit) while tsc printed TS2307 errors.
 - **Correction:** Read the result line for "passed", not for presence. Never chain `git commit` after a filter on test output; run the test, check its verdict, then commit in a separate command. A follow-up commit fixed the JSX comment.
 - **Rule:** In a pipeline, `$?` belongs to the LAST command. `cmd | grep X && git commit` commits whenever grep matches anything, including a failure line. Gate a commit on the test command's own exit status or on an explicit "N passed, 0 failed" check.
 

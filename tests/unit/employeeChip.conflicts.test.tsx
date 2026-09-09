@@ -41,9 +41,10 @@ function renderChip(props: Partial<React.ComponentProps<typeof EmployeeChip>> = 
 
 describe('EmployeeChip — conflict indicator', () => {
   it('adds the amber left border when conflictLines has entries', () => {
-    const { container } = renderChip({ conflictLines: LINES });
-    const chip = container.querySelector('.border-l-warning');
-    expect(chip).not.toBeNull();
+    renderChip({ conflictLines: LINES });
+    // Start from the accessible badge button; its parent is the chip.
+    const chip = screen.getByRole('button', { name: /^Conflicts:/ }).parentElement;
+    expect(chip?.className).toContain('border-l-warning');
     expect(chip?.className).toContain('border-l-2');
   });
 

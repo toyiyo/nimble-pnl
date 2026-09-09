@@ -669,4 +669,93 @@ test.describe('Scheduling Conflict Enhancements', () => {
     await dialog.getByRole('button', { name: /create shift/i }).click();
     await responsePromise;
   });
+
+  test('planner shows a persistent conflict indicator for a shift over approved time-off', async ({ page }) => {
+    const { restaurantId, alice } = await setupTestEnvironment(page, 'planner-persist');
+
+    const monday = getMondayOfCurrentWeek();
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    await goToPlanner(page);
+
+    // A template must exist or the planner shows the empty state instead of
+    // the grid. The shift below carries the template FK, so it buckets into
+    // this template's row.
+    await createTemplate(page, {
+      name: 'Lunch',
+      startTime: '12:00',
+      endTime: '18:00',
+      position: 'Server',
+      days: ALL_DAYS,
+    });
+
+    // Approved time-off across the whole visible week — any local date the
+    // shift resolves to conflicts, so the assertion is timezone-robust.
+    await page.evaluate(
+      async ({ empId, restId, startDate, endDate }: any) => {
+        const supabase = (window as any).__supabase;
+        const { error } = await supabase.from('time_off_requests').insert({
+          restaurant_id: restId,
+          employee_id: empId,
+          start_date: startDate,
+          end_date: endDate,
+          status: 'approved',
+          reason: 'Sick leave',
+        });
+        if (error) throw new Error(error.message);
+      },
+      {
+        empId: alice.id,
+        restId: restaurantId,
+        startDate: formatDate(monday),
+        endDate: formatDate(sunday),
+      },
+    );
+
+    // A midday Monday shift for Alice, seeded directly — the indicator must
+    // appear WITHOUT any assign flow or dialog, from data alone.
+    const templateId = await page.evaluate(async (restId: string) => {
+      const supabase = (window as any).__supabase;
+      const { data, error } = await supabase
+        .from('shift_templates')
+        .select('id')
+        .eq('restaurant_id', restId)
+        .limit(1)
+        .single();
+      if (error) throw new Error(error.message);
+      return data.id;
+    }, restaurantId as string);
+
+    const shiftStart = new Date(monday);
+    shiftStart.setHours(12, 0, 0, 0);
+    const shiftEnd = new Date(monday);
+    shiftEnd.setHours(18, 0, 0, 0);
+    await page.evaluate(
+      ({ rows, restId }: any) => (window as any).__insertShifts(rows, restId),
+      {
+        rows: [{
+          employee_id: alice.id,
+          start_time: shiftStart.toISOString(),
+          end_time: shiftEnd.toISOString(),
+          position: 'Server',
+          status: 'scheduled',
+          shift_template_id: templateId,
+        }],
+        restId: restaurantId,
+      },
+    );
+
+    // Reload the planner so the queries pick up the seeded rows.
+    await goToPlanner(page);
+
+    // The chip badge: a focusable button whose aria-label carries the
+    // conflict text. No dialog is open; this is the persistent indicator.
+    await expect(
+      page.getByRole('button', { name: /^Conflicts:.*approved time-off/i }).first(),
+    ).toBeVisible({ timeout: 20000 });
+
+    // The header rollup pill.
+    await expect(page.getByText(/^1 conflict$/)).toBeVisible({ timeout: 5000 });
+  });
 });

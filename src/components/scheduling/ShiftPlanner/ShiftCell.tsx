@@ -41,6 +41,17 @@ interface ShiftCellProps {
   /** True when this cell's row template is hidden (`is_active === false`).
    *  Renders read-only: no drop/assign affordances, no coverage indicator, dimmed chips. */
   isHiddenTemplate?: boolean;
+  /** shiftId -> display-ready conflict lines (usePlannerShiftConflicts).
+   *  Rebuilt wholesale on every planner edit — the comparator below compares
+   *  this cell's own entries by value, like `coverage`. */
+  conflictsByShiftId?: Map<string, string[]>;
+}
+
+/** Element-wise equality of one shift's conflict lines across two maps. */
+function sameConflictLines(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((line, i) => line === b[i]);
 }
 
 /** Tiny badge shown when coverage data is unavailable and capacity > 1. */
@@ -83,6 +94,7 @@ export const ShiftCell = memo(
     cellArea,
     ghostLoanedOut,
     isHiddenTemplate,
+    conflictsByShiftId,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -150,6 +162,7 @@ export const ShiftCell = memo(
             source={shift.source}
             homeArea={shift.employee?.area ?? null}
             cellArea={cellArea ?? null}
+            conflictLines={conflictsByShiftId?.get(shift.id)}
             onRemove={onRemoveShift}
           />
         ))}
@@ -246,5 +259,10 @@ export const ShiftCell = memo(
     prev.dayLabel === next.dayLabel &&
     prev.cellArea === next.cellArea &&
     prev.ghostLoanedOut === next.ghostLoanedOut &&
-    prev.isHiddenTemplate === next.isHiddenTemplate,
+    prev.isHiddenTemplate === next.isHiddenTemplate &&
+    // Value comparison per shift in THIS cell — the map itself is rebuilt
+    // wholesale on every planner edit (same reason as `coverage` above).
+    next.shifts.every((s) =>
+      sameConflictLines(prev.conflictsByShiftId?.get(s.id), next.conflictsByShiftId?.get(s.id)),
+    ),
 );

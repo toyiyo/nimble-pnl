@@ -28,6 +28,16 @@
 BEGIN;
 SELECT plan(16);
 
+-- RLS posture, declared explicitly: the suite runs as postgres (BYPASSRLS),
+-- and both RPCs are SECURITY DEFINER, so table policies never gate these
+-- calls. The authorization boundary under test is auth.uid()/auth.email()
+-- inside the functions plus the EXECUTE grants (tests 15-16). Re-issue
+-- ENABLE so the posture does not depend on prior migration state.
+ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_restaurants ENABLE ROW LEVEL SECURITY;
+
 -- ---------- Fixture setup ----------
 INSERT INTO restaurants (id, name) VALUES
   ('b0000000-0000-0000-0000-000000000001', 'Pending Invite Test Restaurant'),
@@ -168,7 +178,15 @@ SELECT results_eq(
 -- The first row is now status='accepted'. A re-invite creates a fresh
 -- pending row with the same restaurant + email.
 INSERT INTO invitations (id, restaurant_id, invited_by, email, role, status, token, expires_at) VALUES
-  ('c3333333-3333-3333-3333-333333333305', 'b0000000-0000-0000-0000-000000000001', 'b1111111-1111-1111-1111-111111111102', 'Invitee@Test.com', 'staff', 'pending', 'hash-05', now() + interval '1 day');
+  ('c3333333-3333-3333-3333-333333333305', 'b0000000-0000-0000-0000-000000000001', 'b1111111-1111-1111-1111-111111111102', 'Invitee@Test.com', 'staff', 'pending', 'hash-05', now() + interval '1 day')
+ON CONFLICT (id) DO UPDATE SET
+  restaurant_id = EXCLUDED.restaurant_id,
+  invited_by = EXCLUDED.invited_by,
+  email = EXCLUDED.email,
+  role = EXCLUDED.role,
+  status = EXCLUDED.status,
+  token = EXCLUDED.token,
+  expires_at = EXCLUDED.expires_at;
 
 SELECT results_eq(
   $$ SELECT accepted, reason FROM accept_my_invitation('c3333333-3333-3333-3333-333333333305'::uuid) $$,

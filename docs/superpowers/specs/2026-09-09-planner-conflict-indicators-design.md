@@ -202,7 +202,7 @@ least one conflict line.
 - **Error state:** when any conflict source query errors, show a muted
   `Conflicts unavailable` note (`text-[13px] text-muted-foreground`) in the
   header's summary section instead of the pill, and suppress the chip
-  indicators. A silent zero would show incorrect data.
+  indicators. A zero without a warning shows incorrect data.
 
 ## Scope limits (decided trade-offs)
 

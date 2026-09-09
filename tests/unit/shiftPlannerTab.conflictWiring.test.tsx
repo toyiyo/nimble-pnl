@@ -118,16 +118,20 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
   };
 });
 
-const useEmployeeAvailabilitySpy = vi.fn(() => ({
-  availability: [],
-  loading: false,
-  error: null,
-}));
-const useAvailabilityExceptionsSpy = vi.fn(() => ({
-  exceptions: [],
-  loading: false,
-  error: null,
-}));
+const useEmployeeAvailabilitySpy = vi.fn(
+  (): SpyQueryState<'availability', never> => ({
+    availability: [],
+    loading: false,
+    error: null,
+  }),
+);
+const useAvailabilityExceptionsSpy = vi.fn(
+  (): SpyQueryState<'exceptions', never> => ({
+    exceptions: [],
+    loading: false,
+    error: null,
+  }),
+);
 
 vi.mock('@/hooks/useAvailability', () => ({
   useEmployeeAvailability: () => useEmployeeAvailabilitySpy(),
@@ -143,11 +147,18 @@ const FIXTURE_TIME_OFF = [
   },
 ];
 
-const useTimeOffRequestsSpy = vi.fn(() => ({
-  timeOffRequests: FIXTURE_TIME_OFF,
-  loading: false,
-  error: null,
-}));
+type SpyQueryState<K extends string, T> = { [P in K]: T[] } & {
+  loading: boolean;
+  error: Error | null;
+};
+
+const useTimeOffRequestsSpy = vi.fn(
+  (): SpyQueryState<'timeOffRequests', (typeof FIXTURE_TIME_OFF)[number]> => ({
+    timeOffRequests: FIXTURE_TIME_OFF,
+    loading: false,
+    error: null,
+  }),
+);
 
 vi.mock('@/hooks/useTimeOffRequests', async () => {
   const actual = await vi.importActual('@/hooks/useTimeOffRequests') as Record<string, unknown>;
@@ -276,7 +287,7 @@ describe('ShiftPlannerTab — conflict wiring', () => {
     useTimeOffRequestsSpy.mockReturnValue({
       timeOffRequests: [],
       loading: false,
-      error: new Error('boom') as unknown as null,
+      error: new Error('boom'),
     });
     renderTab();
     expect(lastHeaderProps().conflictsUnavailable).toBe(true);
@@ -287,7 +298,7 @@ describe('ShiftPlannerTab — conflict wiring', () => {
     useEmployeeAvailabilitySpy.mockReturnValue({
       availability: [],
       loading: false,
-      error: new Error('rls refusal') as unknown as null,
+      error: new Error('rls refusal'),
     });
     renderTab();
     expect(lastHeaderProps().conflictsUnavailable).toBe(true);

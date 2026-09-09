@@ -732,8 +732,7 @@ test.describe('Scheduling Conflict Enhancements', () => {
     const shiftEnd = new Date(monday);
     shiftEnd.setHours(18, 0, 0, 0);
     await page.evaluate(
-      // any: JSON-serialized arg + test-harness window global
-      ({ rows, restId }: any) => (window as any).__insertShifts(rows, restId),
+      ({ rows, restId }: any) => (window as any).__insertShifts(rows, restId), // any: JSON-serialized arg + test-harness window global
       {
         rows: [{
           employee_id: alice.id,

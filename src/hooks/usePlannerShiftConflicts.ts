@@ -29,9 +29,9 @@ type AvailabilityByEmployee = Map<string, Map<number, EffectiveAvailability>>;
 const CONFLICTABLE_TIME_OFF = new Set(['approved', 'pending']);
 
 /** Element-wise equality of two conflict-line lists, for the EmployeeChip and
- *  ShiftCell memo comparators. The conflict map rebuilds wholesale on every
- *  planner edit, so reference equality would re-render every chip. Lives here,
- *  next to the code that owns the `Map<string, string[]>` shape. */
+ *  ShiftCell memo comparators. Every planner edit replaces the full conflict
+ *  map, so reference equality would re-render every chip. This function stays
+ *  in this file, with the code that defines the `Map<string, string[]>` shape. */
 export function sameConflictLines(a: string[] | undefined, b: string[] | undefined): boolean {
   if (a === b) return true;
   if (!a || !b || a.length !== b.length) return false;
@@ -40,9 +40,9 @@ export function sameConflictLines(a: string[] | undefined, b: string[] | undefin
 
 /** Local calendar dates of a shift in the restaurant frame, with the RPC's
  *  midnight rule: an end on `00:00:00` after the start day rolls back one day.
- *  Sub-second divergence, accepted: `formatLocalTimeInTz` drops milliseconds,
+ *  We accept a sub-second divergence: `formatLocalTimeInTz` drops milliseconds,
  *  so an end at local 00:00:00.500 rolls back here but not in the RPC. Every
- *  writer stores minute-granular instants, so no real shift hits this. */
+ *  writer stores minute-granular instants, so no real shift causes this case. */
 function shiftLocalDates(shift: Shift, tz: string): { startDate: string; endDate: string } {
   const startDate = formatLocalDateInTz(new Date(shift.start_time), tz);
   const endDate = formatLocalDateInTz(new Date(shift.end_time), tz);

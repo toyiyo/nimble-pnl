@@ -8,8 +8,8 @@ interface ConflictBadgeProps {
 }
 
 /** Amber left-border treatment for a conflicted row or chip — the same
- *  low-contrast warning language TimelineBar uses. One home for the three
- *  render sites (EmployeeChip, OffTemplateRow, HiddenTemplatesRow). */
+ *  low-contrast warning treatment TimelineBar uses. Defined once and
+ *  shared by every render site. */
 export const CONFLICT_BORDER_CLASS = 'border-l-2 border-l-amber-500';
 
 /**
@@ -38,9 +38,9 @@ export function ConflictBadge({ lines }: Readonly<ConflictBadgeProps>) {
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs">
         <div className="space-y-1">
-          {/* Index keys are safe: the list rebuilds wholesale and never
-              reorders, and two identical time-off requests can produce
-              identical line text. */}
+          {/* Index keys are safe: each render replaces the full list and
+              never reorders it, and two identical time-off requests can
+              produce identical line text. */}
           {lines.map((line, i) => (
             <p key={i} className="text-xs">
               • {line}

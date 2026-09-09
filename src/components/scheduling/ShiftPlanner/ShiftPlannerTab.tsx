@@ -233,7 +233,7 @@ export function ShiftPlannerTab({
   // indicator (no partial state); when ANY source errors, the header shows
   // a muted "Conflicts unavailable" note instead of an incorrect zero — an
   // errored availability query would otherwise hide the availability half
-  // silently (Phase 7 sound-logic finding).
+  // silently.
   const {
     timeOffRequests,
     loading: timeOffLoading,

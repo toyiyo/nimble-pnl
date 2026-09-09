@@ -353,6 +353,7 @@
 - **Mistake:** PR #589's design doc, plan, and regression-test fixtures used the *real* employee names and restaurant name pulled from the prod-DB investigation that diagnosed the bug (Timeline shared-row pointer-event theft). It felt natural — the whole diagnosis was "these specific people's bars are inert" — so the names flowed straight from the `supabase-prod` query results into the artifacts. Both Codex (P2) and CodeRabbit (Major, "Redact employee PII") flagged it on the PR. Because these artifacts commit to a repo whose history is permanent, the PII would have lived on `main` forever.
 - **Correction:** Redacted all names from the doc/plan/tests (fictional fixtures "Ada Early"/"Bess Late"; generic "Bar A/Bar B" tables), then `git reset --soft origin/main` + recommitted PII-free with PII-free commit messages and `git push --force-with-lease` — so no name ever reaches `main`, not even in history. Verified with `{ git log origin/main..HEAD --format=%B; git diff origin/main..HEAD; } | grep -niE '<names>'` returning clean. Also added a "Privacy" note to the design doc.
 - **Rule:** When a diagnosis is driven by production data (Supabase/PostHog/logs), the investigation may reference real names in the *chat*, but the moment you write a committed artifact — design doc, plan, test fixture, commit message, PR body — swap every real person/restaurant/account identifier for a fictional placeholder. Do a `grep -niE` PII sweep across the branch diff AND commit messages before pushing (add it to the Phase 8 verify checklist). If PII already committed, redaction alone is insufficient — rewrite history (`reset --soft` + recommit + `--force-with-lease`) so it never merges; a plain follow-up "redact" commit leaves the PII in the merged history. Tests never need real data to reproduce a structural bug — a shared row of two abutting fictional shifts reproduces it exactly.
+- **[2026-09-09] Confirmed again (PR #801):** The invite-flow design doc carried the invitee's real email and her event timeline, copied from the PostHog case study. CodeRabbit flagged it (Major, CWE-359). Redacted to a synthetic timeline and rewrote the branch history per this rule. The Phase 8 PII sweep did not run — run `grep -niE` over the diff and the commit messages before every push, not only when the artifact "contains names".
 
 ---
 
@@ -3243,3 +3244,22 @@
 - **Mistake:** The trade-accept warning went into `TradeMarketplace` — the component whose name matches the feature. A repo search showed no route mounts it; `/employee/shifts` renders `AvailableShiftsPage`, so employees never saw the warning. Codex flagged it as a P1.
 - **Correction:** Moved the gate into `AvailableShiftsPage.handleAcceptTrade` (confirm dialog + block handling) and kept the `TradeMarketplace` panel for parity.
 - **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A component that no route renders passes its own tests, but users never see it.
+
+## Category: Supabase / Migrations (continued)
+
+### [2026-09-08] Cite an RLS policy by its LATEST migration — the creating migration can be superseded
+- **Mistake:** The invite-flow design claimed "the invitee cannot read the `invitations` table" and cited the creating migration (20250916223011). Two later migrations (20250927023236, 20251220025830) added and then rewrote a policy "Users can view invitations sent to their email" that grants exactly that read. Both Phase 2.5 reviewers flagged the false premise.
+- **Correction:** Grepped every migration for the table name, read the policy set newest-first, and rewrote the root cause: the gap was a missing client query plus no access to `restaurants.name`, not a missing SELECT policy.
+- **Rule:** Before you claim "role X cannot read table Y", grep ALL of `supabase/migrations/` for the table name and read the hits newest-first. Cite the newest migration that touches the policy. A citation to the creating migration proves the policy existed once, not that it stands.
+
+### [2026-09-08] `ON CONFLICT (col)` collides with a same-named RETURNS TABLE output parameter in plpgsql
+- **Mistake:** The first draft of `accept_my_invitation` used `INSERT ... ON CONFLICT (user_id, restaurant_id) DO NOTHING` inside a function whose RETURNS TABLE declares `restaurant_id`. plpgsql variable substitution reaches the conflict-target list, so the reference is ambiguous at run time.
+- **Correction:** Replaced the clause with an `INSERT ... SELECT ... WHERE NOT EXISTS` guarded by an `EXCEPTION WHEN unique_violation` handler, and wrote the reason into the migration comment.
+- **Rule:** In a plpgsql function with RETURNS TABLE, never name a conflict-target column that matches an output parameter. Rename the output parameter, use `ON CONFLICT ON CONSTRAINT <name>`, or catch `unique_violation`. Table-qualify every other column reference that shares an output parameter's name.
+
+## Category: Testing / Unit (continued)
+
+### [2026-09-08] `vi.clearAllMocks()` keeps mock implementations — a throwing mock leaks into the next test
+- **Mistake:** A test set `mockPosthogReset.mockImplementation(() => { throw ... })` to prove the sign-out redirect survives a telemetry failure. `beforeEach` ran `vi.clearAllMocks()`, which clears calls but keeps implementations, so the next test also ran with a throwing `reset` and the suite became order-dependent. The 7d logic reviewer caught it from a stray stderr line.
+- **Correction:** Changed the test to `mockImplementationOnce`, with a comment naming the clearAllMocks behavior.
+- **Rule:** Use `mockImplementationOnce` for a per-test throwing or special implementation, or use `vi.resetAllMocks()` in `beforeEach` when the file mixes implementations. `clearAllMocks` is call-history hygiene only.

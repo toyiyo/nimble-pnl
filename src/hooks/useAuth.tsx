@@ -217,16 +217,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.log('Supabase signOut failed (continuing anyway):', e);
       }
-      
-      // Navigate to auth page
-      window.location.href = '/auth';
     } catch (error: any) {
       console.error('Sign out exception:', error);
-      // Even on error, clear state and redirect
+      // Even on error, clear the state.
       setSession(null);
       setUser(null);
-      window.location.href = '/auth';
     }
+
+    // Drop the PostHog identity. posthog-js ignores identify() for a
+    // different user until reset() runs, so without this the next
+    // account in the same browser merges into the previous person.
+    // Guarded: telemetry must never block the redirect below.
+    try {
+      posthog.reset();
+    } catch (resetError) {
+      console.error('posthog.reset failed during sign-out:', resetError);
+    }
+
+    // Navigate to auth page
+    window.location.href = '/auth';
   };
 
   const resetPassword = async (email: string) => {

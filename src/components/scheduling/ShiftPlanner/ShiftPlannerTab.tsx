@@ -57,6 +57,8 @@ import type { ConflictDialogData } from './AvailabilityConflictDialog';
 import { useGenerateSchedule } from '@/hooks/useGenerateSchedule';
 import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
+import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
+import { usePlannerShiftConflicts } from '@/hooks/usePlannerShiftConflicts';
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
@@ -82,6 +84,10 @@ interface ShiftPlannerTabProps {
    */
   notifyAfterDeferredCommit: (args: NotifyAfterDeferredCommitArgs) => void | Promise<void>;
 }
+
+/** Stable empty index for the conflict load/error states — a module-level
+ *  constant so the gated value never churns child memo comparators. */
+const EMPTY_CONFLICT_INDEX: Map<string, string[]> = new Map();
 
 /** Format a template's slot label for CoverageDetail headings.
  *  e.g. "Cold Stone · Server · 10:00–16:30" or "Server · 10:00–16:30 (all areas)". */
@@ -213,6 +219,25 @@ export function ShiftPlannerTab({
       ),
     [availability, exceptions, weekStart, employees],
   );
+
+  // Read-time conflict index (time-off + availability) for the persistent
+  // amber indicators. While the time-off query loads, an empty map renders
+  // no indicator (no partial state); on error the header shows a muted
+  // "Conflicts unavailable" note instead of a false zero.
+  const {
+    timeOffRequests,
+    loading: timeOffLoading,
+    error: timeOffError,
+  } = useTimeOffRequests(restaurantId);
+  const { conflictsByShiftId, conflictCount } = usePlannerShiftConflicts(
+    shifts,
+    availabilityByEmployee,
+    timeOffRequests,
+    restaurantTimezone,
+  );
+  const conflictsReady = !timeOffLoading && !timeOffError;
+  const effectiveConflictsByShiftId = conflictsReady ? conflictsByShiftId : EMPTY_CONFLICT_INDEX;
+  const effectiveConflictCount = conflictsReady ? conflictCount : 0;
 
   // Compute template grid data — built with ALL templates (active + hidden) so a
   // hidden template's FK-linked shifts keep bucketing under it (not `__unmatched__`).
@@ -789,6 +814,8 @@ export function ShiftPlannerTab({
         onExport={handleExport}
         onGenerate={() => setGenerateDialogOpen(true)}
         isGenerating={generateSchedule.isPending}
+        conflictCount={effectiveConflictCount}
+        conflictsUnavailable={!!timeOffError}
       />
 
       {/* Plan | Timeline view toggle — shared across both modes */}
@@ -939,6 +966,7 @@ export function ShiftPlannerTab({
                   onCoverageClick={handleCoverageClick}
                   ghostByCell={ghostByCell}
                   offTemplateByArea={offTemplateByArea}
+                  conflictsByShiftId={effectiveConflictsByShiftId}
                   hiddenLaneByDay={hiddenLaneByDay}
                   onShowHidden={handleShowHidden}
                 />

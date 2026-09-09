@@ -5,7 +5,9 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPositionColors } from '@/lib/positionColors';
 
-import { ConflictBadge, sameConflictLines } from './ConflictBadge';
+import { sameConflictLines } from '@/hooks/usePlannerShiftConflicts';
+
+import { ConflictBadge, CONFLICT_BORDER_CLASS } from './ConflictBadge';
 
 import type { Shift } from '@/types/scheduling';
 
@@ -49,7 +51,7 @@ export const EmployeeChip = memo(
           isCovering && 'border-dashed',
           // Same low-contrast warning treatment as TimelineBar — the
           // position color stays the fill.
-          hasConflicts && 'border-l-2 border-l-amber-500',
+          hasConflicts && CONFLICT_BORDER_CLASS,
         )}
       >
         <ConflictBadge lines={conflictLines} />

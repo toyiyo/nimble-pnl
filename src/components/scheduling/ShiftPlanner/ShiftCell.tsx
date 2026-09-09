@@ -8,7 +8,8 @@ import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
 
-import { sameConflictLines } from './ConflictBadge';
+import { sameConflictLines } from '@/hooks/usePlannerShiftConflicts';
+
 import { EmployeeChip } from './EmployeeChip';
 
 interface ShiftCellProps {

@@ -16,9 +16,9 @@ interface PlannerHeaderProps {
   onGenerate?: () => void;
   isGenerating?: boolean;
   /** Number of shifts this week with at least one conflict. Zero hides the pill. */
-  conflictCount?: number;
-  /** True when the time-off query errored — the pill would be a false
-   *  all-clear, so a muted note renders instead. */
+  conflictedShiftCount?: number;
+  /** True when a conflict source query errored — the pill would show an
+   *  incorrect zero, so a muted note renders instead. */
   conflictsUnavailable?: boolean;
 }
 
@@ -42,7 +42,7 @@ export const PlannerHeader = memo(function PlannerHeader({
   onExport,
   onGenerate,
   isGenerating,
-  conflictCount = 0,
+  conflictedShiftCount = 0,
   conflictsUnavailable,
 }: PlannerHeaderProps) {
   return (
@@ -89,12 +89,12 @@ export const PlannerHeader = memo(function PlannerHeader({
         {conflictsUnavailable && (
           <span className="text-[13px] text-muted-foreground">Conflicts unavailable</span>
         )}
-        {!conflictsUnavailable && conflictCount > 0 && (
+        {!conflictsUnavailable && conflictedShiftCount > 0 && (
           // The visible text is the accessible name — aria-label on a
           // generic span is exposed inconsistently by screen readers.
           <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-            {conflictCount === 1 ? '1 conflict' : `${conflictCount} conflicts`}
+            {conflictedShiftCount === 1 ? '1 conflict' : `${conflictedShiftCount} conflicts`}
           </span>
         )}
         <span className="text-[13px] text-muted-foreground">

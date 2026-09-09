@@ -118,9 +118,20 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
   };
 });
 
+const useEmployeeAvailabilitySpy = vi.fn(() => ({
+  availability: [],
+  loading: false,
+  error: null,
+}));
+const useAvailabilityExceptionsSpy = vi.fn(() => ({
+  exceptions: [],
+  loading: false,
+  error: null,
+}));
+
 vi.mock('@/hooks/useAvailability', () => ({
-  useEmployeeAvailability: () => ({ availability: [], loading: false }),
-  useAvailabilityExceptions: () => ({ exceptions: [], loading: false }),
+  useEmployeeAvailability: () => useEmployeeAvailabilitySpy(),
+  useAvailabilityExceptions: () => useAvailabilityExceptionsSpy(),
 }));
 
 // Approved time-off covering the shift's Tuesday.
@@ -217,7 +228,7 @@ function lastGridProps() {
 
 function lastHeaderProps() {
   return plannerHeaderSpy.mock.calls.at(-1)?.[0] as {
-    conflictCount?: number;
+    conflictedShiftCount?: number;
     conflictsUnavailable?: boolean;
   };
 }
@@ -232,6 +243,8 @@ describe('ShiftPlannerTab — conflict wiring', () => {
       loading: false,
       error: null,
     });
+    useEmployeeAvailabilitySpy.mockReturnValue({ availability: [], loading: false, error: null });
+    useAvailabilityExceptionsSpy.mockReturnValue({ exceptions: [], loading: false, error: null });
   });
 
   it('fetches time-off requests for the restaurant', () => {
@@ -248,7 +261,7 @@ describe('ShiftPlannerTab — conflict wiring', () => {
 
   it('passes the conflict count to PlannerHeader', () => {
     renderTab();
-    expect(lastHeaderProps().conflictCount).toBe(1);
+    expect(lastHeaderProps().conflictedShiftCount).toBe(1);
     expect(lastHeaderProps().conflictsUnavailable).toBeFalsy();
   });
 
@@ -256,7 +269,7 @@ describe('ShiftPlannerTab — conflict wiring', () => {
     useTimeOffRequestsSpy.mockReturnValue({ timeOffRequests: [], loading: true, error: null });
     renderTab();
     expect(lastGridProps().conflictsByShiftId?.size ?? 0).toBe(0);
-    expect(lastHeaderProps().conflictCount ?? 0).toBe(0);
+    expect(lastHeaderProps().conflictedShiftCount ?? 0).toBe(0);
   });
 
   it('passes conflictsUnavailable and an empty map when the query errors', () => {
@@ -268,5 +281,24 @@ describe('ShiftPlannerTab — conflict wiring', () => {
     renderTab();
     expect(lastHeaderProps().conflictsUnavailable).toBe(true);
     expect(lastGridProps().conflictsByShiftId?.size ?? 0).toBe(0);
+  });
+
+  it('passes conflictsUnavailable when an availability query errors (no silent zero)', () => {
+    useEmployeeAvailabilitySpy.mockReturnValue({
+      availability: [],
+      loading: false,
+      error: new Error('rls refusal') as unknown as null,
+    });
+    renderTab();
+    expect(lastHeaderProps().conflictsUnavailable).toBe(true);
+    expect(lastGridProps().conflictsByShiftId?.size ?? 0).toBe(0);
+  });
+
+  it('passes an empty map while an availability query loads (no partial index)', () => {
+    useAvailabilityExceptionsSpy.mockReturnValue({ exceptions: [], loading: true, error: null });
+    renderTab();
+    expect(lastGridProps().conflictsByShiftId?.size ?? 0).toBe(0);
+    expect(lastHeaderProps().conflictedShiftCount ?? 0).toBe(0);
+    expect(lastHeaderProps().conflictsUnavailable).toBeFalsy();
   });
 });

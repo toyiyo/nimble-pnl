@@ -693,8 +693,8 @@ test.describe('Scheduling Conflict Enhancements', () => {
     // Approved time-off across the whole visible week — any local date the
     // shift resolves to conflicts, so the assertion is timezone-robust.
     await page.evaluate(
-      async ({ empId, restId, startDate, endDate }: any) => {
-        const supabase = (window as any).__supabase;
+      async ({ empId, restId, startDate, endDate }: any) => { // any: page.evaluate arg is JSON-serialized
+        const supabase = (window as any).__supabase; // any: test-harness window global
         const { error } = await supabase.from('time_off_requests').insert({
           restaurant_id: restId,
           employee_id: empId,
@@ -716,7 +716,7 @@ test.describe('Scheduling Conflict Enhancements', () => {
     // A midday Monday shift for Alice, seeded directly — the indicator must
     // appear WITHOUT any assign flow or dialog, from data alone.
     const templateId = await page.evaluate(async (restId: string) => {
-      const supabase = (window as any).__supabase;
+      const supabase = (window as any).__supabase; // any: test-harness window global
       const { data, error } = await supabase
         .from('shift_templates')
         .select('id')
@@ -732,6 +732,7 @@ test.describe('Scheduling Conflict Enhancements', () => {
     const shiftEnd = new Date(monday);
     shiftEnd.setHours(18, 0, 0, 0);
     await page.evaluate(
+      // any: JSON-serialized arg + test-harness window global
       ({ rows, restId }: any) => (window as any).__insertShifts(rows, restId),
       {
         rows: [{

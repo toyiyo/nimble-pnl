@@ -9,7 +9,7 @@ Status: Approved direction from the user; details below.
 The schedule view shows a conflict on each shift card. The planner view does
 not. A manager sets the schedule in the planner. Later, an employee gets
 approved time-off, or a shift sits outside the employee's availability. The
-planner shows no warning. The manager finds out at service time.
+planner shows no warning. The manager sees the problem at service time.
 
 ## Current behavior (premises, with citations)
 
@@ -82,8 +82,8 @@ planner shows no warning. The manager finds out at service time.
 
 Add a persistent, read-time conflict layer to the planner. Detect conflicts
 client-side in one batch. Do not add per-chip RPC calls — the planner renders
-one chip per shift for the whole week, and two RPCs per chip is a request
-storm. The write-time gate (`AvailabilityConflictDialog`) stays unchanged.
+one chip per shift for the whole week, and two RPCs per chip creates too
+many requests. The write-time gate (`AvailabilityConflictDialog`) stays unchanged.
 The SQL RPCs stay authoritative at write time; this layer is a read-time
 preview, the same split the unit-conversion system uses.
 
@@ -179,7 +179,7 @@ on every compare.
 
 ### 5. Week rollup — `PlannerHeader`
 
-New optional prop `conflictCount?: number`. When above zero, an amber pill
+New optional prop `conflictedShiftCount?: number`. When above zero, an amber pill
 renders before the hours stat: `AlertTriangle` plus the count, with the
 badge scale `text-[11px] px-1.5 py-0.5 rounded-md` and the tint
 `bg-amber-500/10 text-amber-700 dark:text-amber-400` (the amber pair
@@ -196,12 +196,13 @@ least one conflict line.
   (declaration order matters: `restaurantTimezone` sits at
   `ShiftPlannerTab.tsx:145`, above every memo — no TDZ risk).
 - Pass the map to `TemplateGrid` and the count to `PlannerHeader`.
-- **Load state:** while the time-off query loads, pass an empty map and no
-  count — the planner shows no indicator rather than a partial one.
-- **Error state:** when the time-off query errors, show a muted
+- **Load state:** while any conflict source query loads (time-off,
+  availability, exceptions), pass an empty map and no count — the planner
+  shows no indicator rather than a partial one.
+- **Error state:** when any conflict source query errors, show a muted
   `Conflicts unavailable` note (`text-[13px] text-muted-foreground`) in the
   header's summary section instead of the pill, and suppress the chip
-  indicators. A silent zero would be a false all-clear.
+  indicators. A silent zero would show incorrect data.
 
 ## Scope limits (decided trade-offs)
 

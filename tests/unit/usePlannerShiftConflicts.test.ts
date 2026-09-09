@@ -315,7 +315,7 @@ describe('usePlannerShiftConflicts', () => {
         TZ,
       ),
     );
-    expect(result.current.conflictCount).toBe(2);
+    expect(result.current.conflictedShiftCount).toBe(2);
     expect(result.current.conflictsByShiftId.get(conflicted1.id)).toHaveLength(1);
     expect(result.current.conflictsByShiftId.has(clean.id)).toBe(false);
   });

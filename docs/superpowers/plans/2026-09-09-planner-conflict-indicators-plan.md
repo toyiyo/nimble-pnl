@@ -24,7 +24,7 @@ export function buildShiftConflictIndex(
 
 export function usePlannerShiftConflicts(...same args): {
   conflictsByShiftId: Map<string, string[]>;
-  conflictCount: number;    // shifts with >= 1 line
+  conflictedShiftCount: number; // shifts with >= 1 line
 }
 ```
 
@@ -52,14 +52,14 @@ Test cases: approved overlap, pending overlap, non-overlap, `cancelled`
 skip, `completed` skip, unassigned skip, midnight-end rule, recurring-off
 day, outside-window shift, exception day, `not-set` day with no other
 data (no conflict), missing employee entry (time-off still checked),
-formatted line content, `conflictCount`.
+formatted line content, `conflictedShiftCount`.
 
 ## Task 2 — `ConflictBadge`
 
 New file: `src/components/scheduling/ShiftPlanner/ConflictBadge.tsx`.
 New test: `tests/unit/conflictBadge.test.tsx`.
 
-Props: `{ lines: string[]; label?: string }`. Renders an `AlertTriangle`
+Props: `{ lines: string[] }`. Renders an `AlertTriangle`
 (`h-3 w-3 text-amber-500`) as a `type="button"` inside a Radix `Tooltip`.
 `onClick` calls `e.stopPropagation()`. `aria-label` =
 `Conflicts: ${lines.join('. ')}`. Tooltip content lists each line.
@@ -88,8 +88,8 @@ sibling file).
 Optional prop `conflictsByShiftId?: Map<string, string[]>`. Pass
 `conflictLines={conflictsByShiftId?.get(shift.id)}` to each chip. The
 comparator adds: every shift in `next.shifts` has the same map value in
-`prev` and `next` (reference equality per entry is enough — the hook
-returns new arrays only on rebuild).
+`prev` and `next` (value equality per entry, through `sameConflictLines`,
+as the design section 3 requires).
 
 ## Task 5 — Lane indicators
 
@@ -114,7 +114,7 @@ file.
 Change: `src/components/scheduling/ShiftPlanner/PlannerHeader.tsx`.
 New test: `tests/unit/plannerHeaderConflicts.test.tsx`.
 
-Optional props `conflictCount?: number` and `conflictsUnavailable?:
+Optional props `conflictedShiftCount?: number` and `conflictsUnavailable?:
 boolean`. Count above zero → amber pill (`text-[11px] px-1.5 py-0.5
 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400`,
 `AlertTriangle`, label `1 conflict` / `N conflicts`).
@@ -131,10 +131,10 @@ New test: `tests/unit/shiftPlannerTab.conflictWiring.test.tsx` (model:
 
 - Call `useTimeOffRequests(restaurantId)`.
 - Call `usePlannerShiftConflicts` after the `availabilityByEmployee` memo.
-- Load state: while the time-off query loads, pass an empty map and no
-  count. Error state: pass `conflictsUnavailable` to the header and an
-  empty map to the grid.
-- Pass `conflictsByShiftId` to `TemplateGrid`; `conflictCount` /
+- Load state: while any conflict source query loads, pass an empty map
+  and no count. Error state: when any source errors, pass
+  `conflictsUnavailable` to the header and an empty map to the grid.
+- Pass `conflictsByShiftId` to `TemplateGrid`; `conflictedShiftCount` /
   `conflictsUnavailable` to `PlannerHeader`.
 - Mount test: mock every export of every mocked hook module (including
   `useTimeOffRequests`), wrap in `QueryClientProvider` +

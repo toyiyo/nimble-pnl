@@ -7,14 +7,10 @@ interface ConflictBadgeProps {
   lines: string[];
 }
 
-/** Element-wise equality of two conflict-line lists, for the EmployeeChip and
- *  ShiftCell memo comparators. The conflict map rebuilds wholesale on every
- *  planner edit, so reference equality would re-render every chip. */
-export function sameConflictLines(a: string[] | undefined, b: string[] | undefined): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.length !== b.length) return false;
-  return a.every((line, i) => line === b[i]);
-}
+/** Amber left-border treatment for a conflicted row or chip — the same
+ *  low-contrast warning language TimelineBar uses. One home for the three
+ *  render sites (EmployeeChip, OffTemplateRow, HiddenTemplatesRow). */
+export const CONFLICT_BORDER_CLASS = 'border-l-2 border-l-amber-500';
 
 /**
  * Shared triangle-with-tooltip affordance for a conflicted planner shift.
@@ -42,8 +38,11 @@ export function ConflictBadge({ lines }: Readonly<ConflictBadgeProps>) {
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs">
         <div className="space-y-1">
-          {lines.map((line) => (
-            <p key={line} className="text-xs">
+          {/* Index keys are safe: the list rebuilds wholesale and never
+              reorders, and two identical time-off requests can produce
+              identical line text. */}
+          {lines.map((line, i) => (
+            <p key={i} className="text-xs">
               • {line}
             </p>
           ))}

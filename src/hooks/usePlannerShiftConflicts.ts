@@ -28,8 +28,21 @@ type AvailabilityByEmployee = Map<string, Map<number, EffectiveAvailability>>;
 
 const CONFLICTABLE_TIME_OFF = new Set(['approved', 'pending']);
 
+/** Element-wise equality of two conflict-line lists, for the EmployeeChip and
+ *  ShiftCell memo comparators. The conflict map rebuilds wholesale on every
+ *  planner edit, so reference equality would re-render every chip. Lives here,
+ *  next to the code that owns the `Map<string, string[]>` shape. */
+export function sameConflictLines(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((line, i) => line === b[i]);
+}
+
 /** Local calendar dates of a shift in the restaurant frame, with the RPC's
- *  midnight rule: an end on `00:00:00` after the start day rolls back one day. */
+ *  midnight rule: an end on `00:00:00` after the start day rolls back one day.
+ *  Sub-second divergence, accepted: `formatLocalTimeInTz` drops milliseconds,
+ *  so an end at local 00:00:00.500 rolls back here but not in the RPC. Every
+ *  writer stores minute-granular instants, so no real shift hits this. */
 function shiftLocalDates(shift: Shift, tz: string): { startDate: string; endDate: string } {
   const startDate = formatLocalDateInTz(new Date(shift.start_time), tz);
   const endDate = formatLocalDateInTz(new Date(shift.end_time), tz);
@@ -135,8 +148,9 @@ export function buildShiftConflictIndex(
 export interface UsePlannerShiftConflictsReturn {
   /** shiftId -> display-ready conflict lines. No entry means no conflict. */
   conflictsByShiftId: Map<string, string[]>;
-  /** Number of shifts that have at least one conflict line. */
-  conflictCount: number;
+  /** Number of shifts that have at least one conflict line. A shift with
+   *  two lines counts once. */
+  conflictedShiftCount: number;
 }
 
 export function usePlannerShiftConflicts(
@@ -152,6 +166,6 @@ export function usePlannerShiftConflicts(
       timeOffRequests,
       timezone,
     );
-    return { conflictsByShiftId, conflictCount: conflictsByShiftId.size };
+    return { conflictsByShiftId, conflictedShiftCount: conflictsByShiftId.size };
   }, [shifts, availabilityByEmployee, timeOffRequests, timezone]);
 }

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { formatLocalTime } from '@/hooks/useShiftPlanner';
 import { formatCompactTime } from '@/lib/openShiftHelpers';
 
-import { ConflictBadge } from './ConflictBadge';
+import { ConflictBadge, CONFLICT_BORDER_CLASS } from './ConflictBadge';
 
 interface OffTemplateRowProps {
   area: string;
@@ -52,7 +52,7 @@ export function OffTemplateRow({
                   className={cn(
                     'flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/60',
                     'bg-muted/30 text-[12px] text-foreground',
-                    conflictLines.length > 0 && 'border-l-2 border-l-amber-500',
+                    conflictLines.length > 0 && CONFLICT_BORDER_CLASS,
                   )}
                 >
                   <ConflictBadge lines={conflictLines} />

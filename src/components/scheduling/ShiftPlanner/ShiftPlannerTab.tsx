@@ -86,7 +86,7 @@ interface ShiftPlannerTabProps {
 }
 
 /** Stable empty index for the conflict load/error states — a module-level
- *  constant so the gated value never churns child memo comparators. */
+ *  constant so the gated value never invalidates child memo comparators. */
 const EMPTY_CONFLICT_INDEX: Map<string, string[]> = new Map();
 
 /** Format a template's slot label for CoverageDetail headings.
@@ -203,8 +203,16 @@ export function ShiftPlannerTab({
   const handleShowHidden = useCallback(() => setShowHidden(true), []);
   const handleToggleShowHidden = useCallback(() => setShowHidden((prev) => !prev), []);
 
-  const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId);
-  const { exceptions } = useAvailabilityExceptions(restaurantId);
+  const {
+    availability,
+    loading: availabilityLoading,
+    error: availabilityError,
+  } = useEmployeeAvailability(restaurantId);
+  const {
+    exceptions,
+    loading: exceptionsLoading,
+    error: exceptionsError,
+  } = useAvailabilityExceptions(restaurantId);
 
   // Per-employee effective availability (recurring + exception overrides) for the
   // visible week — feeds the sidebar strip tint and timeline outside-availability
@@ -221,23 +229,27 @@ export function ShiftPlannerTab({
   );
 
   // Read-time conflict index (time-off + availability) for the persistent
-  // amber indicators. While the time-off query loads, an empty map renders
-  // no indicator (no partial state); on error the header shows a muted
-  // "Conflicts unavailable" note instead of a false zero.
+  // amber indicators. While ANY source query loads, an empty map renders no
+  // indicator (no partial state); when ANY source errors, the header shows
+  // a muted "Conflicts unavailable" note instead of an incorrect zero — an
+  // errored availability query would otherwise hide the availability half
+  // silently (Phase 7 sound-logic finding).
   const {
     timeOffRequests,
     loading: timeOffLoading,
     error: timeOffError,
   } = useTimeOffRequests(restaurantId);
-  const { conflictsByShiftId, conflictCount } = usePlannerShiftConflicts(
+  const { conflictsByShiftId, conflictedShiftCount } = usePlannerShiftConflicts(
     shifts,
     availabilityByEmployee,
     timeOffRequests,
     restaurantTimezone,
   );
-  const conflictsReady = !timeOffLoading && !timeOffError;
+  const conflictSourcesError = !!timeOffError || !!availabilityError || !!exceptionsError;
+  const conflictsReady =
+    !timeOffLoading && !availabilityLoading && !exceptionsLoading && !conflictSourcesError;
   const effectiveConflictsByShiftId = conflictsReady ? conflictsByShiftId : EMPTY_CONFLICT_INDEX;
-  const effectiveConflictCount = conflictsReady ? conflictCount : 0;
+  const effectiveConflictedShiftCount = conflictsReady ? conflictedShiftCount : 0;
 
   // Compute template grid data — built with ALL templates (active + hidden) so a
   // hidden template's FK-linked shifts keep bucketing under it (not `__unmatched__`).
@@ -814,8 +826,8 @@ export function ShiftPlannerTab({
         onExport={handleExport}
         onGenerate={() => setGenerateDialogOpen(true)}
         isGenerating={generateSchedule.isPending}
-        conflictCount={effectiveConflictCount}
-        conflictsUnavailable={!!timeOffError}
+        conflictedShiftCount={effectiveConflictedShiftCount}
+        conflictsUnavailable={conflictSourcesError}
       />
 
       {/* Plan | Timeline view toggle — shared across both modes */}

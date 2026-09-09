@@ -67,8 +67,14 @@ planner shows no warning. The manager finds out at service time.
 - The app root wraps the tree in `TooltipProvider` (`src/App.tsx:349`).
 - `PlannerHeader` has a right-side summary section
   (`src/components/scheduling/ShiftPlanner/PlannerHeader.tsx:81-99`).
-- `OffTemplateRow` renders unmatched shifts as read-only rows
-  (`src/components/scheduling/ShiftPlanner/OffTemplateRow.tsx:37-60`).
+- `OffTemplateRow` renders unmatched shifts as display-only rows with a
+  remove action
+  (`src/components/scheduling/ShiftPlanner/OffTemplateRow.tsx:37-60`, remove
+  button at `:50-57`).
+- `HiddenTemplatesRow` renders hidden-template shifts dimmed, with a remove
+  action, when `showHidden` is off
+  (`src/components/scheduling/ShiftPlanner/HiddenTemplatesRow.tsx:22-25`,
+  dimmed chip at `:67`, remove button at `:74-80`).
 - `ShiftCell` and `EmployeeChip` use custom memo comparators
   (`ShiftCell.tsx:223-249`, `EmployeeChip.tsx:73-81`).
 
@@ -110,10 +116,17 @@ Per shift, the function:
    (`src/hooks/useConflictDetection.tsx:60`).
 4. **Availability:** reads `today`, `prevDay`, and `nextDay` from
    `availabilityByEmployee` by the local day-of-week, then calls
-   `shiftOutsideAvailability`. On `true`, it makes a `ConflictCheck` with
+   `shiftOutsideAvailability`. When the map has no entry for the shift's
+   employee, the function skips the availability check and keeps the
+   time-off check. On `true`, it makes a `ConflictCheck` with
    `conflict_type` from `today.type` (`'exception'` or `'recurring'`), a
    message that contains the ISO shift date, and `available_start`/
-   `available_end` from the first available slot. `formatConflictLine` then
+   `available_end` from the first available slot. A `'not-set'` day can
+   still conflict through the prev-day or next-day rules
+   (`src/lib/effectiveAvailability.ts:280-303`); that case maps to
+   `conflict_type: 'recurring'` with no window fields —
+   `formatConflictLine` handles a missing window
+   (`src/lib/conflictFormatUtils.ts:99-104`). `formatConflictLine` then
    renders the same wording the assign-time dialog shows.
 5. Formats each `ConflictCheck` with `formatConflictLine(conflict, timezone)`
    and stores the lines in the map. A shift with zero conflicts gets no
@@ -124,56 +137,74 @@ network calls. The time-off data comes from `useTimeOffRequests` — its
 mutations already invalidate the query key, so an approval made elsewhere
 appears on the next refetch (30s staleTime).
 
-### 2. Chip indicator — `EmployeeChip`
+### 2. Shared badge — new `ConflictBadge` component
+
+New file `src/components/scheduling/ShiftPlanner/ConflictBadge.tsx`. It
+renders the triangle-with-tooltip affordance once, for every lane:
+
+- An `AlertTriangle` (`h-3 w-3 text-amber-500`) as a focusable
+  `type="button"` inside a Radix `Tooltip`. The tooltip lists each line.
+- The click handler calls `e.stopPropagation()` — the chip sits in a
+  `ShiftCell` with a cell-level tap-to-assign `onClick`
+  (`src/components/scheduling/ShiftPlanner/ShiftCell.tsx:121`); without the
+  guard, a tap on the triangle assigns the selected employee.
+- The button's `aria-label` carries the full conflict text, so keyboard and
+  screen-reader users get the same information as hover users. The app-root
+  `TooltipProvider` covers this tree.
+
+### 3. Chip indicator — `EmployeeChip`
 
 New optional prop `conflictLines?: string[]`. When the array has entries:
 
 - The chip gets `border-l-2 border-l-amber-500` — the same low-contrast
   treatment `TimelineBar` uses. The position color stays the fill.
-- An `AlertTriangle` (`h-3 w-3 text-amber-500`) renders before the name as
-  a focusable button inside a Radix `Tooltip`. The tooltip lists each line.
-- The button's `aria-label` carries the full conflict text, so keyboard and
-  screen-reader users get the same information as hover users. The app-root
-  `TooltipProvider` covers this tree.
+- A `ConflictBadge` renders before the name.
 
-The memo comparator compares the joined lines, not the array reference —
-the map rebuilds wholesale on every planner edit (same reason the coverage
-comparator compares values, `ShiftCell.tsx:223-232`).
+The memo comparator compares the lines by length plus element equality,
+not by array reference — the map rebuilds wholesale on every planner edit
+(same reason the coverage comparator compares values,
+`ShiftCell.tsx:223-232`) — and not by a joined string, which would allocate
+on every compare.
 
-### 3. Cell pass-through — `ShiftCell`, `TemplateGrid`, `OffTemplateRow`
+### 4. Cell pass-through — `ShiftCell`, `TemplateGrid`, and the two lanes
 
 - `ShiftCell` gets `conflictsByShiftId?: Map<string, string[]>` and passes
   each chip its lines. Its comparator adds a per-shift value comparison for
   this map.
 - `TemplateGrid` passes the map through.
-- `OffTemplateRow` gets the same optional map. A conflicted off-template row
-  gets the amber left border and the same triangle-with-tooltip button, so
-  the header count never points at an invisible conflict.
+- `OffTemplateRow` and `HiddenTemplatesRow` get the same optional map. A
+  conflicted row in either lane gets the amber left border and a
+  `ConflictBadge`, so the header count always matches the visible
+  triangles.
 
-### 4. Week rollup — `PlannerHeader`
+### 5. Week rollup — `PlannerHeader`
 
 New optional prop `conflictCount?: number`. When above zero, an amber pill
-renders before the hours stat: `AlertTriangle` plus `N conflicts`, with
-tint `bg-amber-500/10 text-amber-700 dark:text-amber-400` (the amber pair
+renders before the hours stat: `AlertTriangle` plus the count, with the
+badge scale `text-[11px] px-1.5 py-0.5 rounded-md` and the tint
+`bg-amber-500/10 text-amber-700 dark:text-amber-400` (the amber pair
 `availabilityColorClasses` already uses,
-`src/lib/effectiveAvailability.ts:210`). The pill is informational — no
-click behavior in this iteration. The count equals the number of shifts
-that have at least one conflict line.
+`src/lib/effectiveAvailability.ts:210`). The label is `1 conflict` for one
+and `N conflicts` above one. The pill is informational — no click behavior
+in this iteration. The count equals the number of shifts that have at
+least one conflict line.
 
-### 5. Wiring — `ShiftPlannerTab`
+### 6. Wiring — `ShiftPlannerTab`
 
 - Call `useTimeOffRequests(restaurantId)`.
 - Call `usePlannerShiftConflicts` after the `availabilityByEmployee` memo
   (declaration order matters: `restaurantTimezone` sits at
   `ShiftPlannerTab.tsx:145`, above every memo — no TDZ risk).
 - Pass the map to `TemplateGrid` and the count to `PlannerHeader`.
+- **Load state:** while the time-off query loads, pass an empty map and no
+  count — the planner shows no indicator rather than a partial one.
+- **Error state:** when the time-off query errors, show a muted
+  `Conflicts unavailable` note (`text-[13px] text-muted-foreground`) in the
+  header's summary section instead of the pill, and suppress the chip
+  indicators. A silent zero would be a false all-clear.
 
 ## Scope limits (decided trade-offs)
 
-- Shifts under hidden templates render in `HiddenTemplatesRow` when
-  `showHidden` is off. That lane stays without an indicator — it is dimmed
-  and read-only. The header count still includes those shifts; the manager
-  can turn on `showHidden` to see them in their cells.
 - A shift that crosses midnight buckets on its start date in the planner
   grid (`src/hooks/usePlannerShiftsIndex.ts:12-15`). The conflict check
   itself uses both local dates, so the time-off overlap stays correct.
@@ -182,6 +213,35 @@ that have at least one conflict line.
   schedule view has the same limitation.
 - The pending-time-off match mirrors the RPC (`approved` and `pending`).
   The message names the status, so a manager can tell them apart.
+- **Reuse of `useTimeOffRequests`:** the hook selects `*` with the employee
+  join and no date filter (`src/hooks/useTimeOffRequests.tsx:20-27`).
+  Reuse keeps one cache and one invalidation path with the schedule view
+  (`src/pages/Scheduling.tsx:338` uses the same hook); a second, filtered
+  query would drift. The per-employee index makes the client scan cheap. A
+  bounded-range variant is a follow-up, not part of this change.
+- **Amber literals, not the `warning` token:** the schedule card uses
+  `border-l-warning` (`src/pages/SchedulingShiftCard.tsx:20`), but every
+  planner warning surface uses amber literals — `TimelineBar.tsx:187`,
+  `AvailabilityConflictDialog.tsx:41-42`, and `availabilityColorClasses`
+  (`src/lib/effectiveAvailability.ts:210`). The planner indicator matches
+  its own view's language.
+- **Timezone fallback divergence:** the client uses `safeTz`, which maps a
+  null or invalid `restaurants.timezone` to `'America/Chicago'`
+  (`ShiftPlannerTab.tsx:136-145`); both RPCs fall back to `'UTC'`
+  (`supabase/migrations/20260723180000_timeoff_conflict_local_tz.sql:55`).
+  For such a tenant, the indicator and the write-time gate can evaluate
+  different local dates. Production rows hold real IANA names; accepted.
+- **Day-of-week wrap at week edges:** `computeEffectiveAvailability` keys
+  exceptions to the one date per day-of-week inside the displayed week
+  (`src/lib/effectiveAvailability.ts:58-62`), so the `prevDay`/`nextDay`
+  lookup can wrap to the other end of the week. `TimelineBar.tsx:153-154`
+  shares this limit. Accepted; the RPC walks real dates and stays
+  authoritative at write time.
+- **Single-window containment:** `shiftOutsideAvailability` requires the
+  whole shift inside one window (`src/lib/effectiveAvailability.ts:330`);
+  the RPC clips the shift per local date. A cross-midnight shift covered by
+  two adjacent days' windows can get a spurious client-side marker. The
+  write-time RPC stays authoritative. Accepted.
 
 ## Tests
 
@@ -191,7 +251,8 @@ that have at least one conflict line.
   rule, recurring-off day, outside-window shift, exception day, `not-set`
   day, formatted line content.
 - `tests/unit/employeeChip.conflicts.test.tsx` — render tests: amber class,
-  triangle button `aria-label`, no indicator without lines.
+  triangle button `aria-label`, `stopPropagation` on click, no indicator
+  without lines, comparator covers `conflictLines`.
 - Extend a `shiftPlannerTab` mount test: seeded conflict shows the header
   pill and the chip indicator. Mock every export of the hooks the tree
   imports and wrap in `TooltipProvider` (lesson 2026-07-14).

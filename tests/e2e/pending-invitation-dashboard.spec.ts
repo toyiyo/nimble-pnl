@@ -14,8 +14,8 @@ import {
  * invite link) no longer lands on a bare "create a restaurant" screen.
  * The dashboard lists their pending invitation, and Accept joins the
  * restaurant through the token-free accept_my_invitation RPC. With one
- * membership, the restaurant auto-selects and the invitee lands in the
- * team dashboard instead of an owner trial.
+ * membership, the restaurant auto-selects, the staff gate routes the
+ * member to /employee/schedule, and no owner trial starts.
  *
  * Seeding note: the invitation row is inserted from the OWNER's browser
  * session — the "Restaurant owners and managers can manage invitations"
@@ -88,14 +88,15 @@ test.describe('pending invitation on the empty dashboard', () => {
     await expect(page.getByText('You have a team invitation')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(owner.restaurantName)).toBeVisible();
 
-    // 5. Accept joins the restaurant; the single membership auto-selects
-    //    and the invitee lands in the team dashboard.
+    // 5. Accept joins the restaurant. The single membership auto-selects,
+    //    the role resolves to staff, and StaffRoleChecker (src/App.tsx)
+    //    routes the new member to the employee schedule — staff never
+    //    sees the owner P&L dashboard. The redirect is the proof of the
+    //    join: it only happens once the membership row exists and loads.
     await page
       .getByRole('button', { name: `Accept invitation to ${owner.restaurantName}` })
       .click();
 
-    await expect(
-      page.getByRole('heading', { name: owner.restaurantName }),
-    ).toBeVisible({ timeout: 15000 });
+    await page.waitForURL(/\/employee\/schedule/, { timeout: 20000 });
   });
 });

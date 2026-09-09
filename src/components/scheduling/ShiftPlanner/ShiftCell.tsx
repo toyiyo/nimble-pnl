@@ -8,6 +8,7 @@ import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
 
+import { sameConflictLines } from './ConflictBadge';
 import { EmployeeChip } from './EmployeeChip';
 
 interface ShiftCellProps {
@@ -45,13 +46,6 @@ interface ShiftCellProps {
    *  Rebuilt wholesale on every planner edit — the comparator below compares
    *  this cell's own entries by value, like `coverage`. */
   conflictsByShiftId?: Map<string, string[]>;
-}
-
-/** Element-wise equality of one shift's conflict lines across two maps. */
-function sameConflictLines(a: string[] | undefined, b: string[] | undefined): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.length !== b.length) return false;
-  return a.every((line, i) => line === b[i]);
 }
 
 /** Tiny badge shown when coverage data is unavailable and capacity > 1. */

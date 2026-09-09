@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import { shiftOutsideAvailability } from '@/lib/effectiveAvailability';
 import { formatConflictLine } from '@/lib/conflictFormatUtils';
+import { addDaysToDateStr } from '@/lib/restaurantClock';
 import { formatLocalDateInTz, formatLocalTimeInTz } from '@/lib/shiftInterval';
 
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
@@ -30,15 +31,10 @@ const CONFLICTABLE_TIME_OFF = new Set(['approved', 'pending']);
 /** Local calendar dates of a shift in the restaurant frame, with the RPC's
  *  midnight rule: an end on `00:00:00` after the start day rolls back one day. */
 function shiftLocalDates(shift: Shift, tz: string): { startDate: string; endDate: string } {
-  const start = new Date(shift.start_time);
-  const end = new Date(shift.end_time);
-  const startDate = formatLocalDateInTz(start, tz);
-  let endDate = formatLocalDateInTz(end, tz);
-  if (endDate > startDate && formatLocalTimeInTz(shift.end_time, tz) === '00:00:00') {
-    const rolledBack = new Date(end.getTime() - 24 * 60 * 60 * 1000);
-    endDate = formatLocalDateInTz(rolledBack, tz);
-  }
-  return { startDate, endDate };
+  const startDate = formatLocalDateInTz(new Date(shift.start_time), tz);
+  const endDate = formatLocalDateInTz(new Date(shift.end_time), tz);
+  const rollsBack = endDate > startDate && formatLocalTimeInTz(shift.end_time, tz) === '00:00:00';
+  return { startDate, endDate: rollsBack ? addDaysToDateStr(endDate, -1) : endDate };
 }
 
 function timeOffConflicts(
@@ -47,23 +43,19 @@ function timeOffConflicts(
   endDate: string,
 ): ConflictCheck[] {
   if (!requestsForEmployee) return [];
-  const conflicts: ConflictCheck[] = [];
-  for (const request of requestsForEmployee) {
-    // Closed-interval overlap on ISO date strings — order-equivalent to the
-    // RPC's DATE comparison.
-    if (request.start_date <= endDate && request.end_date >= startDate) {
-      conflicts.push({
-        has_conflict: true,
-        conflict_type: 'time-off',
-        message: `Employee has ${request.status} time-off from ${request.start_date} to ${request.end_date}`,
-        time_off_id: request.id,
-        start_date: request.start_date,
-        end_date: request.end_date,
-        status: request.status,
-      });
-    }
-  }
-  return conflicts;
+  // Closed-interval overlap on ISO date strings — order-equivalent to the
+  // RPC's DATE comparison.
+  return requestsForEmployee
+    .filter((request) => request.start_date <= endDate && request.end_date >= startDate)
+    .map((request) => ({
+      has_conflict: true,
+      conflict_type: 'time-off',
+      message: `Employee has ${request.status} time-off from ${request.start_date} to ${request.end_date}`,
+      time_off_id: request.id,
+      start_date: request.start_date,
+      end_date: request.end_date,
+      status: request.status,
+    }));
 }
 
 function availabilityConflict(

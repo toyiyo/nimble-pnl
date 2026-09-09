@@ -7,6 +7,15 @@ interface ConflictBadgeProps {
   lines: string[];
 }
 
+/** Element-wise equality of two conflict-line lists, for the EmployeeChip and
+ *  ShiftCell memo comparators. The conflict map rebuilds wholesale on every
+ *  planner edit, so reference equality would re-render every chip. */
+export function sameConflictLines(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((line, i) => line === b[i]);
+}
+
 /**
  * Shared triangle-with-tooltip affordance for a conflicted planner shift.
  * Rendered by EmployeeChip, OffTemplateRow, and HiddenTemplatesRow so every

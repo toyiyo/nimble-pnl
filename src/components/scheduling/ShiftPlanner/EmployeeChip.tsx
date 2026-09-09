@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPositionColors } from '@/lib/positionColors';
 
-import { ConflictBadge } from './ConflictBadge';
+import { ConflictBadge, sameConflictLines } from './ConflictBadge';
 
 import type { Shift } from '@/types/scheduling';
 
@@ -24,15 +24,6 @@ interface EmployeeChipProps {
   onRemove: (shiftId: string) => void;
 }
 
-/** Element-wise equality for the conflictLines comparator — the conflict
- *  map rebuilds wholesale on every planner edit, so reference equality
- *  would re-render every chip. */
-function sameLines(a: string[] | undefined, b: string[] | undefined): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.length !== b.length) return false;
-  return a.every((line, i) => line === b[i]);
-}
-
 export const EmployeeChip = memo(
   function EmployeeChip({
     employeeName,
@@ -41,12 +32,12 @@ export const EmployeeChip = memo(
     source,
     homeArea,
     cellArea,
-    conflictLines,
+    conflictLines = [],
     onRemove,
   }: EmployeeChipProps) {
     const colors = getPositionColors(position);
     const isCovering = !!homeArea && !!cellArea && homeArea !== cellArea;
-    const hasConflicts = !!conflictLines && conflictLines.length > 0;
+    const hasConflicts = conflictLines.length > 0;
 
     return (
       <div
@@ -61,7 +52,7 @@ export const EmployeeChip = memo(
           hasConflicts && 'border-l-2 border-l-amber-500',
         )}
       >
-        {hasConflicts && <ConflictBadge lines={conflictLines} />}
+        <ConflictBadge lines={conflictLines} />
         {source === 'ai' && (
           <span className="text-violet-400 text-[10px] shrink-0" aria-label="AI generated">✦</span>
         )}
@@ -97,6 +88,6 @@ export const EmployeeChip = memo(
     prev.source === next.source &&
     prev.homeArea === next.homeArea &&
     prev.cellArea === next.cellArea &&
-    sameLines(prev.conflictLines, next.conflictLines) &&
+    sameConflictLines(prev.conflictLines, next.conflictLines) &&
     prev.onRemove === next.onRemove,
 );

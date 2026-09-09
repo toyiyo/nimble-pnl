@@ -64,17 +64,17 @@ export function HiddenTemplatesRow({
           >
             {shifts.map((s) => {
               const employeeLabel = s.employee?.name ?? 'Unassigned';
-              const conflictLines = conflictsByShiftId?.get(s.id);
+              const conflictLines = conflictsByShiftId?.get(s.id) ?? [];
               return (
                 <div
                   key={s.id}
                   className={cn(
                     'flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/60',
                     'bg-muted/30 text-[12px] text-foreground opacity-60',
-                    conflictLines?.length && 'border-l-2 border-l-amber-500',
+                    conflictLines.length > 0 && 'border-l-2 border-l-amber-500',
                   )}
                 >
-                  {!!conflictLines?.length && <ConflictBadge lines={conflictLines} />}
+                  <ConflictBadge lines={conflictLines} />
                   <span className="truncate">{employeeLabel}</span>
                   <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                     {formatCompactTime(formatLocalTime(s.start_time))}–{formatCompactTime(formatLocalTime(s.end_time))}

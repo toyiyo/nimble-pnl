@@ -86,17 +86,16 @@ export const PlannerHeader = memo(function PlannerHeader({
 
       {/* Right: summary stat + export */}
       <div className="flex items-center gap-2">
-        {conflictsUnavailable ? (
+        {conflictsUnavailable && (
           <span className="text-[13px] text-muted-foreground">Conflicts unavailable</span>
-        ) : (
-          conflictCount > 0 && (
-            // The visible text is the accessible name — aria-label on a
-            // generic span is exposed inconsistently by screen readers.
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-              {conflictCount === 1 ? '1 conflict' : `${conflictCount} conflicts`}
-            </span>
-          )
+        )}
+        {!conflictsUnavailable && conflictCount > 0 && (
+          // The visible text is the accessible name — aria-label on a
+          // generic span is exposed inconsistently by screen readers.
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+            {conflictCount === 1 ? '1 conflict' : `${conflictCount} conflicts`}
+          </span>
         )}
         <span className="text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">{totalHours}h</span> scheduled

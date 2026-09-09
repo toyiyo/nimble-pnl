@@ -19,7 +19,13 @@ interface OffTemplateRowProps {
 
 /** Read-only lane that surfaces shifts not bound to any active template.
  *  Renders the row label + 7 day cells; NOT a drag target (no useDroppable). */
-export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift, conflictsByShiftId }: Readonly<OffTemplateRowProps>) {
+export function OffTemplateRow({
+  area,
+  weekDays,
+  shiftsByDay,
+  onRemoveShift,
+  conflictsByShiftId,
+}: Readonly<OffTemplateRowProps>) {
   return (
     <div className="contents">
       <div className="border-t border-border/40 p-2 md:p-3 flex flex-col justify-center">
@@ -39,17 +45,17 @@ export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift, con
           >
             {shifts.map((s) => {
               const employeeLabel = s.employee?.name ?? 'Unassigned';
-              const conflictLines = conflictsByShiftId?.get(s.id);
+              const conflictLines = conflictsByShiftId?.get(s.id) ?? [];
               return (
                 <div
                   key={s.id}
                   className={cn(
                     'flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/60',
                     'bg-muted/30 text-[12px] text-foreground',
-                    conflictLines?.length && 'border-l-2 border-l-amber-500',
+                    conflictLines.length > 0 && 'border-l-2 border-l-amber-500',
                   )}
                 >
-                  {!!conflictLines?.length && <ConflictBadge lines={conflictLines} />}
+                  <ConflictBadge lines={conflictLines} />
                   <span className="truncate">{employeeLabel}</span>
                   <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                     {formatCompactTime(formatLocalTime(s.start_time))}–{formatCompactTime(formatLocalTime(s.end_time))}

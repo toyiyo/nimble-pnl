@@ -56,7 +56,7 @@ describe('OffTemplateRow — conflict indicator', () => {
       />,
     );
     expect(screen.getByRole('button', { name: /^Conflicts:/ })).toBeTruthy();
-    expect(container.querySelector('.border-l-amber-500')).not.toBeNull();
+    expect(container.querySelector('.border-l-warning')).not.toBeNull();
   });
 
   it('renders no badge without an entry', () => {
@@ -70,7 +70,7 @@ describe('OffTemplateRow — conflict indicator', () => {
       />,
     );
     expect(screen.queryByRole('button', { name: /^Conflicts:/ })).toBeNull();
-    expect(container.querySelector('.border-l-amber-500')).toBeNull();
+    expect(container.querySelector('.border-l-warning')).toBeNull();
   });
 });
 
@@ -89,7 +89,7 @@ describe('HiddenTemplatesRow — conflict indicator', () => {
       />,
     );
     expect(screen.getByRole('button', { name: /^Conflicts:/ })).toBeTruthy();
-    expect(container.querySelector('.border-l-amber-500')).not.toBeNull();
+    expect(container.querySelector('.border-l-warning')).not.toBeNull();
   });
 
   it('renders no badge without the map', () => {
@@ -102,6 +102,6 @@ describe('HiddenTemplatesRow — conflict indicator', () => {
       />,
     );
     expect(screen.queryByRole('button', { name: /^Conflicts:/ })).toBeNull();
-    expect(container.querySelector('.border-l-amber-500')).toBeNull();
+    expect(container.querySelector('.border-l-warning')).toBeNull();
   });
 });

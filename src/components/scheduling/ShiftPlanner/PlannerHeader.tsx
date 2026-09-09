@@ -92,7 +92,10 @@ export const PlannerHeader = memo(function PlannerHeader({
         {!conflictsUnavailable && conflictedShiftCount > 0 && (
           // The visible text is the accessible name — aria-label on a
           // generic span is exposed inconsistently by screen readers.
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400">
+          // Text stays the amber-700/400 pair, not `text-warning`: the
+          // warning token at 11px fails the AA contrast ratio on the light
+          // ground; availabilityColorClasses uses the same readable pair.
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-warning/10 text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-3 w-3" aria-hidden="true" />
             {conflictedShiftCount === 1 ? '1 conflict' : `${conflictedShiftCount} conflicts`}
           </span>

@@ -142,8 +142,11 @@ appears on the next refetch (30s staleTime).
 New file `src/components/scheduling/ShiftPlanner/ConflictBadge.tsx`. It
 renders the triangle-with-tooltip affordance once, for every lane:
 
-- An `AlertTriangle` (`h-3 w-3 text-amber-500`) as a focusable
-  `type="button"` inside a Radix `Tooltip`. The tooltip lists each line.
+- An `AlertTriangle` (`h-3 w-3 text-warning`) as a focusable
+  `type="button"` inside a Radix `Popover`. A click or a tap opens the
+  lines — a tooltip never opens from touch, and the planner runs on
+  mobile (CodeRabbit finding; same click-opened idiom as the coverage
+  indicator).
 - The click handler calls `e.stopPropagation()` — the chip sits in a
   `ShiftCell` with a cell-level tap-to-assign `onClick`
   (`src/components/scheduling/ShiftPlanner/ShiftCell.tsx:121`); without the
@@ -156,8 +159,9 @@ renders the triangle-with-tooltip affordance once, for every lane:
 
 New optional prop `conflictLines?: string[]`. When the array has entries:
 
-- The chip gets `border-l-2 border-l-amber-500` — the same low-contrast
-  treatment `TimelineBar` uses. The position color stays the fill.
+- The chip gets `border-l-2 border-l-warning` — the `warning` token
+  resolves to the same amber `TimelineBar` uses. The position color stays
+  the fill.
 - A `ConflictBadge` renders before the name.
 
 The memo comparator compares the lines by length plus element equality,
@@ -182,9 +186,10 @@ on every compare.
 New optional prop `conflictedShiftCount?: number`. When above zero, an amber pill
 renders before the hours stat: `AlertTriangle` plus the count, with the
 badge scale `text-[11px] px-1.5 py-0.5 rounded-md` and the tint
-`bg-amber-500/10 text-amber-700 dark:text-amber-400` (the amber pair
-`availabilityColorClasses` already uses,
-`src/lib/effectiveAvailability.ts:210`). The label is `1 conflict` for one
+`bg-warning/10 text-amber-700 dark:text-amber-400` — the label keeps the
+amber text pair `availabilityColorClasses` already uses
+(`src/lib/effectiveAvailability.ts:210`) because `text-warning` at 11px
+fails the AA contrast ratio on the light ground. The label is `1 conflict` for one
 and `N conflicts` above one. The pill is informational — no click behavior
 in this iteration. The count equals the number of shifts that have at
 least one conflict line.
@@ -220,12 +225,12 @@ least one conflict line.
   (`src/pages/Scheduling.tsx:338` uses the same hook); a second, filtered
   query would drift. The per-employee index makes the client scan cheap. A
   bounded-range variant is a follow-up, not part of this change.
-- **Amber literals, not the `warning` token:** the schedule card uses
-  `border-l-warning` (`src/pages/SchedulingShiftCard.tsx:20`), but every
-  planner warning surface uses amber literals — `TimelineBar.tsx:187`,
-  `AvailabilityConflictDialog.tsx:41-42`, and `availabilityColorClasses`
-  (`src/lib/effectiveAvailability.ts:210`). The planner indicator matches
-  its own view's language.
+- **Warning tokens with one literal exception:** the border, the icon,
+  and the pill background use the semantic `warning` token (it resolves
+  to the same amber `TimelineBar.tsx:187` uses). The pill LABEL keeps
+  `text-amber-700 dark:text-amber-400` — `text-warning` at 11px fails the
+  AA contrast ratio, and `availabilityColorClasses`
+  (`src/lib/effectiveAvailability.ts:210`) uses the same readable pair.
 - **Timezone fallback divergence:** the client uses `safeTz`, which maps a
   null or invalid `restaurants.timezone` to `'America/Chicago'`
   (`ShiftPlannerTab.tsx:136-145`); both RPCs fall back to `'UTC'`

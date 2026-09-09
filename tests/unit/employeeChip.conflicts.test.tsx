@@ -42,7 +42,7 @@ function renderChip(props: Partial<React.ComponentProps<typeof EmployeeChip>> = 
 describe('EmployeeChip — conflict indicator', () => {
   it('adds the amber left border when conflictLines has entries', () => {
     const { container } = renderChip({ conflictLines: LINES });
-    const chip = container.querySelector('.border-l-amber-500');
+    const chip = container.querySelector('.border-l-warning');
     expect(chip).not.toBeNull();
     expect(chip?.className).toContain('border-l-2');
   });
@@ -54,13 +54,13 @@ describe('EmployeeChip — conflict indicator', () => {
 
   it('renders no amber border and no badge without conflictLines', () => {
     const { container } = renderChip();
-    expect(container.querySelector('.border-l-amber-500')).toBeNull();
+    expect(container.querySelector('.border-l-warning')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Conflicts:/ })).toBeNull();
   });
 
   it('renders no amber border and no badge with an empty array', () => {
     const { container } = renderChip({ conflictLines: [] });
-    expect(container.querySelector('.border-l-amber-500')).toBeNull();
+    expect(container.querySelector('.border-l-warning')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Conflicts:/ })).toBeNull();
   });
 

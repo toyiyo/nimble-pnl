@@ -60,12 +60,11 @@ New file: `src/components/scheduling/ShiftPlanner/ConflictBadge.tsx`.
 New test: `tests/unit/conflictBadge.test.tsx`.
 
 Props: `{ lines: string[] }`. Renders an `AlertTriangle`
-(`h-3 w-3 text-amber-500`) as a `type="button"` inside a Radix `Tooltip`.
+(`h-3 w-3 text-warning`) as a `type="button"` inside a Radix `Popover`.
 `onClick` calls `e.stopPropagation()`. `aria-label` =
-`Conflicts: ${lines.join('. ')}`. Tooltip content lists each line.
+`Conflicts: ${lines.join('. ')}`. The popover lists each line and opens on click or tap.
 Tests: render, aria-label text, stopPropagation (cell-level click handler
-does not fire), tooltip content on focus. Wrap renders in
-`TooltipProvider`.
+does not fire), popover content on click.
 
 ## Task 3 — `EmployeeChip` conflict prop
 
@@ -73,7 +72,7 @@ Change: `src/components/scheduling/ShiftPlanner/EmployeeChip.tsx`.
 New test: `tests/unit/employeeChip.conflicts.test.tsx`.
 
 Optional prop `conflictLines?: string[]`. Non-empty →
-`border-l-2 border-l-amber-500` on the chip and a `ConflictBadge` before
+`border-l-2 border-l-warning` on the chip and a `ConflictBadge` before
 the name. Comparator: length plus element equality on `conflictLines`.
 Tests: amber class present/absent, badge present/absent, comparator
 source-text invariant (matches the pattern in
@@ -98,7 +97,7 @@ Change: `src/components/scheduling/ShiftPlanner/OffTemplateRow.tsx` and
 New test: `tests/unit/plannerLaneConflicts.test.tsx`.
 
 Optional prop `conflictsByShiftId?: Map<string, string[]>` on both. A
-conflicted row gets `border-l-2 border-l-amber-500` and a `ConflictBadge`.
+conflicted row gets `border-l-2 border-l-warning` and a `ConflictBadge`.
 Tests: badge renders in each lane with lines, absent without.
 
 ## Task 6 — `TemplateGrid` pass-through
@@ -116,7 +115,7 @@ New test: `tests/unit/plannerHeaderConflicts.test.tsx`.
 
 Optional props `conflictedShiftCount?: number` and `conflictsUnavailable?:
 boolean`. Count above zero → amber pill (`text-[11px] px-1.5 py-0.5
-rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400`,
+rounded-md bg-warning/10 text-amber-700 dark:text-amber-400`,
 `AlertTriangle`, label `1 conflict` / `N conflicts`).
 `conflictsUnavailable` → muted `Conflicts unavailable` note
 (`text-[13px] text-muted-foreground`) instead of the pill.

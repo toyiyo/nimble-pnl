@@ -1,13 +1,15 @@
 /**
- * Tests for ConflictBadge — the shared triangle-with-tooltip affordance.
+ * Tests for ConflictBadge — the shared triangle-with-popover affordance.
  *
  * Invariants:
  * 1. Renders a type="button" with the conflict text in aria-label.
  * 2. A click does NOT bubble to the parent (the ShiftCell tap-to-assign
  *    onClick must not fire from the badge).
  * 3. No render when lines is empty.
- * 4. The trigger is keyboard-focusable so the tooltip is reachable
+ * 4. The trigger is keyboard-focusable so the popover is reachable
  *    without a mouse.
+ * 5. A click opens the popover with every conflict line — a popover, not
+ *    a tooltip, so touch devices can open it (CodeRabbit finding).
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
@@ -53,5 +55,13 @@ describe('ConflictBadge', () => {
     renderWithTooltip(<ConflictBadge lines={LINES} />);
     const button = screen.getByRole('button', { name: /^Conflicts:/ });
     expect(button.tabIndex).toBeGreaterThanOrEqual(0);
+  });
+
+  it('opens the popover with every line on click (touch-reachable)', () => {
+    renderWithTooltip(<ConflictBadge lines={LINES} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Conflicts:/ }));
+    for (const line of LINES) {
+      expect(screen.getByText(`• ${line}`)).toBeTruthy();
+    }
   });
 });

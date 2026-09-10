@@ -17,7 +17,7 @@ import { OCRBarcodeScanner } from '@/components/OCRBarcodeScanner';
 import { KeyboardBarcodeScanner } from '@/components/KeyboardBarcodeScanner';
 import { ImageCapture } from '@/components/ImageCapture';
 import { ProductCard } from '@/components/ProductCard';
-import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
+import { ProductUpdateDialog, PendingSupplierPackSize } from '@/components/ProductUpdateDialog';
 import { DeleteProductDialog } from '@/components/DeleteProductDialog';
 import { WasteDialog } from '@/components/WasteDialog';
 import { TransferDialog } from '@/components/TransferDialog';
@@ -310,7 +310,12 @@ export const Inventory: React.FC = () => {
    * Returns true on success. No dialog state side-effects.
    */
   const persistProductUpsert = useCallback(
-    async (product: Product, updates: Partial<Product>, quantityToAdd: number): Promise<boolean> => {
+    async (
+      product: Product,
+      updates: Partial<Product>,
+      quantityToAdd: number,
+      pendingSupplierPackSize?: PendingSupplierPackSize
+    ): Promise<boolean> => {
       if (!selectedRestaurant) return false;
 
       if (!product.id) {
@@ -337,6 +342,8 @@ export const Inventory: React.FC = () => {
           supplier_name: updates.supplier_name || product.supplier_name,
           supplier_sku: updates.supplier_sku || product.supplier_sku,
           supplier_id: updates.supplier_id ?? product.supplier_id ?? null,
+          supplier_pack_size_qty: pendingSupplierPackSize?.packSizeQty ?? null,
+          supplier_pack_size_unit: pendingSupplierPackSize?.packSizeUnit ?? null,
           barcode_data: product.barcode_data,
         };
         const created = await createProduct(productData);
@@ -408,8 +415,13 @@ export const Inventory: React.FC = () => {
 
   /** Session callback: throws on failure so ScanSessionView keeps the form open (M3). */
   const handleSessionUpdateProduct = useCallback(
-    async (product: Product, updates: Partial<Product>, quantityToAdd: number) => {
-      const ok = await persistProductUpsert(product, updates, quantityToAdd);
+    async (
+      product: Product,
+      updates: Partial<Product>,
+      quantityToAdd: number,
+      pendingSupplierPackSize?: PendingSupplierPackSize
+    ) => {
+      const ok = await persistProductUpsert(product, updates, quantityToAdd, pendingSupplierPackSize);
       if (!ok) throw new Error('Save failed');
     },
     [persistProductUpsert],
@@ -827,9 +839,13 @@ export const Inventory: React.FC = () => {
     setShowUpdateDialog(true);
   };
 
-  const handleUpdateProduct = async (updates: Partial<Product>, quantityToAdd: number) => {
+  const handleUpdateProduct = async (
+    updates: Partial<Product>,
+    quantityToAdd: number,
+    pendingSupplierPackSize?: PendingSupplierPackSize
+  ) => {
     if (!selectedProduct) return;
-    
+
     // Check if this is a new product (no ID) or existing product
     if (!selectedProduct.id) {
       // Create new product
@@ -855,6 +871,8 @@ export const Inventory: React.FC = () => {
         supplier_name: updates.supplier_name || selectedProduct.supplier_name,
         supplier_sku: updates.supplier_sku || selectedProduct.supplier_sku, // FIX: Use updates.supplier_sku first
         supplier_id: updates.supplier_id ?? selectedProduct.supplier_id ?? null,
+        supplier_pack_size_qty: pendingSupplierPackSize?.packSizeQty ?? null,
+        supplier_pack_size_unit: pendingSupplierPackSize?.packSizeUnit ?? null,
         barcode_data: selectedProduct.barcode_data,
       };
 

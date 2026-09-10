@@ -4,7 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Package, Loader2, Check, ScanLine } from 'lucide-react';
 import { SmartBarcodeScanner } from '@/components/SmartBarcodeScanner';
 import { QuickInventoryDialog } from '@/components/QuickInventoryDialog';
-import { ProductUpdateDialog, ProductUpdateSheet } from '@/components/ProductUpdateDialog';
+import {
+  ProductUpdateDialog,
+  ProductUpdateSheet,
+  type PendingSupplierPackSize,
+} from '@/components/ProductUpdateDialog';
 import { useScanSession } from '@/hooks/useScanSession';
 import type { Product } from '@/hooks/useProducts';
 
@@ -13,7 +17,12 @@ export interface ScanSessionViewProps {
   findProductByGtin: (gtin: string) => Promise<Product | null>;
   resolveNewProduct: (gtin: string) => Promise<Product>;
   onAddQuantity: (product: Product, quantity: number, location?: string) => Promise<void>;
-  onUpdateProduct: (product: Product, updates: Partial<Product>, quantityToAdd: number) => Promise<void>;
+  onUpdateProduct: (
+    product: Product,
+    updates: Partial<Product>,
+    quantityToAdd: number,
+    pendingSupplierPackSize?: PendingSupplierPackSize
+  ) => Promise<void>;
   onEnhance?: (product: Product) => Promise<unknown>; // return shape varies by enhancement provider
   onExit: () => void;
 }
@@ -211,8 +220,8 @@ export function ScanSessionView(props: ScanSessionViewProps) {
           }}
           product={activeProduct}
           onEnhance={onEnhance}
-          onUpdate={async (updates, quantityToAdd) => {
-            await onUpdateProduct(activeProduct, updates, quantityToAdd);
+          onUpdate={async (updates, quantityToAdd, pendingSupplierPackSize) => {
+            await onUpdateProduct(activeProduct, updates, quantityToAdd, pendingSupplierPackSize);
             // commitFull is success-only (M3) → confirm beat.
             session.commitFull();
           }}

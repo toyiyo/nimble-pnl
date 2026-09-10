@@ -2,7 +2,7 @@ import { memo } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-import { ChevronLeft, ChevronRight, Calendar, Printer, Sparkles } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Calendar, Printer, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PlannerHeaderProps {
@@ -15,6 +15,11 @@ interface PlannerHeaderProps {
   onExport?: () => void;
   onGenerate?: () => void;
   isGenerating?: boolean;
+  /** Number of shifts this week with at least one conflict. Zero hides the pill. */
+  conflictedShiftCount?: number;
+  /** True when a conflict source query errored — the pill would show an
+   *  incorrect zero, so a muted note renders instead. */
+  conflictsUnavailable?: boolean;
 }
 
 /**
@@ -37,6 +42,8 @@ export const PlannerHeader = memo(function PlannerHeader({
   onExport,
   onGenerate,
   isGenerating,
+  conflictedShiftCount = 0,
+  conflictsUnavailable,
 }: PlannerHeaderProps) {
   return (
     <div className="flex items-center justify-between px-1 py-2">
@@ -79,6 +86,20 @@ export const PlannerHeader = memo(function PlannerHeader({
 
       {/* Right: summary stat + export */}
       <div className="flex items-center gap-2">
+        {conflictsUnavailable && (
+          <span className="text-[13px] text-muted-foreground">Conflicts unavailable</span>
+        )}
+        {!conflictsUnavailable && conflictedShiftCount > 0 && (
+          // The visible text is the accessible name — aria-label on a
+          // generic span is exposed inconsistently by screen readers.
+          // Text stays the amber-700/400 pair, not `text-warning`: the
+          // warning token at 11px fails the AA contrast ratio on the light
+          // ground; availabilityColorClasses uses the same readable pair.
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-warning/10 text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+            {conflictedShiftCount === 1 ? '1 conflict' : `${conflictedShiftCount} conflicts`}
+          </span>
+        )}
         <span className="text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">{totalHours}h</span> scheduled
         </span>

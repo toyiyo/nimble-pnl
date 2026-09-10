@@ -10724,6 +10724,15 @@ export type Database = {
       _table_privs: { Args: never; Returns: unknown[] }
       _temptypes: { Args: { "": string }; Returns: string }
       _todo: { Args: never; Returns: string }
+      accept_my_invitation: {
+        Args: { p_invitation_id: string }
+        Returns: {
+          accepted: boolean
+          reason: string
+          restaurant_id: string
+          restaurant_name: string
+        }[]
+      }
       accept_shift_trade: {
         Args: { p_accepting_employee_id: string; p_trade_id: string }
         Returns: Json
@@ -11601,6 +11610,15 @@ export type Database = {
           p_time_zone?: string
         }
         Returns: Json
+      }
+      get_my_pending_invitations: {
+        Args: never
+        Returns: {
+          expires_at: string
+          invitation_id: string
+          restaurant_name: string
+          role: string
+        }[]
       }
       get_monthly_sales_metrics: {
         Args: {

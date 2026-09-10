@@ -8,12 +8,16 @@
 -- against the caller's own membership), this function has NO in-function
 -- caller check. It is reachable only through the REVOKE/GRANT boundary
 -- below: PUBLIC/anon/authenticated are stripped of EXECUTE and only
--- service_role holds it. That is safe here because the only caller is the
--- accept-invitation edge function, which runs under the service-role key
--- AFTER it has already validated the invitation token server-side — by the
--- time this RPC runs, "which employee (if any) should this new account link
--- to" has already been decided by the invitation row, not by the caller's
--- say-so. Verified against migration history: no later migration issues a
+-- service_role holds it. That is safe here because both callers run only
+-- AFTER the invitation row has decided the link target, not the caller's
+-- say-so:
+--   1. the accept-invitation edge function (service_role key, after it
+--      validated the invitation token server-side), and
+--   2. accept_my_invitation (20260908230000) — an owner-privilege call
+--      from inside a postgres-owned SECURITY DEFINER function, after the
+--      auth.email() match against the invitation row. The grant boundary
+--      is untouched: postgres keeps implicit EXECUTE as the owner.
+-- Verified against migration history: no later migration issues a
 -- blanket `GRANT EXECUTE ON ALL FUNCTIONS ...` that would re-open this.
 --
 -- Concurrency: a single signed-in user can in principle race two accept

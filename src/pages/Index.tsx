@@ -18,6 +18,7 @@ import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
 import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
 import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { PendingInvitationsCard } from '@/components/PendingInvitationsCard';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
@@ -631,7 +632,11 @@ const Index = () => {
               </p>
             </div>
           </div>
-          <RestaurantSelector 
+          {/* An invitee with zero restaurants must see their pending
+              invitation before the create-restaurant path — otherwise
+              they open a second, self-serve owner account. */}
+          {!restaurantsLoading && restaurants.length === 0 && <PendingInvitationsCard />}
+          <RestaurantSelector
             selectedRestaurant={selectedRestaurant}
             onSelectRestaurant={handleRestaurantSelect}
             restaurants={restaurants}

@@ -20,7 +20,7 @@ describe('areas.ts derives from the sidebar', () => {
     // `/team` carries two areas (team + collaborators), so compare as sets.
     // A page added to AppSidebar.nav.data.ts with no PAGE_AREAS entry fails
     // here rather than becoming silently ungrantable — which is how /budget,
-    // /labor, /stripe-account, /ops-inbox and /weekly-brief went unreachable.
+    // /labor and /stripe-account went unreachable.
     expect(new Set(areaPaths)).toEqual(new Set(navPaths));
   });
 

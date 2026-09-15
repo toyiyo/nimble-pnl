@@ -14,32 +14,27 @@ import { resolve } from 'node:path';
 
 const root = resolve(__dirname, '../..');
 
-const RETIRED_ROUTE_STRINGS = ['weekly-brief', 'ops-inbox'];
-const RETIRED_NAMES = ['Weekly Brief', 'Ops Inbox'];
+// One pattern for every identifier form: kebab-case (weekly-brief),
+// snake_case (weekly_brief), PascalCase (WeeklyBrief), and the display
+// name (Weekly Brief). The /i flag covers the case variants.
+const RETIRED_REFERENCE_PATTERN = /weekly[-_ ]?brief|ops[-_ ]?inbox/i;
 
 const SWEPT_SOURCE_FILES = [
   'supabase/functions/_shared/tools-registry.ts',
   'supabase/functions/ai-execute-tool/index.ts',
 ];
 
-describe('the AI tool sources have no retired route string', () => {
-  it.each(SWEPT_SOURCE_FILES)('%s has no retired route string', (file) => {
+describe('the AI tool sources have no retired reference', () => {
+  it.each(SWEPT_SOURCE_FILES)('%s has no retired reference', (file) => {
     const text = readFileSync(resolve(root, file), 'utf-8');
-    for (const route of RETIRED_ROUTE_STRINGS) {
-      expect(text).not.toContain(route);
-    }
+    expect(text).not.toMatch(RETIRED_REFERENCE_PATTERN);
   });
 });
 
 describe('the helpdesk index does not list the retired articles', () => {
   it('docs/helpdesk/README.md has no retired slug or feature name', () => {
     const text = readFileSync(resolve(root, 'docs/helpdesk/README.md'), 'utf-8');
-    for (const route of RETIRED_ROUTE_STRINGS) {
-      expect(text).not.toContain(route);
-    }
-    for (const name of RETIRED_NAMES) {
-      expect(text).not.toContain(name);
-    }
+    expect(text).not.toMatch(RETIRED_REFERENCE_PATTERN);
   });
 });
 

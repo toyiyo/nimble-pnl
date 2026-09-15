@@ -31,7 +31,7 @@ describe('areas.ts derives from the sidebar', () => {
   });
 
   it('locks manage on pages with no edit capability', () => {
-    const readOnly = ['dashboard', 'sales', 'ops_inbox', 'weekly_brief', 'labor',
+    const readOnly = ['dashboard', 'sales', 'labor',
                       'budget', 'stripe_account', 'financial_statements',
                       'financial_intelligence'];
     for (const key of readOnly) {
@@ -57,9 +57,7 @@ const ALL_AREA_KEYS: AreaKey[] = [
   'dashboard',
   'integrations',
   'sales',
-  'ops_inbox',
   'reviews',
-  'weekly_brief',
   'scheduling',
   'time_punches',
   'tips',
@@ -90,7 +88,7 @@ const ALL_AREA_KEYS: AreaKey[] = [
 ];
 
 /** Areas with no capability at all (spec §3.4) — gated purely by routing. */
-const CAPABILITYLESS_AREAS: AreaKey[] = ['ops_inbox', 'weekly_brief', 'budget', 'labor', 'stripe_account'];
+const CAPABILITYLESS_AREAS: AreaKey[] = ['budget', 'labor', 'stripe_account'];
 
 function grantsAt(level: AreaLevel, keys: AreaKey[] = ALL_AREA_KEYS): Partial<Record<AreaKey, AreaLevel>> {
   const grants: Partial<Record<AreaKey, AreaLevel>> = {};
@@ -99,8 +97,8 @@ function grantsAt(level: AreaLevel, keys: AreaKey[] = ALL_AREA_KEYS): Partial<Re
 }
 
 describe('AREA_DEFINITIONS', () => {
-  it('defines exactly 33 areas', () => {
-    expect(AREA_DEFINITIONS).toHaveLength(33);
+  it('defines exactly 31 areas', () => {
+    expect(AREA_DEFINITIONS).toHaveLength(31);
   });
 
   it('caps Team & Access at no grantable level (privilege-escalation guard)', () => {

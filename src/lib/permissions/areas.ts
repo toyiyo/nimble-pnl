@@ -40,9 +40,7 @@ export type AreaKey =
   | 'dashboard'
   | 'integrations'
   | 'sales'
-  | 'ops_inbox'
   | 'reviews'
-  | 'weekly_brief'
   | 'scheduling'
   | 'time_punches'
   | 'tips'
@@ -194,7 +192,7 @@ interface AreaCapabilities {
  * manage tier means "use the AI assistant" via the hardcoded
  * `area_key = 'reports' AND level = 'manage'` check rather than a
  * `view:ai_assistant` row in the VALUES map itself. `dashboard`,
- * `ops_inbox`, `weekly_brief`, `budget`, `labor` and `stripe_account` carry
+ * `budget`, `labor` and `stripe_account` carry
  * no capability at all (spec §3.4) — gated purely by routing, same as today.
  *
  * `view:ai_assistant` and `view:financial_intelligence` are included
@@ -219,17 +217,9 @@ const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
     view: ['view:pos_sales'],
     manageAdds: [],
   },
-  ops_inbox: {
-    view: [],
-    manageAdds: [],
-  },
   reviews: {
     view: ['view:reviews'],
     manageAdds: ['manage:reviews'],
-  },
-  weekly_brief: {
-    view: [],
-    manageAdds: [],
   },
   scheduling: {
     view: ['view:scheduling'],

@@ -41,9 +41,7 @@ export const PAGE_AREA_ROWS: readonly PageAreaRow[] = [
   ['dashboard', '/', false, 'view', 'Daily numbers, prime cost, P&L snapshot'],
   ['integrations', '/integrations', true, 'view', 'POS, bank and payroll connections', 'connect and disconnect systems'],
   ['sales', '/pos-sales', false, 'view', 'Ticket-level sales from your POS'],
-  ['ops_inbox', '/ops-inbox', false, 'view', 'Exceptions and things needing a decision'],
   ['reviews', '/reviews', true, 'view', 'Review pages, QR codes, guest feedback', 'edit QR pages and reply'],
-  ['weekly_brief', '/weekly-brief', false, 'view', 'The weekly summary and its archive'],
 
   // Operations
   ['scheduling', '/scheduling', true, 'manage', 'Shifts, templates, open-shift broadcasts', 'publish and edit schedules'],

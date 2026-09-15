@@ -191,9 +191,9 @@ interface AreaCapabilities {
  * `user_has_capability` rather than a VALUES-map row), and `reports`'s
  * manage tier means "use the AI assistant" via the hardcoded
  * `area_key = 'reports' AND level = 'manage'` check rather than a
- * `view:ai_assistant` row in the VALUES map itself. `dashboard`,
- * `budget`, `labor` and `stripe_account` carry
- * no capability at all (spec §3.4) — gated purely by routing, same as today.
+ * `view:ai_assistant` row in the VALUES map itself. `dashboard`, `budget`,
+ * `labor` and `stripe_account` carry no capability at all (spec §3.4) —
+ * gated purely by routing, same as today.
  *
  * `view:ai_assistant` and `view:financial_intelligence` are included
  * unconditionally here, exactly as they were before the re-cut — the SQL

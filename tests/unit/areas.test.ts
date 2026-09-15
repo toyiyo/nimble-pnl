@@ -31,9 +31,8 @@ describe('areas.ts derives from the sidebar', () => {
   });
 
   it('locks manage on pages with no edit capability', () => {
-    const readOnly = ['dashboard', 'sales', 'labor',
-                      'budget', 'stripe_account', 'financial_statements',
-                      'financial_intelligence'];
+    const readOnly = ['dashboard', 'sales', 'labor', 'budget', 'stripe_account',
+                      'financial_statements', 'financial_intelligence'];
     for (const key of readOnly) {
       expect(PAGE_AREAS.find((a) => a.key === key)?.hasManageTier).toBe(false);
     }

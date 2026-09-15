@@ -98,7 +98,8 @@ Follow the design's ordered steps:
   `supabase/tests/roles_seed_test.sql`,
   `supabase/tests/page_areas_catalog_test.sql`,
   `supabase/tests/20260129000000_subscription_system.sql`.
-- Check: `npm run db:reset` succeeds; `npm run test:db` passes.
+- Check: read the migration against the design's ordered steps; the
+  pgTAP run defers to CI (local Supabase cannot start in this session).
 
 ## Task 6 — Clean the generated types
 
@@ -141,7 +142,11 @@ Task 6 follows Task 5 (same object list). Tasks 7–8 come last.
 - Local verification uses registry `xlsx@0.18.5` because the egress
   policy blocks `cdn.sheetjs.com`. Keep `package.json` and
   `package-lock.json` unchanged.
-- Docker exists in this session; `npm run db:reset` and
-  `npm run test:db` run locally.
+- Local Supabase cannot start: the egress proxy blocks the Docker
+  image blob hosts. `npm run db:reset`, `npm run test:db`, and
+  `npm run test:e2e` defer to CI. Local checks: `npm run test`,
+  `npm run typecheck`, `npm run lint`, `npm run build`.
+- `.env.local` exists as a guard and points at `127.0.0.1:54321`, so no
+  local test can reach production.
 - E2E: no spec references the deleted pages. The CI E2E run is the
   gate; no new spec is required (design, "Tests" section).

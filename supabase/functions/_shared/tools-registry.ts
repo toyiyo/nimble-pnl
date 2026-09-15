@@ -270,22 +270,6 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       }
     },
 
-    // Proactive insights - available to all users
-    {
-      name: 'get_proactive_insights',
-      description: 'Check for urgent operational items and the latest weekly brief. Call this at the start of new conversations to surface important issues proactively. Returns open ops inbox items ranked by priority and a summary of the most recent weekly brief.',
-      parameters: {
-        type: 'object',
-        properties: {
-          include_brief: {
-            type: 'boolean',
-            description: 'Include latest weekly brief summary (default: true)',
-            default: true
-          }
-        }
-      }
-    },
-
     // Schedule overview - available to all users
     {
       name: 'get_schedule_overview',
@@ -817,25 +801,6 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
           },
           required: ['rule_name', 'pattern_type', 'pattern_value', 'category_id']
         }
-      },
-      {
-        name: 'resolve_inbox_item',
-        description: 'Mark an ops inbox item as done or dismissed.',
-        parameters: {
-          type: 'object',
-          properties: {
-            item_id: {
-              type: 'string',
-              description: 'The ops_inbox_item ID to resolve'
-            },
-            resolution: {
-              type: 'string',
-              enum: ['done', 'dismissed'],
-              description: 'How to resolve the item'
-            }
-          },
-          required: ['item_id', 'resolution']
-        }
       }
     );
   }
@@ -901,7 +866,6 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_recipe_analytics',
     'get_sales_summary',
     'get_inventory_transactions',
-    'get_proactive_insights',    // Proactive insights for all users
     'get_daily_sales_totals'     // Daily revenue totals visible to all
   ];
 
@@ -925,8 +889,7 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_break_even_progress',          // Break-even daily history + progress - manager+
     'batch_categorize_transactions',    // Action: categorize bank txns - manager+
     'batch_categorize_pos_sales',       // Action: categorize POS sales - manager+
-    'create_categorization_rule',       // Action: create rules - manager+
-    'resolve_inbox_item'                // Action: resolve inbox items - manager+
+    'create_categorization_rule'        // Action: create rules - manager+
   ];
 
   if (managerOwnerTools.includes(toolName)) {

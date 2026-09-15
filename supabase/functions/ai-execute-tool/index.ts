@@ -3233,81 +3233,6 @@ async function executeGetBreakEvenProgress(
 }
 
 /**
- * Execute get_proactive_insights tool
- * Returns top open inbox items + latest weekly brief for proactive AI context
- */
-async function executeGetProactiveInsights(
-  args: any,
-  restaurantId: string,
-  supabase: any
-): Promise<any> {
-  const { include_brief = true } = args;
-
-  // Fetch total count of open inbox items
-  const { count: totalOpenCount, error: countError } = await supabase
-    .from('ops_inbox_item')
-    .select('*', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurantId)
-    .eq('status', 'open');
-
-  if (countError) {
-    throw new Error(`Failed to count inbox items: ${countError.message}`);
-  }
-
-  // Fetch top 5 open ops inbox items by priority
-  const { data: inboxItems, error: inboxError } = await supabase
-    .from('ops_inbox_item')
-    .select('id, title, description, kind, priority, status, due_at, meta, created_at')
-    .eq('restaurant_id', restaurantId)
-    .eq('status', 'open')
-    .order('priority', { ascending: true })
-    .limit(5);
-
-  if (inboxError) {
-    throw new Error(`Failed to fetch inbox items: ${inboxError.message}`);
-  }
-
-  let briefData = null;
-  if (include_brief) {
-    const { data: brief, error: briefError } = await supabase
-      .from('weekly_brief')
-      .select('id, brief_week_end, metrics_json, comparisons_json, variances_json, inbox_summary_json, recommendations_json, narrative')
-      .eq('restaurant_id', restaurantId)
-      .order('brief_week_end', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (briefError) {
-      console.error('Failed to fetch weekly brief:', briefError.message);
-    } else {
-      briefData = brief;
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      inbox: {
-        items: inboxItems || [],
-        total_open: totalOpenCount || 0,
-        has_critical: inboxItems?.some((i: any) => i.priority <= 2) || false,
-      },
-      brief: briefData ? {
-        week_end: briefData.brief_week_end,
-        narrative: briefData.narrative,
-        metrics: briefData.metrics_json,
-        variances: briefData.variances_json,
-        recommendations: briefData.recommendations_json,
-      } : null,
-    },
-    evidence: [
-      { table: 'ops_inbox_item', summary: `${totalOpenCount || 0} total open inbox items (showing top 5 by priority)` },
-      ...(briefData ? [{ table: 'weekly_brief', summary: `Weekly brief for ${briefData.brief_week_end}` }] : []),
-    ],
-  };
-}
-
-/**
  * Execute batch_categorize_transactions tool
  * Preview-first pattern: preview=true shows changes, confirmed=true executes
  */
@@ -3623,71 +3548,6 @@ async function executeCreateCategorizationRule(
   return { ok: false, error: { code: 'INVALID_REQUEST', message: 'Must specify preview:true or confirmed:true' } };
 }
 
-/**
- * Execute resolve_inbox_item tool
- * Marks an ops inbox item as done or dismissed (low risk, no preview needed)
- */
-async function executeResolveInboxItem(
-  args: any,
-  restaurantId: string,
-  supabase: any,
-  userId: string
-): Promise<any> {
-  const { item_id, resolution } = args;
-
-  const { data: item, error: fetchError } = await supabase
-    .from('ops_inbox_item')
-    .select('id, title, status, kind, priority')
-    .eq('id', item_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (fetchError || !item) {
-    throw new Error(`Inbox item not found: ${item_id}`);
-  }
-
-  if (item.status === 'done' || item.status === 'dismissed') {
-    return {
-      ok: true,
-      data: {
-        action: 'resolve_inbox_item',
-        already_resolved: true,
-        item: { id: item.id, title: item.title, status: item.status },
-        message: `Item "${item.title}" is already ${item.status}.`,
-      },
-      evidence: [
-        { table: 'ops_inbox_item', id: item.id, summary: `Item already ${item.status}` },
-      ],
-    };
-  }
-
-  const { error: updateError } = await supabase
-    .from('ops_inbox_item')
-    .update({
-      status: resolution,
-      resolved_at: new Date().toISOString(),
-      resolved_by: userId,
-    })
-    .eq('id', item_id)
-    .eq('restaurant_id', restaurantId);
-
-  if (updateError) {
-    throw new Error(`Failed to resolve inbox item: ${updateError.message}`);
-  }
-
-  return {
-    ok: true,
-    data: {
-      action: 'resolve_inbox_item',
-      item: { id: item.id, title: item.title, previous_status: item.status, new_status: resolution },
-      message: `Marked "${item.title}" as ${resolution}.`,
-    },
-    evidence: [
-      { table: 'ops_inbox_item', id: item.id, summary: `Item ${resolution}: ${item.title}` },
-    ],
-  };
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -3857,9 +3717,6 @@ serve(async (req) => {
       case 'get_break_even_progress':
         result = await executeGetBreakEvenProgress(args, restaurant_id, supabase);
         break;
-      case 'get_proactive_insights':
-        result = await executeGetProactiveInsights(args, restaurant_id, supabase);
-        break;
       case 'batch_categorize_transactions':
         result = await executeBatchCategorizeTransactions(args, restaurant_id, supabase);
         break;
@@ -3868,9 +3725,6 @@ serve(async (req) => {
         break;
       case 'create_categorization_rule':
         result = await executeCreateCategorizationRule(args, restaurant_id, supabase);
-        break;
-      case 'resolve_inbox_item':
-        result = await executeResolveInboxItem(args, restaurant_id, supabase, user.id);
         break;
       default:
         throw new Error(`Unknown tool: ${tool_name}`);

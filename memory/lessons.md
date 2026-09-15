@@ -3306,3 +3306,29 @@
 - **Mistake:** The planner conflict indicator shipped amber literals (`border-l-amber-500`, `bg-amber-500/10`) with a recorded "planner uses amber" trade-off. Three reviewers plus CodeRabbit re-flagged it. The token check nobody ran first: `--warning` is `hsl(38 92% 50%)` — exactly amber-500, and theme-aware.
 - **Correction:** `border-l-warning`, `text-warning` (icons), `bg-warning/10` render identically to the literals. The one legitimate literal: an 11px LABEL keeps `text-amber-700 dark:text-amber-400`, because `text-warning` on the light ground fails the WCAG AA ratio at that size — the same pair `availabilityColorClasses` uses.
 - **Rule:** Before recording a "literals match the neighbors" trade-off, read the token's value in `src/index.css`. When the token equals the literal, use the token. Keep a contrast-driven literal only for small text, with a comment naming the ratio reason. Related: a Radix `Tooltip` never opens from touch — a disclosure that must work on mobile is a `Popover` (the planner's coverage indicator idiom), with `stopPropagation` when a tappable ancestor exists.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-15] The orchestrator runs in the remote container with a scratchpad copy (PR #804)
+- **Mistake:** The 2026-09-09 lesson said the `dev-build-and-ship` orchestrator is not usable in the remote container and Phases 4-9 must run inline. This session disproved the first half: the orchestrator halted only because its Preflight names `coderabbit` a hard dependency, which contradicts both the skill contract and its own Phase 7c best-effort clause.
+- **Correction:** Copy `.claude/workflows/dev-build-and-ship.js` to the scratchpad. In the copy: make `coderabbit` a warning in Preflight, and add an ENVIRONMENT NOTES line to `envelope()` (blocked hosts, gh GraphQL blocked, local-verify limits). Launch with `scriptPath` at the copy. The run completed all 8 build tasks through Phase 9e. Preflight installed `gh` v2.100.0 itself; REST routes work, GraphQL is blocked.
+- **Rule:** Keep the Preflight hard-dependency list equal to the skill contract: `gh`, `jq`, `node`. `coderabbit` and `codex` are best-effort everywhere. Fix an orchestrator-vs-contract conflict in a scratchpad copy, never by an inline retreat, and never by a repo edit inside a feature PR.
+
+### [2026-09-15] The container starts dockerd, but image blob pulls 403 — guard .env.local before any test
+- **Mistake:** `docker` exists and `dockerd` starts, so the plan promised local `db:reset` + `test:db`. The pull of every Supabase image failed: the proxy allows the registry manifests but 403s the CloudFront blob hosts (`production.cloudfront.docker.com`, `d2glxqk2uabbnd.cloudfront.net`). Worse: with no `.env.local`, `.env` points every client at PRODUCTION Supabase.
+- **Correction:** Write a guard `.env.local` (gitignored) with `VITE_SUPABASE_URL="http://127.0.0.1:54321"` and the public demo anon key, so an accidental DB call fails on connection refused instead of touching production. Defer `db:reset`, `test:db`, `test:e2e` to CI; run unit + typecheck + lint + build locally. Stop `dockerd` after the decision.
+- **Rule:** In the remote container, test docker with one real image pull before the plan promises local Supabase. Write the guard `.env.local` FIRST, in every remote session that can run tests.
+
+## Category: Design Docs / Premise Checks (continued)
+
+### [2026-09-15] Name every call site in a "sole caller" claim (PR #804)
+- **Mistake:** The decommission design claimed `pgmq_delete_message()` stays "if another caller exists" and assumed `process_weekly_brief_queue` was its caller. False: that SQL function calls `pgmq.delete` directly; the only callers were two `supabase.rpc("pgmq_delete_message", ...)` lines in the deleted worker. A literal read of the rule kept an orphaned SECURITY DEFINER RPC in production. Both Phase 2.5 reviewers flagged it as critical.
+- **Correction:** The design now drops the function unconditionally and cites both worker call sites by file:line.
+- **Rule:** A "sole caller" or "no caller" claim needs the grep run at design time and every call site cited as `file:line` in the doc. A conditional deletion rule ("keep it if X calls it") hides a wrong premise; resolve the condition during design, not during build.
+
+## Category: Supabase / Migrations (continued)
+
+### [2026-09-15] A deleted function directory does not delete the hosted edge function (PR #804)
+- **Mistake:** The decommission design deleted three edge-function directories and assumed the deploy pipeline retires them. `supabase functions deploy` never deletes a remote function: the three stay live in production with their secrets after the merge.
+- **Correction:** The PR body carries a mandatory post-merge step: `supabase functions delete <name> --project-ref ncdujvdgqtaunuyigflp` for each. `docs/DEPLOYMENT.md` gained a "Deleted Edge Functions" runbook section.
+- **Rule:** Every PR that deletes an edge-function directory must name the manual `supabase functions delete` step in its body and point at the runbook. The security reviewer caught this; put it in the design template for the next decommission.

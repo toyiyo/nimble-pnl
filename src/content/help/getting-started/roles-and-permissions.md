@@ -37,7 +37,7 @@ The Owner role has unrestricted access to every screen in EasyShiftHQ, including
 
 | Section | Items |
 |---|---|
-| Main | Dashboard, Integrations, POS Sales |
+| Main | Dashboard, Integrations, POS Sales, Reviews |
 | Operations | Scheduling, Time Clock, Tip Pooling, Payroll |
 | Inventory | Recipes, Prep Recipes, Inventory, Audit, Purchase Orders, Reports |
 | Accounting | Budget & Run Rate, Customers, Invoices, Financial Account, Banks, Expenses, Print Checks, Assets & Equipment, Financial Intelligence, Transactions, Chart of Accounts, Statements |

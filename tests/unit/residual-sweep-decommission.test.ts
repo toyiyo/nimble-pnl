@@ -22,9 +22,9 @@ const SWEPT_SOURCE_FILES = [
   'supabase/functions/ai-execute-tool/index.ts',
 ];
 
-describe('the navigate tool does not name the retired sections', () => {
+describe('the AI tool sources have no retired route string', () => {
   it.each(SWEPT_SOURCE_FILES)('%s has no retired route string', (file) => {
-    const text = readFileSync(resolve(root, file), 'utf8');
+    const text = readFileSync(resolve(root, file), 'utf-8');
     for (const route of RETIRED_ROUTE_STRINGS) {
       expect(text).not.toContain(route);
     }
@@ -33,7 +33,7 @@ describe('the navigate tool does not name the retired sections', () => {
 
 describe('the helpdesk index does not list the retired articles', () => {
   it('docs/helpdesk/README.md has no retired slug or feature name', () => {
-    const text = readFileSync(resolve(root, 'docs/helpdesk/README.md'), 'utf8');
+    const text = readFileSync(resolve(root, 'docs/helpdesk/README.md'), 'utf-8');
     for (const route of RETIRED_ROUTE_STRINGS) {
       expect(text).not.toContain(route);
     }

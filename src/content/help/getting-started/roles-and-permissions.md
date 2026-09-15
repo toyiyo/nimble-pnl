@@ -38,10 +38,10 @@ The Owner role has unrestricted access to every screen in EasyShiftHQ, including
 | Section | Items |
 |---|---|
 | Main | Dashboard, Integrations, POS Sales, Reviews |
-| Operations | Scheduling, Time Clock, Tip Pooling, Payroll |
+| Operations | Scheduling, Time Clock, Tip Pooling, Payroll, Labor |
 | Inventory | Recipes, Prep Recipes, Inventory, Audit, Purchase Orders, Reports |
 | Accounting | Budget & Run Rate, Customers, Invoices, Financial Account, Banks, Expenses, Print Checks, Assets & Equipment, Financial Intelligence, Transactions, Chart of Accounts, Statements |
-| Admin | Employees, Team, Settings |
+| Admin | Employees, Team, Settings, Help Center |
 
 Among internal team roles, the Owner is the only one with Chart of Accounts editing rights — Managers can view it but not change it. Accountant collaborators also have Chart of Accounts edit access. The Owner is the only role with full Settings editing rights, which includes subscription and plan changes.
 

@@ -81,7 +81,7 @@ describe('NOTIFICATION_TYPES catalog', () => {
     }
   });
 
-  it('does NOT include weekly_brief (per-user preference, out of scope for the admin matrix)', () => {
+  it('does NOT include weekly_brief (the feature is deleted)', () => {
     const keys = NOTIFICATION_TYPES.map((t) => t.key);
     expect(keys).not.toContain('weekly_brief');
   });

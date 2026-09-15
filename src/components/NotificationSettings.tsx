@@ -2,9 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Bell, Users, Newspaper, AlertTriangle } from 'lucide-react';
+import { Bell, Users, AlertTriangle } from 'lucide-react';
 import { useNotificationSettings, useUpdateNotificationSettings } from '@/hooks/useNotificationSettings';
-import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { useApproverCount } from '@/hooks/useApproverCount';
 import { NotificationChannelMatrix } from '@/components/NotificationChannelMatrix';
 
@@ -15,8 +14,6 @@ interface NotificationSettingsProps {
 export function NotificationSettings({ restaurantId }: NotificationSettingsProps) {
   const { settings, loading } = useNotificationSettings(restaurantId);
   const updateSettings = useUpdateNotificationSettings();
-  const { preferences: briefPrefs, updatePreferences: updateBriefPrefs, isUpdating: briefUpdating } =
-    useNotificationPreferences(restaurantId);
   const {
     data: approverCount,
     isLoading: approverCountLoading,
@@ -60,8 +57,8 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
             <CardTitle>Notification Settings</CardTitle>
           </div>
           <CardDescription>
-            Choose which channels each notification type sends over, who receives time-off
-            emails, and your weekly performance digest. Every toggle saves automatically.
+            Choose which channels each notification type sends over and who receives
+            time-off emails. Every toggle saves automatically.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -135,39 +132,6 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
               disabled={savingRecipients}
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ restaurantId, settings: { time_off_notify_employee: checked } })
-              }
-              className="data-[state=checked]:bg-foreground"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Newspaper className="h-5 w-5" />
-            Weekly Brief
-          </CardTitle>
-          <CardDescription>
-            Receive a weekly summary of your restaurant's performance via email
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="weekly-brief-email" className="text-base">
-                Weekly Brief Email
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Receive a Monday morning email with key metrics, variances, and action items
-              </p>
-            </div>
-            <Switch
-              id="weekly-brief-email"
-              checked={briefPrefs?.weekly_brief_email ?? true}
-              disabled={briefUpdating}
-              onCheckedChange={(checked) =>
-                updateBriefPrefs({ weekly_brief_email: checked })
               }
               className="data-[state=checked]:bg-foreground"
             />

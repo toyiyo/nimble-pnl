@@ -40,9 +40,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
               'reports',
               'integrations',
               'team',
-              'settings',
-              'weekly-brief',
-              'ops-inbox'
+              'settings'
             ],
             description: 'The section to navigate to'
           },

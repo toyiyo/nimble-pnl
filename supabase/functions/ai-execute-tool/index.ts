@@ -151,8 +151,6 @@ function executeNavigate(args: any): any {
     'integrations': '/integrations',
     'team': '/team',
     'settings': '/settings',
-    'weekly-brief': '/weekly-brief',
-    'ops-inbox': '/ops-inbox',
   };
 
   const basePath = routes[section] || '/';

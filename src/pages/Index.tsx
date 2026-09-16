@@ -46,8 +46,6 @@ import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenStrip';
-import { useOpsInboxCount } from '@/hooks/useOpsInbox';
-import { useSubscription } from '@/hooks/useSubscription';
 import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
 import { periodStatusMessage } from '@/utils/periodAnnouncement';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
@@ -66,8 +64,6 @@ import {
   Landmark,
   ChevronDown,
   ChevronUp,
-  Inbox,
-  Newspaper,
 } from 'lucide-react';
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -300,9 +296,6 @@ const Index = () => {
     );
     return foodCostItem?.percentage;  // already in % form (e.g. 28)
   }, [breakEvenData]);
-
-  const { data: opsInboxCounts } = useOpsInboxCount(selectedRestaurant?.restaurant_id);
-  const { hasFeature } = useSubscription();
 
   // Calculate available cash from connected banks
   const availableCash = useMemo(() => {
@@ -1254,45 +1247,6 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
-
-              {/* AI Operator — Pro only */}
-              {(hasFeature('ops_inbox') || hasFeature('weekly_brief')) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {hasFeature('ops_inbox') && (opsInboxCounts?.open ?? 0) > 0 && (
-                    <button
-                      onClick={() => navigate('/ops-inbox')}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
-                    >
-                      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
-                        <Inbox className="h-5 w-5 text-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-foreground">Ops Inbox</div>
-                        <div className="text-[13px] text-muted-foreground">
-                          {opsInboxCounts?.open} open item{opsInboxCounts?.open !== 1 ? 's' : ''}
-                          {(opsInboxCounts?.critical ?? 0) > 0 && (
-                            <span className="text-destructive font-medium"> ({opsInboxCounts?.critical} critical)</span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  )}
-                  {hasFeature('weekly_brief') && (
-                    <button
-                      onClick={() => navigate('/weekly-brief')}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
-                    >
-                      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
-                        <Newspaper className="h-5 w-5 text-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-foreground">Weekly Brief</div>
-                        <div className="text-[13px] text-muted-foreground">This week's performance summary</div>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              )}
 
               {/* Quick Actions */}
               <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>

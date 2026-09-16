@@ -17,6 +17,8 @@ export interface ProductSupplier {
   notes?: string;
   minimum_order_quantity?: number;
   lead_time_days?: number;
+  pack_size_qty?: number | null;
+  pack_size_unit?: string | null;
   created_at?: string;
   updated_at?: string;
 }

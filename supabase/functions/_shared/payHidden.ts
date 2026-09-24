@@ -76,7 +76,7 @@ export function redactLaborCostsResult<
       total: null,
     },
     daily_costs: result.daily_costs?.map((day) => {
-      const redacted: Record<string, unknown> = { ...day };
+      const redacted = { ...day } as Record<string, unknown>;
       for (const field of DAILY_MONEY_FIELDS) redacted[field] = null;
       return redacted as Nullable<D, DailyMoneyField>;
     }),

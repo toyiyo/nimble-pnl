@@ -326,7 +326,7 @@ one as instant (change) or day token (keep). The pattern is
   `hasPayRatesCapability` and the `pay_hidden` helpers from
   [toyiyo/nimble-pnl#806](https://github.com/toyiyo/nimble-pnl/pull/806)
   stay: without `view:pay_rates`, every pay-derived figure is `null` with a
-  reason. This design needs #806 merged first.
+  reason. #806 is merged.
 - Employees: the AI reads `EMPLOYEE_LABOR_SOURCE` (`employees_secure`) through
   `fetchLaborEmployees` (#806). The base table `employees` revokes the pay
   columns from `authenticated` (`20260806110000_employee_column_gating.sql:126`).
@@ -442,8 +442,8 @@ cannot drive a model conversation to a deterministic tool call.
 
 ## Proposed PR split
 
-0. **#806 (open):** employee reads through `employees_secure` and the
-   `view:pay_rates` gate. This design builds on it.
+0. **#806 (merged 2026-09-24):** employee reads through `employees_secure`
+   and the `view:pay_rates` gate. This design builds on it.
 1. **PR 1 (pages):** Layers 1 to 3, the loaders and the hook changes. The
    existing test suite is the guard. Only the whole-day window changes page
    numbers, as listed in "Behavior changes".

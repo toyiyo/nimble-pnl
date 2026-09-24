@@ -3,7 +3,7 @@
 Design: `docs/superpowers/specs/2026-09-24-single-labor-engine-design.md`
 
 Precondition: [toyiyo/nimble-pnl#806](https://github.com/toyiyo/nimble-pnl/pull/806)
-is merged. PR 2 uses its `fetchLaborEmployees`, `hasPayRatesCapability` and
+is merged (2026-09-24). PR 2 uses its `fetchLaborEmployees`, `hasPayRatesCapability` and
 `pay_hidden` helpers.
 
 Rules for every task:

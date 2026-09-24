@@ -3361,3 +3361,21 @@
 - **Mistake:** The decommission design deleted three edge-function directories and assumed the deploy pipeline retires them. `supabase functions deploy` never deletes a remote function: the three stay live in production with their secrets after the merge.
 - **Correction:** The PR body carries a mandatory post-merge step: `supabase functions delete <name> --project-ref ncdujvdgqtaunuyigflp` for each. `docs/DEPLOYMENT.md` gained a "Deleted Edge Functions" runbook section.
 - **Rule:** Every PR that deletes an edge-function directory must name the manual `supabase functions delete` step in its body and point at the runbook. The security reviewer caught this; put it in the design template for the next decommission.
+
+## Category: Supabase / Column Grants (continued)
+
+### [2026-09-24] A column-level REVOKE breaks every caller-JWT read of that column, in edge functions too (PR #806)
+- **Mistake:** `20260806110000_employee_column_gating.sql` revoked the pay and contact columns of `public.employees` from `authenticated` and moved the frontend to `employees_secure`. Two edge functions that run as the caller (anon key + the caller's JWT) still read `hourly_rate`, `salary_amount` and `date_of_birth` from the base table: `ai-execute-tool` (five labor tools) and `generate-schedule`. PostgREST rejects such a read with `permission denied for column hourly_rate`, so the AI labor answers and the AI schedule failed. The bug was found only while designing an unrelated timezone fix.
+- **Correction:** Both functions read `EMPLOYEE_LABOR_SOURCE` (`employees_secure`). A caller without `view:pay_rates` (the builtin Chef role) gets `null` cost figures plus a `pay_hidden` reason, never a masked $0. A source-contract test forbids `.from('employees')` and any embed of a revoked column in the two functions.
+- **Rule:** A migration that revokes a column must sweep `supabase/functions` too, not only `src/`. For each read, check which client runs it: a service-role client keeps the full table, an anon + JWT client does not. A masked view returns NULL, so every total built on it needs the capability check, or it reports a false $0.
+
+### [2026-09-24] A sweep grep with one quote style misses half the reads (PR #806)
+- **Mistake:** The first sweep for `employees` reads used `from\('employees'\)`. `generate-schedule` uses double quotes (`from("employees")`), so the sweep missed it, and the design doc claimed "no other edge function" was affected. The design reviewer found it.
+- **Rule:** Grep for both quote styles (`from\(["']employees["']\)`) and for embeds (`employees\(`). State the exact sweep command in the design doc, so a reviewer can re-run it.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-24] dev-build-and-ship stops at preflight in the cloud container (PR #806)
+- **Mistake:** The workflow preflight treats `gh` and `coderabbit` as hard dependencies. The cloud container has neither (GitHub goes through the MCP tools), so the workflow stopped at once. `npm install` also fails there, because the egress policy blocks `cdn.sheetjs.com` (the `xlsx` tarball).
+- **Correction:** Phases 4–9 ran inline in the main session, per the skill's reference contract: TDD commits, the five Phase 7a reviewers as agents, a Phase 7d re-review of the fix commit, the PR through the GitHub MCP tools. For install: a temporary `package.json` and lockfile without `xlsx`, `npm ci`, then restore both files. Four test files that import `xlsx` fail locally and pass in CI.
+- **Rule:** In the cloud container, expect the workflow preflight to fail. Run the phases inline and state in the PR body which local passes (CodeRabbit CLI, Codex) did not run.

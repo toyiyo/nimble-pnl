@@ -1,55 +1,50 @@
--- Tests for AI Operator tables and SQL functions
+-- Absence guards for the weekly-brief and ops-inbox decommission.
+-- The migration 20260915120000_decommission_weekly_brief_ops_inbox.sql
+-- drops these tables, functions, cron jobs, and queues. These tests fail
+-- if a migration brings any of them back.
 BEGIN;
-SELECT plan(9);
+SELECT plan(15);
 
 -- ============================================================================
--- TEST CATEGORY 1: Tables Exist
+-- TEST CATEGORY 1: The feature tables are gone
 -- ============================================================================
 
-SELECT has_table('public', 'ops_inbox_item', 'ops_inbox_item table exists');
-SELECT has_table('public', 'weekly_brief', 'weekly_brief table exists');
-SELECT has_table('public', 'notification_preferences', 'notification_preferences table exists');
+SELECT hasnt_table('public', 'ops_inbox_item', 'ops_inbox_item table is dropped');
+SELECT hasnt_table('public', 'weekly_brief', 'weekly_brief table is dropped');
+SELECT hasnt_table('public', 'weekly_brief_job_log', 'weekly_brief_job_log table is dropped');
+SELECT hasnt_table('public', 'notification_preferences', 'notification_preferences table is dropped');
 
 -- ============================================================================
--- TEST CATEGORY 2: Unique Constraints
+-- TEST CATEGORY 2: The queue and detector functions are gone
 -- ============================================================================
 
-SELECT has_index('public', 'weekly_brief', 'weekly_brief_restaurant_id_brief_week_end_key',
-  'weekly_brief has unique index on restaurant_id, brief_week_end');
+SELECT hasnt_function('public', 'enqueue_weekly_brief_jobs', 'enqueue_weekly_brief_jobs is dropped');
+SELECT hasnt_function('public', 'process_weekly_brief_queue', 'process_weekly_brief_queue is dropped');
+SELECT hasnt_function('public', 'pgmq_delete_message', 'pgmq_delete_message is dropped');
+SELECT hasnt_function('public', 'compute_daily_variances', 'compute_daily_variances is dropped');
+SELECT hasnt_function('public', 'compute_weekly_variances', 'compute_weekly_variances is dropped');
+SELECT hasnt_function('public', 'detect_uncategorized_backlog', 'detect_uncategorized_backlog is dropped');
+SELECT hasnt_function('public', 'detect_metric_anomalies', 'detect_metric_anomalies is dropped');
+SELECT hasnt_function('public', 'detect_reconciliation_gaps', 'detect_reconciliation_gaps is dropped');
 
 -- ============================================================================
--- TEST CATEGORY 3: Functions return safe defaults for nonexistent data
+-- TEST CATEGORY 3: The cron jobs are gone
 -- ============================================================================
 
 SELECT is(
-  compute_weekly_variances('00000000-0000-0000-0000-000000000000'::uuid, CURRENT_DATE),
-  '[]'::jsonb,
-  'compute_weekly_variances returns empty array for nonexistent restaurant'
-);
-
-SELECT is(
-  compute_daily_variances('00000000-0000-0000-0000-000000000000'::uuid, CURRENT_DATE),
-  '[]'::jsonb,
-  'compute_daily_variances still works for nonexistent restaurant'
-);
-
-SELECT is(
-  detect_uncategorized_backlog('00000000-0000-0000-0000-000000000000'::uuid),
+  (SELECT count(*)::int FROM cron.job
+   WHERE jobname IN ('enqueue-weekly-briefs', 'process-weekly-brief-queue', 'generate-weekly-briefs')),
   0,
-  'detect_uncategorized_backlog returns 0 for empty restaurant'
+  'no weekly-brief cron job stays scheduled'
 );
 
-SELECT is(
-  detect_metric_anomalies('00000000-0000-0000-0000-000000000000'::uuid, CURRENT_DATE),
-  0,
-  'detect_metric_anomalies returns 0 for empty restaurant'
-);
+-- ============================================================================
+-- TEST CATEGORY 4: The pgmq queues are gone (pgmq stores a queue as
+-- pgmq.q_<name>; the extension itself stays installed)
+-- ============================================================================
 
-SELECT is(
-  detect_reconciliation_gaps('00000000-0000-0000-0000-000000000000'::uuid, CURRENT_DATE),
-  0,
-  'detect_reconciliation_gaps returns 0 for empty restaurant'
-);
+SELECT hasnt_table('pgmq', 'q_weekly_brief_jobs', 'weekly_brief_jobs queue is dropped');
+SELECT hasnt_table('pgmq', 'q_weekly_brief_dead_letter', 'weekly_brief_dead_letter queue is dropped');
 
 SELECT * FROM finish();
 ROLLBACK;

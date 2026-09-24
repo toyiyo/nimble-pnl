@@ -353,6 +353,7 @@
 - **Mistake:** PR #589's design doc, plan, and regression-test fixtures used the *real* employee names and restaurant name pulled from the prod-DB investigation that diagnosed the bug (Timeline shared-row pointer-event theft). It felt natural — the whole diagnosis was "these specific people's bars are inert" — so the names flowed straight from the `supabase-prod` query results into the artifacts. Both Codex (P2) and CodeRabbit (Major, "Redact employee PII") flagged it on the PR. Because these artifacts commit to a repo whose history is permanent, the PII would have lived on `main` forever.
 - **Correction:** Redacted all names from the doc/plan/tests (fictional fixtures "Ada Early"/"Bess Late"; generic "Bar A/Bar B" tables), then `git reset --soft origin/main` + recommitted PII-free with PII-free commit messages and `git push --force-with-lease` — so no name ever reaches `main`, not even in history. Verified with `{ git log origin/main..HEAD --format=%B; git diff origin/main..HEAD; } | grep -niE '<names>'` returning clean. Also added a "Privacy" note to the design doc.
 - **Rule:** When a diagnosis is driven by production data (Supabase/PostHog/logs), the investigation may reference real names in the *chat*, but the moment you write a committed artifact — design doc, plan, test fixture, commit message, PR body — swap every real person/restaurant/account identifier for a fictional placeholder. Do a `grep -niE` PII sweep across the branch diff AND commit messages before pushing (add it to the Phase 8 verify checklist). If PII already committed, redaction alone is insufficient — rewrite history (`reset --soft` + recommit + `--force-with-lease`) so it never merges; a plain follow-up "redact" commit leaves the PII in the merged history. Tests never need real data to reproduce a structural bug — a shared row of two abutting fictional shifts reproduces it exactly.
+- **[2026-09-09] Confirmed again (PR #801):** The invite-flow design doc carried the invitee's real email and her event timeline, copied from the PostHog case study. CodeRabbit flagged it (Major, CWE-359). Redacted to a synthetic timeline and rewrote the branch history per this rule. The Phase 8 PII sweep did not run — run `grep -niE` over the diff and the commit messages before every push, not only when the artifact "contains names".
 
 ---
 
@@ -3273,3 +3274,90 @@
 - **Mistake:** The design doc cited `depositMatchUi.ts:176` as a lag comment site. That line is the JSDoc for the unrelated `measured` boolean. The frontend reviewer caught it; an agent that trusted the citation would have edited the wrong block.
 - **Correction:** Re-read the file and pointed the design at lines 195-197 and the per-source comment sites.
 - **Rule:** Read each cited line immediately before you write it into a design doc. A citation from memory or from an earlier read of a changed file is a build hazard.
+## Category: Design Docs / Premise Checks
+
+### [2026-09-03] Check a column type in the table DDL, not in a nearby function signature (PR #796)
+- **Mistake:** The design doc stated `bank_transactions.transaction_date` "is a plain `DATE`". The claim came from a tombstone function parameter, not from the table DDL. The column is `TIMESTAMPTZ` (migration `20251021195308`). The sound-logic reviewer caught the wrong bound before the PR.
+- **Correction:** The migration kept the sargable comparison and added an explicit upper bound: `bt.transaction_date >= CURRENT_DATE - 90 AND bt.transaction_date < CURRENT_DATE + 1`, with a comment that names the real type.
+- **Rule:** Before a design doc asserts a column type, read the `CREATE TABLE` or `ALTER TABLE` line for that exact table. A parameter type in a related function is not evidence.
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] Re-run the stale pr-comment-response check-run with `gh run rerun` (PR #796)
+- **Mistake:** The build workflow stopped with "CI not green after triage fix push". The only red check was `pr-comment-response`. The audit ran before the triage replies landed, and no later event refreshed it. `node dev-tools/pr-triage.js list` showed zero unanswered findings.
+- **Correction:** `gh run rerun <run-id>` on the audit's workflow run refreshed the check-run to green in under a minute. No new commit was necessary. This extends the 2026-09-03 gate lesson: a push is one re-audit trigger, and a rerun of the existing run is a cheaper one when the code needs no change.
+- **Rule:** When `pr-comment-response` is the only red check, compare its `completed_at` with the reply timestamps. When the replies are newer and `pr-triage.js list` shows zero unanswered, run `gh run rerun <run-id>` — do not push a filler commit.
+
+### [2026-09-03] Set the workflow token ceiling to match the task size at launch (PR #796)
+- **Mistake:** The five-task build with the full review panel spent ~2.09M output tokens and hit the default 2M ceiling at the Verify phase. The run stopped one phase before the ship.
+- **Correction:** Relaunched with `resumeFromRunId` and `args.tokenCeiling: 4000000`. All 25 finished agents replayed from the cache, so the resume cost nothing extra for the completed phases.
+- **Rule:** For a multi-task /dev build (4+ plan tasks with the review panel), pass `tokenCeiling: 4000000` in the launch args. On a ceiling stop, resume with the identical args plus the raised ceiling — never relaunch fresh.
+
+## Category: Supabase / Migrations (continued)
+
+### [2026-09-08] Cite an RLS policy by its LATEST migration — the creating migration can be superseded
+- **Mistake:** The invite-flow design claimed "the invitee cannot read the `invitations` table" and cited the creating migration (20250916223011). Two later migrations (20250927023236, 20251220025830) added and then rewrote a policy "Users can view invitations sent to their email" that grants exactly that read. Both Phase 2.5 reviewers flagged the false premise.
+- **Correction:** Grepped every migration for the table name, read the policy set newest-first, and rewrote the root cause: the gap was a missing client query plus no access to `restaurants.name`, not a missing SELECT policy.
+- **Rule:** Before you claim "role X cannot read table Y", grep ALL of `supabase/migrations/` for the table name and read the hits newest-first. Cite the newest migration that touches the policy. A citation to the creating migration proves the policy existed once, not that it stands.
+
+### [2026-09-08] `ON CONFLICT (col)` collides with a same-named RETURNS TABLE output parameter in plpgsql
+- **Mistake:** The first draft of `accept_my_invitation` used `INSERT ... ON CONFLICT (user_id, restaurant_id) DO NOTHING` inside a function whose RETURNS TABLE declares `restaurant_id`. plpgsql variable substitution reaches the conflict-target list, so the reference is ambiguous at run time.
+- **Correction:** Replaced the clause with an `INSERT ... SELECT ... WHERE NOT EXISTS` guarded by an `EXCEPTION WHEN unique_violation` handler, and wrote the reason into the migration comment.
+- **Rule:** In a plpgsql function with RETURNS TABLE, never name a conflict-target column that matches an output parameter. Rename the output parameter, use `ON CONFLICT ON CONSTRAINT <name>`, or catch `unique_violation`. Table-qualify every other column reference that shares an output parameter's name.
+
+## Category: Testing / Unit (continued)
+
+### [2026-09-08] `vi.clearAllMocks()` keeps mock implementations — a throwing mock leaks into the next test
+- **Mistake:** A test set `mockPosthogReset.mockImplementation(() => { throw ... })` to prove the sign-out redirect survives a telemetry failure. `beforeEach` ran `vi.clearAllMocks()`, which clears calls but keeps implementations, so the next test also ran with a throwing `reset` and the suite became order-dependent. The 7d logic reviewer caught it from a stray stderr line.
+- **Correction:** Changed the test to `mockImplementationOnce`, with a comment naming the clearAllMocks behavior.
+- **Rule:** Use `mockImplementationOnce` for a per-test throwing or special implementation, or use `vi.resetAllMocks()` in `beforeEach` when the file mixes implementations. `clearAllMocks` is call-history hygiene only.
+
+## Category: Development Workflow (remote container)
+
+### [2026-09-09] A grep pipeline hid a test failure, and the commit chained through it
+- **Mistake:** During the Phase 5 UI fix on PR #803, the command was `vitest run ... 2>&1 | grep -E "Test Files|Tests " && git commit ...`. The suite had a startup error: a `{/* */}` JSX comment wrapper placed in a JavaScript expression position, where it does not parse. A plain `/* ... */` block comment or a `//` line comment parses there; the `{...}` JSX wrapper does not. The grep still matched the "Test Files ... failed" line, exited 0, and the commit landed while the test suite failed. The same pipeline pattern hid an earlier failure: `npm run typecheck | tail -3` reported exit 0 (tail's exit) while tsc printed TS2307 errors.
+- **Correction:** Read the result line for "passed", not for presence. Never chain `git commit` after a filter on test output; run the test, check its verdict, then commit in a separate command. A follow-up commit fixed the JSX comment.
+- **Rule:** In a pipeline, `$?` belongs to the LAST command. `cmd | grep X && git commit` commits whenever grep matches anything, including a failure line. Gate a commit on the test command's own exit status or on an explicit "N passed, 0 failed" check.
+
+### [2026-09-09] /dev in the remote (claude.ai/code) container: run Phases 4-9 inline; pin blocked packages locally
+- **Failure sequence (PR #803):** (1) The `dev-build-and-ship` orchestrator was not usable — its Preflight returns `failed` without `gh` and `coderabbit`, and its Verify needs the local `supabase` CLI; none exist in the container. (2) `npm install` failed whole: the egress proxy denies `cdn.sheetjs.com`, where package.json pins `xlsx`. (3) `.env.local` does not exist (gitignored, never cloned), so pgTAP and E2E cannot run locally.
+- **Correction:** Run Phases 4-9 inline (the lesson 2026-07-19/07-20 pattern), with the five reviewers as Agent calls (they work fine) and the GitHub MCP tools for the PR. For `xlsx`: edit package.json and package-lock.json locally to `npm:@e965/xlsx@0.20.3` (a registry mirror of the same SheetJS build), install, then `git checkout -- package.json package-lock.json` so no repo change leaks. Declare the E2E gate "Covered — CI runs it" and restore CI to passing through the PR subscription.
+- **Rule:** In the remote container, check for `gh`/`coderabbit`/`supabase` BEFORE the plan promises the orchestrator or local pgTAP/E2E. On a 403 from the proxy for a package host, look for an npm-registry mirror and pin it locally only — never commit the pin. Local verify = unit (TZ=UTC) + typecheck + lint (scoped to changed files; repo-wide lint carries ~1500 baseline errors) + build; CI carries the rest.
+
+### [2026-09-09] pr-comment-response reports a failure when replies land after the last push — and its cron is throttled to hours
+- **Mistake:** On PR #803 the CodeRabbit review arrived AFTER the final push, so the `pull_request_target`-triggered audit ran at once and published a red check before any verdict reply existed. The plan assumed the workflow's `*/30` cron would re-audit within 30 minutes; the run history shows GitHub fires that cron every 4-5 hours on this repo. `workflow_dispatch` through the GitHub MCP integration returns `403 Resource not accessible by integration`.
+- **Correction:** Post every verdict reply, then let the next REAL push (here: the Phase 10 lessons commit) re-trigger the audit. Do not push an empty commit for it.
+- **Rule:** Treat the pr-comment-response check as push-driven: get all inline-finding replies onto the PR BEFORE the last code push when possible. When a bot review lands after the last push, pair the replies with the next real commit (retrospective lessons, doc fixes). The cron is a fallback with a delay of hours, not minutes.
+
+## Category: UI Patterns (continued)
+
+### [2026-09-09] `--warning` IS amber-500; tokens for surfaces, the amber-700/400 pair for small text (PR #803)
+- **Mistake:** The planner conflict indicator shipped amber literals (`border-l-amber-500`, `bg-amber-500/10`) with a recorded "planner uses amber" trade-off. Three reviewers plus CodeRabbit re-flagged it. The token check nobody ran first: `--warning` is `hsl(38 92% 50%)` — exactly amber-500, and theme-aware.
+- **Correction:** `border-l-warning`, `text-warning` (icons), `bg-warning/10` render identically to the literals. The one legitimate literal: an 11px LABEL keeps `text-amber-700 dark:text-amber-400`, because `text-warning` on the light ground fails the WCAG AA ratio at that size — the same pair `availabilityColorClasses` uses.
+- **Rule:** Before recording a "literals match the neighbors" trade-off, read the token's value in `src/index.css`. When the token equals the literal, use the token. Keep a contrast-driven literal only for small text, with a comment naming the ratio reason. Related: a Radix `Tooltip` never opens from touch — a disclosure that must work on mobile is a `Popover` (the planner's coverage indicator idiom), with `stopPropagation` when a tappable ancestor exists.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-15] The orchestrator runs in the remote container with a scratchpad copy (PR #804)
+- **Mistake:** The 2026-09-09 lesson said the `dev-build-and-ship` orchestrator is not usable in the remote container and Phases 4-9 must run inline. This session disproved the first half: the orchestrator halted only because its Preflight names `coderabbit` a hard dependency, which contradicts both the skill contract and its own Phase 7c best-effort clause.
+- **Correction:** Copy `.claude/workflows/dev-build-and-ship.js` to the scratchpad. In the copy: make `coderabbit` a warning in Preflight, and add an ENVIRONMENT NOTES line to `envelope()` (blocked hosts, gh GraphQL blocked, local-verify limits). Launch with `scriptPath` at the copy. The run completed all 8 build tasks through Phase 9e. Preflight installed `gh` v2.100.0 itself; REST routes work, GraphQL is blocked.
+- **Rule:** Keep the Preflight hard-dependency list equal to the skill contract: `gh`, `jq`, `node`. `coderabbit` and `codex` are best-effort everywhere. Fix an orchestrator-vs-contract conflict in a scratchpad copy, never by an inline retreat, and never by a repo edit inside a feature PR.
+
+### [2026-09-15] The container starts dockerd, but image blob pulls 403 — guard .env.local before any test
+- **Mistake:** `docker` exists and `dockerd` starts, so the plan promised local `db:reset` + `test:db`. The pull of every Supabase image failed: the proxy allows the registry manifests but 403s the CloudFront blob hosts (`production.cloudfront.docker.com`, `d2glxqk2uabbnd.cloudfront.net`). Worse: with no `.env.local`, `.env` points every client at PRODUCTION Supabase.
+- **Correction:** Write a guard `.env.local` (gitignored) with `VITE_SUPABASE_URL="http://127.0.0.1:54321"` and the public demo anon key, so an accidental DB call fails on connection refused instead of touching production. Defer `db:reset`, `test:db`, `test:e2e` to CI; run unit + typecheck + lint + build locally. Stop `dockerd` after the decision.
+- **Rule:** In the remote container, test docker with one real image pull before the plan promises local Supabase. Write the guard `.env.local` FIRST, in every remote session that can run tests.
+
+## Category: Design Docs / Premise Checks (continued)
+
+### [2026-09-15] Name every call site in a "sole caller" claim (PR #804)
+- **Mistake:** The decommission design claimed `pgmq_delete_message()` stays "if another caller exists" and assumed `process_weekly_brief_queue` was its caller. False: that SQL function calls `pgmq.delete` directly; the only callers were two `supabase.rpc("pgmq_delete_message", ...)` lines in the deleted worker. A literal read of the rule kept an orphaned SECURITY DEFINER RPC in production. Both Phase 2.5 reviewers flagged it as critical.
+- **Correction:** The design now drops the function unconditionally and cites both worker call sites by file:line.
+- **Rule:** A "sole caller" or "no caller" claim needs the grep run at design time and every call site cited as `file:line` in the doc. A conditional deletion rule ("keep it if X calls it") hides a wrong premise; resolve the condition during design, not during build.
+
+## Category: Supabase / Migrations (continued)
+
+### [2026-09-15] A deleted function directory does not delete the hosted edge function (PR #804)
+- **Mistake:** The decommission design deleted three edge-function directories and assumed the deploy pipeline retires them. `supabase functions deploy` never deletes a remote function: the three stay live in production with their secrets after the merge.
+- **Correction:** The PR body carries a mandatory post-merge step: `supabase functions delete <name> --project-ref ncdujvdgqtaunuyigflp` for each. `docs/DEPLOYMENT.md` gained a "Deleted Edge Functions" runbook section.
+- **Rule:** Every PR that deletes an edge-function directory must name the manual `supabase functions delete` step in its body and point at the runbook. The security reviewer caught this; put it in the design template for the next decommission.

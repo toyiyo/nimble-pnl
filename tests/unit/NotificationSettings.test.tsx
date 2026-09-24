@@ -15,14 +15,6 @@ vi.mock('@/hooks/useNotificationSettings', () => ({
   useUpdateNotificationSettings: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-vi.mock('@/hooks/useNotificationPreferences', () => ({
-  useNotificationPreferences: () => ({
-    preferences: { weekly_brief_email: true },
-    updatePreferences: vi.fn(),
-    isUpdating: false,
-  }),
-}));
-
 // Channel-matrix hook stub, keyed by restaurantId so tests can assert the
 // matrix shows the right restaurant's data after a restaurantId change. The
 // matrix now renders directly from `settings` (immediate optimistic save, no

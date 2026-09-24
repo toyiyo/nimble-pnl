@@ -235,7 +235,6 @@ export default tseslint.config(
       "src/pages/Recipes.tsx",
       "src/pages/Tips.tsx",
       "src/pages/Transactions.tsx",
-      "src/pages/WeeklyBrief.tsx",
       "src/services/recipeAnalytics.service.ts",
       "src/types/assetImport.ts",
       "src/utils/checkPrinting.ts",

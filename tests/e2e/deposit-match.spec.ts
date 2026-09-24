@@ -37,7 +37,13 @@ test.describe('Deposit Match', () => {
     }, authUser.id);
     if (!restaurantId) throw new Error('No restaurant');
 
-    // Three business days back, one Toast card payment ($200). The bank
+    // The lag now counts business days, not calendar days (see
+    // `supabase/migrations/20260904150000_deposit_match_business_day_lag.sql`).
+    // Seven calendar days back always cover at least five business days, on
+    // any weekday the suite runs. This keeps the business date past the
+    // rule's lag window every run, so the status always lands on `late`.
+    //
+    // One Toast card payment ($200) at the business date. The bank
     // deposit ($150) implies a 25% fee, well outside the `toast` rule's
     // default 1.6%-3.1% fee band, so the refresh engine never confirms a
     // link for it (`supabase/migrations/20260901160000_deposit_match_refresh_engine.sql`,
@@ -49,7 +55,7 @@ test.describe('Deposit Match', () => {
     // the fee band, which only a manual override, not auto-refresh, can
     // produce).
     const businessDate = new Date();
-    businessDate.setDate(businessDate.getDate() - 3);
+    businessDate.setDate(businessDate.getDate() - 7);
     const businessDateIso = businessDate.toISOString().slice(0, 10);
 
     const transactionDate = new Date(businessDate);

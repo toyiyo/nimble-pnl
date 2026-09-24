@@ -20,11 +20,17 @@ VALUES
   ('44444444-1000-0000-0000-000000000001', '2026-08-25', 'chk-3', 'pay-3', 'Cash', 20.00, 0);
 
 -- toast: CREDIT amount 80.00 + tip 10.00 = 90.00, CASH row excluded.
+-- Only CAPTURED rows settle to the bank. The DENIED, VOIDED, AUTHORIZED,
+-- and NULL payment_status rows below must not change the sum or row count.
 INSERT INTO public.toast_payments
-  (restaurant_id, toast_payment_guid, toast_order_guid, payment_type, amount, tip_amount, payment_date)
+  (restaurant_id, toast_payment_guid, toast_order_guid, payment_type, amount, tip_amount, payment_date, payment_status)
 VALUES
-  ('44444444-1000-0000-0000-000000000001', 'tp-1', 'to-1', 'CREDIT', 80.00, 10.00, '2026-08-25'),
-  ('44444444-1000-0000-0000-000000000001', 'tp-2', 'to-2', 'CASH', 20.00, 0, '2026-08-25');
+  ('44444444-1000-0000-0000-000000000001', 'tp-1', 'to-1', 'CREDIT', 80.00, 10.00, '2026-08-25', 'CAPTURED'),
+  ('44444444-1000-0000-0000-000000000001', 'tp-2', 'to-2', 'CASH', 20.00, 0, '2026-08-25', 'CAPTURED'),
+  ('44444444-1000-0000-0000-000000000001', 'tp-3', 'to-3', 'CREDIT', 9.98, 0, '2026-08-25', 'DENIED'),
+  ('44444444-1000-0000-0000-000000000001', 'tp-4', 'to-4', 'CREDIT', 6.48, 0, '2026-08-25', 'VOIDED'),
+  ('44444444-1000-0000-0000-000000000001', 'tp-5', 'to-5', 'CREDIT', 5.00, 0, '2026-08-25', 'AUTHORIZED'),
+  ('44444444-1000-0000-0000-000000000001', 'tp-6', 'to-6', 'CREDIT', 4.00, 0, '2026-08-25', NULL);
 
 -- square: CARD payment 100.00 minus CARD refund 15.00 = 85.00, CASH payment excluded.
 INSERT INTO public.square_payments

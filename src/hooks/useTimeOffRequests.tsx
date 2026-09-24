@@ -11,6 +11,10 @@ import {
   type RpcPolicyResult,
 } from '@/lib/shiftProtection';
 
+/** Stable fallback while `data` is undefined — a fresh `[]` per render would
+ *  re-run every downstream memo keyed on the array (planner conflict index). */
+const NO_REQUESTS: TimeOffRequest[] = [];
+
 export const useTimeOffRequests = (restaurantId: string | null) => {
   const { data, isLoading, error } = useQuery({
     queryKey: ['time-off-requests', restaurantId],
@@ -36,7 +40,7 @@ export const useTimeOffRequests = (restaurantId: string | null) => {
   });
 
   return {
-    timeOffRequests: data || [],
+    timeOffRequests: data ?? NO_REQUESTS,
     loading: isLoading,
     error,
   };

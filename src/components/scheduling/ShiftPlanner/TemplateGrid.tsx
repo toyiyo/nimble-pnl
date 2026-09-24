@@ -58,6 +58,8 @@ interface TemplateGridProps {
   hiddenLaneByDay?: Map<string, Shift[]>;
   /** Called when the "Show templates" button in the hidden-templates lane is clicked. */
   onShowHidden?: () => void;
+  /** shiftId -> display-ready conflict lines (usePlannerShiftConflicts). */
+  conflictsByShiftId?: Map<string, string[]>;
 }
 
 export function TemplateGrid({
@@ -83,6 +85,7 @@ export function TemplateGrid({
   offTemplateByArea,
   hiddenLaneByDay,
   onShowHidden,
+  conflictsByShiftId,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -236,6 +239,7 @@ export function TemplateGrid({
                             cellArea={template.area ?? null}
                             ghostLoanedOut={ghostByCell?.get(`${template.id}:${day}`)}
                             isHiddenTemplate={isHiddenTemplate}
+                            conflictsByShiftId={conflictsByShiftId}
                           />
                         </div>
                       );
@@ -250,6 +254,7 @@ export function TemplateGrid({
                   weekDays={weekDays}
                   shiftsByDay={offTemplateByArea!.get(group.area)!}
                   onRemoveShift={onRemoveShift}
+                  conflictsByShiftId={conflictsByShiftId}
                 />
               )}
           </div>
@@ -264,6 +269,7 @@ export function TemplateGrid({
               weekDays={weekDays}
               shiftsByDay={offShifts}
               onRemoveShift={onRemoveShift}
+              conflictsByShiftId={conflictsByShiftId}
             />
           ) : null;
         })}
@@ -275,6 +281,7 @@ export function TemplateGrid({
             shiftsByDay={hiddenLaneByDay!}
             onRemoveShift={onRemoveShift}
             onShowHidden={onShowHidden}
+            conflictsByShiftId={conflictsByShiftId}
           />
         )}
       </div>

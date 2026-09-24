@@ -5,7 +5,7 @@ summary: "A guide to every section on the main Dashboard — what the numbers me
 audience: ["owner", "manager"]
 order: 5
 keywords: ["dashboard", "snapshot", "prime cost", "runway", "break-even", "alerts", "cashflow", "revenue mix"]
-related: ["budget-break-even", "banking-connect-and-transactions", "ops-inbox-triage-alerts", "financial-statements"]
+related: ["budget-break-even", "banking-connect-and-transactions", "financial-statements"]
 ---
 
 # Read and Use Your Dashboard
@@ -239,5 +239,4 @@ Yes. Data refreshes in the background. If you add inventory, run a payroll, or i
 
 - [Set Up Your Budget and Break-Even Target](/help/budget-break-even)
 - [Connect and Review Bank Transactions](/help/banking-connect-and-transactions)
-- [Triage Ops Inbox Alerts](/help/ops-inbox-triage-alerts)
 - [Read Your Financial Statements](/help/financial-statements)

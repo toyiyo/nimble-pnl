@@ -160,8 +160,8 @@ the pay flag, so the labor fetch does not run.
 
 The model must know what `pay_hidden` means. Add one sentence to the
 descriptions of the five tools (`tools-registry.ts:58`, `:236`, `:273`,
-`:364`, `:407`): "If the result has pay_hidden, tell the user that cost
-figures are hidden for their role. Do not report them as $0."
+`:364`, `:407`): "If the result has pay_hidden, tell the user that labor
+cost figures are hidden for their role. Do not report them as $0."
 
 ## Tests
 

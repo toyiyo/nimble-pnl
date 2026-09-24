@@ -331,14 +331,14 @@ export function calculatePeriodMetrics(
 
 // ===== LABOR-COMPONENT REDACTION =====
 
-/**
- * Result of redactLaborFields — costs/benchmarks narrowed to food-only, and
- * profitability dropped entirely, when the caller lacks labor access.
- */
 /** Why labor is omitted for a caller without view:scheduling or view:payroll. */
 export const LABOR_CAPABILITY_REASON =
   'Labor cost, prime cost, and profitability figures require view:scheduling or view:payroll access.';
 
+/**
+ * Result of redactLaborFields — costs/benchmarks narrowed to food-only, and
+ * profitability dropped entirely, when the caller lacks labor access.
+ */
 export interface RedactedLaborFields {
   costs: CostBreakdown | Pick<CostBreakdown, 'food_cost' | 'food_cost_percentage'>;
   profitability?: ProfitabilityMetrics;

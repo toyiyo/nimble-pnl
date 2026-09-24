@@ -37,6 +37,8 @@ describe('PAY_HIDDEN_REASON', () => {
 describe('PAY_HIDDEN_TOOL_HINT', () => {
   it('names pay_hidden and forbids a $0 report', () => {
     expect(PAY_HIDDEN_TOOL_HINT).toContain('pay_hidden');
+    // Only labor costs are hidden: get_kpis still returns a real food cost.
+    expect(PAY_HIDDEN_TOOL_HINT).toContain('labor cost figures');
     expect(PAY_HIDDEN_TOOL_HINT).toMatch(/not report them as \$0/i);
   });
 });

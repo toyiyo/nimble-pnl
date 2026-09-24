@@ -1,6 +1,15 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  calculateDateRange,
+  restaurantWallClock,
+  toLocalYMD,
+  addDays,
+  type PeriodType,
+  type RestaurantClock,
+} from '../_shared/restaurantDate.ts';
+import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
@@ -22,113 +31,6 @@ interface ToolExecutionRequest {
   tool_name: string;
   arguments: Record<string, any>;
   restaurant_id: string;
-}
-
-interface DateRange {
-  startDate: Date;
-  endDate: Date;
-  startDateStr: string;
-  endDateStr: string;
-}
-
-type PeriodType =
-  | 'today' | 'yesterday' | 'tomorrow'
-  | 'week' | 'month' | 'quarter' | 'year'
-  | 'current_week' | 'last_week' | 'current_month' | 'last_month'
-  | 'custom';
-
-// Format a Date's local calendar fields as 'YYYY-MM-DD'. Deno edge functions
-// can't import src/lib/dateOnly.ts, so this mirrors toDateOnlyString()'s
-// local-field logic by hand. Use this (never toISOString().split('T')[0])
-// for any Date that represents a calendar day rather than an instant -
-// toISOString reads UTC fields and drifts to the previous/next day for
-// viewers/servers whose local offset differs from UTC (e.g. Pacific/Auckland).
-const toLocalYMD = (d: Date): string => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
-
-/**
- * Calculate date range from period string
- * Centralizes the repeated date calculation logic across tool handlers
- */
-function calculateDateRange(
-  period: PeriodType,
-  customStartDate?: string,
-  customEndDate?: string
-): DateRange {
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
-
-  switch (period) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      break;
-    case 'tomorrow':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
-      break;
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'current_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - dayOfWeek), 23, 59, 59);
-      break;
-    }
-    case 'last_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 7);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 1, 23, 59, 59);
-      break;
-    }
-    case 'month':
-    case 'current_month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      break;
-    case 'last_month':
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      break;
-    case 'quarter': {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      break;
-    }
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    case 'custom':
-      if (!customStartDate || !customEndDate) {
-        throw new Error('Custom period requires start_date and end_date');
-      }
-      const [sy, sm, sd] = customStartDate.split('-').map(Number);
-      startDate = new Date(sy, sm - 1, sd);
-      const [ey, em, ed] = customEndDate.split('-').map(Number);
-      // End-of-day so the inclusive range matches every other branch above.
-      endDate = new Date(ey, em - 1, ed, 23, 59, 59);
-      break;
-    default:
-      // Default to current week
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-  }
-
-  return {
-    startDate,
-    endDate,
-    startDateStr: toLocalYMD(startDate),
-    endDateStr: toLocalYMD(endDate),
-  };
 }
 
 /**
@@ -175,7 +77,8 @@ function executeNavigate(args: any): any {
 async function executeGetKpis(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { period = 'month', start_date, end_date } = args;
 
@@ -183,7 +86,12 @@ async function executeGetKpis(
   const { calculateCostBreakdown, calculateProfitability, calculateBenchmarks, redactLaborFields } = await import('../_shared/periodMetrics.ts');
   const { hasSchedulingOrPayrollCapability } = await import('../_shared/tools-registry.ts');
 
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, clock.now);
+  // The labor block keeps the server clock. laborCalculations.ts puts punches
+  // into days by UTC fields, so a restaurant-day window would drop evening
+  // clock-ins. See docs/superpowers/specs/2026-09-24-ai-chat-restaurant-today-design.md.
+  const serverNow = new Date();
+  const { startDate, endDate } = calculateDateRange(period, start_date, end_date, serverNow);
 
   // This function runs under the caller's forwarded JWT (RLS applies), and
   // time_punches is now self-scoped to own-row unless the caller holds
@@ -730,7 +638,8 @@ async function calculateLiquidity(
   args: any,
   restaurantId: string,
   supabase: any,
-  results: any
+  results: any,
+  clock: RestaurantClock
 ): Promise<void> {
   const { bank_account_id } = args;
   
@@ -759,8 +668,8 @@ async function calculateLiquidity(
   // a 30-day trailing window. p_bank_account_id filters connected_bank_id,
   // which fixes the prior filter on a bank_account_id column that
   // bank_transactions does not have.
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const thirtyDaysAgo = toLocalYMD(addDays(clock.now, -30));
+  const todayStr = toLocalYMD(clock.now);
   const { data: outflowSummaryRows, error: outflowSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
     p_restaurant_id: restaurantId,
     p_start_date: thirtyDaysAgo,
@@ -779,7 +688,7 @@ async function calculateLiquidity(
     avg_daily_outflow: avgDailyOutflow,
     days_of_cash: Math.round(daysOfCash),
     runway_status: daysOfCash > 60 ? 'healthy' : daysOfCash > 30 ? 'caution' : 'critical',
-    projected_zero_date: daysOfCash < 999 ? new Date(Date.now() + daysOfCash * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null,
+    projected_zero_date: daysOfCash < 999 ? toLocalYMD(addDays(clock.now, Math.floor(daysOfCash))) : null,
   };
 }
 
@@ -790,12 +699,13 @@ async function calculatePredictions(
   args: any,
   restaurantId: string,
   supabase: any,
-  results: any
+  results: any,
+  clock: RestaurantClock
 ): Promise<void> {
   const { bank_account_id } = args;
 
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const sixtyDaysAgo = toLocalYMD(addDays(clock.now, -60));
+  const todayStr = toLocalYMD(clock.now);
 
   // Daily inflow series (get_bank_transactions_daily) replaces the raw
   // per-transaction fetch. "Recurring deposit" detection now looks at days
@@ -837,7 +747,8 @@ async function calculatePredictions(
 async function executeGetFinancialIntelligence(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { analysis_type, start_date, end_date, bank_account_id } = args;
   
@@ -858,11 +769,11 @@ async function executeGetFinancialIntelligence(
     }
     
     if (analysis_type === 'all' || analysis_type === 'liquidity') {
-      await calculateLiquidity(args, restaurantId, supabase, results);
+      await calculateLiquidity(args, restaurantId, supabase, results, clock);
     }
     
     if (analysis_type === 'all' || analysis_type === 'predictions') {
-      await calculatePredictions(args, restaurantId, supabase, results);
+      await calculatePredictions(args, restaurantId, supabase, results, clock);
     }
     
     return {
@@ -1250,7 +1161,8 @@ async function executeGetFinancialStatement(
 async function executeGetSalesSummary(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { 
     period, 
@@ -1265,7 +1177,8 @@ async function executeGetSalesSummary(
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(
     effectivePeriod as PeriodType,
     start_date,
-    end_date
+    end_date,
+    clock.now
   );
 
   // Calculate previous period for comparison
@@ -1369,8 +1282,8 @@ async function executeGetSalesSummary(
   let comparison = null;
 
   if (compare_to_previous) {
-    const prevStartDateStr = prevStartDate.toISOString().split('T')[0];
-    const prevEndDateStr = prevEndDate.toISOString().split('T')[0];
+    const prevStartDateStr = toLocalYMD(prevStartDate);
+    const prevEndDateStr = toLocalYMD(prevEndDate);
 
     // fetchNetSales throws on RPC failure — caught here (rather than left to
     // propagate) to preserve the original behavior of silently omitting the
@@ -1415,7 +1328,8 @@ async function executeGetSalesSummary(
 async function executeGetInventoryTransactions(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const {
     transaction_type = 'all',
@@ -1439,11 +1353,9 @@ async function executeGetInventoryTransactions(
     startDateStr = start_date;
     endDateStr = end_date;
   } else {
-    const now = new Date();
     const daysToLookBack = Math.min(days_back, 90); // Max 90 days
-    const startDate = new Date(now.getTime() - daysToLookBack * 24 * 60 * 60 * 1000);
-    startDateStr = startDate.toISOString().split('T')[0];
-    endDateStr = now.toISOString().split('T')[0];
+    startDateStr = toLocalYMD(addDays(clock.now, -daysToLookBack));
+    endDateStr = toLocalYMD(clock.now);
   }
 
   // ✅ REUSE: Call the SAME service function used by the frontend
@@ -1519,7 +1431,8 @@ async function executeGetInventoryTransactions(
 async function executeGetAiInsights(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { focus_area = 'overall_health' } = args;
 
@@ -1528,7 +1441,7 @@ async function executeGetAiInsights(
 
   try {
     // Get KPIs
-    const kpisResult = await executeGetKpis({ period: 'month' }, restaurantId, supabase);
+    const kpisResult = await executeGetKpis({ period: 'month' }, restaurantId, supabase, clock);
     dataContext.kpis = kpisResult.data;
 
     // Get inventory status
@@ -1540,7 +1453,7 @@ async function executeGetAiInsights(
     dataContext.recipes = recipeResult.data;
 
     // Get sales summary
-    const salesResult = await executeGetSalesSummary({ period: 'month', compare_to_previous: true }, restaurantId, supabase);
+    const salesResult = await executeGetSalesSummary({ period: 'month', compare_to_previous: true }, restaurantId, supabase, clock);
     dataContext.sales = salesResult.data;
 
     // Focus area specific data
@@ -2059,7 +1972,9 @@ async function executeGetLaborCosts(
   const { period, start_date, end_date, include_daily_breakdown = true, include_employee_breakdown = false } = args;
 
   const { calculateActualLaborCost, calculateHoursPerEmployee } = await import('../_shared/laborCalculations.ts');
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  // Labor path: keeps the server clock (see the design's "Decided trade-offs").
+  const serverNow = new Date();
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, serverNow);
 
   const canSeeEmployees = userRole === 'manager' || userRole === 'owner';
 
@@ -2141,7 +2056,9 @@ async function executeGetTimePunches(
   const { calculateHoursPerEmployee, getEmployeeSnapshotForDate, formatDateLocal } = await import(
     '../_shared/laborCalculations.ts'
   );
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  // Labor path: keeps the server clock (see the design's "Decided trade-offs").
+  const serverNow = new Date();
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, serverNow);
 
   const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
   const minHours = Math.max(0, Number(min_hours) || 0);
@@ -2253,19 +2170,20 @@ async function executeGetScheduleOverview(
 
   const { calculateScheduledLaborCost } = await import('../_shared/laborCalculations.ts');
 
-  // For schedule overview, 'week' and 'month' look forward from today
-  const now = new Date();
+  // For schedule overview, 'week' and 'month' look forward from today.
+  // Labor path: keeps the server clock (see the design's "Decided trade-offs").
+  const serverNow = new Date();
   let startDate: Date;
   let endDate: Date;
 
   if (period === 'week') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+    startDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate());
+    endDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate() + 7);
   } else if (period === 'month') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    endDate = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    startDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate());
+    endDate = new Date(serverNow.getFullYear(), serverNow.getMonth() + 1, serverNow.getDate());
   } else {
-    const range = calculateDateRange(period as PeriodType, start_date, end_date);
+    const range = calculateDateRange(period as PeriodType, start_date, end_date, serverNow);
     startDate = range.startDate;
     endDate = range.endDate;
   }
@@ -2353,7 +2271,9 @@ async function executeGetPayrollSummary(
 ): Promise<any> {
   const { period, start_date, end_date, include_employee_details = true } = args;
   const { calculateActualLaborCost, LABOR_FETCH_LOOKAHEAD_HOURS } = await import('../_shared/laborCalculations.ts');
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  // Labor path: keeps the server clock (see the design's "Decided trade-offs").
+  const serverNow = new Date();
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, serverNow);
 
   // Fetch all required data in parallel. time_punches upper bound is widened by
   // an overnight look-ahead so a shift crossing endDate still pairs whole;
@@ -2465,10 +2385,11 @@ async function executeGetPayrollSummary(
 async function executeGetTipSummary(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { period, start_date, end_date, status_filter = 'all' } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, clock.now);
 
   // Build query
   let query = supabase
@@ -2641,10 +2562,11 @@ async function executeGetPendingOutflows(
 async function executeGetOperatingCosts(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { period, start_date, end_date, include_break_even = true } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, clock.now);
 
   // Fetch operating costs
   const { data: costs, error: costsError } = await supabase
@@ -2740,16 +2662,17 @@ async function executeGetOperatingCosts(
 async function executeGetMonthlyTrends(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { months_back = 12, include_percentages = true } = args;
 
-  const now = new Date();
+  const now = clock.now;
   const startDate = new Date(now.getFullYear(), now.getMonth() - months_back + 1, 1);
   const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
+  const startDateStr = toLocalYMD(startDate);
+  const endDateStr = toLocalYMD(endDate);
 
   // Use the RPC function for monthly sales metrics
   const { data: salesMetrics, error: salesError } = await supabase
@@ -2849,10 +2772,11 @@ async function executeGetMonthlyTrends(
 async function executeGetExpenseHealth(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { period, start_date, end_date, bank_account_id } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, clock.now);
 
   // Processing fee detection patterns
   const processingFeePatterns = [
@@ -2979,10 +2903,11 @@ async function executeGetExpenseHealth(
 async function executeGetDailySalesTotals(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { period, start_date, end_date } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, clock.now);
 
   const { data, error } = await supabase.rpc('get_daily_sales_totals', {
     p_restaurant_id: restaurantId,
@@ -3039,11 +2964,12 @@ async function executeGetDailySalesTotals(
 async function executeGetBreakEvenProgress(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  clock: RestaurantClock
 ): Promise<any> {
   const { history_days = 14, include_monthly_progress = true, month } = args;
 
-  const now = new Date();
+  const now = clock.now;
 
   let today: Date;
   let historyStart: Date;
@@ -3644,6 +3570,15 @@ serve(async (req) => {
       );
     }
 
+    // "Today" for the tools is the restaurant's local day, not the UTC day of
+    // the edge runtime. resolveRestaurantTimeZone never throws; it falls back
+    // to the restaurant default timezone.
+    const restaurantTimeZone = await resolveRestaurantTimeZone(supabase, restaurant_id);
+    const clock: RestaurantClock = {
+      now: restaurantWallClock(new Date(), restaurantTimeZone),
+      timeZone: restaurantTimeZone,
+    };
+
     const startTime = Date.now();
     let result;
 
@@ -3653,7 +3588,7 @@ serve(async (req) => {
         result = executeNavigate(args);
         break;
       case 'get_kpis':
-        result = await executeGetKpis(args, restaurant_id, supabase);
+        result = await executeGetKpis(args, restaurant_id, supabase, clock);
         break;
       case 'get_inventory_status':
         result = await executeGetInventoryStatus(args, restaurant_id, supabase);
@@ -3662,13 +3597,13 @@ serve(async (req) => {
         result = await executeGetRecipeAnalytics(args, restaurant_id, supabase);
         break;
       case 'get_sales_summary':
-        result = await executeGetSalesSummary(args, restaurant_id, supabase);
+        result = await executeGetSalesSummary(args, restaurant_id, supabase, clock);
         break;
       case 'get_inventory_transactions':
-        result = await executeGetInventoryTransactions(args, restaurant_id, supabase);
+        result = await executeGetInventoryTransactions(args, restaurant_id, supabase, clock);
         break;
       case 'get_financial_intelligence':
-        result = await executeGetFinancialIntelligence(args, restaurant_id, supabase);
+        result = await executeGetFinancialIntelligence(args, restaurant_id, supabase, clock);
         break;
       case 'get_bank_transactions':
         result = await executeGetBankTransactions(args, restaurant_id, supabase);
@@ -3677,7 +3612,7 @@ serve(async (req) => {
         result = await executeGetFinancialStatement(args, restaurant_id, supabase);
         break;
       case 'get_ai_insights':
-        result = await executeGetAiInsights(args, restaurant_id, supabase);
+        result = await executeGetAiInsights(args, restaurant_id, supabase, clock);
         break;
       case 'generate_report':
         result = await executeGenerateReport(args, restaurant_id, supabase);
@@ -3695,25 +3630,25 @@ serve(async (req) => {
         result = await executeGetPayrollSummary(args, restaurant_id, supabase);
         break;
       case 'get_tip_summary':
-        result = await executeGetTipSummary(args, restaurant_id, supabase);
+        result = await executeGetTipSummary(args, restaurant_id, supabase, clock);
         break;
       case 'get_pending_outflows':
         result = await executeGetPendingOutflows(args, restaurant_id, supabase);
         break;
       case 'get_operating_costs':
-        result = await executeGetOperatingCosts(args, restaurant_id, supabase);
+        result = await executeGetOperatingCosts(args, restaurant_id, supabase, clock);
         break;
       case 'get_monthly_trends':
-        result = await executeGetMonthlyTrends(args, restaurant_id, supabase);
+        result = await executeGetMonthlyTrends(args, restaurant_id, supabase, clock);
         break;
       case 'get_expense_health':
-        result = await executeGetExpenseHealth(args, restaurant_id, supabase);
+        result = await executeGetExpenseHealth(args, restaurant_id, supabase, clock);
         break;
       case 'get_daily_sales_totals':
-        result = await executeGetDailySalesTotals(args, restaurant_id, supabase);
+        result = await executeGetDailySalesTotals(args, restaurant_id, supabase, clock);
         break;
       case 'get_break_even_progress':
-        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase);
+        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase, clock);
         break;
       case 'batch_categorize_transactions':
         result = await executeBatchCategorizeTransactions(args, restaurant_id, supabase);

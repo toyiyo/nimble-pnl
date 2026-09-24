@@ -640,4 +640,10 @@ describe('redactLaborFields', () => {
     const result = redactLaborFields(metrics, false);
     expect(result.laborOmittedReason).toMatch(/view:scheduling|view:payroll/);
   });
+
+  it('uses the reason the caller gives, for example the pay-rates reason', () => {
+    const result = redactLaborFields(metrics, false, 'Pay rates are hidden for your role.');
+    expect(result.laborOmittedReason).toBe('Pay rates are hidden for your role.');
+    expect(result.costs).not.toHaveProperty('labor_cost');
+  });
 });

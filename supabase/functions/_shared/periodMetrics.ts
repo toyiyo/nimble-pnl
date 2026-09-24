@@ -354,10 +354,14 @@ export interface RedactedLaborFields {
  * food_cost is unaffected by that truncation (it doesn't come from
  * time_punches), so it — and only it — passes through when access is
  * missing.
+ *
+ * `reason` names why labor is omitted. The default is the capability reason.
+ * get_kpis passes the pay-rates reason when only view:pay_rates is missing.
  */
 export function redactLaborFields(
   metrics: Pick<PeriodMetricsResult, 'costs' | 'profitability' | 'benchmarks'>,
-  hasLaborAccess: boolean
+  hasLaborAccess: boolean,
+  reason: string = 'Labor cost, prime cost, and profitability figures require view:scheduling or view:payroll access.'
 ): RedactedLaborFields {
   if (hasLaborAccess) {
     return {
@@ -376,7 +380,6 @@ export function redactLaborFields(
       food_cost_status: metrics.benchmarks.food_cost_status,
       target_food_cost: metrics.benchmarks.target_food_cost,
     },
-    laborOmittedReason:
-      'Labor cost, prime cost, and profitability figures require view:scheduling or view:payroll access.',
+    laborOmittedReason: reason,
   };
 }

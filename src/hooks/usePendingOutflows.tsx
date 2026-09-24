@@ -380,7 +380,7 @@ export function usePendingOutflowMutations() {
     onSuccess: (data) => {
       invalidatePendingOutflowMatchQueries(queryClient);
       if (data.category_kept) {
-        toast.info('Match undone. Recategorize the transaction on the Banking page.');
+        toast.info('Match undone. The transaction keeps its category.');
       } else {
         toast.success('Match undone');
       }

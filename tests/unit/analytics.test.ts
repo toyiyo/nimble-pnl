@@ -18,6 +18,7 @@ import {
   recordAuthEvents,
   recordFirstPnlViewed,
   recordPosIntegrationCompleted,
+  recordTeamMemberJoined,
   storeAttribution,
   storeSignupPath,
 } from '../../src/lib/analytics';
@@ -491,7 +492,7 @@ describe('recordAuthEvents', () => {
     expect(posthog.capture).not.toHaveBeenCalledWith('account_created');
   });
 
-  it('classifies invitation_accept from localStorage and fires team_member_joined instead of trial_started', () => {
+  it('classifies invitation_accept from localStorage and skips trial_started', () => {
     storeSignupPath('invitation_accept', 'manager');
 
     recordAuthEvents({
@@ -513,11 +514,11 @@ describe('recordAuthEvents', () => {
       account_role: 'manager',
       invited_to_org_id: null,
     });
-    expect(posthog.capture).toHaveBeenCalledWith('team_member_joined', {
-      signup_path: 'invitation_accept',
-      account_role: 'manager',
-      invited_to_org_id: null,
-    });
+    // team_member_joined is a REAL-join signal. recordAuthEvents runs on any
+    // auth resolve, so it must not fire the event from a localStorage
+    // classification — the case-study user got a false join event that way.
+    // The event now fires from recordTeamMemberJoined at accept success.
+    expect(posthog.capture).not.toHaveBeenCalledWith('team_member_joined', expect.anything());
     expect(posthog.capture).not.toHaveBeenCalledWith('trial_started', expect.anything());
   });
 
@@ -543,9 +544,7 @@ describe('recordAuthEvents', () => {
         account_role: 'employee',
         invited_to_org_id: null,
       });
-      expect(posthog.capture).toHaveBeenCalledWith('team_member_joined', expect.objectContaining({
-        signup_path: 'invitation_accept',
-      }));
+      expect(posthog.capture).not.toHaveBeenCalledWith('team_member_joined', expect.anything());
       expect(posthog.capture).not.toHaveBeenCalledWith('trial_started', expect.anything());
     } finally {
       Object.defineProperty(window, 'location', {
@@ -589,6 +588,35 @@ describe('recordAuthEvents', () => {
       account_role: 'staff',
       invited_to_org_id: 'org-xyz',
     });
+  });
+});
+
+describe('recordTeamMemberJoined', () => {
+  let posthog: { identify: ReturnType<typeof vi.fn>; capture: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    posthog = { identify: vi.fn(), capture: vi.fn() };
+  });
+
+  it('captures team_member_joined once with the given properties', () => {
+    recordTeamMemberJoined(posthog, { role: 'staff' });
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(posthog.capture).toHaveBeenCalledWith('team_member_joined', { role: 'staff' });
+  });
+
+  it('captures with no properties object when none is given', () => {
+    recordTeamMemberJoined(posthog);
+
+    expect(posthog.capture).toHaveBeenCalledWith('team_member_joined', undefined);
+  });
+
+  it('survives if posthog.capture throws (no rethrow)', () => {
+    posthog.capture = vi.fn(() => {
+      throw new Error('posthog blew up');
+    });
+
+    expect(() => recordTeamMemberJoined(posthog)).not.toThrow();
   });
 });
 

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, AlertTriangle } from "lucide-react";
 
@@ -18,7 +19,7 @@ interface OperationsHealthCardProps {
   uncategorizedTransactions: number;
 }
 
-export function OperationsHealthCard({
+function OperationsHealthCardBase({
   primeCost,
   primeCostTarget,
   lowInventoryCount,
@@ -97,3 +98,5 @@ export function OperationsHealthCard({
     </div>
   );
 }
+
+export const OperationsHealthCard = memo(OperationsHealthCardBase);

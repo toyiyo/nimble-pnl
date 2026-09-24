@@ -57,6 +57,8 @@ import type { ConflictDialogData } from './AvailabilityConflictDialog';
 import { useGenerateSchedule } from '@/hooks/useGenerateSchedule';
 import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
+import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
+import { usePlannerShiftConflicts } from '@/hooks/usePlannerShiftConflicts';
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
@@ -82,6 +84,10 @@ interface ShiftPlannerTabProps {
    */
   notifyAfterDeferredCommit: (args: NotifyAfterDeferredCommitArgs) => void | Promise<void>;
 }
+
+/** Stable empty index for the conflict load/error states — a module-level
+ *  constant so the gated value never invalidates child memo comparators. */
+const EMPTY_CONFLICT_INDEX: Map<string, string[]> = new Map();
 
 /** Format a template's slot label for CoverageDetail headings.
  *  e.g. "Cold Stone · Server · 10:00–16:30" or "Server · 10:00–16:30 (all areas)". */
@@ -197,8 +203,16 @@ export function ShiftPlannerTab({
   const handleShowHidden = useCallback(() => setShowHidden(true), []);
   const handleToggleShowHidden = useCallback(() => setShowHidden((prev) => !prev), []);
 
-  const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId);
-  const { exceptions } = useAvailabilityExceptions(restaurantId);
+  const {
+    availability,
+    loading: availabilityLoading,
+    error: availabilityError,
+  } = useEmployeeAvailability(restaurantId);
+  const {
+    exceptions,
+    loading: exceptionsLoading,
+    error: exceptionsError,
+  } = useAvailabilityExceptions(restaurantId);
 
   // Per-employee effective availability (recurring + exception overrides) for the
   // visible week — feeds the sidebar strip tint and timeline outside-availability
@@ -213,6 +227,29 @@ export function ShiftPlannerTab({
       ),
     [availability, exceptions, weekStart, employees],
   );
+
+  // Read-time conflict index (time-off + availability) for the persistent
+  // amber indicators. While ANY source query loads, an empty map renders no
+  // indicator (no partial state); when ANY source errors, the header shows
+  // a muted "Conflicts unavailable" note instead of an incorrect zero — an
+  // errored availability query would otherwise hide the availability half
+  // silently.
+  const {
+    timeOffRequests,
+    loading: timeOffLoading,
+    error: timeOffError,
+  } = useTimeOffRequests(restaurantId);
+  const { conflictsByShiftId, conflictedShiftCount } = usePlannerShiftConflicts(
+    shifts,
+    availabilityByEmployee,
+    timeOffRequests,
+    restaurantTimezone,
+  );
+  const conflictSourcesError = !!timeOffError || !!availabilityError || !!exceptionsError;
+  const conflictsReady =
+    !timeOffLoading && !availabilityLoading && !exceptionsLoading && !conflictSourcesError;
+  const effectiveConflictsByShiftId = conflictsReady ? conflictsByShiftId : EMPTY_CONFLICT_INDEX;
+  const effectiveConflictedShiftCount = conflictsReady ? conflictedShiftCount : 0;
 
   // Compute template grid data — built with ALL templates (active + hidden) so a
   // hidden template's FK-linked shifts keep bucketing under it (not `__unmatched__`).
@@ -789,6 +826,8 @@ export function ShiftPlannerTab({
         onExport={handleExport}
         onGenerate={() => setGenerateDialogOpen(true)}
         isGenerating={generateSchedule.isPending}
+        conflictedShiftCount={effectiveConflictedShiftCount}
+        conflictsUnavailable={conflictSourcesError}
       />
 
       {/* Plan | Timeline view toggle — shared across both modes */}
@@ -939,6 +978,7 @@ export function ShiftPlannerTab({
                   onCoverageClick={handleCoverageClick}
                   ghostByCell={ghostByCell}
                   offTemplateByArea={offTemplateByArea}
+                  conflictsByShiftId={effectiveConflictsByShiftId}
                   hiddenLaneByDay={hiddenLaneByDay}
                   onShowHidden={handleShowHidden}
                 />

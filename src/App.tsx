@@ -50,6 +50,7 @@ import ChartOfAccounts from "./pages/ChartOfAccounts";
 import FinancialStatements from "./pages/FinancialStatements";
 import Accounting from "./pages/Accounting";
 import Banking from "./pages/Banking";
+import DepositMatch from "./pages/DepositMatch";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
 import Scheduling from "./pages/Scheduling";
 import Employees from "./pages/Employees";
@@ -82,9 +83,7 @@ import HelpCenter from "./pages/Help/HelpCenter";
 import HelpArticle from "./pages/Help/HelpArticle";
 import Assets from "./pages/Assets";
 import BudgetRunRate from "./pages/BudgetRunRate";
-import OpsInbox from "./pages/OpsInbox";
 import Reviews from "./pages/Reviews";
-import WeeklyBrief from "./pages/WeeklyBrief";
 import { queryClientConfig } from "@/lib/react-query-config";
 
 const queryClient = new QueryClient(queryClientConfig);
@@ -413,6 +412,7 @@ const App = () => (
           <Route path="/invoices/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
           <Route path="/stripe-account" element={<ProtectedRoute><StripeAccountManagement /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
+          <Route path="/banking/deposit-match" element={<ProtectedRoute><DepositMatch /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
           <Route path="/print-checks" element={<ProtectedRoute><PrintChecks /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />
@@ -423,9 +423,7 @@ const App = () => (
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
             <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
-            <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
             <Route path="/reviews" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
-            <Route path="/weekly-brief" element={<ProtectedRoute><WeeklyBrief /></ProtectedRoute>} />
             <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
             <Route path="/help/:slug" element={<ProtectedRoute allowStaff={true}><HelpArticle /></ProtectedRoute>} />

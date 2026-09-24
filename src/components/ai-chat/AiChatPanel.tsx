@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react';
 import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical, ChefHat, Lock, Sparkles } from 'lucide-react';
 import {
   Sheet,
@@ -10,16 +10,22 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAiChatContext } from '@/contexts/AiChatContext';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAiChat } from '@/hooks/useAiChat';
 import { useAiChatSessions } from '@/hooks/useAiChatSessions';
 import { useAiChatMessages } from '@/hooks/useAiChatMessages';
 import { useSubscription } from '@/hooks/useSubscription';
-import { ChatMessage } from '@/components/ChatMessage';
 import { AiChatConversationList } from './AiChatConversationList';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+
+// ChatMessage pulls in the markdown + mermaid stack. Load it only when the
+// panel shows messages; the effect below prefetches when the panel opens.
+const ChatMessage = lazy(() =>
+  import('@/components/ChatMessage').then((m) => ({ default: m.ChatMessage }))
+);
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 900;
@@ -39,6 +45,14 @@ export function AiChatPanel() {
   const role = selectedRestaurant?.role;
   const restaurantId = selectedRestaurant?.restaurant_id || '';
   const hasAiAccess = hasFeature('ai_assistant');
+
+  // Prefetch the lazy chunk as soon as the panel opens, before the first
+  // message renders.
+  useEffect(() => {
+    if (isOpen) {
+      import('@/components/ChatMessage');
+    }
+  }, [isOpen]);
 
   const [input, setInput] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
@@ -271,9 +285,20 @@ export function AiChatPanel() {
                   </div>
                 ) : (
                   <div className="space-y-4 py-4">
-                    {messages.map((message) => (
-                      <ChatMessage key={message.id} message={message} />
-                    ))}
+                    <Suspense
+                      fallback={
+                        <Skeleton
+                          className="h-9 w-[70%] max-w-[85%] rounded-lg"
+                          role="status"
+                          aria-live="polite"
+                          aria-label="Loading messages"
+                        />
+                      }
+                    >
+                      {messages.map((message) => (
+                        <ChatMessage key={message.id} message={message} />
+                      ))}
+                    </Suspense>
                     {isStreaming && (
                       <div className="flex gap-2">
                         <div className="flex-shrink-0">

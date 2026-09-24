@@ -188,6 +188,11 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// The page reads the shift protection rules through React Query. This
+// test renders without a QueryClientProvider, so stub the hook family
+// with the everything-off defaults.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
+
 vi.mock('@/components/employee', () => ({
   EmployeePageHeader: ({ title }: { title: string }) =>
     React.createElement('div', { 'data-testid': 'employee-page-header' }, title),

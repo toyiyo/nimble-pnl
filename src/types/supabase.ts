@@ -3955,46 +3955,6 @@ export type Database = {
           },
         ]
       }
-      notification_preferences: {
-        Row: {
-          brief_send_time: string
-          created_at: string
-          id: string
-          inbox_digest_email: boolean
-          restaurant_id: string
-          updated_at: string
-          user_id: string
-          weekly_brief_email: boolean
-        }
-        Insert: {
-          brief_send_time?: string
-          created_at?: string
-          id?: string
-          inbox_digest_email?: boolean
-          restaurant_id: string
-          updated_at?: string
-          user_id: string
-          weekly_brief_email?: boolean
-        }
-        Update: {
-          brief_send_time?: string
-          created_at?: string
-          id?: string
-          inbox_digest_email?: boolean
-          restaurant_id?: string
-          updated_at?: string
-          user_id?: string
-          weekly_brief_email?: boolean
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notification_preferences_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       notification_settings: {
         Row: {
           created_at: string | null
@@ -4200,73 +4160,6 @@ export type Database = {
             foreignKeyName: "open_shift_claims_shift_template_id_fkey"
             columns: ["shift_template_id"]
             referencedRelation: "shift_templates"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ops_inbox_item: {
-        Row: {
-          created_at: string
-          created_by: string
-          description: string | null
-          due_at: string | null
-          evidence_json: Json | null
-          id: string
-          kind: string
-          linked_entity_id: string | null
-          linked_entity_type: string | null
-          meta: Json | null
-          priority: number
-          resolved_at: string | null
-          resolved_by: string | null
-          restaurant_id: string
-          snoozed_until: string | null
-          status: string
-          title: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          due_at?: string | null
-          evidence_json?: Json | null
-          id?: string
-          kind: string
-          linked_entity_id?: string | null
-          linked_entity_type?: string | null
-          meta?: Json | null
-          priority?: number
-          resolved_at?: string | null
-          resolved_by?: string | null
-          restaurant_id: string
-          snoozed_until?: string | null
-          status?: string
-          title: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          due_at?: string | null
-          evidence_json?: Json | null
-          id?: string
-          kind?: string
-          linked_entity_id?: string | null
-          linked_entity_type?: string | null
-          meta?: Json | null
-          priority?: number
-          resolved_at?: string | null
-          resolved_by?: string | null
-          restaurant_id?: string
-          snoozed_until?: string | null
-          status?: string
-          title?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ops_inbox_item_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
         ]
@@ -10001,98 +9894,6 @@ export type Database = {
           },
         ]
       }
-      weekly_brief: {
-        Row: {
-          brief_week_end: string
-          comparisons_json: Json
-          computed_at: string
-          email_sent_at: string | null
-          id: string
-          inbox_summary_json: Json
-          metrics_json: Json
-          narrative: string | null
-          recommendations_json: Json
-          restaurant_id: string
-          variances_json: Json
-        }
-        Insert: {
-          brief_week_end: string
-          comparisons_json?: Json
-          computed_at?: string
-          email_sent_at?: string | null
-          id?: string
-          inbox_summary_json?: Json
-          metrics_json?: Json
-          narrative?: string | null
-          recommendations_json?: Json
-          restaurant_id: string
-          variances_json?: Json
-        }
-        Update: {
-          brief_week_end?: string
-          comparisons_json?: Json
-          computed_at?: string
-          email_sent_at?: string | null
-          id?: string
-          inbox_summary_json?: Json
-          metrics_json?: Json
-          narrative?: string | null
-          recommendations_json?: Json
-          restaurant_id?: string
-          variances_json?: Json
-        }
-        Relationships: [
-          {
-            foreignKeyName: "weekly_brief_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      weekly_brief_job_log: {
-        Row: {
-          attempt: number
-          brief_week_end: string
-          created_at: string
-          duration_ms: number | null
-          error_message: string | null
-          id: string
-          msg_id: number | null
-          restaurant_id: string
-          status: string
-        }
-        Insert: {
-          attempt?: number
-          brief_week_end: string
-          created_at?: string
-          duration_ms?: number | null
-          error_message?: string | null
-          id?: string
-          msg_id?: number | null
-          restaurant_id: string
-          status: string
-        }
-        Update: {
-          attempt?: number
-          brief_week_end?: string
-          created_at?: string
-          duration_ms?: number | null
-          error_message?: string | null
-          id?: string
-          msg_id?: number | null
-          restaurant_id?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "weekly_brief_job_log_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       active_employees: {
@@ -10837,10 +10638,6 @@ export type Database = {
         Args: { p_account_id: string; p_as_of_date?: string }
         Returns: number
       }
-      compute_daily_variances: {
-        Args: { p_date: string; p_restaurant_id: string }
-        Returns: Json
-      }
       compute_transaction_fingerprint: {
         Args: {
           p_amount: number
@@ -10848,10 +10645,6 @@ export type Database = {
           p_transaction_date: string
         }
         Returns: string
-      }
-      compute_weekly_variances: {
-        Args: { p_restaurant_id: string; p_week_end: string }
-        Returns: Json
       }
       copy_role_to_restaurants: {
         Args: { p_role_id: string; p_target_restaurant_ids: string[] }
@@ -10963,18 +10756,6 @@ export type Database = {
           locked_count: number
         }[]
       }
-      detect_metric_anomalies: {
-        Args: { p_date: string; p_restaurant_id: string }
-        Returns: number
-      }
-      detect_reconciliation_gaps: {
-        Args: { p_date: string; p_restaurant_id: string }
-        Returns: number
-      }
-      detect_uncategorized_backlog: {
-        Args: { p_restaurant_id: string }
-        Returns: number
-      }
       diag:
         | {
             Args: { msg: unknown }
@@ -10995,7 +10776,6 @@ export type Database = {
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }
       drain_categorization_backlog: { Args: never; Returns: number }
-      enqueue_weekly_brief_jobs: { Args: never; Returns: Json }
       exclude_bank_transaction: {
         Args: { p_reason?: string; p_transaction_id: string }
         Returns: Json
@@ -11432,10 +11212,6 @@ export type Database = {
       }
       pg_version: { Args: never; Returns: string }
       pg_version_num: { Args: never; Returns: number }
-      pgmq_delete_message: {
-        Args: { p_msg_id: number; p_queue_name: string }
-        Returns: boolean
-      }
       pgtap_version: { Args: never; Returns: number }
       post_asset_depreciation: {
         Args: {
@@ -11469,7 +11245,6 @@ export type Database = {
         }
         Returns: Json
       }
-      process_weekly_brief_queue: { Args: never; Returns: undefined }
       publish_schedule: {
         Args: {
           p_notes?: string

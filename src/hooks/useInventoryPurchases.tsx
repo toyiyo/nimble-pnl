@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 interface InventoryPurchasesData {
   totalPurchases: number;
@@ -56,5 +57,6 @@ export const useInventoryPurchases = (
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnMount: true,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 };

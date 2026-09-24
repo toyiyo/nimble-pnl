@@ -110,6 +110,7 @@ function mockCostsFromSource(pendingTotal: number, actualTotal: number) {
     laborBasis: pendingTotal > 0 ? 'accrued' : 'paid',
     totalCost: FOOD_COST + (pendingTotal > 0 ? pendingTotal : actualTotal),
     isLoading: false,
+    isFetching: false,
     error: null,
     refetch: vi.fn(),
     // The mock sets only the fields this test reads, not the hook's full
@@ -161,6 +162,7 @@ function mockCostsFromSourceDiverged(opts: {
     totalCost: FOOD_COST + hookLabor,
     capped: false,
     isLoading: false,
+    isFetching: false,
     error: null,
     refetch: vi.fn(),
   });

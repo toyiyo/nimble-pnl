@@ -21,6 +21,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // Hoisted mocks — must appear before any import that uses them
 // ---------------------------------------------------------------------------
 
+// Shared stub: the real hooks need a QueryClientProvider these tests lack.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
+
 vi.mock('@/hooks/useShiftTrades', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/useShiftTrades')>();
   return {

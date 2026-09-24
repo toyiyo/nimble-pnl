@@ -1,3 +1,5 @@
+import type { ShiftProtectionSettings } from '@/lib/shiftProtection';
+
 // Compensation types for employees
 export type CompensationType = 'hourly' | 'salary' | 'contractor' | 'daily_rate';
 export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
@@ -300,7 +302,9 @@ export interface MinCrew {
   [position: string]: number;
 }
 
-export interface StaffingSettings {
+// The row also holds the 8 Shift Protection rule columns. They keep one
+// definition, in @/lib/shiftProtection.
+export interface StaffingSettings extends ShiftProtectionSettings {
   id: string;
   restaurant_id: string;
   target_splh: number;

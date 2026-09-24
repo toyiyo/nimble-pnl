@@ -1072,7 +1072,7 @@ describe('usePendingOutflowMutations', () => {
       });
 
       expect(toast.info).toHaveBeenCalledWith(
-        'Match undone. Recategorize the transaction on the Banking page.'
+        'Match undone. The transaction keeps its category.'
       );
       expect(toast.success).not.toHaveBeenCalled();
     });

@@ -7,6 +7,12 @@ interface CRUDHookConfig<T> {
   queryKey: string;
   entityName: string;
   getRestaurantId: (data: any) => string;
+  /**
+   * Optional error-toast override. Return null to keep the default
+   * title and the raw message (e.g. map a database trigger message to
+   * friendly copy).
+   */
+  formatError?: (error: Error) => { title: string; description: string } | null;
 }
 
 export function useCreateEntity<T>(config: CRUDHookConfig<T>) {
@@ -33,9 +39,10 @@ export function useCreateEntity<T>(config: CRUDHookConfig<T>) {
       });
     },
     onError: (error: Error) => {
+      const formatted = config.formatError?.(error) ?? null;
       toast({
-        title: `Error creating ${config.entityName.toLowerCase()}`,
-        description: error.message,
+        title: formatted?.title ?? `Error creating ${config.entityName.toLowerCase()}`,
+        description: formatted?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -68,9 +75,10 @@ export function useUpdateEntity<T>(config: CRUDHookConfig<T>) {
       });
     },
     onError: (error: Error) => {
+      const formatted = config.formatError?.(error) ?? null;
       toast({
-        title: `Error updating ${config.entityName.toLowerCase()}`,
-        description: error.message,
+        title: formatted?.title ?? `Error updating ${config.entityName.toLowerCase()}`,
+        description: formatted?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -99,9 +107,10 @@ export function useDeleteEntity<T>(config: CRUDHookConfig<T>) {
       });
     },
     onError: (error: Error) => {
+      const formatted = config.formatError?.(error) ?? null;
       toast({
-        title: `Error deleting ${config.entityName.toLowerCase()}`,
-        description: error.message,
+        title: formatted?.title ?? `Error deleting ${config.entityName.toLowerCase()}`,
+        description: formatted?.description ?? error.message,
         variant: 'destructive',
       });
     },

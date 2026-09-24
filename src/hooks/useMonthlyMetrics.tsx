@@ -4,21 +4,21 @@ import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns'
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import { resolveLaborBasis } from '@/lib/combineCosts';
 import {
-  aggregateInventoryCOGSByDate,
   aggregateFinancialCOGSByDate,
   toUtcDayKey,
-  type InventoryTransactionRow,
 } from '@/services/cogsCalculations';
 import { normalizeCOGSMethod } from '@/lib/cogsMethod';
 import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange, weekAlignedFetchStart, weekAlignedFetchEnd } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
-import { fetchFinancialCOGSRows, COGS_MAX_PAGES } from '@/services/cogsFetch';
+import { fetchFinancialCOGSRows } from '@/services/cogsFetch';
 import { fetchTipSplitRows, fetchTipPayoutRows, netTipsOwedByEmployee } from '@/services/tipsFetch';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { isCompensationHidden } from '@/lib/employeeMaskedFields';
+import { fetchUsageByDay, type UsageByDayData } from '@/hooks/useInventoryUsageByDay';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -238,23 +238,40 @@ export function useMonthlyMetrics(
         return monthlyMap.get(monthKey)!;
       };
 
-      // Source revenue + POS from the same RPCs useRevenueBreakdown uses.
-      // Per month so we can clamp the first and last partial months to the query window.
-      const monthsInRange = eachMonthOfInterval({ start: dateFrom, end: dateTo });
-      for (const rawMonthStart of monthsInRange) {
-        const monthStart = startOfMonth(rawMonthStart);
-        const monthEndFull = endOfMonth(monthStart);
-        const clampedStart = monthStart < dateFrom ? dateFrom : monthStart;
-        const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
-        if (clampedStart > clampedEnd) continue;
+      // Start the settings fetch now so it overlaps the month fetches below.
+      const settingsPromise = supabase
+        .from('restaurant_financial_settings')
+        .select('cogs_calculation_method')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
 
-        const monthKey = format(monthStart, 'yyyy-MM');
-        const totals = await fetchMonthRevenueTotals(
-          supabase,
-          restaurantId,
-          toDateOnlyString(clampedStart),
-          toDateOnlyString(clampedEnd)
-        );
+      // Source revenue + POS from the same RPCs useRevenueBreakdown uses.
+      // Per month so we can clamp the first and last partial months to the
+      // query window. The month fetches start together; the apply loop below
+      // runs in month order so the warning order stays stable.
+      const monthsInRange = eachMonthOfInterval({ start: dateFrom, end: dateTo });
+      const monthTotals = await Promise.all(
+        monthsInRange.map(async (rawMonthStart) => {
+          const monthStart = startOfMonth(rawMonthStart);
+          const monthEndFull = endOfMonth(monthStart);
+          const clampedStart = monthStart < dateFrom ? dateFrom : monthStart;
+          const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
+          if (clampedStart > clampedEnd) return null;
+
+          const monthKey = format(monthStart, 'yyyy-MM');
+          const totals = await fetchMonthRevenueTotals(
+            supabase,
+            restaurantId,
+            toDateOnlyString(clampedStart),
+            toDateOnlyString(clampedEnd)
+          );
+          return { monthKey, totals };
+        })
+      );
+
+      for (const entry of monthTotals) {
+        if (!entry) continue;
+        const { monthKey, totals } = entry;
 
         if (totals.salesTotalsFailed) {
           warnings.push(
@@ -273,12 +290,7 @@ export function useMonthlyMetrics(
         month.has_data               = true;
       }
 
-      // Fetch COGS preference setting
-      const { data: settingsData } = await supabase
-        .from('restaurant_financial_settings')
-        .select('cogs_calculation_method')
-        .eq('restaurant_id', restaurantId)
-        .maybeSingle();
+      const { data: settingsData } = await settingsPromise;
       const cogsMethod = normalizeCOGSMethod(settingsData?.cogs_calculation_method as string | null | undefined);
 
       // The eight fetches below depend only on cogsMethod (above), never on
@@ -287,24 +299,13 @@ export function useMonthlyMetrics(
       // rejection in any fetch rejects the whole queryFn, the same result
       // as the serial version.
 
-      // Inventory COGS rows, when the method uses inventory data.
-      const inventoryCOGSPromise =
+      // Inventory COGS per day from the get_inventory_usage_by_day RPC,
+      // when the method uses inventory data. The database aggregates, so
+      // there is no page loop and no cap.
+      const inventoryCOGSPromise: Promise<UsageByDayData> =
         cogsMethod === 'inventory'
-          ? fetchAllRows<InventoryTransactionRow>(
-              (from, to) =>
-                supabase
-                  .from('inventory_transactions')
-                  .select('created_at, transaction_date, total_cost')
-                  .eq('restaurant_id', restaurantId)
-                  .eq('transaction_type', 'usage')
-                  .or(`transaction_date.gte.${fromStr},and(transaction_date.is.null,created_at.gte.${fromStr})`)
-                  .or(`transaction_date.lte.${toStr},and(transaction_date.is.null,created_at.lte.${toStr}T23:59:59.999Z)`)
-                  .order('created_at', { ascending: true })
-                  .order('id')
-                  .range(from, to),
-              { maxPages: COGS_MAX_PAGES }
-            )
-          : Promise.resolve({ rows: [] as InventoryTransactionRow[], capped: false });
+          ? fetchUsageByDay(restaurantId, fromStr, toStr)
+          : Promise.resolve({ dailyCosts: [], totalCost: 0 });
 
       // Financial COGS rows, when the method uses financial data.
       const financialCOGSPromise =
@@ -428,7 +429,7 @@ export function useMonthlyMetrics(
       );
 
       const [
-        { rows: foodCostsData, capped: inventoryCapped },
+        inventoryUsage,
         financialCOGSRows,
         { rows: bankLabor, capped: bankLaborCapped },
         { rows: pendingLabor, capped: pendingLaborCapped },
@@ -449,17 +450,11 @@ export function useMonthlyMetrics(
         tipPayoutsPromise,
       ]);
 
-      // Warnings keep the same order as the serial version so the warning
-      // text the UI joins stays stable.
-      pushCapWarning(
-        inventoryCapped,
-        'The inventory COGS rows hit the fetch limit. The food cost figure is incomplete.',
-        'inventory COGS fetch hit the page limit; the food cost figure is incomplete.'
-      );
-
       // financialCOGSByDay: yyyy-MM-dd → dollars (produced by shared pure helper)
       let financialCOGSByDay: Map<string, number> = new Map();
       if (financialCOGSRows) {
+        // Warnings keep the same order as the serial version so the warning
+        // text the UI joins stays stable.
         pushCapWarning(
           financialCOGSRows.capped,
           'The financial COGS rows hit the fetch limit. The food cost figure is incomplete.',
@@ -545,12 +540,11 @@ export function useMonthlyMetrics(
         contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
       }));
 
-      // Inventory COGS: use shared helper to get day→dollars map, then bucket to months (cents).
+      // Inventory COGS: fetchUsageByDay returns date→dollars; bucket to months (cents).
       if (cogsMethod === 'inventory') {
-        const invDaily = aggregateInventoryCOGSByDate(foodCostsData ?? []);
-        for (const [dateKey, dollars] of invDaily) {
-          const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
-          ensureMonth(monthKey).food_cost += toC(dollars);
+        for (const { date, total_cost } of inventoryUsage.dailyCosts) {
+          const monthKey = date.slice(0, 7); // yyyy-MM-dd → yyyy-MM
+          ensureMonth(monthKey).food_cost += toC(total_cost);
         }
       }
 
@@ -683,12 +677,14 @@ export function useMonthlyMetrics(
     enabled: !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {
     data: query.data?.months ?? null,
     warnings: query.data?.warnings ?? [],
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: (query.error as Error | null) ?? null,
     refetch: query.refetch,
   };

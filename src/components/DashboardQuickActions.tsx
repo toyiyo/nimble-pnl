@@ -1,7 +1,8 @@
+import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Package, Receipt, ChefHat, TrendingUp, ShoppingCart, Users, Settings, Wallet } from "lucide-react";
 
-export function DashboardQuickActions() {
+function DashboardQuickActionsBase() {
   const navigate = useNavigate();
 
   const actions = [
@@ -75,3 +76,5 @@ export function DashboardQuickActions() {
     </div>
   );
 }
+
+export const DashboardQuickActions = memo(DashboardQuickActionsBase);

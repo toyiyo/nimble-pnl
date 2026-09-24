@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { aggregateFinancialCOGSByDate } from '@/services/cogsCalculations';
 import { fetchFinancialCOGSRows } from '@/services/cogsFetch';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface FinancialCOGSData {
   date: string;
@@ -29,21 +30,38 @@ export interface FinancialCOGSResult {
  * @param dateTo - End date for the period
  * @returns COGS data aggregated by date
  */
+// The query key for this hook's data. Export it so other hooks that need to
+// watch this exact query (for example, an isFetching signal) build the same
+// key instead of copying the literal string. Return fromStr and toStr beside
+// the key, so a caller reads them by name instead of a tuple position.
+export function cogsFinancialsKey(
+  restaurantId: string | null,
+  dateFrom: Date,
+  dateTo: Date,
+) {
+  const fromStr = toDateOnlyString(dateFrom);
+  const toStr = toDateOnlyString(dateTo);
+  return {
+    key: ['cogs-financials', restaurantId, fromStr, toStr] as const,
+    fromStr,
+    toStr,
+  };
+}
+
 export function useCOGSFromFinancials(
   restaurantId: string | null,
   dateFrom: Date,
   dateTo: Date
 ): FinancialCOGSResult {
-  const startDateStr = format(dateFrom, 'yyyy-MM-dd');
-  const endDateStr = format(dateTo, 'yyyy-MM-dd');
+  const { key, fromStr, toStr } = cogsFinancialsKey(restaurantId, dateFrom, dateTo);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['cogs-financials', restaurantId, startDateStr, endDateStr],
+    queryKey: key,
     queryFn: async () => {
       if (!restaurantId) return null;
 
       const { bankTxns, splitItems, parentDateMap, pendingTxns, capped } =
-        await fetchFinancialCOGSRows(supabase, restaurantId, startDateStr, endDateStr);
+        await fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr);
 
       const dateMap = aggregateFinancialCOGSByDate({ bankTxns, splitItems, parentDateMap, pendingTxns });
 
@@ -59,6 +77,7 @@ export function useCOGSFromFinancials(
     staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {

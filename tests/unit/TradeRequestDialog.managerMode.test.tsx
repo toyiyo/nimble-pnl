@@ -6,6 +6,17 @@ import React from 'react';
 const createSelf = vi.hoisted(() => vi.fn());
 const createForEmployee = vi.hoisted(() => vi.fn());
 
+// Shared stub: the real hooks need a QueryClientProvider these tests lack.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
+
+// usePermissions reads RestaurantContext; these renders have no provider.
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    hasCapability: () => true,
+    isResolved: true,
+  }),
+}));
+
 vi.mock('@/hooks/useShiftTrades', () => ({
   useCreateShiftTrade: () => ({ mutate: createSelf, isPending: false }),
   useCreateShiftTradeForEmployee: () => ({ mutate: createForEmployee, isPending: false }),

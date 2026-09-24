@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, startTransition, type ReactNode } from 'react';
 import posthog from 'posthog-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
@@ -18,6 +18,7 @@ import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
 import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
 import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { PendingInvitationsCard } from '@/components/PendingInvitationsCard';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
@@ -45,9 +46,8 @@ import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenStrip';
-import { useOpsInboxCount } from '@/hooks/useOpsInbox';
-import { useSubscription } from '@/hooks/useSubscription';
 import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
+import { periodStatusMessage } from '@/utils/periodAnnouncement';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
@@ -64,8 +64,6 @@ import {
   Landmark,
   ChevronDown,
   ChevronUp,
-  Inbox,
-  Newspaper,
 } from 'lucide-react';
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -170,7 +168,7 @@ const Index = () => {
     todayEnd
   );
 
-  const { data: periodMetrics, isLoading: periodLoading, capped: periodCapped } = usePeriodMetrics(
+  const { data: periodMetrics, isLoading: periodLoading, isFetching: periodFetching, error: periodError, capped: periodCapped } = usePeriodMetrics(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -180,6 +178,7 @@ const Index = () => {
   const {
     data: monthlyMetrics,
     isLoading: monthlyLoading,
+    isFetching: monthlyFetching,
     error: monthlyError,
     warnings: monthlyWarnings
   } = useMonthlyMetrics(
@@ -190,7 +189,7 @@ const Index = () => {
 
   // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display
   // React Query will cache this with the same key, so no duplicate network requests
-  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+  const { data: revenueBreakdown, isLoading: revenueLoading, isFetching: revenueFetching } = useRevenueBreakdown(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -297,9 +296,6 @@ const Index = () => {
     );
     return foodCostItem?.percentage;  // already in % form (e.g. 28)
   }, [breakEvenData]);
-
-  const { data: opsInboxCounts } = useOpsInboxCount(selectedRestaurant?.restaurant_id);
-  const { hasFeature } = useSubscription();
 
   // Calculate available cash from connected banks
   const availableCash = useMemo(() => {
@@ -629,7 +625,11 @@ const Index = () => {
               </p>
             </div>
           </div>
-          <RestaurantSelector 
+          {/* An invitee with zero restaurants must see their pending
+              invitation before the create-restaurant path — otherwise
+              they open a second, self-serve owner account. */}
+          {!restaurantsLoading && restaurants.length === 0 && <PendingInvitationsCard />}
+          <RestaurantSelector
             selectedRestaurant={selectedRestaurant}
             onSelectRestaurant={handleRestaurantSelect}
             restaurants={restaurants}
@@ -696,7 +696,7 @@ const Index = () => {
             <div className="h-px bg-border/40" />
           </div>
 
-          {todaysLoading || periodLoading || alertsLoading ? (
+          {alertsLoading || (todaysLoading && !todaysData) || (periodLoading && !periodData) ? (
             <DashboardSkeleton />
           ) : (
             <>
@@ -764,14 +764,17 @@ const Index = () => {
               {/* Period Selector - MOVED TO TOP */}
               <PeriodSelector
                 selectedPeriod={selectedPeriod}
-                onPeriodChange={setSelectedPeriod}
+                onPeriodChange={(period) => startTransition(() => setSelectedPeriod(period))}
               />
+              <output aria-live="polite" className="sr-only">
+                {periodStatusMessage(periodFetching, periodError, selectedPeriod.label)}
+              </output>
 
               {/* ===== OPERATIONAL METRICS SECTION ===== */}
 
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Performance Overview</h2>
                     <CollapsibleTrigger asChild>
@@ -923,7 +926,7 @@ const Index = () => {
 
               {/* Cashflow Visualization - Collapsible */}
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
@@ -943,7 +946,7 @@ const Index = () => {
 
               {/* Monthly Performance Table - Collapsible */}
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${monthlyFetching ? 'opacity-60' : ''}`} aria-busy={monthlyFetching}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
@@ -964,7 +967,7 @@ const Index = () => {
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
-                  <div className="space-y-4">
+                  <div className={`space-y-4 transition-opacity ${revenueFetching ? 'opacity-60' : ''}`} aria-busy={revenueFetching}>
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-[17px] font-semibold text-foreground">Revenue Mix</h2>
@@ -1244,45 +1247,6 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
-
-              {/* AI Operator — Pro only */}
-              {(hasFeature('ops_inbox') || hasFeature('weekly_brief')) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {hasFeature('ops_inbox') && (opsInboxCounts?.open ?? 0) > 0 && (
-                    <button
-                      onClick={() => navigate('/ops-inbox')}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
-                    >
-                      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
-                        <Inbox className="h-5 w-5 text-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-foreground">Ops Inbox</div>
-                        <div className="text-[13px] text-muted-foreground">
-                          {opsInboxCounts?.open} open item{opsInboxCounts?.open !== 1 ? 's' : ''}
-                          {(opsInboxCounts?.critical ?? 0) > 0 && (
-                            <span className="text-destructive font-medium"> ({opsInboxCounts?.critical} critical)</span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  )}
-                  {hasFeature('weekly_brief') && (
-                    <button
-                      onClick={() => navigate('/weekly-brief')}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
-                    >
-                      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
-                        <Newspaper className="h-5 w-5 text-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-foreground">Weekly Brief</div>
-                        <div className="text-[13px] text-muted-foreground">This week's performance summary</div>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              )}
 
               {/* Quick Actions */}
               <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>

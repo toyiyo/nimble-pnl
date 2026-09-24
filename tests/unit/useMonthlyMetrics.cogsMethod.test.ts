@@ -60,11 +60,9 @@ describe('useMonthlyMetrics COGS method normalization', () => {
       if (table === 'restaurant_financial_settings') {
         return makeChainable({ cogs_calculation_method: 'combined' });
       }
-      if (table === 'inventory_transactions') {
-        return makeChainable([
-          { created_at: '2026-04-10T00:00:00+00:00', transaction_date: '2026-04-10', total_cost: 100 },
-        ]);
-      }
+      // The hook reads inventory COGS from the get_inventory_usage_by_day
+      // RPC, not from the inventory_transactions table. The RPC mock below
+      // supplies the $100 inventory fixture.
       if (table === 'bank_transactions') {
         // Distinguish the split-parents query (`.eq('is_split', true)`) from
         // every other bank_transactions query (COGS, labor) by tracking the
@@ -104,6 +102,12 @@ describe('useMonthlyMetrics COGS method normalization', () => {
       supabase: {
         from: fromMock,
         rpc: vi.fn((name: string) => {
+          if (name === 'get_inventory_usage_by_day') {
+            return Promise.resolve({
+              data: [{ day: '2026-04-10', food_cost: 100 }],
+              error: null,
+            });
+          }
           if (name === 'get_revenue_by_account') return Promise.resolve({ data: [], error: null });
           if (name === 'get_pass_through_totals') return Promise.resolve({ data: [], error: null });
           if (name === 'get_unified_sales_totals') {

@@ -1,0 +1,11 @@
+-- supabase: no-transaction
+-- CONCURRENTLY cannot run inside a transaction. No BEGIN in this file.
+--
+-- DROP INDEX CONCURRENTLY has the same no-pipeline restriction as
+-- CREATE (see 20260830130100 and 20260804090500), so this file
+-- contains only this statement.
+--
+-- idx_bank_transactions_auto_link_v2 (20260830130100) is a superset:
+-- same key columns, predicate drops is_categorized = false and adds
+-- amount < 0. Nothing can use the v1 index that cannot use v2.
+DROP INDEX CONCURRENTLY IF EXISTS idx_bank_transactions_auto_link;

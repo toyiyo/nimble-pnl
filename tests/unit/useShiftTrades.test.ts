@@ -526,6 +526,7 @@ describe('useShiftTrades', () => {
         p_trade_id: 'trade-1',
         p_manager_user_id: 'manager-user-123',
         p_manager_note: 'Approved - coverage confirmed',
+        p_override: false,
       });
       expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
         'send-shift-trade-notification',

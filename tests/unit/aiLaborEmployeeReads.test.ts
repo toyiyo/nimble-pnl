@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { EMPLOYEE_LABOR_SOURCE } from '../../supabase/functions/_shared/employeeLaborColumns.ts';
+
 /**
  * Source-contract guards for the employee reads of the AI labor tools and
  * the AI schedule generator.
@@ -82,8 +84,9 @@ describe('ai-execute-tool labor reads', () => {
 describe('generate-schedule employee read', () => {
   const source = SOURCES['generate-schedule'];
 
-  it('reads the employees_secure view with is_minor', () => {
-    expect(source).toMatch(/\.from\(\s*['"]employees_secure['"]\s*\)/);
-    expect(source).toMatch(/is_minor/);
+  it('reads the employees_secure view (EMPLOYEE_LABOR_SOURCE) with is_minor', () => {
+    expect(EMPLOYEE_LABOR_SOURCE).toBe('employees_secure');
+    expect(source).toMatch(/\.from\(EMPLOYEE_LABOR_SOURCE\)/);
+    expect(source).toMatch(/\.select\("[^"]*\bis_minor\b[^"]*"\)/);
   });
 });

@@ -3,16 +3,22 @@
  *
  * Pure helpers for the AI labor tools when the caller lacks view:pay_rates.
  *
- * employees_secure returns NULL pay for such a caller
- * (20260806110000_employee_column_gating.sql), and the compensation history
- * rows are dropped by RLS. The labor engine then computes $0 for every
- * employee. These helpers set each money field to null and add a
- * `pay_hidden` reason, so the AI never reports that $0 as a real figure.
- * Hours and counts stay: they do not come from pay rates.
+ * employees_secure returns NULL pay for such a caller, and RLS drops the
+ * compensation history rows (see EMPLOYEE_LABOR_SOURCE). The labor engine
+ * then computes $0 for every employee. These helpers set each pay-derived
+ * field to null, so the AI never reports that $0 as a real figure. Hours and
+ * employee counts stay: they do not come from pay rates.
+ *
+ * Contract: the helpers only redact. Each tool adds
+ * `pay_hidden: payHidden()` to its result data itself.
  */
 
 export const PAY_HIDDEN_REASON =
   'Pay rates are hidden for your role, so labor cost figures are not available.';
+
+/** The sentence each labor tool description ends with. */
+export const PAY_HIDDEN_TOOL_HINT =
+  'If the result has pay_hidden, tell the user that cost figures are hidden for their role. Do not report them as $0.';
 
 export interface PayHidden {
   reason: string;
@@ -20,34 +26,48 @@ export interface PayHidden {
 
 export const payHidden = (): PayHidden => ({ reason: PAY_HIDDEN_REASON });
 
-type Nullable<T, K extends keyof T> = Omit<T, K> & { [P in K]: null };
-
 interface CostBucket {
   cost: number;
+  /** Days with a cost above zero. It comes from pay, so it is redacted too. */
+  daysScheduled?: number;
 }
 
-interface LaborBreakdown<H extends CostBucket, O extends CostBucket> {
+type RedactedBucket<B extends CostBucket> = Omit<B, 'cost' | 'daysScheduled'> & {
+  cost: null;
+  daysScheduled?: null;
+};
+
+interface CompensationBuckets<H extends CostBucket, O extends CostBucket> {
   hourly: H;
   salary: O;
   contractor: O;
   daily_rate: O;
-  total: number;
 }
 
-const nullCost = <B extends CostBucket>(bucket: B): Nullable<B, 'cost'> => ({ ...bucket, cost: null });
+function redactBucket<B extends CostBucket>(bucket: B): RedactedBucket<B> {
+  const redacted: RedactedBucket<B> = { ...bucket, cost: null };
+  // daysScheduled counts days with cost > 0 (laborCalculations.ts), so a
+  // masked $0 cost gives a false 0.
+  if ('daysScheduled' in bucket) redacted.daysScheduled = null;
+  return redacted;
+}
 
-const DAILY_MONEY_FIELDS = [
-  'hourly_cost',
-  'salary_cost',
-  'contractor_cost',
-  'daily_rate_cost',
-  'total_cost',
-] as const;
+function redactBuckets<H extends CostBucket, O extends CostBucket>(buckets: CompensationBuckets<H, O>) {
+  return {
+    hourly: redactBucket(buckets.hourly),
+    salary: redactBucket(buckets.salary),
+    contractor: redactBucket(buckets.contractor),
+    daily_rate: redactBucket(buckets.daily_rate),
+  };
+}
 
-type DailyMoneyField = (typeof DAILY_MONEY_FIELDS)[number];
-
-interface DailyCost extends Record<DailyMoneyField, number> {
+interface DailyCost {
   date: string;
+  hourly_cost: number;
+  salary_cost: number;
+  contractor_cost: number;
+  daily_rate_cost: number;
+  total_cost: number;
   hours_worked: number;
 }
 
@@ -62,27 +82,22 @@ export function redactLaborCostsResult<
   D extends DailyCost,
   E extends EmployeeCost,
 >(result: {
-  breakdown: LaborBreakdown<H, O>;
+  breakdown: CompensationBuckets<H, O> & { total: number };
   daily_costs: D[] | undefined;
   employee_breakdown: E[] | null;
 }) {
-  const { breakdown } = result;
   return {
-    breakdown: {
-      hourly: nullCost(breakdown.hourly),
-      salary: nullCost(breakdown.salary),
-      contractor: nullCost(breakdown.contractor),
-      daily_rate: nullCost(breakdown.daily_rate),
-      total: null,
-    },
-    daily_costs: result.daily_costs?.map((day) => {
-      const redacted = { ...day } as Record<string, unknown>;
-      for (const field of DAILY_MONEY_FIELDS) redacted[field] = null;
-      return redacted as Nullable<D, DailyMoneyField>;
-    }),
+    breakdown: { ...redactBuckets(result.breakdown), total: null },
+    daily_costs: result.daily_costs?.map((day) => ({
+      ...day,
+      hourly_cost: null,
+      salary_cost: null,
+      contractor_cost: null,
+      daily_rate_cost: null,
+      total_cost: null,
+    })),
     employee_breakdown:
       result.employee_breakdown?.map((row) => ({ ...row, total_cost_cents: null })) ?? null,
-    pay_hidden: payHidden(),
   };
 }
 
@@ -102,19 +117,13 @@ export function redactPayrollSummary<H extends CostBucket, O extends CostBucket>
   total_tips: number;
   total_manual_payments: number;
   total_payroll: number;
-  by_compensation_type: Omit<LaborBreakdown<H, O>, 'total'>;
+  by_compensation_type: CompensationBuckets<H, O>;
 }) {
-  const types = summary.by_compensation_type;
   return {
     ...summary,
     total_gross_pay: null,
     total_manual_payments: null,
     total_payroll: null,
-    by_compensation_type: {
-      hourly: nullCost(types.hourly),
-      salary: nullCost(types.salary),
-      contractor: nullCost(types.contractor),
-      daily_rate: nullCost(types.daily_rate),
-    },
+    by_compensation_type: redactBuckets(summary.by_compensation_type),
   };
 }

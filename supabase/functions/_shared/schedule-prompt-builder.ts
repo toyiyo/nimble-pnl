@@ -184,7 +184,7 @@ export function buildWeekDates(weekStart: string): { rows: string; byDayOfWeek: 
 export function computeHourBudget(
   dob: string | null | undefined,
   weekStart: string,
-  isMinorFallback = false,
+  viewSaysMinor = false,
 ): { is_minor: boolean; max_weekly_hours: number } {
   const weekDate = new Date(`${weekStart}T00:00:00Z`);
   if (Number.isNaN(weekDate.getTime())) {
@@ -197,7 +197,7 @@ export function computeHourBudget(
   // NULL, but the view's is_minor still says "minor". The age band is then
   // unknown, so the strictest minor cap applies.
   if (!dob) {
-    return isMinorFallback
+    return viewSaysMinor
       ? { is_minor: true, max_weekly_hours: 18 }
       : { is_minor: false, max_weekly_hours: 40 };
   }

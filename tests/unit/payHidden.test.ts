@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   PAY_HIDDEN_REASON,
+  PAY_HIDDEN_TOOL_HINT,
+  payHidden,
   redactLaborCostsResult,
   redactPayrollSummary,
   redactTimePunchShifts,
@@ -14,11 +16,13 @@ import {
  * that $0 as a real figure. Hours and counts stay.
  */
 
+// What the engine returns for a masked caller: every cost is $0, and
+// daysScheduled (days with cost > 0) is 0 too, although staff worked.
 const breakdown = {
   hourly: { cost: 0, hours: 32.5 },
-  salary: { cost: 0, employees: 2, daysScheduled: 7 },
-  contractor: { cost: 0, employees: 1, daysScheduled: 7 },
-  daily_rate: { cost: 0, employees: 1, daysScheduled: 3 },
+  salary: { cost: 0, employees: 2, daysScheduled: 0 },
+  contractor: { cost: 0, employees: 1, daysScheduled: 0 },
+  daily_rate: { cost: 0, employees: 1, daysScheduled: 0 },
   total: 0,
 };
 
@@ -27,6 +31,13 @@ describe('PAY_HIDDEN_REASON', () => {
     expect(PAY_HIDDEN_REASON).toBe(
       'Pay rates are hidden for your role, so labor cost figures are not available.',
     );
+  });
+});
+
+describe('PAY_HIDDEN_TOOL_HINT', () => {
+  it('names pay_hidden and forbids a $0 report', () => {
+    expect(PAY_HIDDEN_TOOL_HINT).toContain('pay_hidden');
+    expect(PAY_HIDDEN_TOOL_HINT).toMatch(/not report them as \$0/i);
   });
 });
 
@@ -66,11 +77,17 @@ describe('redactLaborCostsResult (get_labor_costs)', () => {
     expect(result.breakdown.total).toBeNull();
   });
 
-  it('keeps the hours and the counts in the breakdown', () => {
+  it('keeps the hours and the employee counts in the breakdown', () => {
     expect(result.breakdown.hourly.hours).toBe(32.5);
     expect(result.breakdown.salary.employees).toBe(2);
-    expect(result.breakdown.salary.daysScheduled).toBe(7);
-    expect(result.breakdown.daily_rate.daysScheduled).toBe(3);
+    expect(result.breakdown.daily_rate.employees).toBe(1);
+  });
+
+  it('sets daysScheduled to null, because it counts days with a cost above zero', () => {
+    expect(result.breakdown.salary.daysScheduled).toBeNull();
+    expect(result.breakdown.contractor.daysScheduled).toBeNull();
+    expect(result.breakdown.daily_rate.daysScheduled).toBeNull();
+    expect(result.breakdown.hourly).not.toHaveProperty('daysScheduled');
   });
 
   it('sets each daily money field to null and keeps date and hours', () => {
@@ -92,8 +109,9 @@ describe('redactLaborCostsResult (get_labor_costs)', () => {
     expect(result.employee_breakdown?.[0].total_hours).toBe(8);
   });
 
-  it('adds pay_hidden with the reason', () => {
-    expect(result.pay_hidden).toEqual({ reason: PAY_HIDDEN_REASON });
+  it('only redacts: the tool adds pay_hidden itself', () => {
+    expect(result).not.toHaveProperty('pay_hidden');
+    expect(payHidden()).toEqual({ reason: PAY_HIDDEN_REASON });
   });
 
   it('keeps an omitted daily breakdown and a null employee breakdown as they are', () => {
@@ -141,7 +159,7 @@ describe('redactPayrollSummary (get_payroll_summary)', () => {
 
   it('sets each compensation type cost to null and keeps the hours and counts', () => {
     expect(summary.by_compensation_type.hourly).toEqual({ cost: null, hours: 32.5 });
-    expect(summary.by_compensation_type.salary).toEqual({ cost: null, employees: 2, daysScheduled: 7 });
+    expect(summary.by_compensation_type.salary).toEqual({ cost: null, employees: 2, daysScheduled: null });
     expect(summary.by_compensation_type.contractor.cost).toBeNull();
     expect(summary.by_compensation_type.daily_rate.cost).toBeNull();
   });

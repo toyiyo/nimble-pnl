@@ -31,6 +31,7 @@ import {
   redactTimePunchShifts,
 } from "../_shared/payHidden.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
+import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
@@ -76,6 +77,21 @@ function executeNavigate(args: any): any {
       action_required: 'navigation_confirmation',
     },
   };
+}
+
+/**
+ * Why get_kpis omits labor. Order: masked pay, then the missing capability,
+ * then a labor window on other days than sales. Only used when labor is
+ * omitted; redactLaborFields ignores the reason otherwise.
+ */
+function pickLaborOmittedReason(access: {
+  hasPayRates: boolean;
+  hasLaborCapability: boolean;
+  laborMismatchReason: string | undefined;
+}): string | undefined {
+  if (!access.hasPayRates) return PAY_HIDDEN_REASON;
+  if (!access.hasLaborCapability) return LABOR_CAPABILITY_REASON;
+  return access.laborMismatchReason;
 }
 
 /**
@@ -183,20 +199,22 @@ async function executeGetKpis(
     // shift whose clock_out lands just after endDate still pairs whole.
     // calculateActualLaborCost attributes hours by clock-in day and drops
     // out-of-window periods, so this never double-counts.
-    const { data: timePunches, error: punchesError } = await supabase
-      .from('time_punches')
-      .select('id, employee_id, restaurant_id, punch_time, punch_type')
-      .eq('restaurant_id', restaurantId)
-      .gte('punch_time', laborStartDate.toISOString())
-      .lte('punch_time', new Date(laborEndDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
-      .order('punch_time', { ascending: true });
+    // All employees (including inactive, for historical accuracy) load in
+    // parallel with the punches: the two reads do not depend on each other.
+    const [{ data: timePunches, error: punchesError }, employees] = await Promise.all([
+      supabase
+        .from('time_punches')
+        .select('id, employee_id, restaurant_id, punch_time, punch_type')
+        .eq('restaurant_id', restaurantId)
+        .gte('punch_time', laborStartDate.toISOString())
+        .lte('punch_time', new Date(laborEndDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
+        .order('punch_time', { ascending: true }),
+      fetchLaborEmployees(supabase, restaurantId),
+    ]);
 
     if (punchesError) {
       throw new Error(`Failed to fetch time punches: ${punchesError.message}`);
     }
-
-    // Fetch all employees (including inactive for historical accuracy)
-    const employees = await fetchLaborEmployees(supabase, restaurantId);
 
     // Calculate labor costs using shared module (same logic as Dashboard)
     const { breakdown: laborBreakdown } = calculateActualLaborCost(
@@ -250,17 +268,10 @@ async function executeGetKpis(
   // everything downstream of that (prime_cost, profit_margin, the
   // labor/prime benchmark statuses) rather than let it read as a complete
   // restaurant-wide figure — food-cost-only fields are unaffected and stay in.
-  // Reason order: masked pay, then the missing capability (the default
-  // reason of redactLaborFields), then the day mismatch.
-  const omittedReason = !hasPayRates
-    ? PAY_HIDDEN_REASON
-    : !hasLaborCapability
-      ? undefined
-      : laborMismatchReason;
   const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(
     { costs: rawCosts, profitability: rawProfitability, benchmarks: rawBenchmarks },
     hasLaborAccess,
-    omittedReason
+    pickLaborOmittedReason({ hasPayRates, hasLaborCapability, laborMismatchReason })
   );
 
   const revenue = {
@@ -289,6 +300,7 @@ async function executeGetKpis(
       liabilities: { sales_tax: salesTotals.salesTax, tips: salesTotals.tips, other_liabilities: salesTotals.otherLiabilities },
       benchmarks,
       labor_omitted: laborOmittedReason ? { reason: laborOmittedReason } : undefined,
+      pay_hidden: hasPayRates ? undefined : payHidden(),
 
       // Additional metrics not in shared module
       inventory_value: inventoryValue,
@@ -1941,10 +1953,10 @@ interface FetchLaborEmployeesOptions {
  * checks that flag with hasPayRatesCapability before it shows a cost.
  */
 async function fetchLaborEmployees(
-  supabase: any,
+  supabase: any, // untyped Deno supabase-js client, as in every executor in this file
   restaurantId: string,
   options: FetchLaborEmployeesOptions = {},
-): Promise<any[]> {
+): Promise<any[]> { // rows of EMPLOYEE_LABOR_COLUMNS; the labor engine takes untyped rows
   const { employeeId, position, activeOnly = false } = options;
 
   let query = supabase
@@ -2073,6 +2085,7 @@ async function executeGetLaborCosts(
       // Without view:pay_rates every rate is a masked NULL, so each cost is $0.
       // Show null plus a reason, not $0.
       ...(hasPayRates ? costs : redactLaborCostsResult(costs)),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
     },
     evidence: [
       { table: 'time_punches', summary: `${timePunches.length} time punches across ${employees.length} employees from ${startDateStr} to ${endDateStr}` },
@@ -2260,8 +2273,9 @@ async function executeGetScheduleOverview(
       .gte('start_time', startDate.toISOString())
       .lte('start_time', endDate.toISOString())
       .order('start_time', { ascending: true }),
-    fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }),
-    hasPayRatesCapability(restaurantId, supabase),
+    // Only the cost projection reads employees and the pay flag.
+    include_projected_costs ? fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }) : Promise.resolve([]),
+    include_projected_costs ? hasPayRatesCapability(restaurantId, supabase) : Promise.resolve(true),
   ]);
 
   if (shiftsResult.error) throw new Error(`Failed to fetch shifts: ${shiftsResult.error.message}`);

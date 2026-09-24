@@ -142,13 +142,16 @@ Fields without the flag:
 | Tool | Set to `null` | Keep |
 |---|---|---|
 | `get_kpis` | labor, prime cost and profitability, through `redactLaborFields` (`_shared/periodMetrics.ts:358-381`) | food cost, sales |
-| `get_labor_costs` | `breakdown.{hourly,salary,contractor,daily_rate}.cost`, `breakdown.total`, each `daily_costs[]` `*_cost` and `total_cost`, `employee_breakdown[].total_cost_cents` | hours, employee and day counts |
+| `get_labor_costs` | `breakdown.{hourly,salary,contractor,daily_rate}.cost`, `.daysScheduled`, `breakdown.total`, each `daily_costs[]` `*_cost` and `total_cost`, `employee_breakdown[].total_cost_cents` | hours, employee counts |
 | `get_time_punches` | each `shifts[].cost_cents` | hours, times |
 | `get_schedule_overview` | `projected_labor_costs` (the cost step does not run) | shifts |
-| `get_payroll_summary` | `total_gross_pay`, `by_compensation_type.*.cost`, `total_manual_payments` (contractor pay), `total_payroll` | hours, counts, `total_tips`, per-employee `tips` |
+| `get_payroll_summary` | `total_gross_pay`, `by_compensation_type.*.cost` and `.daysScheduled`, `total_manual_payments` (contractor pay), `total_payroll` | hours, employee counts, `total_tips`, per-employee `tips` |
 
-Each of these tools adds `pay_hidden: { reason: PAY_HIDDEN_REASON }` when the
-flag is missing. Tips stay: they come from `tip_splits`, not from pay rates.
+Each of these five tools adds `pay_hidden: { reason: PAY_HIDDEN_REASON }` when
+the flag is missing (`get_kpis` too, next to `labor_omitted`). Tips stay: they
+come from `tip_splits`, not from pay rates. `daysScheduled` counts days with a
+cost above zero (`_shared/laborCalculations.ts:629`, `:634`, `:639`), so it
+comes from pay and is null too.
 
 `get_kpis` reason order: pay flag, then the capability, then the day
 mismatch. `redactLaborFields` gets an optional `reason` argument. The line

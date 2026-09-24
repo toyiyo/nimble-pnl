@@ -9,6 +9,7 @@ import {
   hasPayRatesCapability,
   type CapabilityCheckClient,
 } from '../../supabase/functions/_shared/tools-registry';
+import { PAY_HIDDEN_TOOL_HINT } from '../../supabase/functions/_shared/payHidden';
 
 /**
  * Tests for AI chat tool registration + role gating.
@@ -377,8 +378,7 @@ describe('tools-registry: labor tool descriptions explain pay_hidden', () => {
     (name) => {
       const def = getTools('rest-1', 'owner').find((t) => t.name === name);
       expect(def).toBeDefined();
-      expect(def!.description).toContain('pay_hidden');
-      expect(def!.description).toMatch(/not report them as \$0/i);
+      expect(def!.description).toContain(PAY_HIDDEN_TOOL_HINT);
     },
   );
 });

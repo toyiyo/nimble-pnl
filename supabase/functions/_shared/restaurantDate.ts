@@ -177,7 +177,7 @@ export function calculateDateRange(
     case 'year':
       startDate = new Date(now.getFullYear(), 0, 1);
       break;
-    case 'custom':
+    case 'custom': {
       if (!customStartDate || !customEndDate) {
         throw new Error('Custom period requires start_date and end_date');
       }
@@ -187,6 +187,7 @@ export function calculateDateRange(
       // End-of-day so the inclusive range matches every other branch above.
       endDate = new Date(ey, em - 1, ed, 23, 59, 59);
       break;
+    }
     default:
       // Default to current week
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);

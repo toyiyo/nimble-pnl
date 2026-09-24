@@ -987,6 +987,35 @@ export async function hasSchedulingOrPayrollCapability(
 }
 
 /**
+ * Resolves view:pay_rates for the calling user, with the same RPC the
+ * employees_secure view uses to mask pay (20260806110000). Without the flag
+ * the view returns NULL pay, so the labor engine computes $0 for every
+ * masked employee. The labor tools use this check to omit cost figures
+ * instead of reporting a masked $0 as a real total. Fails closed and logs an
+ * RPC failure, as hasSchedulingOrPayrollCapability does.
+ */
+export async function hasPayRatesCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  const result = await supabase
+    .rpc('user_has_capability', {
+      p_restaurant_id: restaurantId,
+      p_capability: 'view:pay_rates',
+    })
+    .catch((err: unknown) => ({ data: null, error: err }));
+
+  if (result.error) {
+    console.error('hasPayRatesCapability: view:pay_rates RPC failed', {
+      restaurantId,
+      error: result.error,
+    });
+  }
+
+  return Boolean(result.data);
+}
+
+/**
  * Type guard for CAPABILITY_GATED_TOOLS membership. Shared by
  * canUseCapabilityGatedTool and by the ai-execute-tool dispatcher, which
  * needs the same check to decide whether to call canUseTool or this file's

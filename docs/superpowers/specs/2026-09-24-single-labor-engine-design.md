@@ -94,8 +94,12 @@ The repo already shares `_shared/` code with `src/`:
 `_shared/availability-tz.ts`, which uses a bare `date-fns-tz` import (line 12).
 
 Move these files with `git mv`. Each old `src/` path becomes a re-export
-shim with the same exports, so the 69 `src/` files that import them do not
-change:
+shim with the same exports, so the `src/` files that import them do not
+change. 78 files import the 13 moved modules, and 7 more import
+`src/lib/scheduleRoster.ts`. The count comes from:
+`grep -rlE "from ['\"](@/|\.\.?/.*)(services/laborCalculations|utils/payrollCalculations|utils/compensationCalculations|lib/overtimeCalculations|utils/punchWindow|utils/openShiftPunches|utils/tipAggregation|utils/fetchAllRows|services/tipsFetch|lib/restaurantClock|lib/dateOnly|lib/dateConfig|lib/combineCosts)['\"]" src`.
+The plan lists the files. No test uses `vi.mock` on a moved path, and no
+moved module has a default export, so `export *` shims are safe.
 
 | From | To |
 |---|---|
@@ -121,9 +125,13 @@ Rules for the moved files:
   `date-fns` and `date-fns-tz`.
 - Add `"date-fns": "npm:date-fns@3.6.0"` to `supabase/functions/deno.json`,
   next to `date-fns-tz`. `3.6.0` is the installed version.
-- No `@/` alias, no `import.meta.env`, no React, no browser globals.
-  `restaurantClock.ts` reads `import.meta.env` (`src/lib/restaurantClock.ts:25`).
-  Change it to a guarded read that is safe when `env` is undefined (Deno).
+- No `@/` alias, no React, no browser globals.
+  `restaurantClock.ts` reads `import.meta.env?.DEV`
+  (`src/lib/restaurantClock.ts:25-26`). That is safe at runtime in Deno. Only
+  the Deno type check fails, because `ImportMeta` has no `env` there. Keep the
+  literal `import.meta.env` token, so Vite replaces it and `vi.stubEnv` in
+  `tests/unit/restaurantClock.test.ts:155-158` keeps working. Add a type-only
+  declaration for `env` in the moved file.
 - No `@supabase/supabase-js` type import. `tipsFetch.ts` imports
   `SupabaseClient` (line 1). Use a small structural client type, as
   `_shared/timezone.ts` does (`RestaurantTimeZoneQueryClient`, line 145).
@@ -134,35 +142,103 @@ Rules for the moved files:
   checks each call. Output types that the UI uses (for example
   `LaborCostBreakdown`) move, and `src/types` re-exports them. A function that
   returns its input employee is generic (`<E extends LaborEmployee>`).
+- `LABOR_EMPLOYEE_KEYS` is a `const` array with
+  `satisfies readonly (keyof LaborEmployee)[]`. A test checks it against the
+  employee select, because a test cannot read interface keys at runtime and
+  `tsconfig` has `strict: false`. The engine also reads `area`, `is_active`,
+  `deactivated_at` and `last_active_date` (`payrollCalculations.ts:619`,
+  `:677-680`), so the select needs them.
+- `getSortedHistory` sorts by `effective_date` only
+  (`compensationCalculations.ts:64-67`). Add `created_at` as a tie-break, and
+  add `created_at` to the history embed, so the UI and the AI pick the same
+  row.
 - A source-contract test checks the import rules on every file in
   `_shared/labor/`.
 
 The `src/` DB code and the other `src/lib/dateOnly.ts` users stay as they
-are. The existing `_shared/dateOnly.ts` stays for its current Deno users.
+are. `_shared/dateOnly.ts` (the current Deno copy) re-exports
+`toDateOnlyString` from `_shared/labor/dateOnly.ts`, so there is one copy.
+
+Guardrails that stop at `src/` today move with the code:
+
+- The ESLint timezone rules and the `.limit(10000)` rule apply only to
+  `src/**/*.{ts,tsx}` (`eslint.config.js:84-92`). Add
+  `supabase/functions/_shared/labor/**/*.ts`, and ignore the moved
+  `restaurantClock.ts` and `dateOnly.ts`, as `src/` does for the originals.
+- `tests/unit/highVolumeQueryGuard.test.ts:76` walks only `src`, and it looks
+  for `@/utils/fetchAllRows`. Extend the walk, and accept `./fetchAllRows.ts`.
+- `sonar-project.properties` sets `sonar.sources=src`. Add
+  `supabase/functions/_shared/labor`. The vitest coverage include already
+  covers `_shared/**`.
 
 ### Layer 2: shared loaders
 
 Move the body of each hook's `queryFn` into a loader in `_shared/labor/`.
-The hook keeps `useQuery`, the query key, `staleTime` and the React inputs.
-A loader takes a structural client, the restaurant id, calendar days
-(`YYYY-MM-DD`), the timezone and the employees.
+The hook keeps all of its React Query options: `useQuery`, the query key,
+`staleTime`, `enabled` (`!!restaurantId && !!employees.length`),
+`refetchOnWindowFocus`, `placeholderData`
+(`useLaborCostsFromTimeTracking.tsx:283-287`) and the payroll
+`queryKeyEmployeeId` segment (`usePayroll.tsx:171-174`). A loader takes a
+structural client, the restaurant id, calendar days (`YYYY-MM-DD`), the
+timezone and the employees.
 
 - `loadPeriodLaborCost(client, { restaurantId, startDay, endDay, timeZone,
-  employees, throughNow, now })` returns `{ dailyCosts, totalCost, wageCost,
-  capped }`. It is the current `useLaborCostsFromTimeTracking` body.
-- `loadPeriodLaborBasis(...)` applies `resolveLaborBasis` over
-  `loadPeriodLaborCost` and the bank-transaction labor
-  (`src/hooks/useLaborCostsFromTransactions.tsx`, `bank_transactions` and
-  `pending_outflows`). It returns the `totalLaborCost` and `laborBasis` that
-  `useCostsFromSource` returns (`useCostsFromSource.tsx:123-130`).
+  employees, throughNow, now })` returns `{ dailyCosts, breakdown, totalCost,
+  wageCost, capped }`. It is the current `useLaborCostsFromTimeTracking`
+  body. `breakdown` is the `calculateActualLaborCost` breakdown, for
+  `get_labor_costs`.
+- `loadPeriodBankLabor(client, { restaurantId, startDay, endDay })` is the
+  current `useLaborCostsFromTransactions` `queryFn` (`:39-82`). It pages with
+  `fetchAllRows`, not `.limit(10000)`, which stops at the 1000-row cap. It
+  uses the day strings, not host-local `format(dateFrom, 'yyyy-MM-dd')`.
+  `useLaborCostsFromTransactions` calls it.
+- `loadPeriodLaborBasis(...)` applies `resolveLaborBasis`
+  (`src/lib/combineCosts.ts:44-46`) over the two loaders. It returns the
+  `totalLaborCost` and `laborBasis` that `useCostsFromSource` returns
+  (`useCostsFromSource.tsx:94`, `:119-120`). `useCostsFromSource` keeps its two
+  queries, and a parity test checks that it equals `loadPeriodLaborBasis`.
 - `loadPayrollPeriod(client, { restaurantId, startDay, endDay, timeZone,
-  employees, employeeId? })` returns the `PayrollPeriod` from
-  `calculatePayrollPeriod`. It is the current `usePayroll` body.
+  employees, employeeId? })` returns `{ period, capped }`, where `period` is
+  the `PayrollPeriod` from `calculatePayrollPeriod`. It is the current
+  `usePayroll` body.
+  - `employeeId` is `string | undefined`, never `null`. The hook uses `null`
+    for "self-scoped, pending" (`usePayroll.tsx:171`), and `scopeToEmployee`
+    (`:62-68`) reads `null` as "no filter". So the hook does not call the
+    loader for `null`, and the loader throws on `null`.
+  - `capped` goes to the caller, not only to the console (`:217-222`).
+  - The punch fetch names its columns, not `select('*')` (`:205`).
+  - `tip_splits`, `tip_split_items`, `daily_labor_allocations`,
+    `employee_tips` and `tip_payouts` page with `fetchAllRows`
+    (`usePayroll.tsx:227-310`). `tip_split_items` reads in chunks of ids.
+- `loadScheduledLaborCost(client, { restaurantId, startDay, endDay,
+  timeZone })` fetches the shifts and all employees (`status: 'all'`, as
+  `useScheduledLaborCosts.tsx:65` does) and calls
+  `calculateScheduledLaborCost`. The Scheduling page passes a Monday week
+  (`src/pages/Scheduling.tsx:412-416`).
 
-Each loader builds every instant window from the calendar days and the
-timezone, with `businessDayRangeToInstants`. The OT week edges come from the
-restaurant-local week of `startDay` and `endDay`, not from `startOfWeek` on a
-host Date.
+Two kinds of `Date` go into the engine. They must not mix:
+
+- **Fetch windows are instants.** A loader builds them from the day strings
+  and the timezone with `businessDayRangeToInstants`. They go only to the
+  PostgREST `gte` / `lte` filters and to `periodsInWindow`.
+- **Engine period arguments are day tokens:** `parseDateOnly(startDay)` and
+  a local end of day on `endDay`. The engine reads them with local fields:
+  `toDateOnlyString(periodStartDate)` (`payrollCalculations.ts:498-500`,
+  `:592-593`), the `d.getDate()` loop (`compensationCalculations.ts:722`),
+  and the noon compare `new Date(dateKey + 'T12:00:00')` against
+  `rangeStart` / `rangeEnd` (`laborCalculations.ts:962-963`).
+- An instant in a day-token argument moves the day on the UTC edge. Example:
+  a Chicago `rangeEnd` of `endDay+1 04:59:59Z` reads as `endDay+1`, so
+  salaried staff get one more day. Variable names keep the two apart:
+  `dayStart` / `dayEnd` versus `windowStart` / `windowEnd`.
+
+`now` for `throughNow` is a real instant: `new Date()`, read inside the
+loader call. It is never `restaurantNow`, which is a wall-clock Date
+(`_shared/restaurantDate.ts:32-42`). `appendOpenShiftClockOuts` needs a real
+instant (`src/utils/openShiftPunches.ts:39-44`).
+
+The OT week edges come from the restaurant-local week of `startDay` and
+`endDay` on day strings, not from `startOfWeek` on a host Date.
 
 ### Layer 3: host-independent engine
 
@@ -174,26 +250,42 @@ Known sites to change (from Problem 3):
 
 - `laborCalculations.ts:898-899`: week key of a punch =
   week of `toBusinessDay(punch_time, tz)`, on the day string.
-- `useLaborCostsFromTimeTracking.tsx:256-258` (moves into the loader): range
-  bounds from `businessDayRangeToInstants(startDay, endDay, tz)`.
+- `laborCalculations.ts:918-919` and `:962-963`: the week start and the
+  in-range check use `new Date(dateKey + 'T12:00:00')` (host-local noon).
+  Change them to day-string compares.
+- `useLaborCostsFromTimeTracking.tsx:256-258` (moves into the loader): the
+  engine gets day tokens (Layer 2). The fetch window is
+  `businessDayRangeToInstants(startDay, endDay, tz)`.
 - `punchWindow.ts:66-88`: week-aligned fetch bounds from day strings and the
   timezone.
 - `payrollCalculations.ts` anomaly messages: `formatInstant(t, tz, ...)`
   (`src/lib/restaurantClock.ts:122`).
+- `payrollCalculations.ts:687-688`: `endOfWeek(parseISO(deactivated_at))`
+  on an instant. Use the restaurant day of `deactivated_at`, then the week of
+  that day string.
+- `compensationCalculations.ts:249`: `new Date('2024-01-01')` is a UTC anchor
+  mixed with local math. Change it to a local-field day token.
 - `businessDayRangeToInstants` (`src/lib/restaurantClock.ts:183`) uses
-  `fromZonedTime('YYYY-MM-DDT00:00:00.000')`. When local midnight falls in a
-  DST gap, this is 1 hour early. Example: `America/Santiago`, `2026-09-06`
-  gives `03:00Z`, which is 23:00 on Sep 5 local. The day starts at `04:00Z`.
-  Add `firstInstantOfDay`: check the guess, and on a failed check do a
-  binary search on whole minutes in ±12 h.
+  `fromZonedTime` on `00:00:00.000` and `23:59:59.999`. When a DST change
+  falls at local midnight, both ends can be 1 hour off:
+  - Gap: `America/Santiago` `2026-09-06` starts at `03:00Z` by this rule
+    (23:00 on Sep 5 local). The real start is `04:00Z`.
+  - Overlap: Santiago `2026-04-04` ends at `2026-04-05T02:59:59.999Z` by this
+    rule. The real end is `03:59:59.999Z`, so punches in the repeated hour
+    fall out.
+  - Add `firstInstantOfDay(day, tz)`: check the guess, and on a failed check
+    do a binary search on whole minutes in ±12 h. Then
+    `start = firstInstantOfDay(startDay)` and
+    `end = firstInstantOfDay(dayAfter(endDay)) - 1 ms`.
 
 For a viewer in the restaurant timezone, the host day and the restaurant
-day are the same. So these changes do not change page results for that
-viewer. For a viewer in another timezone they fix the result.
+day are the same, so these site changes keep the page result for that
+viewer. The window change in "Behavior changes" is a separate, intended
+change.
 
-An audit task reads every date call in the moved files (about 47 matches of
-`startOfWeek|endOfWeek|setHours|getDate|getDay|getFullYear|format(|parseISO|setDate`)
-and classifies each one as instant (change) or day token (keep).
+An audit task reads every date call in the moved files and classifies each
+one as instant (change) or day token (keep). The pattern is
+`startOfWeek|endOfWeek|setHours|getDate|getDay|getFullYear|format\(|parseISO|setDate|new Date\(|T12:00:00`.
 
 ### Layer 4: the AI tools call the loaders
 
@@ -206,22 +298,43 @@ and classifies each one as instant (change) or day token (keep).
 | `get_labor_costs` | Labor page (`useLaborPnlCore.ts:61`) | `loadPeriodLaborCost`, `throughNow: true` |
 | `get_time_punches` | (no page total) | `calculateHoursPerEmployee` and `parseWorkPeriods` (moved engine) |
 | `get_payroll_summary` | Payroll (`usePayroll`) | `loadPayrollPeriod` |
-| `get_schedule_overview` | Scheduling (`useScheduledLaborCosts.tsx:46`) | `calculateScheduledLaborCost` |
+| `get_schedule_overview` | Scheduling (`useScheduledLaborCosts.tsx:85`) | `loadScheduledLaborCost` |
 
+- `get_labor_costs` figures:
+  - The Labor page shows the straight-time `dailyCosts` only
+    (`useLaborPnlCore.ts:56-61`, `useLaborPnlSummary.ts:26`). The tool returns
+    the same `daily_costs` and `breakdown`.
+  - It also returns `total_labor_cost` = `totalCost` (overtime plus tips owed
+    plus per-job), the figure of the dashboard pills. Its description names
+    both figures, so the model does not mix them.
+- `get_schedule_overview` uses `loadScheduledLaborCost`. Its `week` / `month`
+  branches (`index.ts:2176-2189`) and the `status = 'active'` filter
+  (`:2208`) go. Weeks are Monday weeks, as on the Scheduling page.
+- Weeks: `calculateDateRange` uses `getDay()` for `current_week` and
+  `last_week`, so its weeks start on Sunday
+  (`_shared/restaurantDate.ts:164`, `:170`). Payroll and Scheduling weeks start
+  on Monday (`WEEK_STARTS_ON = 1`, `src/lib/dateConfig.ts:8`). Change
+  `calculateDateRange` to `WEEK_STARTS_ON` (moved `dateConfig.ts`). This
+  changes the week of every AI tool, the sales tools too (decided with the
+  user).
 - Every labor period comes from `calculateDateRange(..., restaurantNow)`.
   The loaders get `startDateStr` / `endDateStr`.
 - Delete `laborServerNow`, `laborWindowMismatchReason`
   (`_shared/restaurantDate.ts:72`, `:81`), the `laborRange` and the mismatch
   gate in `executeGetKpis` (`index.ts:93-97`, `:160`, `:253`).
-- The capability check stays (`hasSchedulingOrPayrollCapability`). Without
-  the capability, labor stays omitted, as today.
-- Employees: the AI selects `EMPLOYEE_LABOR_COLUMNS`
-  (`_shared/employeeLaborColumns.ts:8-13`). The dashboard selects `*` from
-  `employees_secure` (`src/hooks/useEmployees.tsx:41-45`). Extend the
-  constant to every field the moved engine reads. A test checks that the
-  keys of `LaborEmployee` are in the constant.
+- The capability checks stay. `hasSchedulingOrPayrollCapability` gates labor.
+  `hasPayRatesCapability` and the `pay_hidden` helpers from
+  [toyiyo/nimble-pnl#806](https://github.com/toyiyo/nimble-pnl/pull/806)
+  stay: without `view:pay_rates`, every pay-derived figure is `null` with a
+  reason. This design needs #806 merged first.
+- Employees: the AI reads `EMPLOYEE_LABOR_SOURCE` (`employees_secure`) through
+  `fetchLaborEmployees` (#806). The base table `employees` revokes the pay
+  columns from `authenticated` (`20260806110000_employee_column_gating.sql:126`).
+  Extend `EMPLOYEE_LABOR_COLUMNS` to `LABOR_EMPLOYEE_KEYS` (Layer 1), plus the
+  history `created_at`.
 - Delete `_shared/laborCalculations.ts`. Update `tests/unit/punchWindow.test.ts:55`,
-  which reads it as text.
+  which reads it as text. Delete the `laborWindowMismatchReason` tests
+  (`tests/unit/restaurantDate.test.ts:9`, `:118-137`).
 
 ## Behavior changes
 
@@ -231,10 +344,27 @@ and classifies each one as instant (change) or day token (keep).
   hour.
 - **AI punch fetches read all pages** (`fetchAllRows`), not only the first
   1000 rows.
-- **Pages:** no change for a viewer in the restaurant timezone. For a viewer
-  in another timezone, overtime weeks and range edges follow the restaurant
-  timezone (a fix). On a DST change at local midnight (Santiago, Havana), the
-  first hour of the day moves back into the correct day (a fix).
+- **AI weeks start on Monday** for `current_week` and `last_week`, in every
+  tool (sales tools too).
+- **Pages, whole restaurant days (decided with the user).** The loaders work
+  on whole restaurant days, as the query keys already do
+  (`useLaborCostsFromTimeTracking.tsx:84`). Some callers pass a part of a day
+  today, so their numbers change:
+  - `src/pages/Index.tsx:240-241`: the previous-period `prevTo` is the
+    midnight at the start of the last day. Today the fetch ends at 18:00 of
+    that day. When the period ends on a Sunday, `weekAlignedFetchEnd` gives
+    Sunday 23:59:59 with no look-ahead, so a Sunday-night shift that clocks
+    out on Monday is lost. The loader includes it, so the previous-period
+    total goes up to the correct value.
+  - `src/components/DetailedPnLBreakdown.tsx:53-54` and
+    `src/hooks/usePnLAnalyticsFromSource.tsx:116` (`subDays(now, 30)`) start
+    in the middle of a day. The first day of `dailyCosts` now covers the
+    whole day.
+- **Pages, other viewers.** For a viewer in another timezone, overtime weeks
+  and range edges follow the restaurant timezone (a fix). On a DST change at
+  local midnight (Santiago, Havana), the first and last hour of the day move
+  to the correct day (a fix).
+- **Bank labor pages read all rows,** not the first 1000.
 
 ## Tests
 
@@ -248,12 +378,27 @@ All tests use fixed UTC instants and pass under `npm run test:tz`
   `tests/unit/monthlyPerformance.acceptance.test.ts`,
   `tests/unit/dashboard-payroll-consistency.test.ts`,
   `tests/unit/laborBucketingTz.test.ts`, `tests/unit/punchWindow.test.ts`.
+- **Intended test update:** `tests/unit/useLaborCostsFromTimeTracking.fetchRange.test.ts:112-131`,
+  `:150-166` and `:175-188` compute the expected `gte` / `lte` with
+  host-local `startOfWeek` / `endOfWeek` for a Chicago restaurant. They fail
+  under Auckland and UTC after Layer 3. Change them to restaurant-local week
+  edges.
 - **Host independence:** a Sunday 20:00 CDT clock-in falls into the Chicago
   week under all three host timezones. `firstInstantOfDay` for Santiago
-  `2026-09-06` is `04:00Z`.
+  `2026-09-06` is `04:00Z`. The Santiago `2026-04-04` window ends at
+  `03:59:59.999Z`.
+- **Day tokens:** a salaried employee over one Chicago day and one Auckland
+  day gives one day of salary on all three hosts, through each loader.
 - **Loaders:** a stub client returns fixed rows. Check the windows each query
   gets, the page loop, the tip netting, the per-job sum and the basis rule.
+  `loadPayrollPeriod` throws on `employeeId: null`.
 - **Hook parity:** each hook returns the loader result for the same input.
+  Add hook tests for a `dateTo` at Sunday midnight and a `dateFrom` in the
+  middle of a day (the intended changes above).
+- **Basis parity:** `loadPeriodLaborBasis` equals the `totalLaborCost` and
+  `laborBasis` of `useCostsFromSource` for the same rows.
+- **Guardrails:** the ESLint block, `highVolumeQueryGuard` and Sonar include
+  `_shared/labor/`.
 - **Import rules:** every file in `_shared/labor/` has only relative `.ts`
   imports, `date-fns` or `date-fns-tz`. `deno.json` maps both packages.
 - **AI wiring (source contract):** `ai-execute-tool` imports the loaders from
@@ -281,20 +426,37 @@ cannot drive a model conversation to a deterministic tool call.
 - **Client type.** The typed browser client must fit the structural client
   type. Plan task 1 checks this first. If it does not fit, the loaders take
   a page callback (`(from, to) => query`) instead, as `fetchAllRows` does now.
-- **CPU.** The edge function now runs overtime banding. A month for 30 staff
-  is about 130 employee-weeks. This is small, but the plan measures one
-  month fixture.
+- **CPU.** The edge function now runs overtime banding. `calculateDateRange`
+  allows `quarter` and `year`, and `calculateActualLaborCostForRange` filters
+  all punches per employee (`laborCalculations.ts:873`). The plan measures a
+  `year` fixture with 100 employees and 20000 punches (the `fetchAllRows`
+  cap).
+- **Cold start.** A bare `date-fns` root import loads the whole package. Map
+  `"date-fns/": "npm:/date-fns@3.6.0/"` too, and use subpath imports in the
+  moved files, or measure the cold start.
+- **History rows for a masked caller.** RLS drops `compensation_history`
+  without `view:pay_rates`. The engine then uses the current
+  `compensation_type` for every day, so hours by type can differ from an
+  owner's view. #806 nulls the costs. The hours stay, with this known limit.
 - **PR size.** The move is large, but it is mostly `git mv` plus shims.
 
 ## Proposed PR split
 
-1. **PR 1 (no behavior change for the pages):** Layers 1 to 3 and the hook
-   changes. The existing test suite is the guard.
-2. **PR 2 (AI changes):** Layer 4, delete the Deno copy, the restaurant-day
-   windows for the AI.
+0. **#806 (open):** employee reads through `employees_secure` and the
+   `view:pay_rates` gate. This design builds on it.
+1. **PR 1 (pages):** Layers 1 to 3, the loaders and the hook changes. The
+   existing test suite is the guard. Only the whole-day window changes page
+   numbers, as listed in "Behavior changes".
+2. **PR 2 (AI changes):** Layer 4, Monday weeks, delete the Deno copy.
 
-PR 2 changes the numbers the AI gives. PR 1 changes no numbers for a viewer
-in the restaurant timezone. Two PRs keep each review focused.
+PR 2 changes the numbers the AI gives. Two PRs keep each review focused.
+
+## Decisions (with the user)
+
+- Hotfix first: the employee reads (#806) ship before this work.
+- Whole restaurant days in the loaders, with the page changes listed above.
+- Monday weeks in every AI tool.
+- `get_schedule_overview` is in scope, with `loadScheduledLaborCost`.
 
 ## Replaced design
 
@@ -303,3 +465,9 @@ day bucketing in the Deno copy (commits `00b7727`, `59311e5`). The Phase 2.5
 findings from that draft that still apply are in this design: the DST gap at
 midnight, the punch page loop, the look-ahead constant, and the names for
 day and instant pairs.
+
+Phase 2.5 round 2 (Supabase and frontend reviewers) found the day-token
+convention, the partial-day page windows, the employee column grants, the
+masked pay case, the bank labor loader, the `now` instant, the payroll loader
+contract, the guardrails, the DST overlap and the Monday weeks. This version
+folds all of them.

@@ -32,6 +32,7 @@ import {
 } from "../_shared/payHidden.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
 import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
+import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
@@ -1953,10 +1954,10 @@ interface FetchLaborEmployeesOptions {
  * checks that flag with hasPayRatesCapability before it shows a cost.
  */
 async function fetchLaborEmployees(
-  supabase: any, // untyped Deno supabase-js client, as in every executor in this file
+  supabase: ReturnType<typeof createClient>,
   restaurantId: string,
   options: FetchLaborEmployeesOptions = {},
-): Promise<any[]> { // rows of EMPLOYEE_LABOR_COLUMNS; the labor engine takes untyped rows
+): Promise<LaborEmployee[]> {
   const { employeeId, position, activeOnly = false } = options;
 
   let query = supabase
@@ -1976,7 +1977,9 @@ async function fetchLaborEmployees(
 
   const { data, error } = await query;
   if (error) throw new Error(`Failed to fetch employees: ${error.message}`);
-  return data ?? [];
+  // The select is EMPLOYEE_LABOR_COLUMNS, which covers every field of the
+  // engine's Employee type (tests/unit/employeeLaborColumns.test.ts).
+  return (data ?? []) as LaborEmployee[];
 }
 
 /**

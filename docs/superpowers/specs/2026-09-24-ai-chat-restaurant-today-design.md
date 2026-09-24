@@ -13,7 +13,7 @@ sales for that day.
    "Current date". Edge functions run in UTC. After 19:00 CDT the UTC date is
    the next day. The model sends that date to `generate_report`, which
    requires explicit `start_date` / `end_date`
-   (`supabase/functions/_shared/tools-registry.ts:694`).
+   (`supabase/functions/_shared/tools-registry.ts:693`).
 2. `get_sales_by_category` filters `us.sale_date >= p_start_date AND
    us.sale_date <= p_end_date`
    (`supabase/migrations/20260814141000_get_sales_by_category.sql`). A
@@ -71,7 +71,7 @@ No Deno imports, so Vitest can import it.
 ## Decided trade-offs
 
 - Instant queries such as `.gte('punch_time', startDate.toISOString())`
-  (`ai-execute-tool/index.ts:266`) and the shift query at line 2283 keep
+  (`ai-execute-tool/index.ts:266`) and the shift query at line 2282 keep
   their present semantics: UTC midnight of the calendar day. Before this
   change the day was the UTC day. Now it is the restaurant day. A full fix
   converts each boundary with `zonedNaiveToUtc`. That changes labor math, so

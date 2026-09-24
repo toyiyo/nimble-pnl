@@ -130,3 +130,38 @@ describe('computeHourBudget', () => {
     });
   });
 });
+
+describe('computeHourBudget with a masked date of birth', () => {
+  // employees_secure returns NULL date_of_birth without view:employee_pii,
+  // but its is_minor column goes to every member. When the view says
+  // "minor" and the age band is unknown, the strictest minor cap applies.
+  const weekStart = '2026-06-08';
+
+  it('gives the strictest minor cap when the DOB is null and is_minor is true', () => {
+    expect(computeHourBudget(null, weekStart, true)).toEqual({
+      is_minor: true,
+      max_weekly_hours: 18,
+    });
+  });
+
+  it('keeps the adult default when the DOB is null and is_minor is false', () => {
+    expect(computeHourBudget(null, weekStart, false)).toEqual({
+      is_minor: false,
+      max_weekly_hours: 40,
+    });
+  });
+
+  it('keeps the adult default when the DOB is null and no fallback is given', () => {
+    expect(computeHourBudget(null, weekStart)).toEqual({
+      is_minor: false,
+      max_weekly_hours: 40,
+    });
+  });
+
+  it('uses a real DOB and ignores the fallback', () => {
+    expect(computeHourBudget('2008-12-08', weekStart, true)).toEqual({
+      is_minor: true,
+      max_weekly_hours: 40,
+    });
+  });
+});

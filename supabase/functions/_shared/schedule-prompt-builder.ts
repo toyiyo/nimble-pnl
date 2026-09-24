@@ -170,6 +170,7 @@ export function buildWeekDates(weekStart: string): { rows: string; byDayOfWeek: 
  *
  * | DOB             | Age on weekStart | Result                       |
  * | --------------- | ---------------- | ---------------------------- |
+ * | null + fallback | n/a              | { is_minor: true,  max: 18 } |
  * | null/bad string | n/a              | { is_minor: false, max: 40 } |
  * | future          | n/a              | { is_minor: false, max: 40 } |
  * | ≥ 18            | adult            | { is_minor: false, max: 40 } |
@@ -183,6 +184,7 @@ export function buildWeekDates(weekStart: string): { rows: string; byDayOfWeek: 
 export function computeHourBudget(
   dob: string | null | undefined,
   weekStart: string,
+  isMinorFallback = false,
 ): { is_minor: boolean; max_weekly_hours: number } {
   const weekDate = new Date(`${weekStart}T00:00:00Z`);
   if (Number.isNaN(weekDate.getTime())) {
@@ -191,7 +193,14 @@ export function computeHourBudget(
     );
   }
 
-  if (!dob) return { is_minor: false, max_weekly_hours: 40 };
+  // A masked DOB (employees_secure without view:employee_pii) arrives as
+  // NULL, but the view's is_minor still says "minor". The age band is then
+  // unknown, so the strictest minor cap applies.
+  if (!dob) {
+    return isMinorFallback
+      ? { is_minor: true, max_weekly_hours: 18 }
+      : { is_minor: false, max_weekly_hours: 40 };
+  }
 
   const dobDate = new Date(`${dob}T00:00:00Z`);
   if (Number.isNaN(dobDate.getTime())) {

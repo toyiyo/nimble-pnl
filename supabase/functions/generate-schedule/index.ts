@@ -142,10 +142,14 @@ serve(async (req) => {
       existingShiftsResult,
       restaurantResult,
     ] = await Promise.all([
-      // 1. Active employees
+      // 1. Active employees. Read the employees_secure view: this client runs
+      // as the caller, and 20260806110000 revokes SELECT on hourly_rate,
+      // salary_amount and date_of_birth of public.employees from
+      // authenticated. The view masks them to NULL without the flag, and
+      // is_minor goes to every member.
       supabase
-        .from("employees")
-        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type, employment_type, date_of_birth")
+        .from("employees_secure")
+        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type, employment_type, date_of_birth, is_minor")
         .eq("restaurant_id", restaurant_id)
         .eq("status", "active"),
 
@@ -257,7 +261,7 @@ serve(async (req) => {
       // Bug I: derive the per-employee weekly hour cap from DOB so the
       // prompt's Employee Hour Budgets table and the validator backstop
       // share one anchor. Defaults to adult 40h when DOB is null/bad.
-      const budget = computeHourBudget(e.date_of_birth, week_start);
+      const budget = computeHourBudget(e.date_of_birth, week_start, e.is_minor === true);
       return {
         id: e.id,
         name: e.name,

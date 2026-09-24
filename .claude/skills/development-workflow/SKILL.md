@@ -368,7 +368,7 @@ For each task in the plan:
 3. **REFACTOR** — Clean up while tests stay green
 4. **COMMIT** — Commit the passing task
 
-Use subagent-driven-development to parallelize independent tasks.
+Run the tasks one at a time, in plan order. The workflow does not run TDD tasks in parallel.
 
 **Skip condition:** None. All code gets tests.
 
@@ -394,9 +394,10 @@ Use subagent-driven-development to parallelize independent tasks.
 
 ## Phase 7: Multi-Model Code Review
 
-Phase 7 is **three sub-phases** that run sequentially: 7a fans out five
+Phase 7 is **four sub-phases** that run in this order: 7a fans out five
 parallel reviewers, 7b folds their findings into commits, 7c runs
-CodeRabbit local CLI as the final gate. The intent is to defeat "Claude
+CodeRabbit local CLI as the final gate, and 7d re-reviews code written
+after the 7a snapshot. The intent is to defeat "Claude
 grading its own homework" and to stop putting all review eggs in one
 third-party basket.
 
@@ -419,6 +420,9 @@ Phase 7b  Fold findings: classify, fix actionable, commit
 Phase 7c  CodeRabbit local CLI (final gate, max 3 iterations)
    │
    ▼
+Phase 7d  Re-review of post-snapshot code (one pass)
+   │
+   ▼
 Phase 8  Verify
 ```
 
@@ -430,8 +434,8 @@ Inputs handed to every reviewer:
 - `git log origin/main..HEAD --oneline`
 - The Phase 2 design doc.
 
-**Five Claude reviewers.** Each is an `Agent` call with
-`subagent_type=feature-dev:code-reviewer` and the prompt loaded from
+**Five Claude reviewers.** Each is an `Agent` call whose `subagent_type`
+is the registered agent of the same name, defined in
 `.claude/agents/<name>.md`. Launch them in a **single message with five
 tool calls** so they run concurrently.
 
@@ -473,8 +477,8 @@ npm i -g @openai/codex && codex login
 
 ### 7b — Fold findings
 
-1. Collect every `critical` and `major` finding from all five reviewers
-   (including Codex's `dev-tools/codex-review-output.md`).
+1. Collect every `critical` and `major` finding from the five Claude
+   reviewers and from Codex (`dev-tools/codex-review-output.md`).
 2. Deduplicate: same `file:line` from multiple reviewers → keep highest
    severity, merge messages.
 3. Classify each:
@@ -521,20 +525,6 @@ review*. Most issues should have been caught by 7a.
 **Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
 comments on the PR are handled separately in Phase 9d.
 
-**Command:** `coderabbit review --committed`
-
-Review loop (max 3 iterations):
-
-```
-Iteration 1: Run coderabbit review --committed
-  |-- No actionable findings --> Proceed to Phase 8
-  +-- Has findings --> Fix them, commit fixes
-       |
-       Iteration 2: Run coderabbit review --committed
-         |-- No actionable findings --> Proceed to Phase 8
-         +-- Has findings --> Fix them, commit fixes
-              |
-              Iteration 3: Run coderabbit review --committed
 **Command:** `coderabbit review --agent --committed --base origin/main`
 
 Review loop (max 3 iterations):
@@ -553,11 +543,6 @@ Iteration 1: Run coderabbit review --agent --committed --base origin/main
                 +-- Still has findings --> Report to user for manual decision
 ```
 
-Use `--committed` to review all committed changes on the branch. Plain text
-is the CLI's default review mode, so there is no flag to ask for it; `--agent`
-is the opt-in for structured findings.
-Parse the output for actionable suggestions vs informational notes. Only
-fix actionable items.
 `--committed` reviews all committed changes on the branch; `--base origin/main`
 pins the comparison to the *remote-tracking* trunk — exactly the base the
 Phase 7a reviewers use (`git diff origin/main...HEAD`) — instead of letting
@@ -712,7 +697,7 @@ for i in d['items']:
 Classify each open item:
 - **Actionable** (CI failure, SonarCloud critical/major, code review bug) → Fix it
 - **Clarification needed** → Ask user
-- **Informational** (nits, style) → Skip
+- **Informational** (nits, style) → No code change. Reply `--verdict ignored` in 9d.
 
 **Step 4: Fix, verify locally, push, repeat**
 
@@ -734,9 +719,8 @@ For each actionable item:
 **CI green is not the finish line.** `gh pr checks` only reports status-check
 outcomes. CodeRabbit, Codex, Copilot, SonarCloud, and human reviewers all post
 **inline comments and PR-level reviews** that never appear in `gh pr checks`.
-Several past PRs (#506, #511, others) reached all-green CI with unaddressed
-actionable findings sitting in comments — those findings were the bugs we
-were trying to fix.
+A PR can have all-green CI and still have real bugs reported only in
+comments.
 
 <HARD-GATE>
 9d MUST run on every PR, even if 9b reported "no comments in queue."

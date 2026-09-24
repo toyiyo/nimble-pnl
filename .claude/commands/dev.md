@@ -4,7 +4,7 @@ description: Start the full development workflow (brainstorm, plan, worktree, TD
 
 # Development Workflow
 
-Invoke the `development-workflow` skill from `.claude/skills/development-workflow.md` and follow it exactly.
+Invoke the `development-workflow` skill from `.claude/skills/development-workflow/SKILL.md` and follow it exactly.
 
 ## Context
 - Branch: !`git branch --show-current`

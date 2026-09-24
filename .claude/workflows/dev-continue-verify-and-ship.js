@@ -212,7 +212,7 @@ function envelope(body, { skillRef = false } = {}) {
     `- Plan file: ${ctx.planPath}`,
     `- progress.md: ${ctx.worktreePath}/progress.md — read it for prior-phase state; update it when you finish your phase.`,
     ...(skillRef
-      ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
+      ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow/SKILL.md — consult the matching phase if you need detail.`]
       : []),
     '',
     STAGING_DISCIPLINE,

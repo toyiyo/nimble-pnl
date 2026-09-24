@@ -186,6 +186,7 @@ files an earlier phase left modified. Explicit paths are what actually bound a c
 - Ask clarifying questions (one at a time, prefer multiple choice)
 - Propose 2-3 approaches with trade-offs and recommendation
 - Reference any relevant lessons from Phase 0 in your proposals
+- Check the design against the `run-tla` trigger list (`.claude/skills/run-tla/SKILL.md`). If one trigger matches, model the design in TLA+ and put the TLC result in the design doc before approval.
 - Get design approval
 - Write design doc to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit it on the feature branch
 

@@ -49,9 +49,21 @@ export function ymdInTimeZone(instant: Date, timeZone: string): string {
   return `${w.getUTCFullYear()}-${m}-${d}`;
 }
 
-/** Move a local-field Date by `days` calendar days. */
+/**
+ * Move a local-field Date by `days` days. A fractional part moves the time of
+ * day too (1.5 = 1 day and 12 hours).
+ */
 export function addDays(d: Date, days: number): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds());
+  const wholeDays = Math.trunc(days);
+  const extraSeconds = Math.round((days - wholeDays) * 86_400);
+  return new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate() + wholeDays,
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds() + extraSeconds,
+  );
 }
 
 /** Whole calendar days from `fromYmd` to `toYmd` (both 'YYYY-MM-DD'). */

@@ -64,6 +64,15 @@ describe('toLocalYMD and addDays', () => {
     expect(toLocalYMD(addDays(new Date(2026, 8, 30), 1))).toBe('2026-10-01');
     expect(toLocalYMD(addDays(new Date(2026, 8, 24), -30))).toBe('2026-08-25');
   });
+
+  it('keeps a fractional day, so the time of day can move the date', () => {
+    // 18:00 + 1.5 days = 06:00 two days later.
+    const d = addDays(new Date(2026, 8, 24, 18, 0, 0), 1.5);
+    expect(toLocalYMD(d)).toBe('2026-09-26');
+    expect(d.getHours()).toBe(6);
+    // 08:00 + 1.5 days = 20:00 the next day.
+    expect(toLocalYMD(addDays(new Date(2026, 8, 24, 8, 0, 0), 1.5))).toBe('2026-09-25');
+  });
 });
 
 describe('calculateDateRange with the restaurant clock', () => {

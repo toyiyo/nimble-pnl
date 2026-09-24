@@ -47,6 +47,7 @@ No Deno imports, so Vitest can import it.
   `YYYY-MM-DD` calendar day in `timeZone`.
 - `toLocalYMD(d: Date): string` — moved from `ai-execute-tool/index.ts:47`.
 - `addDays(d: Date, n: number): Date` — calendar-day offset on local fields.
+- `daysBetweenYmd`, `laborServerNow` and `laborWindowMismatchReason`.
 - `calculateDateRange(period, customStart, customEnd, now)` — moved from
   `ai-execute-tool/index.ts:57`. The new required `now` argument replaces the
   internal `new Date()`. The body does not change otherwise.
@@ -54,12 +55,12 @@ No Deno imports, so Vitest can import it.
 ### `ai-execute-tool`
 
 - The `serve` handler calls `resolveRestaurantTimeZone(supabase,
-  restaurant_id)` once. It builds `clock = { now:
-  restaurantWallClock(new Date(), timeZone), timeZone }`.
-- Each executor that reads the date gets `clock` as a 4th argument.
-  `calculateDateRange(..., clock.now)` replaces the old call.
+  restaurant_id)` once. It builds `restaurantNow =
+  restaurantWallClock(new Date(), timeZone)`.
+- Each executor that reads the date gets `restaurantNow` as a 4th argument.
+  `calculateDateRange(..., restaurantNow)` replaces the old call.
 - Each `toISOString().split('T')[0]` for a calendar day changes to
-  `toLocalYMD(...)` on a date from `clock.now`. This includes line 1442,
+  `toLocalYMD(...)` on a date from `restaurantNow`. This includes line 1442,
   which feeds lines 1445 and 1446.
 
 ### `ai-chat-stream`
@@ -84,9 +85,11 @@ No Deno imports, so Vitest can import it.
     `executeGetPayrollSummary` (through `fetchLaborData` and line 2366);
   - `executeGetScheduleOverview` (shift instants at line 2282 and the
     grouping key at line 2315).
-- In `get_kpis` for a day period, sales use the restaurant day and labor
-  uses the UTC day. The two differ only in the hours when the UTC date is
-  not the local date. This is the present labor behavior.
+- In `get_kpis`, sales use the restaurant clock and labor uses the server
+  clock. When the two windows are different days, `get_kpis` omits the
+  labor, prime cost and profitability figures and returns
+  `labor_omitted.reason` (`laborWindowMismatchReason`). It does not report a
+  wrong labor % (Phase 7a sound-logic review, major).
 - **Rule for the wall-clock Date.** Build it only with the local constructor
   `new Date(y, m, d, h, mi, s)`. Never call `toISOString()` or `getTime()` on
   a `clock.now`-derived Date to get an instant. Use `toLocalYMD` for a day.
@@ -112,3 +115,18 @@ No Deno imports, so Vitest can import it.
 Justified exception: the AI chat calls OpenRouter. CI cannot drive a model
 conversation to a deterministic tool call. The unit tests cover the date
 logic, and the source-contract test covers the wiring.
+
+## Deferred review findings
+
+- `ai-execute-tool` resolves the timezone for every tool, also for tools
+  that do not read the date (performance, minor). It is one primary-key
+  select. A lazy clock adds code for a small gain.
+- Embed `restaurants(timezone)` in the `user_restaurants` access select to
+  save one round trip (performance, minor). Deferred to keep the access
+  check unchanged.
+- `get_sales_summary` `year` comparison rolls over on Feb 29 (logic, minor).
+  The bug is older than this change.
+- `any` parameters on the changed executor signatures (ocr, minor). The
+  types are older than this change. Only the trailing comma is new.
+- Log of the raw `restaurants.timezone` in `timezone.ts:198` (security,
+  minor). The line is older than this change.

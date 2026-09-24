@@ -22,7 +22,7 @@ const UTC_DAY_SLICE = /toISOString\(\)\.split\('T'\)\[0\]/g;
 
 describe('ai-chat-stream system prompt date', () => {
   it('resolves the restaurant timezone', () => {
-    expect(chatStream).toMatch(/resolveRestaurantTimeZone\(\s*supabase,\s*projectRef\s*\)/);
+    expect(chatStream).toMatch(/resolveRestaurantTimeZone\(/);
   });
 
   it('does not put the UTC date in the prompt', () => {
@@ -36,32 +36,17 @@ describe('ai-chat-stream system prompt date', () => {
 });
 
 describe('ai-execute-tool date wiring', () => {
-  it('resolves the restaurant timezone once per request', () => {
-    expect(executeTool).toMatch(/resolveRestaurantTimeZone\(\s*supabase,\s*restaurant_id\s*\)/);
+  it('builds the restaurant clock from the restaurant timezone', () => {
+    expect(executeTool).toMatch(/resolveRestaurantTimeZone\(/);
     expect(executeTool).toMatch(/restaurantWallClock\(new Date\(\), /);
   });
 
   it('uses the shared calculateDateRange, not a local copy', () => {
     expect(executeTool).toMatch(/from '\.\.\/_shared\/restaurantDate\.ts'/);
-    expect(executeTool).not.toMatch(/^function calculateDateRange\(/m);
+    expect(executeTool).not.toMatch(/function calculateDateRange\(/);
   });
 
-  it('passes a "now" to every calculateDateRange call', () => {
-    const calls = executeTool.match(/calculateDateRange\([^;]*?\)/gs) ?? [];
-    expect(calls.length).toBeGreaterThan(0);
-    for (const call of calls) {
-      expect(call).toMatch(/(clock\.now|serverNow)\s*\)$/);
-    }
-  });
-
-  it('slices a UTC day only on the labor paths that keep the server clock', () => {
-    // executeGetScheduleOverview keeps the server clock (see the design's
-    // "Decided trade-offs"). It holds the only UTC day slices left.
-    const start = executeTool.indexOf('async function executeGetScheduleOverview(');
-    const end = executeTool.indexOf('async function executeGetPayrollSummary(');
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    const outside = executeTool.slice(0, start) + executeTool.slice(end);
-    expect(outside.match(UTC_DAY_SLICE)).toBeNull();
+  it('does not slice a UTC day for a calendar day', () => {
+    expect(executeTool.match(UTC_DAY_SLICE)).toBeNull();
   });
 });

@@ -5,6 +5,8 @@ import {
   toLocalYMD,
   addDays,
   calculateDateRange,
+  daysBetweenYmd,
+  laborWindowMismatchReason,
 } from '../../supabase/functions/_shared/restaurantDate';
 
 // Every assertion uses a fixed UTC instant and compares calendar strings, so
@@ -97,5 +99,39 @@ describe('calculateDateRange with the restaurant clock', () => {
     expect(() => calculateDateRange('custom', undefined, undefined, chicagoEvening())).toThrow(
       'Custom period requires start_date and end_date',
     );
+  });
+});
+
+describe('daysBetweenYmd', () => {
+  it('counts whole calendar days', () => {
+    expect(daysBetweenYmd('2026-09-20', '2026-09-24')).toBe(4);
+    expect(daysBetweenYmd('2026-09-24', '2026-09-24')).toBe(0);
+  });
+
+  it('is not changed by a DST change', () => {
+    // Nov 1 2026 is the US fall-back day.
+    expect(daysBetweenYmd('2026-10-31', '2026-11-02')).toBe(2);
+    expect(daysBetweenYmd('2026-03-07', '2026-03-09')).toBe(2);
+  });
+});
+
+describe('laborWindowMismatchReason', () => {
+  const range = (start: string, end: string) => ({ startDateStr: start, endDateStr: end });
+
+  it('returns undefined when the labor and sales windows are the same days', () => {
+    expect(laborWindowMismatchReason(range('2026-09-01', '2026-09-30'), range('2026-09-01', '2026-09-30'))).toBeUndefined();
+  });
+
+  it('returns a reason when the UTC day is ahead of the restaurant day', () => {
+    // 21:00 CDT on Sep 24: sales use Sep 24, the server clock gives Sep 25.
+    const reason = laborWindowMismatchReason(range('2026-09-24', '2026-09-24'), range('2026-09-25', '2026-09-25'));
+    expect(reason).toMatch(/omitted/);
+  });
+
+  it('gives a mismatch for "today" in the Chicago evening, with real clocks', () => {
+    const instant = new Date('2026-09-25T02:00:00Z');
+    const sales = calculateDateRange('today', undefined, undefined, restaurantWallClock(instant, 'America/Chicago'));
+    const labor = calculateDateRange('today', undefined, undefined, restaurantWallClock(instant, 'UTC'));
+    expect(laborWindowMismatchReason(sales, labor)).toBeDefined();
   });
 });

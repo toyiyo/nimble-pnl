@@ -54,13 +54,41 @@ export function addDays(d: Date, days: number): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds());
 }
 
+/** Whole calendar days from `fromYmd` to `toYmd` (both 'YYYY-MM-DD'). */
+export function daysBetweenYmd(fromYmd: string, toYmd: string): number {
+  const [fy, fm, fd] = fromYmd.split('-').map(Number);
+  const [ty, tm, td] = toYmd.split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
 /**
- * "Now" for a restaurant, plus its timezone. `now` is a wall-clock Date (see
- * the rule at the top of this file).
+ * "Now" for the labor paths of the AI tools.
+ *
+ * The labor paths keep the server clock. laborCalculations.ts puts each punch
+ * into a day by runtime-local (UTC) fields, so a restaurant-day window would
+ * drop the evening clock-ins. See
+ * docs/superpowers/specs/2026-09-24-ai-chat-restaurant-today-design.md.
  */
-export interface RestaurantClock {
-  now: Date;
-  timeZone: string;
+export function laborServerNow(): Date {
+  return new Date();
+}
+
+/**
+ * Return why labor figures must be omitted when the labor window (server
+ * clock) and the sales window (restaurant clock) are different days.
+ * Return undefined when the two windows agree.
+ */
+export function laborWindowMismatchReason(
+  sales: Pick<DateRange, 'startDateStr' | 'endDateStr'>,
+  labor: Pick<DateRange, 'startDateStr' | 'endDateStr'>,
+): string | undefined {
+  if (sales.startDateStr === labor.startDateStr && sales.endDateStr === labor.endDateStr) {
+    return undefined;
+  }
+  return (
+    'Labor cost, prime cost, and profitability figures are omitted for this period. ' +
+    "The labor calculation uses UTC days, and the UTC date is not the restaurant's local date now."
+  );
 }
 
 export interface DateRange {
@@ -88,8 +116,12 @@ export const toLocalYMD = (d: Date): string => {
 };
 
 /**
- * Calculate date range from period string
- * Centralizes the repeated date calculation logic across tool handlers
+ * Calculate the date range for a period string.
+ *
+ * `now` sets "today". For restaurant days, pass
+ * `restaurantWallClock(new Date(), timeZone)`. The labor paths pass
+ * `laborServerNow()`. The start and end Dates are wall-clock Dates: use
+ * startDateStr / endDateStr for day filters.
  */
 export function calculateDateRange(
   period: PeriodType,

@@ -694,7 +694,7 @@ async function calculateLiquidity(
     avg_daily_outflow: avgDailyOutflow,
     days_of_cash: Math.round(daysOfCash),
     runway_status: daysOfCash > 60 ? 'healthy' : daysOfCash > 30 ? 'caution' : 'critical',
-    projected_zero_date: daysOfCash < 999 ? toLocalYMD(addDays(restaurantNow, Math.floor(daysOfCash))) : null,
+    projected_zero_date: daysOfCash < 999 ? toLocalYMD(addDays(restaurantNow, daysOfCash)) : null,
   };
 }
 

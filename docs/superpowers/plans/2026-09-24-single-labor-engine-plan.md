@@ -1,144 +1,180 @@
-# Plan: AI labor tools use restaurant-local days
+# Plan: one labor engine for the app and the AI chat
 
-Design: `docs/superpowers/specs/2026-09-24-ai-labor-restaurant-day-design.md`
+Design: `docs/superpowers/specs/2026-09-24-single-labor-engine-design.md`
+
+Precondition: [toyiyo/nimble-pnl#806](https://github.com/toyiyo/nimble-pnl/pull/806)
+is merged. PR 2 uses its `fetchLaborEmployees`, `hasPayRatesCapability` and
+`pay_hidden` helpers.
 
 Rules for every task:
 
-- Use fixed UTC instants in tests (`new Date('2026-09-25T01:00:00Z')`).
-- Each new test must pass under `npm run test:tz` (Chicago, Auckland, UTC).
 - Write the test first. See it fail. Then write the code.
+- Use fixed UTC instants in tests. Each changed test passes under
+  `npm run test:tz` (Chicago, Auckland, UTC).
 - Stage explicit paths only. Never `git add -A`.
+- A pure move (`git mv` plus a shim) gets its own commit, so review sees the
+  move and the logic change apart.
 
-## Task 1: `safeTz` validity cache
+## PR 1: the engine moves, the loaders, the pages
 
-Files: `supabase/functions/_shared/timezone.ts`, `tests/unit/edgeTimezone.test.ts`.
+### Task 1: check the client type
 
-1. Add a test: `safeTz` returns the same zone on a second call, and still
-   falls back for an invalid zone after a valid one.
-2. Add a module-level `Set<string>` of zones that passed the check. Return
-   early on a hit.
-3. Run the `safeTz` tests. Commit.
+1. Write a type-only test file that passes the typed browser client
+   (`src/integrations/supabase/client.ts`) to a function that takes the
+   structural `LaborQueryClient`.
+2. Run `npm run typecheck`. If it fails, use a page-callback parameter
+   (`(from, to) => query`), as `fetchAllRows` does, and record the choice in
+   the design.
 
-## Task 2: `restaurantDayBoundsUtc`, delete the labor server clock
+### Task 2: move the leaf modules
 
-Files: `supabase/functions/_shared/restaurantDate.ts`,
-`tests/unit/restaurantDate.test.ts`.
+Files: `dateConfig`, `dateOnly`, `restaurantClock`, `overtimeCalculations`,
+`fetchAllRows`, `openShiftPunches`, `tipAggregation`, `combineCosts`
+(`resolveLaborBasis`), `calculateShiftHours` (new `shiftHours.ts`).
 
-1. Add tests for `dayAfterYmd` (month end, year end, Feb 28 2026),
-   `ymdToLocalDate` (local fields equal the day on every host), and
-   `firstInstantOfDay` (Santiago `2026-09-06` is `04:00Z`).
-   Add tests for `restaurantDayBoundsUtc(startDay, endDay, tz)`:
-   - Chicago CDT `2026-09-24`: start `2026-09-24T05:00:00.000Z`, end
-     `2026-09-25T04:59:59.999Z`.
-   - Chicago CST `2026-01-15`: start `06:00Z`.
-   - Auckland `2026-09-25`: start `2026-09-24T12:00:00.000Z`.
-   - Chicago `2026-03-08` (DST, 23 hours): `end - start + 1 ms` is 23 h.
-   - Santiago `2026-09-05`: end `2026-09-06T03:59:59.999Z`.
-   - A multi-day range and an invalid zone (falls back to Chicago).
-2. Implement `dayAfterYmd`, `ymdToLocalDate`, `firstInstantOfDay` (guess
-   with `zonedNaiveToUtc`, check, binary search on whole minutes in
-   ±12 h on a failed check) and `restaurantDayBoundsUtc`.
-3. Delete `laborServerNow`, `laborWindowMismatchReason` and their tests.
-   Update the `calculateDateRange` JSDoc.
-4. Do not commit yet: `ai-execute-tool` still imports the two functions.
-   Commit together with Task 5.
+1. `git mv` each file into `supabase/functions/_shared/labor/`. Leave a shim
+   at the old `src/` path (`export * from '...'`). Change the imports to
+   relative `.ts` paths.
+2. Add the type-only `env` declaration to the moved `restaurantClock.ts`.
+   Keep the literal `import.meta.env` token.
+3. Make `_shared/dateOnly.ts` re-export `toDateOnlyString` from the moved
+   file.
+4. Add `date-fns` and `date-fns/` to `supabase/functions/deno.json`.
+5. Add the import-rules test for `_shared/labor/`.
+6. Run the full unit suite and `npm run typecheck`. Commit (move only).
 
-## Task 3: Deno engine day bucketing
+### Task 3: move the engine modules and the types
 
-Files: `supabase/functions/_shared/laborCalculations.ts`,
-new `tests/unit/laborCalculations.edge.test.ts`.
+Files: `compensationCalculations`, `payrollCalculations`, `punchWindow`,
+`laborCalculations`, `tipsFetch`; new `_shared/labor/types.ts`.
 
-1. Write the tests from the design ("Tests" section) that import
-   `supabase/functions/_shared/laborCalculations.ts`:
-   Chicago evening clock-in, Auckland morning clock-in, overnight daily
-   rate, instant-window filter of `calculateHoursPerEmployee`, evening
-   shift in `calculateScheduledLaborCost`.
-2. Add a required `timezone` argument to `calculateActualLaborCost`,
-   `calculateHoursPerEmployee` and `calculateScheduledLaborCost`.
-3. Add a private `businessDaysBetween(startInstant, endInstant, tz)` that
-   steps on day strings, with an early return for a one-day interval. Use
-   `ymdInTimeZone` for the day of an instant.
-4. `calculateHoursPerEmployee`: give the salary and contractor loops
-   `ymdToLocalDate(ymdInTimeZone(bound, tz))` for each instant bound.
-5. Update the JSDoc of each function: state which arguments are
-   calendar-day Dates and which are instants.
-6. Run the new tests under `npm run test:tz`. Commit with Task 4 if the
-   file does not type-check alone.
+1. Add `types.ts`: `LaborEmployee`, `LaborShift`, `LaborTimePunch`,
+   `LABOR_EMPLOYEE_KEYS` (`satisfies`), and the output types the UI uses.
+   `src/types/*` re-exports the output types.
+2. `git mv` the five files, leave shims, change imports. Make the functions
+   that return their input employee generic.
+3. `tipsFetch.ts` takes the structural client (Task 1).
+4. Run the full unit suite and `npm run typecheck`. Commit (move only).
 
-## Task 4: host-independent salary and contractor loops
+### Task 4: guardrails
 
-Files: `supabase/functions/_shared/laborCalculations.ts`,
-`tests/unit/laborCalculations.edge.test.ts`.
+1. Add `supabase/functions/_shared/labor/**/*.ts` to the ESLint timezone
+   block and the `.limit(10000)` rule. Ignore the moved `restaurantClock.ts`
+   and `dateOnly.ts`.
+2. Extend `tests/unit/highVolumeQueryGuard.test.ts` to walk `_shared/labor/`
+   and accept `./fetchAllRows.ts`.
+3. Add `supabase/functions/_shared/labor` to `sonar.sources`.
+4. Run `npm run lint` on the changed paths and the guard test. Commit.
 
-1. Add tests: one restaurant day of salary is one daily allocation on every
-   host. A one-day instant window in `calculateHoursPerEmployee` gives one
-   day of salary on every host. A `hire_date` on the last day of the range counts that day only.
-2. Change `calculateSalaryForPeriod` and `calculateContractorPayForPeriod`
-   to walk `generateDateRange` strings and to compare `hire_date` /
-   `termination_date` as `YYYY-MM-DD` strings.
-3. Run the tests under `npm run test:tz`. Commit Tasks 3 and 4.
+### Task 5: `firstInstantOfDay` and the DST-safe window
 
-## Task 5: `ai-execute-tool` labor wiring
+1. Tests: Santiago `2026-09-06` starts at `04:00Z`; Santiago `2026-04-04`
+   ends at `2026-04-05T03:59:59.999Z`; Chicago and Auckland days are
+   unchanged; an invalid zone falls back to the default.
+2. Implement `firstInstantOfDay` and change `businessDayRangeToInstants` to
+   `start = firstInstantOfDay(startDay)`,
+   `end = firstInstantOfDay(dayAfter(endDay)) - 1 ms`.
+3. Run `tests/unit/restaurantClock.test.ts` and `businessDayParity.test.ts`.
+   Commit.
 
-Files: `supabase/functions/ai-execute-tool/index.ts`,
-`tests/unit/ai-restaurant-today-wiring.test.ts`.
+### Task 6: host-independent engine
 
-1. Add source-contract tests: no `laborServerNow`, no
-   `laborWindowMismatchReason`; `calculateActualLaborCost(` and
-   `calculateScheduledLaborCost(` get `dayStart, dayEnd, restaurantTimeZone`;
-   `calculateHoursPerEmployee(` gets `windowStart, windowEnd,
-   restaurantTimeZone`; the labor fetches use `restaurantDayBoundsUtc`; no
-   literal `endLookaheadHours: 18`; no
-   `formatDateLocal(new Date(p.startTime))` and no
-   `toLocalYMD(new Date(shift.start_time))`.
-2. Pass `restaurantTimeZone` from the `serve` handler to `executeGetKpis`,
-   `executeGetLaborCosts`, `executeGetTimePunches`,
-   `executeGetScheduleOverview`, `executeGetPayrollSummary`, and through
-   `executeGetAiInsights` to `executeGetKpis`.
-3. `executeGetKpis`: delete `laborRange`, the mismatch check, the ternary
-   at the `laborOmittedReason` line and the mismatch comment. Use the sales
-   range and its instant bounds.
-4. `fetchLaborData`: take the instant window. Use
-   `LABOR_FETCH_LOOKAHEAD_HOURS`, not `18`. Name the pairs `dayStart` /
-   `dayEnd` and `windowStart` / `windowEnd` in every labor executor.
-5. `executeGetTimePunches`: shift `date` from `ymdInTimeZone`.
-6. `executeGetScheduleOverview`: use `restaurantNow`, instant bounds of
-   `[startDateStr, endDateStr]`, and `ymdInTimeZone` for the group key.
-7. Run `npm run typecheck`, the wiring test, and `restaurantDate.test.ts`.
-   Commit Tasks 2 and 5.
+1. Run the audit pattern from the design over `_shared/labor/`. Record each
+   match as instant (change) or day token (keep) in the commit message.
+2. Tests (all three hosts): a Sunday 20:00 CDT clock-in is in the Chicago OT
+   week; a deactivation at 23:30 Chicago on a Sunday keeps the right payroll
+   week; anomaly messages show restaurant-local times.
+3. Change the sites from the design: `laborCalculations.ts:898-899`,
+   `:918-919`, `:962-963`; `punchWindow.ts:66-88`;
+   `payrollCalculations.ts:687-688` and the anomaly `format` calls;
+   `compensationCalculations.ts:249`; the `created_at` tie-break in
+   `getSortedHistory`.
+4. Change `tests/unit/useLaborCostsFromTimeTracking.fetchRange.test.ts` to
+   restaurant-local week edges (intended update).
+5. Run the full suite under `npm run test:tz`. Commit.
 
-## Task 5b: page loop for the punch fetches
+### Task 7: `loadPeriodLaborCost` and `loadPeriodBankLabor`
 
-Files: new `supabase/functions/_shared/fetchPunchesInWindow.ts` (pure, no
-Deno imports), new `tests/unit/fetchPunchesInWindow.test.ts`,
-`supabase/functions/ai-execute-tool/index.ts`.
+1. Tests with a stub client: the fetch windows each query gets (instants
+   from day strings), the page loop, tip netting, per-job sum, `throughNow`
+   with a given real `now`, `capped`, and a salaried employee over one
+   Chicago day and one Auckland day on all three hosts.
+2. Move the two `queryFn` bodies into the loaders. The engine gets day
+   tokens (`parseDateOnly`); the queries get instants. Use the names
+   `dayStart` / `dayEnd` and `windowStart` / `windowEnd`.
+3. The hooks call the loaders and keep every React Query option. The hook
+   reads `new Date()` inside `queryFn`.
+4. Hook tests: a `dateTo` at Sunday midnight and a `dateFrom` in the middle
+   of a day give whole-day results.
+5. Run the full suite under `npm run test:tz`. Commit.
 
-1. Write a test with a stub client: 2500 rows come back in three pages of
-   1000, 1000 and 500. An error on page 2 throws. The `restaurant_id`,
-   `employee_id` filter and the window are on each page.
-2. Implement `fetchPunchesInWindow(supabase, { restaurantId, windowStart,
-   windowEnd, columns, employeeId? })`. Order by `punch_time`, then `id`.
-   Stop when a page has fewer than 1000 rows.
-3. Use it in `executeGetKpis`, `fetchLaborData` and
-   `executeGetPayrollSummary`. Add a wiring test: no `.from('time_punches')`
-   is left in `ai-execute-tool/index.ts`.
-4. Run the tests and `npm run typecheck`. Commit.
+### Task 8: `loadPeriodLaborBasis`
 
-## Task 6: parity with the frontend engine
+1. Test: for the same rows, `loadPeriodLaborBasis` equals the
+   `totalLaborCost` and `laborBasis` of `useCostsFromSource`.
+2. Implement it over the two loaders with `resolveLaborBasis`.
+3. Commit.
 
-Files: `tests/unit/laborCalculations.edge.test.ts`.
+### Task 9: `loadPayrollPeriod`
 
-1. Add a test: the Deno and the `src/services/laborCalculations.ts`
-   `calculateActualLaborCost` give the same `dailyCosts` for the same
-   punches, dates and timezone (Chicago and Auckland; hourly and daily rate
-   employees only, no type change, no stale clock-in).
-2. Run under `npm run test:tz`. Commit.
+1. Tests: the seven source reads page; `employeeId: null` throws; `capped`
+   comes back; the punch select names its columns.
+2. Move the `usePayroll` body. The hook does not call the loader for a
+   `null` employee id and keeps its query key segment.
+3. Run the payroll tests under `npm run test:tz`. Commit.
 
-## Task 7: docs
+### Task 10: `loadScheduledLaborCost`
 
-Files: the earlier design doc
-`docs/superpowers/specs/2026-09-24-ai-chat-restaurant-today-design.md`.
+1. Test: all employees (`status: 'all'`), Monday week window, shift day by
+   the restaurant timezone.
+2. Implement it. `useScheduledLaborCosts` keeps its inputs; the Scheduling
+   page result does not change.
+3. Commit.
 
-1. Add a note under "Decided trade-offs": a later change moves the labor
-   paths to restaurant days. Link the new design doc.
-2. Commit.
+### Task 11: verify PR 1
+
+1. Run `npm run test`, `npm run test:tz`, `npm run lint`, `npm run
+   typecheck`, `npm run build`.
+2. Measure the `year` fixture (100 employees, 20000 punches) through
+   `loadPeriodLaborCost` and record the time.
+3. Ask a person with the Supabase CLI for a `supabase functions serve`
+   smoke check. Deno is not in CI.
+
+## PR 2: the AI tools use the shared engine
+
+### Task 12: Monday weeks in `calculateDateRange`
+
+1. Tests: `current_week` and `last_week` start on Monday for a Sunday, a
+   Monday and a Saturday `now`.
+2. Use `WEEK_STARTS_ON` from the moved `dateConfig.ts`.
+3. Run `restaurantDate.test.ts` and `ai-tools-date-resolution.test.ts`.
+   Commit.
+
+### Task 13: the AI labor tools call the loaders
+
+1. Source-contract tests: `ai-execute-tool` imports the loaders from
+   `_shared/labor/`; no `laborServerNow`, no `laborWindowMismatchReason`, no
+   `_shared/laborCalculations.ts` import; `get_schedule_overview` has no
+   `status = 'active'` filter and no own week branch.
+2. Wire each tool as in the design's Layer 4 table. Keep the capability
+   gate and the #806 pay gate. `get_labor_costs` returns `daily_costs`,
+   `breakdown` and `total_labor_cost`, and its description names the
+   figures.
+3. Delete `laborServerNow`, `laborWindowMismatchReason`, their tests and the
+   `get_kpis` mismatch gate.
+4. Run the AI tests. Commit.
+
+### Task 14: delete the Deno copy
+
+1. Delete `supabase/functions/_shared/laborCalculations.ts`. Update
+   `tests/unit/punchWindow.test.ts:55` and `employeeLaborColumns.test.ts`
+   (check against `LABOR_EMPLOYEE_KEYS`).
+2. Extend `EMPLOYEE_LABOR_COLUMNS` to the engine keys plus the history
+   `created_at`.
+3. Run the full suite. Commit.
+
+### Task 15: verify PR 2
+
+1. Run `npm run test`, `npm run test:tz`, `npm run lint`, `npm run
+   typecheck`.
+2. Ask for a `supabase functions serve ai-execute-tool` smoke check.

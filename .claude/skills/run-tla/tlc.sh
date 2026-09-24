@@ -5,6 +5,7 @@
 #   tlc.sh parse  <Spec.tla>              syntax + semantic check (SANY)
 #   tlc.sh check  <Spec.tla> [Model.cfg]  model check one config
 #   tlc.sh all    [dir]                   check every *.cfg under dir (default specs/tla)
+#   tlc.sh trace  <cfg-name> [var ...]    show the last trace, one line per state
 #
 # A .cfg whose first line contains "EXPECT: violation" must FAIL.
 # Use that for counterfactual configs that prove the invariant has teeth.
@@ -98,11 +99,24 @@ all() {
   [ "$fail" -eq 0 ]
 }
 
+# trace <cfg-name> [var ...] -> one line per state, only the named variables.
+trace() {
+  local log="$LOG_DIR/${1%.cfg}.log"; shift
+  [ -f "$log" ] || die "no log: $log (run check first)"
+  local pat='[a-zA-Z_]+'
+  [ $# -gt 0 ] && pat="($(IFS='|'; echo "$*"))"
+  grep -E '^Error: (Invariant|Action|Temporal|Deadlock)' "$log"
+  grep -E "^State [0-9]+|^/\\\\ $pat = " "$log" \
+    | sed -E 's/ line [0-9]+, col [0-9]+ to line [0-9]+, col [0-9]+ of module [A-Za-z0-9]+//' \
+    | awk '/^State/ { if (row) print row; row = $0; next } { row = row "  " substr($0, 4) } END { print row }'
+}
+
 cmd="${1:-}"; shift || true
 case "$cmd" in
   install) install ;;
   parse)   install >/dev/null && parse "$@" ;;
   check)   install >/dev/null && check "$@" ;;
   all)     install >/dev/null && all "$@" ;;
-  *) sed -n '2,11p' "$0"; exit 2 ;;
+  trace)   trace "$@" ;;
+  *) sed -n '2,12p' "$0"; exit 2 ;;
 esac

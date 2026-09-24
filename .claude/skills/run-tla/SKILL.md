@@ -24,6 +24,13 @@ and the order of their steps can change. In this repo, these are the triggers:
 | A status field with more than 3 states and many writers | Shift publish flow, payroll run status, bank connection status |
 | "This can never happen" is part of the argument | Any design doc that relies on an ordering assumption |
 
+Worked examples in `specs/tla/`:
+
+| Model | Design doc | Result |
+|---|---|---|
+| `toast-rollup-watermark/` | `docs/superpowers/specs/2026-08-14-toast-rollup-watermark-design.md` | The design passes. Without `last_sync_time`, a row is lost. |
+| `focus-backfill-cas/` | `docs/superpowers/specs/2026-09-01-focus-backfill-cron-timeout-design.md` | The CAS keeps the data correct with 2 workers. The HTTP 400 banner needs 2 workers. Without the CAS, the cursor moves back. |
+
 Do **not** use TLA+ for UI layout, single-statement CRUD, math or unit
 conversion (write a unit test), or code with one writer and no retries.
 If no trigger matches, write "TLA+: not applicable (no concurrent writers)"
@@ -51,6 +58,7 @@ in the design doc and stop.
 .claude/skills/run-tla/tlc.sh check specs/tla/toast-rollup-watermark/ToastRollupWatermark.tla \
     specs/tla/toast-rollup-watermark/ToastRollupWatermark_NoLastSync.cfg
 .claude/skills/run-tla/tlc.sh all          # every *.cfg under specs/tla
+.claude/skills/run-tla/tlc.sh trace FocusBackfill_NoCas cursor wpc lc   # last trace, one line per state
 ```
 
 Expected output of `all`:
@@ -101,6 +109,11 @@ OK    ToastRollupWatermark_NoLastSync: violation (expected violation; 151 distin
 - **The state count on a violation changes between runs** (151 or 146 for
   `ToastRollupWatermark_NoLastSync`). TLC stops at the first error, and
   workers run in parallel. Compare only the pass counts.
+- **`Error: Deadlock reached.` (exit 11) in a model with bounded runs.**
+  When each worker has a fixed number of runs, the final state has no next
+  step. Add `CHECK_DEADLOCK FALSE` to the cfg
+  (`specs/tla/focus-backfill-cas/*.cfg`). The watermark model does not need
+  it, because its rollup skip step is always enabled.
 - **Bound the run with the Bash tool `timeout`.** TLC has no default time
   limit. A model that runs for more than 2 minutes has bounds that are too big.
 

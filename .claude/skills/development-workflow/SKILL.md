@@ -47,7 +47,7 @@ A **Stop-hook backstop** (`.claude/hooks/dev-phase-guard.sh`, wired in `settings
   performance, maintainability, sound-logic, and the non-skippable
   ocr-rules rulebook enforcer) and one best-effort Codex adversarial
   reviewer fan out in parallel against the branch diff. CodeRabbit local
-  CLI is the final gate, not the only gate — this avoids "Claude grading
+  CLI is one gate, not the only gate — this avoids "Claude grading
   its own homework" and reduces dependence on one third-party reviewer.
 
 ### Progress Tracking
@@ -397,7 +397,7 @@ Run the tasks one at a time, in plan order. The workflow does not run TDD tasks 
 
 Phase 7 is **four sub-phases** that run in this order: 7a fans out five
 parallel reviewers, 7b folds their findings into commits, 7c runs
-CodeRabbit local CLI as the final gate, and 7d re-reviews code written
+CodeRabbit local CLI on the whole branch, and 7d re-reviews code written
 after the 7a snapshot. The intent is to defeat "Claude
 grading its own homework" and to stop putting all review eggs in one
 third-party basket.
@@ -418,7 +418,7 @@ Phase 7a  Multi-model fan-out (PARALLEL)
 Phase 7b  Fold findings: classify, fix actionable, commit
    │
    ▼
-Phase 7c  CodeRabbit local CLI (final gate, max 3 iterations)
+Phase 7c  CodeRabbit local CLI (whole branch, max 3 iterations)
    │
    ▼
 Phase 7d  Re-review of post-snapshot code (one pass)
@@ -500,27 +500,10 @@ were dropped here on that assumption, local CodeRabbit never saw them, and
 the CodeRabbit *GitHub bot* re-flagged the identical lines after the PR was
 already open. Anything absent from both the fixes and `deferred[]` is lost.
 
-### 7d — Re-review of post-snapshot code
-
-The Phase 7a diff is captured **once**, so 7b/7c fixes and any later edits
-would otherwise ship having never been reviewed by anyone.
-
-1. Diff `<7a snapshot SHA>..HEAD`. If empty, skip this step.
-2. Re-run the five reviewers against **only** that diff.
-3. Fold the results with the same rules as 7b (fix critical/major, fix
-   trivially-safe minors, `deferred[]` for the rest).
-
-Exactly **one** extra pass — it is a safety net, not a loop.
-
-Why it exists: on the tap-to-count PR the single riskiest change (a mode
-toggle altering inventory-write semantics in a dialog shared by four call
-sites) was written after the snapshot. No reviewer ever saw it; reviewing it
-after the fact found a real major a11y defect and a real minor logic bug.
-
-### 7c — CodeRabbit local CLI (final gate)
+### 7c — CodeRabbit local CLI (whole branch)
 
 This is the existing CodeRabbit step. It is still **non-skippable**, but
-its role narrows: it's the *final consistency check*, not the *primary
+its role narrows: it's the *whole-branch consistency check*, not the *primary
 review*. Most issues should have been caught by 7a.
 
 **Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
@@ -580,6 +563,23 @@ default output mode**. If you see `error: unknown option '--plain'`, this
 section is stale again — re-check `--help` and fix it here, in
 `.claude/workflows/dev-build-and-ship.js`, `.claude/commands/review.md`,
 and the pre-commit hook in `.claude/settings.json` together.
+
+### 7d — Re-review of post-snapshot code
+
+The Phase 7a diff is captured **once**, so 7b/7c fixes and any later edits
+would otherwise ship having never been reviewed by anyone.
+
+1. Diff `<7a snapshot SHA>..HEAD`. If empty, skip this step.
+2. Re-run the five reviewers against **only** that diff.
+3. Fold the results with the same rules as 7b (fix critical/major, fix
+   trivially-safe minors, `deferred[]` for the rest).
+
+Exactly **one** extra pass — it is a safety net, not a loop.
+
+Why it exists: on the tap-to-count PR the single riskiest change (a mode
+toggle altering inventory-write semantics in a dialog shared by four call
+sites) was written after the snapshot. No reviewer ever saw it; reviewing it
+after the fact found a real major a11y defect and a real minor logic bug.
 
 **Skip condition for the whole phase:** None. 7a and 7c always run on
 any task that produces code. 7a is skipped only when the task is
@@ -949,6 +949,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic`, `ocr-rules` (all NON-SKIPPABLE, parallel) + `dev-tools/codex-adversarial-review.sh` (best-effort) | Workflow/doc-only changes (no code diff) |
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
 | 7c CodeRabbit | `coderabbit review --agent --committed --base origin/main` | Never |
+| 7d Re-review | Five reviewers on `<7a snapshot SHA>..HEAD` (one pass) | No commits after the 7a snapshot |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |

@@ -4,6 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getModel, getModelFallbackList, getMalformedFallbackModels } from "../_shared/model-router.ts";
 import { getTools } from "../_shared/tools-registry.ts";
+import { resolveRestaurantTimeZone } from "../_shared/timezone.ts";
+import { ymdInTimeZone } from "../_shared/restaurantDate.ts";
 import { logAICall, startStreamingSpan, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -513,6 +515,12 @@ serve(async (req) => {
       throw new HttpError(403, 'Access denied to this restaurant');
     }
 
+    // "Today" is the restaurant's local day. The edge runtime is in UTC, so
+    // after 19:00 CDT the UTC date is already the next day and the model
+    // asks the tools for a day with no sales yet.
+    const restaurantTimeZone = await resolveRestaurantTimeZone(supabase, projectRef);
+    const todayStr = ymdInTimeZone(new Date(), restaurantTimeZone);
+
     // Get model configuration
     const modelConfig = getModel({ routingKey, requiresTools: true });
     
@@ -527,7 +535,7 @@ You help restaurant owners and managers with their operations, financials, inven
 
 Current restaurant ID: ${projectRef}
 User role: ${userRestaurant.role}
-Current date: ${new Date().toISOString().split('T')[0]} (use this as "today" when users don't specify dates)
+Current date: ${todayStr} (the restaurant's local date, timezone ${restaurantTimeZone}; use this as "today" when users don't specify dates)
 
 DATE HANDLING - CRITICAL:
 - "month" means the CURRENT calendar month only. On March 1st, period "month" queries March, which likely has minimal data.
@@ -538,7 +546,7 @@ DATE HANDLING - CRITICAL:
 - Examples:
   * "How were sales in February?" -> get_sales_summary with period: "custom", start_date: "2026-02-01", end_date: "2026-02-28"
   * "Sales last month" -> get_sales_summary with period: "last_month"
-  * "Sales for 2026" -> get_sales_summary with period: "custom", start_date: "2026-01-01", end_date: "${new Date().toISOString().split('T')[0]}"
+  * "Sales for 2026" -> get_sales_summary with period: "custom", start_date: "2026-01-01", end_date: "${todayStr}"
   * "Break-even for February" -> get_break_even_progress with month: "2026-02"
   * "KPIs for last month" -> get_kpis with period: "custom", start_date and end_date for previous month
 
@@ -584,11 +592,6 @@ EVIDENCE-BACKED RESPONSES:
 - When citing data, reference the evidence: "Based on [evidence label] — [key figure]"
 - Never state a number that wasn't provided by a tool result
 - Evidence helps users drill down into the source records
-
-PROACTIVE INSIGHTS:
-- At the start of a new conversation (when the first user message arrives), call get_proactive_insights to check for urgent operational items
-- If there are critical or high priority items, mention them briefly before responding to the user's question
-- Example: "Before we dive in — I noticed your food cost spiked to 38% yesterday. Want me to look into it?"
 
 CONVERSATION FLOW:
 - When presenting a multi-step plan, ALWAYS ask if the user wants to execute it

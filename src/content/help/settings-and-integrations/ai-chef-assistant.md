@@ -5,7 +5,7 @@ summary: "How to open the Chef Assistant, what kinds of questions it can answer 
 audience: ["owner", "manager", "chef"]
 order: 150
 keywords: ["AI assistant", "chef assistant", "chat", "KPIs", "inventory questions", "financial questions", "Pro plan", "conversation history"]
-related: ["subscription-plans", "dashboard-overview", "ops-inbox-triage-alerts", "reports-pnl-recipe-variance-pricing"]
+related: ["subscription-plans", "dashboard-overview", "reports-pnl-recipe-variance-pricing"]
 ---
 
 # Use the AI Chef Assistant to Ask Questions About Your Restaurant
@@ -144,5 +144,4 @@ No. The Chef Assistant only reads your data to answer questions. It does not cre
 
 - [Subscription Plans](/help/subscription-plans)
 - [Dashboard Overview](/help/dashboard-overview)
-- [Ops Inbox and Triage Alerts](/help/ops-inbox-triage-alerts)
 - [P&L, Recipe Variance, and Pricing Reports](/help/reports-pnl-recipe-variance-pricing)

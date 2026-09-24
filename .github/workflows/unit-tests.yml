@@ -169,6 +169,12 @@ jobs:
 
       - name: Install PostgreSQL client
         run: |
+          # No job here installs Google Chrome (Playwright brings its own
+          # chromium). The runner image ships the Chrome apt source, and a
+          # mid-propagation dl.google.com index fails apt-get update whole
+          # ("Hash Sum mismatch", exit 100) before any test runs. Delete the
+          # source so an unrelated Google mirror outage cannot fail the job.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
@@ -235,6 +241,15 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # No job here installs Google Chrome (Playwright brings its own
+      # chromium). The runner image ships the Chrome apt source, and a
+      # mid-propagation dl.google.com index fails the apt update inside
+      # install-deps ("Hash Sum mismatch", exit 100) before any test runs.
+      # Delete the source so an unrelated Google mirror outage cannot fail
+      # the job.
+      - name: Remove the Google Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
 
       - name: Install Playwright Browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'

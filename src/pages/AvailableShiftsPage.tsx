@@ -41,6 +41,20 @@ import {
 } from '@/components/employee';
 import { OpenShiftCard } from '@/components/scheduling/OpenShiftCard';
 import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
+import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useShiftProtection } from '@/hooks/useShiftProtection';
+import { usePermissions } from '@/hooks/usePermissions';
+import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
 import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
@@ -299,7 +313,18 @@ export default function AvailableShiftsPage() {
 
   const [acceptingTradeId, setAcceptingTradeId] = useState<string | null>(null);
 
-  const handleAcceptTrade = useCallback((tradeId: string) => {
+  // Shift Protection: show the deadline rule BEFORE the accept commits.
+  // A capability holder is exempt from block, matching the server.
+  const { protection } = useShiftProtection(restaurantId);
+  const { hasCapability, isResolved } = usePermissions();
+  const isExemptFromBlock = isResolved && hasCapability('edit:scheduling');
+  const [tradeConfirm, setTradeConfirm] = useState<{
+    tradeId: string;
+    finding: PolicyFinding;
+    blocked: boolean;
+  } | null>(null);
+
+  const performAcceptTrade = useCallback((tradeId: string) => {
     if (!currentEmployee?.id) return;
     setAcceptingTradeId(tradeId);
     acceptTrade(
@@ -308,14 +333,34 @@ export default function AvailableShiftsPage() {
         onSuccess: () => {
           toast({ title: 'Trade accepted', description: 'Your manager will review the trade.' });
           setAcceptingTradeId(null);
+          setTradeConfirm(null);
         },
         onError: (error) => {
           toast({ title: 'Failed to accept trade', description: error.message, variant: 'destructive' });
           setAcceptingTradeId(null);
+          setTradeConfirm(null);
         },
       },
     );
   }, [currentEmployee, acceptTrade, toast]);
+
+  const handleAcceptTrade = useCallback((tradeId: string) => {
+    const tradeItem = items.find((i) => i.type === 'trade' && i.trade?.id === tradeId);
+    const finding = tradeDeadlineFinding(
+      protection,
+      tradeItem?.trade?.offered_shift?.start_time,
+      new Date()
+    );
+    if (finding) {
+      setTradeConfirm({
+        tradeId,
+        finding,
+        blocked: finding.mode === 'block' && !isExemptFromBlock,
+      });
+      return;
+    }
+    performAcceptTrade(tradeId);
+  }, [items, protection, isExemptFromBlock, performAcceptTrade]);
 
   // Claims collapsible
   const [claimsOpen, setClaimsOpen] = useState(false);
@@ -481,6 +526,42 @@ export default function AvailableShiftsPage() {
           </CollapsibleContent>
         </Collapsible>
       )}
+
+      {/* Shift Protection: late-trade confirmation */}
+      <AlertDialog open={!!tradeConfirm} onOpenChange={(open) => { if (!open) setTradeConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Accept this late trade?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A shift protection rule applies to this trade.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {tradeConfirm && (
+            <ShiftProtectionWarning
+              id="accept-trade-policy-warning"
+              messages={[tradeConfirm.finding.message]}
+              footnote={
+                tradeConfirm.blocked
+                  ? 'A shift protection rule closed this trade for accepts.'
+                  : 'A manager must still approve this late trade.'
+              }
+            />
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isAcceptingTrade}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (tradeConfirm) performAcceptTrade(tradeConfirm.tradeId);
+              }}
+              disabled={isAcceptingTrade || tradeConfirm?.blocked}
+              aria-describedby={tradeConfirm?.blocked ? 'accept-trade-policy-warning' : undefined}
+            >
+              {isAcceptingTrade ? 'Accepting…' : 'Accept anyway'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Claim confirmation dialog */}
       <ClaimConfirmDialog

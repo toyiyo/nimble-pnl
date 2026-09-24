@@ -6,9 +6,6 @@
 // the `notification_channel_settings` table's CHECK constraint is hand-reviewed
 // against this same list. See docs/superpowers/specs/2026-07-13-notification-
 // channel-matrix-design.md for the full design.
-//
-// `weekly_brief` is intentionally NOT a row here — it stays on the per-user
-// `notification_preferences` table, out of scope for this admin matrix.
 
 export type NotificationType =
   | 'schedule_published'

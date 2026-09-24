@@ -93,6 +93,18 @@ const unscheduledRow: AuditRow = {
   sessions: [{ employeeId: 'emp1', clockIn: '2026-08-14T21:29:00Z', clockOut: '2026-08-14T23:29:00Z', breakMinutes: 0, punchIds: ['p5'] }],
 };
 
+const draftRow: AuditRow = {
+  key: 'shift-s7',
+  status: 'draft',
+  employeeId: 'emp1',
+  shift: { ...baseShift, id: 's7', is_published: false },
+  scheduledMinutes: 330,
+  workedMinutes: 328,
+  inDeltaMinutes: 1,
+  outDeltaMinutes: -1,
+  sessions: [{ employeeId: 'emp1', clockIn: '2026-08-12T21:29:00Z', clockOut: '2026-08-13T02:59:00Z', breakMinutes: 0, punchIds: ['p7'] }],
+};
+
 const matchedRow: AuditRow = {
   key: 'shift-s6',
   status: 'matched',
@@ -160,8 +172,14 @@ describe('EmployeeAuditDetail', () => {
     ['in_progress', inProgressRow],
     ['unscheduled_clock', unscheduledRow],
     ['matched', matchedRow],
+    ['draft', draftRow],
   ])('renders no action button for %s', (_status, row) => {
     render(<EmployeeAuditDetail rows={[row]} employeeName="Maria Lopez" onEnterClock={vi.fn()} />);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('shows the Draft status label for a draft row', () => {
+    render(<EmployeeAuditDetail rows={[draftRow]} employeeName="Maria Lopez" onEnterClock={vi.fn()} />);
+    expect(screen.getByText('Draft')).toBeInTheDocument();
   });
 });

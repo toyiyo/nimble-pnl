@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth';
 const mockGetSession = vi.fn();
 const mockRefreshSession = vi.fn();
 const mockOnAuthStateChange = vi.fn();
+const mockSupabaseSignOut = vi.fn();
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
@@ -14,7 +15,18 @@ vi.mock('@/integrations/supabase/client', () => ({
       getSession: (...args: any[]) => mockGetSession(...args),
       onAuthStateChange: (...args: any[]) => mockOnAuthStateChange(...args),
       refreshSession: (...args: any[]) => mockRefreshSession(...args),
+      signOut: (...args: any[]) => mockSupabaseSignOut(...args), // any: passthrough mock, matches this file's mock pattern
     },
+  },
+}));
+
+// Mock posthog-js so signOut can be asserted against posthog.reset().
+const mockPosthogReset = vi.fn();
+vi.mock('posthog-js', () => ({
+  default: {
+    identify: vi.fn(),
+    capture: vi.fn(),
+    reset: (...args: any[]) => mockPosthogReset(...args), // any: passthrough mock, matches this file's mock pattern
   },
 }));
 
@@ -172,5 +184,82 @@ describe('useAuth Hook - Visibility Change', () => {
     await waitFor(() => {
       expect(result.current.session?.access_token).toBe('new-refreshed-token');
     });
+  });
+});
+
+describe('useAuth signOut — PostHog identity reset', () => {
+  let originalLocation: Location;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue({ data: { session: null }, error: null });
+    mockOnAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: vi.fn() } },
+    });
+    mockSupabaseSignOut.mockResolvedValue({ error: null });
+
+    // jsdom cannot navigate; replace window.location with a writable stub.
+    originalLocation = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, href: 'http://localhost/' },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <AuthProvider>{children}</AuthProvider>
+  );
+
+  it('calls posthog.reset() before the redirect', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    // Without the reset, the next account in the same browser merges into
+    // the previous PostHog person (posthog-js ignores a second identify).
+    expect(mockPosthogReset).toHaveBeenCalledTimes(1);
+    expect(window.location.href).toBe('/auth');
+  });
+
+  it('still redirects when posthog.reset() throws', async () => {
+    // Once, not always: vi.clearAllMocks() keeps implementations, so a
+    // persistent throw would leak into the next test.
+    mockPosthogReset.mockImplementationOnce(() => {
+      throw new Error('storage blocked');
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    // Telemetry must never block the sign-out redirect.
+    expect(window.location.href).toBe('/auth');
+  });
+
+  it('calls posthog.reset() even when supabase signOut rejects', async () => {
+    mockSupabaseSignOut.mockRejectedValue(new Error('403'));
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    expect(mockPosthogReset).toHaveBeenCalled();
+    expect(window.location.href).toBe('/auth');
   });
 });

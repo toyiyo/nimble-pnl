@@ -368,3 +368,17 @@ describe('tools-registry: hasPayRatesCapability', () => {
     }
   });
 });
+
+describe('tools-registry: labor tool descriptions explain pay_hidden', () => {
+  // Without view:pay_rates the labor tools return null costs plus a
+  // pay_hidden reason. The model must tell the user, not report $0.
+  it.each(['get_kpis', 'get_labor_costs', 'get_schedule_overview', 'get_time_punches', 'get_payroll_summary'])(
+    '%s tells the model what pay_hidden means',
+    (name) => {
+      const def = getTools('rest-1', 'owner').find((t) => t.name === name);
+      expect(def).toBeDefined();
+      expect(def!.description).toContain('pay_hidden');
+      expect(def!.description).toMatch(/not report them as \$0/i);
+    },
+  );
+});

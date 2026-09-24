@@ -41,7 +41,8 @@ No Deno imports, so Vitest can import it.
 - `restaurantWallClock(instant: Date, timeZone: string): Date` — returns a
   `Date` whose local fields (`getFullYear`, `getMonth`, `getDate`,
   `getHours`, ...) equal the wall clock in `timeZone` at `instant`. It uses
-  `Intl.DateTimeFormat.formatToParts` and `safeTz`.
+  `Intl.DateTimeFormat.formatToParts` with `hourCycle: 'h23'` and `safeTz`,
+  and maps hour "24" to 0 (same pattern as `timezone.ts:67-79`).
 - `ymdInTimeZone(instant: Date, timeZone: string): string` — the
   `YYYY-MM-DD` calendar day in `timeZone`.
 - `toLocalYMD(d: Date): string` — moved from `ai-execute-tool/index.ts:47`.
@@ -58,8 +59,8 @@ No Deno imports, so Vitest can import it.
 - Each executor that reads the date gets `clock` as a 4th argument.
   `calculateDateRange(..., clock.now)` replaces the old call.
 - Each `toISOString().split('T')[0]` for a calendar day changes to
-  `toLocalYMD(...)` on a date from `clock.now`. The shift grouping key at line
-  2315 changes to `ymdInTimeZone(new Date(shift.start_time), clock.timeZone)`.
+  `toLocalYMD(...)` on a date from `clock.now`. This includes line 1442,
+  which feeds lines 1445 and 1446.
 
 ### `ai-chat-stream`
 
@@ -70,17 +71,32 @@ No Deno imports, so Vitest can import it.
 
 ## Decided trade-offs
 
-- Instant queries such as `.gte('punch_time', startDate.toISOString())`
-  (`ai-execute-tool/index.ts:266`) and the shift query at line 2282 keep
-  their present semantics: UTC midnight of the calendar day. Before this
-  change the day was the UTC day. Now it is the restaurant day. A full fix
-  converts each boundary with `zonedNaiveToUtc`. That changes labor math, so
-  it is out of scope for this PR.
-- One extra `restaurants` select per tool call. It is a primary-key read.
+- **Labor paths keep the server clock.** `laborCalculations.ts:547` puts
+  each punch period into a day with `formatDateLocal`, which reads runtime
+  local (UTC) fields. Punch fetch windows use `startDate.toISOString()`
+  (`ai-execute-tool/index.ts:266`, `:2017`, `:2366`). A restaurant-day window
+  in this UTC frame drops the evening clock-ins (Phase 2.5 review, major).
+  A correct fix changes the labor engine. That is a separate PR. So these
+  paths keep `new Date()` and do not change:
+  - the labor block of `executeGetKpis` (a second `calculateDateRange` call
+    with the server clock, `laborRange`);
+  - `executeGetLaborCosts`, `executeGetTimePunches`,
+    `executeGetPayrollSummary` (through `fetchLaborData` and line 2366);
+  - `executeGetScheduleOverview` (shift instants at line 2282 and the
+    grouping key at line 2315).
+- In `get_kpis` for a day period, sales use the restaurant day and labor
+  uses the UTC day. The two differ only in the hours when the UTC date is
+  not the local date. This is the present labor behavior.
+- **Rule for the wall-clock Date.** Build it only with the local constructor
+  `new Date(y, m, d, h, mi, s)`. Never call `toISOString()` or `getTime()` on
+  a `clock.now`-derived Date to get an instant. Use `toLocalYMD` for a day.
+- One extra `restaurants` select per tool call. The filter is on the primary
+  key `restaurants.id`.
 
 ## Tests
 
-- `tests/unit/restaurantDate.test.ts`: `2026-09-25T02:00:00Z` is
+- `tests/unit/restaurantDate.test.ts` (assertions do not depend on the
+  host timezone; also run under `npm run test:tz`): `2026-09-25T02:00:00Z` is
   `2026-09-24` in `America/Chicago` and `2026-09-25` in `UTC`;
   `calculateDateRange('today', ..., now)` gives `2026-09-24` for that
   instant in Chicago; winter (CST) and a positive-offset zone

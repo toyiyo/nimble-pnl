@@ -6,8 +6,10 @@ import {
   CAPABILITY_GATED_TOOLS,
   canUseCapabilityGatedTool,
   hasSchedulingOrPayrollCapability,
+  hasPayRatesCapability,
   type CapabilityCheckClient,
 } from '../../supabase/functions/_shared/tools-registry';
+import { PAY_HIDDEN_TOOL_HINT } from '../../supabase/functions/_shared/payHidden';
 
 /**
  * Tests for AI chat tool registration + role gating.
@@ -308,4 +310,75 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
       consoleErrorSpy.mockRestore();
     }
   });
+});
+
+describe('tools-registry: hasPayRatesCapability', () => {
+  // employees_secure returns NULL pay unless the caller holds view:pay_rates.
+  // The builtin Chef role holds view:scheduling but not view:pay_rates, so the
+  // labor tools must know when a $0 cost is a masked value.
+  function rpcReturning(result: { data: boolean | null; error: unknown } | Error) {
+    return vi.fn((_fn: string, _args: { p_restaurant_id: string; p_capability: string }) =>
+      result instanceof Error ? Promise.reject(result) : Promise.resolve(result),
+    );
+  }
+
+  it('asks user_has_capability for view:pay_rates', async () => {
+    const rpc = rpcReturning({ data: true, error: null });
+    await hasPayRatesCapability('rest-1', { rpc });
+    expect(rpc).toHaveBeenCalledWith('user_has_capability', {
+      p_restaurant_id: 'rest-1',
+      p_capability: 'view:pay_rates',
+    });
+  });
+
+  it('returns true when the RPC grants the flag', async () => {
+    expect(await hasPayRatesCapability('rest-1', { rpc: rpcReturning({ data: true, error: null }) })).toBe(true);
+  });
+
+  it('returns false when the RPC denies the flag', async () => {
+    expect(await hasPayRatesCapability('rest-1', { rpc: rpcReturning({ data: false, error: null }) })).toBe(false);
+  });
+
+  it('fails closed and logs when the RPC returns an error', async () => {
+    const rpcError = new Error('connection reset');
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await hasPayRatesCapability('rest-1', { rpc: rpcReturning({ data: null, error: rpcError }) });
+      expect(result).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view:pay_rates'),
+        expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('fails closed and logs when the RPC promise rejects', async () => {
+    const rpcError = new Error('network unreachable');
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await hasPayRatesCapability('rest-1', { rpc: rpcReturning(rpcError) });
+      expect(result).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view:pay_rates'),
+        expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+});
+
+describe('tools-registry: labor tool descriptions explain pay_hidden', () => {
+  // Without view:pay_rates the labor tools return null costs plus a
+  // pay_hidden reason. The model must tell the user, not report $0.
+  it.each(['get_kpis', 'get_labor_costs', 'get_schedule_overview', 'get_time_punches', 'get_payroll_summary'])(
+    '%s tells the model what pay_hidden means',
+    (name) => {
+      const def = getTools('rest-1', 'owner').find((t) => t.name === name);
+      expect(def).toBeDefined();
+      expect(def!.description).toContain(PAY_HIDDEN_TOOL_HINT);
+    },
+  );
 });

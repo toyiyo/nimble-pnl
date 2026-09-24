@@ -13,7 +13,7 @@ import {
 } from '../_shared/restaurantDate.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool } from "../_shared/tools-registry.ts";
+import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -22,8 +22,17 @@ import {
   type InventoryTransactionQuery 
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
-import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
+import { EMPLOYEE_LABOR_COLUMNS, EMPLOYEE_LABOR_SOURCE } from "../_shared/employeeLaborColumns.ts";
+import {
+  PAY_HIDDEN_REASON,
+  payHidden,
+  redactLaborCostsResult,
+  redactPayrollSummary,
+  redactTimePunchShifts,
+} from "../_shared/payHidden.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
+import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
+import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
@@ -72,6 +81,21 @@ function executeNavigate(args: any): any {
 }
 
 /**
+ * Why get_kpis omits labor. Order: masked pay, then the missing capability,
+ * then a labor window on other days than sales. Only used when labor is
+ * omitted; redactLaborFields ignores the reason otherwise.
+ */
+function pickLaborOmittedReason(access: {
+  hasPayRates: boolean;
+  hasLaborCapability: boolean;
+  laborMismatchReason: string | undefined;
+}): string | undefined {
+  if (!access.hasPayRates) return PAY_HIDDEN_REASON;
+  if (!access.hasLaborCapability) return LABOR_CAPABILITY_REASON;
+  return access.laborMismatchReason;
+}
+
+/**
  * Execute get_kpis tool
  * Returns comprehensive KPIs including revenue, COGS, labor, prime cost, and profitability metrics
  * Uses shared calculation logic from periodMetrics.ts
@@ -109,8 +133,11 @@ async function executeGetKpis(
   // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
 
-  const [hasLaborCapability, salesTotals, usageResult, salesCountResult] = await Promise.all([
+  const [hasLaborCapability, hasPayRates, salesTotals, usageResult, salesCountResult] = await Promise.all([
     hasSchedulingOrPayrollCapability(restaurantId, supabase),
+    // employees_secure returns NULL pay without view:pay_rates, so labor would
+    // compute as $0. Omit it instead (see _shared/payHidden.ts).
+    hasPayRatesCapability(restaurantId, supabase),
     // Net sales for the period (gross - discounts - refunds), from the shared RPC.
     fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
     // Fetch food costs (COGS) as a monthly-usage aggregate from the SQL side.
@@ -156,8 +183,9 @@ async function executeGetKpis(
     throw new Error(`unified_sales count failed: ${salesCountResult.error.message}`);
   }
   const salesCount = salesCountResult.count ?? 0;
-  // Labor needs the capability AND a labor window on the same days as sales.
-  const hasLaborAccess = hasLaborCapability && !laborMismatchReason;
+  // Labor needs the capability, unmasked pay rates, AND a labor window on the
+  // same days as sales.
+  const hasLaborAccess = hasLaborCapability && hasPayRates && !laborMismatchReason;
 
   // Fetch labor costs using time_punches + employees (same as Dashboard) —
   // only when the caller can actually see restaurant-wide punches. Skipping
@@ -172,26 +200,21 @@ async function executeGetKpis(
     // shift whose clock_out lands just after endDate still pairs whole.
     // calculateActualLaborCost attributes hours by clock-in day and drops
     // out-of-window periods, so this never double-counts.
-    const { data: timePunches, error: punchesError } = await supabase
-      .from('time_punches')
-      .select('id, employee_id, restaurant_id, punch_time, punch_type')
-      .eq('restaurant_id', restaurantId)
-      .gte('punch_time', laborStartDate.toISOString())
-      .lte('punch_time', new Date(laborEndDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
-      .order('punch_time', { ascending: true });
+    // All employees (including inactive, for historical accuracy) load in
+    // parallel with the punches: the two reads do not depend on each other.
+    const [{ data: timePunches, error: punchesError }, employees] = await Promise.all([
+      supabase
+        .from('time_punches')
+        .select('id, employee_id, restaurant_id, punch_time, punch_type')
+        .eq('restaurant_id', restaurantId)
+        .gte('punch_time', laborStartDate.toISOString())
+        .lte('punch_time', new Date(laborEndDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
+        .order('punch_time', { ascending: true }),
+      fetchLaborEmployees(supabase, restaurantId),
+    ]);
 
     if (punchesError) {
       throw new Error(`Failed to fetch time punches: ${punchesError.message}`);
-    }
-
-    // Fetch all employees (including inactive for historical accuracy)
-    const { data: employees, error: employeesError } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
-
-    if (employeesError) {
-      throw new Error(`Failed to fetch employees: ${employeesError.message}`);
     }
 
     // Calculate labor costs using shared module (same logic as Dashboard)
@@ -246,11 +269,11 @@ async function executeGetKpis(
   // everything downstream of that (prime_cost, profit_margin, the
   // labor/prime benchmark statuses) rather than let it read as a complete
   // restaurant-wide figure — food-cost-only fields are unaffected and stay in.
-  const { costs, profitability, benchmarks, laborOmittedReason: capabilityOmittedReason } = redactLaborFields(
+  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(
     { costs: rawCosts, profitability: rawProfitability, benchmarks: rawBenchmarks },
-    hasLaborAccess
+    hasLaborAccess,
+    pickLaborOmittedReason({ hasPayRates, hasLaborCapability, laborMismatchReason })
   );
-  const laborOmittedReason = hasLaborCapability ? laborMismatchReason : capabilityOmittedReason;
 
   const revenue = {
     gross_revenue: salesTotals.gross,
@@ -278,6 +301,7 @@ async function executeGetKpis(
       liabilities: { sales_tax: salesTotals.salesTax, tips: salesTotals.tips, other_liabilities: salesTotals.otherLiabilities },
       benchmarks,
       labor_omitted: laborOmittedReason ? { reason: laborOmittedReason } : undefined,
+      pay_hidden: hasPayRates ? undefined : payHidden(),
 
       // Additional metrics not in shared module
       inventory_value: inventoryValue,
@@ -1911,6 +1935,53 @@ interface FetchLaborDataOptions {
   endLookaheadHours?: number;
 }
 
+interface FetchLaborEmployeesOptions {
+  /** Optional single-employee filter. */
+  employeeId?: string;
+  /** Optional case-insensitive position filter. */
+  position?: string;
+  /** Only employees with status 'active'. */
+  activeOnly?: boolean;
+}
+
+/**
+ * Read the employee rows the labor engine needs, through employees_secure.
+ *
+ * This function runs as the caller. 20260806110000 revokes SELECT on the pay
+ * columns of public.employees from authenticated, so a read of the base table
+ * fails with "permission denied for column hourly_rate". The view returns
+ * those columns, NULL when the caller lacks view:pay_rates. Each labor tool
+ * checks that flag with hasPayRatesCapability before it shows a cost.
+ */
+async function fetchLaborEmployees(
+  supabase: ReturnType<typeof createClient>,
+  restaurantId: string,
+  options: FetchLaborEmployeesOptions = {},
+): Promise<LaborEmployee[]> {
+  const { employeeId, position, activeOnly = false } = options;
+
+  let query = supabase
+    .from(EMPLOYEE_LABOR_SOURCE)
+    .select(EMPLOYEE_LABOR_COLUMNS)
+    .eq('restaurant_id', restaurantId);
+
+  if (employeeId) {
+    query = query.eq('id', employeeId);
+  }
+  if (position) {
+    query = query.ilike('position', position);
+  }
+  if (activeOnly) {
+    query = query.eq('status', 'active');
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch employees: ${error.message}`);
+  // The select is EMPLOYEE_LABOR_COLUMNS, which covers every field of the
+  // engine's Employee type (tests/unit/employeeLaborColumns.test.ts).
+  return (data ?? []) as LaborEmployee[];
+}
+
 /**
  * Fetch time punches and employees in parallel — shared by get_labor_costs
  * and get_time_punches.
@@ -1941,27 +2012,16 @@ async function fetchLaborData(
     punchQuery = punchQuery.eq('employee_id', employeeId);
   }
 
-  let employeeQuery = supabase
-    .from('employees')
-    .select(EMPLOYEE_LABOR_COLUMNS)
-    .eq('restaurant_id', restaurantId);
-
-  if (employeeId) {
-    employeeQuery = employeeQuery.eq('id', employeeId);
-  }
-
-  if (position) {
-    employeeQuery = employeeQuery.ilike('position', position);
-  }
-
-  const [punchesResult, employeesResult] = await Promise.all([punchQuery, employeeQuery]);
+  const [punchesResult, employees] = await Promise.all([
+    punchQuery,
+    fetchLaborEmployees(supabase, restaurantId, { employeeId, position }),
+  ]);
 
   if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
 
   return {
     timePunches: punchesResult.data ?? [],
-    employees: employeesResult.data ?? [],
+    employees,
   };
 }
 
@@ -1984,9 +2044,10 @@ async function executeGetLaborCosts(
 
   // 18h lookahead so shifts whose clock_out lands just after midnight at the
   // end of the window still get paired into a complete period.
-  const { timePunches, employees } = await fetchLaborData(supabase, restaurantId, startDate, endDate, {
-    endLookaheadHours: 18,
-  });
+  const [{ timePunches, employees }, hasPayRates] = await Promise.all([
+    fetchLaborData(supabase, restaurantId, startDate, endDate, { endLookaheadHours: 18 }),
+    hasPayRatesCapability(restaurantId, supabase),
+  ]);
 
   const { breakdown, dailyCosts } = calculateActualLaborCost(employees, timePunches, startDate, endDate);
 
@@ -2006,21 +2067,28 @@ async function executeGetLaborCosts(
       }))
     : null;
 
+  const costs = {
+    breakdown: {
+      hourly: breakdown.hourly,
+      salary: breakdown.salary,
+      contractor: breakdown.contractor,
+      daily_rate: breakdown.daily_rate,
+      total: breakdown.total,
+    },
+    daily_costs: include_daily_breakdown ? dailyCosts : undefined,
+    employee_breakdown: employeeBreakdown,
+  };
+
   return {
     ok: true,
     data: {
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      breakdown: {
-        hourly: breakdown.hourly,
-        salary: breakdown.salary,
-        contractor: breakdown.contractor,
-        daily_rate: breakdown.daily_rate,
-        total: breakdown.total,
-      },
-      daily_costs: include_daily_breakdown ? dailyCosts : undefined,
-      employee_breakdown: employeeBreakdown,
+      // Without view:pay_rates every rate is a masked NULL, so each cost is $0.
+      // Show null plus a reason, not $0.
+      ...(hasPayRates ? costs : redactLaborCostsResult(costs)),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
     },
     evidence: [
       { table: 'time_punches', summary: `${timePunches.length} time punches across ${employees.length} employees from ${startDateStr} to ${endDateStr}` },
@@ -2069,13 +2137,16 @@ async function executeGetTimePunches(
   // end of the window still get paired. `calculateHoursPerEmployee` filters
   // periods by startTime <= endDate so any orphan clock_in in the lookahead
   // zone is dropped.
-  const { timePunches, employees } = await fetchLaborData(
-    supabase,
-    restaurantId,
-    startDate,
-    endDate,
-    { employeeId: employee_id, position, endLookaheadHours: 18 },
-  );
+  const [{ timePunches, employees }, hasPayRates] = await Promise.all([
+    fetchLaborData(
+      supabase,
+      restaurantId,
+      startDate,
+      endDate,
+      { employeeId: employee_id, position, endLookaheadHours: 18 },
+    ),
+    hasPayRatesCapability(restaurantId, supabase),
+  ]);
 
   const summaries = calculateHoursPerEmployee(employees, timePunches, startDate, endDate);
   // Index by id so we can resolve the per-day compensation snapshot below
@@ -2148,7 +2219,9 @@ async function executeGetTimePunches(
       total_shifts: shifts.length,
       returned_shifts: limited.length,
       has_more: hasMore,
-      shifts: limited,
+      // Without view:pay_rates each cost_cents is a masked $0. Show null.
+      shifts: hasPayRates ? limited : redactTimePunchShifts(limited),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
     },
     evidence: [
       {
@@ -2192,31 +2265,30 @@ async function executeGetScheduleOverview(
   const startDateStr = toLocalYMD(startDate);
   const endDateStr = toLocalYMD(endDate);
 
-  // Fetch shifts and employees in parallel
-  const [shiftsResult, employeesResult] = await Promise.all([
+  // Fetch shifts and employees in parallel. The shift embed names only
+  // granted employee columns: the caller cannot read hourly_rate on
+  // public.employees (20260806110000).
+  const [shiftsResult, employees, hasPayRates] = await Promise.all([
     supabase
       .from('shifts')
-      .select('*, employee:employees(id, name, position, compensation_type, hourly_rate)')
+      .select('*, employee:employees(id, name, position)')
       .eq('restaurant_id', restaurantId)
       .gte('start_time', startDate.toISOString())
       .lte('start_time', endDate.toISOString())
       .order('start_time', { ascending: true }),
-    supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('status', 'active'),
+    // Only the cost projection reads employees and the pay flag.
+    include_projected_costs ? fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }) : Promise.resolve([]),
+    include_projected_costs ? hasPayRatesCapability(restaurantId, supabase) : Promise.resolve(true),
   ]);
 
   if (shiftsResult.error) throw new Error(`Failed to fetch shifts: ${shiftsResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
 
   const shifts = shiftsResult.data || [];
-  const employees = employeesResult.data || [];
 
-  // Calculate projected costs if requested and there are shifts
+  // Calculate projected costs if requested and there are shifts. Without
+  // view:pay_rates every rate is a masked NULL, so the projection is skipped.
   let projectedCosts = null;
-  if (include_projected_costs && shifts.length > 0) {
+  if (include_projected_costs && hasPayRates && shifts.length > 0) {
     const shiftData = shifts.map((s: any) => ({
       employee_id: s.employee_id,
       start_time: s.start_time,
@@ -2254,6 +2326,7 @@ async function executeGetScheduleOverview(
       total_shifts: shifts.length,
       shifts_by_date: shiftsByDate,
       projected_labor_costs: projectedCosts,
+      pay_hidden: include_projected_costs && !hasPayRates ? payHidden() : undefined,
     },
     evidence: [
       { table: 'shifts', summary: `${shifts.length} scheduled shifts from ${startDateStr} to ${endDateStr}` },
@@ -2277,7 +2350,7 @@ async function executeGetPayrollSummary(
   // Fetch all required data in parallel. time_punches upper bound is widened by
   // an overnight look-ahead so a shift crossing endDate still pairs whole;
   // calculateActualLaborCost drops periods whose clock-in is out of window.
-  const [punchesResult, employeesResult, tipsResult, manualResult] = await Promise.all([
+  const [punchesResult, employees, tipsResult, manualResult, hasPayRates] = await Promise.all([
     supabase
       .from('time_punches')
       .select('*')
@@ -2285,10 +2358,7 @@ async function executeGetPayrollSummary(
       .gte('punch_time', startDate.toISOString())
       .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
       .order('punch_time', { ascending: true }),
-    supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId),
+    fetchLaborEmployees(supabase, restaurantId),
     supabase
       .from('tip_splits')
       .select('id, total_amount')
@@ -2303,15 +2373,14 @@ async function executeGetPayrollSummary(
       .eq('source', 'per-job')
       .gte('date', startDateStr)
       .lte('date', endDateStr),
+    hasPayRatesCapability(restaurantId, supabase),
   ]);
 
   if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
   if (tipsResult.error) throw new Error(`Failed to fetch tips: ${tipsResult.error.message}`);
   if (manualResult.error) throw new Error(`Failed to fetch manual payments: ${manualResult.error.message}`);
 
   const punches = punchesResult.data || [];
-  const employees = employeesResult.data || [];
   const tipSplits = tipsResult.data || [];
   const manualPayments = manualResult.data || [];
 
@@ -2338,6 +2407,19 @@ async function executeGetPayrollSummary(
   const totalTips = totalTipsCents / 100;
   const totalManualPaymentsAmount = totalManualPaymentsCents / 100;
 
+  const summary = {
+    total_gross_pay: breakdown.total,
+    total_tips: totalTips,
+    total_manual_payments: totalManualPaymentsAmount,
+    total_payroll: breakdown.total + totalTips + totalManualPaymentsAmount,
+    by_compensation_type: {
+      hourly: breakdown.hourly,
+      salary: breakdown.salary,
+      contractor: breakdown.contractor,
+      daily_rate: breakdown.daily_rate,
+    },
+  };
+
   // Build employee details if requested
   const activeEmployees = employees.filter((e: any) => e.status === 'active');
   const employeeDetails = include_employee_details
@@ -2356,18 +2438,10 @@ async function executeGetPayrollSummary(
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      summary: {
-        total_gross_pay: breakdown.total,
-        total_tips: totalTips,
-        total_manual_payments: totalManualPaymentsAmount,
-        total_payroll: breakdown.total + totalTips + totalManualPaymentsAmount,
-        by_compensation_type: {
-          hourly: breakdown.hourly,
-          salary: breakdown.salary,
-          contractor: breakdown.contractor,
-          daily_rate: breakdown.daily_rate,
-        },
-      },
+      // Without view:pay_rates every rate is a masked NULL, so gross pay is
+      // $0. Show null plus a reason. Tips stay: they do not come from pay rates.
+      summary: hasPayRates ? summary : redactPayrollSummary(summary),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
       employee_count: activeEmployees.length,
       employee_details: employeeDetails,
     },

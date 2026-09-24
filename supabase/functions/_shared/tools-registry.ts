@@ -1,5 +1,7 @@
 // Tools Registry - Defines available tools for the AI agent
 
+import { PAY_HIDDEN_TOOL_HINT } from './payHidden.ts';
+
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -56,7 +58,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // KPI/Metrics tools - available to all users
     {
       name: 'get_kpis',
-      description: 'Get key performance indicators for the restaurant. Returns comprehensive metrics including revenue, COGS (Cost of Goods Sold / Food Cost), labor cost, prime cost, margins, profitability, and inventory value. Use this to answer questions about costs, profitability, and financial performance.',
+      description: `Get key performance indicators for the restaurant. Returns comprehensive metrics including revenue, COGS (Cost of Goods Sold / Food Cost), labor cost, prime cost, margins, profitability, and inventory value. Use this to answer questions about costs, profitability, and financial performance. ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -234,7 +236,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Labor cost analysis - available to all users
     {
       name: 'get_labor_costs',
-      description: 'Get labor cost breakdown by compensation type (hourly, salary, contractor, daily_rate). Shows daily costs, total hours worked, and optional employee-level breakdown. Uses time punches + employee configs for accurate calculations. Set include_employee_breakdown:true to get per-employee total_hours, total_cost_cents, days_worked, and hours_per_day (manager+owner only; null for other roles).',
+      description: `Get labor cost breakdown by compensation type (hourly, salary, contractor, daily_rate). Shows daily costs, total hours worked, and optional employee-level breakdown. Uses time punches + employee configs for accurate calculations. Set include_employee_breakdown:true to get per-employee total_hours, total_cost_cents, days_worked, and hours_per_day (manager+owner only; null for other roles). ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -271,7 +273,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Schedule overview - available to all users
     {
       name: 'get_schedule_overview',
-      description: 'Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts, conflicts, and estimated labor cost based on scheduled hours.',
+      description: `Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts, conflicts, and estimated labor cost based on scheduled hours. ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -362,7 +364,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_time_punches',
-        description: "List individual work periods (clock-in/clock-out pairs with computed hours and breaks deducted) for a date range. Use this to answer 'who worked when' and to drill into specific shifts. Returns parsed work periods (one row per shift), joined to employee name/position. Manager+owner only.",
+        description: `List individual work periods (clock-in/clock-out pairs with computed hours and breaks deducted) for a date range. Use this to answer 'who worked when' and to drill into specific shifts. Returns parsed work periods (one row per shift), joined to employee name/position. Manager+owner only. ${PAY_HIDDEN_TOOL_HINT}`,
         parameters: {
           type: 'object',
           properties: {
@@ -405,7 +407,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_payroll_summary',
-        description: 'Get payroll summary for a pay period including employee earnings, hours worked, tips, and manual payments. Calculates regular and overtime pay for hourly employees, prorated salary for salaried employees, and contractor payments.',
+        description: `Get payroll summary for a pay period including employee earnings, hours worked, tips, and manual payments. Calculates regular and overtime pay for hourly employees, prorated salary for salaried employees, and contractor payments. ${PAY_HIDDEN_TOOL_HINT}`,
         parameters: {
           type: 'object',
           properties: {
@@ -984,6 +986,35 @@ export async function hasSchedulingOrPayrollCapability(
   }
 
   return Boolean(scheduling.data) || Boolean(payroll.data);
+}
+
+/**
+ * Resolves view:pay_rates for the calling user, with the same RPC the
+ * employees_secure view uses to mask pay (20260806110000). Without the flag
+ * the view returns NULL pay, so the labor engine computes $0 for every
+ * masked employee. The labor tools use this check to omit cost figures
+ * instead of reporting a masked $0 as a real total. Fails closed and logs an
+ * RPC failure, as hasSchedulingOrPayrollCapability does.
+ */
+export async function hasPayRatesCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  const result = await supabase
+    .rpc('user_has_capability', {
+      p_restaurant_id: restaurantId,
+      p_capability: 'view:pay_rates',
+    })
+    .catch((err: unknown) => ({ data: null, error: err }));
+
+  if (result.error) {
+    console.error('hasPayRatesCapability: view:pay_rates RPC failed', {
+      restaurantId,
+      error: result.error,
+    });
+  }
+
+  return Boolean(result.data);
 }
 
 /**

@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPLOYEE_LABOR_COLUMNS } from '../../supabase/functions/_shared/employeeLaborColumns.ts';
+import {
+  EMPLOYEE_LABOR_COLUMNS,
+  EMPLOYEE_LABOR_SOURCE,
+} from '../../supabase/functions/_shared/employeeLaborColumns.ts';
+
+describe('EMPLOYEE_LABOR_SOURCE', () => {
+  // 20260806110000 revokes SELECT on the pay columns of public.employees from
+  // authenticated. A caller-JWT read of those columns fails, so the labor
+  // reads go through the masking view.
+  it('is the employees_secure view, not the base table', () => {
+    expect(EMPLOYEE_LABOR_SOURCE).toBe('employees_secure');
+  });
+});
 
 describe('EMPLOYEE_LABOR_COLUMNS', () => {
   it('uses the embed-alias syntax for compensation_history', () => {
@@ -26,7 +38,7 @@ describe('EMPLOYEE_LABOR_COLUMNS', () => {
     ]);
   });
 
-  it('lists only base columns that exist on the employees table', () => {
+  it('lists only columns that exist on the employees_secure view', () => {
     // Split on commas that aren't inside the embed's parens.
     const topLevelTokens = EMPLOYEE_LABOR_COLUMNS.split(/,(?![^()]*\))/).map((t) => t.trim());
     const baseColumns = topLevelTokens.map((token) => token.split(':')[0].trim());

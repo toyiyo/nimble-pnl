@@ -168,20 +168,24 @@ export interface ClaimableOptions {
 // Sort by start time, soonest first.
 export function selectClaimableTrades(trades, opts): ClaimableTrade[];
 
-// Visible short label and a full-word label for screen readers.
-export function tradeStartLabel(startsAt: Date, now: Date, tz: string):
-  { short: string; spoken: string };
+// Urgency chip text, or null when no chip shows. The row already shows
+// the date tile and the time, so the chip never repeats the date.
+export function tradeUrgencyLabel(startsAt: Date, now: Date, tz: string):
+  { short: string; spoken: string } | null;
+
+// Date tile parts in the restaurant time zone: { weekday: 'Fri', day: '26', month: 'Sep' }.
+export function tradeDateTile(startsAt: Date, tz: string): { weekday: string; day: string; month: string };
 ```
 
-`tradeStartLabel` rules (restaurant time zone, values rounded down):
+`tradeUrgencyLabel` rules (restaurant time zone, values rounded down):
 
 | Time to start | `short` | `spoken` |
 |---|---|---|
 | under 1 h | `Starts in 45 min` | `Starts in 45 minutes` |
 | 1 h to under 12 h | `Starts in 5 h` | `Starts in 5 hours` |
-| 12 h or more, same restaurant day | `Today · 11:00 PM` | same |
-| next restaurant day | `Tomorrow · 5:00 PM` | same |
-| later | `Fri, Sep 26 · 5:00 PM` | same |
+| 12 h or more, same restaurant day | `Today` | `Today` |
+| next restaurant day | `Tomorrow` | `Tomorrow` |
+| later | `null` (no chip) | — |
 
 #### A2. Hook: `src/hooks/useClaimableTrades.ts`
 
@@ -206,41 +210,67 @@ the query on every employee page:
 - Add `.gte('end_time', new Date().toISOString())` to the conflict shift
   read. Only future shifts can overlap an open trade.
 
-#### A3. "Trades up for grabs" card on the employee home screen
+#### A3. "Teammates need cover" card on the employee home screen
+
+The approved mockup is at https://claude.ai/artifact/WKo2q9Z1DNfcESJJV2kgAA
+("Improved" set). Changes 1–5 of that page are part of this design.
 
 - New component `src/components/employee/UpForGrabsCard.tsx`. It gets the
   data as props from `EmployeeSchedule`. It has no data hooks.
-- Placement: in `EmployeeSchedule.tsx`, after `ScheduleStatusBanner` and
-  before `MyShiftTradesCard`.
-- The title is "Trades up for grabs". The page counts only trades, so the
-  title does not claim to count open shifts too.
+- Title: "Teammates need cover", with the count. People take a shift for
+  a coworker more often than for an empty slot (change 1).
+- Sub-line under the title, in `text-[12px] text-muted-foreground`, with
+  a `Check` icon in `text-success`: "All 3 fit around your shifts" ("It
+  fits around your shifts" for one). The selector already drops overlaps,
+  so the claim is true (change 2). The text does not use `text-success`,
+  because `--success` on `--background` is near 3:1, below 4.5:1 for 12 px
+  text.
 - The card shows the 3 soonest claimable trades as a `<ul>`. Each `<li>`
-  shows the date, the time, the position, the poster name and the start
-  chip.
-- Each row has a "View" link to
-  `/employee/shifts?trade=<id>&restaurant=<restaurantId>`, with
-  `aria-label="View {position} shift on {date} from {name}"`.
-- A "See all" link goes to `/employee/shifts`.
+  is one `<Link>` (change 4):
+  - Left: the date tile from `MyShiftTradesCard`
+    (`src/components/schedule/MyShiftTradesCard.tsx:84-88`): weekday,
+    day number, month, in the restaurant time zone (change 3).
+  - Middle line 1: "{poster name} · {position}" and the urgency chip when
+    `tradeUrgencyLabel` returns a value.
+  - Middle line 2: "{start} – {end}", plus ` · “{reason}”` when the trade
+    has a reason. The reason truncates to one line.
+  - Right: a `ChevronRight` icon.
+  - The link goes to `/employee/shifts?trade=<id>&restaurant=<restaurantId>&from=home`.
+  - `aria-label="View {position} shift on {weekday, month day} from {name}"`.
+  - The row is one tab stop with `min-h-[64px]`.
+- Footer: "{n} open shifts too" on the left, when `openShiftCount > 0`,
+  and a "Browse all {total}" link to `/employee/shifts` on the right
+  (change 5).
+- Placement (change 5):
+  - When the card shows, `EmployeeSchedule` hides the gradient
+    "Browse Available Shifts" button. The card footer takes its job.
+  - When any claimable trade is `urgent` (24 h or less), the card goes
+    directly under the page header, above `ScheduleStatusBanner`.
+  - Otherwise the card goes after `ScheduleStatusBanner` and before
+    `MyShiftTradesCard`.
+- `EmployeeSchedule` reads `useClaimableTrades` for the trades, and
+  `useOpenShifts` for `openShiftCount`, with the same two-week range as
+  `AvailableShiftsPage` (`src/pages/AvailableShiftsPage.tsx:252-257`).
 - States:
-  - Loading: render nothing. Most employees have no trades most days. A
-    skeleton that then disappears moves the cards below it.
-  - Error: one line, "Could not load trades up for grabs.", with a
-    "Try again" button that calls `refetch`.
-  - Empty (`count === 0`): render nothing. The "Browse Available Shifts"
-    button stays on the screen.
+  - Loading: render nothing, and keep the gradient button. Most employees
+    have no trades most days. A skeleton that then disappears moves the
+    cards below it.
+  - Error: one line, "Could not load shifts that need cover.", with a
+    "Try again" button that calls `refetch`. The gradient button stays.
+  - Empty (`count === 0`): render nothing. The gradient button stays.
   - Data: the card.
 - Classes:
-  - Container: `rounded-xl border border-border/40 bg-background`.
+  - Container: `rounded-xl border border-border/40 bg-background overflow-hidden`.
   - Header: `px-4 py-3 border-b border-border/40`. Title
     `text-[17px] font-semibold text-foreground`. Count
     `text-[11px] px-1.5 py-0.5 rounded-md bg-muted`.
-  - Row: `flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/30`.
-    Main text `text-[14px] font-medium text-foreground`. Second line
+  - Row link: `flex items-center gap-3 px-4 py-3 min-h-[64px] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground`.
+    Line 1 `text-[14px] font-medium text-foreground`. Line 2
     `text-[13px] text-muted-foreground`.
-  - Urgent chip: `text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium`.
-  - Other chip: `text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground`.
+  - Urgent chip (under 24 h): `text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium`.
+  - Other chip ("Tomorrow" at more than 24 h): `text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground`.
   - Each chip has `aria-label={spoken}`.
-  - View button: `h-9 px-4 rounded-lg text-[13px] font-medium`.
+  - Footer: `flex items-center justify-between px-4 py-2.5 border-t border-border/40 text-[13px] text-muted-foreground`.
   - Error line: `text-[13px] text-muted-foreground`.
 - The accept action stays on the marketplace page only. That page owns the
   deadline confirm dialog and the area warning. One accept flow means one
@@ -252,6 +282,11 @@ the query on every employee page:
   presentational `<span aria-hidden="true">` with
   `min-w-[16px] h-4 px-1 rounded-full bg-foreground text-background text-[10px] font-semibold leading-4 text-center`.
   It shows `9+` for counts above 9.
+- The badge takes an `urgent` prop. When any claimable trade is urgent
+  (24 h or less), the badge uses `bg-amber-600 text-white dark:bg-amber-500 dark:text-amber-950`
+  in place of `bg-foreground text-background` (change 5). White on
+  `amber-600` is about 3.2:1, which meets the 3:1 rule for a badge
+  (WCAG 1.4.11); the accessible name carries the count in words.
 - `MobileTabBar`:
   - Calls `useRestaurantContext()`, `useCurrentEmployee(restaurantId)` and
     `useClaimableTrades(restaurantId, employeeId)`.
@@ -298,14 +333,25 @@ the query on every employee page:
     `virtualizer.scrollToIndex(index, { align: 'center' })`. Do not use
     smooth scroll, because rows have dynamic height. After the next frame,
     focus the card root.
-  - If the trade is not in `items`: show the toast "That shift is no
-    longer available." and clear the highlight.
+  - If the trade is not in `items`: show the toast with title "That shift
+    is no longer open" and description "A teammate took it, or it was
+    withdrawn. The shifts below are still open." Then clear the highlight.
+    The copy does not name who took the shift, because RLS hides a trade
+    from other employees once it leaves `open`
+    (`supabase/migrations/20260713000000_restrict_directed_shift_trade_visibility.sql:24-48`).
 - The highlight clears after 4 s or on the first user scroll of the list.
-- `TradeCard` gets a `highlighted` prop:
+- The page also reads a `from` param (`reminder` or `home`) and keeps it
+  in state with the highlight id. The highlighted card shows a small label
+  above the "SHIFT TRADE" tag (change 6):
+  - `from=reminder`: `Bell` icon and "From your reminder".
+  - `from=home`: `Home` icon and "From your home screen".
+  - Classes: `flex items-center gap-1.5 text-[12px] text-muted-foreground`.
+- `TradeCard` gets a `highlighted` prop and a `highlightSource` prop:
   - The root gets `tabIndex={-1}`, `outline-none`, `aria-current="true"`
     and `ring-2 ring-inset ring-foreground` when highlighted. `ring-inset`
     stops the scroll container from clipping the ring.
-  - The memo compare adds `prev.highlighted === next.highlighted`.
+  - The memo compare adds `prev.highlighted === next.highlighted` and
+    `prev.highlightSource === next.highlightSource`.
 
 ### Part B: Timed reminders (backend)
 
@@ -378,16 +424,27 @@ the query on every employee page:
 - Both types also go through `resolveChannels` in the edge function, as a
   second gate.
 - The web push goes through `sendWebPushToUsers`.
-- The push URL is `/employee/shifts?trade=<id>&restaurant=<restaurant_id>`.
+- The employee push URL is
+  `/employee/shifts?trade=<id>&restaurant=<restaurant_id>&from=reminder`.
+- The scheduler push URL is `/scheduling`, and the scheduler email button
+  links to `/scheduling` too. A scheduler assigns the shift there, not in
+  the employee marketplace (change 7).
+- The poster push URL is `/employee/schedule`, where `MyShiftTradesCard`
+  shows the poster's own trade.
 - The push `tag` is `trade-reminder-<id>`, so a new stage replaces the
   old one on the device.
-- Push text (`{when}` is built from the real hours left, for example
-  "Starts in 2 hours", so a stage that quiet hours delay stays true):
-  - `72h` and `24h`: title "Shift still up for grabs". Body
-    "Fri 5:00 PM · Server. Tap to pick it up."
-  - `6h`: title "{when}: shift needs cover". Same body shape.
-  - `unclaimed` (schedulers): title "Nobody took this shift yet". Body
-    "Maria's Fri 5:00 PM Server shift is still open."
+- Push text is written like a teammate who asks for help (change 7).
+  `{name}` is the poster's first name. `{day}` is "today", "tomorrow" or
+  the weekday name ("Friday"), in the restaurant time zone. `{when}` is
+  built from the real hours left ("in 2 hours"), so a stage that quiet
+  hours delay stays true. Times use the restaurant time zone.
+  - `72h` and `24h`: title "{name} needs cover {day}". Body
+    "{position}, {Fri} {5–11 PM}. You're free then. Tap to take the shift."
+    The audience excludes employees with an overlap, so "You're free then"
+    is true for every recipient.
+  - `6h`: title "{name}'s shift starts {when}". Same body.
+  - `unclaimed` (schedulers): title "Nobody took {name}'s shift yet". Body
+    "{position}, {Fri} {5–11 PM}, still open. Tap to assign it."
   - `unclaimed` (poster): title "Your shift is still up for trade". Body
     "Nobody took it yet. You still work it unless a manager changes it."
 - A draft shift (`is_published = false`) uses `tentativePushBody`.
@@ -538,12 +595,15 @@ this case.
 
 - Unit (`tests/unit/`):
   - `claimableTrades.test.ts`: filters (own, past, conflict, block window,
-    exempt caller), sort, urgent bound, each label row in A1, midnight and
-    time zone edges.
+    exempt caller), sort, urgent bound, each `tradeUrgencyLabel` row in A1,
+    `tradeDateTile`, midnight and time zone edges.
   - `useClaimableTrades.test.ts`: disabled without employee, count,
     loading, error, a trade drops out when the tick passes its start.
   - `UpForGrabsCard` and `TradeCountBadge` render tests: nothing on
-    loading or empty, error with retry, `9+`, accessible names.
+    loading or empty, error with retry, fit sub-line, reason text, footer
+    counts, row link href and name, `9+`, the amber badge, accessible names.
+  - `shiftTradeReminderContent.test.ts`: each push title and body in B3,
+    the three URLs, `{day}` and `{when}` in the restaurant time zone.
   - `shiftTradeRemindersHandler.test.ts`: claim before send, a lost claim
     skips the send, channel gate after claim, run budget defers the rest,
     poster push only, scheduler email per recipient, counts-only logs,
@@ -568,8 +628,9 @@ this case.
   - `authenticated` cannot execute the RPCs or read the table.
   - The CHECK constraint accepts the two new keys.
 - E2E (`tests/e2e/shift-trade-up-for-grabs.spec.ts`): employee A posts a
-  trade. Employee B sees the "Trades up for grabs" card and the More
-  badge. B taps "View". The marketplace scrolls to the highlighted trade,
+  trade. Employee B sees the "Teammates need cover" card and the More
+  badge. B taps the trade row. The marketplace scrolls to the highlighted
+  trade with the "From your home screen" label,
   and B accepts it.
 
 ## Rollout
@@ -584,11 +645,15 @@ this case.
 
 ## Decided trade-offs
 
+- The UI follows the "Improved" mockup (changes 1–7) at
+  https://claude.ai/artifact/WKo2q9Z1DNfcESJJV2kgAA. The user approved it
+  on 2026-09-25.
+
 - Employee reminders are push only. Employees without push get no
   reminder, but the home card and the badge still reach them.
 - The home card does not accept in place. It deep-links to the one accept
   flow.
-- An empty or loading "Trades up for grabs" card does not render. The
+- An empty or loading "Teammates need cover" card does not render. The
   "Browse Available Shifts" button already covers the empty case.
 - Quiet hours can hide the `6h` stage for a shift that starts at or before
   08:00. The `24h` stage still reaches employees the day before, and the

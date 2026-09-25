@@ -72,10 +72,13 @@ tasks in order. Stage explicit paths only.
 
 - Files: `supabase/functions/_shared/shiftTradeReminderContent.ts`,
   `tests/unit/shiftTradeReminderContent.test.ts`.
-- Test first: title and body for each stage and audience; `{when}` from
-  real hours; draft shift uses `tentativePushBody`; URL has `trade` and
-  `restaurant`; tag is `trade-reminder-<id>`; the scheduler email HTML
-  escapes names.
+- Test first: the teammate-voice title and body for each stage and
+  audience (design B3); `{name}` is the first name; `{day}` and `{when}`
+  from real hours in the restaurant time zone; draft shift uses
+  `tentativePushBody`; employee URL has `trade`, `restaurant` and
+  `from=reminder`; scheduler URL is `/scheduling`; poster URL is
+  `/employee/schedule`; tag is `trade-reminder-<id>`; the scheduler email
+  HTML escapes names.
 
 ### Task 7: Reminder handler
 
@@ -98,11 +101,12 @@ tasks in order. Stage explicit paths only.
 
 ## Frontend
 
-### Task 9: Selector and label
+### Task 9: Selector, urgency label and date tile
 
 - Files: `src/lib/claimableTrades.ts`, `tests/unit/claimableTrades.test.ts`.
-- Test first: design A1 filters, sort, `urgent`, and each label row,
-  including midnight and a restaurant zone that differs from UTC.
+- Test first: design A1 filters, sort, `urgent`, each `tradeUrgencyLabel`
+  row (including `null`), and `tradeDateTile`, with midnight and a
+  restaurant zone that differs from UTC.
 
 ### Task 10: `useMarketplaceTrades` changes and `useClaimableTrades`
 
@@ -114,21 +118,27 @@ tasks in order. Stage explicit paths only.
   selects explicit columns, bounds the conflict read, and accepts
   `{ enabled }`.
 
-### Task 11: `TradeCountBadge` and the nav badges
+### Task 11: `TradeCountBadge` (with the amber urgent state) and the nav badges
 
 - Files: `src/components/employee/TradeCountBadge.tsx`,
   `src/components/employee/MobileTabBar.tsx`, `src/pages/EmployeeMore.tsx`,
   `src/components/AppSidebar.nav.ts`, `src/components/AppSidebar.tsx`,
   `tests/unit/TradeCountBadge.test.tsx`, `tests/unit/MobileTabBar.test.tsx`.
-- Test first: `9+`, `aria-hidden`, the "More" tab accessible name with 0,
-  1 and 2, and the new `staffNav` item.
+- Test first: `9+`, `aria-hidden`, the amber class when `urgent`, the
+  "More" tab accessible name with 0, 1 and 2, and the new `staffNav` item.
 
-### Task 12: `UpForGrabsCard` on the home screen
+### Task 12: "Teammates need cover" card on the home screen
 
 - Files: `src/components/employee/UpForGrabsCard.tsx`,
   `src/pages/EmployeeSchedule.tsx`, `tests/unit/UpForGrabsCard.test.tsx`.
 - Test first: nothing on loading or empty; error with "Try again"; at most
-  3 rows; urgent chip; link href and `aria-label`.
+  3 rows; date tile; poster name first; reason text; the fit sub-line
+  (one and many); urgent and "Tomorrow" chips; each row is one link with
+  href `...&from=home` and `aria-label`; footer open shift count and
+  "Browse all {total}".
+- Build: design A3 placement rules. Hide the gradient button only when the
+  card shows. Move the card above `ScheduleStatusBanner` when a trade is
+  urgent.
 
 ### Task 13: Marketplace deep link and error state
 
@@ -137,14 +147,18 @@ tasks in order. Stage explicit paths only.
   `tests/unit/tradeDeepLink.test.ts`.
 - Test first (pure helper): decide `scroll`, `gone`, `switch-restaurant`
   or `foreign-restaurant` from the params, the load state and the items.
+  Parse `from` into `reminder`, `home` or `null`.
 - Build: the error state, the param copy and delete, the scroll and focus,
-  the highlight timeout, and the `highlighted` prop with the memo compare.
+  the highlight timeout, the "From your reminder" / "From your home
+  screen" label, the "That shift is no longer open" toast, and the
+  `highlighted` and `highlightSource` props with the memo compare.
 
 ### Task 14: E2E
 
 - Files: `tests/e2e/shift-trade-up-for-grabs.spec.ts`.
 - Two employees in one restaurant. A posts a trade. B sees the card and
-  the badge, taps "View", sees the highlighted trade, and accepts it.
+  the badge, taps the trade row, sees the highlighted trade with the
+  "From your home screen" label, and accepts it.
   Follow `tests/e2e/shift-trade-accept.spec.ts` for the setup.
 
 ## Verify
@@ -153,3 +167,11 @@ tasks in order. Stage explicit paths only.
 - `npm run test:db` and `npm run test:e2e` need local Supabase. If the
   container cannot start it, say so in the PR and let CI run them.
 - `.claude/skills/run-tla/tlc.sh all`.
+
+## Environment notes (cloud container)
+
+- The network policy blocks `cdn.sheetjs.com`, so `npm install` fails on
+  the pinned `xlsx` tarball. For local runs only, install with `xlsx`
+  pointed at `0.18.5` from the npm registry, then run
+  `git checkout package.json package-lock.json`. Never commit that change.
+- Start the Docker daemon (`dockerd`) before `npx supabase start`.

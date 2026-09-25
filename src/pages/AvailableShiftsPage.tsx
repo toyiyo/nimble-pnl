@@ -35,6 +35,7 @@ import { useAcceptShiftTrade } from '@/hooks/useShiftTrades';
 import { useToast } from '@/hooks/use-toast';
 import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
 import { hasScheduleConflict } from '@/lib/openShiftHelpers';
+import { tradeDateLabel, tradeTimeRange } from '@/lib/claimableTrades';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -81,6 +82,10 @@ interface TradeCardProps {
   isAccepting: boolean;
   currentEmployeeId: string;
   areaMismatch?: AreaMismatch | null;
+  /** Shift day in the restaurant zone, from `tradeDateLabel`. */
+  dateLabel: string;
+  /** Shift clock range in the restaurant zone, from `tradeTimeRange`. */
+  timeLabel: string;
   /** The deep link points at this trade. */
   highlighted: boolean;
   highlightSource: TradeLinkSource | null;
@@ -89,27 +94,20 @@ interface TradeCardProps {
 /** How long the deep link highlight stays, unless the user scrolls first. */
 const HIGHLIGHT_MS = 4000;
 
-function formatTradeTime(startTime: string, endTime: string): string {
-  const start = parseISO(startTime);
-  const end = parseISO(endTime);
-  return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
-}
-
 const TradeCard = memo(function TradeCard({
   trade,
   onAccept,
   isAccepting,
   currentEmployeeId,
   areaMismatch,
+  dateLabel,
+  timeLabel,
   highlighted,
   highlightSource,
 }: TradeCardProps) {
   if (!trade?.offered_shift) return null;
 
-  const shiftStart = parseISO(trade.offered_shift.start_time);
-  const isPast = shiftStart < new Date();
-  const dateLabel = format(shiftStart, 'EEE, MMM d');
-  const timeLabel = formatTradeTime(trade.offered_shift.start_time, trade.offered_shift.end_time);
+  const isPast = parseISO(trade.offered_shift.start_time) < new Date();
   const name = trade.offered_by?.name ?? 'teammate';
 
   const mismatchId = `area-mismatch-${trade.id}`;
@@ -237,6 +235,8 @@ const TradeCard = memo(function TradeCard({
     prev.currentEmployeeId === next.currentEmployeeId &&
     prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&
     prev.areaMismatch?.claimerArea === next.areaMismatch?.claimerArea &&
+    prev.dateLabel === next.dateLabel &&
+    prev.timeLabel === next.timeLabel &&
     prev.highlighted === next.highlighted &&
     prev.highlightSource === next.highlightSource
   );
@@ -341,6 +341,21 @@ export default function AvailableShiftsPage() {
     }
     return map;
   }, [items, employeeShifts, tz]);
+
+  // Trade labels in the restaurant zone, so the marketplace and the home
+  // card show one time for one trade on any device.
+  const tradeLabels = useMemo(() => {
+    const map = new Map<string, { dateLabel: string; timeLabel: string }>();
+    for (const item of items) {
+      const shift = item.trade?.offered_shift;
+      if (item.type !== 'trade' || !item.trade || !shift) continue;
+      map.set(item.trade.id, {
+        dateLabel: tradeDateLabel(shift.start_time, tz),
+        timeLabel: tradeTimeRange(shift.start_time, shift.end_time, tz),
+      });
+    }
+    return map;
+  }, [items, tz]);
 
   // Claim dialog state (single dialog pattern)
   const [claimTarget, setClaimTarget] = useState<OpenShift | null>(null);
@@ -610,6 +625,7 @@ export default function AvailableShiftsPage() {
             >
               {virtualizer.getVirtualItems().map((virtualRow) => {
                 const item = items[virtualRow.index];
+                const tradeLabel = item.trade ? tradeLabels.get(item.trade.id) : undefined;
                 return (
                   <div
                     key={item.key}
@@ -631,13 +647,15 @@ export default function AvailableShiftsPage() {
                           onClaim={handleClaim}
                           isClaiming={claimMutation.isPending && claimTarget?.template_id === item.openShift.template_id && claimTarget?.shift_date === item.openShift.shift_date}
                         />
-                      ) : item.type === 'trade' && item.trade ? (
+                      ) : item.type === 'trade' && item.trade && tradeLabel ? (
                         <TradeCard
                           trade={item.trade as TradeCardProps['trade']}
                           onAccept={handleAcceptTrade}
                           isAccepting={isAcceptingTrade && acceptingTradeId === item.trade.id}
                           currentEmployeeId={currentEmployee.id}
                           areaMismatch={getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)}
+                          dateLabel={tradeLabel.dateLabel}
+                          timeLabel={tradeLabel.timeLabel}
                           highlighted={highlightedTradeId === item.trade.id}
                           highlightSource={highlightedTradeId === item.trade.id ? highlightSource : null}
                         />

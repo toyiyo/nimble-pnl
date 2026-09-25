@@ -18,7 +18,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { format, parseISO } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 
 // ---------------------------------------------------------------------------
 // Hoisted mock — date-fns/parseISO would work without mocking because we only
@@ -75,9 +75,18 @@ import type { AreaMismatch } from '@/lib/shiftTradeArea';
 // We import AvailableShiftsPage to trigger a page-level render test.
 // All hooks the page uses are mocked below.
 
+// The restaurant zone is Pacific/Kiritimati (UTC+14 all year). No CI or dev
+// runner uses it (`test:tz` runs Chicago, Auckland and UTC), so a label that
+// leaks the runner zone cannot match the expected text.
+const RESTAURANT_TZ = 'Pacific/Kiritimati';
+
 vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: vi.fn(() => ({
-    selectedRestaurant: { restaurant_id: 'rest-1', name: 'Test Restaurant' },
+    selectedRestaurant: {
+      restaurant_id: 'rest-1',
+      name: 'Test Restaurant',
+      restaurant: { timezone: 'Pacific/Kiritimati' },
+    },
   })),
 }));
 
@@ -467,10 +476,10 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
       },
     ];
 
-    // Build the expected label the same way the component does (parseISO +
-    // format), so the assertion holds under any test-runner timezone.
+    // The card shows the time in the restaurant zone, so build the expected
+    // label in that zone. The assertion holds under any test-runner zone.
     const startLabel = (hour: string) =>
-      format(parseISO(`${DAY_A}T${hour}:00:00Z`), 'h:mm a');
+      formatInTimeZone(new Date(`${DAY_A}T${hour}:00:00Z`), RESTAURANT_TZ, 'h:mm a');
 
     (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
       items: buildItems('14'),
@@ -487,5 +496,102 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
 
     expect(screen.getByText(new RegExp(startLabel('16')))).toBeInTheDocument();
     expect(screen.queryByText(new RegExp(startLabel('14')))).not.toBeInTheDocument();
+  });
+});
+
+describe('AvailableShiftsPage — restaurant time zone', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // "Sun, Sep 27" style label for a YYYY-MM-DD string plus N days. UTC field
+  // math, so the runner zone has no effect.
+  function dayLabel(dateStr: string, addDays = 0): string {
+    const d = new Date(`${dateStr}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + addDays);
+    return d.toLocaleDateString('en-US', {
+      timeZone: 'UTC',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+
+  function expectRunnerZoneDiffers(at: Date) {
+    const runnerOffset = -at.getTimezoneOffset();
+    const restaurantOffset = Number(formatInTimeZone(at, RESTAURANT_TZ, 'xxx').slice(0, 3)) * 60;
+    expect(runnerOffset).not.toBe(restaurantOffset);
+  }
+
+  it('shows the trade date and time in the restaurant zone, not the device zone', async () => {
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: [
+        {
+          key: 'trade-tz',
+          type: 'trade',
+          date: new Date(DAY_A),
+          trade: {
+            id: 'trade-tz',
+            status: 'open',
+            offered_shift: {
+              id: 'shift-tz',
+              // 14:00Z to 20:00Z is 04:00 to 10:00 on the NEXT day in Kiritimati.
+              start_time: `${DAY_A}T14:00:00Z`,
+              end_time: `${DAY_A}T20:00:00Z`,
+              position: 'Server',
+              break_duration: 0,
+              is_published: true,
+            },
+            offered_by: { id: 'emp-poster', name: 'Bob Poster', position: 'Server', area: 'FOH' },
+            reason: null,
+            target_employee_id: null,
+          },
+          openShift: undefined,
+        },
+      ],
+      loading: false,
+    });
+    expectRunnerZoneDiffers(new Date(`${DAY_A}T14:00:00Z`));
+
+    render(React.createElement(AvailableShiftsPage));
+
+    expect(screen.getByText('4:00 AM – 10:00 AM')).toBeInTheDocument();
+    expect(screen.getByText(dayLabel(DAY_A, 1))).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: `Accept trade from Bob Poster on ${dayLabel(DAY_A, 1)}` }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the My Claims date as the stored business day', async () => {
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({ items: [], loading: false });
+    const { useOpenShiftClaims } = await import('@/hooks/useOpenShiftClaims');
+    (useOpenShiftClaims as ReturnType<typeof vi.fn>).mockReturnValue({
+      claims: [
+        {
+          id: 'claim-1',
+          restaurant_id: 'rest-1',
+          shift_template_id: 'tpl-1',
+          // A DATE column: the restaurant business day, with no instant.
+          shift_date: DAY_A,
+          claimed_by_employee_id: 'emp-claimer',
+          status: 'pending_approval',
+          resulting_shift_id: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: `${DAY_A}T00:00:00Z`,
+          updated_at: `${DAY_A}T00:00:00Z`,
+          shift_template: { name: 'Lunch', position: 'Server' },
+        },
+      ],
+      loading: false,
+    });
+    expectRunnerZoneDiffers(new Date(`${DAY_A}T12:00:00Z`));
+
+    render(React.createElement(AvailableShiftsPage));
+
+    expect(screen.getByText('Lunch')).toBeInTheDocument();
+    expect(screen.getByText(dayLabel(DAY_A))).toBeInTheDocument();
   });
 });

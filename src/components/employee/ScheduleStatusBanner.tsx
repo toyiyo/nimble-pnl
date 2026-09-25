@@ -5,14 +5,20 @@ import { SchedulePublication } from '@/types/scheduling';
 import { formatDayLabel, formatLocalDateInTz, formatLocalHHMMInTz } from '@/lib/shiftInterval';
 
 /** The fixed-height slot every state renders into; see the banner's own doc comment. */
-function slot(children: ReactNode): JSX.Element {
-  return <div className="min-h-[76px]">{children}</div>;
+function slot(children: ReactNode, reserveHeight: boolean): JSX.Element {
+  return <div className={reserveHeight ? 'min-h-[76px]' : undefined}>{children}</div>;
 }
 
 interface ScheduleStatusBannerProps {
   state: WeekScheduleState | null;
   publication: SchedulePublication | null;
   timezone: string;
+  /**
+   * Keep the fixed-height slot. Default true. EmployeeSchedule turns it off
+   * when the urgent "Teammates need cover" card sits above the banner: the
+   * empty slot then shows as a gap under the card.
+   */
+  reserveHeight?: boolean;
 }
 
 /**
@@ -35,12 +41,13 @@ export function ScheduleStatusBanner({
   state,
   publication,
   timezone,
+  reserveHeight = true,
 }: ScheduleStatusBannerProps): JSX.Element {
   // Loading, or the lookup failed. A wrong line is worse than no line.
-  if (!state) return slot(null);
+  if (!state) return slot(null, reserveHeight);
 
   if (state !== 'published' && state !== 'published_revising') {
-    return slot(null);
+    return slot(null, reserveHeight);
   }
 
   // Restaurant timezone, not the browser's. An employee travelling, or a
@@ -53,7 +60,8 @@ export function ScheduleStatusBanner({
   return slot(
     publishedOn ? (
       <p className="text-[13px] text-muted-foreground">Published {publishedOn}</p>
-    ) : null
+    ) : null,
+    reserveHeight
   );
 }
 

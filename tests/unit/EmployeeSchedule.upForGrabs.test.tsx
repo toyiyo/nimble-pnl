@@ -61,7 +61,9 @@ vi.mock('@/components/employee', async () => {
   const actual = await vi.importActual<typeof import('@/components/employee')>('@/components/employee');
   return {
     ...actual,
-    ScheduleStatusBanner: () => <div data-testid="status-banner" />,
+    ScheduleStatusBanner: (props: { reserveHeight?: boolean }) => (
+      <div data-testid="status-banner" data-reserve-height={String(props.reserveHeight ?? true)} />
+    ),
   };
 });
 
@@ -162,5 +164,18 @@ describe('EmployeeSchedule – "Teammates need cover" placement', () => {
     const card = screen.getByTestId('up-for-grabs');
     expect(isBefore(card, screen.getByTestId('status-banner'))).toBe(true);
     expect(isBefore(screen.getByRole('heading', { name: 'My Schedule' }), card)).toBe(true);
+  });
+
+  it('turns off the banner reserved height when the urgent card sits above it', () => {
+    // The empty 76 px slot would otherwise show as a gap under the card.
+    setClaimable([true]);
+    renderPage();
+    expect(screen.getByTestId('status-banner')).toHaveAttribute('data-reserve-height', 'false');
+  });
+
+  it('keeps the banner reserved height when no trade is urgent', () => {
+    setClaimable([false]);
+    renderPage();
+    expect(screen.getByTestId('status-banner')).toHaveAttribute('data-reserve-height', 'true');
   });
 });

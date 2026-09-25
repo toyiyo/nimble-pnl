@@ -404,6 +404,7 @@ const EmployeeSchedule = () => {
         state={state}
         publication={publication}
         timezone={restaurantTimezone}
+        reserveHeight={!upForGrabsUrgent}
       />
 
       {!upForGrabsUrgent && upForGrabsCard}

@@ -246,6 +246,10 @@ The approved mockup is at https://claude.ai/artifact/WKo2q9Z1DNfcESJJV2kgAA
     "Browse Available Shifts" button. The card footer takes its job.
   - When any claimable trade is `urgent` (24 h or less), the card goes
     directly under the page header, above `ScheduleStatusBanner`.
+    `ScheduleStatusBanner` then gets `reserveHeight={false}`. Its fixed
+    `min-h-[76px]` slot (`src/components/employee/ScheduleStatusBanner.tsx:8-10`)
+    would otherwise show as an empty gap under the card. The Phase 5 UI
+    review found this gap in a screenshot.
   - Otherwise the card goes after `ScheduleStatusBanner` and before
     `MyShiftTradesCard`.
 - `EmployeeSchedule` reads `useClaimableTrades` for the trades, and

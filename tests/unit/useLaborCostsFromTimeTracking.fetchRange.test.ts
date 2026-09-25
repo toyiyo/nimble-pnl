@@ -20,14 +20,21 @@
  *
  * The React Query cache key must stay keyed on the *logical* dateFrom/
  * dateTo (not the buffered range) so cache identity is unaffected.
+ *
+ * The week edges are the RESTAURANT-local week (America/Chicago here), not
+ * the host week, so the expected instants below are fixed UTC values and hold
+ * under every host TZ the suite runs in. dateFrom / dateTo are day tokens
+ * built with local-field constructors, so their calendar day is the same on
+ * every host.
  */
 import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { startOfWeek, endOfWeek } from 'date-fns';
-import { lookaheadPunchFetchRange, weekAlignedFetchEnd } from '@/utils/punchWindow';
-import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+
+const earlier = (a: Date, b: Date) => (a < b ? a : b);
+const later = (a: Date, b: Date) => (a > b ? a : b);
 
 // Generic chainable Supabase query-builder mock: every method returns
 // `this` so any chain shape resolves, and the builder is thenable so
@@ -101,21 +108,16 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
   it('fetches time_punches widened to the ISO week start, with a look-ahead end (+18h)', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
-    // A Monday-start week runs Mar 2 - Mar 8, 2026. dateFrom is derived via
-    // startOfWeek (not a hardcoded UTC-midnight string) so it lands on the
-    // local week start under every host TZ the suite runs in — a raw
-    // '2026-03-04T00:00:00.000Z' shifts to a different local calendar day
-    // east or west of UTC (Pacific/Auckland: PLAT-42, sound-logic re-review).
-    // dateFrom lands mid-week (Wednesday), so the DB fetch start must widen
-    // back to Monday, NOT stay at dateFrom. dateTo is the week's last local
-    // instant (endOfWeek), also TZ-safe.
-    const weekStart = startOfWeek(new Date('2026-03-04T12:00:00.000Z'), { weekStartsOn: WEEK_STARTS_ON });
-    const dateFrom = new Date(weekStart.getTime() + 2 * 24 * 3600 * 1000);
-    const dateTo = endOfWeek(weekStart, { weekStartsOn: WEEK_STARTS_ON });
+    // A Monday-start Chicago week runs Mar 2 - Mar 8, 2026. dateFrom lands
+    // mid-week (Wednesday), so the DB fetch start must widen back to the
+    // Chicago Monday 00:00 CST (06:00Z), NOT stay at dateFrom. dateTo is the
+    // last local instant of Sunday Mar 8. The Chicago week ends at
+    // Mar 8 23:59:59.999 CDT (DST starts Mar 8).
+    const dateFrom = new Date(2026, 2, 4);
+    const dateTo = new Date(2026, 2, 8, 23, 59, 59, 999);
     const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-    const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
-    const expectedFetchStart = weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;
-    const expectedFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+    const expectedFetchStart = earlier(new Date('2026-03-02T06:00:00.000Z'), fetchStart);
+    const expectedFetchEnd = later(new Date('2026-03-09T04:59:59.999Z'), fetchEnd);
 
     const { result } = renderHook(
       () => useLaborCostsFromTimeTracking('rest-1', dateFrom, dateTo),
@@ -129,10 +131,10 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
     expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', expectedFetchEnd.toISOString());
     // dateFrom is mid-week, so the widened start is strictly before it.
     expect(expectedFetchStart.getTime()).toBeLessThan(dateFrom.getTime());
-    // dateTo falls exactly on the week's last instant here, so the
-    // look-ahead-only end (+18h past dateTo) already covers the full week —
-    // this case is the "no extra widen needed" edge, unlike the mid-week
-    // dateTo case covered in the fetchRange lookahead-widen test below.
+    // dateTo is the last local instant of the week's last day, so the
+    // look-ahead-only end (+18h past dateTo) already covers the full
+    // Chicago week on every host — this case is the "no extra widen needed"
+    // edge, unlike the mid-week dateTo case in the next test.
     expect(expectedFetchEnd.getTime()).toBe(fetchEnd.getTime());
     expect(fetchEnd.getTime() - dateTo.getTime()).toBe(18 * 3600 * 1000);
   });
@@ -140,17 +142,15 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
   it('widens the fetch end to the ISO week end when dateTo falls mid-week', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
-    // A Monday-start week runs Jul 20 - Jul 26, 2026. dateFrom is derived via
-    // startOfWeek (not a hardcoded UTC-midnight string) so it lands on the
-    // local week start under every host TZ the suite runs in — a raw
-    // '2026-07-20T00:00:00.000Z' shifts to the prior local calendar day west
-    // of UTC and would spuriously widen the start too. dateTo lands mid-week
-    // (Wednesday), so the DB fetch end must widen forward to the end of that
-    // week, NOT stop at dateTo's look-ahead-only +18h.
-    const dateFrom = startOfWeek(new Date('2026-07-20T12:00:00.000Z'), { weekStartsOn: WEEK_STARTS_ON });
-    const dateTo = new Date(dateFrom.getTime() + 2 * 24 * 3600 * 1000 + 23 * 3600 * 1000 + 59 * 60 * 1000 + 59999);
+    // A Monday-start Chicago week runs Jul 20 - Jul 26, 2026. dateFrom is
+    // the Monday; dateTo lands mid-week (Wednesday), so the DB fetch end must
+    // widen forward to Sun Jul 26 23:59:59.999 CDT (Jul 27 04:59:59.999Z),
+    // NOT stop at dateTo's look-ahead-only +18h.
+    const dateFrom = new Date(2026, 6, 20);
+    const dateTo = new Date(2026, 6, 22, 23, 59, 59, 999);
     const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-    const expectedFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+    const expectedFetchStart = earlier(new Date('2026-07-20T05:00:00.000Z'), fetchStart);
+    const expectedFetchEnd = new Date('2026-07-27T04:59:59.999Z');
 
     const { result } = renderHook(
       () => useLaborCostsFromTimeTracking('rest-1', dateFrom, dateTo),
@@ -159,7 +159,7 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', fetchStart.toISOString());
+    expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', expectedFetchStart.toISOString());
     expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', expectedFetchEnd.toISOString());
     // dateTo is mid-week, so the widened end is strictly after the
     // look-ahead-only end.
@@ -169,11 +169,11 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
   it('leaves the fetch start and end unchanged when [dateFrom, dateTo] already spans a full week', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
-    // Derive dateFrom/dateTo FROM startOfWeek/endOfWeek (rather than
-    // hardcoding calendar dates and assuming they land on Monday/Sunday) so
-    // this holds under every host TZ the suite runs in, not only UTC.
-    const dateFrom = startOfWeek(new Date('2026-03-04T12:00:00.000Z'), { weekStartsOn: WEEK_STARTS_ON });
-    const dateTo = endOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
+    // Chicago week Mon Mar 2 - Sun Mar 8, 2026, as day tokens. The
+    // restaurant-local week edges do not widen the fetch past the
+    // look-ahead range on any host.
+    const dateFrom = new Date(2026, 2, 2);
+    const dateTo = new Date(2026, 2, 8, 23, 59, 59, 999);
     const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
 
     const { result } = renderHook(

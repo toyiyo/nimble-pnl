@@ -22,7 +22,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { startOfWeek } from 'date-fns';
-import { lookaheadPunchFetchRange, weekAlignedFetchEnd } from '@/utils/punchWindow';
+import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 
 // useMonthlyMetrics now sources the restaurant timezone from
@@ -98,8 +98,11 @@ describe('useMonthlyMetrics time_punches fetch range (ISO-week OT banding)', () 
     const dateFrom = new Date(2026, 6, 22); // 2026-07-22, a Wednesday
     const dateTo = new Date(2026, 6, 31, 23, 59, 59, 999);
     const { fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-    const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
-    const expectedFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+    // Restaurant-local (Chicago) week edges: Mon Jul 20 00:00 CDT, and the end
+    // of the week of Fri Jul 31, Sun Aug 2 23:59:59.999 CDT. Fixed UTC values,
+    // so they hold under every host TZ.
+    const weekAlignedStart = new Date('2026-07-20T05:00:00.000Z');
+    const expectedFetchEnd = new Date('2026-08-03T04:59:59.999Z');
 
     const { result } = renderHook(
       () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
@@ -150,7 +153,11 @@ describe('useMonthlyMetrics time_punches fetch range (ISO-week OT banding)', () 
     const dateFrom = new Date(2026, 6, 20); // 2026-07-20, a Monday
     const dateTo = new Date(2026, 6, 22, 23, 59, 59, 999); // 2026-07-22, a Wednesday
     const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-    const expectedFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+    // Restaurant-local (Chicago) week edges: the fetch start is the earlier of
+    // Mon Jul 20 00:00 CDT and dateFrom; the end is Sun Jul 26 23:59:59.999 CDT.
+    const chicagoWeekStart = new Date('2026-07-20T05:00:00.000Z');
+    const expectedFetchStart = chicagoWeekStart < fetchStart ? chicagoWeekStart : fetchStart;
+    const expectedFetchEnd = new Date('2026-07-27T04:59:59.999Z');
 
     const { result } = renderHook(
       () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
@@ -159,7 +166,7 @@ describe('useMonthlyMetrics time_punches fetch range (ISO-week OT banding)', () 
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', fetchStart.toISOString());
+    expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', expectedFetchStart.toISOString());
     expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', expectedFetchEnd.toISOString());
     // dateTo is mid-week, so the widened end is strictly after the
     // look-ahead-only end.

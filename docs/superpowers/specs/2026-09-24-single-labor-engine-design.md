@@ -464,11 +464,18 @@ it. The model checks that step.
   The constant `Dedupe` turns on the id de-duplication of
   `fetchAllRowsKeyset`. Bounds: `Keys = 1..6`, `PageSize = 2`,
   `MaxWrites = 2` (1 for the offset configs).
-- Invariants: `NoDuplicateRow` (the loader receives no row twice) and
+- Each read records the key that it sees for each row (`gotKey[i]`).
+- Invariants: `NoDuplicateRow` (the loader receives no row twice),
   `NoLostStableRow` (at the end, the loader has every row that was in the
-  table for the whole read and that nobody changed).
+  table for the whole read and that nobody changed), and
+  `StableRowCurrentKey` (at the end, the loader received each row that
+  nobody changed with the key that the row has now).
+- The invariants cover the rows that nobody changed during the read. A row
+  that nobody changed keeps its key, so `StableRowCurrentKey` follows from
+  `NoLostStableRow`. It adds no check in any config, with `Dedupe = TRUE`
+  too. It keeps the key rule explicit in the spec.
 - `LaborLoaderPaging.cfg` (keyset paging with de-duplication, 2 concurrent
-  writes): pass, 2872 distinct states.
+  writes): pass, 3931 distinct states.
 - `LaborLoaderPaging_KeysetNoDedupe.cfg` (keyset paging, no
   de-duplication): violation of `NoDuplicateRow`. Page 1 returns rows 2 and
   3, an edit moves row 2 to key 4, and page 2 returns row 2 again.
@@ -478,23 +485,31 @@ it. The model checks that step.
 - `LaborLoaderPaging_OffsetLostRow.cfg` (offset paging): violation of
   `NoLostStableRow`. A delete after page 1 moves the offsets back, and stable
   row 4 is never read.
+- `LaborLoaderPaging_MovedBackRow.cfg` (keyset paging with
+  de-duplication): violation of `AllRowsCurrentKey`, the same check for
+  every row, also for changed rows. Page 1 returns rows 2 and 3, an edit
+  moves row 4 to key 1, and page 2 returns row 5 only.
+- **Accepted limit.** A row whose order key moves back before the cursor
+  during the read is missing from the result until the next refetch.
+  `LaborLoaderPaging_MovedBackRow.cfg` shows this case. The React Query
+  refetch (short `staleTime`) reads the row with its new key.
 
 `tlc.sh all` output:
 
 ```text
-OK    LaborLoaderPaging: pass (expected pass; 2872 distinct states found)
-OK    LaborLoaderPaging_KeysetNoDedupe: violation (expected violation; 743 distinct states found)
-OK    LaborLoaderPaging_Offset: violation (expected violation; 105 distinct states found)
-OK    LaborLoaderPaging_OffsetLostRow: violation (expected violation; 123 distinct states found)
+OK    LaborLoaderPaging: pass (expected pass; 3931 distinct states found)
+OK    LaborLoaderPaging_KeysetNoDedupe: violation (expected violation; 791 distinct states found)
+OK    LaborLoaderPaging_MovedBackRow: violation (expected violation; 684 distinct states found)
+OK    LaborLoaderPaging_Offset: violation (expected violation; 107 distinct states found)
+OK    LaborLoaderPaging_OffsetLostRow: violation (expected violation; 106 distinct states found)
 OK    ToastRollupWatermark: pass (expected pass; 275 distinct states found)
-OK    ToastRollupWatermark_NoLastSync: violation (expected violation; 151 distinct states found)
----- 6/6 configs matched their EXPECT
+OK    ToastRollupWatermark_NoLastSync: violation (expected violation; 148 distinct states found)
+---- 7/7 configs matched their EXPECT
 ```
 
 TLC runs with several workers (`-workers auto`) and stops at the first
-violation. So the state count of a violation config changes from run to run
-(a second run gave 551, 106 and 121). The count of a pass config does not
-change.
+violation. So the state count of a violation config changes from run to run.
+The count of a pass config does not change.
 
 The offset bug exists today in every `fetchAllRows` caller. It shows only
 when a read has more than one page (more than 1000 rows) and a write lands

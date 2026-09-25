@@ -6,28 +6,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import EmployeeMore from '@/pages/EmployeeMore';
 
 const mocks = vi.hoisted(() => ({
-  claimable: { trades: [] as { urgent: boolean }[], count: 0 },
+  badge: { count: 0, hasUrgentTrade: false },
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ signOut: vi.fn() }),
 }));
 
-vi.mock('@/contexts/RestaurantContext', () => ({
-  useRestaurantContext: () => ({ selectedRestaurant: { restaurant_id: 'rest-1' } }),
-}));
-
-vi.mock('@/hooks/useCurrentEmployee', () => ({
-  useCurrentEmployee: () => ({ currentEmployee: { id: 'emp-1' }, loading: false, error: null }),
-}));
-
-vi.mock('@/hooks/useClaimableTrades', () => ({
-  useClaimableTrades: () => ({ ...mocks.claimable, loading: false, error: null, refetch: vi.fn() }),
+vi.mock('@/hooks/useClaimableTradeBadge', () => ({
+  useClaimableTradeBadge: () => mocks.badge,
 }));
 
 describe('EmployeeMore', () => {
   beforeEach(() => {
-    mocks.claimable = { trades: [], count: 0 };
+    mocks.badge = { count: 0, hasUrgentTrade: false };
   });
 
   const renderPage = () => render(
@@ -65,7 +57,7 @@ describe('EmployeeMore', () => {
   });
 
   it('shows the badge and the sr-only count on the marketplace row', () => {
-    mocks.claimable = { trades: [{ urgent: false }, { urgent: true }], count: 2 };
+    mocks.badge = { count: 2, hasUrgentTrade: true };
     renderPage();
     const row = screen.getByText('Shift Marketplace').closest('a');
     const srText = screen.getByText('2 shifts up for grabs');

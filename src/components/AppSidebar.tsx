@@ -27,8 +27,7 @@ import { grantMap } from '@/lib/permissions/areas';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useClaimableTrades } from '@/hooks/useClaimableTrades';
+import { useClaimableTradeBadge } from '@/hooks/useClaimableTradeBadge';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useViewMode } from '@/contexts/ViewModeContext';
 import { ViewModeSwitch } from '@/components/ViewModeSwitch';
@@ -65,22 +64,14 @@ const MARKETPLACE_PATH = '/employee/shifts';
  * component so that AppSidebar reads trades only when it renders staffNav.
  * In the collapsed icon rail, the badge sits on the icon.
  */
-function MarketplaceTradeCount({
-  restaurantId,
-  variant,
-}: {
-  restaurantId: string | null;
-  variant: 'inline' | 'icon';
-}) {
-  const { currentEmployee } = useCurrentEmployee(restaurantId);
-  const { trades, count } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null);
+function MarketplaceTradeCount({ variant }: { variant: 'inline' | 'icon' }) {
+  const { count, hasUrgentTrade } = useClaimableTradeBadge();
   if (count <= 0) return null;
-  const urgent = trades.some((t) => t.urgent);
   return (
     <>
       <TradeCountBadge
         count={count}
-        urgent={urgent}
+        urgent={hasUrgentTrade}
         className={variant === 'icon' ? 'absolute top-0 right-0' : 'ml-auto'}
       />
       <span className="sr-only">{shiftsUpForGrabsText(count)}</span>
@@ -176,10 +167,7 @@ export function AppSidebar() {
                       >
                         <Icon className="h-5 w-5" />
                         {item.path === MARKETPLACE_PATH && (
-                          <MarketplaceTradeCount
-                            restaurantId={selectedRestaurant?.restaurant_id ?? null}
-                            variant="icon"
-                          />
+                          <MarketplaceTradeCount variant="icon" />
                         )}
                         {needsUpgrade && (
                           <span
@@ -238,10 +226,7 @@ export function AppSidebar() {
                                   <Icon className="h-4 w-4" />
                                   <span className="flex-1">{item.label}</span>
                                   {item.path === MARKETPLACE_PATH && (
-                                    <MarketplaceTradeCount
-                                      restaurantId={selectedRestaurant?.restaurant_id ?? null}
-                                      variant="inline"
-                                    />
+                                    <MarketplaceTradeCount variant="inline" />
                                   )}
                                   {needsUpgrade && requiredTier && (
                                     <Badge

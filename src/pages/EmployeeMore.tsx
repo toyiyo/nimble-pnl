@@ -1,10 +1,8 @@
 import { Link } from 'react-router-dom';
+import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
 import { Clock, KeyRound, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useClaimableTrades } from '@/hooks/useClaimableTrades';
-import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
+import { useClaimableTradeBadge } from '@/hooks/useClaimableTradeBadge';
 import { shiftsUpForGrabsText } from '@/lib/claimableTrades';
 
 interface NavItem {
@@ -26,14 +24,7 @@ const mainItems: NavItem[] = [
 
 function EmployeeMore() {
   const { signOut } = useAuth();
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantId = selectedRestaurant?.restaurant_id ?? null;
-  const { currentEmployee } = useCurrentEmployee(restaurantId);
-  const { trades: claimableTrades, count: tradeCount } = useClaimableTrades(
-    restaurantId,
-    currentEmployee?.id ?? null
-  );
-  const tradeUrgent = claimableTrades.some((t) => t.urgent);
+  const { count: tradeCount, hasUrgentTrade } = useClaimableTradeBadge();
 
   return (
     <div className="space-y-3">
@@ -61,7 +52,7 @@ function EmployeeMore() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {showBadge && <TradeCountBadge count={tradeCount} urgent={tradeUrgent} />}
+                {showBadge && <TradeCountBadge count={tradeCount} urgent={hasUrgentTrade} />}
                 <ChevronRight className="h-4 w-4 text-muted-foreground/50" aria-hidden="true" />
               </div>
             </Link>

@@ -24,7 +24,9 @@ export type NotificationType =
   | 'pin_reset'
   | 'availability_reminder'
   | 'open_shift_claim_reviewed'
-  | 'bank_reauth_required';
+  | 'bank_reauth_required'
+  | 'shift_trade_reminder'
+  | 'shift_trade_unclaimed';
 
 export type NotificationChannel = 'email' | 'push';
 
@@ -53,6 +55,10 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { key: 'shift_trade_approved', label: 'Shift trade approved', group: 'Trades', channels: ['email', 'push'] },
   { key: 'shift_trade_rejected', label: 'Shift trade rejected', group: 'Trades', channels: ['email', 'push'] },
   { key: 'shift_trade_cancelled', label: 'Shift trade cancelled', group: 'Trades', channels: ['email', 'push'] },
+  // Employee reminders are push only: an email for each stage to the full
+  // roster is noise, and Resend pacing is too slow for a cron run.
+  { key: 'shift_trade_reminder', label: 'Open trade reminder', group: 'Trades', channels: ['push'] },
+  { key: 'shift_trade_unclaimed', label: 'Open trade not taken', group: 'Trades', channels: ['email', 'push'] },
   { key: 'time_off_requested', label: 'Time off requested', group: 'Time off', channels: ['email'] },
   { key: 'time_off_approved', label: 'Time off approved', group: 'Time off', channels: ['email', 'push'] },
   { key: 'time_off_rejected', label: 'Time off rejected', group: 'Time off', channels: ['email', 'push'] },

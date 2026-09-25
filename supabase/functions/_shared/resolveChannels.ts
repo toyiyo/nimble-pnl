@@ -25,7 +25,9 @@ export type NotificationType =
   | 'pin_reset'
   | 'availability_reminder'
   | 'open_shift_claim_reviewed'
-  | 'bank_reauth_required';
+  | 'bank_reauth_required'
+  | 'shift_trade_reminder'
+  | 'shift_trade_unclaimed';
 
 export interface ChannelDecision {
   email: boolean;

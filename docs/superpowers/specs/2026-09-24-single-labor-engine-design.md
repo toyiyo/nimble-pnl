@@ -489,10 +489,13 @@ it. The model checks that step.
   de-duplication): violation of `AllRowsCurrentKey`, the same check for
   every row, also for changed rows. Page 1 returns rows 2 and 3, an edit
   moves row 4 to key 1, and page 2 returns row 5 only.
-- **Accepted limit.** A row whose order key moves back before the cursor
-  during the read is missing from the result until the next refetch.
-  `LaborLoaderPaging_MovedBackRow.cfg` shows this case. The React Query
-  refetch (short `staleTime`) reads the row with its new key.
+- **Accepted limit.** Two writes during the read can make the result miss a
+  row. In the first, an edit moves the order key of a row back before the
+  cursor. In the second, an insert adds a row with a key before the cursor
+  (for example, a backdated punch). `LaborLoaderPaging_MovedBackRow.cfg`
+  shows the first case, and the same invariant fails for the second. The
+  row stays missing until the next React Query refetch. React Query
+  refetches on mount, on window focus and on invalidation, not on a timer.
 
 `tlc.sh all` output:
 

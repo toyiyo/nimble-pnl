@@ -19,7 +19,7 @@ import {
   formatHours,
   EmployeePayroll,
 } from '@/utils/payrollCalculations';
-import { stepCustomRange } from '@/utils/payrollCustomRange';
+import { orderCustomRange, stepCustomRange } from '@/utils/payrollCustomRange';
 import { sortPayrollRows, groupPayrollRows, computePayrollTotals, regularPayDisplayValue, type PayrollSortKey, type SortDirection, type PayrollGroupMode } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import {
@@ -204,10 +204,7 @@ const Payroll = () => {
         };
       }
       case 'custom':
-        return {
-          start: customStartDate,
-          end: customEndDate,
-        };
+        return orderCustomRange(customStartDate, customEndDate);
     }
   };
 
@@ -652,7 +649,7 @@ const Payroll = () => {
 
   const handlePreviousPeriod = () => {
     if (periodType === 'custom') {
-      const stepped = stepCustomRange(customStartDate, customEndDate, -1);
+      const stepped = stepCustomRange(start, end, -1);
       setCustomStartDate(stepped.start);
       setCustomEndDate(stepped.end);
     } else {
@@ -666,7 +663,7 @@ const Payroll = () => {
 
   const handleNextPeriod = () => {
     if (periodType === 'custom') {
-      const stepped = stepCustomRange(customStartDate, customEndDate, 1);
+      const stepped = stepCustomRange(start, end, 1);
       setCustomStartDate(stepped.start);
       setCustomEndDate(stepped.end);
     } else {

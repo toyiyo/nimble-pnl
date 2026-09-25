@@ -22,3 +22,15 @@ export function stepCustomRange(
     end: endOfDay(addDays(end, shift)),
   };
 }
+
+/**
+ * Put the two days of a Payroll custom range in order.
+ *
+ * The date inputs do not stop the user from a start after the end. The
+ * payroll loader rejects such a range, so swap the two days, as the Labor
+ * page does (`resolveRange` in `src/lib/laborPnlAnalytics.ts`).
+ */
+export function orderCustomRange(start: Date, end: Date): { start: Date; end: Date } {
+  if (differenceInCalendarDays(end, start) >= 0) return { start, end };
+  return { start: startOfDay(end), end: endOfDay(start) };
+}

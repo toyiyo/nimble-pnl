@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { endOfDay } from 'date-fns';
-import { stepCustomRange } from '@/utils/payrollCustomRange';
+import { orderCustomRange, stepCustomRange } from '@/utils/payrollCustomRange';
 import { toDateOnlyString } from '@/lib/dateOnly';
 
 // The Payroll page steps a custom range with "previous" / "next". The range
@@ -50,5 +50,24 @@ describe('stepCustomRange', () => {
     const stepped = stepCustomRange(badStart, badEnd, 1);
     expect(stepped.start).toBe(badStart);
     expect(stepped.end).toBe(badEnd);
+  });
+});
+
+describe('orderCustomRange', () => {
+  it('keeps a range whose start is on or before its end', () => {
+    const start = new Date(2026, 8, 14);
+    const end = endOfDay(new Date(2026, 8, 20));
+    expect(days(orderCustomRange(start, end))).toEqual(['2026-09-14', '2026-09-20']);
+    expect(days(orderCustomRange(start, endOfDay(start)))).toEqual(['2026-09-14', '2026-09-14']);
+  });
+
+  it('swaps the days when the end is before the start', () => {
+    // The user picks Sep 20 as the start and Sep 14 as the end.
+    const start = new Date(2026, 8, 20);
+    const end = endOfDay(new Date(2026, 8, 14));
+    const ordered = orderCustomRange(start, end);
+    expect(days(ordered)).toEqual(['2026-09-14', '2026-09-20']);
+    expect(ordered.start.getTime()).toBe(new Date(2026, 8, 14).getTime());
+    expect(ordered.end.getTime()).toBe(endOfDay(new Date(2026, 8, 20)).getTime());
   });
 });

@@ -488,9 +488,10 @@ function does `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` and
    - Returns one row for each `(trade, stage)` that is due, with every
      rule in B1 applied in SQL.
    - Columns: `shift_trade_id`, `restaurant_id`, `stage`, `start_time`,
-     `end_time`, `position`, `is_published`, `offered_by_employee_id`,
-     `offered_by_name`, `offered_by_user_id`, `target_employee_id`,
+     `end_time`, `position`, `is_published`, `offered_by_name`,
      `restaurant_name`, `restaurant_timezone` (after `safe_restaurant_tz`).
+     The audience and recipients RPCs read the poster and the target
+     themselves, so the candidates RPC does not return them.
    - Excludes a `(trade, stage)` that already has a row in
      `shift_trade_reminders`.
    - Reads `staffing_settings` with a LEFT JOIN, with `COALESCE` to the

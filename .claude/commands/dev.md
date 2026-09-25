@@ -1,5 +1,5 @@
 ---
-description: Start the full development workflow (brainstorm, plan, worktree, TDD build, review, verify, finish)
+description: Start the full development workflow (brainstorm, plan, worktree, TDD build, review, verify, QA, finish)
 ---
 
 # Development Workflow
@@ -24,6 +24,6 @@ Invoke the `development-workflow` skill from `.claude/skills/development-workflo
 
 3. **Never commit to `main`:** After Phase 0, immediately create a feature worktree (Phase 1: Isolate) BEFORE writing any design doc, plan, or code. Every artifact produced for this task — specs, plans, code, tests — must land on the feature branch, not on `main`. If you find yourself about to `git commit` while checked out on `main`, stop and move the work to a feature branch first.
 
-4. **Autonomy after Phase 3:** Once the user approves the plan, execute Phases 4–9 autonomously. Only pause for genuine blockers or ambiguous review feedback. Update `progress.md` at each phase transition.
+4. **Autonomy after Phase 3:** Once the user approves the plan, execute Phases 4–9 autonomously. Only pause for genuine blockers or ambiguous review feedback. Phase 8.5 (QA, `.claude/skills/qa/SKILL.md`) is mandatory: do not push until it passes. Update `progress.md` at each phase transition.
 
 5. **Completion:** Notify the user when the PR is green and ready for review, or when stuck after exhausting retry loops.

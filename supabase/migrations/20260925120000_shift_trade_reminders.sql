@@ -6,6 +6,9 @@
 --   2. The time zone helper public.safe_restaurant_tz.
 --   7. The two new notification types in the CHECK constraint.
 --   3. The candidates RPC get_shift_trade_reminder_candidates.
+--   4. The claim RPC claim_shift_trade_reminder (claim before send).
+--   5. The audience RPC get_shift_trade_reminder_audience.
+--   6. The recipients RPC get_shift_trade_unclaimed_recipients.
 --
 -- Each function sets search_path, revokes EXECUTE from PUBLIC, anon and
 -- authenticated, and grants EXECUTE to service_role only.
@@ -242,3 +245,115 @@ COMMENT ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, inte
 
 REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) TO service_role;
+
+-- ============================================================
+-- 4. Claim. The worker calls this BEFORE it sends. It returns true one
+--    time for each (trade, stage), and only while the trade is open and
+--    the shift did not start. A concurrent run gets false and skips the send.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.claim_shift_trade_reminder(
+  p_trade_id uuid,
+  p_stage text
+)
+RETURNS boolean
+LANGUAGE sql
+VOLATILE
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+  WITH ins AS (
+    INSERT INTO public.shift_trade_reminders (restaurant_id, shift_trade_id, stage)
+    SELECT t.restaurant_id, t.id, p_stage
+    FROM public.shift_trades t
+    JOIN public.shifts s ON s.id = t.offered_shift_id
+    WHERE t.id = p_trade_id
+      AND t.status = 'open'
+      AND s.start_time > now()
+    ON CONFLICT (shift_trade_id, stage) DO NOTHING
+    RETURNING 1
+  )
+  SELECT EXISTS (SELECT 1 FROM ins);
+$$;
+
+COMMENT ON FUNCTION public.claim_shift_trade_reminder(uuid, text) IS
+  'Claims one (trade, stage) reminder. True one time; false when claimed, not open or started.';
+
+REVOKE EXECUTE ON FUNCTION public.claim_shift_trade_reminder(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_shift_trade_reminder(uuid, text) TO service_role;
+
+-- ============================================================
+-- 5. Audience for an employee stage (design B2): active employees of the
+--    restaurant with a user_id, not the poster, and with no overlapping
+--    scheduled or confirmed shift. accept_shift_trade uses the same overlap
+--    test. A directed trade returns its target only.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_shift_trade_reminder_audience(p_trade_id uuid)
+RETURNS TABLE (user_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+  SELECT DISTINCT e.user_id
+  FROM public.shift_trades t
+  JOIN public.shifts s ON s.id = t.offered_shift_id
+  JOIN public.employees e ON e.restaurant_id = t.restaurant_id
+  WHERE t.id = p_trade_id
+    AND e.is_active = true
+    AND e.user_id IS NOT NULL
+    AND e.id <> t.offered_by_employee_id
+    AND (t.target_employee_id IS NULL OR e.id = t.target_employee_id)
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.shifts o
+      WHERE o.employee_id = e.id
+        AND o.status IN ('scheduled', 'confirmed')
+        AND (o.start_time, o.end_time) OVERLAPS (s.start_time, s.end_time)
+    );
+$$;
+
+COMMENT ON FUNCTION public.get_shift_trade_reminder_audience(uuid) IS
+  'User ids of the employees who can take the trade (design B2).';
+
+REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_audience(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_audience(uuid) TO service_role;
+
+-- ============================================================
+-- 6. Recipients for the unclaimed stage: schedulers (email and push) and
+--    the poster (push only). SECURITY DEFINER, because it reads auth.users.
+--    When the poster is also a scheduler, the poster gets the poster row only.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_shift_trade_unclaimed_recipients(p_trade_id uuid)
+RETURNS TABLE (user_id uuid, email text, kind text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  WITH trade AS (
+    SELECT t.restaurant_id, e.user_id AS poster_user_id
+    FROM public.shift_trades t
+    JOIN public.employees e ON e.id = t.offered_by_employee_id
+    WHERE t.id = p_trade_id
+  )
+  SELECT ur.user_id, u.email::text, 'scheduler'::text
+  FROM trade
+  JOIN public.user_restaurants ur ON ur.restaurant_id = trade.restaurant_id
+  JOIN auth.users u ON u.id = ur.user_id
+  -- Keep this role list the same as the edit:scheduling capability
+  -- (20260723120000_add_collaborator_operations_manager_role.sql).
+  WHERE ur.role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')
+    AND u.email IS NOT NULL
+    AND u.deleted_at IS NULL
+    AND ur.user_id IS DISTINCT FROM trade.poster_user_id
+  UNION ALL
+  SELECT trade.poster_user_id, NULL::text, 'poster'::text
+  FROM trade
+  WHERE trade.poster_user_id IS NOT NULL;
+$$;
+
+COMMENT ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) IS
+  'Schedulers (with email) and the poster (no email) for the unclaimed stage.';
+
+REVOKE EXECUTE ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) TO service_role;

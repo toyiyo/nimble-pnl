@@ -251,12 +251,91 @@ async function sendUnclaimedStage(
 
 const candidateKey = (row: ReminderCandidateRow): string => `${row.shift_trade_id}:${row.stage}`;
 
+/** Shared state for one run. processCandidate changes `result` and `pushTargets`. */
+interface RunContext {
+  deps: ShiftTradeRemindersDeps;
+  loggers: Loggers;
+  runStartedAt: number;
+  result: ShiftTradeRemindersResult;
+  /** Push targets used in this run. */
+  pushTargets: number;
+  channelsFor: (restaurantId: string, type: NotificationType) => Promise<ChannelDecision>;
+}
+
+/**
+ * Processes one candidate: read, budget check, claim, channel gate, send.
+ * Returns 'defer' when the candidate does not fit the rest of the push
+ * budget. The caller then counts this candidate and the rest as deferred.
+ */
+async function processCandidate(row: ReminderCandidateRow, ctx: RunContext): Promise<'done' | 'defer'> {
+  const { deps, loggers, result } = ctx;
+  const { log, logError } = loggers;
+  const stage = row.stage;
+  const isUnclaimed = stage === 'unclaimed';
+
+  try {
+    let audience: string[] = [];
+    if (!isUnclaimed) {
+      const audienceRes = await deps.fetchAudience(row.shift_trade_id);
+      if (audienceRes.error) {
+        // No claim, so the next run tries this stage again.
+        logError(`${LOG_PREFIX} audience read failed trade=${row.shift_trade_id}: ${truncateError(audienceRes.error.message)}`);
+        result.skipped += 1;
+        return 'done';
+      }
+      audience = (audienceRes.data ?? []).map((r) => r.user_id);
+      // An empty run sends a large audience in chunks. Otherwise the
+      // audience must fit the rest of the push budget.
+      if (ctx.pushTargets > 0 && ctx.pushTargets + audience.length > MAX_PUSH_TARGETS) {
+        return 'defer';
+      }
+    }
+
+    const claim = await deps.claim(row.shift_trade_id, stage);
+    if (claim.error) {
+      logError(`${LOG_PREFIX} claim failed trade=${row.shift_trade_id} stage=${stage}: ${truncateError(claim.error.message)}`);
+      result.skipped += 1;
+      return 'done';
+    }
+    if (claim.data !== true) {
+      result.skipped += 1;
+      return 'done';
+    }
+    result.claimed += 1;
+
+    const type = isUnclaimed ? TRADE_REMINDER_TYPE.unclaimed : TRADE_REMINDER_TYPE.employee;
+    const channels = await ctx.channelsFor(row.restaurant_id, type);
+    const allOff = isUnclaimed ? !channels.email && !channels.push : !channels.push;
+    if (allOff) {
+      result.skipped += 1;
+      log(`${LOG_PREFIX} channels off trade=${row.shift_trade_id} stage=${stage} restaurant=${row.restaurant_id}`);
+      return 'done';
+    }
+
+    const outcome = isUnclaimed
+      ? await sendUnclaimedStage(deps, row, channels, ctx.runStartedAt, loggers)
+      : await sendEmployeeStage(deps, row, stage, audience, loggers);
+
+    ctx.pushTargets += outcome.pushTargets;
+    result.pushed += outcome.pushed;
+    result.emailed += outcome.emailed;
+
+    log(
+      `${LOG_PREFIX} sent trade=${row.shift_trade_id} stage=${stage} restaurant=${row.restaurant_id} ` +
+        `push_targets=${outcome.pushTargets} pushed=${outcome.pushed} emailed=${outcome.emailed}`,
+    );
+  } catch (err) {
+    // One failed candidate must not stop the loop. The claim stays.
+    logError(`${LOG_PREFIX} send failed trade=${row.shift_trade_id} stage=${stage}: ${errorText(err)}`);
+  }
+  return 'done';
+}
+
 export async function runShiftTradeReminders(
   deps: ShiftTradeRemindersDeps,
 ): Promise<ShiftTradeRemindersResult> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const logError = deps.logError ?? ((line: string) => console.error(line));
-  const loggers: Loggers = { log, logError };
   const runStartedAt = deps.now();
   const nowIso = new Date(runStartedAt).toISOString();
   const result: ShiftTradeRemindersResult = {
@@ -271,18 +350,25 @@ export async function runShiftTradeReminders(
   // The channel settings do not change in one run, so read them one time
   // for each (restaurant, type).
   const channelCache = new Map<string, ChannelDecision>();
-  const channelsFor = async (restaurantId: string, type: NotificationType): Promise<ChannelDecision> => {
-    const key = `${restaurantId}:${type}`;
-    let decision = channelCache.get(key);
-    if (!decision) {
-      decision = await deps.resolveChannels(restaurantId, type);
-      channelCache.set(key, decision);
-    }
-    return decision;
+  const ctx: RunContext = {
+    deps,
+    loggers: { log, logError },
+    runStartedAt,
+    result,
+    pushTargets: 0,
+    channelsFor: async (restaurantId, type) => {
+      const key = `${restaurantId}:${type}`;
+      let decision = channelCache.get(key);
+      if (!decision) {
+        decision = await deps.resolveChannels(restaurantId, type);
+        channelCache.set(key, decision);
+      }
+      return decision;
+    },
   };
 
-  let pushTargets = 0;
-  const outOfBudget = () => deps.now() - runStartedAt >= RUN_BUDGET_MS || pushTargets >= MAX_PUSH_TARGETS;
+  const outOfBudget = () =>
+    deps.now() - runStartedAt >= RUN_BUDGET_MS || ctx.pushTargets >= MAX_PUSH_TARGETS;
   // A row that a run did not claim can come back on a later page.
   const seen = new Set<string>();
   let stopped = false;
@@ -302,73 +388,10 @@ export async function runShiftTradeReminders(
     result.candidates += candidates.length;
 
     for (let i = 0; i < candidates.length; i++) {
-      const row = candidates[i];
-      const stage = row.stage;
-      const isUnclaimed = stage === 'unclaimed';
-
-      if (outOfBudget()) {
+      if (outOfBudget() || (await processCandidate(candidates[i], ctx)) === 'defer') {
         result.deferred += candidates.length - i;
         stopped = true;
         break;
-      }
-
-      try {
-        let audience: string[] = [];
-        if (!isUnclaimed) {
-          const audienceRes = await deps.fetchAudience(row.shift_trade_id);
-          if (audienceRes.error) {
-            // No claim, so the next run tries this stage again.
-            logError(`${LOG_PREFIX} audience read failed trade=${row.shift_trade_id}: ${truncateError(audienceRes.error.message)}`);
-            result.skipped += 1;
-            continue;
-          }
-          audience = (audienceRes.data ?? []).map((r) => r.user_id);
-          // An empty run sends a large audience in chunks. Otherwise the
-          // audience must fit the rest of the push budget.
-          if (pushTargets > 0 && pushTargets + audience.length > MAX_PUSH_TARGETS) {
-            result.deferred += candidates.length - i;
-            stopped = true;
-            break;
-          }
-        }
-
-        const claim = await deps.claim(row.shift_trade_id, row.stage);
-        if (claim.error) {
-          logError(`${LOG_PREFIX} claim failed trade=${row.shift_trade_id} stage=${row.stage}: ${truncateError(claim.error.message)}`);
-          result.skipped += 1;
-          continue;
-        }
-        if (claim.data !== true) {
-          result.skipped += 1;
-          continue;
-        }
-        result.claimed += 1;
-
-        const type = isUnclaimed ? TRADE_REMINDER_TYPE.unclaimed : TRADE_REMINDER_TYPE.employee;
-        const channels = await channelsFor(row.restaurant_id, type);
-        const allOff = isUnclaimed ? !channels.email && !channels.push : !channels.push;
-        if (allOff) {
-          result.skipped += 1;
-          log(`${LOG_PREFIX} channels off trade=${row.shift_trade_id} stage=${row.stage} restaurant=${row.restaurant_id}`);
-          continue;
-        }
-
-        const outcome =
-          isUnclaimed
-            ? await sendUnclaimedStage(deps, row, channels, runStartedAt, loggers)
-            : await sendEmployeeStage(deps, row, stage, audience, loggers);
-
-        pushTargets += outcome.pushTargets;
-        result.pushed += outcome.pushed;
-        result.emailed += outcome.emailed;
-
-        log(
-          `${LOG_PREFIX} sent trade=${row.shift_trade_id} stage=${row.stage} restaurant=${row.restaurant_id} ` +
-            `push_targets=${outcome.pushTargets} pushed=${outcome.pushed} emailed=${outcome.emailed}`,
-        );
-      } catch (err) {
-        // One failed candidate must not stop the loop. The claim stays.
-        logError(`${LOG_PREFIX} send failed trade=${row.shift_trade_id} stage=${row.stage}: ${errorText(err)}`);
       }
     }
 

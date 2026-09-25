@@ -24,7 +24,7 @@ export interface LaborCostsFromTimeTrackingResult {
   refetch: () => void;
   /** True when any of the paged fetches (time punches, per-job payments,
    * tip splits, tip payouts) hit the pagination backstop
-   * (`fetchAllRows`'s `maxPages`) — results may be truncated. */
+   * (`fetchAllRowsKeyset`'s `maxPages`) — results may be truncated. */
   capped: boolean;
 }
 

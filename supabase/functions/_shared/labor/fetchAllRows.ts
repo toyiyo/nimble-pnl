@@ -14,15 +14,6 @@ export interface PagedResult<T> {
 }
 
 /**
- * Fetches every row matching a query by paging through `.range()` windows,
- * defeating PostgREST's default 1000-row cap on unpaginated responses.
- *
- * The caller supplies `buildPage(from, to)`, which must return the same
- * query (select/filters/order) with `.range(from, to)` applied — this keeps
- * each call site's exact query shape intact while removing the duplicated
- * pagination loop.
- */
-/**
  * Cast a Supabase query-builder chain to the page shape `fetchAllRows`
  * expects.
  *
@@ -38,6 +29,15 @@ export function asPagedRows<T>(
   return query as unknown as PromiseLike<{ data: T[] | null; error: unknown }>;
 }
 
+/**
+ * Fetches every row matching a query by paging through `.range()` windows,
+ * defeating PostgREST's default 1000-row cap on unpaginated responses.
+ *
+ * The caller supplies `buildPage(from, to)`, which must return the same
+ * query (select/filters/order) with `.range(from, to)` applied — this keeps
+ * each call site's exact query shape intact while removing the duplicated
+ * pagination loop.
+ */
 export async function fetchAllRows<T>(
   buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
   opts?: { pageSize?: number; maxPages?: number },

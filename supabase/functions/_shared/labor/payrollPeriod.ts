@@ -1,6 +1,6 @@
 /**
  * The payroll loader: the body of the `usePayroll` query. The Payroll page,
- * the employee pay page (self-scoped) and (in PR 2) the AI payroll tool use
+ * the employee pay page (self-scoped) and the AI payroll tool use
  * it, so the figures cannot drift apart.
  *
  * - Fetch windows are instants (`windowStart` / `windowEnd`) from the day

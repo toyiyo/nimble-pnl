@@ -826,7 +826,7 @@ export function getEmployeeDailyRateDescription(employee: LaborEmployee): string
 }
 
 // ============================================================================
-// Range Labor Cost (ISO-week OT banding + tipsOwed)
+// Range Labor Cost (restaurant-local week OT banding + tipsOwed)
 // ============================================================================
 
 export interface RangeLaborInput {
@@ -877,7 +877,7 @@ function lastDayWithNoonAtOrBefore(bound: Date): string {
 }
 
 /**
- * Calculate actual labor cost for a date range using ISO-week OT banding.
+ * Calculate actual labor cost for a date range using restaurant-local week OT banding.
  *
  * For hourly employees: bucket each punch into the restaurant-local week that
  * contains it (weekStartDateStr of its restaurant day), call calculateEmployeePay over the FULL
@@ -922,7 +922,7 @@ export function calculateActualLaborCostForRange(
       continue;
     }
 
-    // Hourly: bucket punches by the SHIFT's clock-in ISO week (not each punch's
+    // Hourly: bucket punches by the SHIFT's clock-in restaurant-local week (not each punch's
     // own week) so an overnight shift clocking out in the next week stays whole
     // in its clock-in week instead of splitting into two lone-punch buckets that
     // parseWorkPeriods can't pair (dropping the shift's hours entirely).
@@ -930,7 +930,7 @@ export function calculateActualLaborCostForRange(
     // order and must not rely on the caller's `.order('punch_time')`.
     // The week key is the first day of the restaurant-local week of the punch.
     // A host-local startOfWeek on the instant moves a Sunday-evening Chicago
-    // punch into the next week on a UTC host (memory/lessons.md, PR #485).
+    // punch into the next week on a UTC host (memory/lessons.md, "Time / Timezone").
     const weekKeyFor = (punchTime: string) => weekStartDateStr(toBusinessDay(punchTime, timezone));
     const sortedPunches = [...employeePunches].sort(
       (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()

@@ -60,7 +60,7 @@ export function lookaheadPunchFetchRange(
  * result does not depend on the host timezone.
  *
  * The OT-banding formula (`calculateActualLaborCostForRange`) buckets
- * punches by ISO week and bands overtime over the FULL week. When
+ * punches by restaurant-local week and bands overtime over the FULL week. When
  * `fromDay` does not fall on a week boundary, the days before `fromDay`
  * in that same week must still be fetched, or the week's hour total comes
  * out too low and hours that should band as overtime cost as straight time

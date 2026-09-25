@@ -75,12 +75,12 @@ export function emptyScheduledLaborCosts(): ScheduledLaborCostsResult {
 export function scheduledLaborCosts(
   shifts: LaborShift[],
   employees: LaborEmployee[],
-  startDate: Date,
-  endDate: Date,
+  dayStart: Date,
+  dayEnd: Date,
   timezone: string,
 ): ScheduledLaborCostsResult {
   const { breakdown: serviceBreakdown, dailyCosts: serviceDailyCosts } =
-    calculateScheduledLaborCost(shifts, employees, startDate, endDate, timezone);
+    calculateScheduledLaborCost(shifts, employees, dayStart, dayEnd, timezone);
 
   const dailyCosts: ScheduledLaborCostData[] = serviceDailyCosts.map((day) => ({
     date: day.date,
@@ -125,7 +125,7 @@ export interface ScheduledLaborCostInput {
   timeZone: string;
 }
 
-export interface ScheduledLaborCostResult extends ScheduledLaborCostsResult {
+export interface LoadedScheduledLaborCost extends ScheduledLaborCostsResult {
   /** True when a paged read hit the `maxPages` cap. */
   capped: boolean;
 }
@@ -143,7 +143,7 @@ type ShiftRow = LaborShift & { id: string };
 export async function loadScheduledLaborCost(
   client: LaborQueryClient,
   input: ScheduledLaborCostInput,
-): Promise<ScheduledLaborCostResult> {
+): Promise<LoadedScheduledLaborCost> {
   const { restaurantId, startDay, endDay, timeZone } = input;
   assertDayRange('loadScheduledLaborCost', startDay, endDay);
   const { start: windowStart, end: windowEnd } = businessDayRangeToInstants(startDay, endDay, timeZone);

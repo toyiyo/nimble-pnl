@@ -1,5 +1,6 @@
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { WEEK_STARTS_ON } from './dateConfig.ts';
+import { DATE_ONLY_RE } from './dateOnly.ts';
 
 /**
  * The restaurant timezone is the default frame for every user-visible date.
@@ -28,7 +29,6 @@ declare global {
 /** Matches the `restaurants.timezone` DB default (migration 20251001022351). */
 export const DEFAULT_TIMEZONE = 'America/Chicago';
 
-const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const WALL_CLOCK_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
 /**
@@ -249,7 +249,10 @@ export function businessDayRangeToInstants(
 const MINUTE_MS = 60 * 1000;
 const SEARCH_MINUTES = 12 * 60;
 
-/** `firstInstantOfDay` for a validated zone and a day that passed the format check. */
+/**
+ * `firstInstantOfDay` for a validated zone. The caller need not check the
+ * day first: a day that is not `YYYY-MM-DD` gives an Invalid Date.
+ */
 function firstInstantOfDayInZone(day: string, zone: string): Date {
   if (!DATE_ONLY_RE.test(day)) return new Date(Number.NaN);
   const [year, month, dayOfMonth] = day.split('-').map(Number);

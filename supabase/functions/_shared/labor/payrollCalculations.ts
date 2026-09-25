@@ -1,13 +1,12 @@
 import type { LaborTimePunch, LaborEmployee, CompensationType } from './types.ts';
-import { startOfWeek } from 'date-fns/startOfWeek';
-import { WEEK_STARTS_ON } from './dateConfig.ts';
-import { toDateOnlyString } from './dateOnly.ts';
+import { DATE_ONLY_RE, toDateOnlyString } from './dateOnly.ts';
 import {
   DEFAULT_TIMEZONE,
   businessDayRangeToInstants,
   formatInstant,
   toBusinessDay,
   weekEndDateStr,
+  weekStartDateStr,
 } from './restaurantClock.ts';
 import {
   calculateSalaryForPeriod,
@@ -20,8 +19,6 @@ import {
   type OvertimeAdjustment,
 } from './overtimeCalculations.ts';
 import { periodsInWindow, incompleteShiftsInWindow } from './punchWindow.ts';
-
-const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
 const MAX_SHIFT_HOURS = 16;
@@ -484,9 +481,9 @@ export function calculateEmployeePay(
   // incomplete shifts whose anchor punch falls outside [periodStartDate,
   // periodEndDate]. ONLY the payroll path (calculatePayrollPeriod) opts in — it
   // fetches a ±18h buffer so boundary-crossing shifts pair whole first.
-  // calculateActualLaborCostForMonth intentionally leaves this false: it
-  // pre-buckets by ISO week and passes NOON-anchored bounds this filter would
-  // misinterpret.
+  // calculateActualLaborCostForRange leaves this false. It groups the
+  // punches by the restaurant-local week of the shift clock-in before the
+  // call, and it gives that week as day tokens. It needs no second filter.
   attributeToWindow: boolean = false
 ): EmployeePayroll {
   const compensationType = employee.compensation_type || 'hourly';
@@ -547,10 +544,9 @@ export function calculateEmployeePay(
     // Group daily hours by calendar week for per-week OT calculation
     const hoursByWeek = new Map<string, Record<string, number>>();
     for (const [dateStr, hours] of hoursByDate) {
-      // Use T12:00:00 to parse as local time -- new Date('YYYY-MM-DD') parses as UTC midnight
-      // which shifts to the previous day in US timezones, breaking week grouping
-      const weekStart = startOfWeek(new Date(dateStr + 'T12:00:00'), { weekStartsOn: WEEK_STARTS_ON });
-      const weekKey = toDateOnlyString(weekStart);
+      // The week key is the first day (WEEK_STARTS_ON) of the week of the
+      // day string. Day-string math, so the key does not depend on the host.
+      const weekKey = weekStartDateStr(dateStr);
       const weekHours = hoursByWeek.get(weekKey) ?? {};
       weekHours[dateStr] = (weekHours[dateStr] ?? 0) + hours;
       hoursByWeek.set(weekKey, weekHours);

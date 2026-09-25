@@ -1,6 +1,6 @@
 /**
  * Period labor loaders: the data assembly behind the dashboard labor pills,
- * the Labor page and (in PR 2) the AI labor tools.
+ * the Labor page and the AI labor tools.
  *
  * - `loadPeriodLaborCost` is the body of the `useLaborCostsFromTimeTracking`
  *   query (time punches, per-job payments, tips owed).

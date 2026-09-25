@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { mergeAvailableShifts } from '@/hooks/useAvailableShifts';
 import type { OpenShift } from '@/types/scheduling';
 
+const TZ = 'America/Chicago';
+
 const makeOpenShift = (overrides: Partial<OpenShift> = {}): OpenShift => ({
   template_id: 'tpl-1',
   template_name: 'Closing Server',
@@ -27,18 +29,18 @@ const makeTrade = (overrides: Record<string, unknown> = {}) => ({
 
 describe('mergeAvailableShifts', () => {
   it('returns empty array when no shifts or trades', () => {
-    expect(mergeAvailableShifts([], [])).toEqual([]);
+    expect(mergeAvailableShifts([], [], TZ)).toEqual([]);
   });
 
   it('includes open shifts with type "open_shift"', () => {
-    const result = mergeAvailableShifts([makeOpenShift()], []);
+    const result = mergeAvailableShifts([makeOpenShift()], [], TZ);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe('open_shift');
     expect(result[0].openShift?.template_name).toBe('Closing Server');
   });
 
   it('includes trades with type "trade"', () => {
-    const result = mergeAvailableShifts([], [makeTrade()]);
+    const result = mergeAvailableShifts([], [makeTrade()], TZ);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe('trade');
   });
@@ -47,6 +49,7 @@ describe('mergeAvailableShifts', () => {
     const result = mergeAvailableShifts(
       [makeOpenShift({ shift_date: '2026-04-20' })],
       [makeTrade({ offered_shift: { id: 's1', start_time: '2026-04-18T14:00:00Z', end_time: '2026-04-18T20:00:00Z', position: 'Server', break_duration: 0 } })],
+      TZ,
     );
     expect(result[0].type).toBe('trade');
     expect(result[1].type).toBe('open_shift');
@@ -56,8 +59,20 @@ describe('mergeAvailableShifts', () => {
     const result = mergeAvailableShifts(
       [makeOpenShift(), makeOpenShift({ template_id: 'tpl-2', template_name: 'Opener' })],
       [makeTrade()],
+      TZ,
     );
     const keys = result.map(r => r.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('keys a trade by the restaurant business day, not the UTC day', () => {
+    // 00:30Z on Sep 27 is 7:30 PM on Sat, Sep 26 in Chicago (CDT).
+    const lateTrade = makeTrade({
+      offered_shift: { id: 's1', start_time: '2026-09-27T00:30:00Z', end_time: '2026-09-27T05:00:00Z', position: 'Server', break_duration: 0 },
+    });
+    const result = mergeAvailableShifts([makeOpenShift({ shift_date: '2026-09-27' })], [lateTrade], TZ);
+    expect(result[0].type).toBe('trade');
+    expect(result[0].date).toBe('2026-09-26');
+    expect(result[1].type).toBe('open_shift');
   });
 });

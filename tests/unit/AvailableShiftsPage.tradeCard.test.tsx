@@ -20,9 +20,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { formatInTimeZone } from 'date-fns-tz';
 
+import { tzOffsetMinutes } from '@/lib/restaurantClock';
+
 // ---------------------------------------------------------------------------
-// Hoisted mock — date-fns/parseISO would work without mocking because we only
-// use format(), but lucide-react needs to be shimmed in jsdom.
+// Hoisted mock — lucide-react needs to be shimmed in jsdom.
 // ---------------------------------------------------------------------------
 
 vi.mock('lucide-react', async (importOriginal) => {
@@ -77,15 +78,16 @@ import type { AreaMismatch } from '@/lib/shiftTradeArea';
 
 // The restaurant zone is Pacific/Kiritimati (UTC+14 all year). No CI or dev
 // runner uses it (`test:tz` runs Chicago, Auckland and UTC), so a label that
-// leaks the runner zone cannot match the expected text.
-const RESTAURANT_TZ = 'Pacific/Kiritimati';
+// leaks the runner zone cannot match the expected text. vi.hoisted so the
+// hoisted vi.mock factory below can read it.
+const { RESTAURANT_TZ } = vi.hoisted(() => ({ RESTAURANT_TZ: 'Pacific/Kiritimati' }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: vi.fn(() => ({
     selectedRestaurant: {
       restaurant_id: 'rest-1',
       name: 'Test Restaurant',
-      restaurant: { timezone: 'Pacific/Kiritimati' },
+      restaurant: { timezone: RESTAURANT_TZ },
     },
   })),
 }));
@@ -505,22 +507,16 @@ describe('AvailableShiftsPage — restaurant time zone', () => {
   });
 
   // "Sun, Sep 27" style label for a YYYY-MM-DD string plus N days. UTC field
-  // math, so the runner zone has no effect.
+  // math and the date-fns pattern the page uses, so the runner zone and the
+  // ICU locale data have no effect.
   function dayLabel(dateStr: string, addDays = 0): string {
     const d = new Date(`${dateStr}T12:00:00Z`);
     d.setUTCDate(d.getUTCDate() + addDays);
-    return d.toLocaleDateString('en-US', {
-      timeZone: 'UTC',
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
+    return formatInTimeZone(d, 'UTC', 'EEE, MMM d');
   }
 
   function expectRunnerZoneDiffers(at: Date) {
-    const runnerOffset = -at.getTimezoneOffset();
-    const restaurantOffset = Number(formatInTimeZone(at, RESTAURANT_TZ, 'xxx').slice(0, 3)) * 60;
-    expect(runnerOffset).not.toBe(restaurantOffset);
+    expect(-at.getTimezoneOffset()).not.toBe(tzOffsetMinutes(RESTAURANT_TZ, at));
   }
 
   it('shows the trade date and time in the restaurant zone, not the device zone', async () => {
@@ -563,6 +559,9 @@ describe('AvailableShiftsPage — restaurant time zone', () => {
     ).toBeInTheDocument();
   });
 
+  // The label reads the DATE column, not the restaurant zone. The America/Chicago
+  // run of `test:tz` catches a change to parseISO(shift_date), which shows the
+  // day before in zones behind UTC.
   it('shows the My Claims date as the stored business day', async () => {
     const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
     (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({ items: [], loading: false });
@@ -587,8 +586,6 @@ describe('AvailableShiftsPage — restaurant time zone', () => {
       ],
       loading: false,
     });
-    expectRunnerZoneDiffers(new Date(`${DAY_A}T12:00:00Z`));
-
     render(React.createElement(AvailableShiftsPage));
 
     expect(screen.getByText('Lunch')).toBeInTheDocument();

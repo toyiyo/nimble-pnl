@@ -40,6 +40,13 @@ the restaurant zone. A UI review saw 11:00 AM – 5:00 PM on the home card and
 4. `TradeCard` deletes `formatTradeTime` and its own date format. It keeps
    no hooks. The memo compare function adds `dateLabel` and `timeLabel`.
 5. The marketplace separator changes from `-` to `–` to match the home card.
+6. Review fix (Phase 7b): `mergeAvailableShifts` keyed a trade by the UTC day
+   of `start_time` (`src/hooks/useAvailableShifts.ts:31`), but open shifts use
+   `shift_date`, the business day. An evening trade in Chicago sorted under
+   the next day. The function now takes `tz` and keys a trade with
+   `toBusinessDay`. `useAvailableShifts` gets `tz` from the page.
+7. Review fix: the memo compare function also checks `offered_by.name`,
+   which the card text and both `aria-label` values read.
 
 ## Tests
 

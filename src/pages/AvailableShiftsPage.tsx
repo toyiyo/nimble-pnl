@@ -231,6 +231,7 @@ const TradeCard = memo(function TradeCard({
     prev.trade?.offered_shift?.start_time === next.trade?.offered_shift?.start_time &&
     prev.trade?.offered_shift?.end_time === next.trade?.offered_shift?.end_time &&
     prev.trade?.offered_shift?.position === next.trade?.offered_shift?.position &&
+    prev.trade?.offered_by?.name === next.trade?.offered_by?.name &&
     prev.isAccepting === next.isAccepting &&
     prev.currentEmployeeId === next.currentEmployeeId &&
     prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&
@@ -310,6 +311,7 @@ export default function AvailableShiftsPage() {
     currentEmployee?.id ?? null,
     weekStart,
     weekEnd,
+    tz,
   );
   const { claims, loading: claimsLoading } = useOpenShiftClaims(restaurantId, currentEmployee?.id);
   const claimMutation = useClaimOpenShift();

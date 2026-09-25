@@ -3,6 +3,7 @@ import type { OpenShift } from '@/types/scheduling';
 import type { ShiftTrade } from '@/hooks/useShiftTrades';
 import { useOpenShifts } from '@/hooks/useOpenShifts';
 import { useMarketplaceTrades } from '@/hooks/useShiftTrades';
+import { toBusinessDay } from '@/lib/restaurantClock';
 
 export interface AvailableShiftItem {
   key: string;
@@ -15,6 +16,7 @@ export interface AvailableShiftItem {
 export function mergeAvailableShifts(
   openShifts: OpenShift[],
   trades: (ShiftTrade & { hasConflict?: boolean })[],
+  tz: string,
 ): AvailableShiftItem[] {
   const items: AvailableShiftItem[] = [];
 
@@ -28,7 +30,11 @@ export function mergeAvailableShifts(
   }
 
   for (const trade of trades) {
-    const tradeDate = trade.offered_shift?.start_time?.split('T')[0] ?? '';
+    // The restaurant business day, the same frame as `shift_date` above and
+    // as the card's date label. The UTC day files an evening trade under
+    // the next day.
+    const startTime = trade.offered_shift?.start_time;
+    const tradeDate = startTime ? toBusinessDay(startTime, tz) : '';
     items.push({
       key: `trade-${trade.id}`,
       type: 'trade',
@@ -46,6 +52,7 @@ export function useAvailableShifts(
   employeeId: string | null,
   weekStart: Date | null,
   weekEnd: Date | null,
+  tz: string,
 ) {
   const {
     openShifts,
@@ -61,8 +68,8 @@ export function useAvailableShifts(
   } = useMarketplaceTrades(restaurantId, employeeId);
 
   const items = useMemo(
-    () => mergeAvailableShifts(openShifts, trades as any),
-    [openShifts, trades],
+    () => mergeAvailableShifts(openShifts, trades as any, tz),
+    [openShifts, trades, tz],
   );
 
   // Retry both queries. A failed load must not look like an empty list.

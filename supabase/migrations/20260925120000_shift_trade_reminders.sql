@@ -1,5 +1,4 @@
--- Shift trade reminders (design:
--- docs/superpowers/specs/2026-09-25-shift-trade-reminders-design.md, Part B).
+-- Shift trade reminders.
 --
 -- This migration adds:
 --   1. The send ledger public.shift_trade_reminders.
@@ -7,7 +6,7 @@
 --   3. The two new notification types in the CHECK constraint.
 --   4. The candidates RPC get_shift_trade_reminder_candidates.
 --   5. The claim RPC claim_shift_trade_reminder (claim before send).
---   6. The audience RPC get_shift_trade_reminder_audience.
+--   6. The audience RPC get_shift_trade_reminder_audience and its index.
 --   7. The recipients RPC get_shift_trade_unclaimed_recipients.
 --   8. The cron job shift-trade-reminders (every 15 minutes).
 --
@@ -54,12 +53,13 @@ STABLE
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_tz text := COALESCE(NULLIF(p_tz, ''), 'America/Chicago');
+  c_default CONSTANT text := 'America/Chicago';
+  v_tz text := COALESCE(NULLIF(p_tz, ''), c_default);
 BEGIN
   PERFORM now() AT TIME ZONE v_tz;
   RETURN v_tz;
 EXCEPTION WHEN invalid_parameter_value THEN
-  RETURN 'America/Chicago';
+  RETURN c_default;
 END;
 $$;
 
@@ -109,16 +109,20 @@ COMMENT ON COLUMN public.notification_channel_settings.notification_type IS
 
 -- ============================================================
 -- 4. Candidates. One row for each (trade, stage) that is due at p_now.
---    All rules in design B1 apply here:
 --    - Employee stages: 72h (24 < h <= 72), 24h (6 < h <= 24),
 --      6h (0 < h <= 6). Skip a stage when the trade was created after
 --      start - <stage hours>. Skip employee stages in block mode when
 --      h <= trade_deadline_hours. Need push_enabled for
 --      shift_trade_reminder.
+--    - Skip an employee stage when another employee stage of the same
+--      trade sent in the 6 hours before p_now. A late stage and the next
+--      stage can come due minutes apart. Two pushes that close only annoy
+--      the employee.
 --    - unclaimed: 0 < h <= E and the trade is at least 1 hour old.
 --      E = 24, or GREATEST(24, trade_deadline_hours + 12) in block mode.
 --      Needs push_enabled or email_enabled for shift_trade_unclaimed.
 --    - Quiet hours: nothing is due from 22:00 to 08:00 restaurant time.
+--      The time zone is resolved one time for each restaurant.
 --    - Only open trades on scheduled or confirmed shifts.
 --    - A missing settings row means the defaults (mode off, 24 h, channels on).
 --    - A (trade, stage) that has a shift_trade_reminders row is not due.
@@ -136,10 +140,7 @@ RETURNS TABLE (
   end_time timestamptz,
   "position" text,
   is_published boolean,
-  offered_by_employee_id uuid,
   offered_by_name text,
-  offered_by_user_id uuid,
-  target_employee_id uuid,
   restaurant_name text,
   restaurant_timezone text
 )
@@ -148,31 +149,42 @@ STABLE
 SECURITY INVOKER
 SET search_path = public, pg_temp
 AS $$
-  WITH open_trades AS (
+  WITH open_raw AS (
+    SELECT t.id, t.restaurant_id, t.offered_by_employee_id, t.created_at,
+           s.start_time AS s_start, s.end_time AS s_end,
+           s."position" AS s_position, s.is_published AS s_published
+    FROM public.shift_trades t
+    JOIN public.shifts s
+      ON s.id = t.offered_shift_id
+     AND s.restaurant_id = t.restaurant_id
+    WHERE t.status = 'open'
+      AND s.status IN ('scheduled', 'confirmed')
+      AND s.start_time > p_now
+  ),
+  restaurant_tz AS (
+    SELECT r.id AS rid, r.name AS r_name, public.safe_restaurant_tz(r.timezone) AS tz
+    FROM public.restaurants r
+    WHERE r.id IN (SELECT DISTINCT o.restaurant_id FROM open_raw o)
+  ),
+  open_trades AS (
     SELECT
       t.id AS trade_id,
       t.restaurant_id AS rid,
-      s.start_time AS s_start,
-      s.end_time AS s_end,
-      s."position" AS s_position,
-      s.is_published AS s_published,
-      t.offered_by_employee_id AS poster_id,
+      t.s_start,
+      t.s_end,
+      t.s_position,
+      t.s_published,
       e.name AS poster_name,
-      e.user_id AS poster_user_id,
-      t.target_employee_id AS target_id,
-      r.name AS r_name,
-      public.safe_restaurant_tz(r.timezone) AS tz,
+      rt.r_name,
+      rt.tz,
       COALESCE(t.created_at, '-infinity'::timestamptz) AS created,
       COALESCE(ss.trade_deadline_mode, 'off') AS deadline_mode,
       COALESCE(ss.trade_deadline_hours, 24) AS deadline_hours,
       COALESCE(ncr.push_enabled, true) AS reminder_on,
       (COALESCE(ncu.push_enabled, true) OR COALESCE(ncu.email_enabled, true)) AS unclaimed_on
-    FROM public.shift_trades t
-    JOIN public.shifts s
-      ON s.id = t.offered_shift_id
-     AND s.restaurant_id = t.restaurant_id
+    FROM open_raw t
     JOIN public.employees e ON e.id = t.offered_by_employee_id
-    JOIN public.restaurants r ON r.id = t.restaurant_id
+    JOIN restaurant_tz rt ON rt.rid = t.restaurant_id
     LEFT JOIN public.staffing_settings ss ON ss.restaurant_id = t.restaurant_id
     LEFT JOIN public.notification_channel_settings ncr
       ON ncr.restaurant_id = t.restaurant_id
@@ -180,11 +192,8 @@ AS $$
     LEFT JOIN public.notification_channel_settings ncu
       ON ncu.restaurant_id = t.restaurant_id
      AND ncu.notification_type = 'shift_trade_unclaimed'
-    WHERE t.status = 'open'
-      AND s.status IN ('scheduled', 'confirmed')
-      AND s.start_time > p_now
-      -- The widest window: 72 h, or E when E is larger.
-      AND s.start_time <= p_now + make_interval(
+    -- The widest window: 72 h, or E when E is larger.
+    WHERE t.s_start <= p_now + make_interval(
             hours => GREATEST(72, COALESCE(ss.trade_deadline_hours, 24) + 12))
   ),
   awake AS (
@@ -205,6 +214,15 @@ AS $$
       -- Block mode: employees cannot accept inside the deadline.
       AND NOT (a.deadline_mode = 'block'
                AND a.s_start <= p_now + make_interval(hours => a.deadline_hours))
+      -- Gap between two employee stages of the same trade.
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.shift_trade_reminders g
+        WHERE g.shift_trade_id = a.trade_id
+          AND g.stage IN ('72h', '24h', '6h')
+          AND g.stage <> st.stage_name
+          AND g.sent_at > p_now - interval '6 hours'
+      )
     UNION ALL
     SELECT a.*, 'unclaimed'
     FROM awake a
@@ -224,10 +242,7 @@ AS $$
     d.s_end,
     d.s_position,
     d.s_published,
-    d.poster_id,
     d.poster_name,
-    d.poster_user_id,
-    d.target_id,
     d.r_name,
     d.tz
   FROM due d
@@ -283,11 +298,19 @@ REVOKE EXECUTE ON FUNCTION public.claim_shift_trade_reminder(uuid, text) FROM PU
 GRANT EXECUTE ON FUNCTION public.claim_shift_trade_reminder(uuid, text) TO service_role;
 
 -- ============================================================
--- 6. Audience for an employee stage (design B2): active employees of the
---    restaurant with a user_id, not the poster, and with no overlapping
---    scheduled or confirmed shift. accept_shift_trade uses the same overlap
---    test. A directed trade returns its target only.
+-- 6. Audience for an employee stage: active employees of the restaurant
+--    with a user_id, not the poster, and with no overlapping scheduled or
+--    confirmed shift. A directed trade returns its target only.
+--
+--    The overlap test is `o.end_time > s.start_time AND o.start_time <
+--    s.end_time`. For non-empty intervals it gives the same answer as
+--    OVERLAPS: touching edges are not an overlap. This form can use the
+--    index below. OVERLAPS cannot.
 -- ============================================================
+CREATE INDEX IF NOT EXISTS idx_shifts_employee_active_end
+  ON public.shifts (employee_id, end_time)
+  WHERE status IN ('scheduled', 'confirmed');
+
 CREATE OR REPLACE FUNCTION public.get_shift_trade_reminder_audience(p_trade_id uuid)
 RETURNS TABLE (user_id uuid)
 LANGUAGE sql
@@ -309,12 +332,13 @@ AS $$
       FROM public.shifts o
       WHERE o.employee_id = e.id
         AND o.status IN ('scheduled', 'confirmed')
-        AND (o.start_time, o.end_time) OVERLAPS (s.start_time, s.end_time)
+        AND o.end_time > s.start_time
+        AND o.start_time < s.end_time
     );
 $$;
 
 COMMENT ON FUNCTION public.get_shift_trade_reminder_audience(uuid) IS
-  'User ids of the employees who can take the trade (design B2).';
+  'User ids of the employees who can take the trade.';
 
 REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_audience(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_audience(uuid) TO service_role;
@@ -365,15 +389,15 @@ GRANT EXECUTE ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) TO s
 --    claim RPC stops a double send. Unschedule first, so this migration can
 --    run again.
 --
---    The job calls dispatch_shift_trade_reminders(). Do not read
---    current_setting('app.settings.supabase_url') without missing_ok: that
---    setting is not set on this project, and the read then fails on each run
---    (20260702160000_focus_crons_gateless.sql:6-9).
---    - URL: app.settings.supabase_url when set, else the project URL, the
---      same URL the newest crons use (20260901120000_focus_backfill_cron_timeout.sql:34).
+--    The job calls dispatch_shift_trade_reminders().
+--    - URL: the constant project URL. The function does not read the URL
+--      from a setting. A changed setting could otherwise send the service
+--      role key to a different host.
 --    - Key: app.settings.service_role_key when set, else the Vault secret
 --      supabase_service_role_key (read the same way in
 --      20260217031454_9c95bf26-eb62-46f0-bfd1-6815d60f8c63.sql:17-23).
+--      Read the setting with missing_ok. Without it, the read fails on each
+--      run when the setting is not set.
 --    - No key: do nothing and return NULL. A local database has no Vault
 --      secret, so a local pg_cron never calls the production function.
 -- ============================================================
@@ -388,10 +412,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_url text := COALESCE(
-    NULLIF(current_setting('app.settings.supabase_url', true), ''),
-    'https://ncdujvdgqtaunuyigflp.supabase.co'
-  );
+  c_url CONSTANT text := 'https://ncdujvdgqtaunuyigflp.supabase.co';
   v_key text := NULLIF(current_setting('app.settings.service_role_key', true), '');
 BEGIN
   IF v_key IS NULL THEN
@@ -411,7 +432,7 @@ BEGIN
   END IF;
 
   RETURN net.http_post(
-    url := v_url || '/functions/v1/shift-trade-reminders',
+    url := c_url || '/functions/v1/shift-trade-reminders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer ' || v_key
@@ -421,6 +442,10 @@ BEGIN
   );
 END;
 $$;
+
+COMMENT ON FUNCTION public.dispatch_shift_trade_reminders() IS
+  'Posts to the shift-trade-reminders edge function at the constant project '
+  'URL. Returns NULL and sends nothing when no service role key exists.';
 
 REVOKE EXECUTE ON FUNCTION public.dispatch_shift_trade_reminders() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.dispatch_shift_trade_reminders() TO service_role;

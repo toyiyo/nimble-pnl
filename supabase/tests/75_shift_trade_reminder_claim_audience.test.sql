@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Test: claim_shift_trade_reminder, get_shift_trade_reminder_audience and
--- get_shift_trade_unclaimed_recipients (design B2 and B4 items 4, 5, 6).
+-- get_shift_trade_unclaimed_recipients.
 --
 -- The claim compares with the real clock, so the shifts here are relative
 -- to now().
@@ -17,6 +17,8 @@
 --     06 F, active, overlap with a cancelled shift (eligible).
 --     07 G, active, overlap with a confirmed shift.
 --     08 H, active, shift on another day (eligible).
+--     09 I, active, shift ends when the TR1 shift starts (eligible).
+--     10 J, active, shift starts when the TR1 shift ends (eligible).
 --   Memberships on R1 (users only):
 --     11 owner, 12 manager, 13 operations_manager,
 --     14 collaborator_operations_manager, 15 staff, 16 manager (deleted user).
@@ -26,7 +28,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(26);
+SELECT plan(29);
 
 SET LOCAL role TO postgres;
 
@@ -49,7 +51,7 @@ INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, e
 SELECT pg_temp.u(n), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
        'rem-user-' || n || '-75@test.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '',
        CASE WHEN n = 16 THEN now() END
-FROM unnest(ARRAY[1, 2, 3, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17]) AS n
+FROM unnest(ARRAY[1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]) AS n
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO employees (id, restaurant_id, user_id, name, email, position, is_active, status) VALUES
@@ -60,7 +62,9 @@ INSERT INTO employees (id, restaurant_id, user_id, name, email, position, is_act
   (pg_temp.e(5), '75000000-0000-0000-0000-000000000001', pg_temp.u(5), 'Eve Scheduled', 'rem-e-75@test.com', 'Server', true, 'active'),
   (pg_temp.e(6), '75000000-0000-0000-0000-000000000001', pg_temp.u(6), 'Fay Cancelled', 'rem-f-75@test.com', 'Server', true, 'active'),
   (pg_temp.e(7), '75000000-0000-0000-0000-000000000001', pg_temp.u(7), 'Gus Confirmed', 'rem-g-75@test.com', 'Server', true, 'active'),
-  (pg_temp.e(8), '75000000-0000-0000-0000-000000000001', pg_temp.u(8), 'Hal OtherDay', 'rem-h-75@test.com', 'Server', true, 'active')
+  (pg_temp.e(8), '75000000-0000-0000-0000-000000000001', pg_temp.u(8), 'Hal OtherDay', 'rem-h-75@test.com', 'Server', true, 'active'),
+  (pg_temp.e(9), '75000000-0000-0000-0000-000000000001', pg_temp.u(9), 'Ivy EndsAtStart', 'rem-i-75@test.com', 'Server', true, 'active'),
+  (pg_temp.e(10), '75000000-0000-0000-0000-000000000001', pg_temp.u(10), 'Jo StartsAtEnd', 'rem-j-75@test.com', 'Server', true, 'active')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
@@ -83,7 +87,9 @@ INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, positi
   ('75000000-0000-0000-0003-000000000005', '75000000-0000-0000-0000-000000000001', pg_temp.e(5), now() + interval '2 days 2 hours', now() + interval '2 days 8 hours', 'Server', 0, 'scheduled', true),
   ('75000000-0000-0000-0003-000000000006', '75000000-0000-0000-0000-000000000001', pg_temp.e(6), now() + interval '2 days 2 hours', now() + interval '2 days 8 hours', 'Server', 0, 'cancelled', true),
   ('75000000-0000-0000-0003-000000000007', '75000000-0000-0000-0000-000000000001', pg_temp.e(7), now() + interval '2 days 2 hours', now() + interval '2 days 8 hours', 'Server', 0, 'confirmed', true),
-  ('75000000-0000-0000-0003-000000000008', '75000000-0000-0000-0000-000000000001', pg_temp.e(8), now() + interval '5 days', now() + interval '5 days 6 hours', 'Server', 0, 'scheduled', true)
+  ('75000000-0000-0000-0003-000000000008', '75000000-0000-0000-0000-000000000001', pg_temp.e(8), now() + interval '5 days', now() + interval '5 days 6 hours', 'Server', 0, 'scheduled', true),
+  ('75000000-0000-0000-0003-000000000009', '75000000-0000-0000-0000-000000000001', pg_temp.e(9), now() + interval '1 day 18 hours', now() + interval '2 days', 'Server', 0, 'scheduled', true),
+  ('75000000-0000-0000-0003-000000000010', '75000000-0000-0000-0000-000000000001', pg_temp.e(10), now() + interval '2 days 6 hours', now() + interval '2 days 12 hours', 'Server', 0, 'scheduled', true)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO shift_trades (id, restaurant_id, offered_shift_id, offered_by_employee_id, target_employee_id, status) VALUES
@@ -115,21 +121,47 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
--- Audience (7-13)
+-- Audience (7-16)
 -- ---------------------------------------------------------------------------
 CREATE TEMP TABLE aud1 AS
 SELECT user_id FROM public.get_shift_trade_reminder_audience('75000000-0000-0000-0004-000000000001');
 
 SELECT is(
   pg_temp.sorted(ARRAY(SELECT user_id FROM aud1)),
-  pg_temp.sorted(ARRAY[pg_temp.u(2), pg_temp.u(6), pg_temp.u(8)]),
-  'audience: only B, F and H are eligible'
+  pg_temp.sorted(ARRAY[pg_temp.u(2), pg_temp.u(6), pg_temp.u(8), pg_temp.u(9), pg_temp.u(10)]),
+  'audience: only B, F, H, I and J are eligible'
 );
 SELECT ok(NOT EXISTS (SELECT 1 FROM aud1 WHERE user_id = pg_temp.u(1)), 'audience: excludes the poster');
 SELECT ok(NOT EXISTS (SELECT 1 FROM aud1 WHERE user_id = pg_temp.u(3)), 'audience: excludes an inactive employee');
 SELECT ok(NOT EXISTS (SELECT 1 FROM aud1 WHERE user_id = pg_temp.u(5)), 'audience: excludes an overlap with a scheduled shift');
 SELECT ok(NOT EXISTS (SELECT 1 FROM aud1 WHERE user_id = pg_temp.u(7)), 'audience: excludes an overlap with a confirmed shift');
 SELECT ok(EXISTS (SELECT 1 FROM aud1 WHERE user_id = pg_temp.u(6)), 'audience: includes an overlap with a cancelled shift');
+-- Touching edges are not an overlap. OVERLAPS gives the same answer.
+SELECT ok(
+  EXISTS (SELECT 1 FROM aud1 WHERE user_id = pg_temp.u(9))
+  AND EXISTS (SELECT 1 FROM aud1 WHERE user_id = pg_temp.u(10)),
+  'audience: a shift that ends at the trade start or starts at the trade end is not an overlap'
+);
+SELECT ok(
+  NOT ((now() + interval '1 day 18 hours', now() + interval '2 days')
+       OVERLAPS (now() + interval '2 days', now() + interval '2 days 6 hours'))
+  AND NOT ((now() + interval '2 days 6 hours', now() + interval '2 days 12 hours')
+       OVERLAPS (now() + interval '2 days', now() + interval '2 days 6 hours')),
+  'OVERLAPS is also false for touching edges'
+);
+SELECT ok(
+  (SELECT count(*) FROM (VALUES
+     (interval '0', interval '6 hours'),
+     (interval '-1 hour', interval '1 minute'),
+     (interval '5 hours 59 minutes', interval '8 hours'),
+     (interval '1 hour', interval '2 hours'),
+     (interval '-2 hours', interval '0'),
+     (interval '6 hours', interval '7 hours'),
+     (interval '-3 hours', interval '9 hours')) AS v(a, b)
+   WHERE ((now() + v.a, now() + v.b) OVERLAPS (now(), now() + interval '6 hours'))
+      <> (now() + v.b > now() AND now() + v.a < now() + interval '6 hours')) = 0,
+  'the end > start AND start < end test gives the same answer as OVERLAPS'
+);
 
 SELECT is(
   ARRAY(SELECT user_id FROM public.get_shift_trade_reminder_audience('75000000-0000-0000-0004-000000000002')),
@@ -138,7 +170,7 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
--- Unclaimed recipients (14-21)
+-- Unclaimed recipients (17-24)
 -- ---------------------------------------------------------------------------
 CREATE TEMP TABLE rec1 AS
 SELECT * FROM public.get_shift_trade_unclaimed_recipients('75000000-0000-0000-0004-000000000001');
@@ -174,7 +206,7 @@ SELECT ok(
 );
 
 -- ---------------------------------------------------------------------------
--- Grants (22-26)
+-- Grants (25-29)
 -- ---------------------------------------------------------------------------
 SELECT ok(
   NOT has_function_privilege('authenticated', 'public.claim_shift_trade_reminder(uuid, text)', 'EXECUTE')

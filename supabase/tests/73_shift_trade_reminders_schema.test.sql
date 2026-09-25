@@ -1,17 +1,17 @@
 -- ============================================================================
--- Test: shift trade reminders schema (design B4 items 1, 2, 7 and 8).
+-- Test: shift trade reminders schema.
 --
 -- Migration: 20260925120000_shift_trade_reminders.sql
 --
 -- Checks the shift_trade_reminders table, its RLS and grants, the
--- safe_restaurant_tz helper, the notification type CHECK constraint, and
--- the cron job.
+-- safe_restaurant_tz helper, the notification type CHECK constraint, the
+-- shifts overlap index, and the cron job.
 --
 -- Fixture namespace: UUIDs that start with 73000000-...
 -- ============================================================================
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(27);
 
 SET LOCAL role TO postgres;
 
@@ -138,7 +138,15 @@ SELECT throws_ok(
 );
 
 -- ---------------------------------------------------------------------------
--- Cron job and dispatcher (20-24)
+-- Overlap index for the audience RPC (20)
+-- ---------------------------------------------------------------------------
+SELECT has_index(
+  'public', 'shifts', 'idx_shifts_employee_active_end', ARRAY['employee_id', 'end_time'],
+  'shifts has the partial index idx_shifts_employee_active_end on (employee_id, end_time)'
+);
+
+-- ---------------------------------------------------------------------------
+-- Cron job and dispatcher (21-27)
 -- ---------------------------------------------------------------------------
 SELECT is(
   (SELECT schedule FROM cron.job WHERE jobname = 'shift-trade-reminders'),
@@ -152,14 +160,19 @@ SELECT ok(
   'cron job shift-trade-reminders calls dispatch_shift_trade_reminders()'
 );
 
--- The project does not set app.settings.supabase_url. A read without
--- missing_ok fails on each run (20260702160000_focus_crons_gateless.sql:6-9).
+-- A setting must not change where the service role key goes. The URL is a
+-- constant, so the dispatcher does not read app.settings.supabase_url.
 SELECT ok(
   pg_get_functiondef('public.dispatch_shift_trade_reminders()'::regprocedure)
-    NOT LIKE '%current_setting(''app.settings.supabase_url'')%'
-  AND pg_get_functiondef('public.dispatch_shift_trade_reminders()'::regprocedure)
+    NOT LIKE '%app.settings.supabase_url%',
+  'dispatcher does not read the URL from a setting'
+);
+
+-- A key read without missing_ok fails on each run when the setting is not set.
+SELECT ok(
+  pg_get_functiondef('public.dispatch_shift_trade_reminders()'::regprocedure)
     NOT LIKE '%current_setting(''app.settings.service_role_key'')%',
-  'dispatcher reads the app.settings values only with missing_ok'
+  'dispatcher reads the key setting only with missing_ok'
 );
 
 -- With no key in the settings and no Vault secret, the dispatcher sends
@@ -177,6 +190,11 @@ SELECT is(
 SELECT ok(
   NOT has_function_privilege('authenticated', 'public.dispatch_shift_trade_reminders()', 'EXECUTE'),
   'authenticated cannot execute dispatch_shift_trade_reminders'
+);
+
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.dispatch_shift_trade_reminders()', 'EXECUTE'),
+  'anon cannot execute dispatch_shift_trade_reminders'
 );
 
 SELECT * FROM finish();

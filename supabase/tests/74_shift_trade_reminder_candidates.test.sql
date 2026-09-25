@@ -1,5 +1,5 @@
 -- ============================================================================
--- Test: get_shift_trade_reminder_candidates (design B1 and B4 item 3).
+-- Test: get_shift_trade_reminder_candidates.
 --
 -- The test fixes p_now at P = 2026-10-07 15:00 UTC (10:00 in Chicago).
 -- Each trade gets its own shift that starts h after P. The stage set for a
@@ -129,6 +129,14 @@ INSERT INTO shift_trade_reminders (restaurant_id, shift_trade_id, stage)
 VALUES ('74000000-0000-0000-0000-000000000001', pg_temp.tid(17), '24h');
 -- R1: directed trade.
 SELECT pg_temp.mk(18, 1, interval '10 hours', target => '74000000-0000-0000-0001-000000000099');
+-- R1: gap between two employee stages (h = 5 h, so 6h is due).
+SELECT pg_temp.mk(90, 1, interval '5 hours');   -- 24h sent 15 min before P
+SELECT pg_temp.mk(91, 1, interval '5 hours');   -- 24h sent 7 h before P
+SELECT pg_temp.mk(92, 1, interval '5 hours');   -- unclaimed sent 15 min before P
+INSERT INTO shift_trade_reminders (restaurant_id, shift_trade_id, stage, sent_at) VALUES
+  ('74000000-0000-0000-0000-000000000001', pg_temp.tid(90), '24h', '2026-10-07 14:45:00+00'),
+  ('74000000-0000-0000-0000-000000000001', pg_temp.tid(91), '24h', '2026-10-07 08:00:00+00'),
+  ('74000000-0000-0000-0000-000000000001', pg_temp.tid(92), 'unclaimed', '2026-10-07 14:45:00+00');
 -- R2, R3, R7: time zones.
 SELECT pg_temp.mk(20, 2, interval '10 hours');
 SELECT pg_temp.mk(30, 3, interval '10 hours');
@@ -192,28 +200,20 @@ SELECT is(pg_temp.stages(19), '{}'::text[], 'an open trade on a completed shift 
 SELECT is(pg_temp.stages(17), ARRAY['unclaimed'], 'an existing 24h row hides the 24h stage only');
 
 -- ---------------------------------------------------------------------------
--- Output columns (19-27)
+-- Gap between two employee stages (19-21)
+-- ---------------------------------------------------------------------------
+SELECT is(pg_temp.stages(90), ARRAY['unclaimed'], 'a 24h push 15 min ago hides the 6h stage');
+SELECT is(pg_temp.stages(91), ARRAY['6h', 'unclaimed'], 'a 24h push 7 h ago does not hide the 6h stage');
+SELECT is(pg_temp.stages(92), ARRAY['6h'], 'an unclaimed push 15 min ago does not hide the 6h stage');
+
+-- ---------------------------------------------------------------------------
+-- Output columns (22-27)
 -- ---------------------------------------------------------------------------
 SELECT is(pg_temp.stages(18), ARRAY['24h', 'unclaimed'], 'a directed trade is due');
-SELECT is(
-  (SELECT DISTINCT target_employee_id FROM c WHERE shift_trade_id = pg_temp.tid(18)),
-  '74000000-0000-0000-0001-000000000099'::uuid,
-  'a directed trade returns its target_employee_id'
-);
 SELECT is(
   (SELECT DISTINCT offered_by_name FROM c WHERE shift_trade_id = pg_temp.tid(18)),
   'Poster Number 1',
   'offered_by_name is the poster name'
-);
-SELECT is(
-  (SELECT DISTINCT offered_by_user_id FROM c WHERE shift_trade_id = pg_temp.tid(18)),
-  '74000000-0000-0000-0002-000000000001'::uuid,
-  'offered_by_user_id is the poster user_id'
-);
-SELECT is(
-  (SELECT DISTINCT offered_by_employee_id FROM c WHERE shift_trade_id = pg_temp.tid(18)),
-  '74000000-0000-0000-0001-000000000001'::uuid,
-  'offered_by_employee_id is the poster employee id'
 );
 SELECT is(
   (SELECT DISTINCT restaurant_name || '|' || "position" || '|' || is_published::text FROM c WHERE shift_trade_id = pg_temp.tid(18)),

@@ -32,7 +32,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useAvailableShifts, AvailableShiftItem } from '@/hooks/useAvailableShifts';
 import { useOpenShiftClaims, useClaimOpenShift } from '@/hooks/useOpenShiftClaims';
 import { useMyShifts } from '@/hooks/useShifts';
-import { useAcceptShiftTrade } from '@/hooks/useShiftTrades';
+import { useAcceptShiftTrade, type MarketplaceTrade } from '@/hooks/useShiftTrades';
 import { useToast } from '@/hooks/use-toast';
 import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
 import { hasScheduleConflict } from '@/lib/openShiftHelpers';
@@ -77,7 +77,7 @@ import { cn } from '@/lib/utils';
 // ---- Memoized trade card (no hooks) ----
 
 interface TradeCardProps {
-  trade: AvailableShiftItem['trade'] & Record<string, unknown>;
+  trade: MarketplaceTrade;
   onAccept: (tradeId: string) => void;
   isAccepting: boolean;
   currentEmployeeId: string;
@@ -634,7 +634,7 @@ export default function AvailableShiftsPage() {
                         />
                       ) : item.type === 'trade' && item.trade ? (
                         <TradeCard
-                          trade={item.trade as TradeCardProps['trade']}
+                          trade={item.trade}
                           onAccept={handleAcceptTrade}
                           isAccepting={isAcceptingTrade && acceptingTradeId === item.trade.id}
                           currentEmployeeId={currentEmployee.id}

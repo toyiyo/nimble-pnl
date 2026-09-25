@@ -6,11 +6,11 @@
  * inside `trade_deadline_hours` unless the caller holds `edit:scheduling`.
  * A trade that the RPC would refuse must not show as claimable.
  */
-import type { ShiftTrade } from '@/hooks/useShiftTrades';
+import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
 import type { ShiftProtectionSettings } from '@/lib/shiftProtection';
 import { addDaysToDateStr, formatInstant, toBusinessDay } from '@/lib/restaurantClock';
 
-export type MarketplaceTrade = ShiftTrade & { hasConflict?: boolean };
+export type { MarketplaceTrade };
 
 export interface ClaimableTrade {
   trade: MarketplaceTrade;

@@ -56,6 +56,20 @@ export interface ShiftTrade {
 export type ShiftTradeStatus = ShiftTrade['status'];
 
 /**
+ * A row from `useMarketplaceTrades`. The marketplace query does not select
+ * the review columns, so the type does not carry them. The query drops a
+ * row without its shift or its poster, so both relations are always set.
+ */
+export type MarketplaceTrade = Omit<
+  ShiftTrade,
+  'manager_note' | 'reviewed_by' | 'reviewed_at' | 'offered_shift' | 'offered_by'
+> & {
+  offered_shift: NonNullable<ShiftTrade['offered_shift']>;
+  offered_by: NonNullable<ShiftTrade['offered_by']>;
+  hasConflict?: boolean;
+};
+
+/**
  * Guard against ghost joins: drop trades whose poster or shift row was deleted.
  * Structurally typed (not `ShiftTrade`) because useMarketplaceTrades filters
  * supabase-inferred rows whose `status: string` is wider than the union.
@@ -656,7 +670,7 @@ export const useMarketplaceTrades = (
   const enabled = options.enabled ?? true;
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace_trades', restaurantId, currentEmployeeId],
-    queryFn: async () => {
+    queryFn: async (): Promise<MarketplaceTrade[]> => {
       if (!restaurantId) return [];
 
       const nowIso = new Date().toISOString();
@@ -722,7 +736,8 @@ export const useMarketplaceTrades = (
       const { data: trades, error: tradesError } = tradesResult;
       if (tradesError) throw tradesError;
 
-      const validTrades = (trades || []).filter(hasValidJoins);
+      // The generated types read `status` as `string`, which is wider than the union.
+      const validTrades = (trades || []).filter(hasValidJoins) as unknown as MarketplaceTrade[];
 
       if (!currentEmployeeId || validTrades.length === 0) {
         return validTrades;

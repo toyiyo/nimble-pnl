@@ -5,7 +5,7 @@ import { useShiftProtection } from '@/hooks/useShiftProtection';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNowTick } from '@/hooks/useNowTick';
 
-import type { ClaimableTrade, MarketplaceTrade } from '@/lib/claimableTrades';
+import type { ClaimableTrade } from '@/lib/claimableTrades';
 import type { ShiftProtectionSettings } from '@/lib/shiftProtection';
 
 import { selectClaimableTrades } from '@/lib/claimableTrades';
@@ -55,7 +55,7 @@ export function useClaimableTrades(restaurantId: string | null, employeeId: stri
 
   const claimable = useMemo(() => {
     if (isLoading || !employeeId) return EMPTY;
-    return selectClaimableTrades(trades as MarketplaceTrade[], {
+    return selectClaimableTrades(trades, {
       employeeId,
       now: new Date(nowMs),
       protection: effectiveProtection,

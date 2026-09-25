@@ -556,7 +556,7 @@ export function calculateEmployeePay(
 
     const totalPeriodHours = Array.from(hoursByDate.values()).reduce((sum, h) => sum + h, 0);
 
-    for (const [weekKey, weekDailyHours] of hoursByWeek.entries()) {
+    for (const weekDailyHours of hoursByWeek.values()) {
       // Filter adjustments to only those whose punchDate falls within this week's dates
       const weekDates = new Set(Object.keys(weekDailyHours));
       const weekAdjustments = employeeAdjustments.filter(a => weekDates.has(a.punchDate));

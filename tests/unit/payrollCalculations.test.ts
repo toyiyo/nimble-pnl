@@ -93,7 +93,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-16T12:00:00Z'), // 28 hours later
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
+      const { incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
 
       // Implementation flags this as missing_clock_out (excessive gap)
       expect(incompleteShifts.length).toBeGreaterThan(0);
@@ -107,7 +107,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-16T10:00:00Z'), // 25 hours later (>18 hour gap)
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
+      const { incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
 
       // Should flag as incomplete due to excessive gap
       expect(incompleteShifts.length).toBeGreaterThan(0);

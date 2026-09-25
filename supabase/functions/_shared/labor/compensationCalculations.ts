@@ -704,20 +704,6 @@ export function formatContractorInterval(interval: ContractorPaymentInterval): s
 // ============================================================================
 
 /**
- * Calculate the number of days between two dates (inclusive)
- */
-function getDaysBetween(startDate: Date, endDate: Date): number {
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(endDate);
-  end.setHours(0, 0, 0, 0);
-  
-  const diffTime = end.getTime() - start.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 for inclusive
-  return Math.max(0, diffDays);
-}
-
-/**
  * Calculate salary pay for a given date range
  * Prorates the salary based on the number of days in the period
  * Respects hire date - only calculates from hire date forward

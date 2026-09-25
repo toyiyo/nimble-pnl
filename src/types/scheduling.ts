@@ -1,30 +1,29 @@
 import type { ShiftProtectionSettings } from '@/lib/shiftProtection';
 
-// Compensation types for employees
-export type CompensationType = 'hourly' | 'salary' | 'contractor' | 'daily_rate';
-export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
-export type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'per-job';
+// The compensation types, the employee status and the labor output types
+// moved to the shared labor engine. Re-export them so the old import path
+// keeps working.
+import type {
+  CompensationType,
+  PayPeriodType,
+  ContractorPaymentInterval,
+  EmployeeStatus,
+  CompensationHistoryEntry,
+} from '../../supabase/functions/_shared/labor/types';
+
+export type {
+  CompensationType,
+  PayPeriodType,
+  ContractorPaymentInterval,
+  EmployeeStatus,
+  CompensationHistoryEntry,
+  DailyLaborAllocation,
+  CompensationSummary,
+  LaborCostBreakdown,
+} from '../../supabase/functions/_shared/labor/types';
+
 export type DeactivationReason = 'seasonal' | 'left_company' | 'on_leave' | 'other';
 export type EmploymentType = 'full_time' | 'part_time';
-
-/**
- * Canonical employee status type.
- * Mirrors the DB constraint `employees_status_active_sync`:
- *   active → is_active = true
- *   inactive | terminated → is_active = false
- */
-export type EmployeeStatus = 'active' | 'inactive' | 'terminated';
-
-export interface CompensationHistoryEntry {
-  id: string;
-  employee_id: string;
-  restaurant_id: string;
-  compensation_type: CompensationType;
-  amount_cents: number;
-  pay_period_type?: PayPeriodType | null;
-  effective_date: string; // YYYY-MM-DD
-  created_at: string;
-}
 
 export interface Employee {
   id: string;
@@ -262,39 +261,6 @@ export interface SchedulePublication {
    * about should not generate the first message they ever receive about it.
    */
   notification_sent: boolean;
-}
-
-// Daily labor allocation for salaried/contractor employees
-export interface DailyLaborAllocation {
-  id: string;
-  restaurant_id: string;
-  employee_id: string;
-  date: string; // DATE format (YYYY-MM-DD)
-  compensation_type: CompensationType;
-  allocated_amount: number; // In cents (daily portion of salary/contractor payment)
-  calculation_notes?: string; // e.g., "Weekly salary $1000 / 7 days = $142.86/day"
-  source_pay_period_start?: string; // Start of the pay period this allocation is from
-  source_pay_period_end?: string; // End of the pay period
-  created_at: string;
-  updated_at: string;
-  employee?: Employee; // Joined data
-}
-
-// Helper type for payroll calculations
-export interface CompensationSummary {
-  compensation_type: CompensationType;
-  total_amount: number; // In cents
-  hours_worked?: number; // For hourly employees
-  days_worked?: number; // For salary/contractor with daily allocation
-  effective_hourly_rate?: number; // Calculated for comparison
-}
-
-// Labor cost breakdown by compensation type
-export interface LaborCostBreakdown {
-  hourly_wages: number; // In cents
-  salary_allocations: number; // In cents
-  contractor_payments: number; // In cents
-  total: number; // In cents
 }
 
 // Staffing suggestions

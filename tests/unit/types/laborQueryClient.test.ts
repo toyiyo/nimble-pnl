@@ -18,10 +18,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { supabase } from '@/integrations/supabase/client';
-
-interface LaborQueryClient {
-  from(table: string): unknown;
-}
+import type { LaborQueryClient } from '../../../supabase/functions/_shared/labor/types';
+import type { fetchTipSplitRows } from '../../../supabase/functions/_shared/labor/tipsFetch';
 
 type BrowserClient = typeof supabase;
 
@@ -32,11 +30,14 @@ function takesLaborClient(client: LaborQueryClient): LaborQueryClient {
 describe('LaborQueryClient', () => {
   it('accepts the typed browser client at compile time', () => {
     const accept = (client: BrowserClient) => takesLaborClient(client);
+    const acceptTips = (client: BrowserClient, fetchTips: typeof fetchTipSplitRows) =>
+      fetchTips(client, 'rest-1', '2026-08-01', '2026-08-31');
     // A value without `from()` must fail. This @ts-expect-error fails the
     // type check if the structural type ever accepts anything.
     // @ts-expect-error -- no `from` method
     const reject = () => takesLaborClient({});
     expect(typeof accept).toBe('function');
+    expect(typeof acceptTips).toBe('function');
     expect(typeof reject).toBe('function');
   });
 });

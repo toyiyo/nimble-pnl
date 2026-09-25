@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { OpenShift } from '@/types/scheduling';
 import type { ShiftTrade } from '@/hooks/useShiftTrades';
 import { useOpenShifts } from '@/hooks/useOpenShifts';
@@ -47,17 +47,35 @@ export function useAvailableShifts(
   weekStart: Date | null,
   weekEnd: Date | null,
 ) {
-  const { openShifts, loading: openLoading } = useOpenShifts(restaurantId, weekStart, weekEnd);
-  const { trades, loading: tradesLoading } = useMarketplaceTrades(restaurantId, employeeId);
+  const {
+    openShifts,
+    loading: openLoading,
+    error: openError,
+    refetch: refetchOpenShifts,
+  } = useOpenShifts(restaurantId, weekStart, weekEnd);
+  const {
+    trades,
+    loading: tradesLoading,
+    error: tradesError,
+    refetch: refetchTrades,
+  } = useMarketplaceTrades(restaurantId, employeeId);
 
   const items = useMemo(
     () => mergeAvailableShifts(openShifts, trades as any),
     [openShifts, trades],
   );
 
+  // Retry both queries. A failed load must not look like an empty list.
+  const refetch = useCallback(
+    () => Promise.all([refetchOpenShifts(), refetchTrades()]),
+    [refetchOpenShifts, refetchTrades],
+  );
+
   return {
     items,
     loading: openLoading || tradesLoading,
+    error: openError ?? tradesError ?? null,
+    refetch,
     openShiftCount: openShifts.length,
     tradeCount: trades.length,
   };

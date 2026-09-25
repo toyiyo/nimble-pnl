@@ -188,8 +188,8 @@ export function businessDaysBetween(
  * punches fall outside the viewer's day and vanish.
  *
  * A malformed day string is rejected rather than coerced. In dev and test that
- * throws; in production `reject` only logs, so `fromZonedTime` returns an
- * Invalid Date and the window filters every row away. That is the intended
+ * throws; in production `reject` only logs, and the bound is an Invalid Date,
+ * so the window filters every row away. That is the intended
  * trade: the obvious salvage -- slicing the first ten characters off whatever
  * was passed -- is how a `toISOString().split('T')[0]` day (off by one east of
  * UTC) gets laundered into a valid-looking window, which is exactly the bug
@@ -207,10 +207,60 @@ export function businessDayRangeToInstants(
   if (!DATE_ONLY_RE.test(endDay)) {
     reject('businessDayRangeToInstants', 'expected a calendar day (YYYY-MM-DD) for endDay', endDay);
   }
+  // The end is the first instant of the next day, minus 1 ms. A fixed
+  // `23:59:59.999` wall clock is 1 hour off when DST changes at local midnight.
   return {
-    start: fromZonedTime(`${startDay}T00:00:00.000`, zone),
-    end: fromZonedTime(`${endDay}T23:59:59.999`, zone),
+    start: firstInstantOfDayInZone(startDay, zone),
+    end: DATE_ONLY_RE.test(endDay)
+      ? new Date(firstInstantOfDayInZone(addDaysToDateStr(endDay, 1), zone).getTime() - 1)
+      : new Date(Number.NaN),
   };
+}
+
+const MINUTE_MS = 60 * 1000;
+const SEARCH_MINUTES = 12 * 60;
+
+/** `firstInstantOfDay` for a validated zone and a day that passed the format check. */
+function firstInstantOfDayInZone(day: string, zone: string): Date {
+  if (!DATE_ONLY_RE.test(day)) return new Date(Number.NaN);
+  const [year, month, dayOfMonth] = day.split('-').map(Number);
+  const naive = Date.UTC(year, month - 1, dayOfMonth);
+  const dayOf = (ms: number): string => formatInTimeZone(new Date(ms), zone, 'yyyy-MM-dd');
+
+  // The guess: UTC midnight moved by the zone offset at that moment. It is
+  // correct unless a DST change falls near local midnight.
+  const guess = naive - tzOffsetMinutes(zone, new Date(naive)) * MINUTE_MS;
+  if (dayOf(guess) === day && dayOf(guess - 1) < day) return new Date(guess);
+
+  // Binary search on whole minutes in guess +/- 12 h for the first minute
+  // whose restaurant day is `day` or later. The day string compare is monotone.
+  let lo = -SEARCH_MINUTES;
+  let hi = SEARCH_MINUTES;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (dayOf(guess + mid * MINUTE_MS) >= day) hi = mid;
+    else lo = mid + 1;
+  }
+  return new Date(guess + lo * MINUTE_MS);
+}
+
+/**
+ * The first instant of a restaurant-local calendar day.
+ *
+ * This is local midnight on most days. When DST starts at local midnight
+ * (America/Santiago, 2026-09-06), midnight does not exist and the day starts
+ * at 01:00. When DST ends at local midnight (Santiago, 2026-04-05), midnight
+ * occurs two times; the day starts at the second one, because the first one
+ * is still the previous day. Host-independent: it reads no local getter.
+ *
+ * A malformed day string is rejected. In production it returns an Invalid Date.
+ */
+export function firstInstantOfDay(day: string, tz: string): Date {
+  const zone = safeTz(tz);
+  if (!DATE_ONLY_RE.test(day)) {
+    reject('firstInstantOfDay', 'expected a calendar day (YYYY-MM-DD)', day);
+  }
+  return firstInstantOfDayInZone(day, zone);
 }
 
 /**

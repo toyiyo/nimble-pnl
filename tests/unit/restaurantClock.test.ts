@@ -6,6 +6,7 @@ import {
   businessDayRangeToInstants,
   businessDaysBetween,
   daysBetweenDateStrs,
+  firstInstantOfDay,
   formatInstant,
   parseWallClock,
   safeTz,
@@ -109,6 +110,55 @@ describe('businessDayRangeToInstants', () => {
   it('rejects a startDay/endDay that is not a calendar-day string', () => {
     expect(() => businessDayRangeToInstants('2026-07-28T00:00:00Z', '2026-07-28', CHI)).toThrow(/calendar day/i);
     expect(() => businessDayRangeToInstants('2026-07-28', '2026-07-28T00:00:00Z', CHI)).toThrow(/calendar day/i);
+  });
+
+  it('starts a day at its first real instant when DST starts at local midnight (Santiago gap)', () => {
+    // 2026-09-06 00:00 -04 does not exist in Santiago: the clock jumps to 01:00 -03.
+    // The day starts at 01:00 -03 = 04:00Z, not at 03:00Z (23:00 on Sep 5 local).
+    const { start } = businessDayRangeToInstants('2026-09-06', '2026-09-06', 'America/Santiago');
+    expect(start.toISOString()).toBe('2026-09-06T04:00:00.000Z');
+  });
+
+  it('ends a day after the repeated hour when DST ends at local midnight (Santiago overlap)', () => {
+    // 2026-04-05 00:00 -03 goes back to 2026-04-04 23:00 -04, so Apr 4 has 25 hours.
+    // The day ends at 2026-04-05 00:00 -04 = 04:00Z, minus 1 ms.
+    const { end } = businessDayRangeToInstants('2026-04-04', '2026-04-04', 'America/Santiago');
+    expect(end.toISOString()).toBe('2026-04-05T03:59:59.999Z');
+  });
+});
+
+describe('firstInstantOfDay', () => {
+  it('returns local midnight for a Chicago day', () => {
+    expect(firstInstantOfDay('2026-07-22', CHI).toISOString()).toBe('2026-07-22T05:00:00.000Z');
+    expect(firstInstantOfDay('2026-03-08', CHI).toISOString()).toBe('2026-03-08T06:00:00.000Z');
+    expect(firstInstantOfDay('2026-11-01', CHI).toISOString()).toBe('2026-11-01T05:00:00.000Z');
+  });
+
+  it('returns local midnight for an Auckland day', () => {
+    expect(firstInstantOfDay('2026-07-23', 'Pacific/Auckland').toISOString()).toBe('2026-07-22T12:00:00.000Z');
+    // NZDT (+13) in January.
+    expect(firstInstantOfDay('2026-01-15', 'Pacific/Auckland').toISOString()).toBe('2026-01-14T11:00:00.000Z');
+  });
+
+  it('returns the first real instant when local midnight does not exist (Santiago)', () => {
+    expect(firstInstantOfDay('2026-09-06', 'America/Santiago').toISOString()).toBe('2026-09-06T04:00:00.000Z');
+  });
+
+  it('returns the first of the two midnights after an overlap day (Santiago)', () => {
+    // Apr 4 00:00 -03 is 03:00Z. Apr 5 00:00 -04 is 04:00Z.
+    expect(firstInstantOfDay('2026-04-04', 'America/Santiago').toISOString()).toBe('2026-04-04T03:00:00.000Z');
+    expect(firstInstantOfDay('2026-04-05', 'America/Santiago').toISOString()).toBe('2026-04-05T04:00:00.000Z');
+  });
+
+  it('falls back to the default zone for an invalid zone', () => {
+    expect(firstInstantOfDay('2026-07-22', 'Not/AZone').toISOString()).toBe(
+      firstInstantOfDay('2026-07-22', DEFAULT_TIMEZONE).toISOString(),
+    );
+    expect(firstInstantOfDay('2026-07-22', '').toISOString()).toBe('2026-07-22T05:00:00.000Z');
+  });
+
+  it('rejects a value that is not a calendar-day string', () => {
+    expect(() => firstInstantOfDay('2026-07-28T00:00:00Z', CHI)).toThrow(/calendar day/i);
   });
 });
 

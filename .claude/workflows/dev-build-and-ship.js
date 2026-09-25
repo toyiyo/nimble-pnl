@@ -1,7 +1,7 @@
 export const meta = {
   name: 'dev-build-and-ship',
   description:
-    'Autonomous /dev Phases 4-9: build (TDD), UI review, simplify, multi-model review, verify, ship + CI loop. Launched by the development-workflow skill AFTER the user approves the plan (Phase 3). Runs in the background; stops and hands back on any needs_human gate.',
+    'Autonomous /dev Phases 4-9: build (TDD), UI review, simplify, multi-model review, verify, QA, ship + CI loop. Launched by the development-workflow skill AFTER the user approves the plan (Phase 3). Runs in the background; stops and hands back on any needs_human gate.',
   phases: [
     { title: 'Preflight' },
     { title: 'Build' },
@@ -9,6 +9,7 @@ export const meta = {
     { title: 'Simplify' },
     { title: 'Review' },
     { title: 'Verify' },
+    { title: 'QA' },
     { title: 'Ship' },
     { title: 'CI Loop' },
     { title: 'Triage' },
@@ -106,6 +107,34 @@ const statusSchema = (extraProps = {}, extraRequired = []) => ({
   properties: { ...STATUS, ...extraProps },
   required: ['status', ...extraRequired],
 })
+
+// Phase 8.5 (QA) result. minorFindings go into the PR body, never dropped.
+const QA_SCHEMA = statusSchema(
+  {
+    qaPassed: { type: 'boolean' },
+    reportPath: { type: 'string' },
+    exception: { type: 'string', description: 'One sentence, only when the diff has no user-facing surface to QA.' },
+    charterRows: { type: 'number' },
+    bugsFixed: { type: 'number' },
+    minorFindings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { title: { type: 'string' }, severity: { type: 'string' }, evidence: { type: 'string' } },
+        required: ['title'],
+      },
+    },
+  },
+  ['qaPassed', 'reportPath'],
+)
+const qaShipSection = (qa) =>
+  'ALSO add a "## QA" section to the PR body: the verdict, ' +
+  (qa.exception ? `the exception (${qa.exception}), ` : `${qa.charterRows ?? 'the'} charter rows, ${qa.bugsFixed ?? 0} bug(s) fixed, `) +
+  `and the report path ${qa.reportPath} (gitignored, local only). ` +
+  ((qa.minorFindings || []).length
+    ? 'List each open minor QA finding below verbatim:\n' + JSON.stringify(qa.minorFindings, null, 2) + '\n'
+    : '')
 
 // Second runaway mode, distinct from the stall retries: a wait whose exit
 // condition is unsatisfiable by construction. Observed for real — an agent left
@@ -690,10 +719,14 @@ phase('Verify')
 // exists (or is one push away) and abandoning mid-CI strands finished work in a
 // worse state than finishing it, so those phases log spend instead of halting.
 { const b = budgetHalt('Verify'); if (b) return b }
+// One prompt for Verify and for the post-QA re-verify, so both run the same suite.
+const VERIFY_PROMPT =
+  'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build. ' +
+  'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.'
+const VERIFY_SCHEMA = statusSchema({ allPass: { type: 'boolean' } }, ['allPass'])
 const verify = await runAgent(
   envelope(
-    'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build. ' +
-      'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.' +
+    VERIFY_PROMPT +
       // A distinct note re-keys the agent cache, so resumeFromRunId can
       // re-run a halted Verify instead of replaying its cached halt.
       // Same pattern as ctx.foldResolutionNote in Phase 7b.
@@ -701,10 +734,53 @@ const verify = await runAgent(
         ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.verifyResolutionNote
         : ''),
   ),
-  { label: 'verify', phase: 'Verify', schema: statusSchema({ allPass: { type: 'boolean' } }, ['allPass']) },
+  { label: 'verify', phase: 'Verify', schema: VERIFY_SCHEMA },
 )
 { const g = gate(verify, 'Verify'); if (g.halt) return g.out }
 if (!verify.allPass) return stop('Verify', { reason: 'local verification did not pass after 5 iterations' })
+
+// ===========================================================================
+// PHASE 8.5: QA. Verify proves the code passes the tests its author wrote. QA
+// uses the running app as a tester does and looks for what those tests miss:
+// other roles, empty and error states, mobile width, console errors, wrong
+// numbers. The method lives in .claude/skills/qa/SKILL.md, shared with /qa.
+// ===========================================================================
+phase('QA')
+{ const b = budgetHalt('QA'); if (b) return b }
+const QA_REPORT = `dev-tools/qa/qa-report-${String(ctx.branch).replace(/[^A-Za-z0-9._-]/g, '-')}.md`
+const qa = await runAgent(
+  envelope(
+    'PHASE 8.5 (QA). Read .claude/skills/qa/SKILL.md and follow it in FIX mode. ' +
+      `Acceptance source: the design doc ${ctx.designDocPath} and the plan ${ctx.planPath}. Write the report to ${QA_REPORT}. ` +
+      'Return qaPassed=true ONLY if every charter row is pass or a justified n/a AND zero critical or major bugs stay open. ' +
+      'List every commit SHA you made in commits. List each open minor bug in minorFindings. ' +
+      'If the diff has no user-facing surface (docs, .claude/, or CI config only), put the one-sentence reason in exception, write it to the report, and return qaPassed=true. ' +
+      'If the environment is not ready (for example .env.local does not point at local Supabase), return status=needs_human. Never run QA against production.' +
+      // Same re-key pattern as ctx.verifyResolutionNote.
+      (ctx.qaResolutionNote
+        ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.qaResolutionNote
+        : ''),
+  ),
+  { label: 'qa', phase: 'QA', schema: QA_SCHEMA },
+)
+{ const g = gate(qa, 'QA', { reportPath: QA_REPORT }); if (g.halt) return g.out }
+if (!qa.qaPassed) {
+  return stop('QA', {
+    status: 'needs_human',
+    reason: qa.reason || `QA found open critical or major bugs after 3 fix rounds. Read ${qa.reportPath}.`,
+    reportPath: qa.reportPath,
+  })
+}
+if ((qa.commits || []).length) {
+  // QA fixes landed after Verify passed. Re-run the full suite so Ship never
+  // pushes code that no Verify run saw.
+  const reverify = await runAgent(
+    envelope(VERIFY_PROMPT + `\n\nPOST-QA RE-VERIFY: Phase 8.5 (QA) committed fixes after Verify passed (${qa.commits.join(', ')}). Run the full suite again on the current HEAD.`),
+    { label: 'verify:post-qa', phase: 'QA', schema: VERIFY_SCHEMA },
+  )
+  { const g = gate(reverify, 'QA', { reportPath: qa.reportPath }); if (g.halt) return g.out }
+  if (!reverify.allPass) return stop('QA', { reason: 'local verification did not pass after QA fixes', reportPath: qa.reportPath })
+}
 
 // ===========================================================================
 // PHASE 9a: Ship — push + open PR, return the PR number (load-bearing state).
@@ -717,6 +793,7 @@ const ship = await runAgent(
         ? 'ALSO add a "## Known deferred review findings" section listing each item below verbatim (file:line — severity — message — why deferred), so reviewers see what was consciously not fixed rather than it being silently dropped:\n' +
           JSON.stringify(deferredFindings, null, 2) + '\n'
         : '') +
+      qaShipSection(qa) +
       'Return the PR number as prNumber. Update progress.md with it.',
   ),
   { label: 'ship', phase: 'Ship', schema: statusSchema({ prNumber: { type: 'number' } }, ['prNumber']) },
@@ -800,6 +877,7 @@ const done = await runAgent(
       '- SonarCloud quality gate: PASS (or explicitly note it is unconfigured).\n' +
       `- dev-tools/9d-triage-${ctx.branch}.md exists and every row is fixed / replied / classified-as-nit.\n` +
       '- dev-tools/review_queue.json: zero OPEN critical or major items.\n' +
+      `- ${qa.reportPath}: exists and shows zero OPEN critical or major QA bugs (or a justified exception).\n` +
       'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).',
   ),
   { label: 'done-gate', phase: 'Done Gate', schema: statusSchema({ donePassed: { type: 'boolean' } }, ['donePassed']) },

@@ -1,6 +1,11 @@
 import { Link } from 'react-router-dom';
 import { Clock, KeyRound, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useClaimableTrades } from '@/hooks/useClaimableTrades';
+import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
+import { shiftsUpForGrabsText } from '@/lib/claimableTrades';
 
 interface NavItem {
   path: string;
@@ -8,6 +13,8 @@ interface NavItem {
   description: string;
   icon: LucideIcon;
 }
+
+const MARKETPLACE_PATH = '/employee/shifts';
 
 const mainItems: NavItem[] = [
   { path: '/employee/timecard', label: 'Timecard', description: 'Hours worked this period', icon: Clock },
@@ -19,6 +26,14 @@ const mainItems: NavItem[] = [
 
 function EmployeeMore() {
   const { signOut } = useAuth();
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id ?? null;
+  const { currentEmployee } = useCurrentEmployee(restaurantId);
+  const { trades: claimableTrades, count: tradeCount } = useClaimableTrades(
+    restaurantId,
+    currentEmployee?.id ?? null
+  );
+  const tradeUrgent = claimableTrades.some((t) => t.urgent);
 
   return (
     <div className="space-y-3">
@@ -27,24 +42,31 @@ function EmployeeMore() {
       </div>
 
       <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
-        {mainItems.map((item, index) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={`flex items-center justify-between p-4 hover:bg-muted/50 transition-colors ${
-              index < mainItems.length - 1 ? 'border-b border-border/40' : ''
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <item.icon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-              <div>
-                <div className="text-[14px] font-medium text-foreground">{item.label}</div>
-                <div className="text-[11px] text-muted-foreground">{item.description}</div>
+        {mainItems.map((item, index) => {
+          const showBadge = item.path === MARKETPLACE_PATH && tradeCount > 0;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex items-center justify-between p-4 hover:bg-muted/50 transition-colors ${
+                index < mainItems.length - 1 ? 'border-b border-border/40' : ''
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <item.icon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                <div>
+                  <div className="text-[14px] font-medium text-foreground">{item.label}</div>
+                  <div className="text-[11px] text-muted-foreground">{item.description}</div>
+                  {showBadge && <span className="sr-only">{shiftsUpForGrabsText(tradeCount)}</span>}
+                </div>
               </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground/50" aria-hidden="true" />
-          </Link>
-        ))}
+              <div className="flex items-center gap-2">
+                {showBadge && <TradeCountBadge count={tradeCount} urgent={tradeUrgent} />}
+                <ChevronRight className="h-4 w-4 text-muted-foreground/50" aria-hidden="true" />
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
       <div className="rounded-xl border border-border/40 bg-background overflow-hidden">

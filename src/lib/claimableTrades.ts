@@ -63,6 +63,11 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
+/** Screen reader text for a count badge: "2 shifts up for grabs". */
+export function shiftsUpForGrabsText(count: number): string {
+  return `${plural(count, 'shift')} up for grabs`;
+}
+
 /**
  * Urgency chip text, or null when no chip shows. The row already shows the
  * date tile and the time, so the chip never repeats the date.

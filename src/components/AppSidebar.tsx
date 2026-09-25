@@ -27,13 +27,17 @@ import { grantMap } from '@/lib/permissions/areas';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useClaimableTrades } from '@/hooks/useClaimableTrades';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useViewMode } from '@/contexts/ViewModeContext';
 import { ViewModeSwitch } from '@/components/ViewModeSwitch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
 import { SUBSCRIPTION_FEATURES } from '@/lib/subscriptionPlans';
+import { shiftsUpForGrabsText } from '@/lib/claimableTrades';
 
 /**
  * Map paths to subscription feature keys for tier badge display
@@ -52,6 +56,37 @@ const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = 
   '/assets': 'assets',
   '/payroll': 'payroll',
 };
+
+/** Only `staffNav` has this item, so only a staff sidebar reads trades. */
+const MARKETPLACE_PATH = '/employee/shifts';
+
+/**
+ * The claimable trade count on the "Shift Marketplace" item. It is a child
+ * component so that AppSidebar reads trades only when it renders staffNav.
+ * In the collapsed icon rail, the badge sits on the icon.
+ */
+function MarketplaceTradeCount({
+  restaurantId,
+  variant,
+}: {
+  restaurantId: string | null;
+  variant: 'inline' | 'icon';
+}) {
+  const { currentEmployee } = useCurrentEmployee(restaurantId);
+  const { trades, count } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null);
+  if (count <= 0) return null;
+  const urgent = trades.some((t) => t.urgent);
+  return (
+    <>
+      <TradeCountBadge
+        count={count}
+        urgent={urgent}
+        className={variant === 'icon' ? 'absolute top-0 right-0' : 'ml-auto'}
+      />
+      <span className="sr-only">{shiftsUpForGrabsText(count)}</span>
+    </>
+  );
+}
 
 export function AppSidebar() {
   const { state: sidebarState, isMobile, setOpenMobile } = useSidebar();
@@ -140,6 +175,12 @@ export function AppSidebar() {
                         }`}
                       >
                         <Icon className="h-5 w-5" />
+                        {item.path === MARKETPLACE_PATH && (
+                          <MarketplaceTradeCount
+                            restaurantId={selectedRestaurant?.restaurant_id ?? null}
+                            variant="icon"
+                          />
+                        )}
                         {needsUpgrade && (
                           <span
                             className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${
@@ -196,6 +237,12 @@ export function AppSidebar() {
                                 >
                                   <Icon className="h-4 w-4" />
                                   <span className="flex-1">{item.label}</span>
+                                  {item.path === MARKETPLACE_PATH && (
+                                    <MarketplaceTradeCount
+                                      restaurantId={selectedRestaurant?.restaurant_id ?? null}
+                                      variant="inline"
+                                    />
+                                  )}
                                   {needsUpgrade && requiredTier && (
                                     <Badge
                                       variant="secondary"

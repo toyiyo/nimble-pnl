@@ -4,11 +4,11 @@
 -- This migration adds:
 --   1. The send ledger public.shift_trade_reminders.
 --   2. The time zone helper public.safe_restaurant_tz.
---   7. The two new notification types in the CHECK constraint.
---   3. The candidates RPC get_shift_trade_reminder_candidates.
---   4. The claim RPC claim_shift_trade_reminder (claim before send).
---   5. The audience RPC get_shift_trade_reminder_audience.
---   6. The recipients RPC get_shift_trade_unclaimed_recipients.
+--   3. The two new notification types in the CHECK constraint.
+--   4. The candidates RPC get_shift_trade_reminder_candidates.
+--   5. The claim RPC claim_shift_trade_reminder (claim before send).
+--   6. The audience RPC get_shift_trade_reminder_audience.
+--   7. The recipients RPC get_shift_trade_unclaimed_recipients.
 --   8. The cron job shift-trade-reminders (every 15 minutes).
 --
 -- Each function sets search_path, revokes EXECUTE from PUBLIC, anon and
@@ -70,7 +70,7 @@ REVOKE EXECUTE ON FUNCTION public.safe_restaurant_tz(text) FROM PUBLIC, anon, au
 GRANT EXECUTE ON FUNCTION public.safe_restaurant_tz(text) TO service_role;
 
 -- ============================================================
--- 7. Notification types: add shift_trade_reminder and shift_trade_unclaimed.
+-- 3. Notification types: add shift_trade_reminder and shift_trade_unclaimed.
 --    Keep this list the same as src/lib/notificationTypes.ts and
 --    supabase/functions/_shared/resolveChannels.ts. A CHECK constraint
 --    cannot change in place, so drop it and add it again.
@@ -108,7 +108,7 @@ COMMENT ON COLUMN public.notification_channel_settings.notification_type IS
   'transactional invite email always sends.)';
 
 -- ============================================================
--- 3. Candidates. One row for each (trade, stage) that is due at p_now.
+-- 4. Candidates. One row for each (trade, stage) that is due at p_now.
 --    All rules in design B1 apply here:
 --    - Employee stages: 72h (24 < h <= 72), 24h (6 < h <= 24),
 --      6h (0 < h <= 6). Skip a stage when the trade was created after
@@ -248,7 +248,7 @@ REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestampt
 GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) TO service_role;
 
 -- ============================================================
--- 4. Claim. The worker calls this BEFORE it sends. It returns true one
+-- 5. Claim. The worker calls this BEFORE it sends. It returns true one
 --    time for each (trade, stage), and only while the trade is open and
 --    the shift did not start. A concurrent run gets false and skips the send.
 -- ============================================================
@@ -283,7 +283,7 @@ REVOKE EXECUTE ON FUNCTION public.claim_shift_trade_reminder(uuid, text) FROM PU
 GRANT EXECUTE ON FUNCTION public.claim_shift_trade_reminder(uuid, text) TO service_role;
 
 -- ============================================================
--- 5. Audience for an employee stage (design B2): active employees of the
+-- 6. Audience for an employee stage (design B2): active employees of the
 --    restaurant with a user_id, not the poster, and with no overlapping
 --    scheduled or confirmed shift. accept_shift_trade uses the same overlap
 --    test. A directed trade returns its target only.
@@ -320,7 +320,7 @@ REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_audience(uuid) FROM P
 GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_audience(uuid) TO service_role;
 
 -- ============================================================
--- 6. Recipients for the unclaimed stage: schedulers (email and push) and
+-- 7. Recipients for the unclaimed stage: schedulers (email and push) and
 --    the poster (push only). SECURITY DEFINER, because it reads auth.users.
 --    When the poster is also a scheduler, the poster gets the poster row only.
 -- ============================================================

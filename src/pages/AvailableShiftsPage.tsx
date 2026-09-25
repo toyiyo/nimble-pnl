@@ -23,6 +23,7 @@ import {
   CheckCircle,
   Home,
   XCircle,
+  type LucideIcon,
 } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -89,6 +90,11 @@ interface TradeCardProps {
 /** How long the deep link highlight stays, unless the user scrolls first. */
 const HIGHLIGHT_MS = 4000;
 
+const HIGHLIGHT_SOURCE_LABEL: Record<TradeLinkSource, { icon: LucideIcon; text: string }> = {
+  reminder: { icon: Bell, text: 'From your reminder' },
+  home: { icon: Home, text: 'From your home screen' },
+};
+
 function formatTradeTime(startTime: string, endTime: string): string {
   const start = parseISO(startTime);
   const end = parseISO(endTime);
@@ -113,6 +119,7 @@ const TradeCard = memo(function TradeCard({
   const name = trade.offered_by?.name ?? 'teammate';
 
   const mismatchId = `area-mismatch-${trade.id}`;
+  const sourceLabel = highlightSource ? HIGHLIGHT_SOURCE_LABEL[highlightSource] : null;
 
   return (
     <div
@@ -130,16 +137,10 @@ const TradeCard = memo(function TradeCard({
       {/* Row 1: shift info + action button */}
       <div className="flex items-center justify-between">
         <div className="min-w-0 space-y-1.5">
-          {highlighted && highlightSource === 'reminder' && (
+          {highlighted && sourceLabel && (
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <Bell className="h-3.5 w-3.5" aria-hidden="true" />
-              From your reminder
-            </div>
-          )}
-          {highlighted && highlightSource === 'home' && (
-            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <Home className="h-3.5 w-3.5" aria-hidden="true" />
-              From your home screen
+              <sourceLabel.icon className="h-3.5 w-3.5" aria-hidden="true" />
+              {sourceLabel.text}
             </div>
           )}
           <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium">

@@ -5,6 +5,7 @@ import {
   decideTradeDeepLink,
   parseTradeLinkSource,
   readTradeLink,
+  tradeLinkHref,
   type TradeDeepLinkInput,
 } from '@/lib/tradeDeepLink';
 
@@ -36,6 +37,26 @@ describe('parseTradeLinkSource', () => {
     expect(parseTradeLinkSource('')).toBeNull();
     expect(parseTradeLinkSource('email')).toBeNull();
     expect(parseTradeLinkSource('HOME')).toBeNull();
+  });
+});
+
+describe('tradeLinkHref', () => {
+  it('builds the marketplace link with the trade, the restaurant and the source', () => {
+    expect(tradeLinkHref('trade-a', 'rest-1', 'home')).toBe(
+      '/employee/shifts?trade=trade-a&restaurant=rest-1&from=home'
+    );
+  });
+
+  it('encodes the ids', () => {
+    expect(tradeLinkHref('a b', 'r&1', 'reminder')).toBe(
+      '/employee/shifts?trade=a%20b&restaurant=r%261&from=reminder'
+    );
+  });
+
+  it('gives a link that readTradeLink reads back', () => {
+    const href = tradeLinkHref('a b', 'r&1', 'home');
+    const params = new URLSearchParams(href.slice(href.indexOf('?')));
+    expect(readTradeLink(params)).toEqual({ tradeId: 'a b', restaurantId: 'r&1', source: 'home' });
   });
 });
 

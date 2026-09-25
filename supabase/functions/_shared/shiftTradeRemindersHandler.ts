@@ -108,6 +108,10 @@ interface CandidateOutcome {
 const errorText = (err: unknown): string =>
   truncateError(err instanceof Error ? err.message : String(err));
 
+function emptyOutcome(): CandidateOutcome {
+  return { pushed: 0, pushTargets: 0, emailed: 0 };
+}
+
 function toShiftInfo(row: ReminderCandidateRow): ReminderShiftInfo {
   return {
     tradeId: row.shift_trade_id,
@@ -131,10 +135,10 @@ async function sendEmployeeStage(
   const audience = await deps.fetchAudience(row.shift_trade_id);
   if (audience.error) {
     logError(`${LOG_PREFIX} audience read failed trade=${row.shift_trade_id}: ${truncateError(audience.error.message)}`);
-    return { pushed: 0, pushTargets: 0, emailed: 0 };
+    return emptyOutcome();
   }
   const userIds = (audience.data ?? []).map((r) => r.user_id);
-  if (userIds.length === 0) return { pushed: 0, pushTargets: 0, emailed: 0 };
+  if (userIds.length === 0) return emptyOutcome();
 
   const payload = buildEmployeeReminderPush(toShiftInfo(row), stage, new Date(deps.now()));
   const res = await deps.sendPush(userIds, row.restaurant_id, payload);
@@ -148,7 +152,7 @@ async function sendUnclaimedStage(
   runStartedAt: number,
   logError: (line: string) => void,
 ): Promise<CandidateOutcome> {
-  const outcome: CandidateOutcome = { pushed: 0, pushTargets: 0, emailed: 0 };
+  const outcome = emptyOutcome();
   const recipientsRes = await deps.fetchUnclaimedRecipients(row.shift_trade_id);
   if (recipientsRes.error) {
     logError(`${LOG_PREFIX} recipients read failed trade=${row.shift_trade_id}: ${truncateError(recipientsRes.error.message)}`);
@@ -161,25 +165,22 @@ async function sendUnclaimedStage(
 
   if (channels.push) {
     // Each push is independent. A failure in one must not stop the other.
-    const schedulerIds = schedulers.map((r) => r.user_id);
-    if (schedulerIds.length > 0) {
+    const pushTo = async (
+      label: 'scheduler' | 'poster',
+      userIds: string[],
+      buildPush: (info: ReminderShiftInfo) => ReminderPush,
+    ): Promise<void> => {
+      if (userIds.length === 0) return;
       try {
-        const res = await deps.sendPush(schedulerIds, row.restaurant_id, buildSchedulerUnclaimedPush(info));
+        const res = await deps.sendPush(userIds, row.restaurant_id, buildPush(info));
         outcome.pushed += res.sent;
-        outcome.pushTargets += schedulerIds.length;
+        outcome.pushTargets += userIds.length;
       } catch (err) {
-        logError(`${LOG_PREFIX} scheduler push failed trade=${row.shift_trade_id}: ${errorText(err)}`);
+        logError(`${LOG_PREFIX} ${label} push failed trade=${row.shift_trade_id}: ${errorText(err)}`);
       }
-    }
-    if (posterIds.length > 0) {
-      try {
-        const res = await deps.sendPush(posterIds, row.restaurant_id, buildPosterUnclaimedPush(info));
-        outcome.pushed += res.sent;
-        outcome.pushTargets += posterIds.length;
-      } catch (err) {
-        logError(`${LOG_PREFIX} poster push failed trade=${row.shift_trade_id}: ${errorText(err)}`);
-      }
-    }
+    };
+    await pushTo('scheduler', schedulers.map((r) => r.user_id), buildSchedulerUnclaimedPush);
+    await pushTo('poster', posterIds, buildPosterUnclaimedPush);
   }
 
   if (channels.email) {

@@ -8,6 +8,7 @@ import type { ClaimableTrade } from '@/lib/claimableTrades';
 
 import { tradeDateTile, tradeUrgencyLabel } from '@/lib/claimableTrades';
 import { formatInstant } from '@/lib/restaurantClock';
+import { tradeLinkHref } from '@/lib/tradeDeepLink';
 import { cn } from '@/lib/utils';
 
 const MAX_ROWS = 3;
@@ -137,14 +138,11 @@ function UpForGrabsRow({
     'h:mm a'
   )}`;
   const spokenDate = formatInstant(startsAt, timezone, 'EEEE, MMMM d');
-  const href = `/employee/shifts?trade=${encodeURIComponent(trade.id)}&restaurant=${encodeURIComponent(
-    restaurantId
-  )}&from=home`;
 
   return (
     <li>
       <Link
-        to={href}
+        to={tradeLinkHref(trade.id, restaurantId, 'home')}
         aria-label={`View ${shift.position} shift on ${spokenDate} from ${name}`}
         className="flex items-center gap-3 px-4 py-3 min-h-[64px] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground"
       >

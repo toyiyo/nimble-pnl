@@ -114,11 +114,14 @@ function shortWeekday(date: Date, tz: string | null): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: safeTz(tz), weekday: 'short' }).format(date);
 }
 
+function positionLabel(info: ReminderShiftInfo): string {
+  return info.position?.trim() || 'Shift';
+}
+
 function shiftSummary(info: ReminderShiftInfo): string {
   const start = new Date(info.startTime);
   const end = new Date(info.endTime);
-  const position = info.position?.trim() || 'Shift';
-  return `${position}, ${shortWeekday(start, info.restaurantTimezone)} ${formatTimeRange(start, end, info.restaurantTimezone)}`;
+  return `${positionLabel(info)}, ${shortWeekday(start, info.restaurantTimezone)} ${formatTimeRange(start, end, info.restaurantTimezone)}`;
 }
 
 function tagFor(info: ReminderShiftInfo): string {
@@ -190,7 +193,6 @@ export function buildSchedulerUnclaimedEmail(
   const tz = info.restaurantTimezone;
   const subject = schedulerTitle(info);
   const posterName = info.posterName?.trim() || 'A teammate';
-  const position = info.position?.trim() || 'Shift';
   const dayText = new Intl.DateTimeFormat('en-US', {
     timeZone: safeTz(tz),
     weekday: 'short',
@@ -207,7 +209,7 @@ export function buildSchedulerUnclaimedEmail(
     detailsCard: {
       items: [
         { label: 'Restaurant', value: info.restaurantName?.trim() || 'Your restaurant' },
-        { label: 'Position', value: position },
+        { label: 'Position', value: positionLabel(info) },
         { label: 'When', value: `${dayText}, ${formatTimeRange(start, end, tz)}` },
         { label: 'Posted by', value: posterName },
       ],

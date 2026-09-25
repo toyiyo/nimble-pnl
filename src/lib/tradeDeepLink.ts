@@ -12,6 +12,13 @@ export function parseTradeLinkSource(value: string | null | undefined): TradeLin
   return value === 'reminder' || value === 'home' ? value : null;
 }
 
+/** Build the link. The reminder push builds the same URL on the server. */
+export function tradeLinkHref(tradeId: string, restaurantId: string, source: TradeLinkSource): string {
+  return `/employee/shifts?trade=${encodeURIComponent(tradeId)}&restaurant=${encodeURIComponent(
+    restaurantId
+  )}&from=${source}`;
+}
+
 /** The search params of the link. The page deletes them after it reads them. */
 export const TRADE_LINK_PARAMS = ['trade', 'restaurant', 'from'] as const;
 

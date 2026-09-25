@@ -4,6 +4,7 @@ import {
   RUN_BUDGET_MS,
   MAX_PUSH_TARGETS,
   CANDIDATE_LIMIT,
+  MAX_CANDIDATE_PAGES,
   type ShiftTradeRemindersDeps,
   type ReminderCandidateRow,
   type UnclaimedRecipientRow,
@@ -22,15 +23,14 @@ function candidate(over: Partial<ReminderCandidateRow> = {}): ReminderCandidateR
     end_time: '2026-09-26T04:00:00Z',
     position: 'Server',
     is_published: true,
-    offered_by_employee_id: 'emp-poster',
     offered_by_name: 'Maria Lopez',
-    offered_by_user_id: 'user-poster',
-    target_employee_id: null,
     restaurant_name: 'Blue Fig',
     restaurant_timezone: 'America/Chicago',
     ...over,
   };
 }
+
+const users = (n: number): string[] => Array.from({ length: n }, (_, i) => `user-${i}`);
 
 const RECIPIENTS: UnclaimedRecipientRow[] = [
   { user_id: 'user-owner', email: 'owner@example.com', kind: 'scheduler' },
@@ -49,10 +49,15 @@ interface Env {
 
 function makeEnv(opts: {
   candidates?: ReminderCandidateRow[];
+  /** One array for each fetchCandidates call. An empty page after the last. */
+  pages?: ReminderCandidateRow[][];
   candidatesError?: string;
   claim?: (tradeId: string, stage: string) => boolean;
   channels?: { email: boolean; push: boolean };
   audience?: string[];
+  audienceFor?: (tradeId: string) => string[];
+  audienceError?: string;
+  pushSkipped?: (userIds: string[]) => number;
   recipients?: UnclaimedRecipientRow[];
   onPush?: (env: Env, userIds: string[]) => void;
   pushThrows?: (tradeId: string) => boolean;
@@ -70,6 +75,7 @@ function makeEnv(opts: {
     fetchCandidates: vi.fn(async (nowIso: string, limit: number) => {
       env.calls.push(`candidates:${nowIso}:${limit}`);
       if (opts.candidatesError) return { data: null, error: { message: opts.candidatesError } };
+      if (opts.pages) return { data: opts.pages.shift() ?? [], error: null };
       return { data: opts.candidates ?? [candidate()], error: null };
     }),
     claim: vi.fn(async (tradeId: string, stage: string) => {
@@ -82,19 +88,22 @@ function makeEnv(opts: {
     }),
     fetchAudience: vi.fn(async (tradeId: string) => {
       env.calls.push(`audience:${tradeId}`);
-      return { data: (opts.audience ?? ['user-a', 'user-b']).map((user_id) => ({ user_id })), error: null };
+      if (opts.audienceError) return { data: null, error: { message: opts.audienceError } };
+      const ids = opts.audienceFor?.(tradeId) ?? opts.audience ?? ['user-a', 'user-b'];
+      return { data: ids.map((user_id) => ({ user_id })), error: null };
     }),
     fetchUnclaimedRecipients: vi.fn(async (tradeId: string) => {
       env.calls.push(`recipients:${tradeId}`);
       return { data: opts.recipients ?? RECIPIENTS, error: null };
     }),
     sendPush: vi.fn(async (userIds: string[], restaurantId: string, payload) => {
-      const tradeId = payload.tag.replace('trade-reminder-', '');
+      const tradeId = payload.tag.replace(/^trade-(reminder|unclaimed)-/, '');
       env.calls.push(`push:${tradeId}`);
       if (opts.pushThrows?.(tradeId)) throw new Error('push service down');
       env.pushCalls.push({ userIds, restaurantId, ...payload });
       opts.onPush?.(env, userIds);
-      return { sent: userIds.length };
+      const skipped = opts.pushSkipped?.(userIds) ?? 0;
+      return { sent: userIds.length - skipped, skipped };
     }),
     sendEmail: vi.fn(async (to: string, subject: string, html: string) => {
       env.calls.push('email');
@@ -112,10 +121,11 @@ function makeEnv(opts: {
 }
 
 describe('runShiftTradeReminders: limits', () => {
-  it('uses a 60 s budget, 1,000 push targets and 50 candidates', () => {
+  it('uses a 60 s budget, 500 push targets, 50 candidates a page and 10 pages', () => {
     expect(RUN_BUDGET_MS).toBe(60_000);
-    expect(MAX_PUSH_TARGETS).toBe(1_000);
+    expect(MAX_PUSH_TARGETS).toBe(500);
     expect(CANDIDATE_LIMIT).toBe(50);
+    expect(MAX_CANDIDATE_PAGES).toBe(10);
   });
 
   it('reads candidates at the injected clock with p_limit 50', async () => {
@@ -126,22 +136,30 @@ describe('runShiftTradeReminders: limits', () => {
 });
 
 describe('runShiftTradeReminders: claim before send', () => {
-  it('claims, then checks channels, then reads the audience, then sends', async () => {
+  it('reads the audience, then claims, then checks channels, then sends', async () => {
     const env = makeEnv();
     await runShiftTradeReminders(env.deps);
     expect(env.calls.slice(1)).toEqual([
+      'audience:trade-1',
       'claim:trade-1:24h',
       'channels:rest-1:shift_trade_reminder',
-      'audience:trade-1',
       'push:trade-1',
     ]);
+  });
+
+  it('does not claim when the audience read fails, so the next run tries again', async () => {
+    const env = makeEnv({ audienceError: 'db down' });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.deps.claim).not.toHaveBeenCalled();
+    expect(env.deps.sendPush).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ claimed: 0, skipped: 1 });
+    expect(env.logs.join('\n')).toMatch(/audience read failed trade=trade-1/);
   });
 
   it('skips the send when the claim returns false', async () => {
     const env = makeEnv({ claim: () => false });
     const result = await runShiftTradeReminders(env.deps);
     expect(env.deps.resolveChannels).not.toHaveBeenCalled();
-    expect(env.deps.fetchAudience).not.toHaveBeenCalled();
     expect(env.deps.sendPush).not.toHaveBeenCalled();
     expect(result).toMatchObject({ candidates: 1, claimed: 0, skipped: 1, pushed: 0 });
   });
@@ -160,7 +178,6 @@ describe('runShiftTradeReminders: channel gate after the claim', () => {
     const env = makeEnv({ channels: { email: true, push: false } });
     const result = await runShiftTradeReminders(env.deps);
     expect(env.deps.claim).toHaveBeenCalledTimes(1);
-    expect(env.deps.fetchAudience).not.toHaveBeenCalled();
     expect(env.deps.sendPush).not.toHaveBeenCalled();
     expect(result).toMatchObject({ claimed: 1, skipped: 1, pushed: 0 });
   });
@@ -193,7 +210,7 @@ describe('runShiftTradeReminders: run budget', () => {
   });
 
   it('defers the rest when the push-target budget is used up', async () => {
-    const big = Array.from({ length: MAX_PUSH_TARGETS }, (_, i) => `user-${i}`);
+    const big = users(MAX_PUSH_TARGETS);
     const env = makeEnv({
       candidates: [candidate({ shift_trade_id: 't1' }), candidate({ shift_trade_id: 't2' })],
       audience: big,
@@ -201,6 +218,112 @@ describe('runShiftTradeReminders: run budget', () => {
     const result = await runShiftTradeReminders(env.deps);
     expect(env.deps.claim).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ candidates: 2, claimed: 1, deferred: 1, pushed: MAX_PUSH_TARGETS });
+  });
+
+  it('defers a candidate before its claim when its audience does not fit the rest of the budget', async () => {
+    const env = makeEnv({
+      candidates: [
+        candidate({ shift_trade_id: 't1' }),
+        candidate({ shift_trade_id: 't2' }),
+        candidate({ shift_trade_id: 't3' }),
+      ],
+      audience: users(300),
+    });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.calls).not.toContain('claim:t2:24h');
+    expect(env.deps.claim).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ candidates: 3, claimed: 1, deferred: 2, pushed: 300 });
+  });
+
+  it('sends one audience above the budget in chunks of 500 when the run is empty', async () => {
+    const env = makeEnv({
+      candidates: [candidate({ shift_trade_id: 't1' }), candidate({ shift_trade_id: 't2' })],
+      audienceFor: (tradeId) => (tradeId === 't1' ? users(1_200) : users(2)),
+    });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.pushCalls.map((p) => p.userIds.length)).toEqual([500, 500, 200]);
+    expect(new Set(env.pushCalls.flatMap((p) => p.userIds)).size).toBe(1_200);
+    expect(result).toMatchObject({ claimed: 1, pushed: 1_200, deferred: 1 });
+  });
+
+  it('counts only the targets that sendPush did not skip, and logs the skipped count', async () => {
+    const env = makeEnv({
+      candidates: [candidate({ shift_trade_id: 't1' }), candidate({ shift_trade_id: 't2' })],
+      audienceFor: (tradeId) => (tradeId === 't1' ? users(500) : users(100)),
+      pushSkipped: (ids) => (ids.length === 500 ? 100 : 0),
+    });
+    const result = await runShiftTradeReminders(env.deps);
+    // 400 targets used after t1, so t2 (100 users) still fits.
+    expect(env.deps.claim).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ claimed: 2, pushed: 500, deferred: 0 });
+    expect(env.logs.join('\n')).toMatch(/push skipped trade=t1 skipped=100/);
+  });
+});
+
+describe('runShiftTradeReminders: candidate pages', () => {
+  const page = (prefix: string, n = CANDIDATE_LIMIT) =>
+    Array.from({ length: n }, (_, i) => candidate({ shift_trade_id: `${prefix}-${i}` }));
+
+  it('reads one page when the page is not full', async () => {
+    const env = makeEnv({ pages: [page('a', 3)], audience: [] });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.deps.fetchCandidates).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ candidates: 3, claimed: 3 });
+  });
+
+  it('reads the next page after a full page', async () => {
+    const env = makeEnv({ pages: [page('a'), page('b', 7)], audience: [] });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.deps.fetchCandidates).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ candidates: CANDIDATE_LIMIT + 7, claimed: CANDIDATE_LIMIT + 7 });
+  });
+
+  it('stops after 10 pages', async () => {
+    const pages = Array.from({ length: 12 }, (_, i) => page(`p${i}`));
+    const env = makeEnv({ pages, audience: [] });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.deps.fetchCandidates).toHaveBeenCalledTimes(MAX_CANDIDATE_PAGES);
+    expect(result.candidates).toBe(CANDIDATE_LIMIT * MAX_CANDIDATE_PAGES);
+  });
+
+  it('does not process a row two times when a later page returns it again', async () => {
+    const first = page('a');
+    const env = makeEnv({ pages: [first, [...first]], claim: () => false });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.deps.fetchCandidates).toHaveBeenCalledTimes(2);
+    expect(env.deps.claim).toHaveBeenCalledTimes(CANDIDATE_LIMIT);
+    expect(result).toMatchObject({ candidates: CANDIDATE_LIMIT, skipped: CANDIDATE_LIMIT });
+  });
+
+  it('does not read the next page when the run budget is used up', async () => {
+    const env = makeEnv({
+      pages: [page('a'), page('b')],
+      onPush: (e) => {
+        e.clock.ms += RUN_BUDGET_MS;
+      },
+    });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.deps.fetchCandidates).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ claimed: 1, deferred: CANDIDATE_LIMIT - 1 });
+  });
+});
+
+describe('runShiftTradeReminders: channel cache', () => {
+  it('resolves the channels one time for each restaurant and type in a run', async () => {
+    const env = makeEnv({
+      candidates: [
+        candidate({ shift_trade_id: 't1' }),
+        candidate({ shift_trade_id: 't2' }),
+        candidate({ shift_trade_id: 't3', stage: 'unclaimed' }),
+        candidate({ shift_trade_id: 't4', restaurant_id: 'rest-2' }),
+      ],
+    });
+    await runShiftTradeReminders(env.deps);
+    expect(env.calls.filter((c) => c.startsWith('channels:'))).toEqual([
+      'channels:rest-1:shift_trade_reminder',
+      'channels:rest-1:shift_trade_unclaimed',
+      'channels:rest-2:shift_trade_reminder',
+    ]);
   });
 });
 
@@ -251,6 +374,19 @@ describe('runShiftTradeReminders: unclaimed stage', () => {
     expect(env.emailCalls[0].subject).toBe("Nobody took Maria's shift yet");
     expect(env.emailCalls[0].html).toContain('https://app.easyshifthq.com/scheduling');
     expect(result).toMatchObject({ claimed: 1, pushed: 3, emailed: 2 });
+  });
+
+  it('sends the scheduler push and the poster push at the same time', async () => {
+    const env = makeEnv({ candidates: [candidate({ stage: 'unclaimed' })] });
+    const events: string[] = [];
+    env.deps.sendPush = vi.fn(async (userIds: string[], _restaurantId: string, payload) => {
+      events.push(`start:${payload.url}`);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      events.push(`end:${payload.url}`);
+      return { sent: userIds.length, skipped: 0 };
+    });
+    await runShiftTradeReminders(env.deps);
+    expect(events.slice(0, 2).sort()).toEqual(['start:/employee/schedule', 'start:/scheduling']);
   });
 
   it('sends email only when push is off, and the poster gets nothing', async () => {

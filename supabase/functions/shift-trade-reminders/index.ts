@@ -94,7 +94,7 @@ serve(async (req: Request): Promise<Response> => {
     },
     sendPush: async (userIds, restaurantId, payload) => {
       const res = await sendWebPushToUsers(supabase, userIds, restaurantId, payload);
-      return { sent: res.sent };
+      return { sent: res.sent, skipped: res.skipped };
     },
     sendEmail: (to, subject, html) => sendEmailResult(resendApiKey, NOTIFICATION_FROM, to, subject, html),
     now: () => Date.now(),

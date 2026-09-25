@@ -686,3 +686,49 @@ this case.
   after sign-in from the nav.
 - A claim followed by an accept before the send gives one stale push. The
   deep link handles it.
+
+## Phase 7 review decisions (2026-09-25)
+
+Five reviewers (security, performance, maintainability, logic, OCR rules)
+checked the branch at `e82f4b1`. These decisions change the design above.
+
+- **Fail closed on the block rule.** `useClaimableTrades` returns no trades
+  until the employee, the shift protection settings and the permissions are
+  known. On a protection read error, it applies the block rule with the
+  default 24 h window. It never falls back to mode `off`.
+- **Marketplace query.** It downloads only trades whose shift has not ended
+  (`!inner` embed plus `offered_shift.end_time > now`). The trades read and
+  the conflict read run in parallel.
+- **Badge.** One hook, `useClaimableTradeBadge()`, feeds all three badges.
+  It shows nothing while it loads or on an error. The urgent badge is
+  `bg-amber-600 dark:bg-amber-500 text-background`. `--warning-foreground`
+  is white, and white on `--warning` is near 2:1, so the token pair fails.
+- **Footer copy.** The footer link is "Browse all shifts", with no number.
+  The marketplace header counts items that the card leaves out (own trades,
+  conflicts, blocked trades), so a number in the link cannot match it.
+  "{n} open shifts too" shows only when the open shifts load with no error.
+- **Deep link.** The link builder lives in
+  `supabase/functions/_shared/tradeDeepLinkUrl.ts`, shared by the push and
+  the home card. The page logic moves into `useTradeDeepLink`. It shows each
+  toast once (StrictMode), retries the focus for up to 5 frames, and ends the
+  wait with the "cannot open" toast when the user has no employee row there.
+- **Banner.** With `reserveHeight={false}` and no content, the banner renders
+  nothing, so no empty `space-y` gap stays.
+- **Push budget.** `MAX_PUSH_TARGETS` is 500, the same as
+  `DEFAULT_MAX_TARGETS` (`supabase/functions/_shared/webPushHelper.ts:23-26`).
+  The handler reads the audience before the claim (a read, so the TLA+
+  claim-before-send rule holds) and defers a candidate that does not fit.
+- **Candidate pages.** One run reads more pages of 50 candidates while the
+  budget remains, up to 10 pages. A backlog at 08:00 then clears in one run.
+- **Stage spacing.** An employee stage is skipped when another employee
+  stage for the same trade sent in the last 6 hours.
+- **Tags.** The `unclaimed` push uses `trade-unclaimed-<id>`, so it does not
+  replace an employee push on a scheduler's own device.
+- **Overlap test and index.** The audience RPC uses
+  `o.end_time > s.start_time AND o.start_time < s.end_time` with a partial
+  index on `shifts (employee_id, end_time)` for `scheduled`/`confirmed`.
+- **Dispatcher URL.** `dispatch_shift_trade_reminders()` uses the constant
+  project URL. A session setting cannot redirect the service-role key.
+- **Shared helpers.** `isServiceRoleBearer` moves to
+  `supabase/functions/_shared/cronAuth.ts`. The content module uses `safeTz`
+  from `supabase/functions/_shared/timezone.ts`.

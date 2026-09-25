@@ -9,6 +9,7 @@
 --   4. The claim RPC claim_shift_trade_reminder (claim before send).
 --   5. The audience RPC get_shift_trade_reminder_audience.
 --   6. The recipients RPC get_shift_trade_unclaimed_recipients.
+--   8. The cron job shift-trade-reminders (every 15 minutes).
 --
 -- Each function sets search_path, revokes EXECUTE from PUBLIC, anon and
 -- authenticated, and grants EXECUTE to service_role only.
@@ -357,3 +358,36 @@ COMMENT ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) IS
 
 REVOKE EXECUTE ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) TO service_role;
+
+-- ============================================================
+-- 8. Cron: call the shift-trade-reminders edge function every 15 minutes.
+--    pg_cron does not wait for the function, so two runs can overlap. The
+--    claim RPC stops a double send. Unschedule first, so this migration can
+--    run again.
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+DO $$
+BEGIN
+  PERFORM cron.unschedule('shift-trade-reminders');
+EXCEPTION
+  WHEN OTHERS THEN
+    -- The job does not exist yet (first run of this migration).
+    NULL;
+END $$;
+
+SELECT cron.schedule(
+  'shift-trade-reminders',
+  '*/15 * * * *',
+  $$
+  SELECT net.http_post(
+    url := current_setting('app.settings.supabase_url') || '/functions/v1/shift-trade-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key')
+    ),
+    body := '{}'::jsonb
+  );
+  $$
+);

@@ -241,6 +241,11 @@ verify_jwt = false
 [functions.bank-reauth-notices]
 verify_jwt = false
 
+# pg_cron calls this every 15 minutes with the service-role key. The
+# function checks the Bearer itself with a timing-safe compare.
+[functions.shift-trade-reminders]
+verify_jwt = false
+
 [functions.unsubscribe-email]
 verify_jwt = false
 

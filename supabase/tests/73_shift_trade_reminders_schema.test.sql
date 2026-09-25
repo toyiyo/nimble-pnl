@@ -11,7 +11,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(19);
+SELECT plan(21);
 
 SET LOCAL role TO postgres;
 
@@ -135,6 +135,21 @@ SELECT throws_ok(
      VALUES ('73000000-0000-0000-0000-000000000001', 'shift_trade_bogus') $$,
   '23514', NULL,
   'CHECK constraint still refuses an unknown key'
+);
+
+-- ---------------------------------------------------------------------------
+-- Cron job (20-21)
+-- ---------------------------------------------------------------------------
+SELECT is(
+  (SELECT schedule FROM cron.job WHERE jobname = 'shift-trade-reminders'),
+  '*/15 * * * *',
+  'cron job shift-trade-reminders runs every 15 minutes'
+);
+
+SELECT ok(
+  (SELECT command FROM cron.job WHERE jobname = 'shift-trade-reminders')
+    LIKE '%/functions/v1/shift-trade-reminders%',
+  'cron job shift-trade-reminders posts to the shift-trade-reminders function'
 );
 
 SELECT * FROM finish();

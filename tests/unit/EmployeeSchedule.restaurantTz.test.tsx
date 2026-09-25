@@ -100,6 +100,15 @@ vi.mock('@/hooks/useRestaurantPublishes', () => ({
   useRestaurantPublishes: () => ({ publishes: true, isLoading: false }),
 }));
 
+// The "Teammates need cover" card reads these. Each runs its own React Query
+// query, and these tests render without a QueryClientProvider.
+vi.mock('@/hooks/useClaimableTrades', () => ({
+  useClaimableTrades: () => ({ trades: [], count: 0, loading: false, error: null, refetch: vi.fn() }),
+}));
+vi.mock('@/hooks/useOpenShifts', () => ({
+  useOpenShifts: () => ({ openShifts: [], loading: false, error: null, refetch: vi.fn() }),
+}));
+
 // Both pull their own Supabase data and neither takes part in day bucketing.
 vi.mock('@/components/schedule/MyShiftTradesCard', () => ({
   MyShiftTradesCard: () => null,

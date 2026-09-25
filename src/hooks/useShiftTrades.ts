@@ -659,8 +659,11 @@ export const useMarketplaceTrades = (
     queryFn: async () => {
       if (!restaurantId) return [];
 
+      const nowIso = new Date().toISOString();
+
       // Get open trades (marketplace or not targeted at specific employee).
-      // Explicit columns in place of `*` keep the badge query small.
+      // Explicit columns in place of `*` keep the badge query small. The
+      // inner embed lets the server drop trades whose shift already ended.
       let query = supabase
         .from('shift_trades')
         .select(`
@@ -675,7 +678,7 @@ export const useMarketplaceTrades = (
           reason,
           created_at,
           updated_at,
-          offered_shift:shifts!offered_shift_id(
+          offered_shift:shifts!offered_shift_id!inner(
             id,
             start_time,
             end_time,
@@ -691,7 +694,8 @@ export const useMarketplaceTrades = (
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'open');
+        .eq('status', 'open')
+        .gt('offered_shift.end_time', nowIso);
 
       // Filter by target employee if provided
       if (currentEmployeeId) {
@@ -701,8 +705,21 @@ export const useMarketplaceTrades = (
         query = query.is('target_employee_id', null);
       }
 
-      const { data: trades, error: tradesError } = await query.order('created_at', { ascending: false });
+      // Both reads need only the employee id, so send them at the same time.
+      // Only a shift that ends after now can overlap an open future trade.
+      const [tradesResult, shiftsResult] = await Promise.all([
+        query.order('created_at', { ascending: false }),
+        currentEmployeeId
+          ? supabase
+              .from('shifts')
+              .select('start_time, end_time')
+              .eq('employee_id', currentEmployeeId)
+              .gte('end_time', nowIso)
+              .in('status', ['scheduled', 'confirmed'])
+          : Promise.resolve({ data: null, error: null }),
+      ]);
 
+      const { data: trades, error: tradesError } = tradesResult;
       if (tradesError) throw tradesError;
 
       const validTrades = (trades || []).filter(hasValidJoins);
@@ -711,15 +728,7 @@ export const useMarketplaceTrades = (
         return validTrades;
       }
 
-      // Get current employee's shifts to check for conflicts
-      const { data: employeeShifts, error: shiftsError } = await supabase
-        .from('shifts')
-        .select('start_time, end_time')
-        .eq('employee_id', currentEmployeeId)
-        // Only a shift that ends after now can overlap an open future trade.
-        .gte('end_time', new Date().toISOString())
-        .in('status', ['scheduled', 'confirmed']);
-
+      const { data: employeeShifts, error: shiftsError } = shiftsResult;
       if (shiftsError) throw shiftsError;
 
       // Filter out trades that would create conflicts

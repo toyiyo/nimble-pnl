@@ -699,8 +699,9 @@ checked the branch at `e82f4b1`. These decisions change the design above.
 
 - **Fail closed on the block rule.** `useClaimableTrades` returns no trades
   until the employee, the shift protection settings and the permissions are
-  known. On a protection read error, it applies the block rule with the
-  default 24 h window. It never falls back to mode `off`.
+  known. On a protection read error with no cached settings, it returns
+  no trades and shows the error. When a background refetch fails, it uses
+  the cached settings. It never falls back to mode `off`.
 - **Marketplace query.** It downloads only trades whose shift has not ended
   (`!inner` embed plus `offered_shift.end_time > now`). The trades read and
   the conflict read run in parallel.

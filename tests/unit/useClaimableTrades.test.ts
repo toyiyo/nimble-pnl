@@ -65,7 +65,12 @@ describe('useClaimableTrades', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.clearAllMocks();
-    mocks.useShiftProtection.mockReturnValue({ protection: SHIFT_PROTECTION_DEFAULTS, isLoading: false, error: null });
+    mocks.useShiftProtection.mockReturnValue({
+      protection: SHIFT_PROTECTION_DEFAULTS,
+      isLoading: false,
+      error: null,
+      hasData: true,
+    });
     mocks.usePermissions.mockReturnValue({ hasCapability: () => false, isResolved: true });
     mocks.useMarketplaceTrades.mockReturnValue(marketplace([]));
   });
@@ -158,26 +163,44 @@ describe('useClaimableTrades', () => {
     expect(mocks.useShiftProtection).toHaveBeenLastCalledWith('rest-1');
   });
 
-  it('fails closed on a protection error: the default block window applies', () => {
+  it('returns no trades and shows the error on a protection error with no cached settings', () => {
+    const protectionError = new Error('rpc failed');
     mocks.useShiftProtection.mockReturnValue({
       protection: SHIFT_PROTECTION_DEFAULTS,
       isLoading: false,
-      error: new Error('rpc failed'),
+      error: protectionError,
+      hasData: false,
     });
-    const insideWindow = trade('a', (SHIFT_PROTECTION_DEFAULTS.trade_deadline_hours - 1) * HOUR);
-    const outsideWindow = trade('b', (SHIFT_PROTECTION_DEFAULTS.trade_deadline_hours + 1) * HOUR);
-    mocks.useMarketplaceTrades.mockReturnValue(marketplace([insideWindow, outsideWindow]));
+    mocks.useMarketplaceTrades.mockReturnValue(marketplace([trade('a', 3 * HOUR), trade('b', 48 * HOUR)]));
 
     const { result } = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+    expect(result.current.trades).toEqual([]);
+    expect(result.current.count).toBe(0);
     expect(result.current.loading).toBe(false);
-    expect(result.current.trades.map((t) => t.trade.id)).toEqual(['b']);
+    expect(result.current.error).toBe(protectionError);
+  });
 
-    mocks.usePermissions.mockReturnValue({
-      hasCapability: (cap: string) => cap === 'edit:scheduling',
-      isResolved: true,
+  it('uses the cached settings when a background refetch of the protection settings fails', () => {
+    mocks.useShiftProtection.mockReturnValue({
+      protection: { ...SHIFT_PROTECTION_DEFAULTS, trade_deadline_mode: 'off', trade_deadline_hours: 24 },
+      isLoading: false,
+      error: new Error('refetch failed'),
+      hasData: true,
     });
-    const exempt = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
-    expect(exempt.result.current.count).toBe(2);
+    mocks.useMarketplaceTrades.mockReturnValue(marketplace([trade('a', 3 * HOUR), trade('b', 48 * HOUR)]));
+
+    const off = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+    expect(off.result.current.loading).toBe(false);
+    expect(off.result.current.trades.map((t) => t.trade.id)).toEqual(['a', 'b']);
+
+    mocks.useShiftProtection.mockReturnValue({
+      protection: { ...SHIFT_PROTECTION_DEFAULTS, trade_deadline_mode: 'block', trade_deadline_hours: 24 },
+      isLoading: false,
+      error: new Error('refetch failed'),
+      hasData: true,
+    });
+    const block = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+    expect(block.result.current.trades.map((t) => t.trade.id)).toEqual(['b']);
   });
 
   it('drops a trade when the tick passes its start', () => {

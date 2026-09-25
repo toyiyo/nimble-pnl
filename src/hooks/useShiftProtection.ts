@@ -16,7 +16,9 @@ export const shiftProtectionQueryKey = (restaurantId: string | null) =>
  * in the employee portal where staffing_settings RLS does not.
  *
  * The client fails open: on error the defaults (everything off) apply,
- * and the server triggers stay the backstop for block mode.
+ * and the server triggers stay the backstop for block mode. A caller that
+ * must fail closed checks `hasData`: it is false while `protection` holds
+ * the defaults.
  */
 export function useShiftProtection(restaurantId: string | null) {
   const { data, isLoading, error } = useQuery({
@@ -35,6 +37,8 @@ export function useShiftProtection(restaurantId: string | null) {
 
   return {
     protection: data ?? SHIFT_PROTECTION_DEFAULTS,
+    /** True when `protection` comes from the server, not from the defaults. */
+    hasData: data !== undefined,
     isLoading,
     error,
   };

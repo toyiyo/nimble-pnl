@@ -144,16 +144,27 @@ function toShiftInfo(row: ReminderCandidateRow): ReminderShiftInfo {
 /**
  * Sends one payload in chunks of MAX_PUSH_TARGETS, so the push helper never
  * drops a target. The target count excludes the targets that the helper skipped.
+ * Between two chunks, it checks the wall-clock budget. When the budget is
+ * used up, it stops and logs the unsent count. The claim stays, so the
+ * unsent targets do not get this stage.
  */
 async function pushInChunks(
   deps: ShiftTradeRemindersDeps,
   row: ReminderCandidateRow,
   userIds: string[],
   payload: ReminderPush,
+  runStartedAt: number,
   { log }: Loggers,
 ): Promise<{ sent: number; targets: number }> {
   const total = { sent: 0, targets: 0 };
   for (let i = 0; i < userIds.length; i += MAX_PUSH_TARGETS) {
+    if (i > 0 && deps.now() - runStartedAt >= RUN_BUDGET_MS) {
+      log(
+        `${LOG_PREFIX} push stopped at budget trade=${row.shift_trade_id} stage=${row.stage} ` +
+          `unsent=${userIds.length - i}`,
+      );
+      break;
+    }
     const chunk = userIds.slice(i, i + MAX_PUSH_TARGETS);
     const res = await deps.sendPush(chunk, row.restaurant_id, payload);
     if (res.skipped > 0) {
@@ -170,13 +181,14 @@ async function sendEmployeeStage(
   row: ReminderCandidateRow,
   stage: EmployeeReminderStage,
   userIds: string[],
+  runStartedAt: number,
   loggers: Loggers,
 ): Promise<CandidateOutcome> {
   const outcome = emptyOutcome();
   if (userIds.length === 0) return outcome;
 
   const payload = buildEmployeeReminderPush(toShiftInfo(row), stage, new Date(deps.now()));
-  const res = await pushInChunks(deps, row, userIds, payload, loggers);
+  const res = await pushInChunks(deps, row, userIds, payload, runStartedAt, loggers);
   outcome.pushed += res.sent;
   outcome.pushTargets += res.targets;
   return outcome;
@@ -216,7 +228,7 @@ async function sendUnclaimedStage(
     ): Promise<void> => {
       if (userIds.length === 0) return;
       try {
-        const res = await pushInChunks(deps, row, userIds, buildPush(info), loggers);
+        const res = await pushInChunks(deps, row, userIds, buildPush(info), runStartedAt, loggers);
         outcome.pushed += res.sent;
         outcome.pushTargets += res.targets;
       } catch (err) {
@@ -343,7 +355,7 @@ async function processCandidate(row: ReminderCandidateRow, ctx: RunContext): Pro
 
     const outcome = isUnclaimed
       ? await sendUnclaimedStage(deps, row, unclaimed, channels, ctx.runStartedAt, loggers)
-      : await sendEmployeeStage(deps, row, stage, audience, loggers);
+      : await sendEmployeeStage(deps, row, stage, audience, ctx.runStartedAt, loggers);
 
     ctx.pushTargets += outcome.pushTargets;
     result.pushed += outcome.pushed;

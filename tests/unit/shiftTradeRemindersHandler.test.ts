@@ -249,6 +249,20 @@ describe('runShiftTradeReminders: run budget', () => {
     expect(result).toMatchObject({ claimed: 1, pushed: 1_200, deferred: 1 });
   });
 
+  it('stops the chunks when the wall-clock budget runs out, and logs the unsent count', async () => {
+    const env = makeEnv({
+      candidates: [candidate({ shift_trade_id: 't1' }), candidate({ shift_trade_id: 't2' })],
+      audienceFor: (tradeId) => (tradeId === 't1' ? users(1_200) : users(2)),
+      onPush: (e) => {
+        e.clock.ms += RUN_BUDGET_MS;
+      },
+    });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.pushCalls.map((p) => p.userIds.length)).toEqual([500]);
+    expect(result).toMatchObject({ claimed: 1, pushed: 500, deferred: 1 });
+    expect(env.logs.join('\n')).toMatch(/push stopped at budget trade=t1 stage=24h unsent=700/);
+  });
+
   it('counts only the targets that sendPush did not skip, and logs the skipped count', async () => {
     const env = makeEnv({
       candidates: [candidate({ shift_trade_id: 't1' }), candidate({ shift_trade_id: 't2' })],

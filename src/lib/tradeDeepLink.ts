@@ -1,26 +1,25 @@
 /**
  * The marketplace deep link: `/employee/shifts?trade=<id>&restaurant=<id>&from=<source>`.
  *
- * A reminder push sends `from=reminder`. The home card sends `from=home`.
+ * `from=reminder` marks a link from a push. `from=home` marks a link from
+ * the home screen.
  * This module decides what the page does with the link. It has no React
  * code, so the rules are easy to test.
  */
+import {
+  MARKETPLACE_PATH,
+  TRADE_LINK_PARAMS,
+  tradeLinkHref,
+  type TradeLinkSource,
+} from '../../supabase/functions/_shared/tradeDeepLinkUrl';
 
-export type TradeLinkSource = 'reminder' | 'home';
+// The push and the browser share one builder, so the two links cannot drift.
+export { MARKETPLACE_PATH, TRADE_LINK_PARAMS, tradeLinkHref };
+export type { TradeLinkSource };
 
 export function parseTradeLinkSource(value: string | null | undefined): TradeLinkSource | null {
   return value === 'reminder' || value === 'home' ? value : null;
 }
-
-/** Build the link. The reminder push builds the same URL on the server. */
-export function tradeLinkHref(tradeId: string, restaurantId: string, source: TradeLinkSource): string {
-  return `/employee/shifts?trade=${encodeURIComponent(tradeId)}&restaurant=${encodeURIComponent(
-    restaurantId
-  )}&from=${source}`;
-}
-
-/** The search params of the link. The page deletes them after it reads them. */
-export const TRADE_LINK_PARAMS = ['trade', 'restaurant', 'from'] as const;
 
 export interface TradeLink {
   tradeId: string;
@@ -54,6 +53,8 @@ export interface TradeDeepLinkInput {
   memberRestaurantIds: readonly string[];
   /** The restaurant list is not known yet. */
   restaurantsLoading: boolean;
+  /** The employee load finished, and the user has no employee row here. */
+  employeeMissing: boolean;
   /** The list (or the employee) is not ready yet. */
   loading: boolean;
   error: boolean;
@@ -80,6 +81,9 @@ export function decideTradeDeepLink(input: TradeDeepLinkInput): TradeDeepLinkDec
       ? { kind: 'switch-restaurant', restaurantId: wanted }
       : { kind: 'foreign-restaurant' };
   }
+
+  // Without an employee row the user cannot open this marketplace.
+  if (input.employeeMissing) return { kind: 'foreign-restaurant' };
 
   // On an error the page shows its error state. The trade can still be open.
   if (input.loading || input.error) return { kind: 'wait' };

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { OpenShift } from '@/types/scheduling';
-import type { ShiftTrade } from '@/hooks/useShiftTrades';
+import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
 import { useOpenShifts } from '@/hooks/useOpenShifts';
 import { useMarketplaceTrades } from '@/hooks/useShiftTrades';
 
@@ -9,12 +9,12 @@ export interface AvailableShiftItem {
   type: 'open_shift' | 'trade';
   date: string;
   openShift?: OpenShift;
-  trade?: ShiftTrade & { hasConflict?: boolean };
+  trade?: MarketplaceTrade;
 }
 
 export function mergeAvailableShifts(
   openShifts: OpenShift[],
-  trades: (ShiftTrade & { hasConflict?: boolean })[],
+  trades: readonly MarketplaceTrade[],
 ): AvailableShiftItem[] {
   const items: AvailableShiftItem[] = [];
 
@@ -58,10 +58,10 @@ export function useAvailableShifts(
     loading: tradesLoading,
     error: tradesError,
     refetch: refetchTrades,
-  } = useMarketplaceTrades(restaurantId, employeeId);
+  } = useMarketplaceTrades(restaurantId, employeeId, { enabled: !!employeeId });
 
   const items = useMemo(
-    () => mergeAvailableShifts(openShifts, trades as any),
+    () => mergeAvailableShifts(openShifts, trades),
     [openShifts, trades],
   );
 

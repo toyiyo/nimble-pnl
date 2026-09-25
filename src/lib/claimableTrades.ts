@@ -6,17 +6,20 @@
  * inside `trade_deadline_hours` unless the caller holds `edit:scheduling`.
  * A trade that the RPC would refuse must not show as claimable.
  */
-import type { ShiftTrade } from '@/hooks/useShiftTrades';
+import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
 import type { ShiftProtectionSettings } from '@/lib/shiftProtection';
+import { addDays, startOfWeek } from 'date-fns';
+
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { addDaysToDateStr, formatInstant, toBusinessDay } from '@/lib/restaurantClock';
 
-export type MarketplaceTrade = ShiftTrade & { hasConflict?: boolean };
+export type { MarketplaceTrade };
 
 export interface ClaimableTrade {
   trade: MarketplaceTrade;
   startsAt: Date;
   /** The shift starts in 24 h or less. */
-  urgent: boolean;
+  isUrgent: boolean;
 }
 
 export interface ClaimableOptions {
@@ -52,14 +55,23 @@ export function selectClaimableTrades(
     if (!(msUntil > 0)) continue;
     if (blocks && msUntil <= blockWindowMs) continue;
 
-    rows.push({ trade, startsAt, urgent: msUntil <= URGENT_MS });
+    rows.push({ trade, startsAt, isUrgent: msUntil <= URGENT_MS });
   }
 
   rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   return rows;
 }
 
-function plural(n: number, word: string): string {
+/**
+ * The marketplace range: this week and the next week, 14 days from the
+ * week start. All callers use one range, so their open shift counts agree.
+ */
+export function marketplaceRange(now: Date): { start: Date; end: Date } {
+  const start = startOfWeek(now, { weekStartsOn: WEEK_STARTS_ON });
+  return { start, end: addDays(start, 13) };
+}
+
+export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 

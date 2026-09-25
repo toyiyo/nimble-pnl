@@ -3,7 +3,7 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
-import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
+import { UpForGrabsCard, shouldShowUpForGrabs } from '@/components/employee/UpForGrabsCard';
 import type { ClaimableTrade, MarketplaceTrade } from '@/lib/claimableTrades';
 
 const TZ = 'America/Chicago';
@@ -49,7 +49,7 @@ function claimable(
     },
     hasConflict: false,
   };
-  return { trade, startsAt, urgent: startsAt.getTime() - NOW.getTime() <= 24 * HOUR };
+  return { trade, startsAt, isUrgent: startsAt.getTime() - NOW.getTime() <= 24 * HOUR };
 }
 
 // 17:00 CDT today (7 h away): urgent, "Starts in 7 h".
@@ -188,10 +188,10 @@ describe('UpForGrabsCard', () => {
     expect(link).toHaveClass('min-h-[64px]');
   });
 
-  it('shows the open shift count and "Browse all {total}" in the footer', () => {
+  it('shows the open shift count and "Browse all shifts" in the footer', () => {
     renderCard({ openShiftCount: 2 });
     expect(screen.getByText('2 open shifts too')).toBeInTheDocument();
-    const browse = screen.getByRole('link', { name: 'Browse all 5' });
+    const browse = screen.getByRole('link', { name: 'Browse all shifts' });
     expect(browse).toHaveAttribute('href', '/employee/shifts');
   });
 
@@ -203,6 +203,26 @@ describe('UpForGrabsCard', () => {
   it('hides the open shift text with 0 open shifts', () => {
     renderCard({ openShiftCount: 0 });
     expect(screen.queryByText(/open shifts? too/)).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Browse all 3' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Browse all shifts' })).toBeInTheDocument();
+  });
+
+  it('hides the open shift text when the count is not known', () => {
+    renderCard({ openShiftCount: null });
+    expect(screen.queryByText(/open shifts? too/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Browse all shifts' })).toBeInTheDocument();
+  });
+
+  it('shows no number in the browse link', () => {
+    renderCard({ openShiftCount: 4 });
+    expect(screen.queryByRole('link', { name: /Browse all \d/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('shouldShowUpForGrabs', () => {
+  it('is true only for loaded trades with no error', () => {
+    expect(shouldShowUpForGrabs([today], false, null)).toBe(true);
+    expect(shouldShowUpForGrabs([today], true, null)).toBe(false);
+    expect(shouldShowUpForGrabs([today], false, new Error('boom'))).toBe(false);
+    expect(shouldShowUpForGrabs([], false, null)).toBe(false);
   });
 });

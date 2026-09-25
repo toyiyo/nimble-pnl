@@ -1,6 +1,6 @@
 /**
- * Placement of the "Teammates need cover" card on the employee home screen
- * (design A3): the card goes above ScheduleStatusBanner when a trade is
+ * Placement of the "Teammates need cover" card on the employee home screen:
+ * the card goes above ScheduleStatusBanner when a trade is
  * urgent, else after it and before MyShiftTradesCard. The gradient
  * "Browse Available Shifts" button hides only when the card shows.
  */
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     refetch: () => undefined,
   },
   useClaimableTrades: vi.fn(),
+  useOpenShifts: vi.fn(),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
@@ -54,7 +55,7 @@ vi.mock('@/hooks/useClaimableTrades', () => ({
 }));
 
 vi.mock('@/hooks/useOpenShifts', () => ({
-  useOpenShifts: () => ({ openShifts: [{}, {}], loading: false, error: null, refetch: vi.fn() }),
+  useOpenShifts: mocks.useOpenShifts,
 }));
 
 vi.mock('@/components/employee', async () => {
@@ -67,10 +68,13 @@ vi.mock('@/components/employee', async () => {
   };
 });
 
-vi.mock('@/components/employee/UpForGrabsCard', () => ({
-  UpForGrabsCard: (props: { trades: unknown[]; loading: boolean; error: unknown; openShiftCount: number }) =>
+vi.mock('@/components/employee/UpForGrabsCard', async () => ({
+  ...(await vi.importActual<typeof import('@/components/employee/UpForGrabsCard')>(
+    '@/components/employee/UpForGrabsCard',
+  )),
+  UpForGrabsCard: (props: { trades: unknown[]; loading: boolean; error: unknown; openShiftCount: number | null }) =>
     props.loading || (!props.error && props.trades.length === 0) ? null : (
-      <div data-testid="up-for-grabs" data-open-count={props.openShiftCount} />
+      <div data-testid="up-for-grabs" data-open-count={String(props.openShiftCount)} />
     ),
 }));
 
@@ -82,6 +86,7 @@ vi.mock('@/components/schedule/TradeRequestDialog', () => ({
 }));
 
 import EmployeeSchedule from '@/pages/EmployeeSchedule';
+import { marketplaceRange } from '@/lib/claimableTrades';
 
 function renderPage() {
   return render(
@@ -97,7 +102,7 @@ function isBefore(a: HTMLElement, b: HTMLElement): boolean {
 
 function setClaimable(urgentFlags: boolean[], extra: Partial<typeof mocks.claimable> = {}) {
   mocks.claimable = {
-    trades: urgentFlags.map((urgent, i) => ({ trade: { id: `t${i}` }, urgent })),
+    trades: urgentFlags.map((urgent, i) => ({ trade: { id: `t${i}` }, isUrgent: urgent })),
     count: urgentFlags.length,
     loading: false,
     error: null,
@@ -111,11 +116,20 @@ describe('EmployeeSchedule – "Teammates need cover" placement', () => {
     setClaimable([]);
     mocks.useClaimableTrades.mockReset();
     mocks.useClaimableTrades.mockImplementation(() => mocks.claimable);
+    mocks.useOpenShifts.mockReset();
+    mocks.useOpenShifts.mockReturnValue({ openShifts: [{}, {}], loading: false, error: null, refetch: vi.fn() });
   });
 
-  it('reads claimable trades for the restaurant and the employee', () => {
+  it('reads open shifts for the marketplace range', () => {
+    setClaimable([false]);
     renderPage();
-    expect(mocks.useClaimableTrades).toHaveBeenCalledWith('r1', 'e1');
+    const { start, end } = marketplaceRange(new Date());
+    expect(mocks.useOpenShifts).toHaveBeenLastCalledWith('r1', start, end);
+  });
+
+  it('reads claimable trades for the restaurant and the employee, with the page clock', () => {
+    renderPage();
+    expect(mocks.useClaimableTrades).toHaveBeenCalledWith('r1', 'e1', expect.any(Number));
   });
 
   it('keeps the gradient button and shows no card with no trades', () => {
@@ -148,6 +162,26 @@ describe('EmployeeSchedule – "Teammates need cover" placement', () => {
     setClaimable([false]);
     renderPage();
     expect(screen.getByTestId('up-for-grabs')).toHaveAttribute('data-open-count', '2');
+  });
+
+  it('passes a null open shift count while the open shifts load', () => {
+    setClaimable([false]);
+    mocks.useOpenShifts.mockReturnValue({ openShifts: [], loading: true, error: null, refetch: vi.fn() });
+    renderPage();
+    expect(screen.getByTestId('up-for-grabs')).toHaveAttribute('data-open-count', 'null');
+  });
+
+  it('passes a null open shift count when the open shifts fail to load', () => {
+    setClaimable([false]);
+    mocks.useOpenShifts.mockReturnValue({ openShifts: [], loading: false, error: new Error('x'), refetch: vi.fn() });
+    renderPage();
+    expect(screen.getByTestId('up-for-grabs')).toHaveAttribute('data-open-count', 'null');
+  });
+
+  it('reads no open shifts when the card does not show', () => {
+    setClaimable([]);
+    renderPage();
+    expect(mocks.useOpenShifts).toHaveBeenLastCalledWith(null, expect.any(Date), expect.any(Date));
   });
 
   it('puts the card after the status banner and before my trades when no trade is urgent', () => {

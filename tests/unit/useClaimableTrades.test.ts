@@ -131,6 +131,55 @@ describe('useClaimableTrades', () => {
     expect(exempt.result.current.count).toBe(1);
   });
 
+  it('keeps the count at 0 while the protection settings load', () => {
+    mocks.useShiftProtection.mockReturnValue({ protection: SHIFT_PROTECTION_DEFAULTS, isLoading: true, error: null });
+    mocks.useMarketplaceTrades.mockReturnValue(marketplace([trade('a', 3 * HOUR)]));
+    const { result } = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.count).toBe(0);
+    expect(result.current.trades).toEqual([]);
+  });
+
+  it('keeps the count at 0 until the permissions resolve', () => {
+    mocks.usePermissions.mockReturnValue({ hasCapability: () => false, isResolved: false });
+    mocks.useMarketplaceTrades.mockReturnValue(marketplace([trade('a', 3 * HOUR)]));
+    const { result } = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.count).toBe(0);
+  });
+
+  it('reads the protection settings only when the query is enabled', () => {
+    renderHook(() => useClaimableTrades('rest-1', null));
+    expect(mocks.useShiftProtection).toHaveBeenCalledWith(null);
+
+    renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+    expect(mocks.useShiftProtection).toHaveBeenLastCalledWith('rest-1');
+  });
+
+  it('fails closed on a protection error: the default block window applies', () => {
+    mocks.useShiftProtection.mockReturnValue({
+      protection: SHIFT_PROTECTION_DEFAULTS,
+      isLoading: false,
+      error: new Error('rpc failed'),
+    });
+    const insideWindow = trade('a', (SHIFT_PROTECTION_DEFAULTS.trade_deadline_hours - 1) * HOUR);
+    const outsideWindow = trade('b', (SHIFT_PROTECTION_DEFAULTS.trade_deadline_hours + 1) * HOUR);
+    mocks.useMarketplaceTrades.mockReturnValue(marketplace([insideWindow, outsideWindow]));
+
+    const { result } = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.trades.map((t) => t.trade.id)).toEqual(['b']);
+
+    mocks.usePermissions.mockReturnValue({
+      hasCapability: (cap: string) => cap === 'edit:scheduling',
+      isResolved: true,
+    });
+    const exempt = renderHook(() => useClaimableTrades('rest-1', 'emp-me'));
+    expect(exempt.result.current.count).toBe(2);
+  });
+
   it('drops a trade when the tick passes its start', () => {
     const trades = [trade('a', 90 * 1000), trade('b', 5 * HOUR)];
     mocks.useMarketplaceTrades.mockReturnValue(marketplace(trades));
@@ -144,5 +193,19 @@ describe('useClaimableTrades', () => {
 
     expect(result.current.count).toBe(1);
     expect(result.current.trades[0].trade.id).toBe('b');
+  });
+
+  it('uses the caller clock when nowMs is given, and starts no interval', () => {
+    const intervalSpy = vi.spyOn(window, 'setInterval');
+    const trades = [trade('a', 90 * 1000), trade('b', 5 * HOUR)];
+    mocks.useMarketplaceTrades.mockReturnValue(marketplace(trades));
+
+    const { result } = renderHook(() =>
+      useClaimableTrades('rest-1', 'emp-me', NOW.getTime() + 2 * 60 * 1000),
+    );
+
+    expect(result.current.trades.map((t) => t.trade.id)).toEqual(['b']);
+    expect(intervalSpy).not.toHaveBeenCalled();
+    intervalSpy.mockRestore();
   });
 });

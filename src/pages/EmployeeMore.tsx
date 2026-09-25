@@ -1,11 +1,10 @@
 import { Link } from 'react-router-dom';
+import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
 import { Clock, KeyRound, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useClaimableTrades } from '@/hooks/useClaimableTrades';
-import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
+import { useClaimableTradeBadge } from '@/hooks/useClaimableTradeBadge';
 import { shiftsUpForGrabsText } from '@/lib/claimableTrades';
+import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
 
 interface NavItem {
   path: string;
@@ -14,26 +13,17 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const MARKETPLACE_PATH = '/employee/shifts';
-
 const mainItems: NavItem[] = [
   { path: '/employee/timecard', label: 'Timecard', description: 'Hours worked this period', icon: Clock },
   { path: '/employee/pin', label: 'Kiosk PIN', description: 'Manage your clock-in PIN', icon: KeyRound },
   { path: '/employee/portal', label: 'Requests', description: 'Time off & availability', icon: CalendarCheck },
-  { path: '/employee/shifts', label: 'Shift Marketplace', description: 'Pick up available shifts', icon: ShoppingBag },
+  { path: MARKETPLACE_PATH, label: 'Shift Marketplace', description: 'Pick up available shifts', icon: ShoppingBag },
   { path: '/employee/tips', label: 'Tips', description: 'Tip history & breakdown', icon: Coins },
 ];
 
 function EmployeeMore() {
   const { signOut } = useAuth();
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantId = selectedRestaurant?.restaurant_id ?? null;
-  const { currentEmployee } = useCurrentEmployee(restaurantId);
-  const { trades: claimableTrades, count: tradeCount } = useClaimableTrades(
-    restaurantId,
-    currentEmployee?.id ?? null
-  );
-  const tradeUrgent = claimableTrades.some((t) => t.urgent);
+  const { count: tradeCount, hasUrgentTrade } = useClaimableTradeBadge();
 
   return (
     <div className="space-y-3">
@@ -61,7 +51,7 @@ function EmployeeMore() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {showBadge && <TradeCountBadge count={tradeCount} urgent={tradeUrgent} />}
+                {showBadge && <TradeCountBadge count={tradeCount} isUrgent={hasUrgentTrade} />}
                 <ChevronRight className="h-4 w-4 text-muted-foreground/50" aria-hidden="true" />
               </div>
             </Link>

@@ -34,10 +34,12 @@ describe('TradeCountBadge', () => {
     expect(badge).not.toHaveClass('bg-amber-600');
   });
 
-  it('uses the amber colors when urgent', () => {
-    render(<TradeCountBadge count={2} urgent />);
+  it('uses the amber colors with a semantic text token when urgent', () => {
+    render(<TradeCountBadge count={2} isUrgent />);
     const badge = screen.getByText('2');
-    expect(badge).toHaveClass('bg-amber-600', 'text-white', 'dark:bg-amber-500', 'dark:text-amber-950');
+    expect(badge).toHaveClass('bg-amber-600', 'dark:bg-amber-500', 'text-background');
+    expect(badge).not.toHaveClass('text-white');
+    expect(badge).not.toHaveClass('dark:text-amber-950');
     expect(badge).not.toHaveClass('bg-foreground');
   });
 });

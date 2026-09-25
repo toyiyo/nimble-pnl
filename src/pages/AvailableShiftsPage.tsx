@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState, useMemo, useCallback, useRef, memo, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,26 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  EmployeePageHeader,
+  NoRestaurantState,
+  EmployeePageSkeleton,
+  EmployeeNotLinkedState,
+} from '@/components/employee';
+import { OpenShiftCard } from '@/components/scheduling/OpenShiftCard';
+import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
+import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 import {
   AlertTriangle,
@@ -34,61 +54,35 @@ import { useOpenShiftClaims, useClaimOpenShift } from '@/hooks/useOpenShiftClaim
 import { useMyShifts } from '@/hooks/useShifts';
 import { useAcceptShiftTrade } from '@/hooks/useShiftTrades';
 import { useToast } from '@/hooks/use-toast';
-import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
-import { hasScheduleConflict } from '@/lib/openShiftHelpers';
-import {
-  EmployeePageHeader,
-  NoRestaurantState,
-  EmployeePageSkeleton,
-  EmployeeNotLinkedState,
-} from '@/components/employee';
-import { OpenShiftCard } from '@/components/scheduling/OpenShiftCard';
-import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
-import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useShiftProtection } from '@/hooks/useShiftProtection';
 import { usePermissions } from '@/hooks/usePermissions';
-import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
-import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
-import {
-  TRADE_LINK_PARAMS,
-  decideTradeDeepLink,
-  readTradeLink,
-  type TradeLink,
-  type TradeLinkSource,
-} from '@/lib/tradeDeepLink';
+import { useTradeDeepLink } from '@/hooks/useTradeDeepLink';
 
+import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
+import type { TradeLinkSource } from '@/lib/tradeDeepLink';
 
-import { format, parseISO, startOfWeek, addDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
+import { hasScheduleConflict } from '@/lib/openShiftHelpers';
+import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
 import { parseDateLocal } from '@/lib/dateUtils';
-import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { marketplaceRange } from '@/lib/claimableTrades';
 import { cn } from '@/lib/utils';
 
 // ---- Memoized trade card (no hooks) ----
 
 interface TradeCardProps {
-  trade: AvailableShiftItem['trade'] & Record<string, unknown>;
+  trade: MarketplaceTrade;
   onAccept: (tradeId: string) => void;
   isAccepting: boolean;
   currentEmployeeId: string;
   areaMismatch?: AreaMismatch | null;
   /** The deep link points at this trade. */
-  highlighted: boolean;
+  isHighlighted: boolean;
   highlightSource: TradeLinkSource | null;
 }
-
-/** How long the deep link highlight stays, unless the user scrolls first. */
-const HIGHLIGHT_MS = 4000;
 
 const HIGHLIGHT_SOURCE_LABEL: Record<TradeLinkSource, { icon: LucideIcon; text: string }> = {
   reminder: { icon: Bell, text: 'From your reminder' },
@@ -107,7 +101,7 @@ const TradeCard = memo(function TradeCard({
   isAccepting,
   currentEmployeeId,
   areaMismatch,
-  highlighted,
+  isHighlighted,
   highlightSource,
 }: TradeCardProps) {
   if (!trade?.offered_shift) return null;
@@ -126,18 +120,18 @@ const TradeCard = memo(function TradeCard({
       data-trade-id={trade.id}
       // The deep link focuses this root. `ring-inset` stops the scroll
       // container from clipping the ring.
-      tabIndex={highlighted ? -1 : undefined}
-      aria-current={highlighted ? 'true' : undefined}
+      tabIndex={isHighlighted ? -1 : undefined}
+      aria-current={isHighlighted ? 'true' : undefined}
       className={cn(
         'group flex flex-col gap-2 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors',
         isPast && 'opacity-60',
-        highlighted && 'outline-none ring-2 ring-inset ring-foreground',
+        isHighlighted && 'outline-none ring-2 ring-inset ring-foreground',
       )}
     >
       {/* Row 1: shift info + action button */}
       <div className="flex items-center justify-between">
         <div className="min-w-0 space-y-1.5">
-          {highlighted && sourceLabel && (
+          {isHighlighted && sourceLabel && (
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
               <sourceLabel.icon className="h-3.5 w-3.5" aria-hidden="true" />
               {sourceLabel.text}
@@ -238,7 +232,7 @@ const TradeCard = memo(function TradeCard({
     prev.currentEmployeeId === next.currentEmployeeId &&
     prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&
     prev.areaMismatch?.claimerArea === next.areaMismatch?.claimerArea &&
-    prev.highlighted === next.highlighted &&
+    prev.isHighlighted === next.isHighlighted &&
     prev.highlightSource === next.highlightSource
   );
 });
@@ -277,29 +271,78 @@ function claimStatusBadge(status: OpenShiftClaim['status']) {
   }
 }
 
+// ---- Feed body: loading, error, empty or the list ----
+
+function ShiftsFeedBody({
+  loading,
+  error,
+  isEmpty,
+  onRetry,
+  renderList,
+}: {
+  loading: boolean;
+  error: boolean;
+  isEmpty: boolean;
+  onRetry: () => void;
+  renderList: () => ReactNode;
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-[100px] w-full rounded-xl" />
+        <Skeleton className="h-[100px] w-full rounded-xl" />
+        <Skeleton className="h-[100px] w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // Without this state, a failed load reads as "No shifts available".
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <AlertTriangle className="h-6 w-6 text-destructive" aria-hidden="true" />
+        <h3 className="text-[14px] font-medium text-foreground">Could not load shifts.</h3>
+        <Button
+          variant="outline"
+          onClick={onRetry}
+          className="h-9 px-4 rounded-lg text-[13px] font-medium"
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Briefcase className="h-12 w-12 text-muted-foreground mb-4" aria-hidden="true" />
+        <h3 className="text-[14px] font-medium text-foreground mb-1">No shifts available</h3>
+        <p className="text-[13px] text-muted-foreground max-w-sm">
+          There are currently no open shifts or trades. Check back later.
+        </p>
+      </div>
+    );
+  }
+
+  return <>{renderList()}</>;
+}
+
 // ---- Main page ----
 
-type HighlightState = TradeLink & { handled: boolean };
-
 export default function AvailableShiftsPage() {
-  const {
-    selectedRestaurant,
-    setSelectedRestaurant,
-    restaurants,
-    loading: restaurantsLoading,
-  } = useRestaurantContext();
+  const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id ?? null;
   const { tz } = useRestaurantClock();
   const { currentEmployee, loading: empLoading } = useCurrentEmployee(restaurantId);
   const { toast } = useToast();
 
-  // Compute 2-week range (current + next)
-  const { weekStart, weekEnd } = useMemo(() => {
-    const now = new Date();
-    const start = startOfWeek(now, { weekStartsOn: WEEK_STARTS_ON as 0 | 1 | 2 | 3 | 4 | 5 | 6 });
-    const end = addDays(start, 13); // 2 weeks
-    return { weekStart: start, weekEnd: end };
-  }, []);
+  // The key is the host local day, so a tab open past midnight gets a new range.
+  const hostDayKey = toDateOnlyString(new Date());
+  const { start: weekStart, end: weekEnd } = useMemo(
+    () => marketplaceRange(parseDateLocal(hostDayKey)),
+    [hostDayKey],
+  );
 
   const {
     items,
@@ -426,116 +469,16 @@ export default function AvailableShiftsPage() {
 
   const loading = feedLoading || myShiftsLoading;
 
-  // ---- Deep link: ?trade=<id>&restaurant=<id>&from=reminder|home ----
   // All hooks stay above the early returns below.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [highlight, setHighlight] = useState<HighlightState | null>(() => {
-    const link = readTradeLink(searchParams);
-    return link ? { ...link, handled: false } : null;
-  });
-
-  // Copy the link into state, then delete its params from the URL. A reload
-  // or a back navigation must not replay the highlight or the toast.
-  useEffect(() => {
-    if (!TRADE_LINK_PARAMS.some((key) => searchParams.has(key))) return;
-    const link = readTradeLink(searchParams);
-    if (link) {
-      setHighlight((prev) =>
-        prev && !prev.handled && prev.tradeId === link.tradeId && prev.restaurantId === link.restaurantId
-          ? prev
-          : { ...link, handled: false }
-      );
-    }
-    const next = new URLSearchParams(searchParams);
-    TRADE_LINK_PARAMS.forEach((key) => next.delete(key));
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
-
-  const memberRestaurantIds = useMemo(
-    () => (restaurants ?? []).map((r) => r.restaurant_id),
-    [restaurants]
-  );
-
-  const decision = decideTradeDeepLink({
-    tradeId: highlight && !highlight.handled ? highlight.tradeId : null,
-    linkRestaurantId: highlight?.restaurantId ?? null,
-    selectedRestaurantId: restaurantId,
-    memberRestaurantIds,
-    restaurantsLoading: !!restaurantsLoading,
-    // A directed trade shows only once the employee is known.
-    loading: empLoading || !currentEmployee || loading,
-    error: !!feedError,
+  const { highlightedTradeId, highlightSource } = useTradeDeepLink({
     items,
+    loading,
+    error: !!feedError,
+    employeeLoading: empLoading,
+    hasEmployee: !!currentEmployee,
+    listRef: parentRef,
+    virtualizer,
   });
-  const decisionKind = decision.kind;
-  const scrollIndex = decision.kind === 'scroll' ? decision.index : -1;
-  const switchRestaurantId = decision.kind === 'switch-restaurant' ? decision.restaurantId : null;
-
-  useEffect(() => {
-    switch (decisionKind) {
-      case 'switch-restaurant': {
-        const match = (restaurants ?? []).find((r) => r.restaurant_id === switchRestaurantId);
-        if (match) setSelectedRestaurant(match);
-        return;
-      }
-      case 'foreign-restaurant':
-        toast({ title: 'This shift is at a restaurant you cannot open.' });
-        setHighlight(null);
-        return;
-      case 'gone':
-        // RLS hides a trade from other employees once it leaves `open`, so
-        // the copy does not name who took it.
-        toast({
-          title: 'That shift is no longer open',
-          description: 'A teammate took it, or it was withdrawn. The shifts below are still open.',
-        });
-        setHighlight(null);
-        return;
-      case 'scroll': {
-        const container = parentRef.current;
-        if (!container) return;
-        // No smooth scroll: rows have dynamic height.
-        container.scrollIntoView({ block: 'nearest' });
-        virtualizer.scrollToIndex(scrollIndex, { align: 'center' });
-        setHighlight((prev) => (prev ? { ...prev, handled: true } : prev));
-        return;
-      }
-      default:
-        return;
-    }
-  }, [decisionKind, scrollIndex, switchRestaurantId, restaurants, setSelectedRestaurant, toast, virtualizer]);
-
-  // Focus the card root once, after the next frame, so the virtualizer can
-  // render the row first.
-  const focusTradeId = highlight?.handled ? highlight.tradeId : null;
-  useEffect(() => {
-    if (!focusTradeId) return;
-    const frame = window.requestAnimationFrame(() => {
-      const cards = parentRef.current?.querySelectorAll<HTMLElement>('[data-trade-id]') ?? [];
-      const target = Array.from(cards).find((el) => el.dataset.tradeId === focusTradeId);
-      target?.focus({ preventScroll: true });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [focusTradeId]);
-
-  // The highlight clears after 4 s, or on the first user scroll of the list.
-  // Only wheel and touch count: the scroll to the trade also fires `scroll`.
-  useEffect(() => {
-    if (!focusTradeId) return;
-    const clear = () => setHighlight(null);
-    const timer = window.setTimeout(clear, HIGHLIGHT_MS);
-    const container = parentRef.current;
-    container?.addEventListener('wheel', clear, { passive: true });
-    container?.addEventListener('touchmove', clear, { passive: true });
-    return () => {
-      window.clearTimeout(timer);
-      container?.removeEventListener('wheel', clear);
-      container?.removeEventListener('touchmove', clear);
-    };
-  }, [focusTradeId]);
-
-  const highlightedTradeId = highlight?.tradeId ?? null;
-  const highlightSource = highlight?.source ?? null;
 
   // Early returns
   if (!selectedRestaurant) return <NoRestaurantState />;
@@ -570,86 +513,65 @@ export default function AvailableShiftsPage() {
           )}
         </div>
 
-        {loading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-          </div>
-        ) : feedError ? (
-          // Without this state, a failed load reads as "No shifts available".
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <AlertTriangle className="h-6 w-6 text-destructive" aria-hidden="true" />
-            <h3 className="text-[14px] font-medium text-foreground">Could not load shifts.</h3>
-            <Button
-              variant="outline"
-              onClick={() => refetchFeed()}
-              className="h-9 px-4 rounded-lg text-[13px] font-medium"
-            >
-              Try again
-            </Button>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Briefcase className="h-12 w-12 text-muted-foreground mb-4" aria-hidden="true" />
-            <h3 className="text-[14px] font-medium text-foreground mb-1">No shifts available</h3>
-            <p className="text-[13px] text-muted-foreground max-w-sm">
-              There are currently no open shifts or trades. Check back later.
-            </p>
-          </div>
-        ) : (
-          <div
-            ref={parentRef}
-            className="max-h-[60vh] overflow-y-auto"
-          >
+        <ShiftsFeedBody
+          loading={loading}
+          error={!!feedError}
+          isEmpty={items.length === 0}
+          onRetry={() => refetchFeed()}
+          renderList={() => (
             <div
-              style={{
-                height: `${virtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
-              }}
+              ref={parentRef}
+              className="max-h-[60vh] overflow-y-auto"
             >
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const item = items[virtualRow.index];
-                return (
-                  <div
-                    key={item.key}
-                    data-index={virtualRow.index}
-                    ref={virtualizer.measureElement}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                  >
-                    <div className="pb-3">
-                      {item.type === 'open_shift' && item.openShift ? (
-                        <OpenShiftCard
-                          openShift={item.openShift}
-                          hasConflict={conflictMap.get(item.key) ?? false}
-                          onClaim={handleClaim}
-                          isClaiming={claimMutation.isPending && claimTarget?.template_id === item.openShift.template_id && claimTarget?.shift_date === item.openShift.shift_date}
-                        />
-                      ) : item.type === 'trade' && item.trade ? (
-                        <TradeCard
-                          trade={item.trade as TradeCardProps['trade']}
-                          onAccept={handleAcceptTrade}
-                          isAccepting={isAcceptingTrade && acceptingTradeId === item.trade.id}
-                          currentEmployeeId={currentEmployee.id}
-                          areaMismatch={getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)}
-                          highlighted={highlightedTradeId === item.trade.id}
-                          highlightSource={highlightedTradeId === item.trade.id ? highlightSource : null}
-                        />
-                      ) : null}
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = items[virtualRow.index];
+                  return (
+                    <div
+                      key={item.key}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div className="pb-3">
+                        {item.type === 'open_shift' && item.openShift ? (
+                          <OpenShiftCard
+                            openShift={item.openShift}
+                            hasConflict={conflictMap.get(item.key) ?? false}
+                            onClaim={handleClaim}
+                            isClaiming={claimMutation.isPending && claimTarget?.template_id === item.openShift.template_id && claimTarget?.shift_date === item.openShift.shift_date}
+                          />
+                        ) : item.type === 'trade' && item.trade ? (
+                          <TradeCard
+                            trade={item.trade}
+                            onAccept={handleAcceptTrade}
+                            isAccepting={isAcceptingTrade && acceptingTradeId === item.trade.id}
+                            currentEmployeeId={currentEmployee.id}
+                            areaMismatch={getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)}
+                            isHighlighted={highlightedTradeId === item.trade.id}
+                            highlightSource={highlightedTradeId === item.trade.id ? highlightSource : null}
+                          />
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        />
       </div>
 
       {/* My Claims section */}
@@ -679,17 +601,17 @@ export default function AvailableShiftsPage() {
               >
                 <div className="min-w-0 space-y-1">
                   <div className="text-[14px] font-medium text-foreground">
-                    {(claim as any).shift_template?.name ?? 'Shift'}
+                    {claim.shift_template?.name ?? 'Shift'}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
                       {format(parseDateLocal(claim.shift_date), 'EEE, MMM d')}
                     </span>
-                    {(claim as any).shift_template && (
+                    {claim.shift_template && (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                        {(claim as any).shift_template.position}
+                        {claim.shift_template.position}
                       </span>
                     )}
                   </div>

@@ -81,6 +81,7 @@ type QueryBuilder = {
   eq: ReturnType<typeof vi.fn>;
   in: ReturnType<typeof vi.fn>;
   is: ReturnType<typeof vi.fn>;
+  gt: ReturnType<typeof vi.fn>;
   or: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
@@ -110,6 +111,7 @@ const createSelectQueryBuilder = (mockData: TestShiftTrade[] | TestShiftTrade | 
     eq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
     is: vi.fn().mockReturnThis(),
+    gt: vi.fn().mockReturnThis(),
     or: vi.fn().mockReturnThis(),
     order: vi.fn().mockResolvedValue({ data: mockData, error }),
     single: vi.fn().mockResolvedValue({ data: mockData, error }),
@@ -128,6 +130,7 @@ const createMutationQueryBuilder = (mockData: TestShiftTrade | null, error: Erro
     eq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
     is: vi.fn().mockReturnThis(),
+    gt: vi.fn().mockReturnThis(),
     or: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data: mockData, error }),
@@ -1716,6 +1719,53 @@ describe('useShiftTrades', () => {
       const bound = Date.parse(shiftsBuilder.gte.mock.calls[0][1]);
       expect(bound).toBeGreaterThanOrEqual(before - 1000);
       expect(bound).toBeLessThanOrEqual(Date.now() + 1000);
+    });
+
+    it('downloads only trades whose shift ends after now', async () => {
+      const builder = createSelectQueryBuilder([]);
+      mockSupabase.from.mockReturnValue(builder);
+
+      const before = Date.now();
+      const { result } = renderHook(() => useMarketplaceTrades('rest-123', null), {
+        wrapper: createWrapper(),
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const selectArg = String(builder.select.mock.calls[0][0]);
+      expect(selectArg).toMatch(/offered_shift:shifts!offered_shift_id!inner\(/);
+      expect(builder.gt).toHaveBeenCalledWith('offered_shift.end_time', expect.any(String));
+      const bound = Date.parse(builder.gt.mock.calls[0][1]);
+      expect(bound).toBeGreaterThanOrEqual(before - 1000);
+      expect(bound).toBeLessThanOrEqual(Date.now() + 1000);
+    });
+
+    it('sends the trades read and the conflict shift read at the same time', async () => {
+      let resolveTrades: (value: { data: TestShiftTrade[]; error: null }) => void = () => {};
+      const tradesBuilder = createSelectQueryBuilder([]);
+      tradesBuilder.order.mockReturnValue(
+        new Promise((resolve) => {
+          resolveTrades = resolve;
+        }),
+      );
+      const shiftsBuilder = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: [], error: null }),
+      };
+      mockSupabase.from.mockImplementation((table: string) =>
+        table === 'shifts' ? shiftsBuilder : tradesBuilder,
+      );
+
+      const { result } = renderHook(() => useMarketplaceTrades('rest-123', 'emp-2'), {
+        wrapper: createWrapper(),
+      });
+
+      // The trades read is still open, but the shift read already went out.
+      await waitFor(() => expect(mockSupabase.from).toHaveBeenCalledWith('shifts'));
+      resolveTrades({ data: [openTrade], error: null });
+      await waitFor(() => expect(result.current.trades).toHaveLength(1));
+      expect(result.current.trades[0].hasConflict).toBe(false);
     });
 
     it('does not query when enabled is false', async () => {

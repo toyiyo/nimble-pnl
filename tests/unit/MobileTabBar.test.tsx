@@ -6,22 +6,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MobileTabBar } from '@/components/employee/MobileTabBar';
 
 const mocks = vi.hoisted(() => ({
-  selectedRestaurant: { restaurant_id: 'rest-1' } as { restaurant_id: string } | null,
-  currentEmployee: { id: 'emp-1' } as { id: string } | null,
-  claimable: { trades: [] as { urgent: boolean }[], count: 0 },
-  useClaimableTrades: vi.fn(),
+  badge: { count: 0, hasUrgentTrade: false },
 }));
 
-vi.mock('@/contexts/RestaurantContext', () => ({
-  useRestaurantContext: () => ({ selectedRestaurant: mocks.selectedRestaurant }),
-}));
-
-vi.mock('@/hooks/useCurrentEmployee', () => ({
-  useCurrentEmployee: () => ({ currentEmployee: mocks.currentEmployee, loading: false, error: null }),
-}));
-
-vi.mock('@/hooks/useClaimableTrades', () => ({
-  useClaimableTrades: mocks.useClaimableTrades,
+vi.mock('@/hooks/useClaimableTradeBadge', () => ({
+  useClaimableTradeBadge: () => mocks.badge,
 }));
 
 const renderWithRouter = (currentPath: string) => {
@@ -33,24 +22,15 @@ const renderWithRouter = (currentPath: string) => {
 };
 
 function setClaimable(urgentFlags: boolean[]) {
-  mocks.claimable = {
-    trades: urgentFlags.map((urgent) => ({ urgent })),
+  mocks.badge = {
     count: urgentFlags.length,
+    hasUrgentTrade: urgentFlags.some(Boolean),
   };
 }
 
 describe('MobileTabBar', () => {
   beforeEach(() => {
-    mocks.selectedRestaurant = { restaurant_id: 'rest-1' };
-    mocks.currentEmployee = { id: 'emp-1' };
     setClaimable([]);
-    mocks.useClaimableTrades.mockReset();
-    mocks.useClaimableTrades.mockImplementation(() => ({
-      ...mocks.claimable,
-      loading: false,
-      error: null,
-      refetch: vi.fn(),
-    }));
   });
 
   it('renders all 4 tabs', () => {
@@ -114,18 +94,6 @@ describe('MobileTabBar', () => {
       setClaimable([false, true]);
       renderWithRouter('/employee/schedule');
       expect(screen.getByText('2')).toHaveClass('bg-amber-600');
-    });
-
-    it('passes the restaurant and the employee to useClaimableTrades', () => {
-      renderWithRouter('/employee/schedule');
-      expect(mocks.useClaimableTrades).toHaveBeenCalledWith('rest-1', 'emp-1');
-    });
-
-    it('passes null ids with no restaurant or no employee row', () => {
-      mocks.selectedRestaurant = null;
-      mocks.currentEmployee = null;
-      renderWithRouter('/employee/schedule');
-      expect(mocks.useClaimableTrades).toHaveBeenCalledWith(null, null);
     });
   });
 });

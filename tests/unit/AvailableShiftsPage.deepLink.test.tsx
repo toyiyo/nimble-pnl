@@ -1,5 +1,5 @@
 /**
- * The marketplace deep link (design A5): the page copies `trade`, `restaurant`
+ * The marketplace deep link: the page copies `trade`, `restaurant`
  * and `from` into state, deletes them from the URL, then scrolls to the trade
  * and highlights it, or shows a toast when it cannot.
  */
@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => {
   return {
     items: [trade('trade-a', DAY_A, 'Ana Poster'), trade('trade-b', DAY_B, 'Ben Poster')],
     feed: { loading: false, error: null as Error | null },
+    employee: { id: 'emp-me', name: 'Me', area: null, position: 'Server' } as Record<string, unknown> | null,
     refetch: vi.fn(),
     toast: vi.fn(),
     setSelectedRestaurant: vi.fn(),
@@ -58,7 +59,7 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 
 vi.mock('@/hooks/useCurrentEmployee', () => ({
   useCurrentEmployee: () => ({
-    currentEmployee: { id: 'emp-me', name: 'Me', area: null, position: 'Server' },
+    currentEmployee: mocks.employee,
     loading: false,
   }),
 }));
@@ -124,13 +125,14 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname + location.search}</div>;
 }
 
-function renderAt(search: string) {
-  return render(
+function renderAt(search: string, { strict = false }: { strict?: boolean } = {}) {
+  const tree = (
     <MemoryRouter initialEntries={[`/employee/shifts${search}`]}>
       <AvailableShiftsPage />
       <LocationProbe />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  return render(strict ? <React.StrictMode>{tree}</React.StrictMode> : tree);
 }
 
 function card(tradeId: string): HTMLElement {
@@ -143,6 +145,7 @@ describe('AvailableShiftsPage – deep link', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.feed = { loading: false, error: null };
+    mocks.employee = { id: 'emp-me', name: 'Me', area: null, position: 'Server' };
     Element.prototype.scrollIntoView = vi.fn();
   });
 
@@ -246,5 +249,23 @@ describe('AvailableShiftsPage – deep link', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(mocks.refetch).toHaveBeenCalledTimes(1);
     expect(mocks.toast).not.toHaveBeenCalled();
+  });
+
+  it('shows the "no longer open" toast once in StrictMode', () => {
+    renderAt('?trade=trade-x&restaurant=rest-1&from=reminder', { strict: true });
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the foreign restaurant toast once in StrictMode', () => {
+    renderAt('?trade=trade-b&restaurant=rest-9&from=reminder', { strict: true });
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends the wait with the foreign restaurant toast when the user has no employee row', () => {
+    mocks.employee = null;
+    renderAt('?trade=trade-b&restaurant=rest-1&from=reminder');
+    expect(screen.getByText('not linked')).toBeInTheDocument();
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
+    expect(mocks.toast).toHaveBeenCalledWith({ title: 'This shift is at a restaurant you cannot open.' });
   });
 });

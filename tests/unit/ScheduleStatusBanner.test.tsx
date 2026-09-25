@@ -97,11 +97,22 @@ describe('ScheduleStatusBanner', () => {
     expect(screen.queryByText(/Published/)).not.toBeInTheDocument();
   });
 
-  it('keeps no reserved height when reserveHeight is false', () => {
+  it('renders nothing with no content when reserveHeight is false', () => {
     const { container } = renderBanner({ state: 'retracted', reserveHeight: false });
 
-    expect(container.querySelector('.min-h-\\[76px\\]')).not.toBeInTheDocument();
-    expect(container.textContent).toBe('');
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing while loading when reserveHeight is false', () => {
+    const { container } = renderBanner({ state: null, reserveHeight: false });
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing for a published week with no date when reserveHeight is false', () => {
+    const { container } = renderBanner({ publication: null, reserveHeight: false });
+
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('still shows the published line when reserveHeight is false', () => {

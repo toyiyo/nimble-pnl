@@ -14,6 +14,8 @@ export function stepCustomRange(
   direction: -1 | 1,
 ): { start: Date; end: Date } {
   const dayCount = differenceInCalendarDays(end, start) + 1;
+  // An end before the start is not a range. Do not step it.
+  if (dayCount < 1) return { start, end };
   const shift = direction * dayCount;
   return {
     start: startOfDay(addDays(start, shift)),

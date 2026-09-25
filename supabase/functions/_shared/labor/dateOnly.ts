@@ -6,15 +6,30 @@ const ISO_DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 export const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * True when `day` is `YYYY-MM-DD` and names a real calendar day. UTC field
+ * math, so the host timezone does not change the result. `2026-02-30` rolls
+ * to `2026-03-02` and fails.
+ */
+function isCalendarDay(day: unknown): day is string {
+  if (typeof day !== 'string' || !DATE_ONLY_RE.test(day)) return false;
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, date)).toISOString().slice(0, 10) === day;
+}
+
+/**
  * Check the day range of a labor loader at its entry. Throws a clear error
- * that names the loader, before any read, when a bound is not `YYYY-MM-DD`.
+ * that names the loader, before any read, when a bound is not a calendar day
+ * (`YYYY-MM-DD`) or when `startDay` is after `endDay`.
  */
 export function assertDayRange(fn: string, startDay: string, endDay: string): void {
-  if (typeof startDay !== 'string' || !DATE_ONLY_RE.test(startDay)) {
+  if (!isCalendarDay(startDay)) {
     throw new Error(`${fn}: startDay must be a calendar day (YYYY-MM-DD), received ${JSON.stringify(startDay)}`);
   }
-  if (typeof endDay !== 'string' || !DATE_ONLY_RE.test(endDay)) {
+  if (!isCalendarDay(endDay)) {
     throw new Error(`${fn}: endDay must be a calendar day (YYYY-MM-DD), received ${JSON.stringify(endDay)}`);
+  }
+  if (startDay > endDay) {
+    throw new Error(`${fn}: startDay ${startDay} is after endDay ${endDay}`);
   }
 }
 

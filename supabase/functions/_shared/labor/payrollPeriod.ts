@@ -118,7 +118,8 @@ function toNumberOrNull(value: number | string | null | undefined): number | nul
 /**
  * Payroll of a pay period of whole restaurant days.
  *
- * Throws on `employeeId: null` and on `employeeId: ''`. The hook uses `null`
+ * Throws on `employeeId: null`, on `employeeId: ''` and on a whitespace-only
+ * id. The hook uses `null`
  * for "self-scoped, the id is not known yet", and a missing filter would read
  * every employee.
  */
@@ -132,7 +133,7 @@ export async function loadPayrollPeriod(
   if (employeeId === null) {
     throw new Error('loadPayrollPeriod: employeeId is null. Pass undefined for all employees, or wait for the id.');
   }
-  if (employeeId !== undefined && (typeof employeeId !== 'string' || employeeId === '')) {
+  if (employeeId !== undefined && (typeof employeeId !== 'string' || employeeId.trim() === '')) {
     throw new Error('loadPayrollPeriod: employeeId must be undefined or a non-empty string.');
   }
 

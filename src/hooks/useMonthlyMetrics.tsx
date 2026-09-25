@@ -569,16 +569,16 @@ export function useMonthlyMetrics(
         const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
         if (clampedStart > clampedEnd) continue;
 
+        // The month as an inclusive day range. The tip, payout and per-job
+        // rows carry DATE columns, so compare day strings, not instants.
+        const startDay = toDateOnlyString(clampedStart);
+        const endDay = toDateOnlyString(clampedEnd);
+        const inMonth = (day: string) => day >= startDay && day <= endDay;
+
         // Build per-employee tipsOwed for *this* month from tipSplitsData,
         // net of the month's payouts (same netting rule as Payroll).
-        const monthTipRows = tipSplitsData.filter((row) => {
-          const splitDate = new Date(row.tip_splits.split_date + 'T12:00:00');
-          return splitDate >= clampedStart && splitDate <= clampedEnd;
-        });
-        const monthPayoutRows = tipPayoutsData.filter((row) => {
-          const payoutDate = new Date(row.payout_date + 'T12:00:00');
-          return payoutDate >= clampedStart && payoutDate <= clampedEnd;
-        });
+        const monthTipRows = tipSplitsData.filter((row) => inMonth(row.tip_splits.split_date));
+        const monthPayoutRows = tipPayoutsData.filter((row) => inMonth(row.payout_date));
         const tipsOwedByEmployee = netTipsOwedByEmployee(monthTipRows, monthPayoutRows);
 
         // OT-D labor for this month (restaurant-local week banding + tipsOwed).
@@ -597,8 +597,7 @@ export function useMonthlyMetrics(
         let monthPerJobCents = 0;
         (manualPaymentsData ?? []).forEach(
           (payment: { date: string; allocated_cost: number }) => {
-            const paymentDate = new Date(payment.date);
-            if (paymentDate >= clampedStart && paymentDate <= clampedEnd) {
+            if (inMonth(payment.date)) {
               monthPerJobCents += payment.allocated_cost; // already in cents
             }
           }

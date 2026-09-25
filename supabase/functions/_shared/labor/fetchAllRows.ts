@@ -78,8 +78,11 @@ export interface KeysetCursor<K> {
  *
  * A writer can change the order key of a row between two pages, so that the
  * row sorts after the cursor again. The helper then receives the row two
- * times. It keeps only the last copy of each id (the newer value, at its
- * position in the new order). See `LaborLoaderPaging_KeysetNoDedupe.cfg`.
+ * times. It keeps only the last copy of each id (the newer value). The
+ * output is in read order after this de-duplication: each id sits where its
+ * last copy was read. The output is not sorted by `(orderKey, id)`, so a
+ * caller that needs that order must sort the rows itself. See
+ * `LaborLoaderPaging_KeysetNoDedupe.cfg`.
  *
  * The order key column must be NOT NULL. PostgREST sorts a null last, and
  * the `gt` / `eq` cursor filter never matches a null, so a null key stops the

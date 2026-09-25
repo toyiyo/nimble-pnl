@@ -43,4 +43,12 @@ describe('stepCustomRange', () => {
     const one = stepCustomRange(new Date(2026, 8, 14), endOfDay(new Date(2026, 8, 14)), -1);
     expect(days(one)).toEqual(['2026-09-13', '2026-09-13']);
   });
+
+  it('returns the input unchanged when the end is before the start', () => {
+    const badStart = new Date(2026, 8, 20);
+    const badEnd = endOfDay(new Date(2026, 8, 14));
+    const stepped = stepCustomRange(badStart, badEnd, 1);
+    expect(stepped.start).toBe(badStart);
+    expect(stepped.end).toBe(badEnd);
+  });
 });

@@ -98,6 +98,14 @@ describe('loadPayrollPeriod', () => {
     expect(client.records).toHaveLength(0);
   });
 
+  it('throws on a whitespace-only employeeId', async () => {
+    const client = makeLaborStubClient({});
+    await expect(
+      loadPayrollPeriod(client, { ...week, employees: [hourly('e1')], employeeId: '   ' }),
+    ).rejects.toThrow(/employeeId must be undefined or a non-empty string/);
+    expect(client.records).toHaveLength(0);
+  });
+
   it('pages the seven source reads with keyset pages ordered by (key, id)', async () => {
     const client = makeLaborStubClient({
       tip_splits: [{ id: 's1', restaurant_id: REST, status: 'approved', split_date: '2026-03-03', total_amount: 500 }],

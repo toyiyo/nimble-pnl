@@ -48,10 +48,25 @@ const punches = [
   dbPunch('2026-07-31T20:00:00.000Z', 'clock_out', 'p-out'),
 ];
 
-function mockSupabaseClient() {
+// DATE rows: a $30.00 tip split and a $10.00 payout on the last day, and
+// per-job payments on the first day of July and of August. The mock returns
+// every row for every query, so the month loop alone assigns each row a month.
+const tipSplitRows = [
+  { amount: 3000, employee_id: EMPLOYEE_ID, tip_splits: { restaurant_id: RESTAURANT, split_date: '2026-07-31' } },
+];
+const tipPayoutRows = [{ amount: 1000, employee_id: EMPLOYEE_ID, payout_date: '2026-07-31' }];
+const perJobRows = [
+  { date: '2026-07-01', allocated_cost: 5000 },
+  { date: '2026-08-01', allocated_cost: 7000 },
+];
+
+function mockSupabaseClient({ withDayRows = false } = {}) {
   const fromMock = vi.fn((table: string) => {
     if (table === 'time_punches') return makeChainable(punches);
     if (table === 'employees_secure') return makeChainable([employee]);
+    if (withDayRows && table === 'tip_split_items') return makeChainable(tipSplitRows);
+    if (withDayRows && table === 'tip_payouts') return makeChainable(tipPayoutRows);
+    if (withDayRows && table === 'daily_labor_allocations') return makeChainable(perJobRows);
     return makeChainable([]);
   });
   vi.doMock('@/integrations/supabase/client', () => ({
@@ -97,5 +112,41 @@ describe('useMonthlyMetrics whole-day engine bounds', () => {
     expect(july).toBeDefined();
     // 5 h x $20.00 = $100.00.
     expect(july!.pending_labor_cost).toBeCloseTo(100, 2);
+  });
+
+  it('counts a tip split, a payout and a per-job payment by calendar day in the month', async () => {
+    mockSupabaseClient({ withDayRows: true });
+    const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
+
+    const { result } = renderHook(
+      () => useMonthlyMetrics(RESTAURANT, new Date(2026, 6, 1), new Date(2026, 6, 31)),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+
+    const july = result.current.data?.find((m) => m.period === '2026-07');
+    expect(july).toBeDefined();
+    // $100.00 wages + ($30.00 tips - $10.00 payout) + $50.00 per-job on Jul 1.
+    expect(july!.pending_labor_cost).toBeCloseTo(170, 2);
+  });
+
+  it('keeps a per-job payment on Aug 1 out of July', async () => {
+    mockSupabaseClient({ withDayRows: true });
+    const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
+
+    const { result } = renderHook(
+      () => useMonthlyMetrics(RESTAURANT, new Date(2026, 6, 1), new Date(2026, 7, 31)),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+
+    const july = result.current.data?.find((m) => m.period === '2026-07');
+    const august = result.current.data?.find((m) => m.period === '2026-08');
+    expect(july!.pending_labor_cost).toBeCloseTo(170, 2);
+    expect(august!.pending_labor_cost).toBeCloseTo(70, 2);
   });
 });

@@ -391,6 +391,13 @@ one as instant (change) or day token (keep). The pattern is
     day from the wages (the noon rule). Now the last day counts, as in the
     dashboard pill loader. Test:
     `tests/unit/useMonthlyMetrics.wholeDayBounds.test.ts`.
+  - `src/hooks/useMonthlyMetrics.tsx` puts the tip splits, tip payouts and
+    per-job payments in a month by day string (`startDay` to `endDay`,
+    inclusive). Before, a tip split or payout on the last day of a period
+    whose `to` date is local midnight did not count. Before, the per-job
+    filter read `new Date(payment.date)` as UTC midnight. On a host west of
+    UTC, a payment on the 1st moved to the previous month. Now it stays in
+    its month. Test: `tests/unit/useMonthlyMetrics.wholeDayBounds.test.ts`.
   - `src/pages/Payroll.tsx` steps a custom range by whole calendar days
     (`stepCustomRange`, `src/utils/payrollCustomRange.ts`). Before, it
     stepped by `end - start` milliseconds, which is 1 ms less than whole
@@ -427,8 +434,10 @@ All tests use fixed UTC instants and pass under `npm run test:tz`
   day gives one day of salary on all three hosts, through each loader.
 - **Loaders:** a stub client returns fixed rows. Check the windows each query
   gets, the page loop, the tip netting, the per-job sum and the basis rule.
-  `loadPayrollPeriod` throws on `employeeId: null` and on `employeeId: ''`.
-  Each loader throws on a day that is not `YYYY-MM-DD`, before any read.
+  `loadPayrollPeriod` throws on `employeeId: null`, on `employeeId: ''` and
+  on a whitespace-only id. Each loader throws before any read on a day that
+  is not `YYYY-MM-DD`, on a day that is not in the calendar (`2026-02-30`),
+  and when `startDay` is after `endDay`.
 - **Hook parity:** each hook returns the loader result for the same input.
   Add hook tests for a `dateTo` at Sunday midnight and a `dateFrom` in the
   middle of a day (the intended changes above).

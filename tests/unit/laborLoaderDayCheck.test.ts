@@ -37,4 +37,28 @@ describe('labor loader day check', () => {
     );
     expect(client.records).toHaveLength(0);
   });
+
+  it.each(cases)('%s throws on a day that is not in the calendar before any read', async (name, run) => {
+    const client = makeLaborStubClient({});
+    await expect(run(client, '2026-02-30', '2026-03-07')).rejects.toThrow(
+      new RegExp(`${name}: startDay must be a calendar day \\(YYYY-MM-DD\\)`),
+    );
+    await expect(run(client, '2026-03-01', '2026-13-01')).rejects.toThrow(
+      new RegExp(`${name}: endDay must be a calendar day \\(YYYY-MM-DD\\)`),
+    );
+    expect(client.records).toHaveLength(0);
+  });
+
+  it.each(cases)('%s throws when startDay is after endDay before any read', async (name, run) => {
+    const client = makeLaborStubClient({});
+    await expect(run(client, '2026-03-08', '2026-03-07')).rejects.toThrow(
+      new RegExp(`${name}: startDay 2026-03-08 is after endDay 2026-03-07`),
+    );
+    expect(client.records).toHaveLength(0);
+  });
+
+  it.each(cases)('%s accepts a one-day range and Feb 29 of a leap year', async (_name, run) => {
+    const client = makeLaborStubClient({});
+    await expect(run(client, '2028-02-29', '2028-02-29')).resolves.toBeDefined();
+  });
 });

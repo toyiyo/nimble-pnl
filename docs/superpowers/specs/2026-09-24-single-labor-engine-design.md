@@ -201,10 +201,11 @@ timezone and the employees.
   employees, employeeId? })` returns `{ period, capped }`, where `period` is
   the `PayrollPeriod` from `calculatePayrollPeriod`. It is the current
   `usePayroll` body.
-  - `employeeId` is `string | undefined`, never `null`. The hook uses `null`
-    for "self-scoped, pending" (`usePayroll.tsx:171`), and `scopeToEmployee`
-    (`:62-68`) reads `null` as "no filter". So the hook does not call the
-    loader for `null`, and the loader throws on `null`.
+  - `employeeId` is `undefined` (all employees) or a non-empty string. The
+    hook uses `null` for "self-scoped, pending" (`usePayroll.tsx:171`), and
+    `scopeToEmployee` (`:62-68`) reads `null` as "no filter". So the hook
+    does not call the loader for `null`, and the loader throws on `null`
+    and on `''`.
   - `capped` goes to the caller, not only to the console (`:217-222`).
   - The punch fetch names its columns, not `select('*')` (`:205`).
   - `tip_splits`, `tip_split_items`, `daily_labor_allocations`,
@@ -219,9 +220,16 @@ timezone and the employees.
 All loader reads page with keyset paging, not with offset paging (see "TLA+
 check"). A new `fetchAllRowsKeyset` helper orders by `(order key, id)` and
 asks for the next page after the last row it received, for example
+`.gte('punch_time', t)` plus
 `.or(\`punch_time.gt.${t},and(punch_time.eq.${t},id.gt.${id})\`)`. The
-page size and the `maxPages` cap stay as in `fetchAllRows`
-(`src/utils/fetchAllRows.ts:4-8`). Offset paging (`fetchAllRows.ts:49-54`)
+`gte` lets the index range start at the cursor. A keyset on `id` alone uses
+`.gt('id', id)`. The helper keeps one copy (the last) of each id, because an
+edit can move a row that it read to a key after the cursor. The order key
+must be NOT NULL: the helper throws on a null key. All loaders call it
+through `fetchAllKeyset(build, orderKey)` (`_shared/labor/loaderQuery.ts`).
+Each loader checks `startDay` and `endDay` against `YYYY-MM-DD` at its entry
+(`assertDayRange`). The page size and the `maxPages` cap stay as in
+`fetchAllRows` (`src/utils/fetchAllRows.ts:4-8`). Offset paging (`fetchAllRows.ts:49-54`)
 reads each page in its own snapshot. A row that another user inserts or
 deletes before the page boundary moves the offsets, so the loader returns a
 row twice or skips a row that nobody changed. A duplicate punch breaks the
@@ -371,12 +379,23 @@ one as instant (change) or day token (keep). The pattern is
     `src/hooks/usePnLAnalyticsFromSource.tsx:116` (`subDays(now, 30)`) start
     in the middle of a day. The first day of `dailyCosts` now covers the
     whole day.
-  - `calculateActualLaborCostForRange` turns each range bound into a whole
-    restaurant day once, then compares day strings. Before, a bound in the
-    middle of a day (for example a custom `to` date at local midnight in
-    `useMonthlyMetrics`, or a range end at "now") dropped that last day
-    from the wages. Now the whole day counts. Bounds at local midnight and
-    at the local end of day give the same result as before.
+  - `calculateActualLaborCostForRange` does not turn its bounds into whole
+    days. It keeps the noon rule: the first day is the first day whose local
+    noon is at or after `rangeStart`, and the last day is the last day whose
+    local noon is at or before `rangeEnd`. Regression tests depend on it. The
+    callers pass whole-day tokens: the loaders pass `dayTokens(startDay,
+    endDay)`.
+  - `src/hooks/useMonthlyMetrics.tsx` passes `startOfDay(clampedStart)` and
+    `endOfDay(clampedEnd)` to the engine. Before, a custom period whose `to`
+    date is the local midnight at the start of its last day dropped that
+    day from the wages (the noon rule). Now the last day counts, as in the
+    dashboard pill loader. Test:
+    `tests/unit/useMonthlyMetrics.wholeDayBounds.test.ts`.
+  - `src/pages/Payroll.tsx` steps a custom range by whole calendar days
+    (`stepCustomRange`, `src/utils/payrollCustomRange.ts`). Before, it
+    stepped by `end - start` milliseconds, which is 1 ms less than whole
+    days. After a step, the range had one more day, and the loader paid one
+    more salary day. Test: `tests/unit/payrollCustomRange.test.ts`.
 - **Pages, other viewers.** For a viewer in another timezone, overtime weeks
   and range edges follow the restaurant timezone (a fix). On a DST change at
   local midnight (Santiago, Havana), the first and last hour of the day move
@@ -408,7 +427,8 @@ All tests use fixed UTC instants and pass under `npm run test:tz`
   day gives one day of salary on all three hosts, through each loader.
 - **Loaders:** a stub client returns fixed rows. Check the windows each query
   gets, the page loop, the tip netting, the per-job sum and the basis rule.
-  `loadPayrollPeriod` throws on `employeeId: null`.
+  `loadPayrollPeriod` throws on `employeeId: null` and on `employeeId: ''`.
+  Each loader throws on a day that is not `YYYY-MM-DD`, before any read.
 - **Hook parity:** each hook returns the loader result for the same input.
   Add hook tests for a `dateTo` at Sunday midnight and a `dateFrom` in the
   middle of a day (the intended changes above).
@@ -430,11 +450,19 @@ through a table in several requests while a manager or the kiosk writes
 it. The model checks that step.
 
 - Spec: `specs/tla/labor-loader-paging/LaborLoaderPaging.tla`.
+- A row is an id with an order key (`key[i]`). The order is `(key, id)`.
+  The writers insert, delete, or change the key of a row (`Update(i, k)`).
+  The constant `Dedupe` turns on the id de-duplication of
+  `fetchAllRowsKeyset`. Bounds: `Keys = 1..6`, `PageSize = 2`,
+  `MaxWrites = 2` (1 for the offset configs).
 - Invariants: `NoDuplicateRow` (the loader receives no row twice) and
   `NoLostStableRow` (at the end, the loader has every row that was in the
   table for the whole read and that nobody changed).
-- `LaborLoaderPaging.cfg` (keyset paging, 2 concurrent writes): pass,
-  190 distinct states.
+- `LaborLoaderPaging.cfg` (keyset paging with de-duplication, 2 concurrent
+  writes): pass, 2872 distinct states.
+- `LaborLoaderPaging_KeysetNoDedupe.cfg` (keyset paging, no
+  de-duplication): violation of `NoDuplicateRow`. Page 1 returns rows 2 and
+  3, an edit moves row 2 to key 4, and page 2 returns row 2 again.
 - `LaborLoaderPaging_Offset.cfg` (offset paging, as `fetchAllRows` is now):
   violation of `NoDuplicateRow`. Page 1 returns rows 2 and 3, an insert of
   row 1 moves the offsets, and page 2 returns rows 3 and 4.
@@ -445,13 +473,19 @@ it. The model checks that step.
 `tlc.sh all` output:
 
 ```text
-OK    LaborLoaderPaging: pass (expected pass; 190 distinct states found)
-OK    LaborLoaderPaging_Offset: violation (expected violation; 35 distinct states found)
-OK    LaborLoaderPaging_OffsetLostRow: violation (expected violation; 40 distinct states found)
+OK    LaborLoaderPaging: pass (expected pass; 2872 distinct states found)
+OK    LaborLoaderPaging_KeysetNoDedupe: violation (expected violation; 743 distinct states found)
+OK    LaborLoaderPaging_Offset: violation (expected violation; 105 distinct states found)
+OK    LaborLoaderPaging_OffsetLostRow: violation (expected violation; 123 distinct states found)
 OK    ToastRollupWatermark: pass (expected pass; 275 distinct states found)
 OK    ToastRollupWatermark_NoLastSync: violation (expected violation; 151 distinct states found)
----- 5/5 configs matched their EXPECT
+---- 6/6 configs matched their EXPECT
 ```
+
+TLC runs with several workers (`-workers auto`) and stops at the first
+violation. So the state count of a violation config changes from run to run
+(a second run gave 551, 106 and 121). The count of a pass config does not
+change.
 
 The offset bug exists today in every `fetchAllRows` caller. It shows only
 when a read has more than one page (more than 1000 rows) and a write lands
@@ -492,13 +526,19 @@ cannot drive a model conversation to a deterministic tool call.
   all punches per employee (`laborCalculations.ts:873`). The plan measures a
   `year` fixture with 100 employees and 20000 punches (the `fetchAllRows`
   cap).
-  - Result (PR 1, this container, Node): 100 hourly employees, 20000 punches
-    (10000 shifts) over one year in America/Chicago.
-    `calculateActualLaborCost` takes 570 ms and
-    `calculateActualLaborCostForRange` takes 788 ms, about 1.4 s in total.
-    The wage total is the expected 120,000,000 cents. This is below the edge
-    CPU limit (about 10 s), but PR 2 must not run both for a `year` period
-    when the tool needs only one of them.
+  - Result (PR 1, this container, Node 22, host TZ UTC): 100 hourly
+    employees, 20000 punches (10000 shifts) over one year in
+    America/Chicago. Each figure is the mean of 3 runs after 1 warm-up run.
+    The wage total is the expected 120,000,000 cents.
+    - Before the Phase 7b change: `calculateActualLaborCost` takes 405 ms and
+      `calculateActualLaborCostForRange` takes 737 ms.
+    - After it (a cached `en-CA` `Intl.DateTimeFormat` per zone in
+      `toBusinessDay`, `toISOString` in `addDaysToDateStr`): 92 ms and
+      225 ms, about 0.3 s in total. `en-CA` with 2-digit month and day gives
+      `YYYY-MM-DD` in Node (ICU 78.2). `toBusinessDay` falls back to
+      `formatInTimeZone` for any other output.
+    - This is far below the edge CPU limit (about 10 s). PR 2 must still not
+      run both functions for a `year` period when the tool needs only one.
 - **Cold start.** A bare `date-fns` root import loads the whole package. Map
   `"date-fns/": "npm:/date-fns@3.6.0/"` too, and use subpath imports in the
   moved files, or measure the cold start.

@@ -23,13 +23,15 @@ import {
   calculateContractorPayForPeriod,
 } from './compensationCalculations.ts';
 import { parseWorkPeriods, calculateEmployeePay } from './payrollCalculations.ts';
-import { startOfWeek } from 'date-fns/startOfWeek';
-import { endOfWeek } from 'date-fns/endOfWeek';
-import { format as formatDate } from 'date-fns/format';
-import { WEEK_STARTS_ON } from './dateConfig.ts';
 import { calculateShiftHours } from './shiftHours.ts';
 import { toDateOnlyString, parseDateOnly } from './dateOnly.ts';
-import { businessDaysBetween, toBusinessDay } from './restaurantClock.ts';
+import {
+  addDaysToDateStr,
+  businessDaysBetween,
+  toBusinessDay,
+  weekEndDateStr,
+  weekStartDateStr,
+} from './restaurantClock.ts';
 import type {
   LaborEmployee,
   LaborShift,
@@ -541,7 +543,7 @@ export function calculateActualLaborCost(
       return;
     }
 
-    const { periods } = parseWorkPeriods(punches);
+    const { periods } = parseWorkPeriods(punches, timezone);
     
     if (!hoursPerEmployeePerDay.has(employeeId)) {
       hoursPerEmployeePerDay.set(employeeId, new Map<string, number>());
@@ -697,7 +699,7 @@ export function calculateHoursPerEmployee(
 
   return employees.map((employee) => {
     const punches = punchesByEmployee.get(employee.id) ?? [];
-    const { periods: rawPeriods } = parseWorkPeriods(punches);
+    const { periods: rawPeriods } = parseWorkPeriods(punches, timezone);
     const periods = rawPeriods.filter(
       (p) => p.startTime >= startDate && p.startTime <= endDate,
     );
@@ -852,10 +854,33 @@ export interface RangeLaborResult {
 }
 
 /**
+ * The first calendar day whose local noon is at or after `bound`.
+ *
+ * `bound` is a day token: its local fields name a calendar day. For a token
+ * at local midnight this is the day of the token. The noon rule also reads a
+ * token that some callers build at UTC midnight (`new Date('YYYY-MM-DD')`)
+ * as the day it names, for a host less than 12 h from UTC. This is the rule
+ * of the old `new Date(dateKey + 'T12:00:00') >= rangeStart` compare, now
+ * applied once to the bound, so the per-day check is a day-string compare.
+ */
+function firstDayWithNoonAtOrAfter(bound: Date): string {
+  const day = toDateOnlyString(bound);
+  const noon = new Date(bound.getFullYear(), bound.getMonth(), bound.getDate(), 12);
+  return bound.getTime() <= noon.getTime() ? day : addDaysToDateStr(day, 1);
+}
+
+/** The last calendar day whose local noon is at or before `bound`. See above. */
+function lastDayWithNoonAtOrBefore(bound: Date): string {
+  const day = toDateOnlyString(bound);
+  const noon = new Date(bound.getFullYear(), bound.getMonth(), bound.getDate(), 12);
+  return bound.getTime() >= noon.getTime() ? day : addDaysToDateStr(day, -1);
+}
+
+/**
  * Calculate actual labor cost for a date range using ISO-week OT banding.
  *
- * For hourly employees: bucket each punch into the ISO week that contains it
- * (startOfWeek with WEEK_STARTS_ON), call calculateEmployeePay over the FULL
+ * For hourly employees: bucket each punch into the restaurant-local week that
+ * contains it (weekStartDateStr of its restaurant day), call calculateEmployeePay over the FULL
  * week (so OT bands are computed on the full 40h+ week), and distribute the
  * week's wage pay across the days actually worked in proportion to per-day
  * hours. Days outside [rangeStart, rangeEnd] are excluded; the days inside
@@ -872,6 +897,8 @@ export function calculateActualLaborCostForRange(
   input: RangeLaborInput
 ): RangeLaborResult {
   const { employees, timePunches, tipsOwedByEmployee, rangeStart, rangeEnd, timezone } = input;
+  const rangeStartDay = firstDayWithNoonAtOrAfter(rangeStart);
+  const rangeEndDay = lastDayWithNoonAtOrBefore(rangeEnd);
 
   let wagesCents = 0;
 
@@ -901,8 +928,10 @@ export function calculateActualLaborCostForRange(
     // parseWorkPeriods can't pair (dropping the shift's hours entirely).
     // Defensively sorted — the clock-in-week state machine requires chronological
     // order and must not rely on the caller's `.order('punch_time')`.
-    const weekKeyFor = (t: Date) =>
-      formatDate(startOfWeek(t, { weekStartsOn: WEEK_STARTS_ON }), 'yyyy-MM-dd');
+    // The week key is the first day of the restaurant-local week of the punch.
+    // A host-local startOfWeek on the instant moves a Sunday-evening Chicago
+    // punch into the next week on a UTC host (memory/lessons.md, PR #485).
+    const weekKeyFor = (punchTime: string) => weekStartDateStr(toBusinessDay(punchTime, timezone));
     const sortedPunches = [...employeePunches].sort(
       (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
     );
@@ -910,9 +939,9 @@ export function calculateActualLaborCostForRange(
     let currentWeekKey: string | null = null;
     for (const p of sortedPunches) {
       if (p.punch_type === 'clock_in') {
-        currentWeekKey = weekKeyFor(new Date(p.punch_time)); // open shift → clock-in week
+        currentWeekKey = weekKeyFor(p.punch_time); // open shift → clock-in week
       }
-      const weekKey = currentWeekKey ?? weekKeyFor(new Date(p.punch_time)); // orphan → own week
+      const weekKey = currentWeekKey ?? weekKeyFor(p.punch_time); // orphan → own week
       const arr = punchesByWeek.get(weekKey) ?? [];
       arr.push(p);
       punchesByWeek.set(weekKey, arr);
@@ -920,9 +949,11 @@ export function calculateActualLaborCostForRange(
     }
 
     for (const [weekKey, weekPunches] of punchesByWeek) {
-      // Anchor at noon to avoid DST/UTC-midnight issues.
-      const weekStart = new Date(weekKey + 'T12:00:00');
-      const weekEnd = endOfWeek(weekStart, { weekStartsOn: WEEK_STARTS_ON });
+      // Day tokens for the week: local midnight of the first day and the local
+      // end of the last day. calculateEmployeePay reads their local fields.
+      const weekStart = parseDateOnly(weekKey);
+      const weekEnd = parseDateOnly(weekEndDateStr(weekKey));
+      weekEnd.setHours(23, 59, 59, 999);
 
       const pay = calculateEmployeePay(
         employee,
@@ -937,7 +968,7 @@ export function calculateActualLaborCostForRange(
 
       // Compute per-day hours for the week using parseWorkPeriods (consistent
       // with the existing calculateActualLaborCost).
-      const { periods } = parseWorkPeriods(weekPunches);
+      const { periods } = parseWorkPeriods(weekPunches, timezone);
       const hoursByDate = new Map<string, number>();
       for (const period of periods) {
         if (period.isBreak) continue;
@@ -965,8 +996,8 @@ export function calculateActualLaborCostForRange(
         distributed += dayCents;
 
         // Only count this day if it falls inside the date range window.
-        const dayDate = new Date(dateKey + 'T12:00:00');
-        if (dayDate >= rangeStart && dayDate <= rangeEnd) {
+        // Compare calendar-day strings (bounds read once, above).
+        if (dateKey >= rangeStartDay && dateKey <= rangeEndDay) {
           wagesCents += dayCents;
         }
       }

@@ -1,4 +1,5 @@
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { WEEK_STARTS_ON } from './dateConfig.ts';
 
 /**
  * The restaurant timezone is the default frame for every user-visible date.
@@ -272,6 +273,22 @@ export function addDaysToDateStr(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   const rolled = new Date(Date.UTC(year, month - 1, day + days));
   return formatInTimeZone(rolled, 'UTC', 'yyyy-MM-dd');
+}
+
+/**
+ * The first calendar day (`YYYY-MM-DD`) of the week that contains `dateStr`.
+ * Weeks start on `WEEK_STARTS_ON`. UTC field math on a calendar day, so the
+ * result does not depend on the host timezone.
+ */
+export function weekStartDateStr(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return addDaysToDateStr(dateStr, -((dayOfWeek - WEEK_STARTS_ON + 7) % 7));
+}
+
+/** The last calendar day (`YYYY-MM-DD`) of the week that contains `dateStr`. */
+export function weekEndDateStr(dateStr: string): string {
+  return addDaysToDateStr(weekStartDateStr(dateStr), 6);
 }
 
 /**

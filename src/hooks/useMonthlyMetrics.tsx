@@ -375,8 +375,8 @@ export function useMonthlyMetrics(
       // it falls inside [rangeStart, rangeEnd], so the extra look-back/
       // look-ahead days feed OT banding only, never the totals.
       const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-      const otFetchStart = weekAlignedFetchStart(dateFrom, fetchStart);
-      const otFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+      const otFetchStart = weekAlignedFetchStart(toDateOnlyString(dateFrom), fetchStart, timezone);
+      const otFetchEnd = weekAlignedFetchEnd(toDateOnlyString(dateTo), fetchEnd, timezone);
       //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // PostgREST caps an unpaginated response at 1,000 rows, which would

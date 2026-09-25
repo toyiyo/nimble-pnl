@@ -61,9 +61,27 @@ function normalizeDateString(input: string | Date): string {
   return toDateOnlyString(input);
 }
 
+/** Milliseconds of an ISO timestamp, or -Infinity when it is missing or unparseable. */
+function createdAtMs(entry: CompensationHistoryEntry): number {
+  const ms = entry.created_at ? Date.parse(entry.created_at) : Number.NaN;
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+}
+
+/**
+ * Newest first: `effective_date` descending, then `created_at` descending.
+ * The tie-break makes the entry created last win when two entries share an
+ * effective date, whatever order the query returns them in.
+ */
 function getSortedHistory(employee: LaborEmployee): CompensationHistoryEntry[] {
   const history = employee.compensation_history || [];
-  return [...history].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+  return [...history].sort((a, b) => {
+    const byDate = b.effective_date.localeCompare(a.effective_date);
+    if (byDate !== 0) return byDate;
+    const aMs = createdAtMs(a);
+    const bMs = createdAtMs(b);
+    if (aMs === bMs) return 0;
+    return bMs > aMs ? 1 : -1;
+  });
 }
 
 export type CompensationSnapshot = {
@@ -245,10 +263,14 @@ export function getPayPeriodDates(
     }
     case 'bi-weekly': {
       // For bi-weekly, we need an anchor date. Using a fixed anchor (Jan 1, 2024 was a Monday)
-      // The anchor defines the pay-period phase and is not currently configurable per restaurant
-      const anchor = new Date('2024-01-01');
-      const daysSinceAnchor = Math.floor(
-        (d.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24)
+      // The anchor defines the pay-period phase and is not currently configurable per restaurant.
+      // `d` is a day token: read its local calendar fields and count whole
+      // calendar days with UTC field math. A UTC-midnight anchor
+      // (`new Date('2024-01-01')`) against a local-midnight `d` moves the
+      // phase by one day for a host east of UTC.
+      const daysSinceAnchor = Math.round(
+        (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(2024, 0, 1)) /
+          (1000 * 60 * 60 * 24)
       );
       // Normalize modulo to non-negative value to handle dates before anchor correctly
       const daysIntoPeriod = ((daysSinceAnchor % 14) + 14) % 14;

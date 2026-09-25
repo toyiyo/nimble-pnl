@@ -399,7 +399,7 @@ function usePayrollInternal(
       // Filter employees based on deactivation date vs payroll period
       // Inactive employees are included only through their final week (the week containing their deactivation date)
       const eligibleEmployees = employees.filter(employee =>
-        shouldIncludeEmployeeInPayroll(employee, startDate)
+        shouldIncludeEmployeeInPayroll(employee, startDate, timezone)
       );
 
       return calculatePayrollPeriod(

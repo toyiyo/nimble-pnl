@@ -1,6 +1,9 @@
-import { startOfWeek } from 'date-fns/startOfWeek';
-import { endOfWeek } from 'date-fns/endOfWeek';
-import { WEEK_STARTS_ON } from './dateConfig.ts';
+import {
+  addDaysToDateStr,
+  firstInstantOfDay,
+  weekEndDateStr,
+  weekStartDateStr,
+} from './restaurantClock.ts';
 
 /**
  * Overnight-shift fetch windowing helpers.
@@ -50,13 +53,15 @@ export function lookaheadPunchFetchRange(
 }
 
 /**
- * Widen a punch-fetch start backward to the start of the ISO week
- * (WEEK_STARTS_ON) that contains `dateFrom`, but only when that week start
- * falls before the already-computed `fetchStart`.
+ * Widen a punch-fetch start backward to the start of the restaurant-local
+ * week (WEEK_STARTS_ON) that contains the day `fromDay` (`YYYY-MM-DD`), but
+ * only when that week start falls before the already-computed `fetchStart`.
+ * The week start is the first instant of its first day in `timezone`, so the
+ * result does not depend on the host timezone.
  *
  * The OT-banding formula (`calculateActualLaborCostForRange`) buckets
  * punches by ISO week and bands overtime over the FULL week. When
- * `dateFrom` does not fall on a week boundary, the days before `dateFrom`
+ * `fromDay` does not fall on a week boundary, the days before `fromDay`
  * in that same week must still be fetched, or the week's hour total comes
  * out too low and hours that should band as overtime cost as straight time
  * instead. A caller whose downstream calc attributes hours to every day a
@@ -64,26 +69,28 @@ export function lookaheadPunchFetchRange(
  * series) must filter these look-back days back out before using them —
  * this helper only widens the DB fetch.
  */
-export function weekAlignedFetchStart(dateFrom: Date, fetchStart: Date): Date {
-  const weekAlignedStart = startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON });
+export function weekAlignedFetchStart(fromDay: string, fetchStart: Date, timezone: string): Date {
+  const weekAlignedStart = firstInstantOfDay(weekStartDateStr(fromDay), timezone);
   return weekAlignedStart < fetchStart ? weekAlignedStart : fetchStart;
 }
 
 /**
- * Widen a punch-fetch end forward to the end of the ISO week
- * (WEEK_STARTS_ON) that contains `dateTo`, but only when that week end
- * falls after the already-computed `fetchEnd`.
+ * Widen a punch-fetch end forward to the end of the restaurant-local week
+ * (WEEK_STARTS_ON) that contains the day `toDay` (`YYYY-MM-DD`), but only
+ * when that week end falls after the already-computed `fetchEnd`. The week
+ * end is 1 ms before the first instant of the next week in `timezone`.
  *
  * Same OT-banding rule as `weekAlignedFetchStart`, applied to the end of
- * the range: when `dateTo` does not fall on a week boundary, the days
- * after `dateTo` in that same week must still be fetched, or the week's
+ * the range: when `toDay` does not fall on a week boundary, the days
+ * after `toDay` in that same week must still be fetched, or the week's
  * hour total comes out too low and hours that should band as overtime
  * cost as straight time instead. A caller with a separate straight-time
  * daily series must filter these look-ahead days back out before using
  * them — this helper only widens the DB fetch.
  */
-export function weekAlignedFetchEnd(dateTo: Date, fetchEnd: Date): Date {
-  const weekAlignedEnd = endOfWeek(dateTo, { weekStartsOn: WEEK_STARTS_ON });
+export function weekAlignedFetchEnd(toDay: string, fetchEnd: Date, timezone: string): Date {
+  const nextWeekStart = firstInstantOfDay(addDaysToDateStr(weekEndDateStr(toDay), 1), timezone);
+  const weekAlignedEnd = new Date(nextWeekStart.getTime() - 1);
   return weekAlignedEnd > fetchEnd ? weekAlignedEnd : fetchEnd;
 }
 

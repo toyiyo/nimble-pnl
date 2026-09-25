@@ -111,8 +111,8 @@ export function useLaborCostsFromTimeTracking(
       // whole — see src/utils/punchWindow.ts for the shared rule.
       // calculateActualLaborCost (the straight-time daily series) must NOT
       // see these extra days — see punchesForDailyCost below.
-      const otFetchStart = weekAlignedFetchStart(dateFrom, fetchStart);
-      const otFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+      const otFetchStart = weekAlignedFetchStart(toDateOnlyString(dateFrom), fetchStart, timezone);
+      const otFetchEnd = weekAlignedFetchEnd(toDateOnlyString(dateTo), fetchEnd, timezone);
 
       // The four fetches below are independent. Run them together so the
       // wait is the slowest fetch, not the sum. This hook backs the

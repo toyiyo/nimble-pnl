@@ -1,11 +1,14 @@
 import type { LaborTimePunch, LaborEmployee, CompensationType } from './types.ts';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import { endOfWeek } from 'date-fns/endOfWeek';
-import { format } from 'date-fns/format';
-import { parseISO } from 'date-fns/parseISO';
 import { WEEK_STARTS_ON } from './dateConfig.ts';
 import { toDateOnlyString } from './dateOnly.ts';
-import { businessDayRangeToInstants, toBusinessDay } from './restaurantClock.ts';
+import {
+  DEFAULT_TIMEZONE,
+  businessDayRangeToInstants,
+  formatInstant,
+  toBusinessDay,
+  weekEndDateStr,
+} from './restaurantClock.ts';
 import {
   calculateSalaryForPeriod,
   calculateContractorPayForPeriod,
@@ -17,6 +20,8 @@ import {
   type OvertimeAdjustment,
 } from './overtimeCalculations.ts';
 import { periodsInWindow, incompleteShiftsInWindow } from './punchWindow.ts';
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
 const MAX_SHIFT_HOURS = 16;
@@ -104,6 +109,13 @@ interface ShiftParsingState {
   currentBreakStart: LaborTimePunch | null;
   // The current shift's original clock-in time, NOT advanced by breaks.
   shiftClockIn: Date | null;
+  // Restaurant IANA timezone. Anomaly messages show times in this zone.
+  timezone: string;
+}
+
+/** Anomaly message time, e.g. "Jul 19, 8:00 PM", in the restaurant zone. */
+function formatPunchTime(value: string | Date, timezone: string): string {
+  return formatInstant(value, timezone, 'MMM d, h:mm a');
 }
 
 /**
@@ -124,7 +136,7 @@ function handleClockIn(
         type: 'missing_clock_out',
         punchTime: new Date(state.currentClockIn.punch_time),
         punchType: 'clock_in',
-        message: `Missing clock-out for shift started at ${format(new Date(state.currentClockIn.punch_time), 'MMM d, h:mm a')}`,
+        message: `Missing clock-out for shift started at ${formatPunchTime(state.currentClockIn.punch_time, state.timezone)}`,
       });
     } else {
       // Two clock_ins in a row within reasonable time - flag the first one
@@ -132,7 +144,7 @@ function handleClockIn(
         type: 'missing_clock_out',
         punchTime: new Date(state.currentClockIn.punch_time),
         punchType: 'clock_in',
-        message: `Consecutive clock-in without clock-out at ${format(new Date(state.currentClockIn.punch_time), 'MMM d, h:mm a')}`,
+        message: `Consecutive clock-in without clock-out at ${formatPunchTime(state.currentClockIn.punch_time, state.timezone)}`,
       });
     }
   }
@@ -159,7 +171,7 @@ function handleClockOut(
         type: 'missing_clock_out',
         punchTime: startTime,
         punchType: 'clock_in',
-        message: `Gap of ${hours.toFixed(1)} hours between clock-in (${format(startTime, 'MMM d, h:mm a')}) and clock-out (${format(endTime, 'MMM d, h:mm a')}) is too long - likely missing punches`,
+        message: `Gap of ${hours.toFixed(1)} hours between clock-in (${formatPunchTime(startTime, state.timezone)}) and clock-out (${formatPunchTime(endTime, state.timezone)}) is too long - likely missing punches`,
       });
       // Don't count this shift - it needs manager review
     } else if (hours > MAX_SHIFT_HOURS) {
@@ -168,7 +180,7 @@ function handleClockOut(
         type: 'shift_too_long',
         punchTime: startTime,
         punchType: 'clock_in',
-        message: `Shift of ${hours.toFixed(1)} hours exceeds maximum (${MAX_SHIFT_HOURS}h). Started ${format(startTime, 'MMM d, h:mm a')}, ended ${format(endTime, 'MMM d, h:mm a')}`,
+        message: `Shift of ${hours.toFixed(1)} hours exceeds maximum (${MAX_SHIFT_HOURS}h). Started ${formatPunchTime(startTime, state.timezone)}, ended ${formatPunchTime(endTime, state.timezone)}`,
       });
       // Still count the hours but flag for review
       state.periods.push({
@@ -197,7 +209,7 @@ function handleClockOut(
       type: 'missing_clock_in',
       punchTime,
       punchType: 'clock_out',
-      message: `Clock-out at ${format(punchTime, 'MMM d, h:mm a')} has no matching clock-in`,
+      message: `Clock-out at ${formatPunchTime(punchTime, state.timezone)} has no matching clock-in`,
     });
   }
 }
@@ -272,7 +284,11 @@ function handleBreakEnd(
  * 
  * Returns both valid work periods and incomplete shifts for manager review
  */
-export function parseWorkPeriods(punches: LaborTimePunch[]): {
+export function parseWorkPeriods(
+  punches: LaborTimePunch[],
+  // Restaurant IANA timezone. Only the anomaly messages use it.
+  timezone: string,
+): {
   periods: WorkPeriod[];
   incompleteShifts: IncompleteShift[];
 } {
@@ -293,6 +309,7 @@ export function parseWorkPeriods(punches: LaborTimePunch[]): {
     currentClockIn: null,
     currentBreakStart: null,
     shiftClockIn: null,
+    timezone,
   };
 
   for (const punch of dedupedPunches) {
@@ -320,7 +337,7 @@ export function parseWorkPeriods(punches: LaborTimePunch[]): {
       type: 'missing_clock_out',
       punchTime: new Date(state.currentClockIn.punch_time),
       punchType: 'clock_in',
-      message: `Missing clock-out for shift started at ${format(new Date(state.currentClockIn.punch_time), 'MMM d, h:mm a')}`,
+      message: `Missing clock-out for shift started at ${formatPunchTime(state.currentClockIn.punch_time, state.timezone)}`,
     });
   }
 
@@ -368,7 +385,9 @@ function deduplicatePunches(punches: LaborTimePunch[]): LaborTimePunch[] {
  * Calculate total worked hours (excluding breaks)
  */
 export function calculateWorkedHours(punches: LaborTimePunch[]): number {
-  const { periods } = parseWorkPeriods(punches);
+  // Hours do not depend on the zone. The zone only formats the anomaly
+  // messages, and this function drops them.
+  const { periods } = parseWorkPeriods(punches, DEFAULT_TIMEZONE);
   return periods
     .filter(p => !p.isBreak)
     .reduce((sum, p) => sum + p.hours, 0);
@@ -377,11 +396,15 @@ export function calculateWorkedHours(punches: LaborTimePunch[]): number {
 /**
  * Calculate worked hours and return incomplete shifts for review
  */
-export function calculateWorkedHoursWithAnomalies(punches: LaborTimePunch[]): {
+export function calculateWorkedHoursWithAnomalies(
+  punches: LaborTimePunch[],
+  // Restaurant IANA timezone for the anomaly messages.
+  timezone: string,
+): {
   hours: number;
   incompleteShifts: IncompleteShift[];
 } {
-  const { periods, incompleteShifts } = parseWorkPeriods(punches);
+  const { periods, incompleteShifts } = parseWorkPeriods(punches, timezone);
   const hours = periods
     .filter(p => !p.isBreak)
     .reduce((sum, p) => sum + p.hours, 0);
@@ -404,7 +427,8 @@ export function calculateWorkedHoursForClockInDay(
   dayStart: Date,
   dayEnd: Date,
 ): number {
-  const { periods } = parseWorkPeriods(punches);
+  // Hours do not depend on the zone; this function drops the anomaly messages.
+  const { periods } = parseWorkPeriods(punches, DEFAULT_TIMEZONE);
   return periodsInWindow(periods, dayStart, dayEnd)
     .filter(p => !p.isBreak)
     .reduce((sum, p) => sum + p.hours, 0);
@@ -483,7 +507,7 @@ export function calculateEmployeePay(
 
   // Calculate based on compensation type
   if (compensationType === 'hourly') {
-    const parsed = parseWorkPeriods(punches);
+    const parsed = parseWorkPeriods(punches, timezone);
     if (attributeToWindow && periodStartDate && periodEndDate) {
       // periodStartDate/periodEndDate are calendar-day tokens (see the
       // toDateOnlyString comment below), not instants. Deriving the window
@@ -673,7 +697,11 @@ export function formatHours(hours: number): string {
  */
 export function shouldIncludeEmployeeInPayroll(
   employee: LaborEmployee,
-  periodStartDate: Date
+  // A day token: its local fields are the first day of the payroll period.
+  periodStartDate: Date,
+  // Restaurant IANA timezone. deactivated_at is an instant; its day is the
+  // restaurant-local day.
+  timezone: string,
 ): boolean {
   // Active employees are always included
   if (employee.is_active) return true;
@@ -685,12 +713,15 @@ export function shouldIncludeEmployeeInPayroll(
     return true;
   }
   
-  // Get the end of the week containing the deactivation date
-  const deactivationParsed = parseISO(deactivationDate);
-  const endOfDeactivationWeek = endOfWeek(deactivationParsed, { weekStartsOn: WEEK_STARTS_ON });
-  
-  // Include if payroll period starts on or before the end of deactivation week
-  return periodStartDate <= endOfDeactivationWeek;
+  // The restaurant day of the deactivation. deactivated_at is a timestamptz
+  // (an instant); last_active_date is a DATE (already a calendar day).
+  const deactivationDay = DATE_ONLY_RE.test(deactivationDate)
+    ? deactivationDate
+    : toBusinessDay(deactivationDate, timezone);
+
+  // Include if payroll period starts on or before the last day of the
+  // deactivation week. Both sides are calendar-day strings.
+  return toDateOnlyString(periodStartDate) <= weekEndDateStr(deactivationDay);
 }
 
 /**

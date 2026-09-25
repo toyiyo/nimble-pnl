@@ -17,6 +17,7 @@ import { NOTIFICATION_FROM, APP_URL } from '../_shared/notificationHelpers.ts';
 import { sendEmailResult } from '../_shared/emailQueue.ts';
 import { truncateError } from '../_shared/emailSendSummary.ts';
 import { sendWebPushToUsers } from '../_shared/webPushHelper.ts';
+import { isServiceRoleBearer } from '../_shared/cronAuth.ts';
 import { resolveChannels, type SupabaseLike } from '../_shared/resolveChannels.ts';
 import {
   runShiftTradeReminders,
@@ -26,13 +27,6 @@ import {
 } from '../_shared/shiftTradeRemindersHandler.ts';
 
 const JSON_HEADERS = { ...corsHeaders, 'Content-Type': 'application/json' };
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
 
 const rpcError = (error: { message: string } | null) => (error ? { message: error.message } : null);
 
@@ -60,8 +54,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Only the cron job (or a person with the same key) can start a run.
-  const auth = req.headers.get('authorization') ?? '';
-  if (!timingSafeEqual(auth, `Bearer ${serviceRoleKey}`)) {
+  if (!isServiceRoleBearer(req.headers.get('authorization'), serviceRoleKey)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: JSON_HEADERS,

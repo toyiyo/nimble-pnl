@@ -26,14 +26,15 @@ vi.mock('@/hooks/use-toast', () => ({
 const ITEMS = [{ type: 'trade' as const, trade: { id: 't1' } }];
 const VIRTUALIZER = { scrollToIndex: mocks.scrollToIndex };
 
-function Harness() {
+function Harness({ hasEmployee = true, employeeError = false }: { hasEmployee?: boolean; employeeError?: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
   const { highlightedTradeId } = useTradeDeepLink({
     items: ITEMS,
     loading: false,
     error: false,
     employeeLoading: false,
-    hasEmployee: true,
+    employeeError,
+    hasEmployee,
     listRef,
     virtualizer: VIRTUALIZER,
   });
@@ -71,5 +72,33 @@ describe('useTradeDeepLink – focus', () => {
     await nextFrame();
     await nextFrame();
     expect(document.activeElement).toBe(cardEl);
+  });
+});
+
+describe('useTradeDeepLink – employee row', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  it('shows the "cannot open" toast when the employee read finished with no row', () => {
+    const { getByTestId } = render(
+      <MemoryRouter initialEntries={['/employee/shifts?trade=t1&restaurant=rest-1&from=home']}>
+        <Harness hasEmployee={false} />
+      </MemoryRouter>,
+    );
+    expect(mocks.toast).toHaveBeenCalledWith({ title: 'This shift is at a restaurant you cannot open.' });
+    expect(getByTestId('list').dataset.highlight).toBe('');
+  });
+
+  it('waits on an employee read error: no toast, no scroll, and the link stays', () => {
+    const { getByTestId } = render(
+      <MemoryRouter initialEntries={['/employee/shifts?trade=t1&restaurant=rest-1&from=home']}>
+        <Harness hasEmployee={false} employeeError />
+      </MemoryRouter>,
+    );
+    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(mocks.scrollToIndex).not.toHaveBeenCalled();
+    expect(getByTestId('list').dataset.highlight).toBe('t1');
   });
 });

@@ -334,7 +334,7 @@ export default function AvailableShiftsPage() {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id ?? null;
   const { tz } = useRestaurantClock();
-  const { currentEmployee, loading: empLoading } = useCurrentEmployee(restaurantId);
+  const { currentEmployee, loading: empLoading, error: empError } = useCurrentEmployee(restaurantId);
   const { toast } = useToast();
 
   // The key is the host local day, so a tab open past midnight gets a new range.
@@ -475,6 +475,7 @@ export default function AvailableShiftsPage() {
     loading,
     error: !!feedError,
     employeeLoading: empLoading,
+    employeeError: !!empError,
     hasEmployee: !!currentEmployee,
     listRef: parentRef,
     virtualizer,

@@ -22,6 +22,8 @@ export interface TradeDeepLinkOptions {
   loading: boolean;
   error: boolean;
   employeeLoading: boolean;
+  /** The employee read failed. The hook then waits: the row can exist. */
+  employeeError: boolean;
   hasEmployee: boolean;
   /** The scroll container of the list. */
   listRef: RefObject<HTMLElement>;
@@ -41,6 +43,7 @@ export function useTradeDeepLink({
   loading,
   error,
   employeeLoading,
+  employeeError,
   hasEmployee,
   listRef,
   virtualizer,
@@ -95,7 +98,9 @@ export function useTradeDeepLink({
     selectedRestaurantId: restaurantId,
     memberRestaurantIds,
     restaurantsLoading: !!restaurantsLoading,
-    employeeMissing: !employeeLoading && !hasEmployee,
+    // The row is missing only after a read for a known restaurant ends with
+    // no error and no row. A read error is not proof that the row is missing.
+    employeeMissing: !!restaurantId && !employeeLoading && !employeeError && !hasEmployee,
     // A directed trade shows only once the employee is known.
     loading: employeeLoading || !hasEmployee || loading,
     error,

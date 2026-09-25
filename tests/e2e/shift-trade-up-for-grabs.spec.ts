@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
+
+/** The helpers that `exposeSupabaseHelpers` puts on `window`. */
+type E2EWindow = Window & { __supabase: SupabaseClient; __getRestaurantId: () => string };
 
 /**
  * E2E for the "Teammates need cover" home card, the "More" tab badge, and the
@@ -23,12 +27,12 @@ test.describe('Teammates need cover', () => {
     await signUpAndCreateRestaurant(page, primary);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    const restaurantId = await page.evaluate(() => (window as unknown as E2EWindow).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
     const seed = await page.evaluate(
       async ({ restId, qEmail, qPassword, pEmail, pPassword }) => {
-        const supabase = (window as any).__supabase;
+        const supabase = (window as unknown as E2EWindow).__supabase;
 
         const pUserId = (await supabase.auth.getUser()).data.user?.id;
         if (!pUserId) throw new Error('No P session');
@@ -100,7 +104,7 @@ test.describe('Teammates need cover', () => {
     );
 
     await page.evaluate(async ({ qEmail, qPassword }) => {
-      const supabase = (window as any).__supabase;
+      const supabase = (window as unknown as E2EWindow).__supabase;
       const { error } = await supabase.auth.signInWithPassword({ email: qEmail, password: qPassword });
       if (error) throw new Error(`Q signin: ${error.message}`);
     }, { qEmail: acceptor.email, qPassword: acceptor.password });
@@ -135,7 +139,7 @@ test.describe('Teammates need cover', () => {
       .poll(
         async () =>
           page.evaluate(async (tradeId: string) => {
-            const supabase = (window as any).__supabase;
+            const supabase = (window as unknown as E2EWindow).__supabase;
             const { data } = await supabase
               .from('shift_trades')
               .select('status, accepted_by_employee_id')

@@ -54,3 +54,65 @@ export async function fetchAllRows<T>(
   }
   return { rows, capped: true };
 }
+
+/** The last row that a keyset page loop received: its order key and its id. */
+export interface KeysetCursor<K> {
+  key: K;
+  id: string;
+}
+
+/**
+ * Fetches every row matching a query by keyset paging on `(orderKey, id)`.
+ *
+ * The caller supplies `buildPage(after, pageSize)`. It must return the query
+ * ordered by `orderKey` and then `id` (both ascending), limited to
+ * `pageSize` rows, and, when `after` is not null, filtered to the rows after
+ * `after` (see `keysetAfterFilter`). The helper asks for the next page after
+ * the last `(key, id)` that it received.
+ *
+ * Offset paging (`fetchAllRows`) reads each page in its own snapshot, so an
+ * insert or a delete before the page boundary between two requests moves the
+ * offsets: the loop returns a row two times or skips a row that nobody
+ * changed. Keyset paging does not depend on the offsets, so neither can
+ * occur. See specs/tla/labor-loader-paging/LaborLoaderPaging.tla.
+ *
+ * The page size, the `maxPages` cap and `capped` are the same as in
+ * `fetchAllRows`. A page error is thrown.
+ */
+export async function fetchAllRowsKeyset<T extends { id: string }, K extends keyof T>(
+  buildPage: (
+    after: KeysetCursor<T[K]> | null,
+    pageSize: number,
+  ) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  orderKey: K,
+  opts?: { pageSize?: number; maxPages?: number },
+): Promise<PagedResult<T>> {
+  const pageSize = opts?.pageSize ?? SUPABASE_MAX_ROWS;
+  const maxPages = opts?.maxPages ?? DEFAULT_MAX_PAGES;
+  const rows: T[] = [];
+  let after: KeysetCursor<T[K]> | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const { data, error } = await buildPage(after, pageSize);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) return { rows, capped: false };
+    const last = data[data.length - 1];
+    after = { key: last[orderKey], id: last.id };
+  }
+  return { rows, capped: true };
+}
+
+/** A PostgREST filter value in double quotes, with `"` and `\` escaped. */
+function quoteFilterValue(value: unknown): string {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * The PostgREST `.or()` filter for the rows after `after` in the order
+ * `(column, id)`: `column > key OR (column = key AND id > id)`. The values are
+ * quoted, because a timestamp has `:` and `+` in it.
+ */
+export function keysetAfterFilter<K>(column: string, after: KeysetCursor<K>): string {
+  const key = quoteFilterValue(after.key);
+  return `${column}.gt.${key},and(${column}.eq.${key},id.gt.${quoteFilterValue(after.id)})`;
+}

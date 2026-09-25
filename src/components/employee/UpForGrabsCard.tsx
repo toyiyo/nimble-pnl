@@ -103,7 +103,8 @@ export function UpForGrabsCard({
         </span>
         <Link
           to="/employee/shifts"
-          className="font-medium text-foreground hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground"
+          // The negative margin keeps the footer low and gives a 44 px target.
+          className="-my-2.5 -mr-2 inline-flex min-h-[44px] items-center px-2 font-medium text-foreground hover:underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground"
         >
           Browse all {total}
         </Link>

@@ -93,10 +93,21 @@ Files: `compensationCalculations`, `payrollCalculations`, `punchWindow`,
    restaurant-local week edges (intended update).
 5. Run the full suite under `npm run test:tz`. Commit.
 
+### Task 6b: keyset paging helper
+
+1. Tests with a stub client: three pages of a sorted table; an insert and a
+   delete before the page boundary between two page requests give no
+   duplicate and no lost stable row; the `maxPages` cap sets `capped`; an
+   error on a page throws. These cases mirror
+   `specs/tla/labor-loader-paging/LaborLoaderPaging.tla`.
+2. Implement `fetchAllRowsKeyset` in `_shared/labor/fetchAllRows.ts`: order
+   by `(order key, id)`, next page after the last `(key, id)`.
+3. Run `.claude/skills/run-tla/tlc.sh all` and the tests. Commit.
+
 ### Task 7: `loadPeriodLaborCost` and `loadPeriodBankLabor`
 
 1. Tests with a stub client: the fetch windows each query gets (instants
-   from day strings), the page loop, tip netting, per-job sum, `throughNow`
+   from day strings), the keyset page loop, tip netting, per-job sum, `throughNow`
    with a given real `now`, `capped`, and a salaried employee over one
    Chicago day and one Auckland day on all three hosts.
 2. Move the two `queryFn` bodies into the loaders. The engine gets day
@@ -117,7 +128,7 @@ Files: `compensationCalculations`, `payrollCalculations`, `punchWindow`,
 
 ### Task 9: `loadPayrollPeriod`
 
-1. Tests: the seven source reads page; `employeeId: null` throws; `capped`
+1. Tests: the seven source reads page with `fetchAllRowsKeyset`; `employeeId: null` throws; `capped`
    comes back; the punch select names its columns.
 2. Move the `usePayroll` body. The hook does not call the loader for a
    `null` employee id and keeps its query key segment.

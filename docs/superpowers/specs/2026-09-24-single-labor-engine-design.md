@@ -216,6 +216,17 @@ timezone and the employees.
   `calculateScheduledLaborCost`. The Scheduling page passes a Monday week
   (`src/pages/Scheduling.tsx:412-416`).
 
+All loader reads page with keyset paging, not with offset paging (see "TLA+
+check"). A new `fetchAllRowsKeyset` helper orders by `(order key, id)` and
+asks for the next page after the last row it received, for example
+`.or(\`punch_time.gt.${t},and(punch_time.eq.${t},id.gt.${id})\`)`. The
+page size and the `maxPages` cap stay as in `fetchAllRows`
+(`src/utils/fetchAllRows.ts:4-8`). Offset paging (`fetchAllRows.ts:49-54`)
+reads each page in its own snapshot. A row that another user inserts or
+deletes before the page boundary moves the offsets, so the loader returns a
+row twice or skips a row that nobody changed. A duplicate punch breaks the
+clock-in / clock-out pairing, and a skipped punch loses a shift.
+
 Two kinds of `Date` go into the engine. They must not mix:
 
 - **Fetch windows are instants.** A loader builds them from the day strings
@@ -404,6 +415,42 @@ All tests use fixed UTC instants and pass under `npm run test:tz`
 - **AI wiring (source contract):** `ai-execute-tool` imports the loaders from
   `_shared/labor/`, has no `laborServerNow`, no `laborWindowMismatchReason`
   and no `_shared/laborCalculations.ts` import.
+
+## TLA+ check
+
+Most of this design is pure calculation with one writer: TLA+ does not
+apply there. One step has two actors on the same rows: a loader pages
+through a table in several requests while a manager or the kiosk writes
+it. The model checks that step.
+
+- Spec: `specs/tla/labor-loader-paging/LaborLoaderPaging.tla`.
+- Invariants: `NoDuplicateRow` (the loader receives no row twice) and
+  `NoLostStableRow` (at the end, the loader has every row that was in the
+  table for the whole read and that nobody changed).
+- `LaborLoaderPaging.cfg` (keyset paging, 2 concurrent writes): pass,
+  190 distinct states.
+- `LaborLoaderPaging_Offset.cfg` (offset paging, as `fetchAllRows` is now):
+  violation of `NoDuplicateRow`. Page 1 returns rows 2 and 3, an insert of
+  row 1 moves the offsets, and page 2 returns rows 3 and 4.
+- `LaborLoaderPaging_OffsetLostRow.cfg` (offset paging): violation of
+  `NoLostStableRow`. A delete after page 1 moves the offsets back, and stable
+  row 4 is never read.
+
+`tlc.sh all` output:
+
+```text
+OK    LaborLoaderPaging: pass (expected pass; 190 distinct states found)
+OK    LaborLoaderPaging_Offset: violation (expected violation; 35 distinct states found)
+OK    LaborLoaderPaging_OffsetLostRow: violation (expected violation; 40 distinct states found)
+OK    ToastRollupWatermark: pass (expected pass; 275 distinct states found)
+OK    ToastRollupWatermark_NoLastSync: violation (expected violation; 151 distinct states found)
+---- 5/5 configs matched their EXPECT
+```
+
+The offset bug exists today in every `fetchAllRows` caller. It shows only
+when a read has more than one page (more than 1000 rows) and a write lands
+between two page requests. The keyset helper fixes it for the loaders.
+Other `fetchAllRows` callers are out of scope and keep offset paging.
 
 ## E2E
 

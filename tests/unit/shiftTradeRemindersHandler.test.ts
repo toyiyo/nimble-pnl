@@ -59,6 +59,7 @@ function makeEnv(opts: {
   audienceError?: string;
   pushSkipped?: (userIds: string[]) => number;
   recipients?: UnclaimedRecipientRow[];
+  recipientsError?: string;
   onPush?: (env: Env, userIds: string[]) => void;
   pushThrows?: (tradeId: string) => boolean;
   emailError?: (to: string) => string | null;
@@ -94,6 +95,7 @@ function makeEnv(opts: {
     }),
     fetchUnclaimedRecipients: vi.fn(async (tradeId: string) => {
       env.calls.push(`recipients:${tradeId}`);
+      if (opts.recipientsError) return { data: null, error: { message: opts.recipientsError } };
       return { data: opts.recipients ?? RECIPIENTS, error: null };
     }),
     sendPush: vi.fn(async (userIds: string[], restaurantId: string, payload) => {
@@ -186,7 +188,8 @@ describe('runShiftTradeReminders: channel gate after the claim', () => {
     const env = makeEnv({ candidates: [candidate({ stage: 'unclaimed' })], channels: { email: false, push: false } });
     const result = await runShiftTradeReminders(env.deps);
     expect(env.calls).toContain('channels:rest-1:shift_trade_unclaimed');
-    expect(env.deps.fetchUnclaimedRecipients).not.toHaveBeenCalled();
+    expect(env.deps.fetchUnclaimedRecipients).toHaveBeenCalledTimes(1);
+    expect(env.deps.sendPush).not.toHaveBeenCalled();
     expect(env.deps.sendEmail).not.toHaveBeenCalled();
     expect(result).toMatchObject({ claimed: 1, skipped: 1, pushed: 0, emailed: 0 });
   });
@@ -359,6 +362,52 @@ describe('runShiftTradeReminders: employee stages', () => {
 });
 
 describe('runShiftTradeReminders: unclaimed stage', () => {
+  it('reads the recipients, then claims, then checks channels, then sends', async () => {
+    const env = makeEnv({ candidates: [candidate({ stage: 'unclaimed' })], channels: { email: false, push: true } });
+    await runShiftTradeReminders(env.deps);
+    expect(env.calls.slice(1, 4)).toEqual([
+      'recipients:trade-1',
+      'claim:trade-1:unclaimed',
+      'channels:rest-1:shift_trade_unclaimed',
+    ]);
+  });
+
+  it('does not claim when the recipients read fails, so the next run tries again', async () => {
+    const env = makeEnv({ candidates: [candidate({ stage: 'unclaimed' })], recipientsError: 'db down' });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.deps.claim).not.toHaveBeenCalled();
+    expect(env.deps.sendPush).not.toHaveBeenCalled();
+    expect(env.deps.sendEmail).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ claimed: 0, skipped: 1 });
+    expect(env.logs.join('\n')).toMatch(/recipients read failed trade=trade-1/);
+  });
+
+  it('defers before the claim when the scheduler and poster targets do not fit the rest of the budget', async () => {
+    const schedulers: UnclaimedRecipientRow[] = users(250).map((user_id) => ({ user_id, email: null, kind: 'scheduler' }));
+    const env = makeEnv({
+      candidates: [candidate({ shift_trade_id: 't1' }), candidate({ shift_trade_id: 't2', stage: 'unclaimed' })],
+      audience: users(300),
+      recipients: [...schedulers, { user_id: 'user-poster', email: null, kind: 'poster' }],
+    });
+    const result = await runShiftTradeReminders(env.deps);
+    expect(env.calls).toContain('recipients:t2');
+    expect(env.calls).not.toContain('claim:t2:unclaimed');
+    expect(result).toMatchObject({ claimed: 1, deferred: 1, pushed: 300 });
+  });
+
+  it('sends a large scheduler list in chunks of 500', async () => {
+    const schedulers: UnclaimedRecipientRow[] = users(1_200).map((user_id) => ({ user_id, email: null, kind: 'scheduler' }));
+    const env = makeEnv({
+      candidates: [candidate({ stage: 'unclaimed' })],
+      recipients: [...schedulers, { user_id: 'user-poster', email: null, kind: 'poster' }],
+    });
+    const result = await runShiftTradeReminders(env.deps);
+    const schedulerCalls = env.pushCalls.filter((p) => p.url === '/scheduling');
+    expect(schedulerCalls.map((p) => p.userIds.length)).toEqual([500, 500, 200]);
+    expect(new Set(schedulerCalls.flatMap((p) => p.userIds)).size).toBe(1_200);
+    expect(result).toMatchObject({ claimed: 1, pushed: 1_201 });
+  });
+
   it('pushes schedulers and the poster with separate text, and emails schedulers one by one', async () => {
     const env = makeEnv({ candidates: [candidate({ stage: 'unclaimed' })] });
     const result = await runShiftTradeReminders(env.deps);

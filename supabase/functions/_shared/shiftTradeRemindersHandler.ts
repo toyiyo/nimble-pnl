@@ -4,9 +4,11 @@
 //
 // Order for each candidate:
 //   1. Check the run budget. If it is used up, count the rest as deferred.
-//   2. Employee stage: read the audience. This read is read-only, so it can
-//      come before the claim. If the audience does not fit the rest of the
-//      push budget, count this candidate and the rest as deferred.
+//   2. Read the push targets: the audience for an employee stage, or the
+//      schedulers and the poster for `unclaimed`. This read is read-only, so
+//      it can come before the claim. A read error: count skipped, no claim.
+//      If the targets do not fit the rest of the push budget, count this
+//      candidate and the rest as deferred.
 //   3. Claim the (trade, stage). A false claim means another run sent it,
 //      or the trade is no longer open: count skipped and do not send.
 //   4. Check the channels. All channels off: count skipped. The claim stays.
@@ -139,19 +141,28 @@ function toShiftInfo(row: ReminderCandidateRow): ReminderShiftInfo {
   };
 }
 
-/** Sends one push call. The target count excludes the targets that the helper skipped. */
-async function pushCounted(
+/**
+ * Sends one payload in chunks of MAX_PUSH_TARGETS, so the push helper never
+ * drops a target. The target count excludes the targets that the helper skipped.
+ */
+async function pushInChunks(
   deps: ShiftTradeRemindersDeps,
   row: ReminderCandidateRow,
   userIds: string[],
   payload: ReminderPush,
   { log }: Loggers,
 ): Promise<{ sent: number; targets: number }> {
-  const res = await deps.sendPush(userIds, row.restaurant_id, payload);
-  if (res.skipped > 0) {
-    log(`${LOG_PREFIX} push skipped trade=${row.shift_trade_id} skipped=${res.skipped}`);
+  const total = { sent: 0, targets: 0 };
+  for (let i = 0; i < userIds.length; i += MAX_PUSH_TARGETS) {
+    const chunk = userIds.slice(i, i + MAX_PUSH_TARGETS);
+    const res = await deps.sendPush(chunk, row.restaurant_id, payload);
+    if (res.skipped > 0) {
+      log(`${LOG_PREFIX} push skipped trade=${row.shift_trade_id} skipped=${res.skipped}`);
+    }
+    total.sent += res.sent;
+    total.targets += chunk.length - res.skipped;
   }
-  return { sent: res.sent, targets: userIds.length - res.skipped };
+  return total;
 }
 
 async function sendEmployeeStage(
@@ -165,32 +176,35 @@ async function sendEmployeeStage(
   if (userIds.length === 0) return outcome;
 
   const payload = buildEmployeeReminderPush(toShiftInfo(row), stage, new Date(deps.now()));
-  // Chunks of MAX_PUSH_TARGETS, so the push helper never drops a target.
-  for (let i = 0; i < userIds.length; i += MAX_PUSH_TARGETS) {
-    const res = await pushCounted(deps, row, userIds.slice(i, i + MAX_PUSH_TARGETS), payload, loggers);
-    outcome.pushed += res.sent;
-    outcome.pushTargets += res.targets;
-  }
+  const res = await pushInChunks(deps, row, userIds, payload, loggers);
+  outcome.pushed += res.sent;
+  outcome.pushTargets += res.targets;
   return outcome;
+}
+
+/** The unclaimed recipients, split by kind. */
+interface UnclaimedTargets {
+  schedulers: UnclaimedRecipientRow[];
+  posterIds: string[];
+}
+
+function splitRecipients(recipients: UnclaimedRecipientRow[]): UnclaimedTargets {
+  return {
+    schedulers: recipients.filter((r) => r.kind === 'scheduler'),
+    posterIds: recipients.filter((r) => r.kind === 'poster').map((r) => r.user_id),
+  };
 }
 
 async function sendUnclaimedStage(
   deps: ShiftTradeRemindersDeps,
   row: ReminderCandidateRow,
+  { schedulers, posterIds }: UnclaimedTargets,
   channels: ChannelDecision,
   runStartedAt: number,
   loggers: Loggers,
 ): Promise<CandidateOutcome> {
   const { logError } = loggers;
   const outcome = emptyOutcome();
-  const recipientsRes = await deps.fetchUnclaimedRecipients(row.shift_trade_id);
-  if (recipientsRes.error) {
-    logError(`${LOG_PREFIX} recipients read failed trade=${row.shift_trade_id}: ${truncateError(recipientsRes.error.message)}`);
-    return outcome;
-  }
-  const recipients = recipientsRes.data ?? [];
-  const schedulers = recipients.filter((r) => r.kind === 'scheduler');
-  const posterIds = recipients.filter((r) => r.kind === 'poster').map((r) => r.user_id);
   const info = toShiftInfo(row);
 
   if (channels.push) {
@@ -202,7 +216,7 @@ async function sendUnclaimedStage(
     ): Promise<void> => {
       if (userIds.length === 0) return;
       try {
-        const res = await pushCounted(deps, row, userIds, buildPush(info), loggers);
+        const res = await pushInChunks(deps, row, userIds, buildPush(info), loggers);
         outcome.pushed += res.sent;
         outcome.pushTargets += res.targets;
       } catch (err) {
@@ -274,21 +288,36 @@ async function processCandidate(row: ReminderCandidateRow, ctx: RunContext): Pro
   const isUnclaimed = stage === 'unclaimed';
 
   try {
+    // Read the push targets before the claim. The read is read-only, so the
+    // claim still comes before the send. On a read error, do not claim:
+    // the next run tries this stage again.
     let audience: string[] = [];
-    if (!isUnclaimed) {
+    let unclaimed: UnclaimedTargets = { schedulers: [], posterIds: [] };
+    if (isUnclaimed) {
+      const recipientsRes = await deps.fetchUnclaimedRecipients(row.shift_trade_id);
+      if (recipientsRes.error) {
+        logError(`${LOG_PREFIX} recipients read failed trade=${row.shift_trade_id}: ${truncateError(recipientsRes.error.message)}`);
+        result.skipped += 1;
+        return 'done';
+      }
+      unclaimed = splitRecipients(recipientsRes.data ?? []);
+    } else {
       const audienceRes = await deps.fetchAudience(row.shift_trade_id);
       if (audienceRes.error) {
-        // No claim, so the next run tries this stage again.
         logError(`${LOG_PREFIX} audience read failed trade=${row.shift_trade_id}: ${truncateError(audienceRes.error.message)}`);
         result.skipped += 1;
         return 'done';
       }
       audience = (audienceRes.data ?? []).map((r) => r.user_id);
-      // An empty run sends a large audience in chunks. Otherwise the
-      // audience must fit the rest of the push budget.
-      if (ctx.pushTargets > 0 && ctx.pushTargets + audience.length > MAX_PUSH_TARGETS) {
-        return 'defer';
-      }
+    }
+
+    // An empty run sends a large target list in chunks. Otherwise the
+    // targets must fit the rest of the push budget.
+    const targetCount = isUnclaimed
+      ? unclaimed.schedulers.length + unclaimed.posterIds.length
+      : audience.length;
+    if (ctx.pushTargets > 0 && ctx.pushTargets + targetCount > MAX_PUSH_TARGETS) {
+      return 'defer';
     }
 
     const claim = await deps.claim(row.shift_trade_id, stage);
@@ -313,7 +342,7 @@ async function processCandidate(row: ReminderCandidateRow, ctx: RunContext): Pro
     }
 
     const outcome = isUnclaimed
-      ? await sendUnclaimedStage(deps, row, channels, ctx.runStartedAt, loggers)
+      ? await sendUnclaimedStage(deps, row, unclaimed, channels, ctx.runStartedAt, loggers)
       : await sendEmployeeStage(deps, row, stage, audience, loggers);
 
     ctx.pushTargets += outcome.pushTargets;

@@ -26,7 +26,8 @@ const BASE_ARGS = {
 }
 
 const REPORT = 'dev-tools/qa/qa-report-feature-qa-phase.md'
-const QA_PASS = { status: 'completed', qaPassed: true, reportPath: REPORT, commits: [], minorFindings: [] }
+const HEAD = 'aaa1111'
+const QA_PASS = { status: 'completed', qaPassed: true, reportPath: REPORT, headSha: HEAD, charterRows: 4, bugsFixed: 0, commits: [], minorFindings: [] }
 
 type AgentOutcome = { result?: unknown; error?: string; tokens?: number }
 
@@ -38,7 +39,7 @@ function defaultResponder(label: string): AgentOutcome {
   if (label === 'fold-findings') return { result: { status: 'completed', deferred: [] } }
   if (label.startsWith('coderabbit:')) return { result: { status: 'completed', clean: true } }
   if (label === 're-review-snapshot') return { result: { status: 'completed', newCommits: '', diff: '' } }
-  if (label === 'verify' || label === 'verify:post-qa') return { result: { status: 'completed', allPass: true } }
+  if (label === 'verify' || label === 'verify:post-qa') return { result: { status: 'completed', allPass: true, headSha: HEAD } }
   if (label === 'qa') return { result: QA_PASS }
   if (label === 'ship') return { result: { status: 'completed', prNumber: 42 } }
   if (label.startsWith('ci:')) return { result: { status: 'completed', ciGreen: true } }
@@ -108,6 +109,49 @@ describe.each(SCRIPTS)('%s: Phase 8.5 QA', (_name, script) => {
     expect(callNamed(run, 'verify:post-qa')!.prompt).toContain('npm run test:e2e')
   })
 
+  it('re-runs Verify when HEAD moved during QA, even if QA listed no commits', async () => {
+    const run = await runWorkflow(script, {
+      args: BASE_ARGS,
+      onAgent: responder({ qa: { result: { ...QA_PASS, headSha: 'bbb2222', commits: [] } } }),
+    })
+    const labels = labelsOf(run)
+
+    expect(labels.indexOf('verify:post-qa')).toBeGreaterThan(labels.indexOf('qa'))
+    expect(labels.indexOf('verify:post-qa')).toBeLessThan(labels.indexOf('ship'))
+  })
+
+  it('re-keys the post-QA re-verify when a postQaVerifyResolutionNote is supplied', async () => {
+    const NOTE = 'The human fixed the flaky assertion in commit ccc3333.'
+    const moved = { qa: { result: { ...QA_PASS, commits: ['f1x0001'] } } }
+    const plain = await runWorkflow(script, { args: BASE_ARGS, onAgent: responder(moved) })
+    const noted = await runWorkflow(script, { args: { ...BASE_ARGS, postQaVerifyResolutionNote: NOTE }, onAgent: responder(moved) })
+
+    expect(callNamed(plain, 'verify:post-qa')!.prompt).not.toContain(NOTE)
+    expect(callNamed(noted, 'verify:post-qa')!.prompt).toContain(NOTE)
+  })
+
+  it('checks the token ceiling before the post-QA re-verify', async () => {
+    const run = await runWorkflow(script, {
+      args: { ...BASE_ARGS, tokenCeiling: 300_000 },
+      onAgent: responder({ qa: { result: { ...QA_PASS, commits: ['f1x0001'] }, tokens: 400_000 } }),
+    })
+
+    expect(run.result.stopped).toBe(true)
+    expect(run.result.phase).toBe('QA')
+    expect(run.result.reason).toContain('Token ceiling reached')
+    expect(labelsOf(run)).not.toContain('verify:post-qa')
+  })
+
+  it('falls back to the computed report path when QA returns an empty one', async () => {
+    const run = await runWorkflow(script, {
+      args: BASE_ARGS,
+      onAgent: responder({ qa: { result: { ...QA_PASS, qaPassed: false, reportPath: '' } } }),
+    })
+
+    expect(run.result.reportPath).toBe(REPORT)
+    expect(run.result.reason).toContain(REPORT)
+  })
+
   it('skips the re-verify when QA committed nothing', async () => {
     const run = await runWorkflow(script, { args: BASE_ARGS, onAgent: responder() })
     expect(labelsOf(run)).not.toContain('verify:post-qa')
@@ -161,5 +205,22 @@ describe.each(SCRIPTS)('%s: Phase 8.5 QA', (_name, script) => {
     expect(run.result.phase).toBe('QA')
     expect(run.result.reason).toContain('Token ceiling reached')
     expect(labelsOf(run)).not.toContain('qa')
+  })
+})
+
+describe('both scripts send the same QA contract', () => {
+  it('builds the same QA prompt and the same ## QA section of the Ship prompt', async () => {
+    const minor = { title: 'Tooltip overlaps the header at 390px', severity: 'minor', evidence: 'dev-tools/qa/evidence/tip.png' }
+    const runs = await Promise.all(
+      SCRIPTS.map(([, script]) =>
+        runWorkflow(script, { args: BASE_ARGS, onAgent: responder({ qa: { result: { ...QA_PASS, minorFindings: [minor] } } }) }),
+      ),
+    )
+    const qaBody = (prompt: string) => prompt.slice(prompt.indexOf('PHASE 8.5 (QA)'))
+    const qaSection = (prompt: string) => prompt.slice(prompt.indexOf('ALSO add a "## QA" section'), prompt.indexOf('Return the PR number'))
+
+    expect(qaBody(callNamed(runs[0], 'qa')!.prompt)).toBe(qaBody(callNamed(runs[1], 'qa')!.prompt))
+    expect(qaSection(callNamed(runs[0], 'ship')!.prompt)).toBe(qaSection(callNamed(runs[1], 'ship')!.prompt))
+    expect(qaSection(callNamed(runs[0], 'ship')!.prompt)).toContain('Tooltip overlaps the header at 390px')
   })
 })

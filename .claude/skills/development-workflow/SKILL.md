@@ -635,14 +635,17 @@ looks for what the author's tests miss.
 
 - Build a charter from the design doc and plan: one row per user-facing
   behavior, plus one adjacent flow.
-- Apply the 10 QA lenses to each row: persistence, loading/empty/error
-  states, input edges, roles, tenant isolation, 1280px and 390px viewports,
-  keyboard access, console and network errors, data correctness, flow abuse.
+- Apply each of the 10 QA lenses that fits the row. Mark the others `n/a`
+  with a reason. The lenses: persistence, loading/empty/error states, input
+  edges, roles, tenant isolation, 1280px and 390px viewports, keyboard access,
+  console and network errors, data correctness, flow abuse.
 - Write the report to `dev-tools/qa/qa-report-<branch-slug>.md` (gitignored).
 - For each `critical` or `major` bug: add a failing regression test, fix,
   commit. Max 3 rounds.
-- If QA committed a fix, the workflow re-runs the full Phase 8 suite
-  (`verify:post-qa`) before Ship.
+- If QA committed a fix, or HEAD moved after Verify, the workflow re-runs the
+  full Phase 8 suite (`verify:post-qa`) before Ship.
+- To resume after a QA halt, pass `args.qaResolutionNote`. To resume after a
+  `verify:post-qa` halt, pass `args.postQaVerifyResolutionNote`.
 - Open `minor` findings go into a `## QA` section of the PR body.
 
 <HARD-GATE>
@@ -654,10 +657,10 @@ QA never runs against production. If `.env.local` does not point at local
 Supabase, QA returns `needs_human`.
 </HARD-GATE>
 
-**Skip condition:** The diff touches only docs, `.claude/`, `.github/`, or
-other config with no runtime effect. QA still runs and writes a report with a
-one-sentence exception. A change under `src/` or `supabase/` is never an
-exception.
+**Skip condition:** None. A diff that touches only docs, `.claude/`,
+`.github/`, or other config with no runtime effect writes a report with a
+one-sentence exception and does not start the app. A change under `src/` or
+`supabase/` is never an exception.
 
 ## Phase 9: Ship & CI Loop
 

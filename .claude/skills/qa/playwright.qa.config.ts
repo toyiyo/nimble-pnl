@@ -7,7 +7,7 @@
  * `npm run test:e2e` never runs them.
  *
  * Run from the repo root:
- *   npx playwright test --config .claude/skills/qa/playwright.qa.config.ts --reporter=line
+ *   npx playwright test --config .claude/skills/qa/playwright.qa.config.ts
  */
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -22,7 +22,7 @@ export default defineConfig({
   testDir: resolve(qaDir, 'scratch'),
   testMatch: ['**/*.spec.ts'],
   outputDir: resolve(qaDir, 'test-results'),
-  // QA runs each row once and reads every failure; a retry hides a real bug.
+  // QA runs each row once and reads every failure. A retry can hide a real bug.
   retries: 0,
   reporter: 'line',
   use: {
@@ -32,6 +32,6 @@ export default defineConfig({
   },
   // The main projects match only **/unit/** and **/e2e/**, which the scratch folder is not.
   projects: [{ name: 'qa', use: { ...devices['Desktop Chrome'] }, timeout: 90000 }],
-  // webServer's cwd defaults to this config's folder; the dev server must start from the repo root.
+  // The webServer cwd defaults to the folder of this config. The dev server must start from the repo root.
   webServer: Array.isArray(base.webServer) || !base.webServer ? base.webServer : { ...base.webServer, cwd: repoRoot },
 });

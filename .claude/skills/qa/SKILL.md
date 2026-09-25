@@ -66,7 +66,7 @@ A change under `src/` or `supabase/` is never an exception.
 Check each item. Print the raw value before you decide.
 
 ```bash
-test -x node_modules/.bin/vite && echo "vite ok"
+test -x node_modules/.bin/vite && echo "vite ok" || echo "vite missing"
 grep -E '^[[:space:]]*VITE_SUPABASE_URL[[:space:]]*=' .env.local
 npx supabase status
 ```
@@ -79,7 +79,19 @@ npx supabase status
 4. Kill any stale dev server on the Playwright port. Playwright reuses a
    server that answers on the port, and a stale server serves old code
    (`memory/lessons.md`, "A stale long-running `npm run dev`").
-   The port comes from `playwright.config.ts` (`E2E_PORT` overrides it).
+   `playwright.config.ts` derives the port from the checkout path, and
+   `E2E_PORT` overrides it. Run this from the repo root. It uses the same
+   formula as the config:
+
+   ```bash
+   PORT=${E2E_PORT:-$(node -e 'console.log(10000 + ([...process.cwd()].reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381) % 20000))')}
+   PIDS=$(lsof -ti "tcp:$PORT"); echo "port=$PORT pids=${PIDS:-none}"
+   [ -n "$PIDS" ] && kill $PIDS
+   rm -rf node_modules/.vite
+   ```
+
+   Never find the server with `ps aux | grep` (`CLAUDE.md`, "No Unbounded
+   Waits").
 5. If the change includes a migration, run `npm run db:reset` so the local
    schema matches the branch.
 
@@ -121,7 +133,7 @@ each run. Old specs from another branch give false results.
 Run the specs with the QA config:
 
 ```bash
-npx playwright test --config .claude/skills/qa/playwright.qa.config.ts --reporter=line
+npx playwright test --config .claude/skills/qa/playwright.qa.config.ts
 ```
 
 The QA config (`.claude/skills/qa/playwright.qa.config.ts`) reuses the main

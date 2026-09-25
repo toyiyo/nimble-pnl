@@ -173,15 +173,21 @@ const qa = await runAgent(envelope('PHASE 8.5 (QA). ... follow .claude/skills/qa
   { label: 'qa', phase: 'QA', schema: statusSchema({ qaPassed, reportPath, exception, minorFindings }, ['qaPassed', 'reportPath']) })
 { const g = gate(qa, 'QA'); if (g.halt) return g.out }
 if (!qa.qaPassed) return stop('QA', { status: 'needs_human', reason: ..., reportPath: qa.reportPath })
-if (qa.commits?.length) {
+if (qa.commits?.length || qa.headSha !== verify.headSha) {
+  budgetHalt('QA')
   // QA fixes landed after Verify. Re-run the full suite so Ship never pushes unverified code.
   const reverify = await runAgent(<same Verify prompt>, { label: 'verify:post-qa', phase: 'QA', ... })
-  gate + allPass check
+  gate + allPass check (+ the production-bundle probe in the continue script)
 }
 ```
 
+- Verify and QA both return `headSha`. The HEAD test catches a QA agent that
+  commits a fix but does not list it, and a resumed QA whose fixes landed on
+  an earlier attempt (review finding, sound-logic reviewer).
+
 - The script, not the prompt, enforces the order: Verify → QA →
   (re-Verify if QA committed) → Ship.
+- `args.postQaVerifyResolutionNote` re-keys the post-QA re-verify on resume.
 - `args.qaResolutionNote` re-keys the QA prompt on resume, the same pattern as
   `args.verifyResolutionNote` (`.claude/workflows/dev-build-and-ship.js:700-702`).
 - The Ship prompt adds a `## QA` section to the PR body: the verdict, the
@@ -208,7 +214,12 @@ Script-layer tests in `tests/unit/workflowQaPhase.test.ts`, for both scripts:
 5. A failed post-QA re-verify halts. No `ship` call follows.
 6. QA minor findings and the report path reach the Ship prompt.
 7. `qaResolutionNote` changes the QA prompt text.
-8. The token ceiling halts at `QA` before the QA agent runs.
+8. The token ceiling halts at `QA` before the QA agent runs, and again before
+   the re-verify.
+9. HEAD moved with no listed commits: the re-verify runs.
+10. `postQaVerifyResolutionNote` changes the re-verify prompt.
+11. An empty `reportPath` falls back to the computed report path.
+12. Both scripts build the same QA prompt and the same `## QA` Ship section.
 
 The QA method itself is agent instructions. No unit test can run it. The
 first real `/dev` run is its acceptance test.

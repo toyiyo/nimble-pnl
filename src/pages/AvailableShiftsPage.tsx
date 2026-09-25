@@ -69,9 +69,10 @@ import {
 
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
 
-import { format, parseISO, startOfWeek, addDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { parseDateLocal } from '@/lib/dateUtils';
-import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { marketplaceRange } from '@/lib/claimableTrades';
 import { cn } from '@/lib/utils';
 
 // ---- Memoized trade card (no hooks) ----
@@ -293,13 +294,12 @@ export default function AvailableShiftsPage() {
   const { currentEmployee, loading: empLoading } = useCurrentEmployee(restaurantId);
   const { toast } = useToast();
 
-  // Compute 2-week range (current + next)
-  const { weekStart, weekEnd } = useMemo(() => {
-    const now = new Date();
-    const start = startOfWeek(now, { weekStartsOn: WEEK_STARTS_ON as 0 | 1 | 2 | 3 | 4 | 5 | 6 });
-    const end = addDays(start, 13); // 2 weeks
-    return { weekStart: start, weekEnd: end };
-  }, []);
+  // The key is the host local day, so a tab open past midnight gets a new range.
+  const hostDayKey = toDateOnlyString(new Date());
+  const { start: weekStart, end: weekEnd } = useMemo(
+    () => marketplaceRange(parseDateLocal(hostDayKey)),
+    [hostDayKey],
+  );
 
   const {
     items,

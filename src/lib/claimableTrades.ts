@@ -8,6 +8,9 @@
  */
 import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
 import type { ShiftProtectionSettings } from '@/lib/shiftProtection';
+import { addDays, startOfWeek } from 'date-fns';
+
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { addDaysToDateStr, formatInstant, toBusinessDay } from '@/lib/restaurantClock';
 
 export type { MarketplaceTrade };
@@ -59,7 +62,17 @@ export function selectClaimableTrades(
   return rows;
 }
 
-function plural(n: number, word: string): string {
+/**
+ * The marketplace range: this week and the next week, 14 days from the
+ * week start. The home card and the marketplace page use the same range,
+ * so their open shift counts agree.
+ */
+export function marketplaceRange(now: Date): { start: Date; end: Date } {
+  const start = startOfWeek(now, { weekStartsOn: WEEK_STARTS_ON });
+  return { start, end: addDays(start, 13) };
+}
+
+export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 

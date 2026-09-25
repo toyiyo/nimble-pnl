@@ -37,7 +37,6 @@ import {
 } from 'lucide-react';
 import {
   format,
-  startOfWeek,
   endOfWeek,
   subWeeks,
   addWeeks,
@@ -59,6 +58,8 @@ import {
 } from '@/lib/scheduleSeenFingerprint';
 import { getRelativeWeekLabel, getRestaurantWeekStart } from '@/lib/scheduleWeek';
 import { selectUpcomingShifts, countShiftsInWeek } from '@/lib/nextShift';
+import { marketplaceRange } from '@/lib/claimableTrades';
+import { parseDateLocal } from '@/lib/dateUtils';
 import { Shift } from '@/types/scheduling';
 
 const EmployeeSchedule = () => {
@@ -181,12 +182,9 @@ const EmployeeSchedule = () => {
     refetch: refetchClaimable,
   } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null);
 
-  // The same two-week range as AvailableShiftsPage, so the footer count
-  // matches the marketplace.
-  const openShiftRange = useMemo(() => {
-    const start = startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON });
-    return { start, end: addDays(start, 13) };
-  }, []);
+  // The key is the host local day, so a tab open past midnight gets a new range.
+  const hostDayKey = toDateOnlyString(new Date(nowTick));
+  const openShiftRange = useMemo(() => marketplaceRange(parseDateLocal(hostDayKey)), [hostDayKey]);
   const { openShifts } = useOpenShifts(restaurantId, openShiftRange.start, openShiftRange.end);
 
   const showUpForGrabs = !claimableLoading && !claimableError && claimableTrades.length > 0;

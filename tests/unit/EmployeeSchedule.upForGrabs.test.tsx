@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     refetch: () => undefined,
   },
   useClaimableTrades: vi.fn(),
+  useOpenShifts: vi.fn(),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
@@ -54,7 +55,7 @@ vi.mock('@/hooks/useClaimableTrades', () => ({
 }));
 
 vi.mock('@/hooks/useOpenShifts', () => ({
-  useOpenShifts: () => ({ openShifts: [{}, {}], loading: false, error: null, refetch: vi.fn() }),
+  useOpenShifts: mocks.useOpenShifts,
 }));
 
 vi.mock('@/components/employee', async () => {
@@ -82,6 +83,7 @@ vi.mock('@/components/schedule/TradeRequestDialog', () => ({
 }));
 
 import EmployeeSchedule from '@/pages/EmployeeSchedule';
+import { marketplaceRange } from '@/lib/claimableTrades';
 
 function renderPage() {
   return render(
@@ -111,6 +113,15 @@ describe('EmployeeSchedule – "Teammates need cover" placement', () => {
     setClaimable([]);
     mocks.useClaimableTrades.mockReset();
     mocks.useClaimableTrades.mockImplementation(() => mocks.claimable);
+    mocks.useOpenShifts.mockReset();
+    mocks.useOpenShifts.mockReturnValue({ openShifts: [{}, {}], loading: false, error: null, refetch: vi.fn() });
+  });
+
+  it('reads open shifts for the marketplace range', () => {
+    setClaimable([false]);
+    renderPage();
+    const { start, end } = marketplaceRange(new Date());
+    expect(mocks.useOpenShifts).toHaveBeenLastCalledWith('r1', start, end);
   });
 
   it('reads claimable trades for the restaurant and the employee', () => {

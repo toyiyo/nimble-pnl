@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  marketplaceRange,
   selectClaimableTrades,
   tradeUrgencyLabel,
   tradeDateTile,
@@ -216,5 +217,26 @@ describe('tradeDateTile', () => {
       day: '1',
       month: 'Oct',
     });
+  });
+});
+
+describe('marketplaceRange', () => {
+  it('starts on the week start day and covers 14 days', () => {
+    // Thursday, 25 Sep 2026, host local time.
+    const { start, end } = marketplaceRange(new Date(2026, 8, 25, 10, 30));
+    expect(start).toEqual(new Date(2026, 8, 21, 0, 0, 0, 0));
+    expect(end).toEqual(new Date(2026, 9, 4, 0, 0, 0, 0));
+  });
+
+  it('keeps the same range on every day of one week', () => {
+    const monday = marketplaceRange(new Date(2026, 8, 21, 0, 5));
+    const sunday = marketplaceRange(new Date(2026, 8, 27, 23, 55));
+    expect(sunday.start).toEqual(monday.start);
+    expect(sunday.end).toEqual(monday.end);
+  });
+
+  it('moves to the next week after midnight on the last day', () => {
+    const next = marketplaceRange(new Date(2026, 8, 28, 0, 1));
+    expect(next.start).toEqual(new Date(2026, 8, 28, 0, 0, 0, 0));
   });
 });

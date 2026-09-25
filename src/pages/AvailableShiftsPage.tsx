@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState, useMemo, useCallback, useRef, memo } from 'react';
+import { Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { Button } from '@/components/ui/button';
@@ -59,13 +59,8 @@ import { useShiftProtection } from '@/hooks/useShiftProtection';
 import { usePermissions } from '@/hooks/usePermissions';
 import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
 import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
-import {
-  TRADE_LINK_PARAMS,
-  decideTradeDeepLink,
-  readTradeLink,
-  type TradeLink,
-  type TradeLinkSource,
-} from '@/lib/tradeDeepLink';
+import { useTradeDeepLink } from '@/hooks/useTradeDeepLink';
+import type { TradeLinkSource } from '@/lib/tradeDeepLink';
 
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
 
@@ -87,9 +82,6 @@ interface TradeCardProps {
   highlighted: boolean;
   highlightSource: TradeLinkSource | null;
 }
-
-/** How long the deep link highlight stays, unless the user scrolls first. */
-const HIGHLIGHT_MS = 4000;
 
 const HIGHLIGHT_SOURCE_LABEL: Record<TradeLinkSource, { icon: LucideIcon; text: string }> = {
   reminder: { icon: Bell, text: 'From your reminder' },
@@ -280,15 +272,8 @@ function claimStatusBadge(status: OpenShiftClaim['status']) {
 
 // ---- Main page ----
 
-type HighlightState = TradeLink & { handled: boolean };
-
 export default function AvailableShiftsPage() {
-  const {
-    selectedRestaurant,
-    setSelectedRestaurant,
-    restaurants,
-    loading: restaurantsLoading,
-  } = useRestaurantContext();
+  const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id ?? null;
   const { tz } = useRestaurantClock();
   const { currentEmployee, loading: empLoading } = useCurrentEmployee(restaurantId);
@@ -426,116 +411,16 @@ export default function AvailableShiftsPage() {
 
   const loading = feedLoading || myShiftsLoading;
 
-  // ---- Deep link: ?trade=<id>&restaurant=<id>&from=reminder|home ----
   // All hooks stay above the early returns below.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [highlight, setHighlight] = useState<HighlightState | null>(() => {
-    const link = readTradeLink(searchParams);
-    return link ? { ...link, handled: false } : null;
-  });
-
-  // Copy the link into state, then delete its params from the URL. A reload
-  // or a back navigation must not replay the highlight or the toast.
-  useEffect(() => {
-    if (!TRADE_LINK_PARAMS.some((key) => searchParams.has(key))) return;
-    const link = readTradeLink(searchParams);
-    if (link) {
-      setHighlight((prev) =>
-        prev && !prev.handled && prev.tradeId === link.tradeId && prev.restaurantId === link.restaurantId
-          ? prev
-          : { ...link, handled: false }
-      );
-    }
-    const next = new URLSearchParams(searchParams);
-    TRADE_LINK_PARAMS.forEach((key) => next.delete(key));
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
-
-  const memberRestaurantIds = useMemo(
-    () => (restaurants ?? []).map((r) => r.restaurant_id),
-    [restaurants]
-  );
-
-  const decision = decideTradeDeepLink({
-    tradeId: highlight && !highlight.handled ? highlight.tradeId : null,
-    linkRestaurantId: highlight?.restaurantId ?? null,
-    selectedRestaurantId: restaurantId,
-    memberRestaurantIds,
-    restaurantsLoading: !!restaurantsLoading,
-    // A directed trade shows only once the employee is known.
-    loading: empLoading || !currentEmployee || loading,
-    error: !!feedError,
+  const { highlightedTradeId, highlightSource } = useTradeDeepLink({
     items,
+    loading,
+    error: !!feedError,
+    employeeLoading: empLoading,
+    hasEmployee: !!currentEmployee,
+    listRef: parentRef,
+    virtualizer,
   });
-  const decisionKind = decision.kind;
-  const scrollIndex = decision.kind === 'scroll' ? decision.index : -1;
-  const switchRestaurantId = decision.kind === 'switch-restaurant' ? decision.restaurantId : null;
-
-  useEffect(() => {
-    switch (decisionKind) {
-      case 'switch-restaurant': {
-        const match = (restaurants ?? []).find((r) => r.restaurant_id === switchRestaurantId);
-        if (match) setSelectedRestaurant(match);
-        return;
-      }
-      case 'foreign-restaurant':
-        toast({ title: 'This shift is at a restaurant you cannot open.' });
-        setHighlight(null);
-        return;
-      case 'gone':
-        // RLS hides a trade from other employees once it leaves `open`, so
-        // the copy does not name who took it.
-        toast({
-          title: 'That shift is no longer open',
-          description: 'A teammate took it, or it was withdrawn. The shifts below are still open.',
-        });
-        setHighlight(null);
-        return;
-      case 'scroll': {
-        const container = parentRef.current;
-        if (!container) return;
-        // No smooth scroll: rows have dynamic height.
-        container.scrollIntoView({ block: 'nearest' });
-        virtualizer.scrollToIndex(scrollIndex, { align: 'center' });
-        setHighlight((prev) => (prev ? { ...prev, handled: true } : prev));
-        return;
-      }
-      default:
-        return;
-    }
-  }, [decisionKind, scrollIndex, switchRestaurantId, restaurants, setSelectedRestaurant, toast, virtualizer]);
-
-  // Focus the card root once, after the next frame, so the virtualizer can
-  // render the row first.
-  const focusTradeId = highlight?.handled ? highlight.tradeId : null;
-  useEffect(() => {
-    if (!focusTradeId) return;
-    const frame = window.requestAnimationFrame(() => {
-      const cards = parentRef.current?.querySelectorAll<HTMLElement>('[data-trade-id]') ?? [];
-      const target = Array.from(cards).find((el) => el.dataset.tradeId === focusTradeId);
-      target?.focus({ preventScroll: true });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [focusTradeId]);
-
-  // The highlight clears after 4 s, or on the first user scroll of the list.
-  // Only wheel and touch count: the scroll to the trade also fires `scroll`.
-  useEffect(() => {
-    if (!focusTradeId) return;
-    const clear = () => setHighlight(null);
-    const timer = window.setTimeout(clear, HIGHLIGHT_MS);
-    const container = parentRef.current;
-    container?.addEventListener('wheel', clear, { passive: true });
-    container?.addEventListener('touchmove', clear, { passive: true });
-    return () => {
-      window.clearTimeout(timer);
-      container?.removeEventListener('wheel', clear);
-      container?.removeEventListener('touchmove', clear);
-    };
-  }, [focusTradeId]);
-
-  const highlightedTradeId = highlight?.tradeId ?? null;
-  const highlightSource = highlight?.source ?? null;
 
   // Early returns
   if (!selectedRestaurant) return <NoRestaurantState />;

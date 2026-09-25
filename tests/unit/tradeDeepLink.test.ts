@@ -21,6 +21,7 @@ const base: TradeDeepLinkInput = {
   selectedRestaurantId: 'rest-1',
   memberRestaurantIds: ['rest-1', 'rest-2'],
   restaurantsLoading: false,
+  employeeMissing: false,
   loading: false,
   error: false,
   items,
@@ -49,7 +50,7 @@ describe('tradeLinkHref', () => {
 
   it('encodes the ids', () => {
     expect(tradeLinkHref('a b', 'r&1', 'reminder')).toBe(
-      '/employee/shifts?trade=a%20b&restaurant=r%261&from=reminder'
+      '/employee/shifts?trade=a+b&restaurant=r%261&from=reminder'
     );
   });
 
@@ -84,6 +85,22 @@ describe('readTradeLink', () => {
 
   it('names the three params that the page deletes', () => {
     expect([...TRADE_LINK_PARAMS]).toEqual(['trade', 'restaurant', 'from']);
+  });
+});
+
+describe('decideTradeDeepLink – no employee row', () => {
+  it('returns foreign-restaurant when the employee load ends with no employee', () => {
+    expect(decideTradeDeepLink({ ...base, employeeMissing: true })).toEqual({ kind: 'foreign-restaurant' });
+  });
+
+  it('switches the restaurant first, before the employee check', () => {
+    expect(
+      decideTradeDeepLink({ ...base, linkRestaurantId: 'rest-2', employeeMissing: true }),
+    ).toEqual({ kind: 'switch-restaurant', restaurantId: 'rest-2' });
+  });
+
+  it('does nothing without a trade id', () => {
+    expect(decideTradeDeepLink({ ...base, tradeId: null, employeeMissing: true })).toEqual({ kind: 'none' });
   });
 });
 

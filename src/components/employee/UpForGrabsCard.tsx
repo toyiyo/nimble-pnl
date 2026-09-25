@@ -6,7 +6,7 @@ import { Check, ChevronRight } from 'lucide-react';
 
 import type { ClaimableTrade } from '@/lib/claimableTrades';
 
-import { tradeDateTile, tradeUrgencyLabel } from '@/lib/claimableTrades';
+import { tradeDateTile, tradeTimeRange, tradeUrgencyLabel } from '@/lib/claimableTrades';
 import { formatInstant } from '@/lib/restaurantClock';
 import { cn } from '@/lib/utils';
 
@@ -131,11 +131,7 @@ function UpForGrabsRow({
   const name = trade.offered_by?.name ?? 'A teammate';
   const tile = tradeDateTile(startsAt, timezone);
   const chip = tradeUrgencyLabel(startsAt, now, timezone);
-  const timeRange = `${formatInstant(shift.start_time, timezone, 'h:mm a')} – ${formatInstant(
-    shift.end_time,
-    timezone,
-    'h:mm a'
-  )}`;
+  const timeRange = tradeTimeRange(shift.start_time, shift.end_time, timezone);
   const spokenDate = formatInstant(startsAt, timezone, 'EEEE, MMMM d');
   const href = `/employee/shifts?trade=${encodeURIComponent(trade.id)}&restaurant=${encodeURIComponent(
     restaurantId

@@ -4,6 +4,8 @@ import {
   selectClaimableTrades,
   tradeUrgencyLabel,
   tradeDateTile,
+  tradeDateLabel,
+  tradeTimeRange,
   type MarketplaceTrade,
 } from '@/lib/claimableTrades';
 import { SHIFT_PROTECTION_DEFAULTS, type ShiftProtectionSettings } from '@/lib/shiftProtection';
@@ -216,5 +218,36 @@ describe('tradeDateTile', () => {
       day: '1',
       month: 'Oct',
     });
+  });
+});
+
+// Pacific/Kiritimati is UTC+14 all year. No CI or dev runner uses it
+// (`test:tz` runs Chicago, Auckland and UTC), so a result that leaks the
+// runner zone cannot match.
+const FAR_ZONE = 'Pacific/Kiritimati';
+
+describe('tradeDateLabel', () => {
+  it('formats the start day in the restaurant zone, not the runner zone', () => {
+    // 14:00Z on Sep 26 is 04:00 on Sep 27 in Kiritimati.
+    expect(tradeDateLabel('2026-09-26T14:00:00Z', FAR_ZONE)).toBe('Sun, Sep 27');
+    expect(tradeDateLabel(new Date('2026-09-26T14:00:00Z'), 'America/Chicago')).toBe('Sat, Sep 26');
+  });
+});
+
+describe('tradeTimeRange', () => {
+  it('formats both ends in the restaurant zone with an en dash', () => {
+    expect(tradeTimeRange('2026-09-26T14:00:00Z', '2026-09-26T20:00:00Z', FAR_ZONE)).toBe(
+      '4:00 AM – 10:00 AM',
+    );
+    expect(
+      tradeTimeRange('2026-09-26T16:00:00Z', '2026-09-26T22:00:00Z', 'America/Chicago'),
+    ).toBe('11:00 AM – 5:00 PM');
+  });
+
+  it('keeps an overnight shift in wall-clock order', () => {
+    // 22:00 to 06:00 in Chicago (CDT, UTC-5).
+    expect(
+      tradeTimeRange('2026-09-27T03:00:00Z', '2026-09-27T11:00:00Z', 'America/Chicago'),
+    ).toBe('10:00 PM – 6:00 AM');
   });
 });

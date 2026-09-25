@@ -109,3 +109,16 @@ export function tradeDateTile(
     month: formatInstant(startsAt, tz, 'MMM'),
   };
 }
+
+/** Trade day in the restaurant time zone: "Fri, Sep 26". */
+export function tradeDateLabel(start: string | Date, tz: string): string {
+  return formatInstant(start, tz, 'EEE, MMM d');
+}
+
+/**
+ * Trade clock range in the restaurant time zone: "4:00 PM – 10:00 PM".
+ * The home card and the marketplace both use it, so one trade shows one time.
+ */
+export function tradeTimeRange(start: string | Date, end: string | Date, tz: string): string {
+  return `${formatInstant(start, tz, 'h:mm a')} – ${formatInstant(end, tz, 'h:mm a')}`;
+}

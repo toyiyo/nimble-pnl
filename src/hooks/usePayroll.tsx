@@ -1,25 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
-import { TimePunch, DBTimePunch } from '@/types/timeTracking';
-import {
-  calculatePayrollPeriod,
-  PayrollPeriod,
-  ManualPayment,
-  shouldIncludeEmployeeInPayroll,
-} from '@/utils/payrollCalculations';
+import type { PayrollPeriod } from '@/utils/payrollCalculations';
 import { useToast } from '@/hooks/use-toast';
 import type { Employee } from '@/types/scheduling';
-import {
-  computeTipTotalsWithFiltering,
-  type TipSplitItem as TipSplitItemForAggregation,
-  type EmployeeTip as EmployeeTipForAggregation,
-} from '@/utils/tipAggregation';
-import { bufferPunchFetchRange } from '@/utils/punchWindow';
-import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
-import { businessDayRangeToInstants } from '@/lib/restaurantClock';
+import { loadPayrollPeriod } from '../../supabase/functions/_shared/labor/payrollPeriod';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -39,32 +26,6 @@ export function aggregateTips(
   });
 
   return tipsPerEmployee;
-}
-
-/**
- * Narrows a Supabase query to `employee_id = employeeId` in self-scoped mode;
- * a no-op pass-through in admin mode (`employeeId` falsy). Centralizes the
- * per-employee predicate applied to each of the seven per-employee queries
- * below so the self-scoping rule lives in one place, not six near-identical
- * copies of it. `.eq()` returns `this` in supabase-js, so this stays
- * type-safe across differently-shaped queries.
- *
- * `Query` is intentionally left unconstrained (no `extends { eq(...): Query }`
- * structural bound): constraining a generic against a Supabase
- * PostgrestFilterBuilder shape forces the compiler to fully expand that
- * (deeply nested, self-referential) type at every call site to check the
- * constraint, which trips `TS2589: Type instantiation is excessively deep and
- * possibly infinite` on some of the six differently-shaped queries below. The
- * inline cast on the `.eq()` call keeps the same runtime behavior and the
- * same `Query` return type without asking the compiler to prove the
- * constraint structurally.
- */
-function scopeToEmployee<Query>(
-  query: Query,
-  employeeId: string | null | undefined,
-): Query {
-  if (!employeeId) return query;
-  return (query as { eq: (column: string, value: string) => Query }).eq('employee_id', employeeId);
 }
 
 type TipSplitForFallback = { id: string; total_amount: number };
@@ -107,26 +68,6 @@ export function computeTipTotals(
   });
 
   return base;
-}
-
-interface DBTipSplitItem {
-  employee_id: string;
-  amount: number;
-  tip_splits?: { split_date: string } | null;
-}
-
-interface DBEmployeeTip {
-  employee_id: string;
-  tip_amount: number;
-  tip_date: string;
-}
-
-interface DBOvertimeAdjustment {
-  employee_id: string;
-  punch_date: string;
-  adjustment_type: string;
-  hours: number;
-  reason: string | null;
 }
 
 /**
@@ -173,247 +114,30 @@ function usePayrollInternal(
   const { data: payrollPeriod, isLoading, error, refetch } = useQuery({
     queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), timezone, queryKeyEmployeeId],
     queryFn: async (): Promise<PayrollPeriod | null> => {
-      if (!restaurantId) return null;
+      // Self-scoped with the id not known yet: no read. The query is
+      // disabled then, so this is a second guard. The loader throws on null.
+      if (!restaurantId || employeeId === null) return null;
 
-      // Fetch time punches for the period, widened by ±18h so overnight shifts
-      // that straddle the period boundary are paired whole. calculateEmployeePay
-      // then filters periods back to [startDate, endDate] by clock-in day.
-      //
-      // Buffer the RESTAURANT-zone day bounds, not startDate/endDate directly:
-      // startDate/endDate are calendar-day tokens (host-local Date objects),
-      // and buffering those raw instants buffers the VIEWER's day boundary.
-      // When the viewer is far from the restaurant's zone that ±18h buffer is
-      // partly (or, at the extremes, entirely) eaten by the offset
-      // difference, so a boundary-crossing shift is never fetched and the
-      // pairing engine can't pair it.
-      //
-      // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
-      // PostgREST caps an unpaginated response at 1,000 rows, which would
-      // silently drop the newest punches (the query orders `punch_time asc`)
-      // once a pay period crosses that threshold. The `.order('id')`
-      // tiebreaker makes each page boundary deterministic when multiple
-      // punches share a `punch_time`.
-      const { start: dayStart, end: dayEnd } = businessDayRangeToInstants(
-        toDateOnlyString(startDate),
-        toDateOnlyString(endDate),
-        timezone,
-      );
-      const { fetchStart, fetchEnd } = bufferPunchFetchRange(dayStart, dayEnd);
-      const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
-        scopeToEmployee(
-          supabase
-            .from('time_punches')
-            .select('*')
-            .eq('restaurant_id', restaurantId)
-            .gte('punch_time', fetchStart.toISOString())
-            .lte('punch_time', fetchEnd.toISOString()),
-          employeeId,
-        )
-          .order('punch_time', { ascending: true })
-          .order('id')
-          .range(from, to),
-      );
+      // The loader works on whole restaurant days. startDate / endDate are
+      // calendar-day tokens: their local fields name the first and the last
+      // day of the pay period.
+      const { period, capped } = await loadPayrollPeriod(supabase, {
+        restaurantId,
+        startDay: toDateOnlyString(startDate),
+        endDay: toDateOnlyString(endDate),
+        timeZone: timezone,
+        employees,
+        employeeId,
+      });
 
       if (capped) {
         console.warn(
-          '[usePayroll] time_punches fetch hit the pagination cap (maxPages); payroll may be missing punches',
+          '[usePayroll] a paged fetch hit the pagination cap (maxPages); payroll may be missing rows',
           { restaurantId, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
         );
       }
 
-      // Fetch all approved/archived tips for the period from tip_split_items
-      // Both 'approved' and 'archived' (locked) splits should be included in payroll
-      const { data: approvedSplits, error: splitsError } = await supabase
-        .from('tip_splits')
-        .select('id, total_amount')
-        .eq('restaurant_id', restaurantId)
-        .in('status', ['approved', 'archived'])
-        .gte('split_date', toDateOnlyString(startDate))
-        .lte('split_date', toDateOnlyString(endDate));
-
-      if (splitsError) throw splitsError;
-
-      const splitIds = (approvedSplits || []).map(s => s.id);
-
-      // Then fetch the tip split items for those splits, including split_date from tip_splits.
-      // Short-circuited locally when splitIds is empty: PostgREST's `.in()` has no
-      // client-side empty-array guard — it sends `tip_split_id=in.()` literally, which
-      // PostgREST rejects on a typed uuid column (postgrest/postgrest#641) rather than
-      // returning zero rows. Any payroll period with no approved/archived tip splits
-      // (the common case) would otherwise fail the entire payroll query. Same guard
-      // pattern as the identical query in src/pages/EmployeeTips.tsx.
-      const { data: tips, error: tipsError } = splitIds.length === 0
-        ? { data: [] as DBTipSplitItem[], error: null }
-        : await scopeToEmployee(
-            supabase
-              .from('tip_split_items')
-              .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
-              .in('tip_split_id', splitIds),
-            employeeId,
-          );
-
-      if (tipsError) throw tipsError;
-
-      // Fetch manual payments (per-job contractor payments) for the period
-      const { data: manualPaymentsData, error: manualPaymentsError } = await scopeToEmployee(
-        supabase
-          .from('daily_labor_allocations')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .eq('source', 'per-job')
-          .gte('date', toDateOnlyString(startDate))
-          .lte('date', toDateOnlyString(endDate)),
-        employeeId,
-      );
-
-      if (manualPaymentsError) throw manualPaymentsError;
-
-      // Group punches by employee
-      const punchesPerEmployee = new Map<string, TimePunch[]>();
-      (punches || []).forEach((punch: DBTimePunch) => {
-        if (!punchesPerEmployee.has(punch.employee_id)) {
-          punchesPerEmployee.set(punch.employee_id, []);
-        }
-        const typedPunch: TimePunch = {
-          ...punch,
-          punch_type: punch.punch_type as TimePunch['punch_type'],
-          location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location
-            ? punch.location as { latitude: number; longitude: number }
-            : undefined,
-        };
-        punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
-      });
-
-      // Fetch tips from tip_split_items and employee_tips for the period
-      const { data: employeeTips, error: employeeTipsError } = await scopeToEmployee(
-        supabase
-          .from('employee_tips')
-          .select('employee_id, tip_amount, tip_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('tip_date', toDateOnlyString(startDate))
-          .lte('tip_date', toDateOnlyString(endDate)),
-        employeeId,
-      );
-
-      if (employeeTipsError) throw employeeTipsError;
-
-      // Fetch tip payouts (cash already paid out) for the period
-      const { data: tipPayoutsData, error: tipPayoutsError } = await scopeToEmployee(
-        supabase
-          .from('tip_payouts')
-          .select('employee_id, amount')
-          .eq('restaurant_id', restaurantId)
-          .gte('payout_date', toDateOnlyString(startDate))
-          .lte('payout_date', toDateOnlyString(endDate)),
-        employeeId,
-      );
-
-      if (tipPayoutsError) throw tipPayoutsError;
-
-      const tipItems: TipSplitItemForAggregation[] = (tips || []).map((item: DBTipSplitItem) => ({
-        employee_id: item.employee_id,
-        amount: item.amount,
-        split_date: item.tip_splits?.split_date,
-      }));
-
-      const employeeTipItems: EmployeeTipForAggregation[] = (employeeTips || []).map((tip: DBEmployeeTip) => ({
-        employee_id: tip.employee_id,
-        amount: tip.tip_amount,
-        tip_date: tip.tip_date,
-      }));
-
-      // Aggregate tips with date filtering to prevent double-counting
-      const tipsPerEmployee = computeTipTotalsWithFiltering(
-        tipItems,
-        employeeTipItems,
-        undefined // No POS fallback for now
-      );
-
-      // Group manual payments by employee
-      const manualPaymentsPerEmployee = new Map<string, ManualPayment[]>();
-      (manualPaymentsData || []).forEach((payment) => {
-        if (!manualPaymentsPerEmployee.has(payment.employee_id)) {
-          manualPaymentsPerEmployee.set(payment.employee_id, []);
-        }
-        manualPaymentsPerEmployee.get(payment.employee_id)!.push({
-          id: payment.id,
-          date: payment.date,
-          amount: payment.allocated_cost,
-          description: payment.notes || undefined,
-        });
-      });
-
-      // Group tip payouts by employee (sum amounts in cents)
-      const tipPayoutsPerEmployee = new Map<string, number>();
-      (tipPayoutsData || []).forEach((payout: { employee_id: string; amount: number }) => {
-        const current = tipPayoutsPerEmployee.get(payout.employee_id) || 0;
-        tipPayoutsPerEmployee.set(payout.employee_id, current + payout.amount);
-      });
-
-      // Fetch overtime rules for restaurant
-      const { data: otRulesData, error: otRulesError } = await supabase
-        .from('overtime_rules')
-        .select('weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, daily_double_threshold_hours, daily_double_multiplier, exclude_tips_from_ot_rate')
-        .eq('restaurant_id', restaurantId)
-        .maybeSingle();
-
-      if (otRulesError) {
-        console.error('Error fetching overtime rules:', otRulesError);
-      }
-
-      // Fetch overtime adjustments for the period
-      const { data: otAdjData, error: otAdjError } = await scopeToEmployee(
-        supabase
-          .from('overtime_adjustments')
-          .select('employee_id, punch_date, adjustment_type, hours, reason')
-          .eq('restaurant_id', restaurantId)
-          .gte('punch_date', toDateOnlyString(startDate))
-          .lte('punch_date', toDateOnlyString(endDate)),
-        employeeId,
-      );
-
-      if (otAdjError) {
-        console.error('Error fetching overtime adjustments:', otAdjError);
-      }
-
-      const overtimeRules = otRulesData
-        ? {
-            weeklyThresholdHours: Number(otRulesData.weekly_threshold_hours),
-            weeklyOtMultiplier: Number(otRulesData.weekly_ot_multiplier),
-            dailyThresholdHours: otRulesData.daily_threshold_hours != null ? Number(otRulesData.daily_threshold_hours) : null,
-            dailyOtMultiplier: Number(otRulesData.daily_ot_multiplier),
-            dailyDoubleThresholdHours: otRulesData.daily_double_threshold_hours != null ? Number(otRulesData.daily_double_threshold_hours) : null,
-            dailyDoubleMultiplier: Number(otRulesData.daily_double_multiplier),
-            excludeTipsFromOtRate: otRulesData.exclude_tips_from_ot_rate,
-          }
-        : undefined;
-
-      const overtimeAdjustments = (otAdjData ?? []).map((adj: DBOvertimeAdjustment) => ({
-        employeeId: adj.employee_id,
-        punchDate: adj.punch_date,
-        adjustmentType: adj.adjustment_type as 'regular_to_overtime' | 'overtime_to_regular',
-        hours: Number(adj.hours),
-        reason: adj.reason ?? '',
-      }));
-
-      // Filter employees based on deactivation date vs payroll period
-      // Inactive employees are included only through their final week (the week containing their deactivation date)
-      const eligibleEmployees = employees.filter(employee =>
-        shouldIncludeEmployeeInPayroll(employee, startDate, timezone)
-      );
-
-      return calculatePayrollPeriod(
-        startDate,
-        endDate,
-        eligibleEmployees,
-        punchesPerEmployee,
-        tipsPerEmployee,
-        timezone,
-        manualPaymentsPerEmployee,
-        tipPayoutsPerEmployee,
-        overtimeRules,
-        overtimeAdjustments,
-      );
+      return period;
     },
     // The `!isSelfScoped || !!employeeId` clause is belt-and-suspenders: when
     // self-scoped and employeeId is null, `restaurantId` was already forced

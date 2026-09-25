@@ -20,7 +20,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(49);
+SELECT plan(53);
 
 SET LOCAL role TO postgres;
 
@@ -311,13 +311,53 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
--- Grants (49)
+-- Keyset cursor (49-51)
+-- ---------------------------------------------------------------------------
+CREATE TEMP TABLE all_rows AS
+SELECT row_number() OVER (ORDER BY f.start_time, f.shift_trade_id, f.stage) AS rn, f.*
+FROM public.get_shift_trade_reminder_candidates('2026-10-07 15:00:00+00', 1000) f;
+
+SELECT is(
+  (SELECT array_agg(f.shift_trade_id::text || '|' || f.stage)
+   FROM public.get_shift_trade_reminder_candidates(
+     '2026-10-07 15:00:00+00', 1000,
+     (SELECT start_time FROM all_rows WHERE rn = 3),
+     (SELECT shift_trade_id FROM all_rows WHERE rn = 3),
+     (SELECT stage FROM all_rows WHERE rn = 3)) f),
+  (SELECT array_agg(shift_trade_id::text || '|' || stage ORDER BY rn) FROM all_rows WHERE rn > 3),
+  'the cursor returns only the rows after the cursor row'
+);
+SELECT is(
+  (SELECT f.shift_trade_id::text || '|' || f.stage
+   FROM public.get_shift_trade_reminder_candidates(
+     '2026-10-07 15:00:00+00', 1,
+     (SELECT start_time FROM all_rows WHERE rn = 1),
+     (SELECT shift_trade_id FROM all_rows WHERE rn = 1),
+     (SELECT stage FROM all_rows WHERE rn = 1)) f),
+  (SELECT shift_trade_id::text || '|' || stage FROM all_rows WHERE rn = 2),
+  'a row that stays due at the head does not block the next page'
+);
+SELECT is(
+  (SELECT f.shift_trade_id::text || '|' || f.stage
+   FROM public.get_shift_trade_reminder_candidates(
+     '2026-10-07 15:00:00+00', 1,
+     '2026-10-08 15:00:00+00', pg_temp.tid(4), '24h') f),
+  pg_temp.tid(4)::text || '|unclaimed',
+  'the cursor breaks a start_time tie on trade id, then on stage'
+);
+
+-- ---------------------------------------------------------------------------
+-- Grants and signature (52-53)
 -- ---------------------------------------------------------------------------
 SELECT ok(
-  NOT has_function_privilege('authenticated', 'public.get_shift_trade_reminder_candidates(timestamptz, integer)', 'EXECUTE')
-  AND NOT has_function_privilege('anon', 'public.get_shift_trade_reminder_candidates(timestamptz, integer)', 'EXECUTE')
-  AND has_function_privilege('service_role', 'public.get_shift_trade_reminder_candidates(timestamptz, integer)', 'EXECUTE'),
+  NOT has_function_privilege('authenticated', 'public.get_shift_trade_reminder_candidates(timestamptz, integer, timestamptz, uuid, text)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.get_shift_trade_reminder_candidates(timestamptz, integer, timestamptz, uuid, text)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.get_shift_trade_reminder_candidates(timestamptz, integer, timestamptz, uuid, text)', 'EXECUTE'),
   'only service_role can execute get_shift_trade_reminder_candidates'
+);
+SELECT ok(
+  to_regprocedure('public.get_shift_trade_reminder_candidates(timestamptz, integer)') IS NULL,
+  'the old 2-argument signature does not exist'
 );
 
 SELECT * FROM finish();

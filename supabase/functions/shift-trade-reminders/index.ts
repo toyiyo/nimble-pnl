@@ -64,10 +64,13 @@ serve(async (req: Request): Promise<Response> => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const deps: ShiftTradeRemindersDeps = {
-    fetchCandidates: async (nowIso, limit) => {
+    fetchCandidates: async (nowIso, limit, after) => {
       const { data, error } = await supabase.rpc('get_shift_trade_reminder_candidates', {
         p_now: nowIso,
         p_limit: limit,
+        p_after_start: after?.start_time ?? null,
+        p_after_trade: after?.shift_trade_id ?? null,
+        p_after_stage: after?.stage ?? null,
       });
       return { data: (data ?? null) as ReminderCandidateRow[] | null, error: rpcError(error) };
     },

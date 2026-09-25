@@ -126,11 +126,21 @@ COMMENT ON COLUMN public.notification_channel_settings.notification_type IS
 --    - Only open trades on scheduled or confirmed shifts.
 --    - A missing settings row means the defaults (mode off, 24 h, channels on).
 --    - A (trade, stage) that has a shift_trade_reminders row is not due.
+--    - Keyset cursor: when p_after_start is not null, only rows after
+--      (p_after_start, p_after_trade, p_after_stage) come back, in the
+--      order (start_time, trade id, stage). The worker passes the last row
+--      of the page before. A row that stays due then does not block the
+--      next page.
 --    The caller is service_role (BYPASSRLS), so SECURITY INVOKER is enough.
 -- ============================================================
+DROP FUNCTION IF EXISTS public.get_shift_trade_reminder_candidates(timestamptz, integer);
+
 CREATE OR REPLACE FUNCTION public.get_shift_trade_reminder_candidates(
   p_now timestamptz,
-  p_limit integer
+  p_limit integer,
+  p_after_start timestamptz DEFAULT NULL,
+  p_after_trade uuid DEFAULT NULL,
+  p_after_stage text DEFAULT NULL
 )
 RETURNS TABLE (
   shift_trade_id uuid,
@@ -252,15 +262,17 @@ AS $$
     WHERE x.shift_trade_id = d.trade_id
       AND x.stage = d.stage_name
   )
+    AND (p_after_start IS NULL
+         OR (d.s_start, d.trade_id, d.stage_name) > (p_after_start, p_after_trade, p_after_stage))
   ORDER BY d.s_start ASC, d.trade_id, d.stage_name
   LIMIT p_limit;
 $$;
 
-COMMENT ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) IS
+COMMENT ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer, timestamptz, uuid, text) IS
   'Due (trade, stage) reminder rows at p_now for the shift-trade-reminders worker.';
 
-REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) TO service_role;
+REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer, timestamptz, uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer, timestamptz, uuid, text) TO service_role;
 
 -- ============================================================
 -- 5. Claim. The worker calls this BEFORE it sends. It returns true one

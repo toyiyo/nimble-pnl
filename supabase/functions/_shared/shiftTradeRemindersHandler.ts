@@ -72,13 +72,21 @@ export interface UnclaimedRecipientRow {
   kind: 'scheduler' | 'poster';
 }
 
+/** Keyset cursor: the last row of the page before. */
+export type CandidateCursor = Pick<ReminderCandidateRow, 'start_time' | 'shift_trade_id' | 'stage'>;
+
 interface FetchResult<T> {
   data: T | null;
   error: { message: string } | null;
 }
 
 export interface ShiftTradeRemindersDeps {
-  fetchCandidates: (nowIso: string, limit: number) => Promise<FetchResult<ReminderCandidateRow[]>>;
+  /** `after` is null for the first page. */
+  fetchCandidates: (
+    nowIso: string,
+    limit: number,
+    after: CandidateCursor | null,
+  ) => Promise<FetchResult<ReminderCandidateRow[]>>;
   claim: (tradeId: string, stage: ReminderStage) => Promise<FetchResult<boolean>>;
   resolveChannels: (restaurantId: string, type: NotificationType) => Promise<ChannelDecision>;
   fetchAudience: (tradeId: string) => Promise<FetchResult<Array<{ user_id: string }>>>;
@@ -275,8 +283,6 @@ async function sendUnclaimedStage(
   return outcome;
 }
 
-const candidateKey = (row: ReminderCandidateRow): string => `${row.shift_trade_id}:${row.stage}`;
-
 /** Shared state for one run. processCandidate changes `result` and `pushTargets`. */
 interface RunContext {
   deps: ShiftTradeRemindersDeps;
@@ -410,22 +416,21 @@ export async function runShiftTradeReminders(
 
   const outOfBudget = () =>
     deps.now() - runStartedAt >= RUN_BUDGET_MS || ctx.pushTargets >= MAX_PUSH_TARGETS;
-  // A row that a run did not claim can come back on a later page.
-  const seen = new Set<string>();
+  // The next page starts after the last row of this page, so a row that
+  // stays due (no claim) does not come back and does not block later rows.
+  let cursor: CandidateCursor | null = null;
   let stopped = false;
 
   for (let page = 0; page < MAX_CANDIDATE_PAGES && !stopped; page++) {
     if (page > 0 && outOfBudget()) break;
 
-    const candidatesRes = await deps.fetchCandidates(nowIso, CANDIDATE_LIMIT);
+    const candidatesRes = await deps.fetchCandidates(nowIso, CANDIDATE_LIMIT, cursor);
     if (candidatesRes.error) {
       logError(`${LOG_PREFIX} candidates read failed: ${truncateError(candidatesRes.error.message)}`);
       result.error = candidatesRes.error.message;
       break;
     }
-    const rows = candidatesRes.data ?? [];
-    const candidates = rows.filter((row) => !seen.has(candidateKey(row)));
-    for (const row of candidates) seen.add(candidateKey(row));
+    const candidates = candidatesRes.data ?? [];
     result.candidates += candidates.length;
 
     for (let i = 0; i < candidates.length; i++) {
@@ -436,9 +441,10 @@ export async function runShiftTradeReminders(
       }
     }
 
-    // A short page means no more rows are due. A page of seen rows only
-    // means the rest did not change, so another read gives nothing new.
-    if (rows.length < CANDIDATE_LIMIT || candidates.length === 0) break;
+    // A short page means no more rows are due.
+    if (candidates.length < CANDIDATE_LIMIT) break;
+    const last = candidates[candidates.length - 1];
+    cursor = { start_time: last.start_time, shift_trade_id: last.shift_trade_id, stage: last.stage };
   }
 
   log(

@@ -6,6 +6,7 @@ import {
   CANDIDATE_LIMIT,
   MAX_CANDIDATE_PAGES,
   type ShiftTradeRemindersDeps,
+  type CandidateCursor,
   type ReminderCandidateRow,
   type UnclaimedRecipientRow,
 } from '../../supabase/functions/_shared/shiftTradeRemindersHandler';
@@ -41,6 +42,7 @@ const RECIPIENTS: UnclaimedRecipientRow[] = [
 interface Env {
   deps: ShiftTradeRemindersDeps;
   calls: string[];
+  cursors: Array<CandidateCursor | null>;
   pushCalls: Array<{ userIds: string[]; restaurantId: string; title: string; body: string; url: string; tag: string }>;
   emailCalls: Array<{ to: string; subject: string; html: string }>;
   logs: string[];
@@ -66,6 +68,7 @@ function makeEnv(opts: {
 } = {}): Env {
   const env = {
     calls: [] as string[],
+    cursors: [] as Array<CandidateCursor | null>,
     pushCalls: [] as Env['pushCalls'],
     emailCalls: [] as Env['emailCalls'],
     logs: [] as string[],
@@ -73,8 +76,9 @@ function makeEnv(opts: {
   } as Env;
 
   env.deps = {
-    fetchCandidates: vi.fn(async (nowIso: string, limit: number) => {
+    fetchCandidates: vi.fn(async (nowIso: string, limit: number, after: CandidateCursor | null) => {
       env.calls.push(`candidates:${nowIso}:${limit}`);
+      env.cursors.push(after);
       if (opts.candidatesError) return { data: null, error: { message: opts.candidatesError } };
       if (opts.pages) return { data: opts.pages.shift() ?? [], error: null };
       return { data: opts.candidates ?? [candidate()], error: null };
@@ -303,13 +307,25 @@ describe('runShiftTradeReminders: candidate pages', () => {
     expect(result.candidates).toBe(CANDIDATE_LIMIT * MAX_CANDIDATE_PAGES);
   });
 
-  it('does not process a row two times when a later page returns it again', async () => {
+  it('reads the first page with no cursor, then passes the last row of each page as the cursor', async () => {
     const first = page('a');
-    const env = makeEnv({ pages: [first, [...first]], claim: () => false });
+    const second = page('b');
+    const env = makeEnv({ pages: [first, second, page('c', 2)], audience: [] });
+    await runShiftTradeReminders(env.deps);
+    const last = (rows: ReminderCandidateRow[]) => rows[rows.length - 1];
+    expect(env.cursors).toEqual([
+      null,
+      { start_time: last(first).start_time, shift_trade_id: last(first).shift_trade_id, stage: last(first).stage },
+      { start_time: last(second).start_time, shift_trade_id: last(second).shift_trade_id, stage: last(second).stage },
+    ]);
+  });
+
+  it('reads the next page when no row on a full page gets a claim', async () => {
+    const env = makeEnv({ pages: [page('a'), page('b', 3)], claim: () => false });
     const result = await runShiftTradeReminders(env.deps);
     expect(env.deps.fetchCandidates).toHaveBeenCalledTimes(2);
-    expect(env.deps.claim).toHaveBeenCalledTimes(CANDIDATE_LIMIT);
-    expect(result).toMatchObject({ candidates: CANDIDATE_LIMIT, skipped: CANDIDATE_LIMIT });
+    expect(env.deps.claim).toHaveBeenCalledTimes(CANDIDATE_LIMIT + 3);
+    expect(result).toMatchObject({ candidates: CANDIDATE_LIMIT + 3, skipped: CANDIDATE_LIMIT + 3 });
   });
 
   it('does not read the next page when the run budget is used up', async () => {

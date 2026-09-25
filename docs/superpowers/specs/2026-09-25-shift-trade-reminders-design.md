@@ -482,7 +482,8 @@ function does `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` and
 
 2. `safe_restaurant_tz(p_tz text) RETURNS text` — `STABLE` (the zone table can change), see B1.
 
-3. `get_shift_trade_reminder_candidates(p_now timestamptz, p_limit int)` —
+3. `get_shift_trade_reminder_candidates(p_now timestamptz, p_limit int,
+   p_after_start timestamptz, p_after_trade uuid, p_after_stage text)` —
    `SECURITY INVOKER STABLE`. The caller is `service_role`, which has
    BYPASSRLS.
    - Returns one row for each `(trade, stage)` that is due, with every
@@ -496,7 +497,10 @@ function does `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` and
      `shift_trade_reminders`.
    - Reads `staffing_settings` with a LEFT JOIN, with `COALESCE` to the
      column defaults.
-   - `ORDER BY start_time ASC LIMIT p_limit`.
+   - `ORDER BY start_time, trade id, stage LIMIT p_limit`.
+   - Keyset cursor: the three `p_after_*` params default to NULL. When
+     `p_after_start` is set, only rows after the cursor tuple come back.
+     The worker passes the last row of the page before.
 
 4. `claim_shift_trade_reminder(p_trade_id uuid, p_stage text) RETURNS boolean` —
    `SECURITY INVOKER VOLATILE`. One statement:

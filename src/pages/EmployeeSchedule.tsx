@@ -11,6 +11,8 @@ import { useMyShifts } from '@/hooks/useShifts';
 import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
+import { useClaimableTrades } from '@/hooks/useClaimableTrades';
+import { useOpenShifts } from '@/hooks/useOpenShifts';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -24,6 +26,7 @@ import {
   ShiftRow,
 } from '@/components/employee';
 import { NextShiftCard } from '@/components/employee/NextShiftCard';
+import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
 import {
   Clock,
   ChevronLeft,
@@ -34,6 +37,7 @@ import {
 } from 'lucide-react';
 import {
   format,
+  startOfWeek,
   endOfWeek,
   subWeeks,
   addWeeks,
@@ -168,6 +172,25 @@ const EmployeeSchedule = () => {
     () => selectUpcomingShifts(anchorShifts ?? [], new Date(nowTick), 5),
     [anchorShifts, nowTick]
   );
+
+  // "Teammates need cover": open trades this employee can accept now.
+  const {
+    trades: claimableTrades,
+    loading: claimableLoading,
+    error: claimableError,
+    refetch: refetchClaimable,
+  } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null);
+
+  // The same two-week range as AvailableShiftsPage, so the footer count
+  // matches the marketplace.
+  const openShiftRange = useMemo(() => {
+    const start = startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON });
+    return { start, end: addDays(start, 13) };
+  }, []);
+  const { openShifts } = useOpenShifts(restaurantId, openShiftRange.start, openShiftRange.end);
+
+  const showUpForGrabs = !claimableLoading && !claimableError && claimableTrades.length > 0;
+  const upForGrabsUrgent = showUpForGrabs && claimableTrades.some((t) => t.urgent);
 
   const { publishes: restaurantPublishes } = useRestaurantPublishes(
     restaurantId,
@@ -335,6 +358,19 @@ const EmployeeSchedule = () => {
 
   const isLoading = shiftsLoading;
 
+  const upForGrabsCard = (
+    <UpForGrabsCard
+      trades={claimableTrades}
+      loading={claimableLoading}
+      error={claimableError}
+      onRetry={() => refetchClaimable()}
+      restaurantId={restaurantId}
+      timezone={restaurantTimezone}
+      now={new Date(nowTick)}
+      openShiftCount={openShifts.length}
+    />
+  );
+
   return (
     <div className="space-y-6">
       {/* Header — focusable anchor: MyShiftTradesCard returns focus here when a
@@ -349,13 +385,19 @@ const EmployeeSchedule = () => {
           title="My Schedule"
           subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
         />
-        <Link to="/employee/shifts" className="w-full sm:w-auto">
-          <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
-            <ArrowLeftRight className="h-4 w-4 mr-2" />
-            Browse Available Shifts
-          </Button>
-        </Link>
+        {/* The card footer takes this job when the card shows. */}
+        {!showUpForGrabs && (
+          <Link to="/employee/shifts" className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
+              <ArrowLeftRight className="h-4 w-4 mr-2" />
+              Browse Available Shifts
+            </Button>
+          </Link>
+        )}
       </div>
+
+      {/* A trade that starts in 24 h or less goes above the status line. */}
+      {upForGrabsUrgent && upForGrabsCard}
 
       {/* One quiet "Published {date}" line, or nothing. Never a warning. */}
       <ScheduleStatusBanner
@@ -363,6 +405,8 @@ const EmployeeSchedule = () => {
         publication={publication}
         timezone={restaurantTimezone}
       />
+
+      {!upForGrabsUrgent && upForGrabsCard}
 
       {/* My shift trades — poster tracker + claimant status */}
       <MyShiftTradesCard

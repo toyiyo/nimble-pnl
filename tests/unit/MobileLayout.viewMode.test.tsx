@@ -28,6 +28,19 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ signOut: vi.fn(), user: null, loading: false }),
 }));
 
+// MobileTabBar reads the claimable trade count for the More badge.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({ selectedRestaurant: null }),
+}));
+
+vi.mock('@/hooks/useCurrentEmployee', () => ({
+  useCurrentEmployee: () => ({ currentEmployee: null, loading: false, error: null }),
+}));
+
+vi.mock('@/hooks/useClaimableTrades', () => ({
+  useClaimableTrades: () => ({ trades: [], count: 0, loading: true, error: null, refetch: vi.fn() }),
+}));
+
 vi.mock('@/hooks/useDeviceToken', () => ({
   useDeviceToken: () => undefined,
 }));

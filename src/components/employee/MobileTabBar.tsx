@@ -1,6 +1,11 @@
 // src/components/employee/MobileTabBar.tsx
 import { Link, useLocation } from 'react-router-dom';
 import { CalendarDays, Wallet, Clock, MoreHorizontal } from 'lucide-react';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useClaimableTrades } from '@/hooks/useClaimableTrades';
+import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
+import { shiftsUpForGrabsText } from '@/lib/claimableTrades';
 import { cn } from '@/lib/utils';
 
 const tabs = [
@@ -14,6 +19,18 @@ const moreRoutes = ['/employee/timecard', '/employee/portal', '/employee/shifts'
 
 export function MobileTabBar() {
   const { pathname } = useLocation();
+
+  // The marketplace lives under "More", so the More tab carries the count.
+  // With no restaurant or no employee row (a manager in work mode), the
+  // hook stays off: no badge and no request.
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id ?? null;
+  const { currentEmployee } = useCurrentEmployee(restaurantId);
+  const { trades: claimableTrades, count: tradeCount } = useClaimableTrades(
+    restaurantId,
+    currentEmployee?.id ?? null
+  );
+  const tradeUrgent = claimableTrades.some((t) => t.urgent);
 
   const isActive = (tab: typeof tabs[number]) => {
     if (tab.path === '/employee/more') {
@@ -36,18 +53,28 @@ export function MobileTabBar() {
       <div className="flex justify-around py-2">
         {tabs.map((tab) => {
           const active = isActive(tab);
+          const showBadge = tab.path === '/employee/more' && tradeCount > 0;
           return (
             <Link
               key={tab.path}
               to={tab.path}
               aria-current={active ? 'page' : undefined}
-              aria-label={tab.label}
+              aria-label={showBadge ? `${tab.label}, ${shiftsUpForGrabsText(tradeCount)}` : tab.label}
               className={cn(
                 'flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium transition-colors min-w-[64px] min-h-[44px]',
                 active ? 'text-foreground' : 'text-muted-foreground'
               )}
             >
-              <tab.icon className="h-5 w-5" aria-hidden="true" />
+              <span className="relative">
+                <tab.icon className="h-5 w-5" aria-hidden="true" />
+                {showBadge && (
+                  <TradeCountBadge
+                    count={tradeCount}
+                    urgent={tradeUrgent}
+                    className="absolute -top-1.5 -right-2.5"
+                  />
+                )}
+              </span>
               <span>{tab.label}</span>
             </Link>
           );

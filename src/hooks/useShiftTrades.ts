@@ -644,21 +644,37 @@ export const useDeleteShiftTrade = () => {
 /**
  * Hook to get marketplace trades (available for any employee to accept)
  * Filters out trades where current employee has conflicts
+ *
+ * `options.enabled` (default true) lets a caller hold the query until it
+ * knows the employee. The nav badge runs this hook on every employee page.
  */
 export const useMarketplaceTrades = (
   restaurantId: string | null,
-  currentEmployeeId: string | null
+  currentEmployeeId: string | null,
+  options: { enabled?: boolean } = {}
 ) => {
+  const enabled = options.enabled ?? true;
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace_trades', restaurantId, currentEmployeeId],
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      // Get open trades (marketplace or not targeted at specific employee)
+      // Get open trades (marketplace or not targeted at specific employee).
+      // Explicit columns in place of `*` keep the badge query small.
       let query = supabase
         .from('shift_trades')
         .select(`
-          *,
+          id,
+          restaurant_id,
+          offered_shift_id,
+          offered_by_employee_id,
+          requested_shift_id,
+          target_employee_id,
+          accepted_by_employee_id,
+          status,
+          reason,
+          created_at,
+          updated_at,
           offered_shift:shifts!offered_shift_id(
             id,
             start_time,
@@ -700,6 +716,8 @@ export const useMarketplaceTrades = (
         .from('shifts')
         .select('start_time, end_time')
         .eq('employee_id', currentEmployeeId)
+        // Only a shift that ends after now can overlap an open future trade.
+        .gte('end_time', new Date().toISOString())
         .in('status', ['scheduled', 'confirmed']);
 
       if (shiftsError) throw shiftsError;
@@ -728,7 +746,7 @@ export const useMarketplaceTrades = (
 
       return filteredTrades;
     },
-    enabled: !!restaurantId,
+    enabled: enabled && !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });

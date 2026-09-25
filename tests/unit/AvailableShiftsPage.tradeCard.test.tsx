@@ -257,6 +257,8 @@ vi.mock('react-router-dom', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) =>
     React.createElement('a', { href: to }, children),
   useNavigate: vi.fn(() => vi.fn()),
+  // The page reads the deep link params. These tests use no link.
+  useSearchParams: vi.fn(() => [new URLSearchParams(), vi.fn()]),
 }));
 
 import AvailableShiftsPage from '@/pages/AvailableShiftsPage';

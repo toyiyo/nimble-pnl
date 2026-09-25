@@ -5,6 +5,7 @@
 --   1. The send ledger public.shift_trade_reminders.
 --   2. The time zone helper public.safe_restaurant_tz.
 --   7. The two new notification types in the CHECK constraint.
+--   3. The candidates RPC get_shift_trade_reminder_candidates.
 --
 -- Each function sets search_path, revokes EXECUTE from PUBLIC, anon and
 -- authenticated, and grants EXECUTE to service_role only.
@@ -101,3 +102,143 @@ COMMENT ON COLUMN public.notification_channel_settings.notification_type IS
   'One of the 19 catalog keys in src/lib/notificationTypes.ts. Keep it the '
   'same as the CHECK constraint above. (team_invite is not in the list: a '
   'transactional invite email always sends.)';
+
+-- ============================================================
+-- 3. Candidates. One row for each (trade, stage) that is due at p_now.
+--    All rules in design B1 apply here:
+--    - Employee stages: 72h (24 < h <= 72), 24h (6 < h <= 24),
+--      6h (0 < h <= 6). Skip a stage when the trade was created after
+--      start - <stage hours>. Skip employee stages in block mode when
+--      h <= trade_deadline_hours. Need push_enabled for
+--      shift_trade_reminder.
+--    - unclaimed: 0 < h <= E and the trade is at least 1 hour old.
+--      E = 24, or GREATEST(24, trade_deadline_hours + 12) in block mode.
+--      Needs push_enabled or email_enabled for shift_trade_unclaimed.
+--    - Quiet hours: nothing is due from 22:00 to 08:00 restaurant time.
+--    - Only open trades on scheduled or confirmed shifts.
+--    - A missing settings row means the defaults (mode off, 24 h, channels on).
+--    - A (trade, stage) that has a shift_trade_reminders row is not due.
+--    The caller is service_role (BYPASSRLS), so SECURITY INVOKER is enough.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_shift_trade_reminder_candidates(
+  p_now timestamptz,
+  p_limit integer
+)
+RETURNS TABLE (
+  shift_trade_id uuid,
+  restaurant_id uuid,
+  stage text,
+  start_time timestamptz,
+  end_time timestamptz,
+  "position" text,
+  is_published boolean,
+  offered_by_employee_id uuid,
+  offered_by_name text,
+  offered_by_user_id uuid,
+  target_employee_id uuid,
+  restaurant_name text,
+  restaurant_timezone text
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+  WITH open_trades AS (
+    SELECT
+      t.id AS trade_id,
+      t.restaurant_id AS rid,
+      s.start_time AS s_start,
+      s.end_time AS s_end,
+      s."position" AS s_position,
+      s.is_published AS s_published,
+      t.offered_by_employee_id AS poster_id,
+      e.name AS poster_name,
+      e.user_id AS poster_user_id,
+      t.target_employee_id AS target_id,
+      r.name AS r_name,
+      public.safe_restaurant_tz(r.timezone) AS tz,
+      COALESCE(t.created_at, '-infinity'::timestamptz) AS created,
+      COALESCE(ss.trade_deadline_mode, 'off') AS deadline_mode,
+      COALESCE(ss.trade_deadline_hours, 24) AS deadline_hours,
+      COALESCE(ncr.push_enabled, true) AS reminder_on,
+      (COALESCE(ncu.push_enabled, true) OR COALESCE(ncu.email_enabled, true)) AS unclaimed_on
+    FROM public.shift_trades t
+    JOIN public.shifts s
+      ON s.id = t.offered_shift_id
+     AND s.restaurant_id = t.restaurant_id
+    JOIN public.employees e ON e.id = t.offered_by_employee_id
+    JOIN public.restaurants r ON r.id = t.restaurant_id
+    LEFT JOIN public.staffing_settings ss ON ss.restaurant_id = t.restaurant_id
+    LEFT JOIN public.notification_channel_settings ncr
+      ON ncr.restaurant_id = t.restaurant_id
+     AND ncr.notification_type = 'shift_trade_reminder'
+    LEFT JOIN public.notification_channel_settings ncu
+      ON ncu.restaurant_id = t.restaurant_id
+     AND ncu.notification_type = 'shift_trade_unclaimed'
+    WHERE t.status = 'open'
+      AND s.status IN ('scheduled', 'confirmed')
+      AND s.start_time > p_now
+      -- The widest window: 72 h, or E when E is larger.
+      AND s.start_time <= p_now + make_interval(
+            hours => GREATEST(72, COALESCE(ss.trade_deadline_hours, 24) + 12))
+  ),
+  awake AS (
+    SELECT o.*
+    FROM open_trades o
+    WHERE EXTRACT(HOUR FROM p_now AT TIME ZONE o.tz) BETWEEN 8 AND 21
+  ),
+  due AS (
+    SELECT a.*, st.stage_name
+    FROM awake a
+    CROSS JOIN (VALUES ('72h', 72, 24), ('24h', 24, 6), ('6h', 6, 0))
+      AS st(stage_name, hi, lo)
+    WHERE a.reminder_on
+      AND a.s_start > p_now + make_interval(hours => st.lo)
+      AND a.s_start <= p_now + make_interval(hours => st.hi)
+      -- Skip rule: the created notification covers this window.
+      AND a.created <= a.s_start - make_interval(hours => st.hi)
+      -- Block mode: employees cannot accept inside the deadline.
+      AND NOT (a.deadline_mode = 'block'
+               AND a.s_start <= p_now + make_interval(hours => a.deadline_hours))
+    UNION ALL
+    SELECT a.*, 'unclaimed'
+    FROM awake a
+    WHERE a.unclaimed_on
+      AND a.s_start <= p_now + make_interval(hours =>
+            CASE WHEN a.deadline_mode = 'block'
+                 THEN GREATEST(24, a.deadline_hours + 12)
+                 ELSE 24
+            END)
+      AND a.created <= p_now - interval '1 hour'
+  )
+  SELECT
+    d.trade_id,
+    d.rid,
+    d.stage_name,
+    d.s_start,
+    d.s_end,
+    d.s_position,
+    d.s_published,
+    d.poster_id,
+    d.poster_name,
+    d.poster_user_id,
+    d.target_id,
+    d.r_name,
+    d.tz
+  FROM due d
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.shift_trade_reminders x
+    WHERE x.shift_trade_id = d.trade_id
+      AND x.stage = d.stage_name
+  )
+  ORDER BY d.s_start ASC, d.trade_id, d.stage_name
+  LIMIT p_limit;
+$$;
+
+COMMENT ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) IS
+  'Due (trade, stage) reminder rows at p_now for the shift-trade-reminders worker.';
+
+REVOKE EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_shift_trade_reminder_candidates(timestamptz, integer) TO service_role;

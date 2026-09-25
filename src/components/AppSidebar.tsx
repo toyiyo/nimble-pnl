@@ -13,30 +13,34 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { AppLogo } from '@/components/AppLogo';
+import {
+  getNavigationForRole,
+} from '@/components/AppSidebar.nav';
+import { ViewModeSwitch } from '@/components/ViewModeSwitch';
+import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
+
 import {
   LogOut,
   Sparkles,
   ChevronDown,
 } from 'lucide-react';
-import { AppLogo } from '@/components/AppLogo';
-import {
-  getNavigationForRole,
-} from '@/components/AppSidebar.nav';
-import type { NavGroup } from '@/components/AppSidebar.nav';
-import { grantMap } from '@/lib/permissions/areas';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useClaimableTradeBadge } from '@/hooks/useClaimableTradeBadge';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useViewMode } from '@/contexts/ViewModeContext';
-import { ViewModeSwitch } from '@/components/ViewModeSwitch';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { TradeCountBadge } from '@/components/employee/TradeCountBadge';
+
+import type { NavGroup } from '@/components/AppSidebar.nav';
+
+import { grantMap } from '@/lib/permissions/areas';
 import { SUBSCRIPTION_FEATURES } from '@/lib/subscriptionPlans';
 import { shiftsUpForGrabsText } from '@/lib/claimableTrades';
+import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
 
 /**
  * Map paths to subscription feature keys for tier badge display
@@ -56,12 +60,9 @@ const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = 
   '/payroll': 'payroll',
 };
 
-/** Only `staffNav` has this item, so only a staff sidebar reads trades. */
-const MARKETPLACE_PATH = '/employee/shifts';
-
 /**
  * The claimable trade count on the "Shift Marketplace" item. It is a child
- * component so that AppSidebar reads trades only when it renders staffNav.
+ * component, so the sidebar reads trades only when the nav holds that item.
  * In the collapsed icon rail, the badge sits on the icon.
  */
 function MarketplaceTradeCount({ variant }: { variant: 'inline' | 'icon' }) {

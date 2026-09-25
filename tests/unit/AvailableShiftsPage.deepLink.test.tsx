@@ -1,5 +1,5 @@
 /**
- * The marketplace deep link (design A5): the page copies `trade`, `restaurant`
+ * The marketplace deep link: the page copies `trade`, `restaurant`
  * and `from` into state, deletes them from the URL, then scrolls to the trade
  * and highlights it, or shows a toast when it cannot.
  */

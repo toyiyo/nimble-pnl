@@ -23,7 +23,7 @@ vi.mock('@/hooks/useClaimableTrades', () => ({
 
 function claimable(urgentFlags: boolean[], extra: Record<string, unknown> = {}) {
   return {
-    trades: urgentFlags.map((urgent) => ({ urgent })),
+    trades: urgentFlags.map((isUrgent) => ({ isUrgent })),
     count: urgentFlags.length,
     loading: false,
     error: null,

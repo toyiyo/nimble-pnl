@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, memo } from 'react';
+import { useState, useMemo, useCallback, useRef, memo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -9,6 +9,26 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  EmployeePageHeader,
+  NoRestaurantState,
+  EmployeePageSkeleton,
+  EmployeeNotLinkedState,
+} from '@/components/employee';
+import { OpenShiftCard } from '@/components/scheduling/OpenShiftCard';
+import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
+import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
+import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 
 import {
   AlertTriangle,
@@ -32,39 +52,20 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useAvailableShifts, AvailableShiftItem } from '@/hooks/useAvailableShifts';
 import { useOpenShiftClaims, useClaimOpenShift } from '@/hooks/useOpenShiftClaims';
 import { useMyShifts } from '@/hooks/useShifts';
-import { useAcceptShiftTrade, type MarketplaceTrade } from '@/hooks/useShiftTrades';
+import { useAcceptShiftTrade } from '@/hooks/useShiftTrades';
 import { useToast } from '@/hooks/use-toast';
-import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
-import { hasScheduleConflict } from '@/lib/openShiftHelpers';
-import {
-  EmployeePageHeader,
-  NoRestaurantState,
-  EmployeePageSkeleton,
-  EmployeeNotLinkedState,
-} from '@/components/employee';
-import { OpenShiftCard } from '@/components/scheduling/OpenShiftCard';
-import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
-import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useShiftProtection } from '@/hooks/useShiftProtection';
 import { usePermissions } from '@/hooks/usePermissions';
-import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
-import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
 import { useTradeDeepLink } from '@/hooks/useTradeDeepLink';
+
+import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
+import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
 import type { TradeLinkSource } from '@/lib/tradeDeepLink';
 
-import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
-
 import { format, parseISO } from 'date-fns';
+import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
+import { hasScheduleConflict } from '@/lib/openShiftHelpers';
+import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
 import { parseDateLocal } from '@/lib/dateUtils';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { marketplaceRange } from '@/lib/claimableTrades';
@@ -79,7 +80,7 @@ interface TradeCardProps {
   currentEmployeeId: string;
   areaMismatch?: AreaMismatch | null;
   /** The deep link points at this trade. */
-  highlighted: boolean;
+  isHighlighted: boolean;
   highlightSource: TradeLinkSource | null;
 }
 
@@ -100,7 +101,7 @@ const TradeCard = memo(function TradeCard({
   isAccepting,
   currentEmployeeId,
   areaMismatch,
-  highlighted,
+  isHighlighted,
   highlightSource,
 }: TradeCardProps) {
   if (!trade?.offered_shift) return null;
@@ -119,18 +120,18 @@ const TradeCard = memo(function TradeCard({
       data-trade-id={trade.id}
       // The deep link focuses this root. `ring-inset` stops the scroll
       // container from clipping the ring.
-      tabIndex={highlighted ? -1 : undefined}
-      aria-current={highlighted ? 'true' : undefined}
+      tabIndex={isHighlighted ? -1 : undefined}
+      aria-current={isHighlighted ? 'true' : undefined}
       className={cn(
         'group flex flex-col gap-2 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors',
         isPast && 'opacity-60',
-        highlighted && 'outline-none ring-2 ring-inset ring-foreground',
+        isHighlighted && 'outline-none ring-2 ring-inset ring-foreground',
       )}
     >
       {/* Row 1: shift info + action button */}
       <div className="flex items-center justify-between">
         <div className="min-w-0 space-y-1.5">
-          {highlighted && sourceLabel && (
+          {isHighlighted && sourceLabel && (
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
               <sourceLabel.icon className="h-3.5 w-3.5" aria-hidden="true" />
               {sourceLabel.text}
@@ -231,7 +232,7 @@ const TradeCard = memo(function TradeCard({
     prev.currentEmployeeId === next.currentEmployeeId &&
     prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&
     prev.areaMismatch?.claimerArea === next.areaMismatch?.claimerArea &&
-    prev.highlighted === next.highlighted &&
+    prev.isHighlighted === next.isHighlighted &&
     prev.highlightSource === next.highlightSource
   );
 });
@@ -268,6 +269,63 @@ function claimStatusBadge(status: OpenShiftClaim['status']) {
         </span>
       );
   }
+}
+
+// ---- Feed body: loading, error, empty or the list ----
+
+function ShiftsFeedBody({
+  loading,
+  error,
+  isEmpty,
+  onRetry,
+  renderList,
+}: {
+  loading: boolean;
+  error: boolean;
+  isEmpty: boolean;
+  onRetry: () => void;
+  renderList: () => ReactNode;
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-[100px] w-full rounded-xl" />
+        <Skeleton className="h-[100px] w-full rounded-xl" />
+        <Skeleton className="h-[100px] w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // Without this state, a failed load reads as "No shifts available".
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <AlertTriangle className="h-6 w-6 text-destructive" aria-hidden="true" />
+        <h3 className="text-[14px] font-medium text-foreground">Could not load shifts.</h3>
+        <Button
+          variant="outline"
+          onClick={onRetry}
+          className="h-9 px-4 rounded-lg text-[13px] font-medium"
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Briefcase className="h-12 w-12 text-muted-foreground mb-4" aria-hidden="true" />
+        <h3 className="text-[14px] font-medium text-foreground mb-1">No shifts available</h3>
+        <p className="text-[13px] text-muted-foreground max-w-sm">
+          There are currently no open shifts or trades. Check back later.
+        </p>
+      </div>
+    );
+  }
+
+  return <>{renderList()}</>;
 }
 
 // ---- Main page ----
@@ -455,86 +513,65 @@ export default function AvailableShiftsPage() {
           )}
         </div>
 
-        {loading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-          </div>
-        ) : feedError ? (
-          // Without this state, a failed load reads as "No shifts available".
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <AlertTriangle className="h-6 w-6 text-destructive" aria-hidden="true" />
-            <h3 className="text-[14px] font-medium text-foreground">Could not load shifts.</h3>
-            <Button
-              variant="outline"
-              onClick={() => refetchFeed()}
-              className="h-9 px-4 rounded-lg text-[13px] font-medium"
-            >
-              Try again
-            </Button>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Briefcase className="h-12 w-12 text-muted-foreground mb-4" aria-hidden="true" />
-            <h3 className="text-[14px] font-medium text-foreground mb-1">No shifts available</h3>
-            <p className="text-[13px] text-muted-foreground max-w-sm">
-              There are currently no open shifts or trades. Check back later.
-            </p>
-          </div>
-        ) : (
-          <div
-            ref={parentRef}
-            className="max-h-[60vh] overflow-y-auto"
-          >
+        <ShiftsFeedBody
+          loading={loading}
+          error={!!feedError}
+          isEmpty={items.length === 0}
+          onRetry={() => refetchFeed()}
+          renderList={() => (
             <div
-              style={{
-                height: `${virtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
-              }}
+              ref={parentRef}
+              className="max-h-[60vh] overflow-y-auto"
             >
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const item = items[virtualRow.index];
-                return (
-                  <div
-                    key={item.key}
-                    data-index={virtualRow.index}
-                    ref={virtualizer.measureElement}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                  >
-                    <div className="pb-3">
-                      {item.type === 'open_shift' && item.openShift ? (
-                        <OpenShiftCard
-                          openShift={item.openShift}
-                          hasConflict={conflictMap.get(item.key) ?? false}
-                          onClaim={handleClaim}
-                          isClaiming={claimMutation.isPending && claimTarget?.template_id === item.openShift.template_id && claimTarget?.shift_date === item.openShift.shift_date}
-                        />
-                      ) : item.type === 'trade' && item.trade ? (
-                        <TradeCard
-                          trade={item.trade}
-                          onAccept={handleAcceptTrade}
-                          isAccepting={isAcceptingTrade && acceptingTradeId === item.trade.id}
-                          currentEmployeeId={currentEmployee.id}
-                          areaMismatch={getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)}
-                          highlighted={highlightedTradeId === item.trade.id}
-                          highlightSource={highlightedTradeId === item.trade.id ? highlightSource : null}
-                        />
-                      ) : null}
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = items[virtualRow.index];
+                  return (
+                    <div
+                      key={item.key}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div className="pb-3">
+                        {item.type === 'open_shift' && item.openShift ? (
+                          <OpenShiftCard
+                            openShift={item.openShift}
+                            hasConflict={conflictMap.get(item.key) ?? false}
+                            onClaim={handleClaim}
+                            isClaiming={claimMutation.isPending && claimTarget?.template_id === item.openShift.template_id && claimTarget?.shift_date === item.openShift.shift_date}
+                          />
+                        ) : item.type === 'trade' && item.trade ? (
+                          <TradeCard
+                            trade={item.trade}
+                            onAccept={handleAcceptTrade}
+                            isAccepting={isAcceptingTrade && acceptingTradeId === item.trade.id}
+                            currentEmployeeId={currentEmployee.id}
+                            areaMismatch={getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)}
+                            isHighlighted={highlightedTradeId === item.trade.id}
+                            highlightSource={highlightedTradeId === item.trade.id ? highlightSource : null}
+                          />
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        />
       </div>
 
       {/* My Claims section */}
@@ -564,17 +601,17 @@ export default function AvailableShiftsPage() {
               >
                 <div className="min-w-0 space-y-1">
                   <div className="text-[14px] font-medium text-foreground">
-                    {(claim as any).shift_template?.name ?? 'Shift'}
+                    {claim.shift_template?.name ?? 'Shift'}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
                       {format(parseDateLocal(claim.shift_date), 'EEE, MMM d')}
                     </span>
-                    {(claim as any).shift_template && (
+                    {claim.shift_template && (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                        {(claim as any).shift_template.position}
+                        {claim.shift_template.position}
                       </span>
                     )}
                   </div>

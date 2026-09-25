@@ -16,5 +16,5 @@ export function useClaimableTradeBadge(): { count: number; hasUrgentTrade: boole
   // The badge shows nothing until the data is sure. A wrong count is worse
   // than no count.
   if (loading || error) return { count: 0, hasUrgentTrade: false };
-  return { count, hasUrgentTrade: trades.some((t) => t.urgent) };
+  return { count, hasUrgentTrade: trades.some((t) => t.isUrgent) };
 }

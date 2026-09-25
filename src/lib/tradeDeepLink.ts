@@ -1,7 +1,8 @@
 /**
  * The marketplace deep link: `/employee/shifts?trade=<id>&restaurant=<id>&from=<source>`.
  *
- * A reminder push sends `from=reminder`. The home card sends `from=home`.
+ * `from=reminder` marks a link from a push. `from=home` marks a link from
+ * the home screen.
  * This module decides what the page does with the link. It has no React
  * code, so the rules are easy to test.
  */

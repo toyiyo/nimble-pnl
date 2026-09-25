@@ -8,10 +8,19 @@ import type { ClaimableTrade } from '@/lib/claimableTrades';
 
 import { plural, tradeDateTile, tradeUrgencyLabel } from '@/lib/claimableTrades';
 import { formatInstant } from '@/lib/restaurantClock';
-import { tradeLinkHref } from '@/lib/tradeDeepLink';
+import { MARKETPLACE_PATH, tradeLinkHref } from '@/lib/tradeDeepLink';
 import { cn } from '@/lib/utils';
 
 const MAX_ROWS = 3;
+
+/** True when the card shows trade rows: the trades loaded with no error, and at least one exists. */
+export function shouldShowUpForGrabs(
+  trades: readonly ClaimableTrade[],
+  loading: boolean,
+  error: unknown,
+): boolean {
+  return !loading && !error && trades.length > 0;
+}
 
 interface UpForGrabsCardProps {
   /** Claimable trades, soonest first (from `useClaimableTrades`). */
@@ -99,7 +108,7 @@ export function UpForGrabsCard({
       <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/40 text-[13px] text-muted-foreground">
         <span>{openShiftCount ? `${plural(openShiftCount, 'open shift')} too` : null}</span>
         <Link
-          to="/employee/shifts"
+          to={MARKETPLACE_PATH}
           // The negative margin keeps the footer low and gives a 44 px target.
           className="-my-2.5 -mr-2 inline-flex min-h-[44px] items-center px-2 font-medium text-foreground hover:underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground"
         >
@@ -122,7 +131,7 @@ function UpForGrabsRow({
   timezone: string;
   now: Date;
 }) {
-  const { trade, startsAt, urgent } = row;
+  const { trade, startsAt, isUrgent } = row;
   const shift = trade.offered_shift;
   if (!shift) return null;
 
@@ -158,7 +167,7 @@ function UpForGrabsRow({
                 aria-label={chip.spoken}
                 className={cn(
                   'flex-shrink-0 text-[11px] px-1.5 py-0.5 rounded-md',
-                  urgent
+                  isUrgent
                     ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium'
                     : 'bg-muted text-muted-foreground'
                 )}

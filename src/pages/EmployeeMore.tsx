@@ -4,6 +4,7 @@ import { Clock, KeyRound, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRi
 import { useAuth } from '@/hooks/useAuth';
 import { useClaimableTradeBadge } from '@/hooks/useClaimableTradeBadge';
 import { shiftsUpForGrabsText } from '@/lib/claimableTrades';
+import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
 
 interface NavItem {
   path: string;
@@ -12,13 +13,11 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const MARKETPLACE_PATH = '/employee/shifts';
-
 const mainItems: NavItem[] = [
   { path: '/employee/timecard', label: 'Timecard', description: 'Hours worked this period', icon: Clock },
   { path: '/employee/pin', label: 'Kiosk PIN', description: 'Manage your clock-in PIN', icon: KeyRound },
   { path: '/employee/portal', label: 'Requests', description: 'Time off & availability', icon: CalendarCheck },
-  { path: '/employee/shifts', label: 'Shift Marketplace', description: 'Pick up available shifts', icon: ShoppingBag },
+  { path: MARKETPLACE_PATH, label: 'Shift Marketplace', description: 'Pick up available shifts', icon: ShoppingBag },
   { path: '/employee/tips', label: 'Tips', description: 'Tip history & breakdown', icon: Coins },
 ];
 

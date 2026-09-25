@@ -3,7 +3,7 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
-import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
+import { UpForGrabsCard, shouldShowUpForGrabs } from '@/components/employee/UpForGrabsCard';
 import type { ClaimableTrade, MarketplaceTrade } from '@/lib/claimableTrades';
 
 const TZ = 'America/Chicago';
@@ -49,7 +49,7 @@ function claimable(
     },
     hasConflict: false,
   };
-  return { trade, startsAt, urgent: startsAt.getTime() - NOW.getTime() <= 24 * HOUR };
+  return { trade, startsAt, isUrgent: startsAt.getTime() - NOW.getTime() <= 24 * HOUR };
 }
 
 // 17:00 CDT today (7 h away): urgent, "Starts in 7 h".
@@ -215,5 +215,14 @@ describe('UpForGrabsCard', () => {
   it('shows no number in the browse link', () => {
     renderCard({ openShiftCount: 4 });
     expect(screen.queryByRole('link', { name: /Browse all \d/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('shouldShowUpForGrabs', () => {
+  it('is true only for loaded trades with no error', () => {
+    expect(shouldShowUpForGrabs([today], false, null)).toBe(true);
+    expect(shouldShowUpForGrabs([today], true, null)).toBe(false);
+    expect(shouldShowUpForGrabs([today], false, new Error('boom'))).toBe(false);
+    expect(shouldShowUpForGrabs([], false, null)).toBe(false);
   });
 });

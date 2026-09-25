@@ -123,7 +123,7 @@ describe('selectClaimableTrades', () => {
 
   it('marks a trade urgent at 24 h or less, and not urgent after 24 h', () => {
     const result = selectClaimableTrades([trade('a', 24), trade('b', 24.01)], baseOpts);
-    const byId = Object.fromEntries(result.map((r) => [r.trade.id, r.urgent]));
+    const byId = Object.fromEntries(result.map((r) => [r.trade.id, r.isUrgent]));
     expect(byId).toEqual({ a: true, b: false });
   });
 

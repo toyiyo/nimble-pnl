@@ -19,7 +19,7 @@ export interface ClaimableTrade {
   trade: MarketplaceTrade;
   startsAt: Date;
   /** The shift starts in 24 h or less. */
-  urgent: boolean;
+  isUrgent: boolean;
 }
 
 export interface ClaimableOptions {
@@ -55,7 +55,7 @@ export function selectClaimableTrades(
     if (!(msUntil > 0)) continue;
     if (blocks && msUntil <= blockWindowMs) continue;
 
-    rows.push({ trade, startsAt, urgent: msUntil <= URGENT_MS });
+    rows.push({ trade, startsAt, isUrgent: msUntil <= URGENT_MS });
   }
 
   rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
@@ -64,8 +64,7 @@ export function selectClaimableTrades(
 
 /**
  * The marketplace range: this week and the next week, 14 days from the
- * week start. The home card and the marketplace page use the same range,
- * so their open shift counts agree.
+ * week start. All callers use one range, so their open shift counts agree.
  */
 export function marketplaceRange(now: Date): { start: Date; end: Date } {
   const start = startOfWeek(now, { weekStartsOn: WEEK_STARTS_ON });

@@ -1,6 +1,6 @@
 /**
- * Placement of the "Teammates need cover" card on the employee home screen
- * (design A3): the card goes above ScheduleStatusBanner when a trade is
+ * Placement of the "Teammates need cover" card on the employee home screen:
+ * the card goes above ScheduleStatusBanner when a trade is
  * urgent, else after it and before MyShiftTradesCard. The gradient
  * "Browse Available Shifts" button hides only when the card shows.
  */
@@ -68,7 +68,10 @@ vi.mock('@/components/employee', async () => {
   };
 });
 
-vi.mock('@/components/employee/UpForGrabsCard', () => ({
+vi.mock('@/components/employee/UpForGrabsCard', async () => ({
+  ...(await vi.importActual<typeof import('@/components/employee/UpForGrabsCard')>(
+    '@/components/employee/UpForGrabsCard',
+  )),
   UpForGrabsCard: (props: { trades: unknown[]; loading: boolean; error: unknown; openShiftCount: number | null }) =>
     props.loading || (!props.error && props.trades.length === 0) ? null : (
       <div data-testid="up-for-grabs" data-open-count={String(props.openShiftCount)} />
@@ -99,7 +102,7 @@ function isBefore(a: HTMLElement, b: HTMLElement): boolean {
 
 function setClaimable(urgentFlags: boolean[], extra: Partial<typeof mocks.claimable> = {}) {
   mocks.claimable = {
-    trades: urgentFlags.map((urgent, i) => ({ trade: { id: `t${i}` }, urgent })),
+    trades: urgentFlags.map((urgent, i) => ({ trade: { id: `t${i}` }, isUrgent: urgent })),
     count: urgentFlags.length,
     loading: false,
     error: null,

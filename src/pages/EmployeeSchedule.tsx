@@ -5,14 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useMyShifts } from '@/hooks/useShifts';
-import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
-import { useRestaurantClock } from '@/hooks/useRestaurantClock';
-import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
-import { useClaimableTrades } from '@/hooks/useClaimableTrades';
-import { useOpenShifts } from '@/hooks/useOpenShifts';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -26,7 +18,15 @@ import {
   ShiftRow,
 } from '@/components/employee';
 import { NextShiftCard } from '@/components/employee/NextShiftCard';
-import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
+import { UpForGrabsCard, shouldShowUpForGrabs } from '@/components/employee/UpForGrabsCard';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useMyShifts } from '@/hooks/useShifts';
+import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
+import { useClaimableTrades } from '@/hooks/useClaimableTrades';
+import { useOpenShifts } from '@/hooks/useOpenShifts';
 import {
   Clock,
   ChevronLeft,
@@ -59,6 +59,7 @@ import {
 import { getRelativeWeekLabel, getRestaurantWeekStart } from '@/lib/scheduleWeek';
 import { selectUpcomingShifts, countShiftsInWeek } from '@/lib/nextShift';
 import { marketplaceRange } from '@/lib/claimableTrades';
+import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
 import { parseDateLocal } from '@/lib/dateUtils';
 import { Shift } from '@/types/scheduling';
 
@@ -185,8 +186,8 @@ const EmployeeSchedule = () => {
   // The key is the host local day, so a tab open past midnight gets a new range.
   const hostDayKey = toDateOnlyString(new Date(nowTick));
   const openShiftRange = useMemo(() => marketplaceRange(parseDateLocal(hostDayKey)), [hostDayKey]);
-  const showUpForGrabs = !claimableLoading && !claimableError && claimableTrades.length > 0;
-  const upForGrabsUrgent = showUpForGrabs && claimableTrades.some((t) => t.urgent);
+  const showUpForGrabs = shouldShowUpForGrabs(claimableTrades, claimableLoading, claimableError);
+  const hasUrgentTrade = showUpForGrabs && claimableTrades.some((t) => t.isUrgent);
 
   // Only the card footer reads the open shifts, so the query waits for the card.
   const {
@@ -391,7 +392,7 @@ const EmployeeSchedule = () => {
         />
         {/* The card footer takes this job when the card shows. */}
         {!showUpForGrabs && (
-          <Link to="/employee/shifts" className="w-full sm:w-auto">
+          <Link to={MARKETPLACE_PATH} className="w-full sm:w-auto">
             <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
               <ArrowLeftRight className="h-4 w-4 mr-2" />
               Browse Available Shifts
@@ -401,17 +402,17 @@ const EmployeeSchedule = () => {
       </div>
 
       {/* A trade that starts in 24 h or less goes above the status line. */}
-      {upForGrabsUrgent && upForGrabsCard}
+      {hasUrgentTrade && upForGrabsCard}
 
       {/* One quiet "Published {date}" line, or nothing. Never a warning. */}
       <ScheduleStatusBanner
         state={state}
         publication={publication}
         timezone={restaurantTimezone}
-        reserveHeight={!upForGrabsUrgent}
+        reserveHeight={!hasUrgentTrade}
       />
 
-      {!upForGrabsUrgent && upForGrabsCard}
+      {!hasUrgentTrade && upForGrabsCard}
 
       {/* My shift trades — poster tracker + claimant status */}
       <MyShiftTradesCard

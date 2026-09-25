@@ -660,7 +660,8 @@ export const useDeleteShiftTrade = () => {
  * Filters out trades where current employee has conflicts
  *
  * `options.enabled` (default true) lets a caller hold the query until it
- * knows the employee. The nav badge runs this hook on every employee page.
+ * knows the employee. Without it, a page with no employee still sends a
+ * request.
  */
 export const useMarketplaceTrades = (
   restaurantId: string | null,

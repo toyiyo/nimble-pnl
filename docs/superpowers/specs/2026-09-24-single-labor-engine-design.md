@@ -371,6 +371,12 @@ one as instant (change) or day token (keep). The pattern is
     `src/hooks/usePnLAnalyticsFromSource.tsx:116` (`subDays(now, 30)`) start
     in the middle of a day. The first day of `dailyCosts` now covers the
     whole day.
+  - `calculateActualLaborCostForRange` turns each range bound into a whole
+    restaurant day once, then compares day strings. Before, a bound in the
+    middle of a day (for example a custom `to` date at local midnight in
+    `useMonthlyMetrics`, or a range end at "now") dropped that last day
+    from the wages. Now the whole day counts. Bounds at local midnight and
+    at the local end of day give the same result as before.
 - **Pages, other viewers.** For a viewer in another timezone, overtime weeks
   and range edges follow the restaurant timezone (a fix). On a DST change at
   local midnight (Santiago, Havana), the first and last hour of the day move

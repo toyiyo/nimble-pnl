@@ -18,7 +18,7 @@ import {
   ShiftRow,
 } from '@/components/employee';
 import { NextShiftCard } from '@/components/employee/NextShiftCard';
-import { UpForGrabsCard, shouldShowUpForGrabs } from '@/components/employee/UpForGrabsCard';
+import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMyShifts } from '@/hooks/useShifts';
@@ -58,7 +58,7 @@ import {
 } from '@/lib/scheduleSeenFingerprint';
 import { getRelativeWeekLabel, getRestaurantWeekStart } from '@/lib/scheduleWeek';
 import { selectUpcomingShifts, countShiftsInWeek } from '@/lib/nextShift';
-import { marketplaceRange } from '@/lib/claimableTrades';
+import { marketplaceRange, shouldShowUpForGrabs } from '@/lib/claimableTrades';
 import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
 import { parseDateLocal } from '@/lib/dateUtils';
 import { Shift } from '@/types/scheduling';

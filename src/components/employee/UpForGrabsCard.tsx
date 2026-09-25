@@ -13,15 +13,6 @@ import { cn } from '@/lib/utils';
 
 const MAX_ROWS = 3;
 
-/** True when the card shows trade rows: the trades loaded with no error, and at least one exists. */
-export function shouldShowUpForGrabs(
-  trades: readonly ClaimableTrade[],
-  loading: boolean,
-  error: unknown,
-): boolean {
-  return !loading && !error && trades.length > 0;
-}
-
 interface UpForGrabsCardProps {
   /** Claimable trades, soonest first (from `useClaimableTrades`). */
   trades: ClaimableTrade[];

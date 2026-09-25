@@ -121,3 +121,12 @@ export function tradeDateTile(
     month: formatInstant(startsAt, tz, 'MMM'),
   };
 }
+
+/** True when the card shows trade rows: the trades loaded with no error, and at least one exists. */
+export function shouldShowUpForGrabs(
+  trades: readonly ClaimableTrade[],
+  loading: boolean,
+  error: unknown,
+): boolean {
+  return !loading && !error && trades.length > 0;
+}

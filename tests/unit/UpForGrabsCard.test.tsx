@@ -3,7 +3,8 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
-import { UpForGrabsCard, shouldShowUpForGrabs } from '@/components/employee/UpForGrabsCard';
+import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
+import { shouldShowUpForGrabs } from '@/lib/claimableTrades';
 import type { ClaimableTrade, MarketplaceTrade } from '@/lib/claimableTrades';
 
 const TZ = 'America/Chicago';

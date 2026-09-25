@@ -127,9 +127,9 @@ describe('EmployeeSchedule – "Teammates need cover" placement', () => {
     expect(mocks.useOpenShifts).toHaveBeenLastCalledWith('r1', start, end);
   });
 
-  it('reads claimable trades for the restaurant and the employee', () => {
+  it('reads claimable trades for the restaurant and the employee, with the page clock', () => {
     renderPage();
-    expect(mocks.useClaimableTrades).toHaveBeenCalledWith('r1', 'e1');
+    expect(mocks.useClaimableTrades).toHaveBeenCalledWith('r1', 'e1', expect.any(Number));
   });
 
   it('keeps the gradient button and shows no card with no trades', () => {

@@ -21,8 +21,15 @@ const EMPTY: ClaimableTrade[] = [];
  * `count: 0` until the employee, the protection settings and the
  * permissions are all known. A count from half the data can show a trade
  * that the accept RPC refuses.
+ *
+ * Pass `nowMs` when the caller has its own clock. The hook then starts no
+ * interval of its own.
  */
-export function useClaimableTrades(restaurantId: string | null, employeeId: string | null) {
+export function useClaimableTrades(
+  restaurantId: string | null,
+  employeeId: string | null,
+  nowMs?: number,
+) {
   const enabled = !!restaurantId && !!employeeId;
   const { trades, loading, error, refetch } = useMarketplaceTrades(restaurantId, employeeId, { enabled });
   const {
@@ -49,7 +56,8 @@ export function useClaimableTrades(restaurantId: string | null, employeeId: stri
 
   // The tick moves "now" forward, so a trade leaves the list when its shift
   // starts, even when the query data does not change.
-  const nowMs = useNowTick(60_000);
+  const ownNowMs = useNowTick(60_000, { enabled: nowMs === undefined });
+  const effectiveNowMs = nowMs ?? ownNowMs;
 
   const isLoading = !enabled || loading || protectionLoading || !isResolved;
 
@@ -57,11 +65,11 @@ export function useClaimableTrades(restaurantId: string | null, employeeId: stri
     if (isLoading || !employeeId) return EMPTY;
     return selectClaimableTrades(trades, {
       employeeId,
-      now: new Date(nowMs),
+      now: new Date(effectiveNowMs),
       protection: effectiveProtection,
       isExemptFromBlock,
     });
-  }, [isLoading, trades, nowMs, effectiveProtection, isExemptFromBlock, employeeId]);
+  }, [isLoading, trades, effectiveNowMs, effectiveProtection, isExemptFromBlock, employeeId]);
 
   return {
     trades: claimable,

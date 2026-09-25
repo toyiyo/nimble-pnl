@@ -194,4 +194,18 @@ describe('useClaimableTrades', () => {
     expect(result.current.count).toBe(1);
     expect(result.current.trades[0].trade.id).toBe('b');
   });
+
+  it('uses the caller clock when nowMs is given, and starts no interval', () => {
+    const intervalSpy = vi.spyOn(window, 'setInterval');
+    const trades = [trade('a', 90 * 1000), trade('b', 5 * HOUR)];
+    mocks.useMarketplaceTrades.mockReturnValue(marketplace(trades));
+
+    const { result } = renderHook(() =>
+      useClaimableTrades('rest-1', 'emp-me', NOW.getTime() + 2 * 60 * 1000),
+    );
+
+    expect(result.current.trades.map((t) => t.trade.id)).toEqual(['b']);
+    expect(intervalSpy).not.toHaveBeenCalled();
+    intervalSpy.mockRestore();
+  });
 });

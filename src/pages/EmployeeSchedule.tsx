@@ -181,7 +181,7 @@ const EmployeeSchedule = () => {
     loading: claimableLoading,
     error: claimableError,
     refetch: refetchClaimable,
-  } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null);
+  } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null, nowTick);
 
   // The key is the host local day, so a tab open past midnight gets a new range.
   const hostDayKey = toDateOnlyString(new Date(nowTick));

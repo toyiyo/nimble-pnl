@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { formatInTimeZone } from 'date-fns-tz';
 
 import {
   DEFAULT_TIMEZONE,
@@ -45,6 +46,31 @@ describe('toBusinessDay', () => {
     // 07:30Z on 2026-03-08 is 01:30 CST; 08:30Z is 03:30 CDT. Same day.
     expect(toBusinessDay('2026-03-08T07:30:00Z', CHI)).toBe('2026-03-08');
     expect(toBusinessDay('2026-03-08T08:30:00Z', CHI)).toBe('2026-03-08');
+  });
+
+  it('gives YYYY-MM-DD, the day of formatInTimeZone, for each hour of a year in several zones', () => {
+    // toBusinessDay uses a cached en-CA Intl formatter. en-CA with 2-digit
+    // month and day gives YYYY-MM-DD in Node (full ICU).
+    const zones = [CHI, 'Pacific/Auckland', 'UTC', 'America/Santiago', 'Asia/Kolkata', 'Australia/Lord_Howe'];
+    const start = Date.UTC(2026, 0, 1);
+    for (const zone of zones) {
+      for (let h = 0; h < 366 * 24; h += 7) {
+        const instant = new Date(start + h * 3600e3);
+        const day = toBusinessDay(instant, zone);
+        expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(day).toBe(formatInTimeZone(instant, zone, 'yyyy-MM-dd'));
+      }
+    }
+  });
+});
+
+describe('addDaysToDateStr', () => {
+  it('adds and subtracts days across month, year and leap-day edges', () => {
+    expect(addDaysToDateStr('2026-01-31', 1)).toBe('2026-02-01');
+    expect(addDaysToDateStr('2026-03-01', -1)).toBe('2026-02-28');
+    expect(addDaysToDateStr('2028-02-28', 1)).toBe('2028-02-29');
+    expect(addDaysToDateStr('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDaysToDateStr('2027-01-01', -366)).toBe('2025-12-31');
   });
 });
 

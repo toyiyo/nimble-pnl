@@ -95,7 +95,7 @@ describe('loadPeriodLaborCost', () => {
     );
     expect(punches.orders).toEqual([
       ['punch_time', { ascending: true }],
-      ['id', undefined],
+      ['id', { ascending: true }],
     ]);
 
     const [perJob] = client.recordsFor('daily_labor_allocations');
@@ -153,6 +153,10 @@ describe('loadPeriodLaborCost', () => {
     expect(pages[1].or).toBe(
       keysetAfterFilter('punch_time', { key: '2026-07-22T12:00:00.000Z', id: 'f0999' }),
     );
+    // The page after the cursor also starts the index range at the cursor key.
+    expect(
+      pages[1].filters.filter((f) => f.op === 'gte' && f.column === 'punch_time').map((f) => f.value),
+    ).toEqual(['2026-07-20T05:00:00.000Z', '2026-07-22T12:00:00.000Z']);
     expect(pages.map((p) => p.range)).toEqual([
       [0, 999],
       [0, 999],
@@ -325,7 +329,7 @@ describe('loadPeriodBankLabor', () => {
     expect(filterValue(bank, 'lte', 'transaction_date')).toBe('2026-07-23');
     expect(filterValue(bank, 'in', 'status')).toEqual(['posted', 'pending']);
     expect(filterValue(bank, 'lt', 'amount')).toBe(0);
-    expect(bank.orders).toEqual([['id', undefined]]);
+    expect(bank.orders).toEqual([['id', { ascending: true }]]);
     const [pending] = client.recordsFor('pending_outflows');
     expect(filterValue(pending, 'gte', 'issue_date')).toBe('2026-07-22');
     expect(filterValue(pending, 'lte', 'issue_date')).toBe('2026-07-23');
@@ -350,6 +354,8 @@ describe('loadPeriodBankLabor', () => {
     expect(result.totalCost).toBe(1500);
     const pages = client.recordsFor('bank_transactions');
     expect(pages).toHaveLength(2);
-    expect(pages[1].or).toBe(keysetAfterFilter('id', { key: 'b00999', id: 'b00999' }));
+    // A keyset on id alone uses gt, not the (key, id) or() cursor.
+    expect(pages[1].or).toBeNull();
+    expect(filterValue(pages[1], 'gt', 'id')).toBe('b00999');
   });
 });

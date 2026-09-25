@@ -100,8 +100,8 @@ describe('loadScheduledLaborCost', () => {
     expect(filterValue(shiftRead, 'gte', 'start_time')).toBe('2026-07-20T05:00:00.000Z');
     expect(filterValue(shiftRead, 'lte', 'start_time')).toBe('2026-07-27T04:59:59.999Z');
     expect(shiftRead.orders).toEqual([
-      ['start_time', undefined],
-      ['id', undefined],
+      ['start_time', { ascending: true }],
+      ['id', { ascending: true }],
     ]);
     expect(shiftRead.range).toEqual([0, 999]);
 
@@ -111,8 +111,8 @@ describe('loadScheduledLaborCost', () => {
     expect(employeeRead.filters.map((f) => f.column)).toEqual(['restaurant_id']);
     expect(employeeRead.orders).toEqual([
       ['effective_date', { referencedTable: 'employee_compensation_history', ascending: false }],
-      ['name', undefined],
-      ['id', undefined],
+      ['name', { ascending: true }],
+      ['id', { ascending: true }],
     ]);
   });
 

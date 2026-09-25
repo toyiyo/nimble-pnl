@@ -140,10 +140,35 @@ export function formatInstant(value: string | Date, tz: string, pattern: string)
   return formatInTimeZone(asInstant(value, 'formatInstant', zone), zone, pattern);
 }
 
+// One `YYYY-MM-DD` formatter per zone, for `toBusinessDay`. The labor engine
+// calls it for every punch, and `formatInTimeZone` builds its output from a
+// pattern on each call. The `en-CA` locale with 2-digit month and day gives
+// `YYYY-MM-DD` (for example `2026-07-20`). The cache is bounded by the number
+// of zones in use, as `offsetFormatterCache` is.
+const dayFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getDayFormatter(zone: string): Intl.DateTimeFormat {
+  let dtf = dayFormatterCache.get(zone);
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    dayFormatterCache.set(zone, dtf);
+  }
+  return dtf;
+}
+
 /** The restaurant-local calendar day an instant belongs to. */
 export function toBusinessDay(value: string | Date, tz: string): string {
   const zone = safeTz(tz);
-  return formatInTimeZone(asInstant(value, 'toBusinessDay', zone), zone, 'yyyy-MM-dd');
+  const instant = asInstant(value, 'toBusinessDay', zone);
+  const day = getDayFormatter(zone).format(instant);
+  // A runtime whose ICU data does not give `YYYY-MM-DD` for `en-CA` falls
+  // back to the date-fns-tz pattern.
+  return DATE_ONLY_RE.test(day) ? day : formatInTimeZone(instant, zone, 'yyyy-MM-dd');
 }
 
 /**
@@ -275,7 +300,7 @@ export function firstInstantOfDay(day: string, tz: string): Date {
 export function addDaysToDateStr(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   const rolled = new Date(Date.UTC(year, month - 1, day + days));
-  return formatInTimeZone(rolled, 'UTC', 'yyyy-MM-dd');
+  return rolled.toISOString().slice(0, 10);
 }
 
 /**

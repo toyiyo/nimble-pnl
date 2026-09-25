@@ -175,6 +175,35 @@ describe('fetchAllRowsKeyset', () => {
     }
   });
 
+  it('keeps one copy (the last) of a row whose order key changes between pages', async () => {
+    // LaborLoaderPaging_KeysetNoDedupe.cfg: rows 2..5, page size 2. After
+    // page 1 (rows 2, 3), a writer moves row 2 to a key after the cursor, so
+    // page 3 returns row 2 again.
+    const initial = [row(2), row(3), row(4), row(5)];
+    const moved = { ...row(2), punch_time: '2026-07-20T09:00:00Z' };
+    const beforePage = (page: number, table: Row[]) => {
+      if (page === 1) table[table.findIndex((r) => r.id === moved.id)] = moved;
+    };
+    const { keysetBuildPage } = makeTable(initial, beforePage);
+
+    const { rows } = await fetchAllRowsKeyset<Row, 'punch_time'>(keysetBuildPage, 'punch_time', { pageSize: 2 });
+
+    expect(hasNoDuplicate(rows)).toBe(true);
+    expect(ids(rows)).toEqual([row(3).id, row(4).id, row(5).id, moved.id]);
+    expect(rows.find((r) => r.id === moved.id)).toEqual(moved);
+  });
+
+  it.each([null, undefined])('throws on a %s order key value (the key must be NOT NULL)', async (key) => {
+    const buildPage = vi.fn().mockResolvedValueOnce({
+      data: [row(1), { id: 'id-null', punch_time: key }],
+      error: null,
+    });
+
+    await expect(
+      fetchAllRowsKeyset<Row, 'punch_time'>(buildPage, 'punch_time', { pageSize: 2 }),
+    ).rejects.toThrow(/fetchAllRowsKeyset: row id-null has a null order key punch_time/);
+  });
+
   it('sets capped when the loop reaches maxPages', async () => {
     const initial = Array.from({ length: 30 }, (_, i) => row(i));
     const { keysetBuildPage } = makeTable(initial);

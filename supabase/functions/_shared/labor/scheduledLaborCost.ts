@@ -11,8 +11,7 @@
  *   employee still has its employee.
  * - Both reads page with `fetchAllRowsKeyset`.
  */
-import { fetchAllRowsKeyset } from './fetchAllRows.ts';
-import { fromTable, keysetPage } from './loaderQuery.ts';
+import { fetchAllKeyset, fromTable } from './loaderQuery.ts';
 import { calculateScheduledLaborCost } from './laborCalculations.ts';
 import { businessDayRangeToInstants } from './restaurantClock.ts';
 import { dayTokens } from './periodLaborCost.ts';
@@ -154,37 +153,25 @@ export async function loadScheduledLaborCost(
 
   const [{ rows: shifts, capped: shiftsCapped }, { rows: employees, capped: employeesCapped }] =
     await Promise.all([
-      fetchAllRowsKeyset<ShiftRow, 'start_time'>(
-        (after, pageSize) =>
-          keysetPage<ShiftRow>(
-            fromTable(client, 'shifts')
-              .select(SHIFT_COLUMNS)
-              .eq('restaurant_id', restaurantId)
-              .gte('start_time', windowStart.toISOString())
-              .lte('start_time', windowEnd.toISOString()),
-            'start_time',
-            undefined,
-            after,
-            pageSize,
-          ),
+      fetchAllKeyset<ShiftRow, 'start_time'>(
+        () =>
+          fromTable(client, 'shifts')
+            .select(SHIFT_COLUMNS)
+            .eq('restaurant_id', restaurantId)
+            .gte('start_time', windowStart.toISOString())
+            .lte('start_time', windowEnd.toISOString()),
         'start_time',
       ),
       // The read of useEmployees(restaurantId, { status: 'all' }).
-      fetchAllRowsKeyset<EmployeeRow, 'name'>(
-        (after, pageSize) =>
-          keysetPage<EmployeeRow>(
-            fromTable(client, 'employees_secure')
-              .select(`
-                *,
-                compensation_history:employee_compensation_history(*)
-              `)
-              .eq('restaurant_id', restaurantId)
-              .order('effective_date', { referencedTable: 'employee_compensation_history', ascending: false }),
-            'name',
-            undefined,
-            after,
-            pageSize,
-          ),
+      fetchAllKeyset<EmployeeRow, 'name'>(
+        () =>
+          fromTable(client, 'employees_secure')
+            .select(`
+              *,
+              compensation_history:employee_compensation_history(*)
+            `)
+            .eq('restaurant_id', restaurantId)
+            .order('effective_date', { referencedTable: 'employee_compensation_history', ascending: false }),
         'name',
       ),
     ]);

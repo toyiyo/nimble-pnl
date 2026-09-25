@@ -1,16 +1,22 @@
-import { keysetAfterFilter, type KeysetCursor } from './fetchAllRows.ts';
+import {
+  fetchAllRowsKeyset,
+  keysetAfterFilter,
+  type KeysetCursor,
+  type PagedResult,
+} from './fetchAllRows.ts';
 import type { LaborQueryClient } from './types.ts';
 
 /**
  * The query chain that the loaders use. The typed browser client and the Deno
  * supabase-js client both fit it at runtime. A full structural type of the
  * typed client fails with TS2589, so `fromTable` casts `client.from(table)`
- * to this chain in one type-only step (the same approach as `tipsFetch.ts`).
+ * to this chain in one type-only step.
  */
 export interface LoaderQuery {
   select(columns: string): LoaderQuery;
   eq(column: string, value: unknown): LoaderQuery;
   in(column: string, values: readonly unknown[]): LoaderQuery;
+  gt(column: string, value: string): LoaderQuery;
   gte(column: string, value: string): LoaderQuery;
   lte(column: string, value: string): LoaderQuery;
   lt(column: string, value: number): LoaderQuery;
@@ -28,26 +34,49 @@ export function fromTable(client: LaborQueryClient, table: string): LoaderQuery 
 /**
  * One keyset page of `query`, for `fetchAllRowsKeyset`.
  *
- * - When `after` is not null, the page starts after `after` in the order
- *   `(orderKey, id)` (`keysetAfterFilter`).
- * - The order is `orderKey` (with `orderOptions`, as the caller had it) and
- *   then `id`. When `orderKey` is `id`, the order is `id` only.
+ * - The order is `orderKey` and then `id`, both ascending. When `orderKey`
+ *   is `id`, the order is `id` only.
+ * - When `after` is not null, the page starts after `after` in that order.
+ *   For `id`, the filter is `.gt('id', after.id)`. For another key, it is
+ *   `.gte(orderKey, after.key)` plus the `(orderKey, id)` cursor
+ *   (`keysetAfterFilter`). The `gte` lets the index range start at the
+ *   cursor, because PostgREST cannot use an index for the `or` alone.
  * - The page is `.range(0, pageSize - 1)`: a limit of `pageSize` rows with
  *   no offset. Keyset paging never needs an offset.
  */
 export function keysetPage<T>(
   query: LoaderQuery,
   orderKey: string,
-  orderOptions: { ascending: boolean } | undefined,
   after: KeysetCursor<unknown> | null,
   pageSize: number,
 ): PromiseLike<{ data: T[] | null; error: unknown }> {
-  const filtered = after ? query.or(keysetAfterFilter(orderKey, after)) : query;
+  let filtered = query;
+  if (after) {
+    filtered =
+      orderKey === 'id'
+        ? query.gt('id', after.id)
+        : query.gte(orderKey, String(after.key)).or(keysetAfterFilter(orderKey, after));
+  }
   const ordered =
     orderKey === 'id'
-      ? filtered.order('id')
-      : (orderOptions ? filtered.order(orderKey, orderOptions) : filtered.order(orderKey)).order('id');
+      ? filtered.order('id', { ascending: true })
+      : filtered.order(orderKey, { ascending: true }).order('id', { ascending: true });
   return ordered.range(0, pageSize - 1) as PromiseLike<{ data: T[] | null; error: unknown }>;
+}
+
+/**
+ * Every row of the query that `build` returns, with keyset paging on
+ * `(orderKey, id)`. `build` returns a new query (select and filters, no
+ * order and no range) for each page. The order key column must be NOT NULL.
+ */
+export function fetchAllKeyset<T extends { id: string }, K extends keyof T & string = 'id'>(
+  build: () => LoaderQuery,
+  orderKey: K,
+): Promise<PagedResult<T>> {
+  return fetchAllRowsKeyset<T, K>(
+    (after, pageSize) => keysetPage<T>(build(), orderKey, after, pageSize),
+    orderKey,
+  );
 }
 
 /** Split `values` into chunks of at most `size` items. */

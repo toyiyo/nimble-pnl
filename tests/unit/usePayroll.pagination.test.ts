@@ -144,14 +144,14 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
     const last = page0[page0.length - 1];
     expect(orCalls).toEqual([keysetAfterFilter('punch_time', { key: last.punch_time, id: last.id })]);
     // Deterministic page-boundary tiebreaker: `.order('punch_time', {asc})`
-    // followed by `.order('id')` — the `buildPage` callback rebuilds the
-    // query chain on every page, so this pair repeats once per page fetched
-    // (2 pages here).
+    // followed by `.order('id', {asc})` — the `buildPage` callback rebuilds
+    // the query chain on every page, so this pair repeats once per page
+    // fetched (2 pages here).
     expect(orderCalls).toEqual([
       ['punch_time', { ascending: true }],
-      ['id'],
+      ['id', { ascending: true }],
       ['punch_time', { ascending: true }],
-      ['id'],
+      ['id', { ascending: true }],
     ]);
   });
 

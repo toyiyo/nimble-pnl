@@ -7,7 +7,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import { loadPayrollPeriod, TIP_SPLIT_ID_CHUNK } from '../../supabase/functions/_shared/labor/payrollPeriod';
-import { keysetAfterFilter } from '../../supabase/functions/_shared/labor/fetchAllRows';
 import type { LaborEmployee } from '../../supabase/functions/_shared/labor/types';
 import { filterValue, makeLaborStubClient, type Row } from './helpers/laborStubClient';
 
@@ -109,11 +108,11 @@ describe('loadPayrollPeriod', () => {
       const [record] = client.recordsFor(table);
       expect(record, table).toBeDefined();
       expect(record.range, table).toEqual([0, 999]);
-      expect(record.orders[record.orders.length - 1], table).toEqual(['id', undefined]);
+      expect(record.orders[record.orders.length - 1], table).toEqual(['id', { ascending: true }]);
     }
     expect(client.recordsFor('time_punches')[0].orders).toEqual([
       ['punch_time', { ascending: true }],
-      ['id', undefined],
+      ['id', { ascending: true }],
     ]);
     // overtime_rules is one row, not paged.
     expect(client.recordsFor('overtime_rules')[0].single).toBe(true);
@@ -160,7 +159,9 @@ describe('loadPayrollPeriod', () => {
 
     const splitPages = client.recordsFor('tip_splits');
     expect(splitPages).toHaveLength(2);
-    expect(splitPages[1].or).toBe(keysetAfterFilter('id', { key: 's00999', id: 's00999' }));
+    // A keyset on id alone uses gt, not the (key, id) or() cursor.
+    expect(splitPages[1].or).toBeNull();
+    expect(filterValue(splitPages[1], 'gt', 'id')).toBe('s00999');
 
     const itemReads = client.recordsFor('tip_split_items');
     expect(itemReads).toHaveLength(Math.ceil(1150 / TIP_SPLIT_ID_CHUNK));

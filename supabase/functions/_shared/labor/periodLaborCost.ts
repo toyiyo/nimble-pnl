@@ -18,8 +18,8 @@
  *
  * Every read pages with `fetchAllRowsKeyset` on `(order key, id)`.
  */
-import { fetchAllRowsKeyset, type PagedResult } from './fetchAllRows.ts';
-import { fromTable, keysetPage } from './loaderQuery.ts';
+import type { PagedResult } from './fetchAllRows.ts';
+import { fetchAllKeyset, fromTable } from './loaderQuery.ts';
 import {
   calculateActualLaborCost,
   calculateActualLaborCostForRange,
@@ -147,20 +147,14 @@ export function fetchTipSplitRowsKeyset(
   startDay: string,
   endDay: string,
 ): Promise<PagedResult<TipSplitKeysetRow>> {
-  return fetchAllRowsKeyset<TipSplitKeysetRow, 'id'>(
-    (after, pageSize) =>
-      keysetPage<TipSplitKeysetRow>(
-        fromTable(client, 'tip_split_items')
-          .select('id, amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
-          .eq('tip_splits.restaurant_id', restaurantId)
-          .in('tip_splits.status', OWED_TIP_SPLIT_STATUSES)
-          .gte('tip_splits.split_date', startDay)
-          .lte('tip_splits.split_date', endDay),
-        'id',
-        undefined,
-        after,
-        pageSize,
-      ),
+  return fetchAllKeyset<TipSplitKeysetRow>(
+    () =>
+      fromTable(client, 'tip_split_items')
+        .select('id, amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
+        .eq('tip_splits.restaurant_id', restaurantId)
+        .in('tip_splits.status', OWED_TIP_SPLIT_STATUSES)
+        .gte('tip_splits.split_date', startDay)
+        .lte('tip_splits.split_date', endDay),
     'id',
   );
 }
@@ -175,19 +169,13 @@ export function fetchTipPayoutRowsKeyset(
   startDay: string,
   endDay: string,
 ): Promise<PagedResult<TipPayoutKeysetRow>> {
-  return fetchAllRowsKeyset<TipPayoutKeysetRow, 'id'>(
-    (after, pageSize) =>
-      keysetPage<TipPayoutKeysetRow>(
-        fromTable(client, 'tip_payouts')
-          .select('id, amount, employee_id, payout_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('payout_date', startDay)
-          .lte('payout_date', endDay),
-        'id',
-        undefined,
-        after,
-        pageSize,
-      ),
+  return fetchAllKeyset<TipPayoutKeysetRow>(
+    () =>
+      fromTable(client, 'tip_payouts')
+        .select('id, amount, employee_id, payout_date')
+        .eq('restaurant_id', restaurantId)
+        .gte('payout_date', startDay)
+        .lte('payout_date', endDay),
     'id',
   );
 }
@@ -227,36 +215,24 @@ export async function loadPeriodLaborCost(
     { rows: tipRows, capped: tipsCapped },
     { rows: tipPayoutRows, capped: tipPayoutsCapped },
   ] = await Promise.all([
-    fetchAllRowsKeyset<TimePunchRow, 'punch_time'>(
-      (after, pageSize) =>
-        keysetPage<TimePunchRow>(
-          fromTable(client, 'time_punches')
-            .select(TIME_PUNCH_COLUMNS)
-            .eq('restaurant_id', restaurantId)
-            .gte('punch_time', otFetchStart.toISOString())
-            .lte('punch_time', otFetchEnd.toISOString()),
-          'punch_time',
-          { ascending: true },
-          after,
-          pageSize,
-        ),
+    fetchAllKeyset<TimePunchRow, 'punch_time'>(
+      () =>
+        fromTable(client, 'time_punches')
+          .select(TIME_PUNCH_COLUMNS)
+          .eq('restaurant_id', restaurantId)
+          .gte('punch_time', otFetchStart.toISOString())
+          .lte('punch_time', otFetchEnd.toISOString()),
       'punch_time',
     ),
     // Per-job contractor payments (source records only).
-    fetchAllRowsKeyset<PerJobPaymentRow, 'id'>(
-      (after, pageSize) =>
-        keysetPage<PerJobPaymentRow>(
-          fromTable(client, 'daily_labor_allocations')
-            .select('id, employee_id, date, allocated_cost, notes')
-            .eq('restaurant_id', restaurantId)
-            .eq('source', 'per-job') // Only per-job source records, not auto-generated
-            .gte('date', startDay)
-            .lte('date', endDay),
-          'id',
-          undefined,
-          after,
-          pageSize,
-        ),
+    fetchAllKeyset<PerJobPaymentRow>(
+      () =>
+        fromTable(client, 'daily_labor_allocations')
+          .select('id, employee_id, date, allocated_cost, notes')
+          .eq('restaurant_id', restaurantId)
+          .eq('source', 'per-job') // Only per-job source records, not auto-generated
+          .gte('date', startDay)
+          .lte('date', endDay),
       'id',
     ),
     // Tips owed in the period (integer cents). Same source and filters as
@@ -400,53 +376,41 @@ export async function loadPeriodBankLabor(
 
   const [{ rows: bankTxns, capped: bankCapped }, { rows: pendingTxns, capped: pendingCapped }] =
     await Promise.all([
-      fetchAllRowsKeyset<BankTxnRow, 'id'>(
-        (after, pageSize) =>
-          keysetPage<BankTxnRow>(
-            fromTable(client, 'bank_transactions')
-              .select(`
-                id,
-                transaction_date,
-                amount,
-                status,
-                chart_of_accounts!category_id(
-                  account_subtype
-                )
-              `)
-              .eq('restaurant_id', restaurantId)
-              .gte('transaction_date', startDay)
-              .lte('transaction_date', endDay)
-              .in('status', ['posted', 'pending'])
-              .lt('amount', 0), // Only outflows
-            'id',
-            undefined,
-            after,
-            pageSize,
-          ),
+      fetchAllKeyset<BankTxnRow>(
+        () =>
+          fromTable(client, 'bank_transactions')
+            .select(`
+              id,
+              transaction_date,
+              amount,
+              status,
+              chart_of_accounts!category_id(
+                account_subtype
+              )
+            `)
+            .eq('restaurant_id', restaurantId)
+            .gte('transaction_date', startDay)
+            .lte('transaction_date', endDay)
+            .in('status', ['posted', 'pending'])
+            .lt('amount', 0), // Only outflows
         'id',
       ),
-      fetchAllRowsKeyset<PendingOutflowRow, 'id'>(
-        (after, pageSize) =>
-          keysetPage<PendingOutflowRow>(
-            fromTable(client, 'pending_outflows')
-              .select(`
-                id,
-                issue_date,
-                amount,
-                status,
-                chart_account:chart_of_accounts!category_id(
-                  account_subtype
-                )
-              `)
-              .eq('restaurant_id', restaurantId)
-              .gte('issue_date', startDay)
-              .lte('issue_date', endDay)
-              .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']),
-            'id',
-            undefined,
-            after,
-            pageSize,
-          ),
+      fetchAllKeyset<PendingOutflowRow>(
+        () =>
+          fromTable(client, 'pending_outflows')
+            .select(`
+              id,
+              issue_date,
+              amount,
+              status,
+              chart_account:chart_of_accounts!category_id(
+                account_subtype
+              )
+            `)
+            .eq('restaurant_id', restaurantId)
+            .gte('issue_date', startDay)
+            .lte('issue_date', endDay)
+            .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']),
         'id',
       ),
     ]);

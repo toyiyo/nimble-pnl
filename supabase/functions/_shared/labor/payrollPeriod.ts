@@ -9,8 +9,8 @@
  * - Engine period arguments are day tokens (`dayStart` / `dayEnd`).
  * - Every read pages with `fetchAllRowsKeyset` on `(order key, id)`.
  */
-import { fetchAllRowsKeyset, type PagedResult } from './fetchAllRows.ts';
-import { chunk, fromTable, keysetPage, type LoaderQuery } from './loaderQuery.ts';
+import type { PagedResult } from './fetchAllRows.ts';
+import { chunk, fetchAllKeyset, fromTable, type LoaderQuery } from './loaderQuery.ts';
 import {
   calculatePayrollPeriod,
   shouldIncludeEmployeeInPayroll,
@@ -146,40 +146,32 @@ export async function loadPayrollPeriod(
   // Engine period arguments (day tokens).
   const { dayStart, dayEnd } = dayTokens(startDay, endDay);
 
-  const byId = <T extends { id: string }>(build: () => LoaderQuery): Promise<PagedResult<T>> =>
-    fetchAllRowsKeyset<T, 'id'>((after, pageSize) => keysetPage<T>(build(), 'id', undefined, after, pageSize), 'id');
-
   const [punchesRead, splitsRead, perJobRead, employeeTipsRead, payoutsRead, otRulesRead, otAdjustmentsRead] =
     await Promise.all([
-      fetchAllRowsKeyset<TimePunchRow, 'punch_time'>(
-        (after, pageSize) =>
-          keysetPage<TimePunchRow>(
-            scope(
-              fromTable(client, 'time_punches')
-                .select(TIME_PUNCH_COLUMNS)
-                .eq('restaurant_id', restaurantId)
-                .gte('punch_time', fetchStart.toISOString())
-                .lte('punch_time', fetchEnd.toISOString()),
-            ),
-            'punch_time',
-            { ascending: true },
-            after,
-            pageSize,
+      fetchAllKeyset<TimePunchRow, 'punch_time'>(
+        () =>
+          scope(
+            fromTable(client, 'time_punches')
+              .select(TIME_PUNCH_COLUMNS)
+              .eq('restaurant_id', restaurantId)
+              .gte('punch_time', fetchStart.toISOString())
+              .lte('punch_time', fetchEnd.toISOString()),
           ),
         'punch_time',
       ),
       // Approved and archived (locked) splits count in payroll. Restaurant
       // scoped: the self-scoped filter goes on the items.
-      byId<TipSplitRow>(() =>
+      fetchAllKeyset<TipSplitRow>(() =>
         fromTable(client, 'tip_splits')
           .select('id, total_amount')
           .eq('restaurant_id', restaurantId)
           .in('status', PAYROLL_TIP_SPLIT_STATUSES)
           .gte('split_date', startDay)
           .lte('split_date', endDay),
+        'id',
       ),
       // Manual payments (per-job contractor payments).
-      byId<PerJobAllocationRow>(() =>
+      fetchAllKeyset<PerJobAllocationRow>(() =>
         scope(
           fromTable(client, 'daily_labor_allocations')
             .select('*')
@@ -188,8 +180,9 @@ export async function loadPayrollPeriod(
             .gte('date', startDay)
             .lte('date', endDay),
         ),
+        'id',
       ),
-      byId<EmployeeTipRow>(() =>
+      fetchAllKeyset<EmployeeTipRow>(() =>
         scope(
           fromTable(client, 'employee_tips')
             .select('id, employee_id, tip_amount, tip_date')
@@ -197,9 +190,10 @@ export async function loadPayrollPeriod(
             .gte('tip_date', startDay)
             .lte('tip_date', endDay),
         ),
+        'id',
       ),
       // Tip payouts (cash already paid out).
-      byId<TipPayoutRow>(() =>
+      fetchAllKeyset<TipPayoutRow>(() =>
         scope(
           fromTable(client, 'tip_payouts')
             .select('id, employee_id, amount')
@@ -207,13 +201,14 @@ export async function loadPayrollPeriod(
             .gte('payout_date', startDay)
             .lte('payout_date', endDay),
         ),
+        'id',
       ),
       fromTable(client, 'overtime_rules')
         .select('weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, daily_double_threshold_hours, daily_double_multiplier, exclude_tips_from_ot_rate')
         .eq('restaurant_id', restaurantId)
         .maybeSingle(),
       // An error here only logs, as before: payroll runs with no adjustments.
-      byId<OvertimeAdjustmentRow>(() =>
+      fetchAllKeyset<OvertimeAdjustmentRow>(() =>
         scope(
           fromTable(client, 'overtime_adjustments')
             .select('id, employee_id, punch_date, adjustment_type, hours, reason')
@@ -221,6 +216,7 @@ export async function loadPayrollPeriod(
             .gte('punch_date', startDay)
             .lte('punch_date', endDay),
         ),
+        'id',
       ).catch((error: unknown): PagedResult<OvertimeAdjustmentRow> => {
         console.error('Error fetching overtime adjustments:', error);
         return { rows: [], capped: false };
@@ -233,12 +229,13 @@ export async function loadPayrollPeriod(
   const splitIds = splitsRead.rows.map((split) => split.id);
   const itemReads = await Promise.all(
     chunk(splitIds, TIP_SPLIT_ID_CHUNK).map((ids) =>
-      byId<TipSplitItemRow>(() =>
+      fetchAllKeyset<TipSplitItemRow>(() =>
         scope(
           fromTable(client, 'tip_split_items')
             .select('id, employee_id, amount, tip_split_id, tip_splits(split_date)')
             .in('tip_split_id', ids),
         ),
+        'id',
       ),
     ),
   );

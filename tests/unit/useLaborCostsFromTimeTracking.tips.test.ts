@@ -47,7 +47,7 @@ const punches = [
 
 // $5.00 of tips owed to e1 on the same day.
 const tipRows = [
-  { amount: 500, employee_id: 'e1', tip_splits: { restaurant_id: RESTAURANT, split_date: '2026-07-06' } },
+  { id: 't1', amount: 500, employee_id: 'e1', tip_splits: { restaurant_id: RESTAURANT, split_date: '2026-07-06' } },
 ];
 
 // Typed shape for the methods the hook calls on the query chain. `then`
@@ -56,6 +56,7 @@ interface QueryChainMock {
   select: (columns: string) => QueryChainMock;
   eq: (column: string, value: unknown) => QueryChainMock;
   in: (column: string, values: unknown[]) => QueryChainMock;
+  gt: (column: string, value: unknown) => QueryChainMock;
   gte: (column: string, value: unknown) => QueryChainMock;
   lte: (column: string, value: unknown) => QueryChainMock;
   order: (column: string, options?: { ascending: boolean }) => QueryChainMock;
@@ -70,6 +71,7 @@ function makeRangeChain(rows: unknown[]): QueryChainMock {
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     in: vi.fn(() => chain),
+    gt: vi.fn(() => chain),
     gte: vi.fn(() => chain),
     lte: vi.fn(() => chain),
     order: vi.fn(() => chain),
@@ -84,7 +86,7 @@ function makeRangeChain(rows: unknown[]): QueryChainMock {
 
 // Serves one fixture page per `.range()` call — exercises multi-page
 // keyset paging through `fetchAllRowsKeyset` (a page of 1000 rows asks for
-// the next page after its last id, with `.or()`).
+// the next page after its last id, with `.gt('id', ...)`).
 // The call counter lives in `state`, OUTSIDE the chain: `fetchAllRows`
 // builds a fresh chain per page, so a chain-local counter would always
 // serve page zero and never finish.
@@ -93,6 +95,7 @@ function makePagedChain(pages: unknown[][], state: { call: number }): QueryChain
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     in: vi.fn(() => chain),
+    gt: vi.fn(() => chain),
     gte: vi.fn(() => chain),
     lte: vi.fn(() => chain),
     order: vi.fn(() => chain),
@@ -171,7 +174,7 @@ describe('useLaborCostsFromTimeTracking payroll total with tips', () => {
 
   it('subtracts tip payouts in the window from tips owed', async () => {
     // $2.00 already paid out to e1 → tips owed nets to $3.00.
-    payoutRows.push({ amount: 200, employee_id: 'e1', payout_date: '2026-07-06' });
+    payoutRows.push({ id: 'po1', amount: 200, employee_id: 'e1', payout_date: '2026-07-06' });
 
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
@@ -193,7 +196,7 @@ describe('useLaborCostsFromTimeTracking payroll total with tips', () => {
 
   it('floors tips owed at zero when payouts exceed the splits', async () => {
     // $9.00 paid out against $5.00 of splits → tips owed floors at $0.00.
-    payoutRows.push({ amount: 900, employee_id: 'e1', payout_date: '2026-07-06' });
+    payoutRows.push({ id: 'po1', amount: 900, employee_id: 'e1', payout_date: '2026-07-06' });
 
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 

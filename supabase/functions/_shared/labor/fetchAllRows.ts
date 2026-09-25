@@ -76,6 +76,15 @@ export interface KeysetCursor<K> {
  * changed. Keyset paging does not depend on the offsets, so neither can
  * occur. See specs/tla/labor-loader-paging/LaborLoaderPaging.tla.
  *
+ * A writer can change the order key of a row between two pages, so that the
+ * row sorts after the cursor again. The helper then receives the row two
+ * times. It keeps only the last copy of each id (the newer value, at its
+ * position in the new order). See `LaborLoaderPaging_KeysetNoDedupe.cfg`.
+ *
+ * The order key column must be NOT NULL. PostgREST sorts a null last, and
+ * the `gt` / `eq` cursor filter never matches a null, so a null key stops the
+ * cursor. The helper throws on a row with a null or undefined order key.
+ *
  * The page size, the `maxPages` cap and `capped` are the same as in
  * `fetchAllRows`. A page error is thrown.
  */
@@ -89,17 +98,28 @@ export async function fetchAllRowsKeyset<T extends { id: string }, K extends key
 ): Promise<PagedResult<T>> {
   const pageSize = opts?.pageSize ?? SUPABASE_MAX_ROWS;
   const maxPages = opts?.maxPages ?? DEFAULT_MAX_PAGES;
-  const rows: T[] = [];
+  // Insertion order is the read order. A later copy of an id replaces the
+  // earlier one and moves to the end.
+  const byId = new Map<string, T>();
+  const result = (capped: boolean): PagedResult<T> => ({ rows: Array.from(byId.values()), capped });
   let after: KeysetCursor<T[K]> | null = null;
   for (let page = 0; page < maxPages; page++) {
     const { data, error } = await buildPage(after, pageSize);
     if (error) throw error;
-    rows.push(...(data ?? []));
-    if (!data || data.length < pageSize) return { rows, capped: false };
+    for (const row of data ?? []) {
+      if (row[orderKey] === null || row[orderKey] === undefined) {
+        throw new Error(
+          `fetchAllRowsKeyset: row ${row.id} has a null order key ${String(orderKey)}. The order key must be NOT NULL.`,
+        );
+      }
+      byId.delete(row.id);
+      byId.set(row.id, row);
+    }
+    if (!data || data.length < pageSize) return result(false);
     const last = data[data.length - 1];
     after = { key: last[orderKey], id: last.id };
   }
-  return { rows, capped: true };
+  return result(true);
 }
 
 /** A PostgREST filter value in double quotes, with `"` and `\` escaped. */

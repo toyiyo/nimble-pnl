@@ -38,7 +38,7 @@ import {
   type TipSplitRow,
 } from './tipsFetch.ts';
 import { businessDayRangeToInstants } from './restaurantClock.ts';
-import { parseDateOnly } from './dateOnly.ts';
+import { assertDayRange, parseDateOnly } from './dateOnly.ts';
 import type { LaborEmployee, LaborQueryClient, LaborTimePunch } from './types.ts';
 
 // ============================================================================
@@ -201,6 +201,7 @@ export async function loadPeriodLaborCost(
   input: PeriodLaborCostInput,
 ): Promise<PeriodLaborCostResult> {
   const { restaurantId, startDay, endDay, timeZone, employees, throughNow, now } = input;
+  assertDayRange('loadPeriodLaborCost', startDay, endDay);
 
   // Fetch windows (instants). Look-AHEAD only, not symmetric:
   // calculateActualLaborCost attributes hours to every day a shift touches and
@@ -395,6 +396,7 @@ export async function loadPeriodBankLabor(
   input: PeriodBankLaborInput,
 ): Promise<PeriodBankLaborResult> {
   const { restaurantId, startDay, endDay } = input;
+  assertDayRange('loadPeriodBankLabor', startDay, endDay);
 
   const [{ rows: bankTxns, capped: bankCapped }, { rows: pendingTxns, capped: pendingCapped }] =
     await Promise.all([

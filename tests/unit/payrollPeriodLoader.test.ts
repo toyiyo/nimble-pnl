@@ -84,9 +84,18 @@ describe('loadPayrollPeriod', () => {
       loadPayrollPeriod(client, {
         ...week,
         employees: [hourly('e1')],
-        employeeId: null as unknown as string,
+        employeeId: null,
       }),
     ).rejects.toThrow(/employeeId is null/);
+    expect(client.records).toHaveLength(0);
+  });
+
+  it('throws on an empty employeeId', async () => {
+    // '' is falsy: a truthiness scope would read every employee.
+    const client = makeLaborStubClient({});
+    await expect(
+      loadPayrollPeriod(client, { ...week, employees: [hourly('e1')], employeeId: '' }),
+    ).rejects.toThrow(/employeeId/);
     expect(client.records).toHaveLength(0);
   });
 

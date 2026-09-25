@@ -19,6 +19,7 @@ import {
   formatHours,
   EmployeePayroll,
 } from '@/utils/payrollCalculations';
+import { stepCustomRange } from '@/utils/payrollCustomRange';
 import { sortPayrollRows, groupPayrollRows, computePayrollTotals, regularPayDisplayValue, type PayrollSortKey, type SortDirection, type PayrollGroupMode } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import {
@@ -651,9 +652,9 @@ const Payroll = () => {
 
   const handlePreviousPeriod = () => {
     if (periodType === 'custom') {
-      const duration = customEndDate.getTime() - customStartDate.getTime();
-      setCustomStartDate(new Date(customStartDate.getTime() - duration));
-      setCustomEndDate(new Date(customEndDate.getTime() - duration));
+      const stepped = stepCustomRange(customStartDate, customEndDate, -1);
+      setCustomStartDate(stepped.start);
+      setCustomEndDate(stepped.end);
     } else {
       // Move to previous week
       const newDate = subWeeks(start, 1);
@@ -665,9 +666,9 @@ const Payroll = () => {
 
   const handleNextPeriod = () => {
     if (periodType === 'custom') {
-      const duration = customEndDate.getTime() - customStartDate.getTime();
-      setCustomStartDate(new Date(customStartDate.getTime() + duration));
-      setCustomEndDate(new Date(customEndDate.getTime() + duration));
+      const stepped = stepCustomRange(customStartDate, customEndDate, 1);
+      setCustomStartDate(stepped.start);
+      setCustomEndDate(stepped.end);
     } else {
       // Move to next week
       const newDate = addWeeks(start, 1);

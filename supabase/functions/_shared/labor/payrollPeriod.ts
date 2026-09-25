@@ -25,6 +25,7 @@ import {
 } from './tipAggregation.ts';
 import { bufferPunchFetchRange } from './punchWindow.ts';
 import { businessDayRangeToInstants } from './restaurantClock.ts';
+import { assertDayRange } from './dateOnly.ts';
 import { dayTokens, TIME_PUNCH_COLUMNS, toLaborPunch, type TimePunchRow } from './periodLaborCost.ts';
 import type { LaborEmployee, LaborQueryClient, LaborTimePunch } from './types.ts';
 
@@ -44,10 +45,12 @@ export interface PayrollPeriodInput {
   timeZone: string;
   employees: LaborEmployee[];
   /**
-   * `undefined`: all employees (admin). A string: one employee
-   * (self-scoped). `null` is not valid: the caller must wait for the id.
+   * `undefined`: all employees (admin). A non-empty string: one employee
+   * (self-scoped). `null` and `''` are not valid: the loader throws, and the
+   * caller must wait for the id. The type allows `null`, so a caller that
+   * holds the hook's `string | null` gets the check at runtime.
    */
-  employeeId?: string;
+  employeeId?: string | null;
 }
 
 export interface PayrollPeriodResult {
@@ -112,22 +115,27 @@ interface OvertimeAdjustmentRow {
 /**
  * Payroll of a pay period of whole restaurant days.
  *
- * Throws on `employeeId: null`. The hook uses `null` for "self-scoped, the
- * id is not known yet", and a missing filter would read every employee.
+ * Throws on `employeeId: null` and on `employeeId: ''`. The hook uses `null`
+ * for "self-scoped, the id is not known yet", and a missing filter would read
+ * every employee.
  */
 export async function loadPayrollPeriod(
   client: LaborQueryClient,
   input: PayrollPeriodInput,
 ): Promise<PayrollPeriodResult> {
   const { restaurantId, startDay, endDay, timeZone, employees } = input;
-  const employeeId: string | undefined | null = input.employeeId;
+  assertDayRange('loadPayrollPeriod', startDay, endDay);
+  const { employeeId } = input;
   if (employeeId === null) {
     throw new Error('loadPayrollPeriod: employeeId is null. Pass undefined for all employees, or wait for the id.');
+  }
+  if (employeeId !== undefined && (typeof employeeId !== 'string' || employeeId === '')) {
+    throw new Error('loadPayrollPeriod: employeeId must be undefined or a non-empty string.');
   }
 
   // Self-scoped: narrow a per-employee read to the one employee.
   const scope = (query: LoaderQuery): LoaderQuery =>
-    employeeId ? query.eq('employee_id', employeeId) : query;
+    employeeId !== undefined ? query.eq('employee_id', employeeId) : query;
 
   // Fetch windows (instants). The +/- 18 h buffer on the restaurant-day
   // bounds fetches an overnight shift that crosses the period edge whole.

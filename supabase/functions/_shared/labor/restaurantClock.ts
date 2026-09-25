@@ -189,12 +189,15 @@ export function businessDaysBetween(
  * punches fall outside the viewer's day and vanish.
  *
  * A malformed day string is rejected rather than coerced. In dev and test that
- * throws; in production `reject` only logs, and the bound is an Invalid Date,
- * so the window filters every row away. That is the intended
- * trade: the obvious salvage -- slicing the first ten characters off whatever
- * was passed -- is how a `toISOString().split('T')[0]` day (off by one east of
- * UTC) gets laundered into a valid-looking window, which is exactly the bug
- * this module exists to eliminate. Callers must hand over a real calendar day.
+ * throws; in production `reject` only logs, and the bound is an Invalid Date.
+ * A compare against an Invalid Date is always false, and `toISOString()` on
+ * it throws a RangeError. So a caller that builds a query filter from the
+ * bound fails there. The labor loaders check the day format at their entry
+ * (`assertDayRange`) and throw a clear error first. The obvious salvage --
+ * slicing the first ten characters off whatever was passed -- is how a
+ * `toISOString().split('T')[0]` day (off by one east of UTC) gets laundered
+ * into a valid-looking window, which is exactly the bug this module exists to
+ * eliminate. Callers must hand over a real calendar day.
  */
 export function businessDayRangeToInstants(
   startDay: string,

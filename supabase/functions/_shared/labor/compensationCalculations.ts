@@ -487,7 +487,7 @@ export function generateDailyAllocation(
       break;
     case 'salary':
       if (employee.salary_amount && employee.pay_period_type) {
-        const period = getPayPeriodDates(new Date(date), employee.pay_period_type);
+        const period = getPayPeriodDates(parseDateOnly(date), employee.pay_period_type);
         periodStart = period.start;
         periodEnd = period.end;
         const days = DAYS_PER_PAY_PERIOD[employee.pay_period_type];

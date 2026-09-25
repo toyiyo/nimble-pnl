@@ -16,6 +16,7 @@ import { fromTable, keysetPage } from './loaderQuery.ts';
 import { calculateScheduledLaborCost } from './laborCalculations.ts';
 import { businessDayRangeToInstants } from './restaurantClock.ts';
 import { dayTokens } from './periodLaborCost.ts';
+import { assertDayRange } from './dateOnly.ts';
 import type { LaborEmployee, LaborQueryClient, LaborShift } from './types.ts';
 
 export interface ScheduledLaborCostData {
@@ -147,6 +148,7 @@ export async function loadScheduledLaborCost(
   input: ScheduledLaborCostInput,
 ): Promise<ScheduledLaborCostResult> {
   const { restaurantId, startDay, endDay, timeZone } = input;
+  assertDayRange('loadScheduledLaborCost', startDay, endDay);
   const { start: windowStart, end: windowEnd } = businessDayRangeToInstants(startDay, endDay, timeZone);
   const { dayStart, dayEnd } = dayTokens(startDay, endDay);
 

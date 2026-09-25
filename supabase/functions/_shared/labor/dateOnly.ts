@@ -2,6 +2,22 @@ import { format } from 'date-fns/format';
 
 const ISO_DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+/** A calendar-day string, `YYYY-MM-DD`. Format only: no calendar check. */
+export const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Check the day range of a labor loader at its entry. Throws a clear error
+ * that names the loader, before any read, when a bound is not `YYYY-MM-DD`.
+ */
+export function assertDayRange(fn: string, startDay: string, endDay: string): void {
+  if (typeof startDay !== 'string' || !DATE_ONLY_RE.test(startDay)) {
+    throw new Error(`${fn}: startDay must be a calendar day (YYYY-MM-DD), received ${JSON.stringify(startDay)}`);
+  }
+  if (typeof endDay !== 'string' || !DATE_ONLY_RE.test(endDay)) {
+    throw new Error(`${fn}: endDay must be a calendar day (YYYY-MM-DD), received ${JSON.stringify(endDay)}`);
+  }
+}
+
 /**
  * Parse a YYYY-MM-DD calendar-day string into a Date anchored at LOCAL midnight.
  *

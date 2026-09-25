@@ -9,6 +9,7 @@ import {
   loadPeriodLaborCost,
   type PeriodLaborCostInput,
 } from './periodLaborCost.ts';
+import { assertDayRange } from './dateOnly.ts';
 import type { LaborQueryClient } from './types.ts';
 
 export type PeriodLaborBasisInput = PeriodLaborCostInput;
@@ -36,6 +37,7 @@ export async function loadPeriodLaborBasis(
   client: LaborQueryClient,
   input: PeriodLaborBasisInput,
 ): Promise<PeriodLaborBasisResult> {
+  assertDayRange('loadPeriodLaborBasis', input.startDay, input.endDay);
   const [accrued, paid] = await Promise.all([
     loadPeriodLaborCost(client, input),
     loadPeriodBankLabor(client, {

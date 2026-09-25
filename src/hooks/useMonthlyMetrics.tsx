@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachMonthOfInterval, startOfDay, endOfDay } from 'date-fns';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import { resolveLaborBasis } from '@/lib/combineCosts';
 import {
@@ -581,13 +581,15 @@ export function useMonthlyMetrics(
         });
         const tipsOwedByEmployee = netTipsOwedByEmployee(monthTipRows, monthPayoutRows);
 
-        // OT-D labor for this month (ISO-week banding + tipsOwed).
+        // OT-D labor for this month (restaurant-local week banding + tipsOwed).
+        // The engine bounds are whole-day tokens: a `dateTo` at local midnight
+        // names its last day, and the engine noon rule would drop that day.
         const { wagesCents, actualLaborCents } = calculateActualLaborCostForMonth({
           employees: typedEmployees as any,
           timePunches: typedPunches,
           tipsOwedByEmployee,
-          monthStart: clampedStart,
-          monthEnd: clampedEnd,
+          monthStart: startOfDay(clampedStart),
+          monthEnd: endOfDay(clampedEnd),
           timezone,
         });
 

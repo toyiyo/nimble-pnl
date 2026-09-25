@@ -12,6 +12,9 @@ export type { TransactionLaborCostData };
 export interface LaborCostsFromTransactionsResult {
   dailyCosts: TransactionLaborCostData[];
   totalCost: number;
+  /** True when a paged read (bank transactions, pending outflows) hit the
+   * `maxPages` cap of the loader. The results can then be incomplete. */
+  capped: boolean;
   isLoading: boolean;
   isFetching: boolean;
   error: Error | null;
@@ -40,14 +43,15 @@ export function useLaborCostsFromTransactions(
     queryFn: async () => {
       if (!restaurantId) return null;
 
-      // The loader pages both reads (no 1,000-row cap) and filters the
-      // calendar-day columns by the day strings.
-      const { dailyCosts, totalCost } = await loadPeriodBankLabor(supabase, {
+      // The loader pages both reads past the PostgREST 1,000-row limit, up
+      // to its `maxPages` cap, and filters the calendar-day columns by the
+      // day strings. `capped` is true when a read stops at that cap.
+      const { dailyCosts, totalCost, capped } = await loadPeriodBankLabor(supabase, {
         restaurantId,
         startDay: toDateOnlyString(dateFrom),
         endDay: toDateOnlyString(dateTo),
       });
-      return { dailyCosts, totalCost };
+      return { dailyCosts, totalCost, capped };
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
@@ -59,6 +63,7 @@ export function useLaborCostsFromTransactions(
   return {
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
+    capped: data?.capped ?? false,
     isLoading,
     isFetching,
     error: error as Error | null,

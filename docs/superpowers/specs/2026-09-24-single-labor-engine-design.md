@@ -492,6 +492,13 @@ cannot drive a model conversation to a deterministic tool call.
   all punches per employee (`laborCalculations.ts:873`). The plan measures a
   `year` fixture with 100 employees and 20000 punches (the `fetchAllRows`
   cap).
+  - Result (PR 1, this container, Node): 100 hourly employees, 20000 punches
+    (10000 shifts) over one year in America/Chicago.
+    `calculateActualLaborCost` takes 570 ms and
+    `calculateActualLaborCostForRange` takes 788 ms, about 1.4 s in total.
+    The wage total is the expected 120,000,000 cents. This is below the edge
+    CPU limit (about 10 s), but PR 2 must not run both for a `year` period
+    when the tool needs only one of them.
 - **Cold start.** A bare `date-fns` root import loads the whole package. Map
   `"date-fns/": "npm:/date-fns@3.6.0/"` too, and use subpath imports in the
   moved files, or measure the cold start.

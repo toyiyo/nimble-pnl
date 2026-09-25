@@ -52,7 +52,7 @@ function EmployeeMore() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {showBadge && <TradeCountBadge count={tradeCount} urgent={hasUrgentTrade} />}
+                {showBadge && <TradeCountBadge count={tradeCount} isUrgent={hasUrgentTrade} />}
                 <ChevronRight className="h-4 w-4 text-muted-foreground/50" aria-hidden="true" />
               </div>
             </Link>

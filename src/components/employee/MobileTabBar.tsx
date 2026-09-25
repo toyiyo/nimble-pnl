@@ -59,7 +59,7 @@ export function MobileTabBar() {
                 {showBadge && (
                   <TradeCountBadge
                     count={tradeCount}
-                    urgent={hasUrgentTrade}
+                    isUrgent={hasUrgentTrade}
                     className="absolute -top-1.5 -right-2.5"
                   />
                 )}

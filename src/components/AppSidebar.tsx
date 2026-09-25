@@ -71,7 +71,7 @@ function MarketplaceTradeCount({ variant }: { variant: 'inline' | 'icon' }) {
     <>
       <TradeCountBadge
         count={count}
-        urgent={hasUrgentTrade}
+        isUrgent={hasUrgentTrade}
         className={variant === 'icon' ? 'absolute top-0 right-0' : 'ml-auto'}
       />
       <span className="sr-only">{shiftsUpForGrabsText(count)}</span>

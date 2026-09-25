@@ -364,9 +364,66 @@ GRANT EXECUTE ON FUNCTION public.get_shift_trade_unclaimed_recipients(uuid) TO s
 --    pg_cron does not wait for the function, so two runs can overlap. The
 --    claim RPC stops a double send. Unschedule first, so this migration can
 --    run again.
+--
+--    The job calls dispatch_shift_trade_reminders(). Do not read
+--    current_setting('app.settings.supabase_url') without missing_ok: that
+--    setting is not set on this project, and the read then fails on each run
+--    (20260702160000_focus_crons_gateless.sql:6-9).
+--    - URL: app.settings.supabase_url when set, else the project URL, the
+--      same URL the newest crons use (20260901120000_focus_backfill_cron_timeout.sql:34).
+--    - Key: app.settings.service_role_key when set, else the Vault secret
+--      supabase_service_role_key (read the same way in
+--      20260217031454_9c95bf26-eb62-46f0-bfd1-6815d60f8c63.sql:17-23).
+--    - No key: do nothing and return NULL. A local database has no Vault
+--      secret, so a local pg_cron never calls the production function.
 -- ============================================================
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
+
+CREATE OR REPLACE FUNCTION public.dispatch_shift_trade_reminders()
+RETURNS bigint
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_url text := COALESCE(
+    NULLIF(current_setting('app.settings.supabase_url', true), ''),
+    'https://ncdujvdgqtaunuyigflp.supabase.co'
+  );
+  v_key text := NULLIF(current_setting('app.settings.service_role_key', true), '');
+BEGIN
+  IF v_key IS NULL THEN
+    BEGIN
+      SELECT decrypted_secret INTO v_key
+      FROM vault.decrypted_secrets
+      WHERE name = 'supabase_service_role_key'
+      LIMIT 1;
+    EXCEPTION WHEN OTHERS THEN
+      -- No Vault access or no Vault extension: treat as no key.
+      v_key := NULL;
+    END;
+  END IF;
+
+  IF v_key IS NULL OR v_key = '' THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN net.http_post(
+    url := v_url || '/functions/v1/shift-trade-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || v_key
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 120000
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.dispatch_shift_trade_reminders() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.dispatch_shift_trade_reminders() TO service_role;
 
 DO $$
 BEGIN
@@ -380,14 +437,5 @@ END $$;
 SELECT cron.schedule(
   'shift-trade-reminders',
   '*/15 * * * *',
-  $$
-  SELECT net.http_post(
-    url := current_setting('app.settings.supabase_url') || '/functions/v1/shift-trade-reminders',
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key')
-    ),
-    body := '{}'::jsonb
-  );
-  $$
+  $$SELECT public.dispatch_shift_trade_reminders();$$
 );

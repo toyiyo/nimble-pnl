@@ -529,9 +529,21 @@ function does `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` and
    `shift_trade_reminder` and `shift_trade_unclaimed` to the 17 keys.
    Update the column comment to 19 keys.
 
-8. `cron.schedule('shift-trade-reminders', '*/15 * * * *', ...)` with the
-   `net.http_post` pattern. Unschedule first, so the migration can run
-   again.
+8. `dispatch_shift_trade_reminders() RETURNS bigint` — `SECURITY DEFINER VOLATILE`,
+   and `cron.schedule('shift-trade-reminders', '*/15 * * * *', 'SELECT public.dispatch_shift_trade_reminders()')`.
+   Unschedule first, so the migration can run again.
+   - The project does not set `app.settings.supabase_url`. A read without
+     `missing_ok` fails on each run
+     (`supabase/migrations/20260702160000_focus_crons_gateless.sql:6-9`).
+     The `bank-reauth-notices` cron has this read
+     (`supabase/migrations/20260723130200_schedule_bank_reauth_notices.sql:201-205`).
+   - URL: `app.settings.supabase_url` with `missing_ok`, else the project
+     URL (`supabase/migrations/20260901120000_focus_backfill_cron_timeout.sql:34`).
+   - Key: `app.settings.service_role_key` with `missing_ok`, else the Vault
+     secret `supabase_service_role_key`
+     (`supabase/migrations/20260217031454_9c95bf26-eb62-46f0-bfd1-6815d60f8c63.sql:17-23`).
+   - No key: return `NULL` and send nothing. A local database has no Vault
+     secret, so a local pg_cron never calls production.
 
 #### B5. Edge function `shift-trade-reminders`
 
@@ -639,6 +651,10 @@ this case.
   trades that are already open. That is the wanted result, and each stage
   sends at most one time.
 - Admins can turn off both new types in Settings → Notifications.
+- Before deploy, check in production that the Vault secret
+  `supabase_service_role_key` exists and equals the edge function's
+  `SUPABASE_SERVICE_ROLE_KEY`. If it does not, the function returns 401 on
+  each run and no reminder sends.
 - After deploy, check that `shift_trade_reminders` gets rows and that the
   function logs show `claimed > 0` when due trades exist (lesson
   `memory/lessons.md:933-936`).

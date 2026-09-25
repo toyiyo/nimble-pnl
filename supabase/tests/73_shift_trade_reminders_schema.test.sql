@@ -11,7 +11,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(21);
+SELECT plan(24);
 
 SET LOCAL role TO postgres;
 
@@ -138,7 +138,7 @@ SELECT throws_ok(
 );
 
 -- ---------------------------------------------------------------------------
--- Cron job (20-21)
+-- Cron job and dispatcher (20-24)
 -- ---------------------------------------------------------------------------
 SELECT is(
   (SELECT schedule FROM cron.job WHERE jobname = 'shift-trade-reminders'),
@@ -148,8 +148,35 @@ SELECT is(
 
 SELECT ok(
   (SELECT command FROM cron.job WHERE jobname = 'shift-trade-reminders')
-    LIKE '%/functions/v1/shift-trade-reminders%',
-  'cron job shift-trade-reminders posts to the shift-trade-reminders function'
+    LIKE '%public.dispatch_shift_trade_reminders()%',
+  'cron job shift-trade-reminders calls dispatch_shift_trade_reminders()'
+);
+
+-- The project does not set app.settings.supabase_url. A read without
+-- missing_ok fails on each run (20260702160000_focus_crons_gateless.sql:6-9).
+SELECT ok(
+  pg_get_functiondef('public.dispatch_shift_trade_reminders()'::regprocedure)
+    NOT LIKE '%current_setting(''app.settings.supabase_url'')%'
+  AND pg_get_functiondef('public.dispatch_shift_trade_reminders()'::regprocedure)
+    NOT LIKE '%current_setting(''app.settings.service_role_key'')%',
+  'dispatcher reads the app.settings values only with missing_ok'
+);
+
+-- With no key in the settings and no Vault secret, the dispatcher sends
+-- nothing. A local database therefore never calls the production function.
+SELECT set_config('app.settings.service_role_key', '', true);
+SELECT is(
+  CASE WHEN EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'supabase_service_role_key')
+       THEN NULL::bigint
+       ELSE public.dispatch_shift_trade_reminders()
+  END,
+  NULL::bigint,
+  'dispatcher returns NULL and sends no request when no key exists'
+);
+
+SELECT ok(
+  NOT has_function_privilege('authenticated', 'public.dispatch_shift_trade_reminders()', 'EXECUTE'),
+  'authenticated cannot execute dispatch_shift_trade_reminders'
 );
 
 SELECT * FROM finish();

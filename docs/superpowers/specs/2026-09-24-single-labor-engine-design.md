@@ -473,6 +473,14 @@ cannot drive a model conversation to a deterministic tool call.
 - **Client type.** The typed browser client must fit the structural client
   type. Plan task 1 checks this first. If it does not fit, the loaders take
   a page callback (`(from, to) => query`) instead, as `fetchAllRows` does now.
+  Result (task 1, `tests/unit/types/laborQueryClient.test.ts`): a type that
+  describes the full chain (`from().select().eq()...range()`) fails with
+  TS2589 "Type instantiation is excessively deep and possibly infinite".
+  The typed client fits `LaborQueryClient = { from(table: string): unknown }`.
+  The engine casts the `from()` result to its own chain type in one type-only
+  helper, as `asPagedRows` does. Decision: use this minimal client type, not
+  a page callback. The query shape stays in `_shared/labor/`, and the callers
+  of `fetchTipSplitRows` and `fetchTipPayoutRows` do not change.
 - **CPU.** The edge function now runs overtime banding. `calculateDateRange`
   allows `quarter` and `year`, and `calculateActualLaborCostForRange` filters
   all punches per employee (`laborCalculations.ts:873`). The plan measures a

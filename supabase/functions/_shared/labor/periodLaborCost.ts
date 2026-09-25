@@ -18,8 +18,14 @@
  *
  * Every read pages with `fetchAllRowsKeyset` on `(order key, id)`.
  */
-import type { PagedResult } from './fetchAllRows.ts';
-import { fetchAllKeyset, fromTable } from './loaderQuery.ts';
+import {
+  fetchAllKeyset,
+  fromTable,
+  PER_JOB_ALLOCATION_COLUMNS,
+  TIME_PUNCH_COLUMNS,
+  type PerJobAllocationRow,
+  type TimePunchRow,
+} from './loaderQuery.ts';
 import {
   calculateActualLaborCost,
   calculateActualLaborCostForRange,
@@ -32,57 +38,13 @@ import {
 } from './punchWindow.ts';
 import { appendOpenShiftClockOuts } from './openShiftPunches.ts';
 import {
-  OWED_TIP_SPLIT_STATUSES,
+  fetchTipPayoutRowsKeyset,
+  fetchTipSplitRowsKeyset,
   netTipsOwedByEmployee,
-  type TipPayoutRow,
-  type TipSplitRow,
 } from './tipsFetch.ts';
 import { businessDayRangeToInstants } from './restaurantClock.ts';
-import { assertDayRange, parseDateOnly } from './dateOnly.ts';
-import type { LaborEmployee, LaborQueryClient, LaborTimePunch } from './types.ts';
-
-// ============================================================================
-// Shared helpers
-// ============================================================================
-
-/** The engine day tokens for an inclusive day range. See the file comment. */
-export function dayTokens(startDay: string, endDay: string): { dayStart: Date; dayEnd: Date } {
-  const dayStart = parseDateOnly(startDay);
-  const dayEnd = parseDateOnly(endDay);
-  dayEnd.setHours(23, 59, 59, 999);
-  return { dayStart, dayEnd };
-}
-
-/**
- * Every `time_punches` column that the app reads (the `DBTimePunch` columns),
- * named. No `select('*')` payload, and no silent widening if the table grows
- * a column.
- */
-export const TIME_PUNCH_COLUMNS =
-  'id, employee_id, restaurant_id, punch_time, punch_type, created_at, updated_at, shift_id, notes, photo_path, device_info, location, created_by, modified_by';
-
-/** A `time_punches` row as `TIME_PUNCH_COLUMNS` reads it. */
-export interface TimePunchRow {
-  id: string;
-  employee_id: string;
-  restaurant_id: string;
-  punch_time: string;
-  punch_type: string;
-  created_at: string;
-  updated_at: string;
-  shift_id: string | null;
-  notes: string | null;
-  photo_path: string | null;
-  device_info: string | null;
-  location: unknown;
-  created_by: string | null;
-  modified_by: string | null;
-}
-
-/** A punch row as the engine reads it. The `punch_type` cast is type-only. */
-export function toLaborPunch(row: TimePunchRow): TimePunchRow & LaborTimePunch {
-  return { ...row, punch_type: row.punch_type as LaborTimePunch['punch_type'] };
-}
+import { assertDayRange, dayTokens } from './dateOnly.ts';
+import type { LaborEmployee, LaborQueryClient } from './types.ts';
 
 // ============================================================================
 // loadPeriodLaborCost
@@ -124,60 +86,6 @@ export interface PeriodLaborCostResult {
   wageCost: number;
   /** True when a paged read hit the `maxPages` cap. */
   capped: boolean;
-}
-
-interface PerJobPaymentRow {
-  id: string;
-  employee_id: string;
-  date: string;
-  allocated_cost: number;
-  notes: string | null;
-}
-
-type TipSplitKeysetRow = TipSplitRow & { id: string };
-type TipPayoutKeysetRow = TipPayoutRow & { id: string };
-
-/**
- * Tip split items owed in the day range (approved / archived parent splits).
- * The same filters as `fetchTipSplitRows`, with keyset paging on `id`.
- */
-export function fetchTipSplitRowsKeyset(
-  client: LaborQueryClient,
-  restaurantId: string,
-  startDay: string,
-  endDay: string,
-): Promise<PagedResult<TipSplitKeysetRow>> {
-  return fetchAllKeyset<TipSplitKeysetRow>(
-    () =>
-      fromTable(client, 'tip_split_items')
-        .select('id, amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
-        .eq('tip_splits.restaurant_id', restaurantId)
-        .in('tip_splits.status', OWED_TIP_SPLIT_STATUSES)
-        .gte('tip_splits.split_date', startDay)
-        .lte('tip_splits.split_date', endDay),
-    'id',
-  );
-}
-
-/**
- * Tip payouts in the day range. The same filters as `fetchTipPayoutRows`,
- * with keyset paging on `id`.
- */
-export function fetchTipPayoutRowsKeyset(
-  client: LaborQueryClient,
-  restaurantId: string,
-  startDay: string,
-  endDay: string,
-): Promise<PagedResult<TipPayoutKeysetRow>> {
-  return fetchAllKeyset<TipPayoutKeysetRow>(
-    () =>
-      fromTable(client, 'tip_payouts')
-        .select('id, amount, employee_id, payout_date')
-        .eq('restaurant_id', restaurantId)
-        .gte('payout_date', startDay)
-        .lte('payout_date', endDay),
-    'id',
-  );
 }
 
 /**
@@ -225,10 +133,10 @@ export async function loadPeriodLaborCost(
       'punch_time',
     ),
     // Per-job contractor payments (source records only).
-    fetchAllKeyset<PerJobPaymentRow>(
+    fetchAllKeyset<PerJobAllocationRow>(
       () =>
         fromTable(client, 'daily_labor_allocations')
-          .select('id, employee_id, date, allocated_cost, notes')
+          .select(PER_JOB_ALLOCATION_COLUMNS)
           .eq('restaurant_id', restaurantId)
           .eq('source', 'per-job') // Only per-job source records, not auto-generated
           .gte('date', startDay)
@@ -244,11 +152,9 @@ export async function loadPeriodLaborCost(
 
   const tipsOwedByEmployee = netTipsOwedByEmployee(tipRows, tipPayoutRows);
 
-  const punches = punchRows.map(toLaborPunch);
-
   // A live view closes a still-open shift at `now` (a real instant), so its
   // in-progress hours count.
-  const punchesForCost = throughNow ? appendOpenShiftClockOuts(punches, now) : punches;
+  const punchesForCost = throughNow ? appendOpenShiftClockOuts(punchRows, now) : punchRows;
 
   // The straight-time series must not see the week look-back / look-ahead
   // days. Keep the punches of the un-widened fetch window only.

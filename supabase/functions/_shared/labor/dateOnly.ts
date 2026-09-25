@@ -46,6 +46,26 @@ export function parseDateOnly(value: string): Date {
 }
 
 /**
+ * The engine day token for the end of a calendar day: the local end of the
+ * day (23:59:59.999) of the `YYYY-MM-DD` string. The engine reads its local
+ * fields, so it names that day on every host.
+ */
+export function dayTokenEnd(day: string): Date {
+  const end = parseDateOnly(day);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+/**
+ * The engine day tokens for an inclusive day range: local midnight of
+ * `startDay` and the local end of `endDay`. They are not instants. A loader
+ * gives them to the engine period arguments, never to a query filter.
+ */
+export function dayTokens(startDay: string, endDay: string): { dayStart: Date; dayEnd: Date } {
+  return { dayStart: parseDateOnly(startDay), dayEnd: dayTokenEnd(endDay) };
+}
+
+/**
  * Convert a Date object (typically from a calendar/date picker) into a YYYY-MM-DD
  * calendar-day string using LOCAL fields. Appropriate for storing a calendar
  * day the user clicked on into a Postgres DATE column — no UTC math.

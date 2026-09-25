@@ -4,7 +4,12 @@ import {
   type KeysetCursor,
   type PagedResult,
 } from './fetchAllRows.ts';
-import type { LaborQueryClient } from './types.ts';
+import {
+  LABOR_EMPLOYEE_KEYS,
+  type LaborEmployee,
+  type LaborQueryClient,
+  type LaborTimePunch,
+} from './types.ts';
 
 /**
  * The query chain that the loaders use. The typed browser client and the Deno
@@ -86,4 +91,83 @@ export function chunk<T>(values: readonly T[], size: number): T[][] {
     chunks.push(values.slice(i, i + size));
   }
   return chunks;
+}
+
+// ============================================================================
+// Shared row types and column lists of the loaders
+// ============================================================================
+
+/**
+ * Every `time_punches` column that the app reads (the `DBTimePunch` columns),
+ * named. No `select('*')` payload, and no silent widening if the table grows
+ * a column.
+ */
+export const TIME_PUNCH_COLUMNS =
+  'id, employee_id, restaurant_id, punch_time, punch_type, created_at, updated_at, shift_id, notes, photo_path, device_info, location, created_by, modified_by';
+
+/** A `time_punches` row as `TIME_PUNCH_COLUMNS` reads it. */
+export interface TimePunchRow {
+  id: string;
+  employee_id: string;
+  restaurant_id: string;
+  punch_time: string;
+  punch_type: LaborTimePunch['punch_type'];
+  created_at: string;
+  updated_at: string;
+  shift_id: string | null;
+  notes: string | null;
+  photo_path: string | null;
+  device_info: string | null;
+  location: unknown;
+  created_by: string | null;
+  modified_by: string | null;
+}
+
+/** The `daily_labor_allocations` columns of a per-job payment. */
+export const PER_JOB_ALLOCATION_COLUMNS = 'id, employee_id, date, allocated_cost, notes';
+
+/** A per-job payment row (`daily_labor_allocations`, `source = 'per-job'`). */
+export interface PerJobAllocationRow {
+  id: string;
+  employee_id: string;
+  date: string;
+  /** Integer cents. */
+  allocated_cost: number;
+  notes: string | null;
+}
+
+/**
+ * The `employee_compensation_history` columns that the engine reads:
+ * `getSortedHistory` and `resolveCompensationForDate`, plus `created_at`, the
+ * tie-break of `getSortedHistory`.
+ */
+export const LABOR_EMPLOYEE_HISTORY_COLUMNS =
+  'effective_date, compensation_type, amount_cents, pay_period_type, created_at';
+
+/**
+ * The `employees_secure` select of the labor loaders: every
+ * `LABOR_EMPLOYEE_KEYS` column, named, and the history embed. No `*`.
+ */
+export const LABOR_EMPLOYEE_SELECT = [
+  ...LABOR_EMPLOYEE_KEYS.filter((key) => key !== 'compensation_history'),
+  `compensation_history:employee_compensation_history(${LABOR_EMPLOYEE_HISTORY_COLUMNS})`,
+].join(', ');
+
+/**
+ * All employees of a restaurant (every status), with the compensation
+ * history, from `employees_secure`. The view masks the pay columns to NULL
+ * for a caller without `view:pay_rates`. Keyset paging on `(name, id)`.
+ */
+export function fetchLaborEmployees(
+  client: LaborQueryClient,
+  restaurantId: string,
+): Promise<PagedResult<LaborEmployee>> {
+  return fetchAllKeyset<LaborEmployee, 'name'>(
+    () =>
+      fromTable(client, 'employees_secure')
+        .select(LABOR_EMPLOYEE_SELECT)
+        .eq('restaurant_id', restaurantId)
+        .order('effective_date', { referencedTable: 'employee_compensation_history', ascending: false }),
+    'name',
+  );
 }

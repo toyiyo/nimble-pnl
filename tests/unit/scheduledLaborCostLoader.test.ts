@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { endOfWeek } from 'date-fns';
 
 import { loadScheduledLaborCost } from '../../supabase/functions/_shared/labor/scheduledLaborCost';
+import { LABOR_EMPLOYEE_KEYS } from '../../supabase/functions/_shared/labor/types';
 import { filterValue, makeLaborStubClient, type Row } from './helpers/laborStubClient';
 
 const REST = 'rest-1';
@@ -107,6 +108,16 @@ describe('loadScheduledLaborCost', () => {
 
     const [employeeRead] = client.recordsFor('employees_secure');
     expect(filterValue(employeeRead, 'eq', 'restaurant_id')).toBe(REST);
+    // Named columns, no '*': every LABOR_EMPLOYEE_KEYS column, and the
+    // history embed with the fields that getSortedHistory and
+    // resolveCompensationForDate read, plus created_at (the tie-break).
+    const select = (employeeRead.select ?? '').replace(/\s+/g, ' ').trim();
+    expect(select).not.toContain('*');
+    const bare = select.split('compensation_history:')[0].split(',').map((c) => c.trim()).filter(Boolean);
+    expect(bare).toEqual(LABOR_EMPLOYEE_KEYS.filter((k) => k !== 'compensation_history'));
+    expect(select).toContain(
+      'compensation_history:employee_compensation_history(effective_date, compensation_type, amount_cents, pay_period_type, created_at)',
+    );
     // status 'all': no is_active filter.
     expect(employeeRead.filters.map((f) => f.column)).toEqual(['restaurant_id']);
     expect(employeeRead.orders).toEqual([

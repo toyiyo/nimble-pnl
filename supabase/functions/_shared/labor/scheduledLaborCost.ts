@@ -11,11 +11,10 @@
  *   employee still has its employee.
  * - Both reads page with `fetchAllRowsKeyset`.
  */
-import { fetchAllKeyset, fromTable } from './loaderQuery.ts';
+import { fetchAllKeyset, fetchLaborEmployees, fromTable } from './loaderQuery.ts';
 import { calculateScheduledLaborCost } from './laborCalculations.ts';
 import { businessDayRangeToInstants } from './restaurantClock.ts';
-import { dayTokens } from './periodLaborCost.ts';
-import { assertDayRange } from './dateOnly.ts';
+import { assertDayRange, dayTokens } from './dateOnly.ts';
 import type { LaborEmployee, LaborQueryClient, LaborShift } from './types.ts';
 
 export interface ScheduledLaborCostData {
@@ -135,7 +134,6 @@ export interface ScheduledLaborCostResult extends ScheduledLaborCostsResult {
 export const SHIFT_COLUMNS = 'id, employee_id, start_time, end_time, break_duration';
 
 type ShiftRow = LaborShift & { id: string };
-type EmployeeRow = LaborEmployee;
 
 /**
  * Scheduled labor cost of a period of whole restaurant days: the shifts
@@ -162,18 +160,8 @@ export async function loadScheduledLaborCost(
             .lte('start_time', windowEnd.toISOString()),
         'start_time',
       ),
-      // The read of useEmployees(restaurantId, { status: 'all' }).
-      fetchAllKeyset<EmployeeRow, 'name'>(
-        () =>
-          fromTable(client, 'employees_secure')
-            .select(`
-              *,
-              compensation_history:employee_compensation_history(*)
-            `)
-            .eq('restaurant_id', restaurantId)
-            .order('effective_date', { referencedTable: 'employee_compensation_history', ascending: false }),
-        'name',
-      ),
+      // All employees, as useEmployees(restaurantId, { status: 'all' }).
+      fetchLaborEmployees(client, restaurantId),
     ]);
 
   const result =

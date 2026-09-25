@@ -24,7 +24,7 @@ import {
 } from './compensationCalculations.ts';
 import { parseWorkPeriods, calculateEmployeePay } from './payrollCalculations.ts';
 import { calculateShiftHours } from './shiftHours.ts';
-import { toDateOnlyString, parseDateOnly } from './dateOnly.ts';
+import { dayTokenEnd, toDateOnlyString, parseDateOnly } from './dateOnly.ts';
 import {
   addDaysToDateStr,
   businessDaysBetween,
@@ -951,17 +951,16 @@ export function calculateActualLaborCostForRange(
     for (const [weekKey, weekPunches] of punchesByWeek) {
       // Day tokens for the week: local midnight of the first day and the local
       // end of the last day. calculateEmployeePay reads their local fields.
-      const weekStart = parseDateOnly(weekKey);
-      const weekEnd = parseDateOnly(weekEndDateStr(weekKey));
-      weekEnd.setHours(23, 59, 59, 999);
+      const weekDayStart = parseDateOnly(weekKey);
+      const weekDayEnd = dayTokenEnd(weekEndDateStr(weekKey));
 
       const pay = calculateEmployeePay(
         employee,
         weekPunches,
         0,
         timezone,
-        weekStart,
-        weekEnd
+        weekDayStart,
+        weekDayEnd
       );
       const weekWageCents = pay.regularPay + pay.overtimePay + pay.doubleTimePay;
       if (weekWageCents <= 0) continue;

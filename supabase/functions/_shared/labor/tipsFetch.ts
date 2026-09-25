@@ -1,21 +1,6 @@
-import { fetchAllRows, asPagedRows } from './fetchAllRows.ts';
+import { fetchAllRows, asPagedRows, type PagedResult } from './fetchAllRows.ts';
+import { fetchAllKeyset, fromTable, type LoaderQuery } from './loaderQuery.ts';
 import type { LaborQueryClient } from './types.ts';
-
-/** The query chain that the two tips readers use. */
-interface TipsQuery {
-  select(columns: string): TipsQuery;
-  eq(column: string, value: string): TipsQuery;
-  in(column: string, values: readonly string[]): TipsQuery;
-  gte(column: string, value: string): TipsQuery;
-  lte(column: string, value: string): TipsQuery;
-  order(column: string): TipsQuery;
-  range(from: number, to: number): unknown;
-}
-
-/** Type-only cast of `client.from(table)` to the chain above. */
-function fromTable(client: LaborQueryClient, table: string): TipsQuery {
-  return client.from(table) as TipsQuery;
-}
 
 export interface TipSplitRow {
   amount: number;
@@ -29,11 +14,38 @@ export interface TipPayoutRow {
   payout_date: string;
 }
 
+/** A `TipSplitRow` with its `tip_split_items` id, for keyset paging. */
+export type TipSplitKeysetRow = TipSplitRow & { id: string };
+
+/** A `TipPayoutRow` with its `tip_payouts` id, for keyset paging. */
+export type TipPayoutKeysetRow = TipPayoutRow & { id: string };
+
 /**
  * A split counts toward tips owed only in these states — the same rule
  * usePayroll applies. A draft or rejected split is not owed yet.
  */
-export const OWED_TIP_SPLIT_STATUSES = ['approved', 'archived'];
+export const OWED_TIP_SPLIT_STATUSES = ['approved', 'archived'] as const;
+
+/**
+ * The filters of an owed tips read: the `tip_split_items` of approved or
+ * archived splits of the restaurant, with a split day in `[fromStr, toStr]`.
+ * The offset reader and the keyset reader share them.
+ */
+function owedTipSplitItems(query: LoaderQuery, restaurantId: string, fromStr: string, toStr: string): LoaderQuery {
+  return query
+    .eq('tip_splits.restaurant_id', restaurantId)
+    .in('tip_splits.status', OWED_TIP_SPLIT_STATUSES)
+    .gte('tip_splits.split_date', fromStr)
+    .lte('tip_splits.split_date', toStr);
+}
+
+/**
+ * The filters of a tip payouts read: the payouts of the restaurant with a
+ * `payout_date` in `[fromStr, toStr]`. Both readers share them.
+ */
+function tipPayoutsInRange(query: LoaderQuery, restaurantId: string, fromStr: string, toStr: string): LoaderQuery {
+  return query.eq('restaurant_id', restaurantId).gte('payout_date', fromStr).lte('payout_date', toStr);
+}
 
 /**
  * Page through tip_split_items for a restaurant and date window. Shared by
@@ -48,12 +60,12 @@ export async function fetchTipSplitRows(
 ): Promise<{ rows: TipSplitRow[]; capped: boolean }> {
   return fetchAllRows<TipSplitRow>((from, to) =>
     asPagedRows<TipSplitRow>(
-      fromTable(client, 'tip_split_items')
-        .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
-        .eq('tip_splits.restaurant_id', restaurantId)
-        .in('tip_splits.status', OWED_TIP_SPLIT_STATUSES)
-        .gte('tip_splits.split_date', fromStr)
-        .lte('tip_splits.split_date', toStr)
+      owedTipSplitItems(
+        fromTable(client, 'tip_split_items').select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)'),
+        restaurantId,
+        fromStr,
+        toStr,
+      )
         .order('id')
         .range(from, to)
     )
@@ -73,14 +85,59 @@ export async function fetchTipPayoutRows(
 ): Promise<{ rows: TipPayoutRow[]; capped: boolean }> {
   return fetchAllRows<TipPayoutRow>((from, to) =>
     asPagedRows<TipPayoutRow>(
-      fromTable(client, 'tip_payouts')
-        .select('amount, employee_id, payout_date')
-        .eq('restaurant_id', restaurantId)
-        .gte('payout_date', fromStr)
-        .lte('payout_date', toStr)
+      tipPayoutsInRange(
+        fromTable(client, 'tip_payouts').select('amount, employee_id, payout_date'),
+        restaurantId,
+        fromStr,
+        toStr,
+      )
         .order('id')
         .range(from, to)
     )
+  );
+}
+
+/**
+ * The `fetchTipSplitRows` read with keyset paging on `id`: the same filters,
+ * plus the item id. The labor loaders use it.
+ */
+export function fetchTipSplitRowsKeyset(
+  client: LaborQueryClient,
+  restaurantId: string,
+  fromStr: string,
+  toStr: string,
+): Promise<PagedResult<TipSplitKeysetRow>> {
+  return fetchAllKeyset<TipSplitKeysetRow>(
+    () =>
+      owedTipSplitItems(
+        fromTable(client, 'tip_split_items').select('id, amount, employee_id, tip_splits!inner(restaurant_id, split_date)'),
+        restaurantId,
+        fromStr,
+        toStr,
+      ),
+    'id',
+  );
+}
+
+/**
+ * The `fetchTipPayoutRows` read with keyset paging on `id`: the same
+ * filters, plus the payout id. The labor loaders use it.
+ */
+export function fetchTipPayoutRowsKeyset(
+  client: LaborQueryClient,
+  restaurantId: string,
+  fromStr: string,
+  toStr: string,
+): Promise<PagedResult<TipPayoutKeysetRow>> {
+  return fetchAllKeyset<TipPayoutKeysetRow>(
+    () =>
+      tipPayoutsInRange(
+        fromTable(client, 'tip_payouts').select('id, amount, employee_id, payout_date'),
+        restaurantId,
+        fromStr,
+        toStr,
+      ),
+    'id',
   );
 }
 

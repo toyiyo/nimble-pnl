@@ -10,7 +10,16 @@
  * - Every read pages with `fetchAllRowsKeyset` on `(order key, id)`.
  */
 import type { PagedResult } from './fetchAllRows.ts';
-import { chunk, fetchAllKeyset, fromTable, type LoaderQuery } from './loaderQuery.ts';
+import {
+  chunk,
+  fetchAllKeyset,
+  fromTable,
+  PER_JOB_ALLOCATION_COLUMNS,
+  TIME_PUNCH_COLUMNS,
+  type LoaderQuery,
+  type PerJobAllocationRow,
+  type TimePunchRow,
+} from './loaderQuery.ts';
 import {
   calculatePayrollPeriod,
   shouldIncludeEmployeeInPayroll,
@@ -25,15 +34,12 @@ import {
 } from './tipAggregation.ts';
 import { bufferPunchFetchRange } from './punchWindow.ts';
 import { businessDayRangeToInstants } from './restaurantClock.ts';
-import { assertDayRange } from './dateOnly.ts';
-import { dayTokens, TIME_PUNCH_COLUMNS, toLaborPunch, type TimePunchRow } from './periodLaborCost.ts';
+import { assertDayRange, dayTokens } from './dateOnly.ts';
+import { OWED_TIP_SPLIT_STATUSES } from './tipsFetch.ts';
 import type { LaborEmployee, LaborQueryClient, LaborTimePunch } from './types.ts';
 
 /** The most tip split ids in one `.in()` filter, so the URL stays short. */
 export const TIP_SPLIT_ID_CHUNK = 100;
-
-/** Split statuses that payroll counts: approved and archived (locked). */
-const PAYROLL_TIP_SPLIT_STATUSES = ['approved', 'archived'];
 
 export interface PayrollPeriodInput {
   restaurantId: string;
@@ -59,7 +65,7 @@ export interface PayrollPeriodResult {
   capped: boolean;
 }
 
-interface TipSplitRow {
+interface PayrollTipSplitRow {
   id: string;
   total_amount: number;
 }
@@ -72,14 +78,6 @@ interface TipSplitItemRow {
   tip_splits?: { split_date: string } | null;
 }
 
-interface PerJobAllocationRow {
-  id: string;
-  employee_id: string;
-  date: string;
-  allocated_cost: number;
-  notes: string | null;
-}
-
 interface EmployeeTipRow {
   id: string;
   employee_id: string;
@@ -87,7 +85,7 @@ interface EmployeeTipRow {
   tip_date: string;
 }
 
-interface TipPayoutRow {
+interface PayrollTipPayoutRow {
   id: string;
   employee_id: string;
   amount: number;
@@ -107,9 +105,14 @@ interface OvertimeAdjustmentRow {
   id: string;
   employee_id: string;
   punch_date: string;
-  adjustment_type: string;
+  adjustment_type: OvertimeAdjustment['adjustmentType'];
   hours: number | string;
   reason: string | null;
+}
+
+/** A numeric DB value as a number, or `null` for a SQL NULL (or a missing key). */
+function toNumberOrNull(value: number | string | null | undefined): number | null {
+  return value === null || value === undefined ? null : Number(value);
 }
 
 /**
@@ -161,11 +164,11 @@ export async function loadPayrollPeriod(
       ),
       // Approved and archived (locked) splits count in payroll. Restaurant
       // scoped: the self-scoped filter goes on the items.
-      fetchAllKeyset<TipSplitRow>(() =>
+      fetchAllKeyset<PayrollTipSplitRow>(() =>
         fromTable(client, 'tip_splits')
           .select('id, total_amount')
           .eq('restaurant_id', restaurantId)
-          .in('status', PAYROLL_TIP_SPLIT_STATUSES)
+          .in('status', OWED_TIP_SPLIT_STATUSES)
           .gte('split_date', startDay)
           .lte('split_date', endDay),
         'id',
@@ -174,7 +177,7 @@ export async function loadPayrollPeriod(
       fetchAllKeyset<PerJobAllocationRow>(() =>
         scope(
           fromTable(client, 'daily_labor_allocations')
-            .select('*')
+            .select(PER_JOB_ALLOCATION_COLUMNS)
             .eq('restaurant_id', restaurantId)
             .eq('source', 'per-job')
             .gte('date', startDay)
@@ -193,7 +196,7 @@ export async function loadPayrollPeriod(
         'id',
       ),
       // Tip payouts (cash already paid out).
-      fetchAllKeyset<TipPayoutRow>(() =>
+      fetchAllKeyset<PayrollTipPayoutRow>(() =>
         scope(
           fromTable(client, 'tip_payouts')
             .select('id, employee_id, amount')
@@ -245,8 +248,8 @@ export async function loadPayrollPeriod(
   const punchesPerEmployee = new Map<string, LaborTimePunch[]>();
   punchesRead.rows.forEach((row) => {
     const list = punchesPerEmployee.get(row.employee_id);
-    if (list) list.push(toLaborPunch(row));
-    else punchesPerEmployee.set(row.employee_id, [toLaborPunch(row)]);
+    if (list) list.push(row);
+    else punchesPerEmployee.set(row.employee_id, [row]);
   });
 
   // Tips from split items and employee declarations, with the date filter
@@ -288,10 +291,9 @@ export async function loadPayrollPeriod(
     ? {
         weeklyThresholdHours: Number(otRulesData.weekly_threshold_hours),
         weeklyOtMultiplier: Number(otRulesData.weekly_ot_multiplier),
-        dailyThresholdHours: otRulesData.daily_threshold_hours != null ? Number(otRulesData.daily_threshold_hours) : null,
+        dailyThresholdHours: toNumberOrNull(otRulesData.daily_threshold_hours),
         dailyOtMultiplier: Number(otRulesData.daily_ot_multiplier),
-        dailyDoubleThresholdHours:
-          otRulesData.daily_double_threshold_hours != null ? Number(otRulesData.daily_double_threshold_hours) : null,
+        dailyDoubleThresholdHours: toNumberOrNull(otRulesData.daily_double_threshold_hours),
         dailyDoubleMultiplier: Number(otRulesData.daily_double_multiplier),
         excludeTipsFromOtRate: otRulesData.exclude_tips_from_ot_rate,
       }
@@ -300,7 +302,7 @@ export async function loadPayrollPeriod(
   const overtimeAdjustments: OvertimeAdjustment[] = otAdjustmentsRead.rows.map((adj) => ({
     employeeId: adj.employee_id,
     punchDate: adj.punch_date,
-    adjustmentType: adj.adjustment_type as OvertimeAdjustment['adjustmentType'],
+    adjustmentType: adj.adjustment_type,
     hours: Number(adj.hours),
     reason: adj.reason ?? '',
   }));

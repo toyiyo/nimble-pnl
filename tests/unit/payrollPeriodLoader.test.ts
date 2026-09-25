@@ -130,6 +130,11 @@ describe('loadPayrollPeriod', () => {
     expect(filterValue(punches, 'gte', 'punch_time')).toBe('2026-03-01T12:00:00.000Z');
     expect(filterValue(punches, 'lte', 'punch_time')).toBe('2026-03-09T22:59:59.999Z');
 
+    // Per-job payments: the same named columns as loadPeriodLaborCost.
+    expect(client.recordsFor('daily_labor_allocations')[0].select).toBe(
+      'id, employee_id, date, allocated_cost, notes',
+    );
+
     const dayColumns: Array<[string, string]> = [
       ['tip_splits', 'split_date'],
       ['daily_labor_allocations', 'date'],

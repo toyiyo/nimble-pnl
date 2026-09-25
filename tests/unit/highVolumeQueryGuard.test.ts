@@ -50,7 +50,6 @@ const ALLOWLIST = new Set([
   'src/hooks/useInventoryDeduction.tsx',
   'src/hooks/useInventoryMetrics.tsx',
   'src/hooks/useInventoryPurchases.tsx',
-  'src/hooks/useLaborCostsFromTransactions.tsx',
   'src/hooks/useLiquidityMetrics.tsx',
   'src/hooks/usePendingOutflows.tsx',
   'src/hooks/usePredictableExpenses.tsx',

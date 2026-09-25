@@ -202,7 +202,6 @@ export default tseslint.config(
       "src/hooks/useInventoryPurchases.tsx",
       "src/hooks/useInventoryTransactions.tsx",
       "src/hooks/useLaborCosts.tsx",
-      "src/hooks/useLaborCostsFromTransactions.tsx",
       "src/hooks/useLiquidityMetrics.tsx",
       "src/hooks/useMonthlyExpenses.tsx",
       "src/hooks/useOutflowByCategory.tsx",
@@ -259,7 +258,6 @@ export default tseslint.config(
   {
     files: [
       "src/hooks/useLaborCosts.tsx",
-      "src/hooks/useLaborCostsFromTransactions.tsx",
       "src/hooks/useRevenueBreakdown.tsx",
     ],
     rules: {

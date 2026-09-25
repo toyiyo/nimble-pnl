@@ -59,6 +59,7 @@ interface QueryChainMock {
   gte: (column: string, value: unknown) => QueryChainMock;
   lte: (column: string, value: unknown) => QueryChainMock;
   order: (column: string, options?: { ascending: boolean }) => QueryChainMock;
+  or: (filters: string) => QueryChainMock;
   maybeSingle: () => QueryChainMock;
   range: (from: number, to: number) => Promise<{ data: unknown[]; error: null }>;
   then?: (resolve: (value: { data: unknown[]; error: null }) => void) => void;
@@ -72,6 +73,7 @@ function makeRangeChain(rows: unknown[]): QueryChainMock {
     gte: vi.fn(() => chain),
     lte: vi.fn(() => chain),
     order: vi.fn(() => chain),
+    or: vi.fn(() => chain),
     maybeSingle: vi.fn(() => chain),
     // A page smaller than 1000 rows stops the paging after one call.
     range: vi.fn(() => Promise.resolve({ data: rows, error: null })),
@@ -81,7 +83,8 @@ function makeRangeChain(rows: unknown[]): QueryChainMock {
 }
 
 // Serves one fixture page per `.range()` call — exercises multi-page
-// paging through `fetchAllRows` (a page of 1000 rows asks for the next).
+// keyset paging through `fetchAllRowsKeyset` (a page of 1000 rows asks for
+// the next page after its last id, with `.or()`).
 // The call counter lives in `state`, OUTSIDE the chain: `fetchAllRows`
 // builds a fresh chain per page, so a chain-local counter would always
 // serve page zero and never finish.
@@ -93,6 +96,7 @@ function makePagedChain(pages: unknown[][], state: { call: number }): QueryChain
     gte: vi.fn(() => chain),
     lte: vi.fn(() => chain),
     order: vi.fn(() => chain),
+    or: vi.fn(() => chain),
     maybeSingle: vi.fn(() => chain),
     range: vi.fn(() =>
       Promise.resolve({ data: pages[state.call++] ?? [], error: null })

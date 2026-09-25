@@ -26,6 +26,6 @@ esac
 # Incomplete: emit a non-blocking reminder. Static JSON keeps this dependency-
 # free and immune to escaping issues from progress.md contents.
 cat <<'JSON'
-{"systemMessage": "/dev workflow may be incomplete: progress.md is not marked '## Status: Complete' or 'Ready for merge'. Before treating this task as done, confirm Phase 8 (tests/typecheck/lint/build) and Phase 9d (review-comment triage) actually ran. Ref: .claude/skills/development-workflow.md", "suppressOutput": true}
+{"systemMessage": "/dev workflow may be incomplete: progress.md is not marked '## Status: Complete' or 'Ready for merge'. Before treating this task as done, confirm Phase 8 (tests/typecheck/lint/build) and Phase 9d (review-comment triage) actually ran. Ref: .claude/skills/development-workflow/SKILL.md", "suppressOutput": true}
 JSON
 exit 0

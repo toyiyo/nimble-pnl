@@ -47,7 +47,7 @@ A **Stop-hook backstop** (`.claude/hooks/dev-phase-guard.sh`, wired in `settings
   performance, maintainability, sound-logic, and the non-skippable
   ocr-rules rulebook enforcer) and one best-effort Codex adversarial
   reviewer fan out in parallel against the branch diff. CodeRabbit local
-  CLI is the final gate, not the only gate — this avoids "Claude grading
+  CLI is one gate, not the only gate — this avoids "Claude grading
   its own homework" and reduces dependence on one third-party reviewer.
 
 ### Progress Tracking
@@ -369,7 +369,7 @@ For each task in the plan:
 3. **REFACTOR** — Clean up while tests stay green
 4. **COMMIT** — Commit the passing task
 
-Use subagent-driven-development to parallelize independent tasks.
+Run the tasks one at a time, in plan order. The workflow does not run TDD tasks in parallel.
 
 **Skip condition:** None. All code gets tests.
 
@@ -395,9 +395,10 @@ Use subagent-driven-development to parallelize independent tasks.
 
 ## Phase 7: Multi-Model Code Review
 
-Phase 7 is **three sub-phases** that run sequentially: 7a fans out five
+Phase 7 is **four sub-phases** that run in this order: 7a fans out five
 parallel reviewers, 7b folds their findings into commits, 7c runs
-CodeRabbit local CLI as the final gate. The intent is to defeat "Claude
+CodeRabbit local CLI on the whole branch, and 7d re-reviews code written
+after the 7a snapshot. The intent is to defeat "Claude
 grading its own homework" and to stop putting all review eggs in one
 third-party basket.
 
@@ -417,7 +418,10 @@ Phase 7a  Multi-model fan-out (PARALLEL)
 Phase 7b  Fold findings: classify, fix actionable, commit
    │
    ▼
-Phase 7c  CodeRabbit local CLI (final gate, max 3 iterations)
+Phase 7c  CodeRabbit local CLI (whole branch, max 3 iterations)
+   │
+   ▼
+Phase 7d  Re-review of post-snapshot code (one pass)
    │
    ▼
 Phase 8  Verify
@@ -431,8 +435,8 @@ Inputs handed to every reviewer:
 - `git log origin/main..HEAD --oneline`
 - The Phase 2 design doc.
 
-**Five Claude reviewers.** Each is an `Agent` call with
-`subagent_type=feature-dev:code-reviewer` and the prompt loaded from
+**Five Claude reviewers.** Each is an `Agent` call whose `subagent_type`
+is the registered agent of the same name, defined in
 `.claude/agents/<name>.md`. Launch them in a **single message with five
 tool calls** so they run concurrently.
 
@@ -474,8 +478,8 @@ npm i -g @openai/codex && codex login
 
 ### 7b — Fold findings
 
-1. Collect every `critical` and `major` finding from all five reviewers
-   (including Codex's `dev-tools/codex-review-output.md`).
+1. Collect every `critical` and `major` finding from the five Claude
+   reviewers and from Codex (`dev-tools/codex-review-output.md`).
 2. Deduplicate: same `file:line` from multiple reviewers → keep highest
    severity, merge messages.
 3. Classify each:
@@ -496,46 +500,15 @@ were dropped here on that assumption, local CodeRabbit never saw them, and
 the CodeRabbit *GitHub bot* re-flagged the identical lines after the PR was
 already open. Anything absent from both the fixes and `deferred[]` is lost.
 
-### 7d — Re-review of post-snapshot code
-
-The Phase 7a diff is captured **once**, so 7b/7c fixes and any later edits
-would otherwise ship having never been reviewed by anyone.
-
-1. Diff `<7a snapshot SHA>..HEAD`. If empty, skip this step.
-2. Re-run the five reviewers against **only** that diff.
-3. Fold the results with the same rules as 7b (fix critical/major, fix
-   trivially-safe minors, `deferred[]` for the rest).
-
-Exactly **one** extra pass — it is a safety net, not a loop.
-
-Why it exists: on the tap-to-count PR the single riskiest change (a mode
-toggle altering inventory-write semantics in a dialog shared by four call
-sites) was written after the snapshot. No reviewer ever saw it; reviewing it
-after the fact found a real major a11y defect and a real minor logic bug.
-
-### 7c — CodeRabbit local CLI (final gate)
+### 7c — CodeRabbit local CLI (whole branch)
 
 This is the existing CodeRabbit step. It is still **non-skippable**, but
-its role narrows: it's the *final consistency check*, not the *primary
+its role narrows: it's the *whole-branch consistency check*, not the *primary
 review*. Most issues should have been caught by 7a.
 
 **Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
 comments on the PR are handled separately in Phase 9d.
 
-**Command:** `coderabbit review --committed`
-
-Review loop (max 3 iterations):
-
-```
-Iteration 1: Run coderabbit review --committed
-  |-- No actionable findings --> Proceed to Phase 8
-  +-- Has findings --> Fix them, commit fixes
-       |
-       Iteration 2: Run coderabbit review --committed
-         |-- No actionable findings --> Proceed to Phase 8
-         +-- Has findings --> Fix them, commit fixes
-              |
-              Iteration 3: Run coderabbit review --committed
 **Command:** `coderabbit review --agent --committed --base origin/main`
 
 Review loop (max 3 iterations):
@@ -554,11 +527,6 @@ Iteration 1: Run coderabbit review --agent --committed --base origin/main
                 +-- Still has findings --> Report to user for manual decision
 ```
 
-Use `--committed` to review all committed changes on the branch. Plain text
-is the CLI's default review mode, so there is no flag to ask for it; `--agent`
-is the opt-in for structured findings.
-Parse the output for actionable suggestions vs informational notes. Only
-fix actionable items.
 `--committed` reviews all committed changes on the branch; `--base origin/main`
 pins the comparison to the *remote-tracking* trunk — exactly the base the
 Phase 7a reviewers use (`git diff origin/main...HEAD`) — instead of letting
@@ -595,6 +563,23 @@ default output mode**. If you see `error: unknown option '--plain'`, this
 section is stale again — re-check `--help` and fix it here, in
 `.claude/workflows/dev-build-and-ship.js`, `.claude/commands/review.md`,
 and the pre-commit hook in `.claude/settings.json` together.
+
+### 7d — Re-review of post-snapshot code
+
+The Phase 7a diff is captured **once**, so 7b/7c fixes and any later edits
+would otherwise ship having never been reviewed by anyone.
+
+1. Diff `<7a snapshot SHA>..HEAD`. If empty, skip this step.
+2. Re-run the five reviewers against **only** that diff.
+3. Fold the results with the same rules as 7b (fix critical/major, fix
+   trivially-safe minors, `deferred[]` for the rest).
+
+Exactly **one** extra pass — it is a safety net, not a loop.
+
+Why it exists: on the tap-to-count PR the single riskiest change (a mode
+toggle altering inventory-write semantics in a dialog shared by four call
+sites) was written after the snapshot. No reviewer ever saw it; reviewing it
+after the fact found a real major a11y defect and a real minor logic bug.
 
 **Skip condition for the whole phase:** None. 7a and 7c always run on
 any task that produces code. 7a is skipped only when the task is
@@ -713,7 +698,7 @@ for i in d['items']:
 Classify each open item:
 - **Actionable** (CI failure, SonarCloud critical/major, code review bug) → Fix it
 - **Clarification needed** → Ask user
-- **Informational** (nits, style) → Skip
+- **Informational** (nits, style) → No code change. Reply `--verdict ignored` in 9d.
 
 **Step 4: Fix, verify locally, push, repeat**
 
@@ -735,9 +720,8 @@ For each actionable item:
 **CI green is not the finish line.** `gh pr checks` only reports status-check
 outcomes. CodeRabbit, Codex, Copilot, SonarCloud, and human reviewers all post
 **inline comments and PR-level reviews** that never appear in `gh pr checks`.
-Several past PRs (#506, #511, others) reached all-green CI with unaddressed
-actionable findings sitting in comments — those findings were the bugs we
-were trying to fix.
+A PR can have all-green CI and still have real bugs reported only in
+comments.
 
 <HARD-GATE>
 9d MUST run on every PR, even if 9b reported "no comments in queue."
@@ -965,6 +949,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic`, `ocr-rules` (all NON-SKIPPABLE, parallel) + `dev-tools/codex-adversarial-review.sh` (best-effort) | Workflow/doc-only changes (no code diff) |
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
 | 7c CodeRabbit | `coderabbit review --agent --committed --base origin/main` | Never |
+| 7d Re-review | Five reviewers on `<7a snapshot SHA>..HEAD` (one pass) | No commits after the 7a snapshot |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |

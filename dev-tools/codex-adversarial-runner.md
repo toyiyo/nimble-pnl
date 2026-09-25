@@ -1,9 +1,3 @@
----
-name: codex-adversarial-runner
-description: Documentation for the Codex adversarial reviewer that runs in parallel with the four Claude reviewers in Phase 7a. NOT a sub-agent invoked via the `Agent` tool — this is documentation for `dev-tools/codex-adversarial-review.sh`, which the workflow calls via `Bash`.
-subagent_type: n/a
----
-
 # Codex Adversarial Runner (Phase 7a)
 
 This is **not** a Claude sub-agent. It documents the shell script
@@ -14,7 +8,7 @@ family with a different training distribution looks at the same diff.
 
 ## When it runs
 
-Phase 7a, in parallel with the four Claude reviewers. The workflow
+Phase 7a, in parallel with the five Claude reviewers. The workflow
 shells out via `Bash`:
 
 ```bash
@@ -26,7 +20,7 @@ dev-tools/codex-adversarial-review.sh main
 - `codex` CLI on `PATH`. Install: `brew install --cask codex && codex login`.
 - If `codex` is missing or the binary symlink is broken, the script
   emits a `::skip::` line and exits 0. The workflow treats adversarial
-  review as **best-effort** — the four Claude reviewers still run.
+  review as **best-effort** — the five Claude reviewers still run.
 
 ## Mechanism (high level)
 

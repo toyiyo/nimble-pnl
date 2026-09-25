@@ -6,7 +6,7 @@ import { Check, ChevronRight } from 'lucide-react';
 
 import type { ClaimableTrade } from '@/lib/claimableTrades';
 
-import { tradeDateTile, tradeUrgencyLabel } from '@/lib/claimableTrades';
+import { plural, tradeDateTile, tradeUrgencyLabel } from '@/lib/claimableTrades';
 import { formatInstant } from '@/lib/restaurantClock';
 import { tradeLinkHref } from '@/lib/tradeDeepLink';
 import { cn } from '@/lib/utils';
@@ -23,7 +23,8 @@ interface UpForGrabsCardProps {
   /** The restaurant time zone. */
   timezone: string;
   now: Date;
-  openShiftCount: number;
+  /** Open shifts in the marketplace range, or null when the count is not known. */
+  openShiftCount: number | null;
 }
 
 /**
@@ -64,7 +65,6 @@ export function UpForGrabsCard({
   const count = trades.length;
   if (count === 0) return null;
 
-  const total = count + openShiftCount;
   // The selector drops every trade that overlaps a shift, so this is true.
   const fitText = count === 1 ? 'It fits around your shifts' : `All ${count} fit around your shifts`;
 
@@ -97,17 +97,14 @@ export function UpForGrabsCard({
       </ul>
 
       <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/40 text-[13px] text-muted-foreground">
-        <span>
-          {openShiftCount > 0
-            ? `${openShiftCount} open shift${openShiftCount === 1 ? '' : 's'} too`
-            : null}
-        </span>
+        <span>{openShiftCount ? `${plural(openShiftCount, 'open shift')} too` : null}</span>
         <Link
           to="/employee/shifts"
           // The negative margin keeps the footer low and gives a 44 px target.
           className="-my-2.5 -mr-2 inline-flex min-h-[44px] items-center px-2 font-medium text-foreground hover:underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground"
         >
-          Browse all {total}
+          {/* No number: the marketplace counts items that this card does not. */}
+          Browse all shifts
         </Link>
       </div>
     </section>

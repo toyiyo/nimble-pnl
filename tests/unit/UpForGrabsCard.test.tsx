@@ -188,10 +188,10 @@ describe('UpForGrabsCard', () => {
     expect(link).toHaveClass('min-h-[64px]');
   });
 
-  it('shows the open shift count and "Browse all {total}" in the footer', () => {
+  it('shows the open shift count and "Browse all shifts" in the footer', () => {
     renderCard({ openShiftCount: 2 });
     expect(screen.getByText('2 open shifts too')).toBeInTheDocument();
-    const browse = screen.getByRole('link', { name: 'Browse all 5' });
+    const browse = screen.getByRole('link', { name: 'Browse all shifts' });
     expect(browse).toHaveAttribute('href', '/employee/shifts');
   });
 
@@ -203,6 +203,17 @@ describe('UpForGrabsCard', () => {
   it('hides the open shift text with 0 open shifts', () => {
     renderCard({ openShiftCount: 0 });
     expect(screen.queryByText(/open shifts? too/)).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Browse all 3' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Browse all shifts' })).toBeInTheDocument();
+  });
+
+  it('hides the open shift text when the count is not known', () => {
+    renderCard({ openShiftCount: null });
+    expect(screen.queryByText(/open shifts? too/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Browse all shifts' })).toBeInTheDocument();
+  });
+
+  it('shows no number in the browse link', () => {
+    renderCard({ openShiftCount: 4 });
+    expect(screen.queryByRole('link', { name: /Browse all \d/ })).not.toBeInTheDocument();
   });
 });

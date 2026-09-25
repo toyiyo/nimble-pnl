@@ -69,9 +69,9 @@ vi.mock('@/components/employee', async () => {
 });
 
 vi.mock('@/components/employee/UpForGrabsCard', () => ({
-  UpForGrabsCard: (props: { trades: unknown[]; loading: boolean; error: unknown; openShiftCount: number }) =>
+  UpForGrabsCard: (props: { trades: unknown[]; loading: boolean; error: unknown; openShiftCount: number | null }) =>
     props.loading || (!props.error && props.trades.length === 0) ? null : (
-      <div data-testid="up-for-grabs" data-open-count={props.openShiftCount} />
+      <div data-testid="up-for-grabs" data-open-count={String(props.openShiftCount)} />
     ),
 }));
 
@@ -159,6 +159,26 @@ describe('EmployeeSchedule – "Teammates need cover" placement', () => {
     setClaimable([false]);
     renderPage();
     expect(screen.getByTestId('up-for-grabs')).toHaveAttribute('data-open-count', '2');
+  });
+
+  it('passes a null open shift count while the open shifts load', () => {
+    setClaimable([false]);
+    mocks.useOpenShifts.mockReturnValue({ openShifts: [], loading: true, error: null, refetch: vi.fn() });
+    renderPage();
+    expect(screen.getByTestId('up-for-grabs')).toHaveAttribute('data-open-count', 'null');
+  });
+
+  it('passes a null open shift count when the open shifts fail to load', () => {
+    setClaimable([false]);
+    mocks.useOpenShifts.mockReturnValue({ openShifts: [], loading: false, error: new Error('x'), refetch: vi.fn() });
+    renderPage();
+    expect(screen.getByTestId('up-for-grabs')).toHaveAttribute('data-open-count', 'null');
+  });
+
+  it('reads no open shifts when the card does not show', () => {
+    setClaimable([]);
+    renderPage();
+    expect(mocks.useOpenShifts).toHaveBeenLastCalledWith(null, expect.any(Date), expect.any(Date));
   });
 
   it('puts the card after the status banner and before my trades when no trade is urgent', () => {

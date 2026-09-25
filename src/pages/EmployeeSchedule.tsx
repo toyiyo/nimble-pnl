@@ -185,10 +185,16 @@ const EmployeeSchedule = () => {
   // The key is the host local day, so a tab open past midnight gets a new range.
   const hostDayKey = toDateOnlyString(new Date(nowTick));
   const openShiftRange = useMemo(() => marketplaceRange(parseDateLocal(hostDayKey)), [hostDayKey]);
-  const { openShifts } = useOpenShifts(restaurantId, openShiftRange.start, openShiftRange.end);
-
   const showUpForGrabs = !claimableLoading && !claimableError && claimableTrades.length > 0;
   const upForGrabsUrgent = showUpForGrabs && claimableTrades.some((t) => t.urgent);
+
+  // Only the card footer reads the open shifts, so the query waits for the card.
+  const {
+    openShifts,
+    loading: openShiftsLoading,
+    error: openShiftsError,
+  } = useOpenShifts(showUpForGrabs ? restaurantId : null, openShiftRange.start, openShiftRange.end);
+  const openShiftCount = openShiftsLoading || openShiftsError ? null : openShifts.length;
 
   const { publishes: restaurantPublishes } = useRestaurantPublishes(
     restaurantId,
@@ -365,7 +371,7 @@ const EmployeeSchedule = () => {
       restaurantId={restaurantId}
       timezone={restaurantTimezone}
       now={new Date(nowTick)}
-      openShiftCount={openShifts.length}
+      openShiftCount={openShiftCount}
     />
   );
 

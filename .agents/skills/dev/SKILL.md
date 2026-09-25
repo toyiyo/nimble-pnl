@@ -45,18 +45,29 @@ node .agents/skills/dev/scripts/orchestrate.mjs complete build
 
 Use `status --json` after interruptions. Use `halt` for a genuine blocker. Use
 `resume` only after the blocker has been resolved. When a CI or triage fix
-creates a commit, run `recheck` to bind verification and CI to the new revision.
+creates a commit, run `recheck` to bind verification, QA, and CI to the new
+revision.
+
+## QA Phase
+
+The `qa` phase uses the method in `.claude/skills/qa/SKILL.md` in fix mode.
+Read that skill before the phase starts. Record the result with
+`evidence qa`. If a QA fix commit moves HEAD, run `verify` again before
+`complete qa`. The `ship` phase cannot start until QA returns `qaPassed=true`
+with a report file that exists.
 
 ## Non-Negotiable Rules
 
-- Execute `build`, `ui-review`, `simplify`, `review`, `verify`, `ship`, `ci`,
-  `triage`, and `done` in that order.
+- Execute `build`, `ui-review`, `simplify`, `review`, `verify`, `qa`, `ship`,
+  `ci`, `triage`, and `done` in that order.
 - Use RED, GREEN, REFACTOR, and one explicit-path commit for each plan task.
 - Never use `git add -A`, `git add .`, or `git commit -a`.
 - Preserve unrelated user changes. Work in an isolated worktree.
 - Stop with `needs_human` when implementation requires a design change.
 - Run all five review dimensions and the post-snapshot review.
 - Run all six local checks through the orchestrator.
+- Run QA in the browser on local Supabase before any push. Never run QA
+  against production.
 - Treat green CI as incomplete until direct PR-comment triage passes.
 - Do not claim completion before the `done` command marks the run ready.
 

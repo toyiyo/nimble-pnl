@@ -20,6 +20,7 @@ export const PHASES = [
   'simplify',
   'review',
   'verify',
+  'qa',
   'ship',
   'ci',
   'triage',
@@ -54,6 +55,7 @@ const SECTION_PHASES = {
   uiReview: 'ui-review',
   simplify: 'simplify',
   review: 'review',
+  qa: 'qa',
   ship: 'ship',
   ci: 'ci',
   triage: 'triage',
@@ -76,6 +78,7 @@ export function createInitialState(context) {
       simplify: {},
       review: { reviewers: {} },
       verify: { attempt: 0, checks: {} },
+      qa: {},
       ship: {},
       ci: {},
       triage: {},
@@ -95,6 +98,7 @@ export function advancePhase(state, phase) {
   const current = state.phases[phase].status;
   if (current === 'in_progress') return state;
   if (current !== 'pending') throw new Error(`Cannot begin ${phase} from ${current}.`);
+  if (phase === 'ship') requireQaPassed(state.evidence.qa);
 
   state.phases[phase] = { status: 'in_progress', startedAt: new Date().toISOString() };
   state.currentPhase = phase;
@@ -119,6 +123,7 @@ export function restartVerification(state, headSha) {
   }
   state.phases.verify = { status: 'in_progress', startedAt: new Date().toISOString() };
   state.evidence.verify = { attempt: 0, checks: {} };
+  state.evidence.qa = {};
   state.evidence.ship = {};
   state.evidence.ci = {};
   state.evidence.triage = {};
@@ -141,6 +146,9 @@ export function applyEvidence(state, section, payload, headSha) {
   if (['ship', 'ci', 'triage'].includes(section) && payload.sha !== headSha) {
     throw new Error(`${section} evidence is not from the current revision.`);
   }
+  if (section === 'qa' && payload.headSha !== headSha) {
+    throw new Error('QA evidence is not from the current revision.');
+  }
 
   if (section === 'ci') {
     if (!['passed', 'failed'].includes(payload.status)) {
@@ -154,12 +162,29 @@ export function applyEvidence(state, section, payload, headSha) {
       iteration: attempt,
       attemptCount: attempt,
     };
+  } else if (section === 'qa') {
+    state.evidence.qa = { ...payload, reverifyRequired: invalidateStaleVerify(state, headSha) };
   } else {
     state.evidence[section] = { ...state.evidence[section], ...payload };
   }
 
   addEvent(state, 'evidence_recorded', { section, sha: headSha });
   return state;
+}
+
+// A QA fix commit moves HEAD after Verify. The Verify checks then describe an
+// older revision, so clear them and make the suite run again before ship.
+function invalidateStaleVerify(state, headSha) {
+  const checks = state.evidence.verify?.checks ?? {};
+  const stale = REQUIRED_CHECKS.some((name) => checks[name]?.sha !== headSha);
+  if (!stale) return false;
+  state.evidence.verify = {
+    attempt: 0,
+    checks: {},
+    e2eCoverage: state.evidence.verify?.e2eCoverage,
+  };
+  addEvent(state, 'verification_invalidated', { phase: 'qa', sha: headSha });
+  return true;
 }
 
 export function validateCompletion(state, phase, headSha) {
@@ -188,7 +213,13 @@ export function validateCompletion(state, phase, headSha) {
     case 'verify':
       validateVerify(state.evidence.verify, headSha);
       break;
+    case 'qa':
+      validateQa(state.evidence.qa, headSha);
+      validateVerify(state.evidence.verify, headSha);
+      break;
     case 'ship':
+      validateQa(state.evidence.qa, headSha);
+      validateVerify(state.evidence.verify, headSha);
       validateShip(state.evidence.ship, headSha);
       break;
     case 'ci':
@@ -199,6 +230,7 @@ export function validateCompletion(state, phase, headSha) {
       break;
     case 'done':
       validateVerify(state.evidence.verify, headSha);
+      validateQa(state.evidence.qa, headSha);
       validateCi(state.evidence.ci, headSha);
       validateTriage(state.evidence.triage, headSha);
       break;
@@ -263,6 +295,27 @@ function validateVerify(evidence, headSha) {
   const e2e = evidence.e2eCoverage;
   if (!e2e || !['covered', 'exception'].includes(e2e.status) || !isNonEmptyString(e2e.detail)) {
     throw new Error('Verify needs E2E coverage or a justified exception.');
+  }
+}
+
+function requireQaPassed(evidence) {
+  if (typeof evidence?.qaPassed !== 'boolean' || !isNonEmptyString(evidence.reportPath)) {
+    throw new Error('QA evidence needs qaPassed and reportPath. Run the qa phase first.');
+  }
+  if (evidence.qaPassed !== true) {
+    throw new Error(`QA did not pass. Read ${evidence.reportPath}, fix the open bugs, or halt with needs_human.`);
+  }
+}
+
+function validateQa(evidence, headSha) {
+  requireQaPassed(evidence);
+  if (evidence.headSha !== headSha) throw new Error('QA evidence is not from the current revision.');
+  if (!Number.isInteger(evidence.charterRows) || evidence.charterRows < 0) {
+    throw new Error('QA evidence needs a non-negative integer charterRows.');
+  }
+  if (!Array.isArray(evidence.commits)) throw new Error('QA evidence needs a commits array.');
+  if (evidence.charterRows === 0 && !isNonEmptyString(evidence.exception)) {
+    throw new Error('QA with zero charter rows needs a one-sentence exception.');
   }
 }
 
@@ -518,7 +571,7 @@ function initialize(options) {
 function recordEvidence(cwd, section, file) {
   const sectionAliases = { 'ui-review': 'uiReview' };
   const normalizedSection = sectionAliases[section] ?? section;
-  const validSections = ['build', 'uiReview', 'simplify', 'review', 'ship', 'ci', 'triage', 'done'];
+  const validSections = ['build', 'uiReview', 'simplify', 'review', 'qa', 'ship', 'ci', 'triage', 'done'];
   if (!validSections.includes(normalizedSection)) throw new Error(`Unknown evidence section: ${section}.`);
   if (!file) throw new Error('evidence requires --file.');
   const payload = JSON.parse(readFileSync(path.resolve(cwd, file), 'utf8'));
@@ -537,6 +590,7 @@ export function validateEvidenceArtifacts(cwd, section, payload, headSha) {
     artifacts.push(payload.postSnapshot?.artifact);
   }
   if (section === 'triage') artifacts.push(payload.artifact);
+  if (section === 'qa') artifacts.push(payload.reportPath);
 
   for (const artifact of artifacts) {
     if (!isNonEmptyString(artifact) || !existsSync(path.resolve(cwd, artifact))) {
@@ -599,7 +653,10 @@ function runVerification(cwd, dryRun) {
   }
 
   const { statePath, state } = loadState(cwd);
-  if (state.currentPhase !== 'verify' || state.phases.verify.status !== 'in_progress') {
+  const inVerify = state.currentPhase === 'verify' && state.phases.verify.status === 'in_progress';
+  // The qa phase re-runs the suite after a QA fix commit moves HEAD.
+  const postQa = state.currentPhase === 'qa' && state.phases.qa.status === 'in_progress';
+  if (!inVerify && !postQa) {
     throw new Error('Begin verify before running the full suite.');
   }
   requireCleanWorktree(cwd);
@@ -608,7 +665,8 @@ function runVerification(cwd, dryRun) {
   if (attempt > 5) throw new Error('Verify exhausted the five-attempt limit. Halt with needs_human.');
 
   const sha = currentHead(cwd);
-  const logDir = path.join(path.dirname(statePath), 'logs', `verify-${attempt}`);
+  const label = postQa ? 'verify post-qa' : 'verify';
+  const logDir = path.join(path.dirname(statePath), 'logs', `${label.replace(' ', '-')}-${attempt}`);
   mkdirSync(logDir, { recursive: true });
   state.evidence.verify.attempt = attempt;
   state.evidence.verify.checks = {};
@@ -616,7 +674,7 @@ function runVerification(cwd, dryRun) {
   for (const name of REQUIRED_CHECKS) {
     const [command, args] = CHECK_COMMANDS[name];
     const started = Date.now();
-    process.stdout.write(`\n[$dev verify ${attempt}/5] ${command} ${args.join(' ')}\n`);
+    process.stdout.write(`\n[$dev ${label} ${attempt}/5] ${command} ${args.join(' ')}\n`);
     const { result, output, failure } = runBufferedCommand(command, args, {
       cwd,
       env: environmentForCheck(name, localSupabaseUrl),
@@ -638,7 +696,11 @@ function runVerification(cwd, dryRun) {
     }
   }
 
-  addEvent(state, 'verification_passed', { attempt, sha });
+  if (postQa) {
+    state.phases.verify = { ...state.phases.verify, sha };
+    if (state.evidence.qa.headSha === sha) state.evidence.qa.reverifyRequired = false;
+  }
+  addEvent(state, 'verification_passed', { attempt, sha, postQa });
   saveState(cwd, statePath, state);
 }
 

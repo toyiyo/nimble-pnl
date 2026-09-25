@@ -13,6 +13,8 @@ import { addDays, startOfWeek } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { addDaysToDateStr, formatInstant, toBusinessDay } from '@/lib/restaurantClock';
 
+import { plural } from '../../supabase/functions/_shared/plural';
+
 export type { MarketplaceTrade };
 
 export interface ClaimableTrade {
@@ -71,9 +73,7 @@ export function marketplaceRange(now: Date): { start: Date; end: Date } {
   return { start, end: addDays(start, 13) };
 }
 
-export function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`;
-}
+export { plural };
 
 /** Screen reader text for a count badge: "2 shifts up for grabs". */
 export function shiftsUpForGrabsText(count: number): string {

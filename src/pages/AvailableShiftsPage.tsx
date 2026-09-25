@@ -49,6 +49,7 @@ import {
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useMarketplaceRange } from '@/hooks/useMarketplaceRange';
 import { useAvailableShifts, AvailableShiftItem } from '@/hooks/useAvailableShifts';
 import { useOpenShiftClaims, useClaimOpenShift } from '@/hooks/useOpenShiftClaims';
 import { useMyShifts } from '@/hooks/useShifts';
@@ -67,8 +68,6 @@ import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
 import { hasScheduleConflict } from '@/lib/openShiftHelpers';
 import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
 import { parseDateLocal } from '@/lib/dateUtils';
-import { toDateOnlyString } from '@/lib/dateOnly';
-import { marketplaceRange } from '@/lib/claimableTrades';
 import { cn } from '@/lib/utils';
 
 // ---- Memoized trade card (no hooks) ----
@@ -337,12 +336,7 @@ export default function AvailableShiftsPage() {
   const { currentEmployee, loading: empLoading, error: empError } = useCurrentEmployee(restaurantId);
   const { toast } = useToast();
 
-  // The key is the host local day, so a tab open past midnight gets a new range.
-  const hostDayKey = toDateOnlyString(new Date());
-  const { start: weekStart, end: weekEnd } = useMemo(
-    () => marketplaceRange(parseDateLocal(hostDayKey)),
-    [hostDayKey],
-  );
+  const { start: weekStart, end: weekEnd } = useMarketplaceRange();
 
   const {
     items,

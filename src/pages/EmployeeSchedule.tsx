@@ -50,6 +50,7 @@ import { toBusinessDay, businessDayRangeToInstants } from '@/lib/restaurantClock
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { formatLocalDate, wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
 import { useNowTick } from '@/hooks/useNowTick';
+import { useMarketplaceRange } from '@/hooks/useMarketplaceRange';
 import {
   computeScheduleFingerprint,
   hasScheduleChangedSinceSeen,
@@ -58,9 +59,8 @@ import {
 } from '@/lib/scheduleSeenFingerprint';
 import { getRelativeWeekLabel, getRestaurantWeekStart } from '@/lib/scheduleWeek';
 import { selectUpcomingShifts, countShiftsInWeek } from '@/lib/nextShift';
-import { marketplaceRange, shouldShowUpForGrabs } from '@/lib/claimableTrades';
+import { shouldShowUpForGrabs } from '@/lib/claimableTrades';
 import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
-import { parseDateLocal } from '@/lib/dateUtils';
 import { Shift } from '@/types/scheduling';
 
 const EmployeeSchedule = () => {
@@ -183,9 +183,7 @@ const EmployeeSchedule = () => {
     refetch: refetchClaimable,
   } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null, nowTick);
 
-  // The key is the host local day, so a tab open past midnight gets a new range.
-  const hostDayKey = toDateOnlyString(new Date(nowTick));
-  const openShiftRange = useMemo(() => marketplaceRange(parseDateLocal(hostDayKey)), [hostDayKey]);
+  const openShiftRange = useMarketplaceRange(nowTick);
   const showUpForGrabs = shouldShowUpForGrabs(claimableTrades, claimableLoading, claimableError);
   const hasUrgentTrade = showUpForGrabs && claimableTrades.some((t) => t.isUrgent);
 

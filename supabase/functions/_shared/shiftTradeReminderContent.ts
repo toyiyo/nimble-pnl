@@ -8,6 +8,7 @@
 
 import { tentativePushBody, TENTATIVE_NOTE } from './draftTradeNote.ts';
 import { generateEmailTemplate } from './emailTemplates.ts';
+import { plural } from './plural.ts';
 import { safeTz } from './timezone.ts';
 import { tradeLinkHref } from './tradeDeepLinkUrl.ts';
 
@@ -41,11 +42,6 @@ const MS_PER_MINUTE = 60_000;
 
 export const SCHEDULER_REMINDER_PATH = '/scheduling';
 export const POSTER_REMINDER_PATH = '/employee/schedule';
-
-/** "1 hour" or "5 hours". */
-function plural(count: number, unit: string): string {
-  return `${count} ${count === 1 ? unit : `${unit}s`}`;
-}
 
 /** The first word of the poster name, or "A teammate". */
 export function firstName(name: string | null | undefined): string {

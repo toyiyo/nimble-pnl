@@ -1,7 +1,6 @@
 ---
 name: security-reviewer
 description: Phase 7a reviewer focused on security correctness — OWASP top 10, RLS bypass, secret leakage, auth flaws. Runs in parallel with the other Phase 7a reviewers against the current branch diff.
-subagent_type: feature-dev:code-reviewer
 ---
 
 # Security Reviewer (Phase 7a)

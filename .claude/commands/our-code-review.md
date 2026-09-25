@@ -27,10 +27,10 @@ Uses `dev-tools/ocr-rules-review.sh` (git + `ocr` only, $0) to build a REVIEW BR
    - `## ocr rule packs (deduped)` — the rule text matched for those files (or the fallback note if `ocr` was unavailable)
    - `## Diff` — the unified diff
 
-3. **Read the reviewer instructions** from `.claude/agents/ocr-rules-reviewer.md` (if it exists). Apply those instructions when analysing the brief. If the file does not exist yet, fall back to the conventions in `CLAUDE.md`.
+3. **Read the reviewer instructions** from `.claude/agents/ocr-rules-reviewer.md`. Apply those instructions when you analyse the brief.
 
 4. **Review the diff** against every rule in the "ocr rule packs" section. For each violation found, record:
-   - Severity: **Critical** | **High** | **Medium** | **Low** | **Informational**
+   - Severity: **Critical** | **Major** | **Minor** (the scale in `ocr-rules-reviewer.md`)
    - File path and line number (from the diff context)
    - Which rule was violated and a one-sentence explanation
    - A suggested fix (inline snippet when short)
@@ -44,7 +44,7 @@ Uses `dev-tools/ocr-rules-review.sh` (git + `ocr` only, $0) to build a REVIEW BR
      + className="bg-background text-foreground"
      ```
 
-   ### High
+   ### Major
    - `src/bar.ts:17` — **Rule: staleTime-required** — useQuery missing staleTime; add `staleTime: 30000`.
 
    _(omit a severity section entirely if there are no findings at that level)_

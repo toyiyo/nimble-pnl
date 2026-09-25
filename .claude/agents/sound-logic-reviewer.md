@@ -1,7 +1,6 @@
 ---
 name: sound-logic-reviewer
 description: Phase 7a reviewer focused on logical correctness — edge cases, off-by-one, null/undefined paths, race conditions, stale closures, retry storms, error boundaries. Runs in parallel with the other Phase 7a reviewers against the current branch diff.
-subagent_type: feature-dev:code-reviewer
 ---
 
 # Sound Logic Reviewer (Phase 7a)

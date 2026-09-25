@@ -1,13 +1,15 @@
-// Push and email content for the shift-trade-reminders worker (design B3).
+// Push and email content for the shift-trade reminders.
 //
 // The text is written like a teammate who asks for help. All dates and
 // times use the restaurant time zone. `{when}` comes from the real time
 // left, so a stage that quiet hours delay still tells the truth.
 //
-// No Deno imports: vitest imports this file directly.
+// No Deno imports: the unit tests run this file in Node.
 
 import { tentativePushBody, TENTATIVE_NOTE } from './draftTradeNote.ts';
 import { generateEmailTemplate } from './emailTemplates.ts';
+import { safeTz } from './timezone.ts';
+import { tradeLinkHref } from './tradeDeepLinkUrl.ts';
 
 export type EmployeeReminderStage = '72h' | '24h' | '6h';
 
@@ -35,22 +37,14 @@ export interface ReminderEmail {
   html: string;
 }
 
-const FALLBACK_TZ = 'America/Chicago';
 const MS_PER_MINUTE = 60_000;
 
-export const EMPLOYEE_REMINDER_PATH = '/employee/shifts';
 export const SCHEDULER_REMINDER_PATH = '/scheduling';
 export const POSTER_REMINDER_PATH = '/employee/schedule';
 
-/** Returns the zone when Intl accepts it, or the restaurant default. */
-function safeTz(tz: string | null | undefined): string {
-  if (!tz) return FALLBACK_TZ;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return tz;
-  } catch {
-    return FALLBACK_TZ;
-  }
+/** "1 hour" or "5 hours". */
+function plural(count: number, unit: string): string {
+  return `${count} ${count === 1 ? unit : `${unit}s`}`;
 }
 
 /** The first word of the poster name, or "A teammate". */
@@ -80,12 +74,14 @@ export function reminderDay(start: Date, now: Date, tz: string | null): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(start);
 }
 
-/** "in 5 hours" or "in 45 minutes", from the real time left, rounded down. */
+/**
+ * "in 5 hours" or "in 45 minutes", from the real time left, rounded down.
+ * The minimum is 1 minute, because "in 0 minutes" reads as a bug.
+ */
 export function reminderWhen(start: Date, now: Date): string {
-  const minutes = Math.max(0, Math.floor((start.getTime() - now.getTime()) / MS_PER_MINUTE));
-  if (minutes < 60) return `in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
-  const hours = Math.floor(minutes / 60);
-  return `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+  const minutes = Math.max(1, Math.floor((start.getTime() - now.getTime()) / MS_PER_MINUTE));
+  if (minutes < 60) return `in ${plural(minutes, 'minute')}`;
+  return `in ${plural(Math.floor(minutes / 60), 'hour')}`;
 }
 
 function clockParts(date: Date, tz: string): { text: string; period: string } {
@@ -124,8 +120,14 @@ function shiftSummary(info: ReminderShiftInfo): string {
   return `${positionLabel(info)}, ${shortWeekday(start, info.restaurantTimezone)} ${formatTimeRange(start, end, info.restaurantTimezone)}`;
 }
 
-function tagFor(info: ReminderShiftInfo): string {
+// Separate tags: an unclaimed push must not replace an employee reminder
+// on a device that gets both.
+function employeeTag(info: ReminderShiftInfo): string {
   return `trade-reminder-${info.tradeId}`;
+}
+
+function unclaimedTag(info: ReminderShiftInfo): string {
+  return `trade-unclaimed-${info.tradeId}`;
 }
 
 /** Push for an eligible employee (the 72h, 24h and 6h stages). */
@@ -144,12 +146,12 @@ export function buildEmployeeReminderPush(
     `${shiftSummary(info)}. You're free then. Tap to take the shift.`,
     info.isPublished,
   );
-  const query = new URLSearchParams({
-    trade: info.tradeId,
-    restaurant: info.restaurantId,
-    from: 'reminder',
-  });
-  return { title, body, url: `${EMPLOYEE_REMINDER_PATH}?${query.toString()}`, tag: tagFor(info) };
+  return {
+    title,
+    body,
+    url: tradeLinkHref(info.tradeId, info.restaurantId, 'reminder'),
+    tag: employeeTag(info),
+  };
 }
 
 function schedulerTitle(info: ReminderShiftInfo): string {
@@ -162,7 +164,7 @@ export function buildSchedulerUnclaimedPush(info: ReminderShiftInfo): ReminderPu
     title: schedulerTitle(info),
     body: tentativePushBody(`${shiftSummary(info)}, still open. Tap to assign it.`, info.isPublished),
     url: SCHEDULER_REMINDER_PATH,
-    tag: tagFor(info),
+    tag: unclaimedTag(info),
   };
 }
 
@@ -175,7 +177,7 @@ export function buildPosterUnclaimedPush(info: ReminderShiftInfo): ReminderPush 
       info.isPublished,
     ),
     url: POSTER_REMINDER_PATH,
-    tag: tagFor(info),
+    tag: unclaimedTag(info),
   };
 }
 

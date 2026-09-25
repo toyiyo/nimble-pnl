@@ -11,6 +11,7 @@ import {
   type ReminderShiftInfo,
 } from '../../supabase/functions/_shared/shiftTradeReminderContent';
 import { TENTATIVE_NOTE } from '../../supabase/functions/_shared/draftTradeNote';
+import { tradeLinkHref } from '../../supabase/functions/_shared/tradeDeepLinkUrl';
 
 const CHICAGO = 'America/Chicago';
 // Friday 2026-09-25 10:00 in Chicago (CDT, UTC-5).
@@ -87,6 +88,12 @@ describe('reminderWhen', () => {
     expect(reminderWhen(new Date('2026-09-25T15:45:00Z'), NOW)).toBe('in 45 minutes');
     expect(reminderWhen(new Date('2026-09-25T15:01:00Z'), NOW)).toBe('in 1 minute');
   });
+
+  it('never says "0 minutes": under one minute left shows "in 1 minute"', () => {
+    expect(reminderWhen(new Date('2026-09-25T15:00:30Z'), NOW)).toBe('in 1 minute');
+    expect(reminderWhen(NOW, NOW)).toBe('in 1 minute');
+    expect(reminderWhen(new Date('2026-09-25T14:59:00Z'), NOW)).toBe('in 1 minute');
+  });
 });
 
 describe('formatTimeRange', () => {
@@ -137,6 +144,7 @@ describe('buildEmployeeReminderPush', () => {
   it('links to the marketplace with trade, restaurant and from=reminder', () => {
     const push = buildEmployeeReminderPush(info(), '24h', NOW);
     expect(push.url).toBe('/employee/shifts?trade=trade-1&restaurant=rest-1&from=reminder');
+    expect(push.url).toBe(tradeLinkHref('trade-1', 'rest-1', 'reminder'));
   });
 
   it('tags the push with the trade id', () => {
@@ -156,7 +164,7 @@ describe('buildSchedulerUnclaimedPush', () => {
       title: "Nobody took Maria's shift yet",
       body: 'Server, Fri 5–11 PM, still open. Tap to assign it.',
       url: '/scheduling',
-      tag: 'trade-reminder-trade-1',
+      tag: 'trade-unclaimed-trade-1',
     });
   });
 
@@ -166,13 +174,21 @@ describe('buildSchedulerUnclaimedPush', () => {
   });
 });
 
+describe('push tags', () => {
+  it('uses a separate tag for the unclaimed stage, so it does not replace an employee reminder', () => {
+    expect(buildEmployeeReminderPush(info(), '24h', NOW).tag).toBe('trade-reminder-trade-1');
+    expect(buildSchedulerUnclaimedPush(info()).tag).toBe('trade-unclaimed-trade-1');
+    expect(buildPosterUnclaimedPush(info()).tag).toBe('trade-unclaimed-trade-1');
+  });
+});
+
 describe('buildPosterUnclaimedPush', () => {
   it('uses the poster title, body, URL and tag', () => {
     expect(buildPosterUnclaimedPush(info())).toEqual({
       title: 'Your shift is still up for trade',
       body: 'Nobody took it yet. You still work it unless a manager changes it.',
       url: '/employee/schedule',
-      tag: 'trade-reminder-trade-1',
+      tag: 'trade-unclaimed-trade-1',
     });
   });
 });

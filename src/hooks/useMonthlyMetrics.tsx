@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachMonthOfInterval, startOfDay, endOfDay } from 'date-fns';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import { resolveLaborBasis } from '@/lib/combineCosts';
 import {
@@ -375,8 +375,8 @@ export function useMonthlyMetrics(
       // it falls inside [rangeStart, rangeEnd], so the extra look-back/
       // look-ahead days feed OT banding only, never the totals.
       const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-      const otFetchStart = weekAlignedFetchStart(dateFrom, fetchStart);
-      const otFetchEnd = weekAlignedFetchEnd(dateTo, fetchEnd);
+      const otFetchStart = weekAlignedFetchStart(toDateOnlyString(dateFrom), fetchStart, timezone);
+      const otFetchEnd = weekAlignedFetchEnd(toDateOnlyString(dateTo), fetchEnd, timezone);
       //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // PostgREST caps an unpaginated response at 1,000 rows, which would
@@ -569,25 +569,27 @@ export function useMonthlyMetrics(
         const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
         if (clampedStart > clampedEnd) continue;
 
+        // The month as an inclusive day range. The tip, payout and per-job
+        // rows carry DATE columns, so compare day strings, not instants.
+        const startDay = toDateOnlyString(clampedStart);
+        const endDay = toDateOnlyString(clampedEnd);
+        const inMonth = (day: string) => day >= startDay && day <= endDay;
+
         // Build per-employee tipsOwed for *this* month from tipSplitsData,
         // net of the month's payouts (same netting rule as Payroll).
-        const monthTipRows = tipSplitsData.filter((row) => {
-          const splitDate = new Date(row.tip_splits.split_date + 'T12:00:00');
-          return splitDate >= clampedStart && splitDate <= clampedEnd;
-        });
-        const monthPayoutRows = tipPayoutsData.filter((row) => {
-          const payoutDate = new Date(row.payout_date + 'T12:00:00');
-          return payoutDate >= clampedStart && payoutDate <= clampedEnd;
-        });
+        const monthTipRows = tipSplitsData.filter((row) => inMonth(row.tip_splits.split_date));
+        const monthPayoutRows = tipPayoutsData.filter((row) => inMonth(row.payout_date));
         const tipsOwedByEmployee = netTipsOwedByEmployee(monthTipRows, monthPayoutRows);
 
-        // OT-D labor for this month (ISO-week banding + tipsOwed).
+        // OT-D labor for this month (restaurant-local week banding + tipsOwed).
+        // The engine bounds are whole-day tokens: a `dateTo` at local midnight
+        // names its last day, and the engine noon rule would drop that day.
         const { wagesCents, actualLaborCents } = calculateActualLaborCostForMonth({
           employees: typedEmployees as any,
           timePunches: typedPunches,
           tipsOwedByEmployee,
-          monthStart: clampedStart,
-          monthEnd: clampedEnd,
+          monthStart: startOfDay(clampedStart),
+          monthEnd: endOfDay(clampedEnd),
           timezone,
         });
 
@@ -595,8 +597,7 @@ export function useMonthlyMetrics(
         let monthPerJobCents = 0;
         (manualPaymentsData ?? []).forEach(
           (payment: { date: string; allocated_cost: number }) => {
-            const paymentDate = new Date(payment.date);
-            if (paymentDate >= clampedStart && paymentDate <= clampedEnd) {
+            if (inMonth(payment.date)) {
               monthPerJobCents += payment.allocated_cost; // already in cents
             }
           }

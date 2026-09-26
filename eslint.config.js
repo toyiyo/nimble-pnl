@@ -80,12 +80,18 @@ export default tseslint.config(
   // punches, labor cost and schedules end up on the wrong day for anyone
   // outside the restaurant's timezone. Use `useRestaurantClock()` (components)
   // or `src/lib/restaurantClock.ts` (pure code) instead.
+  //
+  // The shared labor engine (`supabase/functions/_shared/labor/`) moved out of
+  // `src/`, so the rule follows it. Its `restaurantClock.ts` and `dateOnly.ts`
+  // are ignored for the same reason as the `src/` originals.
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "supabase/functions/_shared/labor/**/*.ts"],
     ignores: [
       "src/lib/restaurantClock.ts",
       "src/lib/dateOnly.ts",
       "src/hooks/useRestaurantClock.ts",
+      "supabase/functions/_shared/labor/restaurantClock.ts",
+      "supabase/functions/_shared/labor/dateOnly.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restaurantClockSelectors, highVolumeLimitSelector],
@@ -196,7 +202,6 @@ export default tseslint.config(
       "src/hooks/useInventoryPurchases.tsx",
       "src/hooks/useInventoryTransactions.tsx",
       "src/hooks/useLaborCosts.tsx",
-      "src/hooks/useLaborCostsFromTransactions.tsx",
       "src/hooks/useLiquidityMetrics.tsx",
       "src/hooks/useMonthlyExpenses.tsx",
       "src/hooks/useOutflowByCategory.tsx",
@@ -253,7 +258,6 @@ export default tseslint.config(
   {
     files: [
       "src/hooks/useLaborCosts.tsx",
-      "src/hooks/useLaborCostsFromTransactions.tsx",
       "src/hooks/useRevenueBreakdown.tsx",
     ],
     rules: {

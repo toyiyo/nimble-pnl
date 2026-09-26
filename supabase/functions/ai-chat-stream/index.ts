@@ -679,6 +679,8 @@ ${laborToolsPrompt}
 
 6. Data changes (managers/owners):
    - batch_categorize_transactions, batch_categorize_pos_sales, create_categorization_rule change data.
+   - Find the category with list_categories first. category_id takes the category id or its account code.
+   - Send the same category_id in the preview and in the confirm.
    - ALWAYS call them with preview: true first, and show the preview to the user.
    - Call them with confirmed: true ONLY after the user clearly approves the preview.
 

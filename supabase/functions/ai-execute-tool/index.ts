@@ -32,6 +32,7 @@ import {
 } from "../_shared/payHidden.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
 import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
+import { ACCOUNT_TYPES, CATEGORY_COLUMNS, filterCategories, isAccountType, normalizeAccountType, resolveCategoryRef, type CategoryRow } from "../_shared/categoryLookup.ts";
 import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 import {
@@ -3229,17 +3230,11 @@ async function executeBatchCategorizeTransactions(
     return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${transaction_ids.length}). Send at most 1000 per call.` } };
   }
 
-  // Fetch the category info
-  const { data: category, error: catError } = await supabase
-    .from('chart_of_accounts')
-    .select('id, account_name, account_code')
-    .eq('id', category_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (catError || !category) {
-    throw new Error(`Invalid category_id: ${category_id}`);
+  const categoryRef = await resolveCategoryRef(supabase, restaurantId, category_id);
+  if (!categoryRef.ok) {
+    return { ok: false, error: { code: 'INVALID_CATEGORY', message: categoryRef.message } };
   }
+  const category = categoryRef.category;
 
   // Fetch the transactions
   const { data: transactions, error: txnError } = await supabase
@@ -3327,16 +3322,11 @@ async function executeBatchCategorizePosSales(
     return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${sale_ids.length}). Send at most 1000 per call.` } };
   }
 
-  const { data: category, error: catError } = await supabase
-    .from('chart_of_accounts')
-    .select('id, account_name, account_code')
-    .eq('id', category_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (catError || !category) {
-    throw new Error(`Invalid category_id: ${category_id}`);
+  const categoryRef = await resolveCategoryRef(supabase, restaurantId, category_id);
+  if (!categoryRef.ok) {
+    return { ok: false, error: { code: 'INVALID_CATEGORY', message: categoryRef.message } };
   }
+  const category = categoryRef.category;
 
   const { data: sales, error: salesError } = await supabase
     .from('unified_sales')
@@ -3406,6 +3396,51 @@ async function executeBatchCategorizePosSales(
 }
 
 /**
+ * Execute list_categories tool: the chart of accounts of the restaurant, so
+ * the model can pick a category id or account code for the write tools.
+ */
+async function executeListCategories(
+  args: { search?: unknown; account_type?: unknown; include_inactive?: unknown } | null | undefined,
+  restaurantId: string,
+  supabase: ReturnType<typeof createClient>
+): Promise<Record<string, unknown>> {
+  const { search, include_inactive = false } = args ?? {};
+  const account_type = normalizeAccountType(args?.account_type);
+  const includeInactive = include_inactive === true;
+
+  // A value outside account_type_enum makes Postgres fail the cast. Answer in
+  // band, so the model reads the valid values.
+  if (account_type !== undefined && account_type !== null && account_type !== '' && !isAccountType(account_type)) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_ARGUMENTS', message: `account_type must be one of: ${ACCOUNT_TYPES.join(', ')}.` },
+    };
+  }
+
+  let query = supabase
+    .from('chart_of_accounts')
+    .select(CATEGORY_COLUMNS)
+    .eq('restaurant_id', restaurantId);
+  if (isAccountType(account_type)) {
+    query = query.eq('account_type', account_type);
+  }
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+  const { data, error } = await query.order('account_code', { ascending: true });
+  if (error) throw new Error(`Failed to list categories: ${error.message}`);
+
+  const list = filterCategories((data ?? []) as CategoryRow[], typeof search === 'string' ? search : undefined, { includeInactive });
+  return {
+    ok: true,
+    data: list,
+    evidence: [
+      { table: 'chart_of_accounts', summary: `${list.count} categories${list.truncated ? ` (first ${list.categories.length} shown)` : ''}` },
+    ],
+  };
+}
+
+/**
  * Execute create_categorization_rule tool
  * Preview-first: shows rule details + historical match count, then creates
  */
@@ -3416,16 +3451,11 @@ async function executeCreateCategorizationRule(
 ): Promise<any> {
   const { rule_name, pattern_type, pattern_value, category_id, source = 'both', preview = false, confirmed = false } = args;
 
-  const { data: category, error: catError } = await supabase
-    .from('chart_of_accounts')
-    .select('id, account_name, account_code')
-    .eq('id', category_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (catError || !category) {
-    throw new Error(`Invalid category_id: ${category_id}`);
+  const categoryRef = await resolveCategoryRef(supabase, restaurantId, category_id);
+  if (!categoryRef.ok) {
+    return { ok: false, error: { code: 'INVALID_CATEGORY', message: categoryRef.message } };
   }
+  const category = categoryRef.category;
 
   // Count historical matches
   let bankMatchCount = 0;
@@ -3703,6 +3733,9 @@ serve(async (req) => {
         break;
       case 'get_break_even_progress':
         result = await executeGetBreakEvenProgress(args, restaurant_id, supabase, restaurantNow);
+        break;
+      case 'list_categories':
+        result = await executeListCategories(args, restaurant_id, supabase);
         break;
       case 'batch_categorize_transactions':
         result = await executeBatchCategorizeTransactions(args, restaurant_id, supabase);

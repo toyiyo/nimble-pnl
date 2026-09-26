@@ -709,6 +709,30 @@ export function getTools(
   if (userRole === 'manager' || userRole === 'owner') {
     tools.push(
       {
+        name: 'list_categories',
+        description: 'List the chart of accounts categories of the restaurant: id, account code, name, type, subtype, parent, and active flag, sorted by account code. The categorization tools take the id or the account code in category_id. Inactive categories are left out unless include_inactive is true.',
+        parameters: {
+          type: 'object',
+          properties: {
+            search: {
+              type: 'string',
+              description: 'Text to find in the account code or the account name (not case-sensitive)'
+            },
+            account_type: {
+              type: 'string',
+              enum: ['asset', 'liability', 'equity', 'revenue', 'expense', 'cogs'],
+              description: 'Only categories of this account type'
+            },
+            include_inactive: {
+              type: 'boolean',
+              description: 'If true, the result also has inactive categories',
+              default: false
+            }
+          },
+          required: []
+        }
+      },
+      {
         name: 'batch_categorize_transactions',
         description: 'Categorize a batch of uncategorized bank transactions. With preview:true, it returns the changes and saves nothing. With confirmed:true, it saves the changes. Returns evidence references.',
         parameters: {
@@ -721,7 +745,7 @@ export function getTools(
             },
             category_id: {
               type: 'string',
-              description: 'Chart of accounts category ID to assign'
+              description: 'Category to assign: its id or its account code (for example 4000), from list_categories'
             },
             preview: {
               type: 'boolean',
@@ -750,7 +774,7 @@ export function getTools(
             },
             category_id: {
               type: 'string',
-              description: 'Chart of accounts category ID to assign'
+              description: 'Category to assign: its id or its account code (for example 4000), from list_categories'
             },
             preview: {
               type: 'boolean',
@@ -787,7 +811,7 @@ export function getTools(
             },
             category_id: {
               type: 'string',
-              description: 'Chart of accounts category ID to assign when matched'
+              description: 'Category to assign when matched: its id or its account code (for example 4000), from list_categories'
             },
             source: {
               type: 'string',
@@ -908,6 +932,7 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_monthly_trends',               // Monthly P&L trends - manager+
     'get_expense_health',               // Expense health metrics - manager+
     'get_break_even_progress',          // Break-even daily history + progress - manager+
+    'list_categories',                  // Chart of accounts lookup - manager+
     'batch_categorize_transactions',    // Action: categorize bank txns - manager+
     'batch_categorize_pos_sales',       // Action: categorize POS sales - manager+
     'create_categorization_rule'        // Action: create rules - manager+

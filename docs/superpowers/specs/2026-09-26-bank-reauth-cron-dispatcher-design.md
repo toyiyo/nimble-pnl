@@ -69,9 +69,10 @@ email to a small cohort, and the pg_net default of 5 s can cut a run short.
 - Add `missing_ok` to the cron command only. The URL is then NULL, and
   `net.http_post` gets a NULL URL. The job fails in a new way and still sends
   nothing. Rejected.
-- Set `app.settings.supabase_url` in production with `ALTER DATABASE`. The
-  hosted project does not let the `postgres` role set custom GUCs at the
-  database level, and the value does not live in the repo. Rejected.
+- Set `app.settings.supabase_url` in production by hand. No migration sets
+  it, so a new database or a branch database does not get it. The URL guard
+  in `20260702160000_focus_crons_gateless.sql:19-20` exists for this reason.
+  Rejected.
 
 ## Tests (pgTAP)
 
@@ -108,5 +109,6 @@ After the merge, the deployer must check that the Vault secret
 `supabase_service_role_key` exists and matches the edge function's
 `SUPABASE_SERVICE_ROLE_KEY`. On 2026-09-26 the secret exists, and
 `shift-trade-reminders` gets HTTP 200 with it. After 09:00 UTC on the next
-day, check `cron.job_run_details` for jobid 41 and the edge log for
+day, check `cron.job_run_details` for the job named `bank-reauth-notices`
+(the reschedule gives it a new jobid) and the edge log for
 `POST | 200 | .../functions/v1/bank-reauth-notices`.

@@ -1,96 +1,84 @@
 # AI chat validation fixes: plan
 
-Design: `docs/superpowers/specs/2026-09-26-ai-chat-validation-fixes-design.md`.
-STE-aligned. Do the tasks in order. Each task is RED (failing test), GREEN,
-REFACTOR, COMMIT.
+Design: `docs/superpowers/specs/2026-09-26-ai-chat-validation-fixes-design.md`
+(revision 2). STE-aligned. Each task is RED (failing test), GREEN, REFACTOR,
+COMMIT. Server tasks (S) and client tasks (C) touch different files and can run
+in parallel. Inside each track, run the tasks in order.
 
-## T1. D1: capability RPC without `.catch()`
+## Server track
 
+### S1. D1: capability RPC without `.catch()`
 - Files: `supabase/functions/_shared/tools-registry.ts`,
-  `tests/unit/tools-registry.test.ts`.
-- RED: add a `thenableRpc` mock that has `then()` only. Test
-  `hasSchedulingOrPayrollCapability` and `hasPayRatesCapability` for grant,
-  deny, `error` field, and a rejected `then`. The current code throws
-  `TypeError`.
-- GREEN: change `CapabilityCheckClient.rpc` to return `PromiseLike<...>`.
-  Add `callCapabilityRpc(supabase, restaurantId, capability)` with
-  `try { return await ... } catch (err) { return { data: null, error: err } }`.
-  Use it at the 3 call sites.
-- Check: `npm run typecheck` passes; the type now rejects `.catch()`.
+  `tests/unit/tools-registry.test.ts`, new
+  `tests/unit/types/capabilityRpc.test.ts`.
+- RED: change `mockSupabase` to a builder with `then()` only. Add cases:
+  `error` field, rejected `then`, synchronous throw. Add the
+  `@ts-expect-error` type test.
+- GREEN: `PromiseLike` return type; `callCapabilityRpc` helper with one `try`
+  around the call and the `await`.
+- Check: `npm run test`, `npm run typecheck:types`.
 
-## T2. Pure formatters (D2, D3, D4, D5, D6)
-
+### S2. D2-D6: pure formatters
 - Files: new `supabase/functions/_shared/aiToolFormatters.ts`, new
-  `tests/unit/aiToolFormatters.test.ts`.
+  `tests/unit/aiToolFormatters.test.ts`, new
+  `supabase/tests/ai_tool_projections.sql`.
 - Exports: `POS_SALE_PREVIEW_COLUMNS`, `mapTopSoldItems`,
   `buildCashFlowSummary`, `computeCashCoverage`, `incomeStatementBasis`,
   `monthlyPnlBasis`.
-- RED/GREEN per export. The projection test reads the `unified_sales` columns
-  from the migrations and checks each selected column exists.
+- The projection test checks each column against `unified_sales.Row` in
+  `src/integrations/supabase/types.ts`. The pgTAP file asserts `has_column`.
 
-## T3. Wire the formatters into `ai-execute-tool`
+### S3. Wire the formatters into `ai-execute-tool`
+- Files: `supabase/functions/ai-execute-tool/index.ts`, `tools-registry.ts`
+  (descriptions for `get_financial_statement` and `generate_report`).
+- Replace the inline code at `:3362`, `:3386`, `:1298-1307`, `:537-555`,
+  `:2899`, `:2916`, `:2957-2961`. Add `basis` to the 2 P&L results.
+- Test: source checks (style of `tests/unit/ai-restaurant-today-wiring.test.ts`):
+  the file imports the formatters; no `inflows_7d`; no `, source'`.
 
-- File: `supabase/functions/ai-execute-tool/index.ts`,
-  `supabase/functions/_shared/tools-registry.ts` (descriptions for
-  `get_financial_statement` and `generate_report`).
-- Replace the inline code at `:3362`, `:3386`, `:1299-1307`, `:553-555`,
-  `:2897`, `:2916`, `:2957-2961`. Add `basis` to the 2 P&L results.
-- Test: extend `tests/unit/ai-restaurant-today-wiring.test.ts` style source
-  checks: the file imports the formatters and has no `inflows_7d`, no
-  `, source'`, no inline coverage ternary.
-
-## T4. D9: omit capability-gated tools for roles without the capability
-
+### S4. D9: tool list follows the capability
 - Files: `tools-registry.ts`, `supabase/functions/ai-chat-stream/index.ts`,
-  `tests/unit/tools-registry.test.ts`.
-- RED: `getTools('r', 'staff', { hasSchedulingOrPayroll: false })` must not
-  list the 2 tools; `true` and `undefined` list them.
-- GREEN: add the option. In `ai-chat-stream`, resolve the flag with
-  `hasSchedulingOrPayrollCapability` before `getTools`.
+  `tests/unit/tools-registry.test.ts`, `tests/unit/ai-restaurant-today-wiring.test.ts`
+  (or a new source-check file).
+- `getTools(..., { hasSchedulingOrPayroll })`; the flag resolves in
+  `Promise.all` with the timezone; the labor prompt block depends on the flag.
 
-## T5. D10: required-argument check
-
+### S5. D10: required-argument check
 - Files: `tools-registry.ts`, `ai-execute-tool/index.ts`,
   `tests/unit/tools-registry.test.ts`.
-- RED: `missingRequiredArgs('get_bank_transactions', {})` returns
-  `['start_date', 'end_date']`; a complete call returns `[]`; an unknown tool
-  returns `[]`.
-- GREEN: add the function. The dispatcher returns HTTP 400
-  `INVALID_ARGUMENTS` after the permission check.
+- `missingRequiredArgs`; HTTP 200 `INVALID_ARGUMENTS`; `period` leaves
+  `required` for `get_kpis` and `get_sales_summary`; "every dispatcher case
+  has a registry entry" test.
 
-## T6. D7: multi-round tool calls in `useAiChat`
+## Client track
 
+### C1. D7: turn loop in `useAiChat`
 - Files: `src/hooks/useAiChat.tsx`, new `tests/unit/useAiChat.test.tsx`.
-- RED: mock `fetch` with SSE bodies. A 2-round turn ends with the final text.
-  The current hook ends with no answer.
-- GREEN: one shared tool-call handler for both streams. `streamFollowUp`
-  handles `tool_call` and recurses up to `MAX_TOOL_ROUNDS = 4`. At the cap,
-  set an error.
-- Also test: 1 round; cap reached; tool error goes back to the model.
+- Cases per the design (1 round, 2 rounds with history shape, cap, abort,
+  no retry after a tool call, 500 on round 2, long turn, pass-through of
+  `ok:false`).
 
-## T7. D8: no stale "Processing..." for tool-call messages
+### C2. D7b: saved history
+- Files: `src/components/ai-chat/AiChatPanel.tsx`,
+  `src/hooks/useAiChatMessages.ts`, tests.
+- Dedupe by ID; mark loaded rows; send `created_at`; title rule.
 
-- Files: `src/components/ChatMessage.tsx`, new
-  `tests/unit/ChatMessage.test.tsx`.
-- RED: an assistant message with empty content and a `navigate` tool call
-  shows the "Go to" button and no "Processing...".
-- GREEN: change the empty-content branch.
+### C3. D8: `ChatMessage`
+- Files: `src/components/ChatMessage.tsx`, `AiChatPanel.tsx` (a11y roles),
+  new `tests/unit/ChatMessage.test.tsx`.
 
-## T8. E2E: `tests/e2e/ai-chat.spec.ts`
+### C4. E2E: `tests/e2e/ai-chat.spec.ts`
+- Route mocks for both functions; 2-round answer; no "Processing..."; navigate
+  button; reload keeps the answer.
 
-- Playwright routes mock `ai-chat-stream` (SSE) and `ai-execute-tool` (JSON).
-- Sign up a user with `signUpAndCreateRestaurant` from
-  `tests/helpers/e2e-supabase.ts`. Give the restaurant the `pro` tier.
-- Assert: a 1-round answer; a 2-round answer; no "Processing..." left.
+## Docs
 
-## T9. Docs
-
-- `docs/AI_CHAT.md`: update the testing section (unit, live harness method,
-  E2E spec).
+- `docs/AI_CHAT.md`: testing section (unit, live harness method, E2E).
 
 ## Verify
 
-- `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`,
-  pgTAP chat files, `npx playwright test tests/e2e/ai-chat.spec.ts`.
-- Re-run the scratch live harness: 225-call matrix, write checks, chat
-  stream, browser.
+- `npm run typecheck`, `npm run typecheck:types`, `npm run lint`,
+  `npm run test`, `npm run build`, the pgTAP chat files and the new
+  projection file, `npx playwright test tests/e2e/ai-chat.spec.ts`.
+- Re-run the scratch live harness: 225-call matrix, `{}` args per tool,
+  write checks, chat stream with the mock model, browser.

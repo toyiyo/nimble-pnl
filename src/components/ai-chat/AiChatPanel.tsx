@@ -282,15 +282,15 @@ export function AiChatPanel() {
                       ))}
                     </Suspense>
                     {isStreaming && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2" role="status" aria-live="polite">
                         <div className="flex-shrink-0">
                           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
-                            <ChefHat className="h-3.5 w-3.5 text-primary-foreground" />
+                            <ChefHat className="h-3.5 w-3.5 text-primary-foreground" aria-hidden="true" />
                           </div>
                         </div>
                         <Card className="max-w-[85%] px-3 py-2 bg-muted/50 border-0 shadow-none">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                             <span>Cooking up a response...</span>
                           </div>
                         </Card>
@@ -303,9 +303,9 @@ export function AiChatPanel() {
 
               {/* Error */}
               {error && (
-                <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+                <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20" role="alert">
                   <div className="flex items-center gap-2 text-sm text-destructive">
-                    <XCircle className="h-4 w-4" />
+                    <XCircle className="h-4 w-4" aria-hidden="true" />
                     <span className="text-xs">{error}</span>
                   </div>
                 </div>

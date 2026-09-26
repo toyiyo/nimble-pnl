@@ -634,7 +634,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_financial_statement',
-        description: 'Get detailed financial statements including income statement, balance sheet, cash flow statement, or trial balance',
+        description: 'Get detailed financial statements including income statement, balance sheet, cash flow statement, or trial balance. The income statement result has a basis object: read it before you compare figures with generate_report or with a page in the app, because the sources differ.',
         parameters: {
           type: 'object',
           properties: {
@@ -659,7 +659,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'generate_report',
-        description: 'Generate a financial or operational report in various formats',
+        description: 'Generate a financial or operational report in various formats. The monthly_pnl result has a basis object: read it before you compare figures with get_financial_statement or with a page in the app, because the sources differ.',
         parameters: {
           type: 'object',
           properties: {

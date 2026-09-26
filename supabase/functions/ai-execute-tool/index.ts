@@ -34,6 +34,14 @@ import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregate
 import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
 import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
+import {
+  POS_SALE_PREVIEW_COLUMNS,
+  mapTopSoldItems,
+  buildCashFlowSummary,
+  computeCashCoverage,
+  incomeStatementBasis,
+  monthlyPnlBasis,
+} from "../_shared/aiToolFormatters.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -535,26 +543,9 @@ async function calculateCashFlow(
 
   const days = dailyRows || [];
   const txCount = Number(summaryRows?.[0]?.tx_count ?? 0);
-  const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
-  const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
-  const netCashFlow = inflows - outflows;
-
-  // Calculate daily average over the full requested period
-  const periodDays = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
-  const avgDailyCashFlow = periodDays > 0 ? netCashFlow / periodDays : 0;
-
-  // Calculate volatility (standard deviation) over each day's net flow
-  const flowValues = days.map((d: any) => Number(d.net ?? 0));
-  const mean = flowValues.reduce((sum: number, val: number) => sum + val, 0) / (flowValues.length || 1);
-  const variance = flowValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (flowValues.length || 1);
-  const volatility = Math.sqrt(variance);
-
+  // Totals cover the whole requested period (not 7 days).
   results.cash_flow = {
-    inflows_7d: inflows,
-    outflows_7d: outflows,
-    net_cash_flow_7d: netCashFlow,
-    avg_daily_cash_flow: avgDailyCashFlow,
-    volatility: volatility,
+    ...buildCashFlowSummary(days, start_date, end_date),
     transaction_count: txCount,
   };
 }
@@ -1007,6 +998,7 @@ async function executeGetFinancialStatement(
             operating_expenses: totalExpenses,
             net_income: netIncome,
             net_margin: revenue > 0 ? (netIncome / revenue) * 100 : 0,
+            basis: incomeStatementBasis(),
           },
           evidence: [
             { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date}` },
@@ -1295,18 +1287,8 @@ async function executeGetSalesSummary(
     });
     if (topItemsError) throw new Error(`get_top_sold_items failed: ${topItemsError.message}`);
 
-    itemsBreakdown = (topItems || []).map((item: any) => {
-      // sale_count preserves the old row-count semantics of quantity_sold
-      // (count of matching sale rows), not the RPC's summed `quantity` field.
-      const count = Number(item.sale_count ?? 0);
-      const total = Number(item.revenue ?? 0);
-      return {
-        item_name: item.item_name,
-        quantity_sold: count,
-        total_sales: total,
-        avg_price: count > 0 ? total / count : 0,
-      };
-    });
+    // quantity_sold is units (sum of quantity); line_count is the row count.
+    itemsBreakdown = mapTopSoldItems(topItems);
   }
 
   let comparison = null;
@@ -1733,6 +1715,7 @@ async function executeGenerateReport(
           expenses: totalExpenses,
           net_profit: totalRevenue - totalCOGS - totalExpenses,
           net_margin: totalRevenue > 0 ? ((totalRevenue - totalCOGS - totalExpenses) / totalRevenue) * 100 : 0,
+          basis: monthlyPnlBasis(),
         };
         break;
       }
@@ -2896,7 +2879,8 @@ async function executeGetExpenseHealth(
     .eq('is_active', true);
 
   const totalCashBalance = (balances || []).reduce((sum: number, b: any) => sum + Number(b.current_balance), 0);
-  const cashCoverageBeforePayroll = laborCost > 0 ? totalCashBalance / laborCost : 0;
+  // Null multiplier (not 0) when the period has no labor cost: no false alert.
+  const cashCoverage = computeCashCoverage(totalCashBalance, laborCost);
 
   // Determine status
   const getStatus = (value: number, good: number, caution: number) => {
@@ -2913,8 +2897,8 @@ async function executeGetExpenseHealth(
   if (uncategorizedPercentage > 10) {
     alerts.push(`${uncategorizedPercentage.toFixed(1)}% of spending is uncategorized`);
   }
-  if (cashCoverageBeforePayroll < 1.5) {
-    alerts.push(`Cash coverage before payroll is only ${cashCoverageBeforePayroll.toFixed(1)}x`);
+  if (cashCoverage.alert) {
+    alerts.push(cashCoverage.alert);
   }
 
   return {
@@ -2955,9 +2939,9 @@ async function executeGetExpenseHealth(
           status: getStatus(uncategorizedPercentage, 5, 10),
         },
         cash_coverage: {
-          multiplier: cashCoverageBeforePayroll,
+          multiplier: cashCoverage.multiplier,
           current_balance: totalCashBalance,
-          status: cashCoverageBeforePayroll >= 2 ? 'good' : cashCoverageBeforePayroll >= 1.5 ? 'caution' : 'critical',
+          status: cashCoverage.status,
         },
       },
       revenue: revenue,
@@ -3359,7 +3343,7 @@ async function executeBatchCategorizePosSales(
 
   const { data: sales, error: salesError } = await supabase
     .from('unified_sales')
-    .select('id, item_name, total_price, sale_date, source')
+    .select(POS_SALE_PREVIEW_COLUMNS)
     .eq('restaurant_id', restaurantId)
     .in('id', sale_ids);
 
@@ -3383,7 +3367,7 @@ async function executeBatchCategorizePosSales(
           item_name: s.item_name,
           amount: s.total_price,
           date: s.sale_date,
-          source: s.source,
+          source: s.pos_system,
         })),
         count: sales.length,
         message: `Will categorize ${sales.length} POS sale(s) as "${category.account_name}". Please confirm to proceed.`,

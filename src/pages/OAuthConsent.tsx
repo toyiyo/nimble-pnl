@@ -1,32 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { AlertTriangle, BarChart3, Link2, PencilLine, ShieldCheck, UserRound } from 'lucide-react';
+import { AlertTriangle, BarChart3, Laptop, Link2, PencilLine, ShieldCheck, UserRound } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useOAuthConsent } from '@/hooks/useOAuthConsent';
 
-import type { ConsentAction } from '@/lib/oauthConsentApi';
-
 import {
   ConsentApiError,
+  classifyRedirectUri,
   goToClientRedirect,
-  isTrustedRedirectHost,
   redirectHost,
+  type ConsentAction,
 } from '@/lib/oauthConsentApi';
 import {
+  authorizationIdFrom,
   clearConsentReturnPath,
   consentPathFor,
-  sanitizeConsentPath,
   saveConsentReturnPath,
 } from '@/lib/oauthReturnPath';
 
 const START_AGAIN = 'Start the connection again in Claude.';
+/** Supabase Auth answers these statuses for an expired or used authorization. */
+const EXPIRED_STATUSES: ReadonlySet<number> = new Set([400, 404, 410]);
 
-function PageShell({ children }: { children: React.ReactNode }) {
+function PageShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4 py-8">
       <main className="w-full max-w-md rounded-xl border border-border/40 bg-background shadow-sm">
@@ -36,7 +37,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function LoadingCard() {
+export function ConsentLoadingCard() {
   return (
     <PageShell>
       <div data-testid="oauth-consent-loading" aria-busy="true" aria-label="Loading" className="px-6 py-6 space-y-4">
@@ -50,7 +51,7 @@ function LoadingCard() {
   );
 }
 
-function ErrorCard({ title, message, action }: { title: string; message: string; action?: React.ReactNode }) {
+function ErrorCard({ title, message, action }: { title: string; message: string; action?: ReactNode }) {
   return (
     <PageShell>
       <div className="px-6 py-6 space-y-4">
@@ -67,11 +68,15 @@ function ErrorCard({ title, message, action }: { title: string; message: string;
   );
 }
 
-function lookupErrorMessage(error: unknown): { title: string; message: string; signInAgain: boolean } {
+function isExpired(error: unknown): boolean {
+  return error instanceof ConsentApiError && EXPIRED_STATUSES.has(error.status);
+}
+
+function describeLookupError(error: unknown): { title: string; message: string; signInAgain: boolean } {
   if (error instanceof ConsentApiError && error.status === 401) {
     return { title: 'Your session ended', message: 'Sign in again to continue.', signInAgain: true };
   }
-  if (error instanceof ConsentApiError && (error.status === 400 || error.status === 404 || error.status === 410)) {
+  if (isExpired(error)) {
     return {
       title: 'This request expired',
       message: `The connection request expired or it was used. ${START_AGAIN}`,
@@ -80,9 +85,18 @@ function lookupErrorMessage(error: unknown): { title: string; message: string; s
   }
   return {
     title: 'We could not load this request',
-    message: `Check your connection and reload the page. If the problem continues, start the connection again in Claude.`,
+    message: `Check your connection and reload the page. If the problem continues: ${START_AGAIN}`,
     signInAgain: false,
   };
+}
+
+function isFramed(): boolean {
+  try {
+    return window.top !== window.self;
+  } catch {
+    // A cross-origin parent blocks the read. That also means a frame.
+    return true;
+  }
 }
 
 export default function OAuthConsent() {
@@ -92,34 +106,44 @@ export default function OAuthConsent() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [pendingAction, setPendingAction] = useState<ConsentAction | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const [redirectRefused, setRedirectRefused] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  // A second click before React Query publishes isPending would send a second
+  // decision for a single-use authorization.
+  const decisionSent = useRef(false);
 
-  const consentPath = sanitizeConsentPath(
-    `/oauth/consent?${searchParams.toString()}`,
-    window.location.origin,
-  );
-  const authorizationId = consentPath ? new URL(consentPath, window.location.origin).searchParams.get('authorization_id') : null;
+  const framed = isFramed();
+  const authorizationId = authorizationIdFrom(searchParams);
 
   const { authorization, connectorRestaurantCount, decision } = useOAuthConsent(
-    authorizationId,
+    framed ? null : authorizationId,
     user?.id ?? null,
   );
 
   // Signed out: keep the request and sign in first.
   useEffect(() => {
-    if (authLoading || user || !authorizationId) return;
+    if (framed || authLoading || user || !authorizationId) return;
     saveConsentReturnPath(consentPathFor(authorizationId));
     navigate('/auth', { replace: true });
-  }, [authLoading, user, authorizationId, navigate]);
+  }, [framed, authLoading, user, authorizationId, navigate]);
 
-  // Signed in: the saved return path has done its job.
+  // Signed in: delete the saved return path. It is not necessary now.
   useEffect(() => {
     if (user) clearConsentReturnPath();
   }, [user]);
 
+  const sendToClient = (url: string) => {
+    if (goToClientRedirect(url)) {
+      setRedirecting(true);
+    } else {
+      setRedirectRefused(true);
+    }
+  };
+
   // Consent exists already: go back to the client at once.
   const existingRedirect = authorization.data?.kind === 'redirect' ? authorization.data.redirectUrl : null;
   useEffect(() => {
-    if (existingRedirect && goToClientRedirect(existingRedirect)) setRedirecting(true);
+    if (existingRedirect) sendToClient(existingRedirect);
   }, [existingRedirect]);
 
   const details = authorization.data?.kind === 'consent' ? authorization.data.details : null;
@@ -128,21 +152,41 @@ export default function OAuthConsent() {
   }, [details]);
 
   const decide = (action: ConsentAction) => {
+    if (decisionSent.current) return;
+    decisionSent.current = true;
     setPendingAction(action);
     decision.mutate(action, {
-      onSuccess: (redirectUrl) => {
-        if (goToClientRedirect(redirectUrl)) setRedirecting(true);
+      onSuccess: sendToClient,
+      onError: () => {
+        decisionSent.current = false;
       },
       onSettled: () => setPendingAction(null),
     });
   };
 
-  const useDifferentAccount = async () => {
+  const switchAccount = async () => {
     if (!authorizationId) return;
-    await signOut();
+    setSignOutFailed(false);
+    // Save first: signOut can leave the page before it returns.
     saveConsentReturnPath(consentPathFor(authorizationId));
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('OAuthConsent: sign-out failed', error);
+      setSignOutFailed(true);
+      return;
+    }
     navigate('/auth', { replace: true });
   };
+
+  if (framed) {
+    return (
+      <ErrorCard
+        title="Open this page in its own window"
+        message="For your security, this page does not work inside another site."
+      />
+    );
+  }
 
   if (!authorizationId) {
     return (
@@ -153,12 +197,21 @@ export default function OAuthConsent() {
     );
   }
 
+  if (redirectRefused) {
+    return (
+      <ErrorCard
+        title="We could not return you to the application"
+        message={`The return address is not valid. ${START_AGAIN}`}
+      />
+    );
+  }
+
   if (authLoading || !user || authorization.isLoading || existingRedirect) {
-    return <LoadingCard />;
+    return <ConsentLoadingCard />;
   }
 
   if (authorization.isError || !details) {
-    const { title, message, signInAgain } = lookupErrorMessage(authorization.error);
+    const { title, message, signInAgain } = describeLookupError(authorization.error);
     return (
       <ErrorCard
         title={title}
@@ -166,21 +219,29 @@ export default function OAuthConsent() {
         action={
           signInAgain ? (
             <Button
-              onClick={useDifferentAccount}
+              onClick={switchAccount}
               className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
               Sign in again
             </Button>
-          ) : undefined
+          ) : (
+            <Button
+              variant="ghost"
+              onClick={() => navigate('/', { replace: true })}
+              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              Go to EasyShiftHQ
+            </Button>
+          )
         }
       />
     );
   }
 
   const clientName = details.client.name || 'An application';
-  const host = redirectHost(details.redirect_uri);
-  const trustedHost = isTrustedRedirectHost(details.redirect_uri);
-  const busy = decision.isPending || redirecting;
+  const host = redirectHost(details.redirect_uri) ?? 'an unknown site';
+  const hostKind = classifyRedirectUri(details.redirect_uri);
+  const busy = decision.isPending || pendingAction !== null || redirecting;
 
   return (
     <PageShell>
@@ -198,32 +259,52 @@ export default function OAuthConsent() {
               Connect {clientName} to EasyShiftHQ
             </h1>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Sends you back to <span className="font-medium text-foreground">{host ?? 'an unknown site'}</span>
+              Sends you back to <span className="font-medium text-foreground">{host}</span>
             </p>
           </div>
         </div>
       </div>
 
       <div className="px-6 py-5 space-y-4" aria-live="polite">
-        {!trustedHost && (
+        {hostKind === 'unknown' && (
           <div
             data-testid="oauth-untrusted-host"
             className="flex gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-[13px] text-foreground"
           >
             <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
             <p>
-              This request sends you to <span className="font-medium">{host ?? 'an unknown site'}</span>, which is
-              not a Claude site. Deny it unless you know this application.
+              This request sends you to <span className="font-medium">{host}</span>, which is not a Claude
+              site. EasyShiftHQ does not allow it. Deny the request.
             </p>
           </div>
         )}
 
-        {connectorRestaurantCount === 0 && (
+        {hostKind === 'loopback' && (
+          <div
+            data-testid="oauth-loopback-host"
+            className="flex gap-2 p-3 rounded-lg bg-muted/50 border border-border/40 text-[13px] text-foreground"
+          >
+            <Laptop className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+            <p>This request sends you to an app on this computer, for example Claude Code or Claude Desktop.</p>
+          </div>
+        )}
+
+        {connectorRestaurantCount.isLoading && (
+          <Skeleton data-testid="oauth-restaurants-loading" className="h-12 w-full rounded-lg" />
+        )}
+
+        {connectorRestaurantCount.isError && (
+          <p data-testid="oauth-restaurants-error" className="text-[13px] text-muted-foreground">
+            We could not check your restaurants. The connection still works for the restaurants that you can access.
+          </p>
+        )}
+
+        {connectorRestaurantCount.data === 0 && (
           <div
             data-testid="oauth-no-restaurants"
-            className="flex gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px] text-foreground"
+            className="flex gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20 text-[13px] text-foreground"
           >
-            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
             <p>
               Your account has no restaurant where you are an owner, manager, chef, or collaborator.{' '}
               {clientName} will not see any restaurant data.
@@ -246,7 +327,10 @@ export default function OAuthConsent() {
             </li>
             <li className="flex gap-3">
               <ShieldCheck className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
-              <span>Act as you, with your access. Sign out of all devices to stop the access.</span>
+              <span>
+                Act as you, with your access. To stop the access, go to Integrations and revoke the app under
+                Connected apps.
+              </span>
             </li>
           </ul>
         </div>
@@ -254,11 +338,11 @@ export default function OAuthConsent() {
         <div className="flex items-center justify-between gap-3 text-[13px]">
           <div className="flex items-center gap-2 min-w-0 text-muted-foreground">
             <UserRound className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="truncate text-foreground">{details.user.email || user.email}</span>
+            <span className="truncate text-foreground">{details.user.email}</span>
           </div>
           <button
             type="button"
-            onClick={useDifferentAccount}
+            onClick={switchAccount}
             disabled={busy}
             className="shrink-0 font-medium text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors disabled:opacity-50"
           >
@@ -268,9 +352,17 @@ export default function OAuthConsent() {
 
         <p className="text-[13px] text-muted-foreground">Allow only if you started this connection from Claude.</p>
 
+        {signOutFailed && (
+          <p role="alert" className="text-[13px] text-destructive">
+            We could not sign you out. Try again.
+          </p>
+        )}
+
         {decision.isError && (
           <p role="alert" className="text-[13px] text-destructive">
-            We could not save your decision. Try again.
+            {isExpired(decision.error)
+              ? `The connection request expired or it was used. ${START_AGAIN}`
+              : 'We could not save your decision. Try again.'}
           </p>
         )}
 
@@ -284,14 +376,16 @@ export default function OAuthConsent() {
           >
             {pendingAction === 'deny' ? 'Denying…' : 'Deny'}
           </Button>
-          <Button
-            type="button"
-            onClick={() => decide('approve')}
-            disabled={busy}
-            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-          >
-            {pendingAction === 'approve' ? 'Allowing…' : 'Allow'}
-          </Button>
+          {hostKind !== 'unknown' && (
+            <Button
+              type="button"
+              onClick={() => decide('approve')}
+              disabled={busy}
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+            >
+              {pendingAction === 'approve' ? 'Allowing…' : 'Allow'}
+            </Button>
+          )}
         </div>
       </div>
     </PageShell>

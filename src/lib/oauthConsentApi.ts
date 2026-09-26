@@ -38,8 +38,18 @@ export class ConsentApiError extends Error {
   }
 }
 
-/** Hosts that Claude uses for its OAuth callback. Claude Code uses a local port. */
-const TRUSTED_REDIRECT_HOSTS = ['claude.ai', 'claude.com', 'localhost', '127.0.0.1'];
+/** Hosts that Claude uses for its OAuth callback on the web. */
+const CLAUDE_REDIRECT_HOSTS = ['claude.ai', 'claude.com'];
+/** Claude Code and Claude Desktop receive the callback on this computer. */
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+/**
+ * - `claude`: a Claude web host over HTTPS.
+ * - `loopback`: an app on this computer. This is not proof that the app is
+ *   Claude, so the page shows a note.
+ * - `unknown`: any other host. The page does not let the user allow it.
+ */
+export type RedirectHostKind = 'claude' | 'loopback' | 'unknown';
 
 export function redirectHost(redirectUri: string): string | null {
   try {
@@ -49,10 +59,19 @@ export function redirectHost(redirectUri: string): string | null {
   }
 }
 
-export function isTrustedRedirectHost(redirectUri: string): boolean {
-  const host = redirectHost(redirectUri);
-  if (!host) return false;
-  return TRUSTED_REDIRECT_HOSTS.some((trusted) => host === trusted || host.endsWith(`.${trusted}`));
+export function classifyRedirectUri(redirectUri: string): RedirectHostKind {
+  let url: URL;
+  try {
+    url = new URL(redirectUri);
+  } catch {
+    return 'unknown';
+  }
+  const host = url.hostname;
+  if (LOOPBACK_HOSTS.includes(host) && (url.protocol === 'http:' || url.protocol === 'https:')) {
+    return 'loopback';
+  }
+  const claudeHost = CLAUDE_REDIRECT_HOSTS.some((trusted) => host === trusted || host.endsWith(`.${trusted}`));
+  return claudeHost && url.protocol === 'https:' ? 'claude' : 'unknown';
 }
 
 function authorizationUrl(authorizationId: string, suffix = ''): string {
@@ -71,7 +90,7 @@ async function authHeaders(): Promise<Record<string, string>> {
   };
 }
 
-async function readJson(response: Response): Promise<Record<string, unknown>> {
+async function parseJsonOrThrow(response: Response): Promise<Record<string, unknown>> {
   let body: Record<string, unknown> = {};
   try {
     body = (await response.json()) as Record<string, unknown>;
@@ -94,7 +113,7 @@ export async function getAuthorization(authorizationId: string): Promise<Authori
     method: 'GET',
     headers: await authHeaders(),
   });
-  const body = await readJson(response);
+  const body = await parseJsonOrThrow(response);
   if (body.client && typeof body.redirect_uri === 'string') {
     return { kind: 'consent', details: body as unknown as OAuthAuthorizationDetails };
   }
@@ -111,7 +130,7 @@ export async function submitConsent(authorizationId: string, action: ConsentActi
     headers: await authHeaders(),
     body: JSON.stringify({ action }),
   });
-  const body = await readJson(response);
+  const body = await parseJsonOrThrow(response);
   if (typeof body.redirect_url !== 'string') {
     throw new ConsentApiError('The consent response is not valid.', 502);
   }
@@ -132,4 +151,32 @@ export function goToClientRedirect(url: string): boolean {
   if (protocol === 'javascript:' || protocol === 'data:' || protocol === 'vbscript:') return false;
   window.location.assign(url);
   return true;
+}
+
+export interface OAuthGrant {
+  client: OAuthClientInfo;
+  scopes: string[];
+  granted_at: string;
+}
+
+/** Lists the applications that the user allowed through the OAuth server. */
+export async function listOAuthGrants(): Promise<OAuthGrant[]> {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user/oauth/grants`, {
+    method: 'GET',
+    headers: await authHeaders(),
+  });
+  const body = await parseJsonOrThrow(response);
+  // The endpoint returns a JSON array.
+  if (!Array.isArray(body)) throw new ConsentApiError('The grants response is not valid.', 502);
+  return body as unknown as OAuthGrant[];
+}
+
+/** Revokes the grant of one application. Its tokens stop working. */
+export async function revokeOAuthGrant(clientId: string): Promise<void> {
+  const query = new URLSearchParams({ client_id: clientId }).toString();
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user/oauth/grants?${query}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  });
+  if (!response.ok) await parseJsonOrThrow(response);
 }

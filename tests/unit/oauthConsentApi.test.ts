@@ -10,7 +10,9 @@ vi.mock('@/integrations/supabase/client', () => ({
 import {
   ConsentApiError,
   getAuthorization,
-  isTrustedRedirectHost,
+  classifyRedirectUri,
+  listOAuthGrants,
+  revokeOAuthGrant,
   redirectHost,
   submitConsent,
 } from '@/lib/oauthConsentApi';
@@ -110,23 +112,52 @@ describe('submitConsent', () => {
   });
 });
 
-describe('redirect host checks', () => {
+describe('classifyRedirectUri', () => {
   it.each([
-    ['https://claude.ai/api/mcp/auth_callback', true],
-    ['https://claude.com/cb', true],
-    ['https://www.claude.ai/cb', true],
-    ['http://localhost:33418/callback', true],
-    ['http://127.0.0.1:5000/cb', true],
-    ['https://claude.ai.evil.com/cb', false],
-    ['https://evilclaude.ai/cb', false],
-    ['not a url', false],
-  ])('%s trusted = %s', (uri, trusted) => {
-    expect(isTrustedRedirectHost(uri)).toBe(trusted);
+    ['https://claude.ai/api/mcp/auth_callback', 'claude'],
+    ['https://claude.com/cb', 'claude'],
+    ['https://www.claude.ai/cb', 'claude'],
+    ['http://claude.ai/cb', 'unknown'],
+    ['http://localhost:33418/callback', 'loopback'],
+    ['http://127.0.0.1:5000/cb', 'loopback'],
+    ['https://claude.ai.evil.com/cb', 'unknown'],
+    ['https://evilclaude.ai/cb', 'unknown'],
+    ['myapp://callback', 'unknown'],
+    ['not a url', 'unknown'],
+  ])('%s is %s', (uri, kind) => {
+    expect(classifyRedirectUri(uri)).toBe(kind);
   });
 
-  it('returns the host or null', () => {
+  it('redirectHost returns the host or null', () => {
     expect(redirectHost('https://claude.ai/x')).toBe('claude.ai');
     expect(redirectHost('nope')).toBeNull();
+  });
+});
+
+describe('OAuth grants', () => {
+  it('lists the grants', async () => {
+    const grants = [{ client: { id: 'c-1', name: 'Claude' }, scopes: ['email'], granted_at: '2026-09-01T00:00:00Z' }];
+    fetchMock.mockResolvedValue(jsonResponse(200, grants));
+    await expect(listOAuthGrants()).resolves.toEqual(grants);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://proj.supabase.co/auth/v1/user/oauth/grants');
+  });
+
+  it('throws when the grants response is not an array', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { nope: true }));
+    await expect(listOAuthGrants()).rejects.toMatchObject({ status: 502 });
+  });
+
+  it('revokes one grant with DELETE and the client id', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    await revokeOAuthGrant('c 1');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://proj.supabase.co/auth/v1/user/oauth/grants?client_id=c+1');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('throws when the revoke fails', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(403, { msg: 'forbidden' }));
+    await expect(revokeOAuthGrant('c-1')).rejects.toMatchObject({ status: 403, message: 'forbidden' });
   });
 });
 

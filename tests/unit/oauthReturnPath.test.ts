@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  authorizationIdFrom,
   CONSENT_RETURN_TTL_MS,
   consentPathFor,
   peekConsentReturnPath,
@@ -45,6 +46,14 @@ describe('sanitizeConsentPath', () => {
   it('rejects a value that is not a string', () => {
     expect(sanitizeConsentPath(null, ORIGIN)).toBeNull();
     expect(sanitizeConsentPath(42 as unknown as string, ORIGIN)).toBeNull();
+  });
+});
+
+describe('authorizationIdFrom', () => {
+  it('returns a safe id and rejects the rest', () => {
+    expect(authorizationIdFrom(new URLSearchParams(`authorization_id=${ID}`))).toBe(ID);
+    expect(authorizationIdFrom(new URLSearchParams('authorization_id=a%22b'))).toBeNull();
+    expect(authorizationIdFrom(new URLSearchParams(''))).toBeNull();
   });
 });
 

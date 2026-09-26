@@ -1,17 +1,12 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
+import { isConnectorRole } from '../../supabase/functions/_shared/connectorRoles';
 import {
   getAuthorization,
   submitConsent,
   type ConsentAction,
 } from '@/lib/oauthConsentApi';
-
-/**
- * Roles that the MCP connector refuses. Keep in sync with EXCLUDED_ROLES in
- * supabase/functions/_shared/mcpHandler.ts.
- */
-const CONNECTOR_EXCLUDED_ROLES = new Set(['staff', 'kiosk']);
 
 /**
  * Loads one OAuth authorization request and sends the user's decision.
@@ -32,17 +27,15 @@ export function useOAuthConsent(authorizationId: string | null, userId: string |
     refetchOnReconnect: false,
   });
 
-  const connectorRestaurants = useQuery({
-    queryKey: ['oauth-connector-restaurants', userId],
+  const connectorRestaurantCount = useQuery({
+    queryKey: ['oauth-connector-restaurant-count', userId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_restaurants')
         .select('role')
         .eq('user_id', userId as string);
       if (error) throw error;
-      return (data ?? []).filter(
-        (row) => typeof row.role === 'string' && !CONNECTOR_EXCLUDED_ROLES.has(row.role),
-      ).length;
+      return (data ?? []).filter((row) => isConnectorRole(row.role)).length;
     },
     enabled,
     staleTime: 30_000,
@@ -52,5 +45,5 @@ export function useOAuthConsent(authorizationId: string | null, userId: string |
     mutationFn: (action: ConsentAction) => submitConsent(authorizationId as string, action),
   });
 
-  return { authorization, connectorRestaurantCount: connectorRestaurants.data, decision };
+  return { authorization, connectorRestaurantCount, decision };
 }

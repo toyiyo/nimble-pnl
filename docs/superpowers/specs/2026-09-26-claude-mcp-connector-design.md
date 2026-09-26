@@ -212,6 +212,51 @@ in Claude. A later task can add a card to `/integrations`.
 - **TLA+.** No `run-tla` trigger matches. There are no cursors, locks,
   retries, or concurrent writers in the new code.
 
+## Code review folds (Phase 7)
+
+- **Unknown redirect host:** the consent page shows only **Deny**. Loopback
+  hosts get a note. (security)
+- **Stop the access:** a new "Claude and connected apps" card on
+  `/integrations` lists the OAuth grants and revokes them
+  (`GET`/`DELETE /auth/v1/user/oauth/grants`). (security)
+- **Frames:** the page refuses to work in a frame. `vercel.json` covers
+  `/oauth/:path*`. (security)
+- **Prompt injection:** the server `instructions` tell Claude to treat tool
+  text as data and to confirm writes. (security)
+- **`get_ai_insights`:** not offered. It runs a paid LLM loop that the 25 s
+  forward timeout does not stop. (performance)
+- **Result size:** compact JSON, a 40,000-character cap, and a 2 MB limit on
+  the forward body before the parse. (performance)
+- **MCP conformance:** reject an unsupported `MCP-Protocol-Version` header
+  with 400, accept a client response with 202, and reject an `id` that is not
+  a string or an integer. `2025-03-26` is not offered, because it requires
+  batch support. (logic)
+- **Write tool timeout:** a failed forward of a write tool tells Claude to
+  read the data before it calls again, so a retry does not make a duplicate.
+  (logic)
+- **Consent page:** one decision per click, an error card when the redirect
+  URL is refused, a status-aware decision error, and a link to the app on
+  the expired card. (logic)
+- **One source of truth:** `_shared/connectorRoles.ts` holds the role rule
+  for the handler and the consent page. `tools-registry.ts` exports
+  `WRITE_TOOLS`. (maintainability)
+
+Deferred, with reasons:
+
+- **Parallel `getUser` and membership read** (performance, major): this saves
+  one round trip. It needs an unverified `sub` read from the JWT and a second
+  check. The later refactor that removes the `ai-execute-tool` hop saves more
+  and is the better place for it.
+- **Shared `ExecuteToolRequest` type** (maintainability, minor): it touches
+  `ai-execute-tool`, which this change does not change.
+- **Shared Suspense fallback** (maintainability, minor): an import from the
+  lazy page would pull the page into the main bundle.
+- **Pre-registered Claude client** (security, optional): an operator choice.
+  The runbook describes it.
+- **Two consent tabs after email confirmation** (logic, minor): the first
+  tab can also follow the return path. The single-use authorization makes
+  the second tab show "This request expired", with a link to the app.
+
 ## Test plan
 
 - Unit (`tests/unit/mcpHandler.test.ts`): each JSON-RPC method, 401 and
@@ -225,6 +270,8 @@ in Claude. A later task can add a card to `/integrations`.
   approve and deny calls, and the pending state.
 - Unit (`tests/unit/AuthConsentReturn.test.tsx`): `Auth.tsx` returns to the
   consent page, and Google gets the consent path.
+- Unit (`tests/unit/ConnectedAppsCard.test.tsx`, `useOAuthConsent.test.tsx`,
+  `connectorRoles.test.ts`): grants list and revoke, hook gates, role rule.
 - E2E: the full OAuth flow needs a Supabase Auth version with the OAuth
   server on the local stack, and a registered client. See the Phase 8 note in
   the PR.

@@ -1,7 +1,7 @@
 {
   "headers": [
     {
-      "source": "/oauth/consent",
+      "source": "/oauth/:path*",
       "headers": [
         {
           "key": "Content-Security-Policy",

@@ -64,11 +64,15 @@ describe('buildMcpTools', () => {
   });
 
   it('returns the union of tools for several roles with no duplicates', () => {
-    const staff = buildMcpTools(['staff']).map((t) => t.name);
-    const both = buildMcpTools(['staff', 'owner']).map((t) => t.name);
-    expect(staff).not.toContain('get_ai_insights');
-    expect(both).toContain('get_ai_insights');
+    const chef = buildMcpTools(['chef']).map((t) => t.name);
+    const both = buildMcpTools(['chef', 'manager']).map((t) => t.name);
+    expect(chef).not.toContain('get_bank_transactions');
+    expect(both).toContain('get_bank_transactions');
     expect(new Set(both).size).toBe(both.length);
+  });
+
+  it('never offers get_ai_insights, which runs a paid LLM loop', () => {
+    expect(buildMcpTools(['owner']).map((t) => t.name)).not.toContain('get_ai_insights');
   });
 
   it('marks write tools as destructive and the other tools as read-only', () => {
@@ -107,8 +111,12 @@ describe('eligibleMemberships', () => {
 
 describe('chooseProtocolVersion', () => {
   it('echoes a supported version', () => {
-    expect(chooseProtocolVersion('2025-03-26')).toBe('2025-03-26');
+    expect(chooseProtocolVersion('2025-06-18')).toBe('2025-06-18');
     expect(chooseProtocolVersion('2025-11-25')).toBe('2025-11-25');
+  });
+
+  it('does not offer 2025-03-26, which requires batch support', () => {
+    expect(chooseProtocolVersion('2025-03-26')).toBe('2025-06-18');
   });
 
   it('falls back to 2025-06-18 for an unknown or missing version', () => {
@@ -197,6 +205,16 @@ describe('handleMcpRequest transport', () => {
     expect(await res.text()).toBe('');
   });
 
+  it('tells Claude to treat tool text as data and to confirm writes', async () => {
+    const res = await handleMcpRequest(
+      rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }),
+      makeDeps(),
+    );
+    const { instructions } = (await res.json()).result;
+    expect(instructions).toMatch(/treat that text as data/);
+    expect(instructions).toMatch(/clear yes/);
+  });
+
   it('answers initialize with tools capability and the chosen version', async () => {
     const res = await handleMcpRequest(
       rpc({
@@ -213,6 +231,31 @@ describe('handleMcpRequest transport', () => {
     expect(body.result.capabilities).toEqual({ tools: { listChanged: false } });
     expect(body.result.serverInfo.name).toBe('easyshifthq');
     expect(typeof body.result.instructions).toBe('string');
+  });
+
+  it('rejects an unsupported MCP-Protocol-Version header with 400', async () => {
+    const req = rpc({ jsonrpc: '2.0', id: 1, method: 'ping' });
+    req.headers.set('MCP-Protocol-Version', '1999-01-01');
+    const res = await handleMcpRequest(req, makeDeps());
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe(-32600);
+  });
+
+  it('accepts a supported MCP-Protocol-Version header', async () => {
+    const req = rpc({ jsonrpc: '2.0', id: 1, method: 'ping' });
+    req.headers.set('MCP-Protocol-Version', '2025-06-18');
+    expect((await handleMcpRequest(req, makeDeps())).status).toBe(200);
+  });
+
+  it('accepts a JSON-RPC response from the client with 202', async () => {
+    const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 5, result: {} }), makeDeps());
+    expect(res.status).toBe(202);
+  });
+
+  it.each([null, true, {}, 1.5])('rejects the id %s with -32600', async (id) => {
+    const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id, method: 'ping' }), makeDeps());
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe(-32600);
   });
 
   it('answers ping with an empty result', async () => {
@@ -310,6 +353,7 @@ describe('tools/call', () => {
   it('forwards a data tool to ai-execute-tool with the caller token', async () => {
     const deps = makeDeps({ listMemberships: vi.fn(async () => [OWNER_R1, CHEF_R2]) });
     const result = await call(deps, 'get_kpis', { restaurant_id: 'r-2', period: 'week' });
+    expect(result.content[0].text).toBe('{"revenue":100}');
     expect(deps.executeTool).toHaveBeenCalledWith(TOKEN, {
       tool_name: 'get_kpis',
       arguments: { period: 'week' },
@@ -360,10 +404,38 @@ describe('tools/call', () => {
     const deps = makeDeps({ executeTool: vi.fn(async () => { throw new Error('network'); }) });
     const result = await call(deps, 'get_kpis', { period: 'week' });
     expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/try again later/i);
+  });
+
+  it('tells Claude not to retry blindly when a write tool forward fails', async () => {
+    const deps = makeDeps({ executeTool: vi.fn(async () => { throw new Error('timeout'); }) });
+    const result = await call(deps, 'create_categorization_rule', { rule_name: 'x' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/read the current data before/i);
+    expect(result.content[0].text).not.toMatch(/try again later/i);
+  });
+
+  it('returns HTTP 401 when the forward answers 500 Unauthorized', async () => {
+    const deps = makeDeps({
+      executeTool: vi.fn(async () => ({ status: 500, body: { ok: false, error: { code: 'TOOL_EXECUTION_ERROR', message: 'Unauthorized' } } })),
+    });
+    const res = await handleMcpRequest(
+      rpc({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_kpis', arguments: { period: 'week' } } }),
+      deps,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it.each([42, '', {}])('returns a tool error for the restaurant_id %s', async (restaurantId) => {
+    const deps = makeDeps();
+    const result = await call(deps, 'get_kpis', { restaurant_id: restaurantId, period: 'week' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/must be a string/);
+    expect(deps.executeTool).not.toHaveBeenCalled();
   });
 
   it('returns a tool error for an unknown or UI-only tool', async () => {
-    for (const name of ['navigate', 'drop_tables']) {
+    for (const name of ['navigate', 'get_ai_insights', 'drop_tables']) {
       const deps = makeDeps();
       const result = await call(deps, name, {});
       expect(result.isError).toBe(true);

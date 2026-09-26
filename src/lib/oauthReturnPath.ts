@@ -2,11 +2,12 @@
  * Return path for the OAuth consent page (/oauth/consent).
  *
  * A signed-out user who opens the consent page must sign in first. Sign-in can
- * leave the tab (Google, SSO) or open a new tab (email confirmation), so the
- * path is kept in localStorage with a short TTL and is read once.
+ * leave the tab (Google, SSO) or open a new tab (email confirmation). This
+ * module therefore keeps the path in localStorage with a short TTL, and reads
+ * it once.
  *
- * Only the exact consent path with a safe authorization_id is accepted. This
- * blocks an open redirect through a stored or crafted value.
+ * The module accepts only the exact consent path with a safe authorization_id.
+ * This blocks an open redirect through a stored or crafted value.
  */
 
 export const CONSENT_PATH = '/oauth/consent';
@@ -21,9 +22,9 @@ export function consentPathFor(authorizationId: string): string {
 /** Returns the rebuilt consent path, or null if the value is not safe. */
 export function sanitizeConsentPath(value: unknown, origin: string): string | null {
   if (typeof value !== 'string' || value.length === 0) return null;
-  // Backslashes are read as slashes by browsers ("/\evil.com" is "//evil.com").
+  // Browsers read a backslash as a slash ("/\evil.com" is "//evil.com").
   if (value.includes('\\')) return null;
-  if (value.startsWith('/') && value.startsWith('//')) return null;
+  if (value.startsWith('//')) return null;
 
   let url: URL;
   try {
@@ -39,6 +40,12 @@ export function sanitizeConsentPath(value: unknown, origin: string): string | nu
   const id = url.searchParams.get('authorization_id');
   if (!id || !AUTHORIZATION_ID_PATTERN.test(id)) return null;
   return consentPathFor(id);
+}
+
+/** The checked authorization_id from the consent page query, or null. */
+export function authorizationIdFrom(searchParams: URLSearchParams): string | null {
+  const id = searchParams.get('authorization_id');
+  return id && AUTHORIZATION_ID_PATTERN.test(id) ? id : null;
 }
 
 function currentOrigin(): string {

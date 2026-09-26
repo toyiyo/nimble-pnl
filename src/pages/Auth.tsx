@@ -53,7 +53,6 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
-      // A Claude connector consent request sent the user here to sign in.
       const consentPath = takeConsentReturnPath();
       if (consentPath) {
         navigate(consentPath, { replace: true });

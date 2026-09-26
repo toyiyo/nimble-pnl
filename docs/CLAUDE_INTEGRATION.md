@@ -50,11 +50,14 @@ Claude ──(1) POST /functions/v1/mcp, no token──────────�
 | `get_financial_intelligence`, `get_bank_transactions`, `get_financial_statement`, `generate_report` | read | Manager or owner. |
 | `get_payroll_summary`, `get_time_punches`, `get_tip_summary` | read | Manager or owner. |
 | `get_pending_outflows`, `get_operating_costs`, `get_monthly_trends`, `get_expense_health`, `get_break_even_progress` | read | Manager or owner. |
-| `get_ai_insights` | read | Owner. |
 | `batch_categorize_transactions`, `batch_categorize_pos_sales`, `create_categorization_rule` | **write** | Manager or owner. Marked destructive, so Claude asks before it calls them. |
 
 Every tool except `list_restaurants` takes `restaurant_id`. A user with one
 restaurant can omit it.
+
+The connector does not offer `navigate` (UI only) or `get_ai_insights` (it runs
+a paid LLM loop with no time limit; Claude does the same analysis from the data
+tools).
 
 ## Production setup (one time)
 
@@ -115,9 +118,25 @@ Example questions:
 
 ## Stop the access
 
-- In Claude, delete the connector.
-- In EasyShiftHQ, sign out of all devices. This ends every session and every
-  token that Claude holds.
+1. In EasyShiftHQ, open **Integrations → Claude and connected apps**.
+2. Click **Revoke** next to the app. Supabase Auth deletes the grant, and the
+   tokens of that app stop working.
+3. In Claude, delete the connector.
+
+## Consent page protections
+
+- The page shows the host of the redirect URL.
+- A `claude.ai` or `claude.com` host over HTTPS gets **Allow**.
+- A loopback host (`localhost`, `127.0.0.1`) gets **Allow** and a note. Claude
+  Code and Claude Desktop use it.
+- Any other host gets **Deny** only. Dynamic registration is open, so any
+  party can register a client named "Claude". The host check stops a phishing
+  client from getting a token.
+- The page does not work inside a frame, and Vercel sends
+  `frame-ancestors 'none'` for `/oauth/*`.
+- Optional hardening: turn off dynamic registration, then register Claude's
+  client by hand. Give users the client ID for the claude.ai **Advanced
+  settings** or for `claude mcp add --client-id`.
 
 ## Smoke test
 

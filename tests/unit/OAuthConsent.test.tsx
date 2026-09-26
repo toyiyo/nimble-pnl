@@ -99,13 +99,60 @@ describe('OAuthConsent page', () => {
     expect(screen.queryByTestId('oauth-untrusted-host')).not.toBeInTheDocument();
   });
 
-  it('warns when the redirect host is not a known Claude host', async () => {
+  it('refuses Allow when the redirect host is not a Claude host', async () => {
     mockGetAuthorization.mockResolvedValue({
       kind: 'consent',
       details: { ...DETAILS, client: { ...DETAILS.client, name: 'Claude' }, redirect_uri: 'https://evil.example/cb' },
     });
     renderAt(`/oauth/consent?authorization_id=${ID}`);
     expect(await screen.findByTestId('oauth-untrusted-host')).toHaveTextContent('evil.example');
+    expect(screen.queryByRole('button', { name: 'Allow' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
+  });
+
+  it('shows a note and keeps Allow for a loopback redirect (Claude Code)', async () => {
+    mockGetAuthorization.mockResolvedValue({
+      kind: 'consent',
+      details: { ...DETAILS, redirect_uri: 'http://localhost:33418/callback' },
+    });
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    expect(await screen.findByTestId('oauth-loopback-host')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled();
+  });
+
+  it('shows a note when the restaurant check fails', async () => {
+    mockUserRestaurants.mockResolvedValue({ data: null, error: new Error('db') });
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    expect(await screen.findByTestId('oauth-restaurants-error')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled();
+  });
+
+  it('shows an error when the client redirect URL is refused', async () => {
+    mockGoToClientRedirect.mockReturnValue(false);
+    mockGetAuthorization.mockResolvedValue({ kind: 'redirect', redirectUrl: 'javascript:alert(1)' });
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/return address is not valid/i);
+  });
+
+  it('refuses to work inside a frame', async () => {
+    const spy = vi.spyOn(window, 'top', 'get').mockReturnValue({} as Window);
+    try {
+      renderAt(`/oauth/consent?authorization_id=${ID}`);
+      expect(await screen.findByRole('alert')).toHaveTextContent(/own window/i);
+      expect(mockGetAuthorization).not.toHaveBeenCalled();
+      expect(screen.queryByText('AUTH PAGE')).not.toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('shows an error when sign-out fails for a different account', async () => {
+    const signOut = vi.fn().mockRejectedValue(new Error('offline'));
+    mockUseAuth.mockReturnValue({ ...signedIn, signOut });
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    fireEvent.click(await screen.findByRole('button', { name: /use a different account/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not sign you out/i);
+    expect(screen.queryByText('AUTH PAGE')).not.toBeInTheDocument();
   });
 
   it('warns when the user has no restaurant that the connector can read', async () => {
@@ -146,6 +193,23 @@ describe('OAuthConsent page', () => {
     mockGetAuthorization.mockRejectedValue(new ConsentApiError('authorization not found', 404));
     renderAt(`/oauth/consent?authorization_id=${ID}`);
     expect(await screen.findByRole('alert')).toHaveTextContent(/expired or it was used/i);
+    expect(screen.getByRole('button', { name: /go to easyshifthq/i })).toBeInTheDocument();
+  });
+
+  it('sends only one decision on a double click', async () => {
+    mockSubmitConsent.mockReturnValue(new Promise(() => {}));
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    const allow = await screen.findByRole('button', { name: 'Allow' });
+    fireEvent.click(allow);
+    fireEvent.click(allow);
+    await waitFor(() => expect(mockSubmitConsent).toHaveBeenCalledTimes(1));
+  });
+
+  it('says start again when the decision fails because the request expired', async () => {
+    mockSubmitConsent.mockRejectedValue(new ConsentApiError('used', 400));
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/start the connection again in claude/i);
   });
 
   it('offers a sign-in again for a lapsed session', async () => {

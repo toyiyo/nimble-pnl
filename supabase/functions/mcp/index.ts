@@ -1,5 +1,5 @@
-// Remote MCP server for the Claude connector. Logic lives in
-// ../_shared/mcpHandler.ts; this file only wires Supabase and fetch.
+// Remote MCP server for the Claude connector. The logic is in
+// ../_shared/mcpHandler.ts. This file connects the handler to Supabase and fetch.
 //
 // JWT verification is off in config.toml because the handler must answer
 // 401 with a WWW-Authenticate header (MCP clients use it to find the OAuth
@@ -7,7 +7,7 @@
 // handler checks every JSON-RPC call with auth.getUser, and all data reads
 // run under the caller's JWT, so RLS applies.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { handleMcpRequest, type McpDeps, type Membership } from '../_shared/mcpHandler.ts';
 
 function requireEnv(name: string): string {
@@ -24,7 +24,14 @@ const PUBLIC_BASE_URL = (Deno.env.get('MCP_PUBLIC_SUPABASE_URL') ?? SUPABASE_URL
 const RESOURCE_URL = Deno.env.get('MCP_PUBLIC_URL') ?? `${PUBLIC_BASE_URL}/functions/v1/mcp`;
 const AUTH_ISSUER = Deno.env.get('MCP_AUTH_ISSUER') ?? `${PUBLIC_BASE_URL}/auth/v1`;
 const FORWARD_TIMEOUT_MS = 25_000;
+// A larger forward body is not parsed. The handler cuts tool text to 40 KB.
+const MAX_FORWARD_BODY_CHARS = 2_000_000;
 const EXECUTE_TOOL_URL = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/ai-execute-tool`;
+
+// auth.getUser(token) sends the token itself, so one shared client is enough.
+const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 
 function userClient(token: string) {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -38,7 +45,7 @@ const deps: McpDeps = {
   authIssuer: AUTH_ISSUER,
 
   async getUser(token) {
-    const { data, error } = await userClient(token).auth.getUser(token);
+    const { data, error } = await authClient.auth.getUser(token);
     if (error || !data.user) return null;
     return { id: data.user.id };
   },
@@ -74,9 +81,16 @@ const deps: McpDeps = {
       // the handler returns a tool error.
       signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
     });
+    const text = await response.text();
+    if (text.length > MAX_FORWARD_BODY_CHARS) {
+      return {
+        status: 413,
+        body: { ok: false, error: { message: 'The result is too large. Ask for a shorter period or a narrower filter.' } },
+      };
+    }
     let body: unknown = null;
     try {
-      body = await response.json();
+      body = JSON.parse(text);
     } catch {
       body = null;
     }

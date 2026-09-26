@@ -100,9 +100,11 @@ function omitIsActive({ is_active: _active, ...rest }: CategoryRow): ListedCateg
 }
 
 type LookupResult = { data: CategoryRow | null; error: { message: string } | null };
+type LookupListResult = { data: CategoryRow[] | null; error: { message: string } | null };
 
-interface LookupQuery {
-  eq(column: string, value: string): LookupQuery;
+/** A query that gives one row with maybeSingle(), or all rows when awaited. */
+interface LookupQuery extends PromiseLike<LookupListResult> {
+  eq(column: string, value: string | boolean): LookupQuery;
   maybeSingle(): PromiseLike<LookupResult>;
 }
 
@@ -134,12 +136,35 @@ async function findBy(
 }
 
 /**
- * Finds a category of the restaurant by its id or by its account code.
+ * The active accounts of the restaurant whose name equals `name`, trimmed and
+ * not case-sensitive. The compare runs here and not in an ilike pattern, so
+ * `%` or `_` in the name is not a wildcard.
+ */
+async function findActiveByName(
+  supabase: CategoryLookupClient,
+  restaurantId: string,
+  name: string,
+): Promise<CategoryRow[]> {
+  const { data, error } = await supabase
+    .from('chart_of_accounts')
+    .select(CATEGORY_COLUMNS)
+    .eq('restaurant_id', restaurantId)
+    .eq('is_active', true);
+  if (error) throw new Error(`Category lookup failed: ${error.message}`);
+  const needle = name.toLowerCase();
+  return (data ?? []).filter((row) => row.account_name.trim().toLowerCase() === needle);
+}
+
+/**
+ * Finds a category of the restaurant by its id, its account code, or its
+ * exact name, in that order.
  *
- * - The ref is trimmed. Its case is kept, because the unique key
- *   (restaurant_id, account_code) is case-sensitive.
+ * - The ref is trimmed. Its case is kept for the code, because the unique
+ *   key (restaurant_id, account_code) is case-sensitive.
  * - A UUID is looked up as an id first, then as a code: account_code is free
  *   text, so a code can have the shape of a UUID.
+ * - A name is used only when exactly one active account has it. Names are
+ *   not unique, so two matches return an error with their codes.
  * - A database error is thrown, so it does not show as "not found".
  * - An inactive account is refused.
  */
@@ -151,7 +176,7 @@ export async function resolveCategoryRef(
   const value = typeof ref === 'string' ? ref.trim() : '';
   const notFound: CategoryRefResult = {
     ok: false,
-    message: `Unknown category "${value}". Use a category id or an account code from list_categories.`,
+    message: `Unknown category "${value}". Use a category id, account code, or exact name from list_categories.`,
   };
   if (!value) return notFound;
 
@@ -160,6 +185,19 @@ export async function resolveCategoryRef(
     category = await findBy(supabase, restaurantId, 'id', value);
   }
   category ??= await findBy(supabase, restaurantId, 'account_code', value);
+
+  if (!category) {
+    const byName = await findActiveByName(supabase, restaurantId, value.toLowerCase());
+    if (byName.length > 1) {
+      return {
+        ok: false,
+        message: `Category name "${value}" matches ${byName.length} categories: ${byName
+          .map((row) => row.account_code)
+          .join(', ')}. Use the account code.`,
+      };
+    }
+    category = byName[0] ?? null;
+  }
 
   if (!category) return notFound;
   if (!category.is_active) {

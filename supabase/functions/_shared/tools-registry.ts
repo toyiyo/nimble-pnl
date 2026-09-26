@@ -710,7 +710,7 @@ export function getTools(
     tools.push(
       {
         name: 'list_categories',
-        description: 'List the chart of accounts categories of the restaurant: id, account code, name, type, subtype, parent, and active flag, sorted by account code. The categorization tools take the id or the account code in category_id. Inactive categories are left out unless include_inactive is true.',
+        description: 'List the chart of accounts categories of the restaurant: id, account code, name, type, subtype, parent, and active flag, sorted by account code. The categorization tools take the id, the account code, or the exact name in category_id. Inactive categories are left out unless include_inactive is true.',
         parameters: {
           type: 'object',
           properties: {
@@ -745,7 +745,7 @@ export function getTools(
             },
             category_id: {
               type: 'string',
-              description: 'Category to assign: its id or its account code (for example 4000), from list_categories'
+              description: 'Category to assign: its id, its account code (for example 4000), or its exact name, from list_categories'
             },
             preview: {
               type: 'boolean',
@@ -774,7 +774,7 @@ export function getTools(
             },
             category_id: {
               type: 'string',
-              description: 'Category to assign: its id or its account code (for example 4000), from list_categories'
+              description: 'Category to assign: its id, its account code (for example 4000), or its exact name, from list_categories'
             },
             preview: {
               type: 'boolean',
@@ -811,7 +811,7 @@ export function getTools(
             },
             category_id: {
               type: 'string',
-              description: 'Category to assign when matched: its id or its account code (for example 4000), from list_categories'
+              description: 'Category to assign when matched: its id, its account code (for example 4000), or its exact name, from list_categories'
             },
             source: {
               type: 'string',

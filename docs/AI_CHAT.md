@@ -130,16 +130,59 @@ if (userRole !== 'owner') {
 
 ### Testing
 
-1. **Local Development**:
-   - Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env`
-   - Set `OPENROUTER_API_KEY` in Supabase Edge Function secrets
-   - Run `npm run dev`
+The chat has four test layers. Run all of them when you change a tool, the
+registry, the stream, or the chat hook.
 
-2. **Edge Function Testing**:
-   ```bash
-   supabase functions deploy ai-chat-stream
-   supabase functions deploy ai-execute-tool
-   ```
+1. **Unit tests (Vitest)** — `npm run test`.
+   - `tests/unit/tools-registry.test.ts`: tool visibility, role and capability
+     gates, `missingRequiredArgs`, and "every dispatcher case has a registry
+     entry".
+   - `tests/unit/aiToolFormatters.test.ts`: the pure result formatters in
+     `supabase/functions/_shared/aiToolFormatters.ts`.
+   - `tests/unit/aiToolFormatterWiring.test.ts`,
+     `tests/unit/aiChatStreamToolList.test.ts`,
+     `tests/unit/aiExecuteToolArgValidation.test.ts`: source checks on the
+     Deno entry files, which Vitest cannot import.
+   - `tests/unit/useAiChat.test.tsx`, `tests/unit/ChatMessage.test.tsx`: the
+     chat hook (multi-round tool calls) and the message component.
+   - Mock a PostgREST call with a builder that has `then()` only. A mock that
+     returns a real `Promise` hides a `.catch()` call on the builder. That
+     defect gave HTTP 500 on four tools from 2026-08-18 to 2026-09-26.
+2. **Type tests** — `npm run typecheck:types`. `tests/unit/types/capabilityRpc.test.ts`
+   fails if the capability client type allows `.catch()` again.
+3. **Database tests (pgTAP)** — `npm run test:db`. `22_ai_chat_persistence.sql`
+   covers the chat tables and RLS. `ai_tool_projections.test.sql` pins the
+   columns that the tools select. The RPC files `27_`, `36_`-`43_` cover the
+   RPCs that the tools call.
+4. **E2E (Playwright)** — `tests/e2e/ai-chat.spec.ts`. CI does not serve edge
+   functions, so the spec mocks `ai-chat-stream` and `ai-execute-tool` with
+   `page.route`.
+
+#### Live check against local Supabase
+
+Unit tests do not run the SQL in the tools. Before a release, call every tool
+as every role on a seeded local database:
+
+1. `npx supabase start`, then seed one restaurant with users for each role and
+   with sales, inventory, bank, labor, tip and cost data.
+2. `npx supabase functions serve --no-verify-jwt`.
+3. For each role and each tool, POST to `/functions/v1/ai-execute-tool` with
+   the user's JWT. Compare HTTP 403 against `canUseTool` and the
+   `user_has_capability` RPC. Every allowed call must return `ok: true`.
+4. Compare the owner results with the seeded values (units, totals, dates).
+5. Call each tool with `{}`. Only calls that cannot run may return
+   `INVALID_ARGUMENTS`.
+6. To test `ai-chat-stream` without an OpenRouter key, point its fetch at a
+   local mock that returns OpenRouter SSE chunks. Cover a tool round trip, two
+   tool rounds, `MALFORMED_FUNCTION_CALL`, HTTP 500 and 403 fallback, and all
+   models failing.
+
+#### Deploy
+
+```bash
+supabase functions deploy ai-chat-stream
+supabase functions deploy ai-execute-tool
+```
 
 ## Future Enhancements
 

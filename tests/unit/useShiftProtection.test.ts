@@ -4,6 +4,7 @@
  * Contracts pinned here:
  * - useShiftProtection merges the RPC result over the everything-off
  *   defaults and fails open (defaults) while disabled or on error.
+ *   hasData is true only when the settings come from the server.
  * - useTimeoffDayCounts gates on complete, ordered inputs and passes the
  *   four RPC parameters through.
  * - useTimeoffCoverageImpact maps the jsonb shape and defaults the empty
@@ -65,6 +66,7 @@ describe('useShiftProtection', () => {
     expect(result.current.protection.timeoff_notice_days).toBe(10);
     // Untouched knobs keep the defaults.
     expect(result.current.protection.trade_deadline_mode).toBe('off');
+    expect(result.current.hasData).toBe(true);
   });
 
   it('returns the defaults while disabled (no restaurant)', () => {
@@ -72,6 +74,7 @@ describe('useShiftProtection', () => {
       wrapper: createWrapper(),
     });
     expect(result.current.protection).toEqual(SHIFT_PROTECTION_DEFAULTS);
+    expect(result.current.hasData).toBe(false);
     expect(mockSupabase.rpc).not.toHaveBeenCalled();
   });
 
@@ -83,6 +86,7 @@ describe('useShiftProtection', () => {
     });
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.protection).toEqual(SHIFT_PROTECTION_DEFAULTS);
+    expect(result.current.hasData).toBe(false);
   });
 });
 

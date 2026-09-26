@@ -4,15 +4,16 @@ import { WeekScheduleState } from '@/hooks/useSchedulePublish';
 import { SchedulePublication } from '@/types/scheduling';
 import { formatDayLabel, formatLocalDateInTz, formatLocalHHMMInTz } from '@/lib/shiftInterval';
 
-/** The fixed-height slot every state renders into; see the banner's own doc comment. */
-function slot(children: ReactNode): JSX.Element {
-  return <div className="min-h-[76px]">{children}</div>;
-}
-
 interface ScheduleStatusBannerProps {
   state: WeekScheduleState | null;
   publication: SchedulePublication | null;
   timezone: string;
+  /**
+   * Keep the fixed-height slot. Default true. Turn it off when other content
+   * sits above the banner: the empty slot then shows as a gap. With no
+   * reserved height and no content, the banner renders nothing.
+   */
+  reserveHeight?: boolean;
 }
 
 /**
@@ -35,7 +36,14 @@ export function ScheduleStatusBanner({
   state,
   publication,
   timezone,
-}: ScheduleStatusBannerProps): JSX.Element {
+  reserveHeight = true,
+}: ScheduleStatusBannerProps): JSX.Element | null {
+  // The fixed-height slot that every state renders into. See the doc comment above.
+  const slot = (children: ReactNode): JSX.Element | null => {
+    if (!reserveHeight && !children) return null;
+    return <div className={reserveHeight ? 'min-h-[76px]' : undefined}>{children}</div>;
+  };
+
   // Loading, or the lookup failed. A wrong line is worse than no line.
   if (!state) return slot(null);
 

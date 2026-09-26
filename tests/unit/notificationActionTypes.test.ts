@@ -3,6 +3,7 @@ import {
   SHIFT_ACTION_TYPE,
   TRADE_ACTION_TYPE,
   TIME_OFF_ACTION_TYPE,
+  TRADE_REMINDER_TYPE,
 } from '../../supabase/functions/_shared/notificationActionTypes';
 import { NOTIFICATION_TYPES, type NotificationType } from '../../src/lib/notificationTypes';
 
@@ -62,5 +63,28 @@ describe('TIME_OFF_ACTION_TYPE', () => {
   it('the approved/rejected types gate both email and push', () => {
     expect(channelsFor(TIME_OFF_ACTION_TYPE.approved)).toEqual(expect.arrayContaining(['email', 'push']));
     expect(channelsFor(TIME_OFF_ACTION_TYPE.rejected)).toEqual(expect.arrayContaining(['email', 'push']));
+  });
+});
+
+describe('TRADE_REMINDER_TYPE', () => {
+  it('maps the employee and unclaimed reminders to their catalog keys', () => {
+    expect(TRADE_REMINDER_TYPE).toEqual({
+      employee: 'shift_trade_reminder',
+      unclaimed: 'shift_trade_unclaimed',
+    });
+  });
+
+  it('every mapped type is a real catalog key', () => {
+    for (const type of Object.values(TRADE_REMINDER_TYPE)) {
+      expect(CATALOG_KEYS.has(type)).toBe(true);
+    }
+  });
+
+  it('the employee reminder is push only', () => {
+    expect(channelsFor(TRADE_REMINDER_TYPE.employee)).toEqual(['push']);
+  });
+
+  it('the unclaimed reminder gates email and push', () => {
+    expect(channelsFor(TRADE_REMINDER_TYPE.unclaimed)).toEqual(['email', 'push']);
   });
 });

@@ -5,12 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useMyShifts } from '@/hooks/useShifts';
-import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
-import { useRestaurantClock } from '@/hooks/useRestaurantClock';
-import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -24,6 +18,15 @@ import {
   ShiftRow,
 } from '@/components/employee';
 import { NextShiftCard } from '@/components/employee/NextShiftCard';
+import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useMyShifts } from '@/hooks/useShifts';
+import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
+import { useClaimableTrades } from '@/hooks/useClaimableTrades';
+import { useOpenShifts } from '@/hooks/useOpenShifts';
 import {
   Clock,
   ChevronLeft,
@@ -47,6 +50,7 @@ import { toBusinessDay, businessDayRangeToInstants } from '@/lib/restaurantClock
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { formatLocalDate, wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
 import { useNowTick } from '@/hooks/useNowTick';
+import { useMarketplaceRange } from '@/hooks/useMarketplaceRange';
 import {
   computeScheduleFingerprint,
   hasScheduleChangedSinceSeen,
@@ -55,6 +59,8 @@ import {
 } from '@/lib/scheduleSeenFingerprint';
 import { getRelativeWeekLabel, getRestaurantWeekStart } from '@/lib/scheduleWeek';
 import { selectUpcomingShifts, countShiftsInWeek } from '@/lib/nextShift';
+import { shouldShowUpForGrabs } from '@/lib/claimableTrades';
+import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
 import { Shift } from '@/types/scheduling';
 
 const EmployeeSchedule = () => {
@@ -168,6 +174,26 @@ const EmployeeSchedule = () => {
     () => selectUpcomingShifts(anchorShifts ?? [], new Date(nowTick), 5),
     [anchorShifts, nowTick]
   );
+
+  // "Teammates need cover": open trades this employee can accept now.
+  const {
+    trades: claimableTrades,
+    loading: claimableLoading,
+    error: claimableError,
+    refetch: refetchClaimable,
+  } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null, nowTick);
+
+  const openShiftRange = useMarketplaceRange(nowTick);
+  const showUpForGrabs = shouldShowUpForGrabs(claimableTrades, claimableLoading, claimableError);
+  const hasUrgentTrade = showUpForGrabs && claimableTrades.some((t) => t.isUrgent);
+
+  // Only the card footer reads the open shifts, so the query waits for the card.
+  const {
+    openShifts,
+    loading: openShiftsLoading,
+    error: openShiftsError,
+  } = useOpenShifts(showUpForGrabs ? restaurantId : null, openShiftRange.start, openShiftRange.end);
+  const openShiftCount = openShiftsLoading || openShiftsError ? null : openShifts.length;
 
   const { publishes: restaurantPublishes } = useRestaurantPublishes(
     restaurantId,
@@ -335,6 +361,19 @@ const EmployeeSchedule = () => {
 
   const isLoading = shiftsLoading;
 
+  const upForGrabsCard = (
+    <UpForGrabsCard
+      trades={claimableTrades}
+      loading={claimableLoading}
+      error={claimableError}
+      onRetry={() => refetchClaimable()}
+      restaurantId={restaurantId}
+      timezone={restaurantTimezone}
+      now={new Date(nowTick)}
+      openShiftCount={openShiftCount}
+    />
+  );
+
   return (
     <div className="space-y-6">
       {/* Header — focusable anchor: MyShiftTradesCard returns focus here when a
@@ -349,20 +388,29 @@ const EmployeeSchedule = () => {
           title="My Schedule"
           subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
         />
-        <Link to="/employee/shifts" className="w-full sm:w-auto">
-          <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
-            <ArrowLeftRight className="h-4 w-4 mr-2" />
-            Browse Available Shifts
-          </Button>
-        </Link>
+        {/* The card footer takes this job when the card shows. */}
+        {!showUpForGrabs && (
+          <Link to={MARKETPLACE_PATH} className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
+              <ArrowLeftRight className="h-4 w-4 mr-2" />
+              Browse Available Shifts
+            </Button>
+          </Link>
+        )}
       </div>
+
+      {/* A trade that starts in 24 h or less goes above the status line. */}
+      {hasUrgentTrade && upForGrabsCard}
 
       {/* One quiet "Published {date}" line, or nothing. Never a warning. */}
       <ScheduleStatusBanner
         state={state}
         publication={publication}
         timezone={restaurantTimezone}
+        reserveHeight={!hasUrgentTrade}
       />
+
+      {!hasUrgentTrade && upForGrabsCard}
 
       {/* My shift trades — poster tracker + claimant status */}
       <MyShiftTradesCard

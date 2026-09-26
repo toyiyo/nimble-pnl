@@ -11,13 +11,20 @@ import { useEffect, useState } from 'react';
  * only on the fetched rows never re-runs while a shift is open with no new
  * punches — freezing "now" at first compute. This ticker gives such memos a
  * value that actually advances. Only ticks while the tab is visible.
+ *
+ * With `enabled: false`, the hook starts no interval. A hook that takes the
+ * time from its caller uses this, so the page keeps one interval.
  */
-export function useNowTick(periodMs: number = 60_000): number {
+export function useNowTick(
+  periodMs: number = 60_000,
+  { enabled = true }: { enabled?: boolean } = {},
+): number {
   // Guard against a busy interval from an invalid period (0, negative, NaN, ∞).
   const intervalMs = Number.isFinite(periodMs) && periodMs > 0 ? periodMs : 60_000;
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
+    if (!enabled) return;
     const update = () => {
       if (document.visibilityState === 'visible') setNowMs(Date.now());
     };
@@ -29,7 +36,7 @@ export function useNowTick(periodMs: number = 60_000): number {
       window.removeEventListener('visibilitychange', update);
       window.removeEventListener('focus', update);
     };
-  }, [intervalMs]);
+  }, [intervalMs, enabled]);
 
   return nowMs;
 }

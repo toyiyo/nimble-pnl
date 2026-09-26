@@ -56,6 +56,20 @@ export interface ShiftTrade {
 export type ShiftTradeStatus = ShiftTrade['status'];
 
 /**
+ * A row from `useMarketplaceTrades`. The marketplace query does not select
+ * the review columns, so the type does not carry them. The query drops a
+ * row without its shift or its poster, so both relations are always set.
+ */
+export type MarketplaceTrade = Omit<
+  ShiftTrade,
+  'manager_note' | 'reviewed_by' | 'reviewed_at' | 'offered_shift' | 'offered_by'
+> & {
+  offered_shift: NonNullable<ShiftTrade['offered_shift']>;
+  offered_by: NonNullable<ShiftTrade['offered_by']>;
+  hasConflict?: boolean;
+};
+
+/**
  * Guard against ghost joins: drop trades whose poster or shift row was deleted.
  * Structurally typed (not `ShiftTrade`) because useMarketplaceTrades filters
  * supabase-inferred rows whose `status: string` is wider than the union.
@@ -644,22 +658,42 @@ export const useDeleteShiftTrade = () => {
 /**
  * Hook to get marketplace trades (available for any employee to accept)
  * Filters out trades where current employee has conflicts
+ *
+ * `options.enabled` (default true) lets a caller hold the query until it
+ * knows the employee. Without it, a page with no employee still sends a
+ * request.
  */
 export const useMarketplaceTrades = (
   restaurantId: string | null,
-  currentEmployeeId: string | null
+  currentEmployeeId: string | null,
+  options: { enabled?: boolean } = {}
 ) => {
+  const enabled = options.enabled ?? true;
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace_trades', restaurantId, currentEmployeeId],
-    queryFn: async () => {
+    queryFn: async (): Promise<MarketplaceTrade[]> => {
       if (!restaurantId) return [];
 
-      // Get open trades (marketplace or not targeted at specific employee)
+      const nowIso = new Date().toISOString();
+
+      // Get open trades (marketplace or not targeted at specific employee).
+      // Explicit columns in place of `*` keep the badge query small. The
+      // inner embed lets the server drop trades whose shift already ended.
       let query = supabase
         .from('shift_trades')
         .select(`
-          *,
-          offered_shift:shifts!offered_shift_id(
+          id,
+          restaurant_id,
+          offered_shift_id,
+          offered_by_employee_id,
+          requested_shift_id,
+          target_employee_id,
+          accepted_by_employee_id,
+          status,
+          reason,
+          created_at,
+          updated_at,
+          offered_shift:shifts!offered_shift_id!inner(
             id,
             start_time,
             end_time,
@@ -675,7 +709,8 @@ export const useMarketplaceTrades = (
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'open');
+        .eq('status', 'open')
+        .gt('offered_shift.end_time', nowIso);
 
       // Filter by target employee if provided
       if (currentEmployeeId) {
@@ -685,23 +720,31 @@ export const useMarketplaceTrades = (
         query = query.is('target_employee_id', null);
       }
 
-      const { data: trades, error: tradesError } = await query.order('created_at', { ascending: false });
+      // Both reads need only the employee id, so send them at the same time.
+      // Only a shift that ends after now can overlap an open future trade.
+      const [tradesResult, shiftsResult] = await Promise.all([
+        query.order('created_at', { ascending: false }),
+        currentEmployeeId
+          ? supabase
+              .from('shifts')
+              .select('start_time, end_time')
+              .eq('employee_id', currentEmployeeId)
+              .gte('end_time', nowIso)
+              .in('status', ['scheduled', 'confirmed'])
+          : Promise.resolve({ data: null, error: null }),
+      ]);
 
+      const { data: trades, error: tradesError } = tradesResult;
       if (tradesError) throw tradesError;
 
-      const validTrades = (trades || []).filter(hasValidJoins);
+      // The generated types read `status` as `string`, which is wider than the union.
+      const validTrades = (trades || []).filter(hasValidJoins) as unknown as MarketplaceTrade[];
 
       if (!currentEmployeeId || validTrades.length === 0) {
         return validTrades;
       }
 
-      // Get current employee's shifts to check for conflicts
-      const { data: employeeShifts, error: shiftsError } = await supabase
-        .from('shifts')
-        .select('start_time, end_time')
-        .eq('employee_id', currentEmployeeId)
-        .in('status', ['scheduled', 'confirmed']);
-
+      const { data: employeeShifts, error: shiftsError } = shiftsResult;
       if (shiftsError) throw shiftsError;
 
       // Filter out trades that would create conflicts
@@ -728,7 +771,7 @@ export const useMarketplaceTrades = (
 
       return filteredTrades;
     },
-    enabled: !!restaurantId,
+    enabled: enabled && !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });

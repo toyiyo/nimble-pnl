@@ -231,20 +231,22 @@ export function writePayloadKey(args: Record<string, unknown>): string {
     if (Array.isArray(value)) {
       const items = value.map(canonical);
       return items.every((v) => typeof v !== 'object' || v === null)
-        ? [...items].sort((a, b) => String(a).localeCompare(String(b)))
+        ? [...items].sort((a, b) => (JSON.stringify(a) ?? '').localeCompare(JSON.stringify(b) ?? ''))
         : items;
     }
     if (value && typeof value === 'object') {
       return Object.fromEntries(
         Object.keys(value as Record<string, unknown>)
-          .sort()
+          .sort((a, b) => a.localeCompare(b))
           .map((k) => [k, canonical((value as Record<string, unknown>)[k])])
       );
     }
     return value;
   };
-  const { preview: _preview, confirmed: _confirmed, ...rest } = args;
-  return JSON.stringify(canonical(rest));
+  const payload = Object.fromEntries(
+    Object.entries(args).filter(([key]) => key !== 'preview' && key !== 'confirmed')
+  );
+  return JSON.stringify(canonical(payload));
 }
 
 /** True when a tool message holds a result with ok: true. */

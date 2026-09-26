@@ -17,6 +17,18 @@ export const DEFAULT_PROTOCOL_VERSION = '2025-06-18';
 const SERVER_VERSION = '1.0.0';
 const METADATA_SUFFIX = '/.well-known/oauth-protected-resource';
 
+/**
+ * Scopes that Claude asks for. MCP clients take the scope from the
+ * WWW-Authenticate header first, then from scopes_supported.
+ *
+ * Do not add `openid`. With `openid`, Supabase Auth must sign an ID token.
+ * The project signs tokens with the legacy HS256 secret, and the token
+ * exchange then fails with "HS256 is not supported for ID token signing".
+ * `offline_access` keeps the refresh token, so Claude does not reconnect
+ * every hour.
+ */
+export const MCP_SCOPES = ['email', 'offline_access'] as const;
+
 /** Tools that change data. Claude asks the user before it calls them. */
 export const MCP_WRITE_TOOLS = WRITE_TOOLS;
 const WRITE_TOOL_SET: ReadonlySet<string> = new Set(WRITE_TOOLS);
@@ -191,7 +203,9 @@ function unauthorized(deps: McpDeps, detail: string): Response {
   return json(
     { error: 'unauthorized', error_description: detail },
     401,
-    { 'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl(deps)}"` },
+    {
+      'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl(deps)}", scope="${MCP_SCOPES.join(' ')}"`,
+    },
   );
 }
 
@@ -344,6 +358,7 @@ export async function handleMcpRequest(req: Request, deps: McpDeps): Promise<Res
       resource: deps.resourceUrl,
       authorization_servers: [deps.authIssuer],
       bearer_methods_supported: ['header'],
+      scopes_supported: [...MCP_SCOPES],
       resource_name: 'EasyShiftHQ',
     });
   }

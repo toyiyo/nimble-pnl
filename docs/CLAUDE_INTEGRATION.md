@@ -174,6 +174,7 @@ curl -s -X POST "$URL" -H 'Content-Type: application/json' -H "Authorization: Be
 
 | Symptom | Cause and fix |
 |---------|---------------|
+| Claude says "Authorization with EasyShiftHQ failed" after **Allow**, and the Auth log shows `HS256 is not supported for ID token signing`. | Claude asked for `openid`. `mcp` must advertise `scope="email offline_access"` and never `openid`. Do not rotate to asymmetric keys to fix it: that can break the `verify_jwt = true` functions. |
 | Claude says that it cannot find the OAuth server. | The OAuth server is off, or dynamic registration is off. Do setup step 1. |
 | The consent page shows "This request expired". | The authorization is single use and expires. Start the connection again in Claude. |
 | After Google sign-in, the user lands on the dashboard. | The redirect URL is not allowed. Do setup step 3. |

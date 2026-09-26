@@ -543,7 +543,6 @@ async function calculateCashFlow(
 
   const days = dailyRows || [];
   const txCount = Number(summaryRows?.[0]?.tx_count ?? 0);
-  // Totals cover the whole requested period (not 7 days).
   results.cash_flow = {
     ...buildCashFlowSummary(days, start_date, end_date),
     transaction_count: txCount,
@@ -1287,7 +1286,6 @@ async function executeGetSalesSummary(
     });
     if (topItemsError) throw new Error(`get_top_sold_items failed: ${topItemsError.message}`);
 
-    // quantity_sold is units (sum of quantity); line_count is the row count.
     itemsBreakdown = mapTopSoldItems(topItems);
   }
 
@@ -2879,7 +2877,6 @@ async function executeGetExpenseHealth(
     .eq('is_active', true);
 
   const totalCashBalance = (balances || []).reduce((sum: number, b: any) => sum + Number(b.current_balance), 0);
-  // Null multiplier (not 0) when the period has no labor cost: no false alert.
   const cashCoverage = computeCashCoverage(totalCashBalance, laborCost);
 
   // Determine status
@@ -3529,6 +3526,14 @@ async function executeCreateCategorizationRule(
   return { ok: false, error: { code: 'INVALID_REQUEST', message: 'Must specify preview:true or confirmed:true' } };
 }
 
+/** JSON response with { ok: false, error } for the dispatcher. */
+function toolErrorResponse(status: number, error: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ ok: false, error }), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -3586,69 +3591,33 @@ serve(async (req) => {
     if (isCapabilityGatedTool(tool_name)) {
       const allowed = await canUseCapabilityGatedTool(tool_name, restaurant_id, supabase);
       if (!allowed) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            error: {
-              code: 'TOOL_PERMISSION_DENIED',
-              message: `You don't have permission to use ${tool_name}.`,
-              tool: tool_name,
-              required_capability: 'view:scheduling or view:payroll',
-            },
-          }),
-          {
-            status: 403,
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
+        return toolErrorResponse(403, {
+          code: 'TOOL_PERMISSION_DENIED',
+          message: `You don't have permission to use ${tool_name}.`,
+          tool: tool_name,
+          required_capability: 'view:scheduling or view:payroll',
+        });
       }
     } else if (!canUseTool(tool_name, userRestaurant.role)) {
       const requiredRole = requiredRoleFor(tool_name);
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: {
-            code: 'TOOL_PERMISSION_DENIED',
-            message: `You don't have permission to use ${tool_name}.`,
-            tool: tool_name,
-            required_role: requiredRole,
-          },
-        }),
-        {
-          status: 403,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      return toolErrorResponse(403, {
+        code: 'TOOL_PERMISSION_DENIED',
+        message: `You don't have permission to use ${tool_name}.`,
+        tool: tool_name,
+        required_role: requiredRole,
+      });
     }
 
     // Reject a call with missing required arguments before any DB read. The
     // answer is in band (HTTP 200, ok:false), so the model reads the names.
     const missing = missingRequiredArgs(tool_name, args);
     if (missing.length > 0) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: {
-            code: 'INVALID_ARGUMENTS',
-            message: `Missing required argument(s) for ${tool_name}: ${missing.join(', ')}.`,
-            tool: tool_name,
-            missing,
-          },
-        }),
-        {
-          status: 200,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      return toolErrorResponse(200, {
+        code: 'INVALID_ARGUMENTS',
+        message: `Missing required argument(s) for ${tool_name}: ${missing.join(', ')}.`,
+        tool: tool_name,
+        missing,
+      });
     }
 
     // "Today" for the tools is the restaurant's local day (see restaurantDate.ts).
@@ -3764,21 +3733,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Failed to execute tool';
     console.error('Tool execution error:', error);
     
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: {
-          code: 'TOOL_EXECUTION_ERROR',
-          message: errorMessage,
-        },
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    return toolErrorResponse(500, {
+      code: 'TOOL_EXECUTION_ERROR',
+      message: errorMessage,
+    });
   }
 });

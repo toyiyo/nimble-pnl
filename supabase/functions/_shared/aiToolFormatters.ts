@@ -1,4 +1,3 @@
-// supabase/functions/_shared/aiToolFormatters.ts
 // Pure helpers that shape ai-execute-tool results for the model.
 // No Deno imports, so Vitest can import this file.
 
@@ -65,8 +64,9 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Count the days from start to end (YYYY-MM-DD), both days included. */
 function inclusiveDays(startDate: string, endDate: string): number {
-  const start = Date.parse(`${startDate.slice(0, 10)}T00:00:00Z`);
-  const end = Date.parse(`${endDate.slice(0, 10)}T00:00:00Z`);
+  // String(): the model can send a number. NaN then gives 0 days.
+  const start = Date.parse(`${String(startDate ?? '').slice(0, 10)}T00:00:00Z`);
+  const end = Date.parse(`${String(endDate ?? '').slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) return 0;
   return Math.round((end - start) / MS_PER_DAY) + 1;
 }
@@ -104,14 +104,17 @@ export interface CashCoverage {
   alert: string | null;
 }
 
+const COVERAGE_GOOD = 2;
+const COVERAGE_CAUTION = 1.5;
+
 /** Cash coverage before payroll. With no labor cost, the ratio has no meaning. */
 export function computeCashCoverage(cashBalance: number, laborCost: number): CashCoverage {
-  if (!(laborCost > 0)) {
+  const multiplier = laborCost > 0 ? cashBalance / laborCost : Number.NaN;
+  if (!Number.isFinite(multiplier)) {
     return { multiplier: null, status: 'not_applicable', alert: null };
   }
-  const multiplier = cashBalance / laborCost;
-  if (multiplier >= 2) return { multiplier, status: 'good', alert: null };
-  if (multiplier >= 1.5) return { multiplier, status: 'caution', alert: null };
+  if (multiplier >= COVERAGE_GOOD) return { multiplier, status: 'good', alert: null };
+  if (multiplier >= COVERAGE_CAUTION) return { multiplier, status: 'caution', alert: null };
   return {
     multiplier,
     status: 'critical',

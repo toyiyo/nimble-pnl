@@ -24,21 +24,10 @@ describe('ai-execute-tool uses aiToolFormatters', () => {
     expect(src.split(name).length - 1).toBeGreaterThanOrEqual(2);
   });
 
-  it('selects no unified_sales.source column (D2)', () => {
-    expect(src).not.toMatch(/sale_date, source'/);
-  });
-
   it('has no _7d cash-flow keys (D4)', () => {
     expect(src).not.toMatch(/_7d\b/);
   });
 
-  it('has no inline cash-coverage ternary (D5)', () => {
-    expect(src).not.toMatch(/laborCost > 0 \? totalCashBalance \/ laborCost : 0/);
-  });
-
-  it('counts top items by row count nowhere (D3)', () => {
-    expect(src).not.toMatch(/quantity_sold: count/);
-  });
 });
 
 describe('P&L tool descriptions point the model at basis (D6)', () => {

@@ -17,8 +17,8 @@ export interface ToolDefinition {
  * @param restaurantId The restaurant ID for scoping
  * @param userRole User's role (owner, manager, viewer)
  * @param options.hasSchedulingOrPayroll Result of hasSchedulingOrPayrollCapability.
- *   When false, the capability-gated tools are omitted, because the dispatcher
- *   denies them. When undefined, the list does not depend on the capability.
+ *   When it is false, getTools omits the capability-gated tools, because the
+ *   dispatcher denies them. When it is undefined, the capability has no effect.
  * @returns Array of tool definitions
  */
 export function getTools(
@@ -917,18 +917,24 @@ export function canUseTool(toolName: string, userRole: string): boolean {
 
 let allToolsByName: Map<string, ToolDefinition> | undefined;
 
+// The check does not enforce period. Every handler with a period has a
+// default window (calculateDateRange: last 7 days; get_kpis and
+// get_sales_summary: month). Calls without period worked before this check.
+const DEFAULTED_ARGS = new Set(['period']);
+
 /**
  * Return the required fields of a tool call that are missing. A value of
- * null, undefined or '' counts as missing. When args is not a plain object
+ * null or undefined, a blank string, or an empty array counts as missing. When args is not a plain object
  * (for example the raw string of bad JSON from the model), every required
  * field is missing. Uses the full registry, not a role-filtered list.
  * Returns [] for an unknown tool; the dispatcher rejects those itself.
- *
- * period is not enforced: every handler with a period has a default window
- * (calculateDateRange: last 7 days; get_kpis and get_sales_summary: month),
- * and calls without it worked before this check.
  */
-const DEFAULTED_ARGS = new Set(['period']);
+function isMissingValue(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
 
 export function missingRequiredArgs(toolName: string, args: unknown): string[] {
   allToolsByName ??= new Map(getTools('', 'owner').map((tool) => [tool.name, tool]));
@@ -936,10 +942,10 @@ export function missingRequiredArgs(toolName: string, args: unknown): string[] {
     (field) => !DEFAULTED_ARGS.has(field)
   );
   if (typeof args !== 'object' || args === null || Array.isArray(args)) {
-    return [...required];
+    return required;
   }
   const values = args as Record<string, unknown>;
-  return required.filter((field) => values[field] === undefined || values[field] === null || values[field] === '');
+  return required.filter((field) => isMissingValue(values[field]));
 }
 
 /**

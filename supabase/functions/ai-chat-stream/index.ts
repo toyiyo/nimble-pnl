@@ -538,10 +538,8 @@ serve(async (req) => {
       ? `   - **get_labor_costs: REQUIRED for labor cost questions (aggregate totals available to all roles)**
      * For per-employee detail (hours, cost, days worked) pass include_employee_breakdown: true. The employee_breakdown field is populated for manager/owner callers and null for everyone else.
      * Example: "What's my labor cost this week?" → get_labor_costs with period: "week"
-     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours
-`
-      : `   - Labor cost and schedule tools are not available to this user. Labor data needs the view:scheduling or view:payroll permission. Tell the user this; do not estimate labor figures.
-`;
+     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours`
+      : `   - Labor cost and schedule tools are not available to this user. Labor data needs the view:scheduling or view:payroll permission. Tell the user this; do not estimate labor figures.`;
 
     // Add system message if not present
     const systemMessage = {
@@ -670,7 +668,8 @@ FINANCIAL DATA RULES:
      * Example: "Generate monthly P&L" → use type: 'monthly_pnl', then format the returned data as a table
 
 5. Labor & Time Punches:
-${laborToolsPrompt}   - **get_time_punches (manager+owner only): REQUIRED to answer "who worked when" or to drill into specific shifts**
+${laborToolsPrompt}
+   - **get_time_punches (manager+owner only): REQUIRED to answer "who worked when" or to drill into specific shifts**
      * Returns one row per work period (clock-in/out pair) with hours and breaks deducted, joined to employee name/position.
      * Filter by employee_id, position, or min_hours when the user asks about a specific person, role, or full shifts only.
      * cost_cents is populated for hourly employees (proportional share of period total) and null for salary/contractor/daily_rate (cost is period-allocated, not hours-allocated).

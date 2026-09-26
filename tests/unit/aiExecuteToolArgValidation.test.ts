@@ -18,7 +18,7 @@ describe('ai-execute-tool checks required arguments (D10)', () => {
   it('answers in band with HTTP 200 and INVALID_ARGUMENTS', () => {
     const block = src.slice(check, permissionEnd);
     expect(block).toContain("code: 'INVALID_ARGUMENTS'");
-    expect(block).toMatch(/status: 200/);
+    expect(block).toMatch(/toolErrorResponse\(200,/);
     expect(block).toMatch(/missing/);
   });
 });

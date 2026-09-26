@@ -434,7 +434,7 @@ describe('tools-registry: labor tool descriptions explain pay_hidden', () => {
 
 describe('tools-registry: getTools follows the scheduling/payroll capability (D9)', () => {
   // Without view:scheduling or view:payroll the dispatcher denies these two
-  // tools. Offering them makes the model call a tool that returns 403.
+  // tools. When the list has them, the model calls a tool that returns 403.
   it('omits the capability-gated tools when hasSchedulingOrPayroll is false', () => {
     const names = getTools('rest-1', 'staff', { hasSchedulingOrPayroll: false }).map((t) => t.name);
     for (const gated of CAPABILITY_GATED_TOOLS) {
@@ -481,6 +481,15 @@ describe('tools-registry: missingRequiredArgs (D10)', () => {
     expect(missingRequiredArgs('navigate', { section: null })).toEqual(['section']);
     expect(missingRequiredArgs('navigate', { section: undefined })).toEqual(['section']);
     expect(missingRequiredArgs('navigate', { section: '' })).toEqual(['section']);
+  });
+
+  it('treats a whitespace-only string and an empty array as missing', () => {
+    expect(missingRequiredArgs('get_bank_transactions', { start_date: '  ', end_date: '2026-09-30' })).toEqual([
+      'start_date',
+    ]);
+    expect(missingRequiredArgs('batch_categorize_transactions', { transaction_ids: [], category_id: 'c1' })).toEqual([
+      'transaction_ids',
+    ]);
   });
 
   it('reports every required field when args is not a plain object', () => {

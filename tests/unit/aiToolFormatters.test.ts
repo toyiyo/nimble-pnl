@@ -83,6 +83,13 @@ describe('buildCashFlowSummary', () => {
     expect(out.volatility).toBeCloseTo(1500, 6);
   });
 
+  it('gives period_days 0 for a date that is not a string', () => {
+    // The model can send a number. The formatter must not throw.
+    const out = buildCashFlowSummary(days, 20260901 as unknown as string, '2026-09-02');
+    expect(out.period_days).toBe(0);
+    expect(out.avg_daily_cash_flow).toBe(0);
+  });
+
   it('handles null days', () => {
     expect(buildCashFlowSummary(null, '2026-09-01', '2026-09-02')).toMatchObject({
       inflows: 0, outflows: 0, net_cash_flow: 0, volatility: 0,
@@ -93,6 +100,10 @@ describe('buildCashFlowSummary', () => {
 describe('computeCashCoverage', () => {
   it('is not applicable when labor cost is 0', () => {
     expect(computeCashCoverage(25000, 0)).toEqual({ multiplier: null, status: 'not_applicable', alert: null });
+  });
+
+  it('is not applicable when the balance is not a number', () => {
+    expect(computeCashCoverage(Number.NaN, 1000)).toEqual({ multiplier: null, status: 'not_applicable', alert: null });
   });
 
   it('is critical with an alert below 1.5x', () => {

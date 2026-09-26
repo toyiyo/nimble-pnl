@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { signInWithOAuthNative } from '@/utils/nativeRedirect';
+import { postAuthRedirectPath } from '@/lib/oauthReturnPath';
 
 interface SSOConfig {
   sso_enabled: boolean;
@@ -73,7 +74,7 @@ export const useSSO = () => {
           break;
       }
 
-      const { error } = await signInWithOAuthNative(oauthProvider as 'google' | 'github' | 'azure' | 'linkedin_oidc', '/');
+      const { error } = await signInWithOAuthNative(oauthProvider as 'google' | 'github' | 'azure' | 'linkedin_oidc', postAuthRedirectPath());
 
       if (error) {
         throw error;

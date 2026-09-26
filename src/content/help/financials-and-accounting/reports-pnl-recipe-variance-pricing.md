@@ -5,7 +5,7 @@ summary: "The Reports page gives you seven analytical tabs — P&L Trends, P&L D
 audience: ["owner", "manager", "accountant", "chef"]
 order: 120
 keywords: ["reports", "P&L", "recipe profitability", "variance", "supplier pricing", "food cost", "export", "CSV"]
-related: ["financial-statements", "menu-item-recipes", "inventory-reconciliation", "weekly-brief-performance-digest"]
+related: ["financial-statements", "menu-item-recipes", "inventory-reconciliation"]
 ---
 
 # Use the Reports Page: P&L, Recipes, Variance, and Pricing
@@ -159,4 +159,3 @@ Revenue Mix only includes sales that have been categorized in your chart of acco
 
 - [Financial Statements](/help/financial-statements)
 - [Inventory Reconciliation](/help/inventory-reconciliation)
-- [Weekly Brief & Performance Digest](/help/weekly-brief-performance-digest)

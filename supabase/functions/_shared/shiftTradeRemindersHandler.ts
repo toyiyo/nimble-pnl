@@ -1,0 +1,456 @@
+// Orchestration for the shift-trade-reminders worker. The entry file wires
+// the real clients into this dependency interface. The tests inject mocks
+// and a clock.
+//
+// Order for each candidate:
+//   1. Check the run budget. If it is used up, count the rest as deferred.
+//   2. Read the push targets: the audience for an employee stage, or the
+//      schedulers and the poster for `unclaimed`. This read is read-only, so
+//      it can come before the claim. A read error: count skipped, no claim.
+//      If the targets do not fit the rest of the push budget, count this
+//      candidate and the rest as deferred.
+//   3. Claim the (trade, stage). A false claim means another run sent it,
+//      or the trade is no longer open: count skipped and do not send.
+//   4. Check the channels. All channels off: count skipped. The claim stays.
+//   5. Send. Log counts and ids only. Never log an email address or a name.
+//
+// The claim comes BEFORE the send. A crash after the claim loses one
+// reminder. A crash never sends the same stage two times (TLA+ model
+// specs/tla/shift-trade-reminders/ShiftTradeReminders.tla).
+
+import { sendPaced, type EmailSendResult } from './emailQueue.ts';
+import { truncateError } from './emailSendSummary.ts';
+import type { ChannelDecision, NotificationType } from './resolveChannels.ts';
+import { TRADE_REMINDER_TYPE } from './notificationActionTypes.ts';
+import {
+  buildEmployeeReminderPush,
+  buildPosterUnclaimedPush,
+  buildSchedulerUnclaimedEmail,
+  buildSchedulerUnclaimedPush,
+  type EmployeeReminderStage,
+  type ReminderPush,
+  type ReminderShiftInfo,
+} from './shiftTradeReminderContent.ts';
+
+/** Wall-clock budget for one run. The rest stay due for the next tick. */
+export const RUN_BUDGET_MS = 60_000;
+/**
+ * Push-target budget for one run. It is the same as the per-call cap in
+ * webPushHelper.ts, so one call never drops targets.
+ */
+export const MAX_PUSH_TARGETS = 500;
+/** p_limit for the candidates RPC. */
+export const CANDIDATE_LIMIT = 50;
+/** Most candidate pages in one run. */
+export const MAX_CANDIDATE_PAGES = 10;
+/**
+ * Smallest email budget for one candidate. The run budget is checked before
+ * the claim, so a claim near the end of the run still gets time to email.
+ */
+const MIN_EMAIL_BUDGET_MS = 15_000;
+
+const LOG_PREFIX = '[shift-trade-reminders]';
+
+export type ReminderStage = EmployeeReminderStage | 'unclaimed';
+
+export interface ReminderCandidateRow {
+  shift_trade_id: string;
+  restaurant_id: string;
+  stage: ReminderStage;
+  start_time: string;
+  end_time: string;
+  position: string | null;
+  is_published: boolean | null;
+  offered_by_name: string | null;
+  restaurant_name: string | null;
+  restaurant_timezone: string | null;
+}
+
+export interface UnclaimedRecipientRow {
+  user_id: string;
+  email: string | null;
+  kind: 'scheduler' | 'poster';
+}
+
+/** Keyset cursor: the last row of the page before. */
+export type CandidateCursor = Pick<ReminderCandidateRow, 'start_time' | 'shift_trade_id' | 'stage'>;
+
+interface FetchResult<T> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+export interface ShiftTradeRemindersDeps {
+  /** `after` is null for the first page. */
+  fetchCandidates: (
+    nowIso: string,
+    limit: number,
+    after: CandidateCursor | null,
+  ) => Promise<FetchResult<ReminderCandidateRow[]>>;
+  claim: (tradeId: string, stage: ReminderStage) => Promise<FetchResult<boolean>>;
+  resolveChannels: (restaurantId: string, type: NotificationType) => Promise<ChannelDecision>;
+  fetchAudience: (tradeId: string) => Promise<FetchResult<Array<{ user_id: string }>>>;
+  fetchUnclaimedRecipients: (tradeId: string) => Promise<FetchResult<UnclaimedRecipientRow[]>>;
+  /** `skipped` counts the targets that the push helper did not process. */
+  sendPush: (
+    userIds: string[],
+    restaurantId: string,
+    payload: ReminderPush,
+  ) => Promise<{ sent: number; skipped: number }>;
+  sendEmail: (to: string, subject: string, html: string) => Promise<EmailSendResult>;
+  /** Epoch milliseconds. */
+  now: () => number;
+  /** Injectable for tests; sendPaced uses it for pacing. */
+  sleep?: (ms: number) => Promise<void>;
+  log?: (line: string) => void;
+  logError?: (line: string) => void;
+  appUrl: string;
+}
+
+export interface ShiftTradeRemindersResult {
+  candidates: number;
+  claimed: number;
+  pushed: number;
+  emailed: number;
+  skipped: number;
+  deferred: number;
+  error?: string;
+}
+
+interface CandidateOutcome {
+  pushed: number;
+  pushTargets: number;
+  emailed: number;
+}
+
+interface Loggers {
+  log: (line: string) => void;
+  logError: (line: string) => void;
+}
+
+const errorText = (err: unknown): string =>
+  truncateError(err instanceof Error ? err.message : String(err));
+
+function emptyOutcome(): CandidateOutcome {
+  return { pushed: 0, pushTargets: 0, emailed: 0 };
+}
+
+function toShiftInfo(row: ReminderCandidateRow): ReminderShiftInfo {
+  return {
+    tradeId: row.shift_trade_id,
+    restaurantId: row.restaurant_id,
+    restaurantName: row.restaurant_name,
+    restaurantTimezone: row.restaurant_timezone,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    position: row.position,
+    isPublished: row.is_published,
+    posterName: row.offered_by_name,
+  };
+}
+
+/**
+ * Sends one payload in chunks of MAX_PUSH_TARGETS, so the push helper never
+ * drops a target. The target count excludes the targets that the helper skipped.
+ * Between two chunks, it checks the wall-clock budget. When the budget is
+ * used up, it stops and logs the unsent count. The claim stays, so the
+ * unsent targets do not get this stage.
+ */
+async function pushInChunks(
+  deps: ShiftTradeRemindersDeps,
+  row: ReminderCandidateRow,
+  userIds: string[],
+  payload: ReminderPush,
+  runStartedAt: number,
+  { log }: Loggers,
+): Promise<{ sent: number; targets: number }> {
+  const total = { sent: 0, targets: 0 };
+  for (let i = 0; i < userIds.length; i += MAX_PUSH_TARGETS) {
+    if (i > 0 && deps.now() - runStartedAt >= RUN_BUDGET_MS) {
+      log(
+        `${LOG_PREFIX} push stopped at budget trade=${row.shift_trade_id} stage=${row.stage} ` +
+          `unsent=${userIds.length - i}`,
+      );
+      break;
+    }
+    const chunk = userIds.slice(i, i + MAX_PUSH_TARGETS);
+    const res = await deps.sendPush(chunk, row.restaurant_id, payload);
+    if (res.skipped > 0) {
+      log(`${LOG_PREFIX} push skipped trade=${row.shift_trade_id} skipped=${res.skipped}`);
+    }
+    total.sent += res.sent;
+    total.targets += chunk.length - res.skipped;
+  }
+  return total;
+}
+
+async function sendEmployeeStage(
+  deps: ShiftTradeRemindersDeps,
+  row: ReminderCandidateRow,
+  stage: EmployeeReminderStage,
+  userIds: string[],
+  runStartedAt: number,
+  loggers: Loggers,
+): Promise<CandidateOutcome> {
+  const outcome = emptyOutcome();
+  if (userIds.length === 0) return outcome;
+
+  const payload = buildEmployeeReminderPush(toShiftInfo(row), stage, new Date(deps.now()));
+  const res = await pushInChunks(deps, row, userIds, payload, runStartedAt, loggers);
+  outcome.pushed += res.sent;
+  outcome.pushTargets += res.targets;
+  return outcome;
+}
+
+/** The unclaimed recipients, split by kind. */
+interface UnclaimedTargets {
+  schedulers: UnclaimedRecipientRow[];
+  posterIds: string[];
+}
+
+function splitRecipients(recipients: UnclaimedRecipientRow[]): UnclaimedTargets {
+  return {
+    schedulers: recipients.filter((r) => r.kind === 'scheduler'),
+    posterIds: recipients.filter((r) => r.kind === 'poster').map((r) => r.user_id),
+  };
+}
+
+async function sendUnclaimedStage(
+  deps: ShiftTradeRemindersDeps,
+  row: ReminderCandidateRow,
+  { schedulers, posterIds }: UnclaimedTargets,
+  channels: ChannelDecision,
+  runStartedAt: number,
+  loggers: Loggers,
+): Promise<CandidateOutcome> {
+  const { logError } = loggers;
+  const outcome = emptyOutcome();
+  const info = toShiftInfo(row);
+
+  if (channels.push) {
+    // Each push is independent. A failure in one must not stop the other.
+    const pushTo = async (
+      label: 'scheduler' | 'poster',
+      userIds: string[],
+      buildPush: (info: ReminderShiftInfo) => ReminderPush,
+    ): Promise<void> => {
+      if (userIds.length === 0) return;
+      try {
+        const res = await pushInChunks(deps, row, userIds, buildPush(info), runStartedAt, loggers);
+        outcome.pushed += res.sent;
+        outcome.pushTargets += res.targets;
+      } catch (err) {
+        logError(`${LOG_PREFIX} ${label} push failed trade=${row.shift_trade_id}: ${errorText(err)}`);
+      }
+    };
+    await Promise.all([
+      pushTo('scheduler', schedulers.map((r) => r.user_id), buildSchedulerUnclaimedPush),
+      pushTo('poster', posterIds, buildPosterUnclaimedPush),
+    ]);
+  }
+
+  if (channels.email) {
+    const emailTargets = schedulers.filter(
+      (r): r is UnclaimedRecipientRow & { email: string } => Boolean(r.email),
+    );
+    if (emailTargets.length > 0) {
+      const email = buildSchedulerUnclaimedEmail(info, new Date(deps.now()), deps.appUrl);
+      const remainingMs = RUN_BUDGET_MS - (deps.now() - runStartedAt);
+      const results = await sendPaced(
+        emailTargets,
+        (r) => deps.sendEmail(r.email, email.subject, email.html),
+        {
+          sleep: deps.sleep,
+          now: deps.now,
+          budgetMs: Math.max(remainingMs, MIN_EMAIL_BUDGET_MS),
+          label: 'shift-trade-reminders',
+        },
+      );
+      for (const r of results) {
+        if (r.ok) {
+          outcome.emailed += 1;
+        } else {
+          // The user id only. truncateError removes an echoed address.
+          const reason = r.error ? truncateError(r.error) : `HTTP ${r.status}`;
+          logError(
+            `${LOG_PREFIX} email failed trade=${row.shift_trade_id} user=${r.recipient.user_id}: ${reason}`,
+          );
+        }
+      }
+    }
+  }
+
+  return outcome;
+}
+
+/** Shared state for one run. processCandidate changes `result` and `pushTargets`. */
+interface RunContext {
+  deps: ShiftTradeRemindersDeps;
+  loggers: Loggers;
+  runStartedAt: number;
+  result: ShiftTradeRemindersResult;
+  /** Push targets used in this run. */
+  pushTargets: number;
+  channelsFor: (restaurantId: string, type: NotificationType) => Promise<ChannelDecision>;
+}
+
+/**
+ * Processes one candidate: read, budget check, claim, channel gate, send.
+ * Returns 'defer' when the candidate does not fit the rest of the push
+ * budget. The caller then counts this candidate and the rest as deferred.
+ */
+async function processCandidate(row: ReminderCandidateRow, ctx: RunContext): Promise<'done' | 'defer'> {
+  const { deps, loggers, result } = ctx;
+  const { log, logError } = loggers;
+  const stage = row.stage;
+  const isUnclaimed = stage === 'unclaimed';
+
+  try {
+    // Read the push targets before the claim. The read is read-only, so the
+    // claim still comes before the send. On a read error, do not claim:
+    // the next run tries this stage again.
+    let audience: string[] = [];
+    let unclaimed: UnclaimedTargets = { schedulers: [], posterIds: [] };
+    if (isUnclaimed) {
+      const recipientsRes = await deps.fetchUnclaimedRecipients(row.shift_trade_id);
+      if (recipientsRes.error) {
+        logError(`${LOG_PREFIX} recipients read failed trade=${row.shift_trade_id}: ${truncateError(recipientsRes.error.message)}`);
+        result.skipped += 1;
+        return 'done';
+      }
+      unclaimed = splitRecipients(recipientsRes.data ?? []);
+    } else {
+      const audienceRes = await deps.fetchAudience(row.shift_trade_id);
+      if (audienceRes.error) {
+        logError(`${LOG_PREFIX} audience read failed trade=${row.shift_trade_id}: ${truncateError(audienceRes.error.message)}`);
+        result.skipped += 1;
+        return 'done';
+      }
+      audience = (audienceRes.data ?? []).map((r) => r.user_id);
+    }
+
+    // An empty run sends a large target list in chunks. Otherwise the
+    // targets must fit the rest of the push budget.
+    const targetCount = isUnclaimed
+      ? unclaimed.schedulers.length + unclaimed.posterIds.length
+      : audience.length;
+    if (ctx.pushTargets > 0 && ctx.pushTargets + targetCount > MAX_PUSH_TARGETS) {
+      return 'defer';
+    }
+
+    const claim = await deps.claim(row.shift_trade_id, stage);
+    if (claim.error) {
+      logError(`${LOG_PREFIX} claim failed trade=${row.shift_trade_id} stage=${stage}: ${truncateError(claim.error.message)}`);
+      result.skipped += 1;
+      return 'done';
+    }
+    if (claim.data !== true) {
+      result.skipped += 1;
+      return 'done';
+    }
+    result.claimed += 1;
+
+    const type = isUnclaimed ? TRADE_REMINDER_TYPE.unclaimed : TRADE_REMINDER_TYPE.employee;
+    const channels = await ctx.channelsFor(row.restaurant_id, type);
+    const allOff = isUnclaimed ? !channels.email && !channels.push : !channels.push;
+    if (allOff) {
+      result.skipped += 1;
+      log(`${LOG_PREFIX} channels off trade=${row.shift_trade_id} stage=${stage} restaurant=${row.restaurant_id}`);
+      return 'done';
+    }
+
+    const outcome = isUnclaimed
+      ? await sendUnclaimedStage(deps, row, unclaimed, channels, ctx.runStartedAt, loggers)
+      : await sendEmployeeStage(deps, row, stage, audience, ctx.runStartedAt, loggers);
+
+    ctx.pushTargets += outcome.pushTargets;
+    result.pushed += outcome.pushed;
+    result.emailed += outcome.emailed;
+
+    log(
+      `${LOG_PREFIX} sent trade=${row.shift_trade_id} stage=${stage} restaurant=${row.restaurant_id} ` +
+        `push_targets=${outcome.pushTargets} pushed=${outcome.pushed} emailed=${outcome.emailed}`,
+    );
+  } catch (err) {
+    // One failed candidate must not stop the loop. The claim stays.
+    logError(`${LOG_PREFIX} send failed trade=${row.shift_trade_id} stage=${stage}: ${errorText(err)}`);
+  }
+  return 'done';
+}
+
+export async function runShiftTradeReminders(
+  deps: ShiftTradeRemindersDeps,
+): Promise<ShiftTradeRemindersResult> {
+  const log = deps.log ?? ((line: string) => console.log(line));
+  const logError = deps.logError ?? ((line: string) => console.error(line));
+  const runStartedAt = deps.now();
+  const nowIso = new Date(runStartedAt).toISOString();
+  const result: ShiftTradeRemindersResult = {
+    candidates: 0,
+    claimed: 0,
+    pushed: 0,
+    emailed: 0,
+    skipped: 0,
+    deferred: 0,
+  };
+
+  // The channel settings do not change in one run, so read them one time
+  // for each (restaurant, type).
+  const channelCache = new Map<string, ChannelDecision>();
+  const ctx: RunContext = {
+    deps,
+    loggers: { log, logError },
+    runStartedAt,
+    result,
+    pushTargets: 0,
+    channelsFor: async (restaurantId, type) => {
+      const key = `${restaurantId}:${type}`;
+      let decision = channelCache.get(key);
+      if (!decision) {
+        decision = await deps.resolveChannels(restaurantId, type);
+        channelCache.set(key, decision);
+      }
+      return decision;
+    },
+  };
+
+  const outOfBudget = () =>
+    deps.now() - runStartedAt >= RUN_BUDGET_MS || ctx.pushTargets >= MAX_PUSH_TARGETS;
+  // The next page starts after the last row of this page, so a row that
+  // stays due (no claim) does not come back and does not block later rows.
+  let cursor: CandidateCursor | null = null;
+  let stopped = false;
+
+  for (let page = 0; page < MAX_CANDIDATE_PAGES && !stopped; page++) {
+    if (page > 0 && outOfBudget()) break;
+
+    const candidatesRes = await deps.fetchCandidates(nowIso, CANDIDATE_LIMIT, cursor);
+    if (candidatesRes.error) {
+      logError(`${LOG_PREFIX} candidates read failed: ${truncateError(candidatesRes.error.message)}`);
+      result.error = candidatesRes.error.message;
+      break;
+    }
+    const candidates = candidatesRes.data ?? [];
+    result.candidates += candidates.length;
+
+    for (let i = 0; i < candidates.length; i++) {
+      if (outOfBudget() || (await processCandidate(candidates[i], ctx)) === 'defer') {
+        result.deferred += candidates.length - i;
+        stopped = true;
+        break;
+      }
+    }
+
+    // A short page means no more rows are due.
+    if (candidates.length < CANDIDATE_LIMIT) break;
+    const last = candidates[candidates.length - 1];
+    cursor = { start_time: last.start_time, shift_trade_id: last.shift_trade_id, stage: last.stage };
+  }
+
+  log(
+    `${LOG_PREFIX} candidates=${result.candidates} claimed=${result.claimed} pushed=${result.pushed} ` +
+      `emailed=${result.emailed} skipped=${result.skipped} deferred=${result.deferred}`,
+  );
+
+  return result;
+}

@@ -49,7 +49,7 @@ export function ClockAuditBar({
   onFilterChange,
 }: Readonly<ClockAuditBarProps>) {
   const toFix = summary.missingClock + summary.timeMismatch;
-  const info = summary.unscheduledClock + summary.inProgress;
+  const info = summary.unscheduledClock + summary.inProgress + summary.draft;
 
   const chips: ChipDef[] = [
     {

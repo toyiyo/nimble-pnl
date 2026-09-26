@@ -29,6 +29,7 @@ import { toDateOnlyString } from '@/lib/dateOnly';
 // Generic chainable Supabase query-builder mock: every method returns
 // `this` so any chain shape resolves, and the builder is thenable so
 // `await supabase.from(...).select()...` resolves to { data: [], error: null }.
+// `.range()` (a keyset page) and `.or()` also return the chain.
 type SupabaseChain = Record<string, unknown> & {
   then: (resolve: (v: { data: unknown[]; error: null }) => void) => void;
 };
@@ -36,7 +37,7 @@ type SupabaseChain = Record<string, unknown> & {
 function makeChainable(): SupabaseChain {
   const chain = {} as SupabaseChain;
   const methods = [
-    'select', 'eq', 'in', 'order', 'maybeSingle',
+    'select', 'eq', 'in', 'order', 'or', 'range', 'maybeSingle',
   ];
   methods.forEach((m) => {
     chain[m] = vi.fn(() => chain);

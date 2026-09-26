@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import posthog from 'posthog-js';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
 import { classifyInvitationError } from '@/lib/invitationUtils';
-import { storeSignupPath } from '@/lib/analytics';
+import { storeSignupPath, recordTeamMemberJoined } from '@/lib/analytics';
 
 interface InvitationDetails {
   email: string;
@@ -20,6 +21,34 @@ interface InvitationDetails {
   restaurant: { name: string; address?: string } | null;
   invited_by: string;
   expires_at: string;
+}
+
+// Stored invitation emails can carry mixed case (historical rows), and
+// GoTrue lowercases the account email — compare case-insensitively.
+function emailsMatch(userEmail: string | undefined, invitationEmail: string): boolean {
+  return !!userEmail && userEmail.toLowerCase() === invitationEmail.toLowerCase();
+}
+
+function InvitationSpinnerCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}): JSX.Element {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <Clock className="w-6 h-6 text-primary animate-spin" />
+          </div>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  );
 }
 
 export function AcceptInvitation() {
@@ -31,7 +60,7 @@ export function AcceptInvitation() {
   const [accepting, setAccepting] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
-  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'needs_auth'>('loading');
+  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'needs_auth' | 'email_mismatch'>('loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -39,11 +68,21 @@ export function AcceptInvitation() {
 
   const token = searchParams.get('token');
 
+  // One-shot guard for the automatic accept. Without it, a user object
+  // identity change (session refresh) re-runs the effect and fires a
+  // second accept. The manual Accept button stays as the retry path.
+  const acceptAttemptedRef = useRef(false);
+
+  // Wait for auth to settle: validateInvitation reads `user` from this
+  // render's closure, and while authLoading is true that value is null.
+  // A validation that runs too early classifies a signed-in invitee as
+  // needs_auth and strands them on a signup form (the case-study user
+  // hit this at the second open of their invite link).
   useEffect(() => {
-    if (token) {
+    if (token && !authLoading) {
       validateInvitation();
     }
-  }, [token]);
+  }, [token, authLoading]);
 
   useEffect(() => {
     if (!token) return;
@@ -55,18 +94,21 @@ export function AcceptInvitation() {
   }, [token, invitation?.role]);
 
   useEffect(() => {
-    if (user && invitation && user.email === invitation.email) {
-      if (status === 'valid') {
-        acceptInvitation();
-      }
-    } else if (user && invitation && user.email !== invitation.email) {
-      toast({
-        title: "Email Mismatch",
-        description: `This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`,
-        variant: "destructive",
-      });
-      setStatus('invalid');
+    if (!user || !invitation) return;
+    if (!emailsMatch(user.email, invitation.email)) {
+      setStatus('email_mismatch');
+      return;
     }
+    // A session can arrive while the page still shows the auth forms
+    // (sign-in from another tab). Promote to valid so the accept runs
+    // instead of leaving a signed-in user on a signup form.
+    if (status === 'needs_auth') {
+      setStatus('valid');
+      return;
+    }
+    if (status !== 'valid' || acceptAttemptedRef.current) return;
+    acceptAttemptedRef.current = true;
+    acceptInvitation();
   }, [user, invitation, status]);
 
   const validateInvitation = async () => {
@@ -96,19 +138,12 @@ export function AcceptInvitation() {
         setInvitation(data.invitation);
         setEmail(data.invitation.email);
 
-        if (user) {
-          if (user.email === data.invitation.email) {
-            setStatus('valid');
-          } else {
-            toast({
-              title: "Email Mismatch",
-              description: `This invitation was sent to ${data.invitation.email}, but you're logged in as ${user.email}`,
-              variant: "destructive",
-            });
-            setStatus('invalid');
-          }
-        } else {
+        if (!user) {
           setStatus('needs_auth');
+        } else if (emailsMatch(user.email, data.invitation.email)) {
+          setStatus('valid');
+        } else {
+          setStatus('email_mismatch');
         }
       } else {
         throw new Error(data.error || 'Invalid invitation');
@@ -134,6 +169,8 @@ export function AcceptInvitation() {
 
       if (data.success) {
         setStatus('accepted');
+        // The real join signal — the membership row now exists.
+        recordTeamMemberJoined(posthog, { source: 'invite_link' });
         toast({
           title: "Welcome to the Team!",
           description: data.message,
@@ -179,6 +216,25 @@ export function AcceptInvitation() {
     }
   };
 
+  const handleSwitchAccount = async () => {
+    // Local sign-out plus a reload keeps the token in the URL, so the
+    // page returns as needs_auth for the correct account.
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (signOutError) {
+      // Mirrors useAuth.signOut: a 403 here must not block the switch.
+      console.error('supabase signOut failed during account switch:', signOutError);
+    }
+    // Split the PostHog identity before the next account signs in, same
+    // as useAuth.signOut. Telemetry must never block the sign-out.
+    try {
+      posthog.reset();
+    } catch (resetError) {
+      console.error('posthog.reset failed during account switch:', resetError);
+    }
+    window.location.reload();
+  };
+
   const handleGoogleAuth = async () => {
     setAuthSubmitting(true);
     try {
@@ -221,12 +277,31 @@ export function AcceptInvitation() {
       if (error) throw error;
 
       if (data.success) {
-        toast({
-          title: "Account Created!",
-          description: `${data.message} Please sign in to continue.`,
+        // Sign in with the password already in state — a second manual
+        // sign-in loses invitees, especially on a phone. On success the
+        // auth listener delivers the user and the accept effect joins
+        // the team.
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
         });
-        setShowSignIn(true);
-        setPassword('');
+
+        if (signInError) {
+          toast({
+            title: "Account Created!",
+            description: `${data.message} Please sign in to continue.`,
+          });
+          setShowSignIn(true);
+          setPassword('');
+        } else {
+          // The session exists — drop the password from component state.
+          setPassword('');
+          toast({
+            title: "Account Created!",
+            description: data.message,
+          });
+          setStatus('valid');
+        }
       } else {
         throw new Error(data.error || 'Failed to create account');
       }
@@ -244,17 +319,10 @@ export function AcceptInvitation() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Clock className="w-6 h-6 text-primary animate-spin" />
-            </div>
-            <CardTitle>Loading Invitation</CardTitle>
-            <CardDescription>Please wait while we validate your invitation...</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <InvitationSpinnerCard
+        title="Loading Invitation"
+        description="Please wait while we validate your invitation..."
+      />
     );
   }
 
@@ -273,6 +341,32 @@ export function AcceptInvitation() {
           </CardHeader>
           <CardContent className="text-center">
             <Button onClick={() => navigate('/')}>
+              Go to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (status === 'email_mismatch' && invitation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <XCircle className="w-6 h-6 text-destructive" />
+            </div>
+            <CardTitle>Wrong Account</CardTitle>
+            <CardDescription>
+              This invitation was sent to {invitation.email}, but you're signed in as {user?.email}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button onClick={handleSwitchAccount} className="w-full">
+              Sign out and switch account
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/')} className="w-full">
               Go to Dashboard
             </Button>
           </CardContent>
@@ -563,6 +657,18 @@ export function AcceptInvitation() {
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  // status === 'valid' while the auth context still delivers the user
+  // (right after the auto sign-in). A blank screen here reads as a
+  // failure — show the same loading card instead.
+  if (status === 'valid') {
+    return (
+      <InvitationSpinnerCard
+        title="Joining the Team"
+        description="Please wait while we complete your invitation..."
+      />
     );
   }
 

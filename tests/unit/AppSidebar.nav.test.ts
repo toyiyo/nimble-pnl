@@ -295,3 +295,14 @@ describe('AppSidebar.nav.data — the leaf module', () => {
     expect(source).not.toMatch(/from ['"]@\/lib\/permissions/);
   });
 });
+
+describe('AppSidebar.nav – staffNav shift marketplace', () => {
+  it('lists "Shift Marketplace" right after "My Schedule"', () => {
+    const employee = staffNav.find((g) => g.label === 'Employee');
+    const paths = employee?.items.map((i) => i.path) ?? [];
+    const scheduleIndex = paths.indexOf('/employee/schedule');
+    expect(scheduleIndex).toBeGreaterThanOrEqual(0);
+    expect(paths[scheduleIndex + 1]).toBe('/employee/shifts');
+    expect(employee?.items[scheduleIndex + 1].label).toBe('Shift Marketplace');
+  });
+});

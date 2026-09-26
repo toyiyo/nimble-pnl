@@ -197,18 +197,24 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
     // (was "Labor Cost (Wages + Payroll)"). Match on the "Labor Cost ·" prefix so the
     // test is basis-agnostic; this run seeds time punches, so the basis is accrued.
     const laborCard = page.getByText(/Labor Cost ·/).locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]');
-    const laborValueText = await laborCard.locator('[class*="text-[22px]"], .text-3xl, .text-2xl').first().innerText();
-    const laborValue = parseCurrency(laborValueText);
+    const laborValueCell = laborCard.locator('[class*="text-[22px]"], .text-3xl, .text-2xl').first();
+
+    // After the period click, the dashboard keeps the previous period's
+    // numbers on screen, dimmed, while the This Month queries run
+    // (placeholderData in the period hooks). An immediate read can catch
+    // the Today value. Poll until the card shows the month-to-date total.
+    await expect
+      .poll(async () => parseCurrency(await laborValueCell.innerText()), { timeout: 20000 })
+      .toBeCloseTo(payrollRounded, 0);
 
     // Pending payroll moved out of the card subtitle into a labeled summary cell:
     // a "Pending Payroll" label with the dollar value in the sibling <p> below it.
     const pendingCell = page
       .getByText('Pending Payroll', { exact: true })
       .locator('xpath=following-sibling::p[1]');
-    const pendingValue = parseCurrency(await pendingCell.innerText());
-
-    expect(laborValue).toBeCloseTo(payrollRounded, 0);
-    expect(pendingValue).toBeCloseTo(payrollRounded, 0);
+    await expect
+      .poll(async () => parseCurrency(await pendingCell.innerText()), { timeout: 20000 })
+      .toBeCloseTo(payrollRounded, 0);
 
     const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(todayMidnight);
     await page.getByRole('heading', { name: 'Monthly Performance' }).first().scrollIntoViewIfNeeded();

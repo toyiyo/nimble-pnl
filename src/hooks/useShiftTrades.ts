@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { AUTO_EXPIRED_NOTE } from '@/lib/shiftTradeStatus';
+import {
+  PolicyWarningError,
+  shiftProtectionErrorToast,
+  throwIfPolicyBlocked,
+  type RpcPolicyResult,
+} from '@/lib/shiftProtection';
 
 export interface ShiftTrade {
   id: string;
@@ -49,6 +56,20 @@ export interface ShiftTrade {
 export type ShiftTradeStatus = ShiftTrade['status'];
 
 /**
+ * A row from `useMarketplaceTrades`. The marketplace query does not select
+ * the review columns, so the type does not carry them. The query drops a
+ * row without its shift or its poster, so both relations are always set.
+ */
+export type MarketplaceTrade = Omit<
+  ShiftTrade,
+  'manager_note' | 'reviewed_by' | 'reviewed_at' | 'offered_shift' | 'offered_by'
+> & {
+  offered_shift: NonNullable<ShiftTrade['offered_shift']>;
+  offered_by: NonNullable<ShiftTrade['offered_by']>;
+  hasConflict?: boolean;
+};
+
+/**
  * Guard against ghost joins: drop trades whose poster or shift row was deleted.
  * Structurally typed (not `ShiftTrade`) because useMarketplaceTrades filters
  * supabase-inferred rows whose `status: string` is wider than the union.
@@ -94,10 +115,10 @@ const executeShiftTradeAction = async ({
 
   if (error) throw error;
 
-  const result = data as { success?: boolean; error?: string } | null;
-  if (!result || !result.success) {
-    throw new Error(result?.error || failureMessage);
-  }
+  // A policy_warning response throws PolicyWarningError (findings attached)
+  // BEFORE the notification call, so no email fires for a blocked action.
+  const result = data as RpcPolicyResult | null;
+  throwIfPolicyBlocked(result, failureMessage);
 
   await sendShiftTradeNotification(tradeId, action);
 
@@ -196,13 +217,20 @@ export const useShiftTrades = (
 };
 
 /** Statuses shown in the "My shift trades" activity view. `cancelled` is
- * deliberately excluded — the poster withdrew it themselves. */
+ * deliberately excluded — the poster withdrew it themselves. The one
+ * exception is an AUTO-EXPIRED trade (cancelled + manager_note
+ * 'auto_expired', set only by expire_stale_shift_trades): the poster must
+ * see that nobody accepted and the shift is still theirs. */
 const MY_TRADE_ACTIVITY_STATUSES: ShiftTradeStatus[] = [
   'open',
   'pending_approval',
   'approved',
   'rejected',
 ];
+
+const MY_TRADE_ACTIVITY_STATUS_FILTER =
+  `status.in.(${MY_TRADE_ACTIVITY_STATUSES.join(',')}),` +
+  `and(status.eq.cancelled,manager_note.eq.${AUTO_EXPIRED_NOTE})`;
 
 /**
  * Trades the employee is a party to (poster or claimant), across the active
@@ -272,7 +300,11 @@ export const useMyTradeActivity = (
         .or(
           `offered_by_employee_id.eq.${employeeId},accepted_by_employee_id.eq.${employeeId}`
         )
-        .in('status', MY_TRADE_ACTIVITY_STATUSES)
+        // Sibling .or() params AND together (see the comment above), so
+        // this stays one OR group: the active statuses, or an auto-expired
+        // cancel. Auto-expiry sets reviewed_at, so the recency window below
+        // bounds expired rows the same way as approved/rejected ones.
+        .or(MY_TRADE_ACTIVITY_STATUS_FILTER)
         .or(`reviewed_at.is.null,reviewed_at.gte.${cutoffIso}`)
         .order('created_at', { ascending: false });
 
@@ -340,9 +372,10 @@ export const useCreateShiftTrade = () => {
       });
     },
     onError: (error: Error) => {
+      const blocked = shiftProtectionErrorToast(error);
       toast({
-        title: 'Error posting trade',
-        description: error.message,
+        title: blocked?.title ?? 'Error posting trade',
+        description: blocked?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -390,9 +423,10 @@ export const useCreateShiftTradeForEmployee = () => {
       });
     },
     onError: (error: Error) => {
+      const blocked = shiftProtectionErrorToast(error);
       toast({
-        title: 'Error posting trade',
-        description: error.message,
+        title: blocked?.title ?? 'Error posting trade',
+        description: blocked?.description ?? error.message,
         variant: 'destructive',
       });
     },
@@ -454,10 +488,13 @@ export const useApproveShiftTrade = () => {
       tradeId,
       managerNote,
       managerUserId,
+      override,
     }: {
       tradeId: string;
       managerNote?: string;
       managerUserId: string;
+      /** Retry through a policy_warning response ("Approve anyway"). */
+      override?: boolean;
     }) => {
       return executeShiftTradeAction({
         rpc: 'approve_shift_trade',
@@ -465,6 +502,7 @@ export const useApproveShiftTrade = () => {
           p_trade_id: tradeId,
           p_manager_user_id: managerUserId,
           p_manager_note: managerNote || null,
+          p_override: override ?? false,
         },
         tradeId,
         action: 'approved',
@@ -480,6 +518,9 @@ export const useApproveShiftTrade = () => {
       });
     },
     onError: (error: Error) => {
+      // A PolicyWarningError is not a failure toast: the approval queue
+      // renders the findings with an "Approve anyway" action instead.
+      if (error instanceof PolicyWarningError) return;
       toast({
         title: 'Error approving trade',
         description: error.message,
@@ -617,22 +658,42 @@ export const useDeleteShiftTrade = () => {
 /**
  * Hook to get marketplace trades (available for any employee to accept)
  * Filters out trades where current employee has conflicts
+ *
+ * `options.enabled` (default true) lets a caller hold the query until it
+ * knows the employee. Without it, a page with no employee still sends a
+ * request.
  */
 export const useMarketplaceTrades = (
   restaurantId: string | null,
-  currentEmployeeId: string | null
+  currentEmployeeId: string | null,
+  options: { enabled?: boolean } = {}
 ) => {
+  const enabled = options.enabled ?? true;
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['marketplace_trades', restaurantId, currentEmployeeId],
-    queryFn: async () => {
+    queryFn: async (): Promise<MarketplaceTrade[]> => {
       if (!restaurantId) return [];
 
-      // Get open trades (marketplace or not targeted at specific employee)
+      const nowIso = new Date().toISOString();
+
+      // Get open trades (marketplace or not targeted at specific employee).
+      // Explicit columns in place of `*` keep the badge query small. The
+      // inner embed lets the server drop trades whose shift already ended.
       let query = supabase
         .from('shift_trades')
         .select(`
-          *,
-          offered_shift:shifts!offered_shift_id(
+          id,
+          restaurant_id,
+          offered_shift_id,
+          offered_by_employee_id,
+          requested_shift_id,
+          target_employee_id,
+          accepted_by_employee_id,
+          status,
+          reason,
+          created_at,
+          updated_at,
+          offered_shift:shifts!offered_shift_id!inner(
             id,
             start_time,
             end_time,
@@ -648,7 +709,8 @@ export const useMarketplaceTrades = (
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'open');
+        .eq('status', 'open')
+        .gt('offered_shift.end_time', nowIso);
 
       // Filter by target employee if provided
       if (currentEmployeeId) {
@@ -658,23 +720,31 @@ export const useMarketplaceTrades = (
         query = query.is('target_employee_id', null);
       }
 
-      const { data: trades, error: tradesError } = await query.order('created_at', { ascending: false });
+      // Both reads need only the employee id, so send them at the same time.
+      // Only a shift that ends after now can overlap an open future trade.
+      const [tradesResult, shiftsResult] = await Promise.all([
+        query.order('created_at', { ascending: false }),
+        currentEmployeeId
+          ? supabase
+              .from('shifts')
+              .select('start_time, end_time')
+              .eq('employee_id', currentEmployeeId)
+              .gte('end_time', nowIso)
+              .in('status', ['scheduled', 'confirmed'])
+          : Promise.resolve({ data: null, error: null }),
+      ]);
 
+      const { data: trades, error: tradesError } = tradesResult;
       if (tradesError) throw tradesError;
 
-      const validTrades = (trades || []).filter(hasValidJoins);
+      // The generated types read `status` as `string`, which is wider than the union.
+      const validTrades = (trades || []).filter(hasValidJoins) as unknown as MarketplaceTrade[];
 
       if (!currentEmployeeId || validTrades.length === 0) {
         return validTrades;
       }
 
-      // Get current employee's shifts to check for conflicts
-      const { data: employeeShifts, error: shiftsError } = await supabase
-        .from('shifts')
-        .select('start_time, end_time')
-        .eq('employee_id', currentEmployeeId)
-        .in('status', ['scheduled', 'confirmed']);
-
+      const { data: employeeShifts, error: shiftsError } = shiftsResult;
       if (shiftsError) throw shiftsError;
 
       // Filter out trades that would create conflicts
@@ -701,7 +771,7 @@ export const useMarketplaceTrades = (
 
       return filteredTrades;
     },
-    enabled: !!restaurantId,
+    enabled: enabled && !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });

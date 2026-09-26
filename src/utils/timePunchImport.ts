@@ -1,4 +1,5 @@
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
+import { DEFAULT_TIMEZONE } from '@/lib/restaurantClock';
 import { TimePunch } from '@/types/timeTracking';
 import { Employee } from '@/types/scheduling';
 
@@ -520,7 +521,9 @@ export const buildTimePunchImportPreview = ({
   });
 
   punchesByEmployee.forEach((employeePunches) => {
-    const { periods, incompleteShifts: employeeIncomplete } = parseWorkPeriods(employeePunches);
+    // Only the count of incomplete shifts is used here, not their messages,
+    // so the zone does not change the result.
+    const { periods, incompleteShifts: employeeIncomplete } = parseWorkPeriods(employeePunches, DEFAULT_TIMEZONE);
     incompleteShifts += employeeIncomplete.length;
 
     const workPeriods = periods

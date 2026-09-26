@@ -23,6 +23,7 @@ const STATUS_LABEL: Record<AuditRowStatus, string> = {
   unscheduled_clock: 'Not scheduled',
   in_progress: 'In progress',
   matched: 'Matched',
+  draft: 'Draft',
 };
 
 const STATUS_DOT: Record<AuditRowStatus, string> = {
@@ -32,6 +33,7 @@ const STATUS_DOT: Record<AuditRowStatus, string> = {
   unscheduled_clock: 'bg-muted-foreground',
   in_progress: 'bg-muted-foreground',
   matched: 'bg-success',
+  draft: 'bg-muted-foreground',
 };
 
 /** Action button label per status. A status absent from this map shows no button. */

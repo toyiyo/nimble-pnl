@@ -1,5 +1,7 @@
 // Tools Registry - Defines available tools for the AI agent
 
+import { PAY_HIDDEN_TOOL_HINT } from './payHidden.ts';
+
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -14,14 +16,21 @@ export interface ToolDefinition {
  * Get available tools based on restaurant and user permissions
  * @param restaurantId The restaurant ID for scoping
  * @param userRole User's role (owner, manager, viewer)
+ * @param options.hasSchedulingOrPayroll Result of hasSchedulingOrPayrollCapability.
+ *   When it is false, getTools omits the capability-gated tools, because the
+ *   dispatcher denies them. When it is undefined, the capability has no effect.
  * @returns Array of tool definitions
  */
-export function getTools(restaurantId: string, userRole: string = 'viewer'): ToolDefinition[] {
+export function getTools(
+  restaurantId: string,
+  userRole: string = 'viewer',
+  options: { hasSchedulingOrPayroll?: boolean } = {}
+): ToolDefinition[] {
   const tools: ToolDefinition[] = [
     // Navigation tools - available to all users
     {
       name: 'navigate',
-      description: 'Navigate to a specific section of the application. Use this to help users find what they need.',
+      description: 'Navigate to a specific section of the application.',
       parameters: {
         type: 'object',
         properties: {
@@ -40,9 +49,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
               'reports',
               'integrations',
               'team',
-              'settings',
-              'weekly-brief',
-              'ops-inbox'
+              'settings'
             ],
             description: 'The section to navigate to'
           },
@@ -58,7 +65,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // KPI/Metrics tools - available to all users
     {
       name: 'get_kpis',
-      description: 'Get key performance indicators for the restaurant. Returns comprehensive metrics including revenue, COGS (Cost of Goods Sold / Food Cost), labor cost, prime cost, margins, profitability, and inventory value. Use this to answer questions about costs, profitability, and financial performance.',
+      description: `Get key performance indicators for the restaurant. Returns comprehensive metrics including revenue, COGS (Cost of Goods Sold / Food Cost), labor cost, prime cost, margins, profitability, and inventory value. Covers costs, profitability, and financial performance. ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -236,7 +243,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Labor cost analysis - available to all users
     {
       name: 'get_labor_costs',
-      description: 'Get labor cost breakdown by compensation type (hourly, salary, contractor, daily_rate). Shows daily costs, total hours worked, and optional employee-level breakdown. Uses time punches + employee configs for accurate calculations. Set include_employee_breakdown:true to get per-employee total_hours, total_cost_cents, days_worked, and hours_per_day (manager+owner only; null for other roles).',
+      description: `Get labor cost breakdown by compensation type (hourly, salary, contractor, daily_rate). Shows daily costs, total hours worked, and optional employee-level breakdown. Uses time punches + employee configs for accurate calculations. Set include_employee_breakdown:true to get per-employee total_hours, total_cost_cents, days_worked, and hours_per_day (manager+owner only; null for other roles). ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -270,26 +277,10 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       }
     },
 
-    // Proactive insights - available to all users
-    {
-      name: 'get_proactive_insights',
-      description: 'Check for urgent operational items and the latest weekly brief. Call this at the start of new conversations to surface important issues proactively. Returns open ops inbox items ranked by priority and a summary of the most recent weekly brief.',
-      parameters: {
-        type: 'object',
-        properties: {
-          include_brief: {
-            type: 'boolean',
-            description: 'Include latest weekly brief summary (default: true)',
-            default: true
-          }
-        }
-      }
-    },
-
     // Schedule overview - available to all users
     {
       name: 'get_schedule_overview',
-      description: 'Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts, conflicts, and estimated labor cost based on scheduled hours.',
+      description: `Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts, conflicts, and estimated labor cost based on scheduled hours. ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -321,7 +312,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Daily sales totals - available to all users
     {
       name: 'get_daily_sales_totals',
-      description: 'Get daily sales revenue totals and transaction counts for a date range. Use this to answer questions about daily, weekly, or monthly sales performance, revenue trends, and transaction volume.',
+      description: 'Get daily sales revenue totals and transaction counts for a date range. Covers daily, weekly, or monthly sales performance, revenue trends, and transaction volume.',
       parameters: {
         type: 'object',
         properties: {
@@ -380,7 +371,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_time_punches',
-        description: "List individual work periods (clock-in/clock-out pairs with computed hours and breaks deducted) for a date range. Use this to answer 'who worked when' and to drill into specific shifts. Returns parsed work periods (one row per shift), joined to employee name/position. Manager+owner only.",
+        description: `List individual work periods (clock-in/clock-out pairs with computed hours and breaks deducted) for a date range. Shows who worked when, shift by shift. Returns parsed work periods (one row per shift), joined to employee name/position. Manager+owner only. ${PAY_HIDDEN_TOOL_HINT}`,
         parameters: {
           type: 'object',
           properties: {
@@ -423,7 +414,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_payroll_summary',
-        description: 'Get payroll summary for a pay period including employee earnings, hours worked, tips, and manual payments. Calculates regular and overtime pay for hourly employees, prorated salary for salaried employees, and contractor payments.',
+        description: `Get payroll summary for a pay period including employee earnings, hours worked, tips, and manual payments. Calculates regular and overtime pay for hourly employees, prorated salary for salaried employees, and contractor payments. ${PAY_HIDDEN_TOOL_HINT}`,
         parameters: {
           type: 'object',
           properties: {
@@ -582,7 +573,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_break_even_progress',
-        description: 'Get detailed break-even analysis with daily history showing sales vs break-even threshold for each day. Includes month-to-date progress toward break-even goal, days above/below, trend direction, and projected month-end status. Use this to answer questions about break-even progress, daily performance tracking, and budget coverage. Use the month parameter to query a specific month (e.g., "2026-02" for February 2026).',
+        description: 'Get detailed break-even analysis with daily history showing sales vs break-even threshold for each day. Includes month-to-date progress toward break-even goal, days above/below, trend direction, and projected month-end status. Covers break-even progress, daily performance, and budget coverage. The month parameter selects a specific month (e.g., "2026-02" for February 2026).',
         parameters: {
           type: 'object',
           properties: {
@@ -650,7 +641,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_financial_statement',
-        description: 'Get detailed financial statements including income statement, balance sheet, cash flow statement, or trial balance',
+        description: 'Get detailed financial statements including income statement, balance sheet, cash flow statement, or trial balance. The income statement result has a basis object: read it before you compare figures with generate_report or with a page in the app, because the sources differ.',
         parameters: {
           type: 'object',
           properties: {
@@ -675,7 +666,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'generate_report',
-        description: 'Generate a financial or operational report in various formats',
+        description: 'Generate a financial or operational report in various formats. The monthly_pnl result has a basis object: read it before you compare figures with get_financial_statement or with a page in the app, because the sources differ.',
         parameters: {
           type: 'object',
           properties: {
@@ -719,7 +710,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     tools.push(
       {
         name: 'batch_categorize_transactions',
-        description: 'Categorize a batch of uncategorized bank transactions. Call with preview:true first to show what will change, then with confirmed:true after user approves. Returns evidence references.',
+        description: 'Categorize a batch of uncategorized bank transactions. With preview:true, it returns the changes and saves nothing. With confirmed:true, it saves the changes. Returns evidence references.',
         parameters: {
           type: 'object',
           properties: {
@@ -739,7 +730,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
             },
             confirmed: {
               type: 'boolean',
-              description: 'If true, executes the categorization. Must call with preview:true first.',
+              description: 'If true, saves the categorization.',
               default: false
             }
           },
@@ -748,7 +739,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'batch_categorize_pos_sales',
-        description: 'Categorize a batch of uncategorized POS sales items. Call with preview:true first, then confirmed:true after user approves. Returns evidence references.',
+        description: 'Categorize a batch of uncategorized POS sales items. With preview:true, it returns the changes and saves nothing. With confirmed:true, it saves the changes. Returns evidence references.',
         parameters: {
           type: 'object',
           properties: {
@@ -768,7 +759,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
             },
             confirmed: {
               type: 'boolean',
-              description: 'If true, executes the categorization. Must call with preview:true first.',
+              description: 'If true, saves the categorization.',
               default: false
             }
           },
@@ -777,7 +768,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'create_categorization_rule',
-        description: 'Create a new auto-categorization rule from a pattern. Call with preview:true to show rule details, then confirmed:true to create. Returns evidence references.',
+        description: 'Create a new auto-categorization rule from a pattern. With preview:true, it returns the rule details and saves nothing. With confirmed:true, it creates the rule. Returns evidence references.',
         parameters: {
           type: 'object',
           properties: {
@@ -811,30 +802,11 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
             },
             confirmed: {
               type: 'boolean',
-              description: 'If true, creates the rule. Must call with preview:true first.',
+              description: 'If true, creates the rule.',
               default: false
             }
           },
           required: ['rule_name', 'pattern_type', 'pattern_value', 'category_id']
-        }
-      },
-      {
-        name: 'resolve_inbox_item',
-        description: 'Mark an ops inbox item as done or dismissed.',
-        parameters: {
-          type: 'object',
-          properties: {
-            item_id: {
-              type: 'string',
-              description: 'The ops_inbox_item ID to resolve'
-            },
-            resolution: {
-              type: 'string',
-              enum: ['done', 'dismissed'],
-              description: 'How to resolve the item'
-            }
-          },
-          required: ['item_id', 'resolution']
         }
       }
     );
@@ -865,12 +837,26 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
   // the model for that role — canUseTool() denies it anyway, but omitting it
   // here avoids the AI assistant suggesting a tool call that will just be
   // rejected as TOOL_PERMISSION_DENIED.
+  const visible = options.hasSchedulingOrPayroll === false
+    ? tools.filter((tool) => !isCapabilityGatedTool(tool.name))
+    : tools;
+
   if (userRole === 'collaborator_operations_manager') {
-    return tools.filter((tool) => tool.name !== 'get_kpis');
+    return visible.filter((tool) => tool.name !== 'get_kpis');
   }
 
-  return tools;
+  return visible;
 }
+
+/**
+ * Tools that change data. The MCP connector marks them as destructive, so
+ * Claude asks the user before it calls them. Add every new write tool here.
+ */
+export const WRITE_TOOLS: readonly string[] = [
+  'batch_categorize_transactions',
+  'batch_categorize_pos_sales',
+  'create_categorization_rule',
+];
 
 /**
  * Check if user has permission to use a tool
@@ -901,7 +887,6 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_recipe_analytics',
     'get_sales_summary',
     'get_inventory_transactions',
-    'get_proactive_insights',    // Proactive insights for all users
     'get_daily_sales_totals'     // Daily revenue totals visible to all
   ];
 
@@ -925,8 +910,7 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_break_even_progress',          // Break-even daily history + progress - manager+
     'batch_categorize_transactions',    // Action: categorize bank txns - manager+
     'batch_categorize_pos_sales',       // Action: categorize POS sales - manager+
-    'create_categorization_rule',       // Action: create rules - manager+
-    'resolve_inbox_item'                // Action: resolve inbox items - manager+
+    'create_categorization_rule'        // Action: create rules - manager+
   ];
 
   if (managerOwnerTools.includes(toolName)) {
@@ -939,6 +923,52 @@ export function canUseTool(toolName: string, userRole: string): boolean {
   }
 
   return false;
+}
+
+let allToolsByName: Map<string, ToolDefinition> | undefined;
+
+// The check does not enforce period. Every handler with a period has a
+// default window (calculateDateRange: last 7 days; get_kpis and
+// get_sales_summary: month). Calls without period worked before this check.
+const DEFAULTED_ARGS = new Set(['period']);
+
+const BOOLEAN_FLAG_ARGS = ['preview', 'confirmed'] as const;
+
+/**
+ * Return the flag arguments (preview, confirmed) that are present but not a
+ * boolean. The write tools must not treat "true" or 1 as a confirm.
+ */
+export function nonBooleanFlagArgs(args: unknown): string[] {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return [];
+  const values = args as Record<string, unknown>;
+  return BOOLEAN_FLAG_ARGS.filter((flag) => flag in values && typeof values[flag] !== 'boolean');
+}
+
+/** True for null, undefined, a blank string, or an empty array. */
+function isMissingValue(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
+/**
+ * Return the required fields of a tool call that are missing (see
+ * isMissingValue). When args is not a plain object (for example the raw
+ * string of bad JSON from the model), every required field is missing.
+ * The check uses the full registry, not a role-filtered list. It returns []
+ * for an unknown tool; the dispatcher rejects those itself.
+ */
+export function missingRequiredArgs(toolName: string, args: unknown): string[] {
+  allToolsByName ??= new Map(getTools('', 'owner').map((tool) => [tool.name, tool]));
+  const required = (allToolsByName.get(toolName)?.parameters.required ?? []).filter(
+    (field) => !DEFAULTED_ARGS.has(field)
+  );
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+    return required;
+  }
+  const values = args as Record<string, unknown>;
+  return required.filter((field) => isMissingValue(values[field]));
 }
 
 /**
@@ -964,11 +994,36 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
  */
 export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview'] as const;
 
+type CapabilityRpcResult = { data: boolean | null; error: unknown };
+
+/**
+ * supabase-js rpc() returns a PostgREST builder. The builder has then() and no
+ * catch(), so the return type is PromiseLike. Do not call .catch() on it.
+ */
 export interface CapabilityCheckClient {
   rpc: (
     fn: string,
     args: { p_restaurant_id: string; p_capability: string }
-  ) => Promise<{ data: boolean | null; error: unknown }>;
+  ) => PromiseLike<CapabilityRpcResult>;
+}
+
+/**
+ * Call user_has_capability and never reject. A thrown or rejected call becomes
+ * { data: null, error }, so the callers log it and fail closed.
+ */
+async function callCapabilityRpc(
+  supabase: CapabilityCheckClient,
+  restaurantId: string,
+  capability: string
+): Promise<CapabilityRpcResult> {
+  try {
+    return await supabase.rpc('user_has_capability', {
+      p_restaurant_id: restaurantId,
+      p_capability: capability,
+    });
+  } catch (err: unknown) {
+    return { data: null, error: err };
+  }
 }
 
 /**
@@ -983,24 +1038,11 @@ export async function hasSchedulingOrPayrollCapability(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
-  // `.catch()` on each call (rather than letting Promise.all reject) so a
-  // rejected RPC promise — e.g. a client that throws instead of resolving
-  // with an `error` field — still lands in the logged deny path below
-  // instead of escaping as an unhandled rejection that would bypass it.
-  const toResult = (err: unknown) => ({ data: null, error: err });
+  // callCapabilityRpc never rejects, so Promise.all cannot reject and skip
+  // the logged deny path below.
   const [scheduling, payroll] = await Promise.all([
-    supabase
-      .rpc('user_has_capability', {
-        p_restaurant_id: restaurantId,
-        p_capability: 'view:scheduling',
-      })
-      .catch(toResult),
-    supabase
-      .rpc('user_has_capability', {
-        p_restaurant_id: restaurantId,
-        p_capability: 'view:payroll',
-      })
-      .catch(toResult),
+    callCapabilityRpc(supabase, restaurantId, 'view:scheduling'),
+    callCapabilityRpc(supabase, restaurantId, 'view:payroll'),
   ]);
 
   // An RPC failure here must not disappear silently: without logging it, a
@@ -1023,6 +1065,30 @@ export async function hasSchedulingOrPayrollCapability(
   }
 
   return Boolean(scheduling.data) || Boolean(payroll.data);
+}
+
+/**
+ * Resolves view:pay_rates for the calling user, with the same RPC the
+ * employees_secure view uses to mask pay (20260806110000). Without the flag
+ * the view returns NULL pay, so the labor engine computes $0 for every
+ * masked employee. The labor tools use this check to omit cost figures
+ * instead of reporting a masked $0 as a real total. Fails closed and logs an
+ * RPC failure, as hasSchedulingOrPayrollCapability does.
+ */
+export async function hasPayRatesCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  const result = await callCapabilityRpc(supabase, restaurantId, 'view:pay_rates');
+
+  if (result.error) {
+    console.error('hasPayRatesCapability: view:pay_rates RPC failed', {
+      restaurantId,
+      error: result.error,
+    });
+  }
+
+  return Boolean(result.data);
 }
 
 /**

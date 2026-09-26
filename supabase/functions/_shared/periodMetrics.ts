@@ -331,6 +331,10 @@ export function calculatePeriodMetrics(
 
 // ===== LABOR-COMPONENT REDACTION =====
 
+/** Why labor is omitted for a caller without view:scheduling or view:payroll. */
+export const LABOR_CAPABILITY_REASON =
+  'Labor cost, prime cost, and profitability figures require view:scheduling or view:payroll access.';
+
 /**
  * Result of redactLaborFields — costs/benchmarks narrowed to food-only, and
  * profitability dropped entirely, when the caller lacks labor access.
@@ -354,10 +358,14 @@ export interface RedactedLaborFields {
  * food_cost is unaffected by that truncation (it doesn't come from
  * time_punches), so it — and only it — passes through when access is
  * missing.
+ *
+ * `reason` names why labor is omitted. The default is the capability reason.
+ * get_kpis passes the pay-rates reason when view:pay_rates is missing.
  */
 export function redactLaborFields(
   metrics: Pick<PeriodMetricsResult, 'costs' | 'profitability' | 'benchmarks'>,
-  hasLaborAccess: boolean
+  hasLaborAccess: boolean,
+  reason: string = LABOR_CAPABILITY_REASON
 ): RedactedLaborFields {
   if (hasLaborAccess) {
     return {
@@ -376,7 +384,6 @@ export function redactLaborFields(
       food_cost_status: metrics.benchmarks.food_cost_status,
       target_food_cost: metrics.benchmarks.target_food_cost,
     },
-    laborOmittedReason:
-      'Labor cost, prime cost, and profitability figures require view:scheduling or view:payroll access.',
+    laborOmittedReason: reason,
   };
 }

@@ -45,11 +45,13 @@ import Unsubscribe from "./pages/Unsubscribe";
 // route here is a static import, so adding this one the same way would
 // silently defeat the isolation.
 const ReviewPage = lazy(() => import("./pages/ReviewPage"));
+const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
 import Transactions from "./pages/Transactions";
 import ChartOfAccounts from "./pages/ChartOfAccounts";
 import FinancialStatements from "./pages/FinancialStatements";
 import Accounting from "./pages/Accounting";
 import Banking from "./pages/Banking";
+import DepositMatch from "./pages/DepositMatch";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
 import Scheduling from "./pages/Scheduling";
 import Employees from "./pages/Employees";
@@ -82,9 +84,7 @@ import HelpCenter from "./pages/Help/HelpCenter";
 import HelpArticle from "./pages/Help/HelpArticle";
 import Assets from "./pages/Assets";
 import BudgetRunRate from "./pages/BudgetRunRate";
-import OpsInbox from "./pages/OpsInbox";
 import Reviews from "./pages/Reviews";
-import WeeklyBrief from "./pages/WeeklyBrief";
 import { queryClientConfig } from "@/lib/react-query-config";
 
 const queryClient = new QueryClient(queryClientConfig);
@@ -413,6 +413,7 @@ const App = () => (
           <Route path="/invoices/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
           <Route path="/stripe-account" element={<ProtectedRoute><StripeAccountManagement /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
+          <Route path="/banking/deposit-match" element={<ProtectedRoute><DepositMatch /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
           <Route path="/print-checks" element={<ProtectedRoute><PrintChecks /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />
@@ -423,9 +424,7 @@ const App = () => (
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
             <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
-            <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
             <Route path="/reviews" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
-            <Route path="/weekly-brief" element={<ProtectedRoute><WeeklyBrief /></ProtectedRoute>} />
             <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
             <Route path="/help/:slug" element={<ProtectedRoute allowStaff={true}><HelpArticle /></ProtectedRoute>} />
@@ -433,6 +432,26 @@ const App = () => (
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/toast/callback" element={<ToastCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
+            {/* OAuth 2.1 consent for the Claude connector. Public: the page
+                sends a signed-out user to /auth and back. */}
+            <Route
+              path="/oauth/consent"
+              element={
+                <Suspense
+                  fallback={
+                    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-8">
+                      <div className="w-full max-w-md rounded-xl border border-border/40 bg-background px-6 py-6 space-y-4">
+                        <Skeleton className="h-10 w-10 rounded-xl" />
+                        <Skeleton className="h-5 w-3/4" />
+                        <Skeleton className="h-24 w-full rounded-xl" />
+                      </div>
+                    </div>
+                  }
+                >
+                  <OAuthConsent />
+                </Suspense>
+              }
+            />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

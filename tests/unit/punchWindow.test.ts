@@ -1,7 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { describe, it, expect } from 'vitest';
-import { startOfWeek, endOfWeek } from 'date-fns';
 import {
   OVERNIGHT_BUFFER_HOURS,
   bufferPunchFetchRange,
@@ -14,7 +13,6 @@ import {
   sessionsWithClockInInWindow,
 } from '@/utils/punchWindow';
 import { MAX_SHIFT_GAP_HOURS } from '@/utils/payrollCalculations';
-import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 
 const start = new Date('2026-07-06T00:00:00Z'); // Mon
 const end = new Date('2026-07-12T23:59:59.999Z'); // Sun
@@ -94,36 +92,45 @@ describe('punchWindow', () => {
 
   // weekAlignedFetchStart / weekAlignedFetchEnd: sound-logic follow-up fix —
   // the OT-banding fetch window must widen on BOTH edges to the full ISO
-  // week, not just backward. Local (non-UTC-string) Date constructors are
-  // used below so the "mid-week" premise holds under every host TZ the
-  // suite runs in.
-  it('weekAlignedFetchStart widens backward to the ISO week start when dateFrom falls mid-week', () => {
-    const dateFrom = new Date(2026, 6, 22, 12, 0, 0); // 2026-07-22, a Wednesday, local noon
-    const fetchStart = dateFrom; // e.g. lookaheadPunchFetchRange keeps the start unchanged
-    const result = weekAlignedFetchStart(dateFrom, fetchStart);
-    expect(result.getTime()).toBe(startOfWeek(dateFrom, { weekStartsOn: WEEK_STARTS_ON }).getTime());
+  // week, not just backward. The week is the restaurant-local week of a
+  // calendar day, so the fixed UTC instants below hold under every host TZ.
+  const CHI = 'America/Chicago';
+
+  it('weekAlignedFetchStart widens backward to the ISO week start when the day falls mid-week', () => {
+    // 2026-07-22 is a Wednesday; the Chicago week starts Mon Jul 20 00:00 CDT.
+    const fetchStart = new Date('2026-07-22T05:00:00Z'); // e.g. lookaheadPunchFetchRange keeps the start unchanged
+    const result = weekAlignedFetchStart('2026-07-22', fetchStart, CHI);
+    expect(result.toISOString()).toBe('2026-07-20T05:00:00.000Z');
     expect(result.getTime()).toBeLessThan(fetchStart.getTime());
   });
 
   it('weekAlignedFetchStart leaves fetchStart unchanged when it already precedes the ISO week start', () => {
-    const dateFrom = new Date(2026, 6, 22, 12, 0, 0);
-    const earlierFetchStart = new Date(dateFrom.getTime() - 30 * 24 * 3600 * 1000); // a month back
-    const result = weekAlignedFetchStart(dateFrom, earlierFetchStart);
+    const earlierFetchStart = new Date('2026-06-22T05:00:00Z'); // a month back
+    const result = weekAlignedFetchStart('2026-07-22', earlierFetchStart, CHI);
     expect(result.getTime()).toBe(earlierFetchStart.getTime());
   });
 
-  it('weekAlignedFetchEnd widens forward to the ISO week end when dateTo falls mid-week', () => {
-    const dateTo = new Date(2026, 6, 22, 12, 0, 0); // 2026-07-22, a Wednesday, local noon
-    const fetchEnd = dateTo;
-    const result = weekAlignedFetchEnd(dateTo, fetchEnd);
-    expect(result.getTime()).toBe(endOfWeek(dateTo, { weekStartsOn: WEEK_STARTS_ON }).getTime());
+  it('weekAlignedFetchEnd widens forward to the ISO week end when the day falls mid-week', () => {
+    // The Chicago week ends Sun Jul 26 23:59:59.999 CDT.
+    const fetchEnd = new Date('2026-07-23T04:59:59.999Z');
+    const result = weekAlignedFetchEnd('2026-07-22', fetchEnd, CHI);
+    expect(result.toISOString()).toBe('2026-07-27T04:59:59.999Z');
     expect(result.getTime()).toBeGreaterThan(fetchEnd.getTime());
   });
 
   it('weekAlignedFetchEnd leaves fetchEnd unchanged when it already follows the ISO week end', () => {
-    const dateTo = new Date(2026, 6, 22, 12, 0, 0);
-    const laterFetchEnd = new Date(dateTo.getTime() + 30 * 24 * 3600 * 1000); // a month ahead
-    const result = weekAlignedFetchEnd(dateTo, laterFetchEnd);
+    const laterFetchEnd = new Date('2026-08-22T04:59:59.999Z'); // a month ahead
+    const result = weekAlignedFetchEnd('2026-07-22', laterFetchEnd, CHI);
     expect(result.getTime()).toBe(laterFetchEnd.getTime());
+  });
+
+  it('weekAligned bounds follow the DST change of the week', () => {
+    // Chicago week Mon 2026-03-02 (CST) .. Sun 2026-03-08 (CDT from 02:00).
+    expect(weekAlignedFetchStart('2026-03-04', new Date('2026-03-10T00:00:00Z'), CHI).toISOString()).toBe(
+      '2026-03-02T06:00:00.000Z',
+    );
+    expect(weekAlignedFetchEnd('2026-03-04', new Date('2026-03-01T00:00:00Z'), CHI).toISOString()).toBe(
+      '2026-03-09T04:59:59.999Z',
+    );
   });
 });

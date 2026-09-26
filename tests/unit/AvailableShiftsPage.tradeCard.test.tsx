@@ -188,6 +188,11 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// The page reads the shift protection rules through React Query. This
+// test renders without a QueryClientProvider, so stub the hook family
+// with the everything-off defaults.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
+
 vi.mock('@/components/employee', () => ({
   EmployeePageHeader: ({ title }: { title: string }) =>
     React.createElement('div', { 'data-testid': 'employee-page-header' }, title),
@@ -252,6 +257,8 @@ vi.mock('react-router-dom', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) =>
     React.createElement('a', { href: to }, children),
   useNavigate: vi.fn(() => vi.fn()),
+  // The page reads the deep link params. These tests use no link.
+  useSearchParams: vi.fn(() => [new URLSearchParams(), vi.fn()]),
 }));
 
 import AvailableShiftsPage from '@/pages/AvailableShiftsPage';

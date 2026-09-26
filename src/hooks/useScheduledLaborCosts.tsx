@@ -1,44 +1,16 @@
 import { useMemo } from 'react';
 import { useEmployees } from './useEmployees';
 import { Shift } from '@/types/scheduling';
-import { calculateScheduledLaborCost } from '@/services/laborCalculations';
 import { useRestaurantClock } from './useRestaurantClock';
+import {
+  emptyScheduledLaborCosts,
+  scheduledLaborCosts,
+  type ScheduledLaborCostBreakdown,
+  type ScheduledLaborCostData,
+  type ScheduledLaborCostsResult,
+} from '../../supabase/functions/_shared/labor/scheduledLaborCost';
 
-export interface ScheduledLaborCostData {
-  date: string;
-  total_labor_cost: number;
-  hourly_wages: number;
-  salary_wages: number;
-  contractor_payments: number;
-  daily_rate_wages: number;
-  total_hours: number;
-}
-
-export interface ScheduledLaborCostBreakdown {
-  hourly: {
-    cost: number;
-    hours: number;
-  };
-  salary: {
-    cost: number;
-    estimatedDays: number;
-  };
-  contractor: {
-    cost: number;
-    estimatedDays: number;
-  };
-  daily_rate: {
-    cost: number;
-    estimatedDays: number;
-  };
-  total: number;
-}
-
-export interface ScheduledLaborCostsResult {
-  dailyCosts: ScheduledLaborCostData[];
-  totalCost: number;
-  breakdown: ScheduledLaborCostBreakdown;
-}
+export type { ScheduledLaborCostData, ScheduledLaborCostBreakdown, ScheduledLaborCostsResult };
 
 /**
  * Calculate estimated labor costs from scheduled shifts.
@@ -67,57 +39,12 @@ export function useScheduledLaborCosts(
 
   const result = useMemo(() => {
     if (!restaurantId || employees.length === 0) {
-      return {
-        dailyCosts: [],
-        totalCost: 0,
-        breakdown: {
-          hourly: { cost: 0, hours: 0 },
-          salary: { cost: 0, estimatedDays: 0 },
-          contractor: { cost: 0, estimatedDays: 0 },
-          daily_rate: { cost: 0, estimatedDays: 0 },
-          total: 0,
-        },
-      };
+      return emptyScheduledLaborCosts();
     }
 
-    // Use centralized labor calculation service
-    const { breakdown: serviceBreakdown, dailyCosts: serviceDailyCosts } = 
-      calculateScheduledLaborCost(shifts, employees, dateFrom, dateTo, timezone);
-
-    // Transform service output to match hook interface
-    const dailyCosts: ScheduledLaborCostData[] = serviceDailyCosts.map(day => ({
-      date: day.date,
-      total_labor_cost: day.total_cost,
-      hourly_wages: day.hourly_cost,
-      salary_wages: day.salary_cost,
-      contractor_payments: day.contractor_cost,
-      daily_rate_wages: day.daily_rate_cost,
-      total_hours: day.hours_worked,
-    }));
-
-    const breakdown: ScheduledLaborCostBreakdown = {
-      hourly: {
-        cost: serviceBreakdown.hourly.cost,
-        hours: serviceBreakdown.hourly.hours,
-      },
-      salary: {
-        cost: serviceBreakdown.salary.cost,
-        estimatedDays: serviceBreakdown.salary.daysScheduled,
-      },
-      contractor: {
-        cost: serviceBreakdown.contractor.cost,
-        estimatedDays: serviceBreakdown.contractor.daysScheduled,
-      },
-      daily_rate: {
-        cost: serviceBreakdown.daily_rate.cost,
-        estimatedDays: serviceBreakdown.daily_rate.daysScheduled,
-      },
-      total: serviceBreakdown.total,
-    };
-
-    const totalCost = serviceBreakdown.total;
-
-    return { dailyCosts, totalCost, breakdown };
+    // The shared scheduled labor calculation (loadScheduledLaborCost uses
+    // the same function).
+    return scheduledLaborCosts(shifts, employees, dateFrom, dateTo, timezone);
   }, [shifts, dateFrom, dateTo, restaurantId, employees, timezone]);
 
   return result;

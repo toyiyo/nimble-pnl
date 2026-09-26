@@ -12,6 +12,9 @@ const mockUseMarketplaceTrades = vi.hoisted(() => vi.fn());
 const mockUseAcceptShiftTrade = vi.hoisted(() => vi.fn());
 const mockUseCurrentEmployee = vi.hoisted(() => vi.fn());
 
+// Shared stub: the real hooks need a QueryClientProvider these tests lack.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
+
 vi.mock('@/hooks/useShiftTrades', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/useShiftTrades')>();
   return {

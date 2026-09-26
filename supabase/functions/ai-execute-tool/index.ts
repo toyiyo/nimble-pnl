@@ -1,8 +1,19 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  calculateDateRange,
+  restaurantWallClock,
+  toLocalYMD,
+  addDays,
+  type PeriodType,
+  laborServerNow,
+  laborWindowMismatchReason,
+  daysBetweenYmd,
+} from '../_shared/restaurantDate.ts';
+import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool } from "../_shared/tools-registry.ts";
+import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -11,9 +22,26 @@ import {
   type InventoryTransactionQuery 
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
-import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
+import { EMPLOYEE_LABOR_COLUMNS, EMPLOYEE_LABOR_SOURCE } from "../_shared/employeeLaborColumns.ts";
+import {
+  PAY_HIDDEN_REASON,
+  payHidden,
+  redactLaborCostsResult,
+  redactPayrollSummary,
+  redactTimePunchShifts,
+} from "../_shared/payHidden.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
+import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
+import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
+import {
+  POS_SALE_PREVIEW_COLUMNS,
+  mapTopSoldItems,
+  buildCashFlowSummary,
+  computeCashCoverage,
+  incomeStatementBasis,
+  monthlyPnlBasis,
+} from "../_shared/aiToolFormatters.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -22,113 +50,6 @@ interface ToolExecutionRequest {
   tool_name: string;
   arguments: Record<string, any>;
   restaurant_id: string;
-}
-
-interface DateRange {
-  startDate: Date;
-  endDate: Date;
-  startDateStr: string;
-  endDateStr: string;
-}
-
-type PeriodType =
-  | 'today' | 'yesterday' | 'tomorrow'
-  | 'week' | 'month' | 'quarter' | 'year'
-  | 'current_week' | 'last_week' | 'current_month' | 'last_month'
-  | 'custom';
-
-// Format a Date's local calendar fields as 'YYYY-MM-DD'. Deno edge functions
-// can't import src/lib/dateOnly.ts, so this mirrors toDateOnlyString()'s
-// local-field logic by hand. Use this (never toISOString().split('T')[0])
-// for any Date that represents a calendar day rather than an instant -
-// toISOString reads UTC fields and drifts to the previous/next day for
-// viewers/servers whose local offset differs from UTC (e.g. Pacific/Auckland).
-const toLocalYMD = (d: Date): string => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
-
-/**
- * Calculate date range from period string
- * Centralizes the repeated date calculation logic across tool handlers
- */
-function calculateDateRange(
-  period: PeriodType,
-  customStartDate?: string,
-  customEndDate?: string
-): DateRange {
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
-
-  switch (period) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      break;
-    case 'tomorrow':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
-      break;
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'current_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - dayOfWeek), 23, 59, 59);
-      break;
-    }
-    case 'last_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 7);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 1, 23, 59, 59);
-      break;
-    }
-    case 'month':
-    case 'current_month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      break;
-    case 'last_month':
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      break;
-    case 'quarter': {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      break;
-    }
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    case 'custom':
-      if (!customStartDate || !customEndDate) {
-        throw new Error('Custom period requires start_date and end_date');
-      }
-      const [sy, sm, sd] = customStartDate.split('-').map(Number);
-      startDate = new Date(sy, sm - 1, sd);
-      const [ey, em, ed] = customEndDate.split('-').map(Number);
-      // End-of-day so the inclusive range matches every other branch above.
-      endDate = new Date(ey, em - 1, ed, 23, 59, 59);
-      break;
-    default:
-      // Default to current week
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-  }
-
-  return {
-    startDate,
-    endDate,
-    startDateStr: toLocalYMD(startDate),
-    endDateStr: toLocalYMD(endDate),
-  };
 }
 
 /**
@@ -151,8 +72,6 @@ function executeNavigate(args: any): any {
     'integrations': '/integrations',
     'team': '/team',
     'settings': '/settings',
-    'weekly-brief': '/weekly-brief',
-    'ops-inbox': '/ops-inbox',
   };
 
   const basePath = routes[section] || '/';
@@ -170,6 +89,21 @@ function executeNavigate(args: any): any {
 }
 
 /**
+ * Why get_kpis omits labor. Order: masked pay, then the missing capability,
+ * then a labor window on other days than sales. Only used when labor is
+ * omitted; redactLaborFields ignores the reason otherwise.
+ */
+function pickLaborOmittedReason(access: {
+  hasPayRates: boolean;
+  hasLaborCapability: boolean;
+  laborMismatchReason: string | undefined;
+}): string | undefined {
+  if (!access.hasPayRates) return PAY_HIDDEN_REASON;
+  if (!access.hasLaborCapability) return LABOR_CAPABILITY_REASON;
+  return access.laborMismatchReason;
+}
+
+/**
  * Execute get_kpis tool
  * Returns comprehensive KPIs including revenue, COGS, labor, prime cost, and profitability metrics
  * Uses shared calculation logic from periodMetrics.ts
@@ -177,7 +111,8 @@ function executeNavigate(args: any): any {
 async function executeGetKpis(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period = 'month', start_date, end_date } = args;
 
@@ -185,7 +120,13 @@ async function executeGetKpis(
   const { calculateCostBreakdown, calculateProfitability, calculateBenchmarks, redactLaborFields } = await import('../_shared/periodMetrics.ts');
   const { hasSchedulingOrPayrollCapability } = await import('../_shared/tools-registry.ts');
 
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const salesRange = calculateDateRange(period, start_date, end_date, restaurantNow);
+  const { startDateStr, endDateStr } = salesRange;
+  const laborRange = calculateDateRange(period, start_date, end_date, laborServerNow());
+  const { startDate: laborStartDate, endDate: laborEndDate } = laborRange;
+  // When the two windows are different days, labor would cover the wrong
+  // hours. Omit it rather than report a wrong labor % or prime cost.
+  const laborMismatchReason = laborWindowMismatchReason(salesRange, laborRange);
 
   // This function runs under the caller's forwarded JWT (RLS applies), and
   // time_punches is now self-scoped to own-row unless the caller holds
@@ -200,8 +141,11 @@ async function executeGetKpis(
   // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
 
-  const [hasLaborAccess, salesTotals, usageResult, salesCountResult] = await Promise.all([
+  const [hasLaborCapability, hasPayRates, salesTotals, usageResult, salesCountResult] = await Promise.all([
     hasSchedulingOrPayrollCapability(restaurantId, supabase),
+    // employees_secure returns NULL pay without view:pay_rates, so labor would
+    // compute as $0. Omit it instead (see _shared/payHidden.ts).
+    hasPayRatesCapability(restaurantId, supabase),
     // Net sales for the period (gross - discounts - refunds), from the shared RPC.
     fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
     // Fetch food costs (COGS) as a monthly-usage aggregate from the SQL side.
@@ -247,6 +191,9 @@ async function executeGetKpis(
     throw new Error(`unified_sales count failed: ${salesCountResult.error.message}`);
   }
   const salesCount = salesCountResult.count ?? 0;
+  // Labor needs the capability, unmasked pay rates, AND a labor window on the
+  // same days as sales.
+  const hasLaborAccess = hasLaborCapability && hasPayRates && !laborMismatchReason;
 
   // Fetch labor costs using time_punches + employees (same as Dashboard) —
   // only when the caller can actually see restaurant-wide punches. Skipping
@@ -261,34 +208,29 @@ async function executeGetKpis(
     // shift whose clock_out lands just after endDate still pairs whole.
     // calculateActualLaborCost attributes hours by clock-in day and drops
     // out-of-window periods, so this never double-counts.
-    const { data: timePunches, error: punchesError } = await supabase
-      .from('time_punches')
-      .select('id, employee_id, restaurant_id, punch_time, punch_type')
-      .eq('restaurant_id', restaurantId)
-      .gte('punch_time', startDate.toISOString())
-      .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
-      .order('punch_time', { ascending: true });
+    // All employees (including inactive, for historical accuracy) load in
+    // parallel with the punches: the two reads do not depend on each other.
+    const [{ data: timePunches, error: punchesError }, employees] = await Promise.all([
+      supabase
+        .from('time_punches')
+        .select('id, employee_id, restaurant_id, punch_time, punch_type')
+        .eq('restaurant_id', restaurantId)
+        .gte('punch_time', laborStartDate.toISOString())
+        .lte('punch_time', new Date(laborEndDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
+        .order('punch_time', { ascending: true }),
+      fetchLaborEmployees(supabase, restaurantId),
+    ]);
 
     if (punchesError) {
       throw new Error(`Failed to fetch time punches: ${punchesError.message}`);
-    }
-
-    // Fetch all employees (including inactive for historical accuracy)
-    const { data: employees, error: employeesError } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
-
-    if (employeesError) {
-      throw new Error(`Failed to fetch employees: ${employeesError.message}`);
     }
 
     // Calculate labor costs using shared module (same logic as Dashboard)
     const { breakdown: laborBreakdown } = calculateActualLaborCost(
       employees || [],
       timePunches || [],
-      startDate,
-      endDate
+      laborStartDate,
+      laborEndDate
     );
 
     // Convert to format expected by calculatePeriodMetrics.
@@ -337,7 +279,8 @@ async function executeGetKpis(
   // restaurant-wide figure — food-cost-only fields are unaffected and stay in.
   const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(
     { costs: rawCosts, profitability: rawProfitability, benchmarks: rawBenchmarks },
-    hasLaborAccess
+    hasLaborAccess,
+    pickLaborOmittedReason({ hasPayRates, hasLaborCapability, laborMismatchReason })
   );
 
   const revenue = {
@@ -366,6 +309,7 @@ async function executeGetKpis(
       liabilities: { sales_tax: salesTotals.salesTax, tips: salesTotals.tips, other_liabilities: salesTotals.otherLiabilities },
       benchmarks,
       labor_omitted: laborOmittedReason ? { reason: laborOmittedReason } : undefined,
+      pay_hidden: hasPayRates ? undefined : payHidden(),
 
       // Additional metrics not in shared module
       inventory_value: inventoryValue,
@@ -599,26 +543,8 @@ async function calculateCashFlow(
 
   const days = dailyRows || [];
   const txCount = Number(summaryRows?.[0]?.tx_count ?? 0);
-  const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
-  const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
-  const netCashFlow = inflows - outflows;
-
-  // Calculate daily average over the full requested period
-  const periodDays = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
-  const avgDailyCashFlow = periodDays > 0 ? netCashFlow / periodDays : 0;
-
-  // Calculate volatility (standard deviation) over each day's net flow
-  const flowValues = days.map((d: any) => Number(d.net ?? 0));
-  const mean = flowValues.reduce((sum: number, val: number) => sum + val, 0) / (flowValues.length || 1);
-  const variance = flowValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (flowValues.length || 1);
-  const volatility = Math.sqrt(variance);
-
   results.cash_flow = {
-    inflows_7d: inflows,
-    outflows_7d: outflows,
-    net_cash_flow_7d: netCashFlow,
-    avg_daily_cash_flow: avgDailyCashFlow,
-    volatility: volatility,
+    ...buildCashFlowSummary(days, start_date, end_date),
     transaction_count: txCount,
   };
 }
@@ -732,7 +658,8 @@ async function calculateLiquidity(
   args: any,
   restaurantId: string,
   supabase: any,
-  results: any
+  results: any,
+  restaurantNow: Date
 ): Promise<void> {
   const { bank_account_id } = args;
   
@@ -761,8 +688,8 @@ async function calculateLiquidity(
   // a 30-day trailing window. p_bank_account_id filters connected_bank_id,
   // which fixes the prior filter on a bank_account_id column that
   // bank_transactions does not have.
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const thirtyDaysAgo = toLocalYMD(addDays(restaurantNow, -30));
+  const todayStr = toLocalYMD(restaurantNow);
   const { data: outflowSummaryRows, error: outflowSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
     p_restaurant_id: restaurantId,
     p_start_date: thirtyDaysAgo,
@@ -781,7 +708,7 @@ async function calculateLiquidity(
     avg_daily_outflow: avgDailyOutflow,
     days_of_cash: Math.round(daysOfCash),
     runway_status: daysOfCash > 60 ? 'healthy' : daysOfCash > 30 ? 'caution' : 'critical',
-    projected_zero_date: daysOfCash < 999 ? new Date(Date.now() + daysOfCash * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null,
+    projected_zero_date: daysOfCash < 999 ? toLocalYMD(addDays(restaurantNow, daysOfCash)) : null,
   };
 }
 
@@ -792,12 +719,13 @@ async function calculatePredictions(
   args: any,
   restaurantId: string,
   supabase: any,
-  results: any
+  results: any,
+  restaurantNow: Date
 ): Promise<void> {
   const { bank_account_id } = args;
 
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const sixtyDaysAgo = toLocalYMD(addDays(restaurantNow, -60));
+  const todayStr = toLocalYMD(restaurantNow);
 
   // Daily inflow series (get_bank_transactions_daily) replaces the raw
   // per-transaction fetch. "Recurring deposit" detection now looks at days
@@ -822,7 +750,7 @@ async function calculatePredictions(
     return d.day > latest ? d.day : latest;
   }, '1970-01-01');
 
-  const daysSinceDeposit = Math.floor((Date.now() - new Date(lastDepositDate).getTime()) / (1000 * 60 * 60 * 24));
+  const daysSinceDeposit = daysBetweenYmd(lastDepositDate, toLocalYMD(restaurantNow));
 
   results.predictions = {
     next_deposit_prediction: {
@@ -839,7 +767,8 @@ async function calculatePredictions(
 async function executeGetFinancialIntelligence(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { analysis_type, start_date, end_date, bank_account_id } = args;
   
@@ -860,11 +789,11 @@ async function executeGetFinancialIntelligence(
     }
     
     if (analysis_type === 'all' || analysis_type === 'liquidity') {
-      await calculateLiquidity(args, restaurantId, supabase, results);
+      await calculateLiquidity(args, restaurantId, supabase, results, restaurantNow);
     }
     
     if (analysis_type === 'all' || analysis_type === 'predictions') {
-      await calculatePredictions(args, restaurantId, supabase, results);
+      await calculatePredictions(args, restaurantId, supabase, results, restaurantNow);
     }
     
     return {
@@ -1068,6 +997,7 @@ async function executeGetFinancialStatement(
             operating_expenses: totalExpenses,
             net_income: netIncome,
             net_margin: revenue > 0 ? (netIncome / revenue) * 100 : 0,
+            basis: incomeStatementBasis(),
           },
           evidence: [
             { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date}` },
@@ -1252,7 +1182,8 @@ async function executeGetFinancialStatement(
 async function executeGetSalesSummary(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { 
     period, 
@@ -1267,7 +1198,8 @@ async function executeGetSalesSummary(
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(
     effectivePeriod as PeriodType,
     start_date,
-    end_date
+    end_date,
+    restaurantNow
   );
 
   // Calculate previous period for comparison
@@ -1354,25 +1286,14 @@ async function executeGetSalesSummary(
     });
     if (topItemsError) throw new Error(`get_top_sold_items failed: ${topItemsError.message}`);
 
-    itemsBreakdown = (topItems || []).map((item: any) => {
-      // sale_count preserves the old row-count semantics of quantity_sold
-      // (count of matching sale rows), not the RPC's summed `quantity` field.
-      const count = Number(item.sale_count ?? 0);
-      const total = Number(item.revenue ?? 0);
-      return {
-        item_name: item.item_name,
-        quantity_sold: count,
-        total_sales: total,
-        avg_price: count > 0 ? total / count : 0,
-      };
-    });
+    itemsBreakdown = mapTopSoldItems(topItems);
   }
 
   let comparison = null;
 
   if (compare_to_previous) {
-    const prevStartDateStr = prevStartDate.toISOString().split('T')[0];
-    const prevEndDateStr = prevEndDate.toISOString().split('T')[0];
+    const prevStartDateStr = toLocalYMD(prevStartDate);
+    const prevEndDateStr = toLocalYMD(prevEndDate);
 
     // fetchNetSales throws on RPC failure — caught here (rather than left to
     // propagate) to preserve the original behavior of silently omitting the
@@ -1417,7 +1338,8 @@ async function executeGetSalesSummary(
 async function executeGetInventoryTransactions(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const {
     transaction_type = 'all',
@@ -1441,11 +1363,9 @@ async function executeGetInventoryTransactions(
     startDateStr = start_date;
     endDateStr = end_date;
   } else {
-    const now = new Date();
     const daysToLookBack = Math.min(days_back, 90); // Max 90 days
-    const startDate = new Date(now.getTime() - daysToLookBack * 24 * 60 * 60 * 1000);
-    startDateStr = startDate.toISOString().split('T')[0];
-    endDateStr = now.toISOString().split('T')[0];
+    startDateStr = toLocalYMD(addDays(restaurantNow, -daysToLookBack));
+    endDateStr = toLocalYMD(restaurantNow);
   }
 
   // ✅ REUSE: Call the SAME service function used by the frontend
@@ -1521,7 +1441,8 @@ async function executeGetInventoryTransactions(
 async function executeGetAiInsights(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { focus_area = 'overall_health' } = args;
 
@@ -1530,7 +1451,7 @@ async function executeGetAiInsights(
 
   try {
     // Get KPIs
-    const kpisResult = await executeGetKpis({ period: 'month' }, restaurantId, supabase);
+    const kpisResult = await executeGetKpis({ period: 'month' }, restaurantId, supabase, restaurantNow);
     dataContext.kpis = kpisResult.data;
 
     // Get inventory status
@@ -1542,7 +1463,7 @@ async function executeGetAiInsights(
     dataContext.recipes = recipeResult.data;
 
     // Get sales summary
-    const salesResult = await executeGetSalesSummary({ period: 'month', compare_to_previous: true }, restaurantId, supabase);
+    const salesResult = await executeGetSalesSummary({ period: 'month', compare_to_previous: true }, restaurantId, supabase, restaurantNow);
     dataContext.sales = salesResult.data;
 
     // Focus area specific data
@@ -1792,6 +1713,7 @@ async function executeGenerateReport(
           expenses: totalExpenses,
           net_profit: totalRevenue - totalCOGS - totalExpenses,
           net_margin: totalRevenue > 0 ? ((totalRevenue - totalCOGS - totalExpenses) / totalRevenue) * 100 : 0,
+          basis: monthlyPnlBasis(),
         };
         break;
       }
@@ -1994,6 +1916,53 @@ interface FetchLaborDataOptions {
   endLookaheadHours?: number;
 }
 
+interface FetchLaborEmployeesOptions {
+  /** Optional single-employee filter. */
+  employeeId?: string;
+  /** Optional case-insensitive position filter. */
+  position?: string;
+  /** Only employees with status 'active'. */
+  activeOnly?: boolean;
+}
+
+/**
+ * Read the employee rows the labor engine needs, through employees_secure.
+ *
+ * This function runs as the caller. 20260806110000 revokes SELECT on the pay
+ * columns of public.employees from authenticated, so a read of the base table
+ * fails with "permission denied for column hourly_rate". The view returns
+ * those columns, NULL when the caller lacks view:pay_rates. Each labor tool
+ * checks that flag with hasPayRatesCapability before it shows a cost.
+ */
+async function fetchLaborEmployees(
+  supabase: ReturnType<typeof createClient>,
+  restaurantId: string,
+  options: FetchLaborEmployeesOptions = {},
+): Promise<LaborEmployee[]> {
+  const { employeeId, position, activeOnly = false } = options;
+
+  let query = supabase
+    .from(EMPLOYEE_LABOR_SOURCE)
+    .select(EMPLOYEE_LABOR_COLUMNS)
+    .eq('restaurant_id', restaurantId);
+
+  if (employeeId) {
+    query = query.eq('id', employeeId);
+  }
+  if (position) {
+    query = query.ilike('position', position);
+  }
+  if (activeOnly) {
+    query = query.eq('status', 'active');
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch employees: ${error.message}`);
+  // The select is EMPLOYEE_LABOR_COLUMNS, which covers every field of the
+  // engine's Employee type (tests/unit/employeeLaborColumns.test.ts).
+  return (data ?? []) as LaborEmployee[];
+}
+
 /**
  * Fetch time punches and employees in parallel — shared by get_labor_costs
  * and get_time_punches.
@@ -2024,27 +1993,16 @@ async function fetchLaborData(
     punchQuery = punchQuery.eq('employee_id', employeeId);
   }
 
-  let employeeQuery = supabase
-    .from('employees')
-    .select(EMPLOYEE_LABOR_COLUMNS)
-    .eq('restaurant_id', restaurantId);
-
-  if (employeeId) {
-    employeeQuery = employeeQuery.eq('id', employeeId);
-  }
-
-  if (position) {
-    employeeQuery = employeeQuery.ilike('position', position);
-  }
-
-  const [punchesResult, employeesResult] = await Promise.all([punchQuery, employeeQuery]);
+  const [punchesResult, employees] = await Promise.all([
+    punchQuery,
+    fetchLaborEmployees(supabase, restaurantId, { employeeId, position }),
+  ]);
 
   if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
 
   return {
     timePunches: punchesResult.data ?? [],
-    employees: employeesResult.data ?? [],
+    employees,
   };
 }
 
@@ -2061,15 +2019,16 @@ async function executeGetLaborCosts(
   const { period, start_date, end_date, include_daily_breakdown = true, include_employee_breakdown = false } = args;
 
   const { calculateActualLaborCost, calculateHoursPerEmployee } = await import('../_shared/laborCalculations.ts');
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, laborServerNow());
 
   const canSeeEmployees = userRole === 'manager' || userRole === 'owner';
 
   // 18h lookahead so shifts whose clock_out lands just after midnight at the
   // end of the window still get paired into a complete period.
-  const { timePunches, employees } = await fetchLaborData(supabase, restaurantId, startDate, endDate, {
-    endLookaheadHours: 18,
-  });
+  const [{ timePunches, employees }, hasPayRates] = await Promise.all([
+    fetchLaborData(supabase, restaurantId, startDate, endDate, { endLookaheadHours: 18 }),
+    hasPayRatesCapability(restaurantId, supabase),
+  ]);
 
   const { breakdown, dailyCosts } = calculateActualLaborCost(employees, timePunches, startDate, endDate);
 
@@ -2089,21 +2048,28 @@ async function executeGetLaborCosts(
       }))
     : null;
 
+  const costs = {
+    breakdown: {
+      hourly: breakdown.hourly,
+      salary: breakdown.salary,
+      contractor: breakdown.contractor,
+      daily_rate: breakdown.daily_rate,
+      total: breakdown.total,
+    },
+    daily_costs: include_daily_breakdown ? dailyCosts : undefined,
+    employee_breakdown: employeeBreakdown,
+  };
+
   return {
     ok: true,
     data: {
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      breakdown: {
-        hourly: breakdown.hourly,
-        salary: breakdown.salary,
-        contractor: breakdown.contractor,
-        daily_rate: breakdown.daily_rate,
-        total: breakdown.total,
-      },
-      daily_costs: include_daily_breakdown ? dailyCosts : undefined,
-      employee_breakdown: employeeBreakdown,
+      // Without view:pay_rates every rate is a masked NULL, so each cost is $0.
+      // Show null plus a reason, not $0.
+      ...(hasPayRates ? costs : redactLaborCostsResult(costs)),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
     },
     evidence: [
       { table: 'time_punches', summary: `${timePunches.length} time punches across ${employees.length} employees from ${startDateStr} to ${endDateStr}` },
@@ -2143,7 +2109,7 @@ async function executeGetTimePunches(
   const { calculateHoursPerEmployee, getEmployeeSnapshotForDate, formatDateLocal } = await import(
     '../_shared/laborCalculations.ts'
   );
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, laborServerNow());
 
   const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
   const minHours = Math.max(0, Number(min_hours) || 0);
@@ -2152,13 +2118,16 @@ async function executeGetTimePunches(
   // end of the window still get paired. `calculateHoursPerEmployee` filters
   // periods by startTime <= endDate so any orphan clock_in in the lookahead
   // zone is dropped.
-  const { timePunches, employees } = await fetchLaborData(
-    supabase,
-    restaurantId,
-    startDate,
-    endDate,
-    { employeeId: employee_id, position, endLookaheadHours: 18 },
-  );
+  const [{ timePunches, employees }, hasPayRates] = await Promise.all([
+    fetchLaborData(
+      supabase,
+      restaurantId,
+      startDate,
+      endDate,
+      { employeeId: employee_id, position, endLookaheadHours: 18 },
+    ),
+    hasPayRatesCapability(restaurantId, supabase),
+  ]);
 
   const summaries = calculateHoursPerEmployee(employees, timePunches, startDate, endDate);
   // Index by id so we can resolve the per-day compensation snapshot below
@@ -2231,7 +2200,9 @@ async function executeGetTimePunches(
       total_shifts: shifts.length,
       returned_shifts: limited.length,
       has_more: hasMore,
-      shifts: limited,
+      // Without view:pay_rates each cost_cents is a masked $0. Show null.
+      shifts: hasPayRates ? limited : redactTimePunchShifts(limited),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
     },
     evidence: [
       {
@@ -2255,51 +2226,50 @@ async function executeGetScheduleOverview(
 
   const { calculateScheduledLaborCost } = await import('../_shared/laborCalculations.ts');
 
-  // For schedule overview, 'week' and 'month' look forward from today
-  const now = new Date();
+  // For schedule overview, 'week' and 'month' look forward from today.
+  const serverNow = laborServerNow();
   let startDate: Date;
   let endDate: Date;
 
   if (period === 'week') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+    startDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate());
+    endDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate() + 7);
   } else if (period === 'month') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    endDate = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    startDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate());
+    endDate = new Date(serverNow.getFullYear(), serverNow.getMonth() + 1, serverNow.getDate());
   } else {
-    const range = calculateDateRange(period as PeriodType, start_date, end_date);
+    const range = calculateDateRange(period as PeriodType, start_date, end_date, serverNow);
     startDate = range.startDate;
     endDate = range.endDate;
   }
 
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
+  const startDateStr = toLocalYMD(startDate);
+  const endDateStr = toLocalYMD(endDate);
 
-  // Fetch shifts and employees in parallel
-  const [shiftsResult, employeesResult] = await Promise.all([
+  // Fetch shifts and employees in parallel. The shift embed names only
+  // granted employee columns: the caller cannot read hourly_rate on
+  // public.employees (20260806110000).
+  const [shiftsResult, employees, hasPayRates] = await Promise.all([
     supabase
       .from('shifts')
-      .select('*, employee:employees(id, name, position, compensation_type, hourly_rate)')
+      .select('*, employee:employees(id, name, position)')
       .eq('restaurant_id', restaurantId)
       .gte('start_time', startDate.toISOString())
       .lte('start_time', endDate.toISOString())
       .order('start_time', { ascending: true }),
-    supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('status', 'active'),
+    // Only the cost projection reads employees and the pay flag.
+    include_projected_costs ? fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }) : Promise.resolve([]),
+    include_projected_costs ? hasPayRatesCapability(restaurantId, supabase) : Promise.resolve(true),
   ]);
 
   if (shiftsResult.error) throw new Error(`Failed to fetch shifts: ${shiftsResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
 
   const shifts = shiftsResult.data || [];
-  const employees = employeesResult.data || [];
 
-  // Calculate projected costs if requested and there are shifts
+  // Calculate projected costs if requested and there are shifts. Without
+  // view:pay_rates every rate is a masked NULL, so the projection is skipped.
   let projectedCosts = null;
-  if (include_projected_costs && shifts.length > 0) {
+  if (include_projected_costs && hasPayRates && shifts.length > 0) {
     const shiftData = shifts.map((s: any) => ({
       employee_id: s.employee_id,
       start_time: s.start_time,
@@ -2314,7 +2284,7 @@ async function executeGetScheduleOverview(
   // Group shifts by date
   const shiftsByDate: Record<string, any[]> = {};
   for (const shift of shifts) {
-    const dateKey = new Date(shift.start_time).toISOString().split('T')[0];
+    const dateKey = toLocalYMD(new Date(shift.start_time));
     if (!shiftsByDate[dateKey]) {
       shiftsByDate[dateKey] = [];
     }
@@ -2337,6 +2307,7 @@ async function executeGetScheduleOverview(
       total_shifts: shifts.length,
       shifts_by_date: shiftsByDate,
       projected_labor_costs: projectedCosts,
+      pay_hidden: include_projected_costs && !hasPayRates ? payHidden() : undefined,
     },
     evidence: [
       { table: 'shifts', summary: `${shifts.length} scheduled shifts from ${startDateStr} to ${endDateStr}` },
@@ -2355,12 +2326,12 @@ async function executeGetPayrollSummary(
 ): Promise<any> {
   const { period, start_date, end_date, include_employee_details = true } = args;
   const { calculateActualLaborCost, LABOR_FETCH_LOOKAHEAD_HOURS } = await import('../_shared/laborCalculations.ts');
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, laborServerNow());
 
   // Fetch all required data in parallel. time_punches upper bound is widened by
   // an overnight look-ahead so a shift crossing endDate still pairs whole;
   // calculateActualLaborCost drops periods whose clock-in is out of window.
-  const [punchesResult, employeesResult, tipsResult, manualResult] = await Promise.all([
+  const [punchesResult, employees, tipsResult, manualResult, hasPayRates] = await Promise.all([
     supabase
       .from('time_punches')
       .select('*')
@@ -2368,10 +2339,7 @@ async function executeGetPayrollSummary(
       .gte('punch_time', startDate.toISOString())
       .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
       .order('punch_time', { ascending: true }),
-    supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId),
+    fetchLaborEmployees(supabase, restaurantId),
     supabase
       .from('tip_splits')
       .select('id, total_amount')
@@ -2386,15 +2354,14 @@ async function executeGetPayrollSummary(
       .eq('source', 'per-job')
       .gte('date', startDateStr)
       .lte('date', endDateStr),
+    hasPayRatesCapability(restaurantId, supabase),
   ]);
 
   if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
   if (tipsResult.error) throw new Error(`Failed to fetch tips: ${tipsResult.error.message}`);
   if (manualResult.error) throw new Error(`Failed to fetch manual payments: ${manualResult.error.message}`);
 
   const punches = punchesResult.data || [];
-  const employees = employeesResult.data || [];
   const tipSplits = tipsResult.data || [];
   const manualPayments = manualResult.data || [];
 
@@ -2421,6 +2388,19 @@ async function executeGetPayrollSummary(
   const totalTips = totalTipsCents / 100;
   const totalManualPaymentsAmount = totalManualPaymentsCents / 100;
 
+  const summary = {
+    total_gross_pay: breakdown.total,
+    total_tips: totalTips,
+    total_manual_payments: totalManualPaymentsAmount,
+    total_payroll: breakdown.total + totalTips + totalManualPaymentsAmount,
+    by_compensation_type: {
+      hourly: breakdown.hourly,
+      salary: breakdown.salary,
+      contractor: breakdown.contractor,
+      daily_rate: breakdown.daily_rate,
+    },
+  };
+
   // Build employee details if requested
   const activeEmployees = employees.filter((e: any) => e.status === 'active');
   const employeeDetails = include_employee_details
@@ -2439,18 +2419,10 @@ async function executeGetPayrollSummary(
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      summary: {
-        total_gross_pay: breakdown.total,
-        total_tips: totalTips,
-        total_manual_payments: totalManualPaymentsAmount,
-        total_payroll: breakdown.total + totalTips + totalManualPaymentsAmount,
-        by_compensation_type: {
-          hourly: breakdown.hourly,
-          salary: breakdown.salary,
-          contractor: breakdown.contractor,
-          daily_rate: breakdown.daily_rate,
-        },
-      },
+      // Without view:pay_rates every rate is a masked NULL, so gross pay is
+      // $0. Show null plus a reason. Tips stay: they do not come from pay rates.
+      summary: hasPayRates ? summary : redactPayrollSummary(summary),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
       employee_count: activeEmployees.length,
       employee_details: employeeDetails,
     },
@@ -2467,10 +2439,11 @@ async function executeGetPayrollSummary(
 async function executeGetTipSummary(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, status_filter = 'all' } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   // Build query
   let query = supabase
@@ -2643,10 +2616,11 @@ async function executeGetPendingOutflows(
 async function executeGetOperatingCosts(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, include_break_even = true } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   // Fetch operating costs
   const { data: costs, error: costsError } = await supabase
@@ -2742,16 +2716,17 @@ async function executeGetOperatingCosts(
 async function executeGetMonthlyTrends(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { months_back = 12, include_percentages = true } = args;
 
-  const now = new Date();
+  const now = restaurantNow;
   const startDate = new Date(now.getFullYear(), now.getMonth() - months_back + 1, 1);
   const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
+  const startDateStr = toLocalYMD(startDate);
+  const endDateStr = toLocalYMD(endDate);
 
   // Use the RPC function for monthly sales metrics
   const { data: salesMetrics, error: salesError } = await supabase
@@ -2811,7 +2786,7 @@ async function executeGetMonthlyTrends(
     // Fallback: generate empty months
     for (let i = 0; i < months_back; i++) {
       const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthKey = monthDate.toISOString().slice(0, 7);
+      const monthKey = toLocalYMD(monthDate).slice(0, 7);
       months.push({
         period: monthKey,
         gross_revenue: 0,
@@ -2851,10 +2826,11 @@ async function executeGetMonthlyTrends(
 async function executeGetExpenseHealth(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, bank_account_id } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   // Processing fee detection patterns
   const processingFeePatterns = [
@@ -2901,7 +2877,7 @@ async function executeGetExpenseHealth(
     .eq('is_active', true);
 
   const totalCashBalance = (balances || []).reduce((sum: number, b: any) => sum + Number(b.current_balance), 0);
-  const cashCoverageBeforePayroll = laborCost > 0 ? totalCashBalance / laborCost : 0;
+  const cashCoverage = computeCashCoverage(totalCashBalance, laborCost);
 
   // Determine status
   const getStatus = (value: number, good: number, caution: number) => {
@@ -2918,8 +2894,8 @@ async function executeGetExpenseHealth(
   if (uncategorizedPercentage > 10) {
     alerts.push(`${uncategorizedPercentage.toFixed(1)}% of spending is uncategorized`);
   }
-  if (cashCoverageBeforePayroll < 1.5) {
-    alerts.push(`Cash coverage before payroll is only ${cashCoverageBeforePayroll.toFixed(1)}x`);
+  if (cashCoverage.alert) {
+    alerts.push(cashCoverage.alert);
   }
 
   return {
@@ -2960,9 +2936,9 @@ async function executeGetExpenseHealth(
           status: getStatus(uncategorizedPercentage, 5, 10),
         },
         cash_coverage: {
-          multiplier: cashCoverageBeforePayroll,
+          multiplier: cashCoverage.multiplier,
           current_balance: totalCashBalance,
-          status: cashCoverageBeforePayroll >= 2 ? 'good' : cashCoverageBeforePayroll >= 1.5 ? 'caution' : 'critical',
+          status: cashCoverage.status,
         },
       },
       revenue: revenue,
@@ -2981,10 +2957,11 @@ async function executeGetExpenseHealth(
 async function executeGetDailySalesTotals(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   const { data, error } = await supabase.rpc('get_daily_sales_totals', {
     p_restaurant_id: restaurantId,
@@ -3041,11 +3018,12 @@ async function executeGetDailySalesTotals(
 async function executeGetBreakEvenProgress(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { history_days = 14, include_monthly_progress = true, month } = args;
 
-  const now = new Date();
+  const now = restaurantNow;
 
   let today: Date;
   let historyStart: Date;
@@ -3233,81 +3211,6 @@ async function executeGetBreakEvenProgress(
 }
 
 /**
- * Execute get_proactive_insights tool
- * Returns top open inbox items + latest weekly brief for proactive AI context
- */
-async function executeGetProactiveInsights(
-  args: any,
-  restaurantId: string,
-  supabase: any
-): Promise<any> {
-  const { include_brief = true } = args;
-
-  // Fetch total count of open inbox items
-  const { count: totalOpenCount, error: countError } = await supabase
-    .from('ops_inbox_item')
-    .select('*', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurantId)
-    .eq('status', 'open');
-
-  if (countError) {
-    throw new Error(`Failed to count inbox items: ${countError.message}`);
-  }
-
-  // Fetch top 5 open ops inbox items by priority
-  const { data: inboxItems, error: inboxError } = await supabase
-    .from('ops_inbox_item')
-    .select('id, title, description, kind, priority, status, due_at, meta, created_at')
-    .eq('restaurant_id', restaurantId)
-    .eq('status', 'open')
-    .order('priority', { ascending: true })
-    .limit(5);
-
-  if (inboxError) {
-    throw new Error(`Failed to fetch inbox items: ${inboxError.message}`);
-  }
-
-  let briefData = null;
-  if (include_brief) {
-    const { data: brief, error: briefError } = await supabase
-      .from('weekly_brief')
-      .select('id, brief_week_end, metrics_json, comparisons_json, variances_json, inbox_summary_json, recommendations_json, narrative')
-      .eq('restaurant_id', restaurantId)
-      .order('brief_week_end', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (briefError) {
-      console.error('Failed to fetch weekly brief:', briefError.message);
-    } else {
-      briefData = brief;
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      inbox: {
-        items: inboxItems || [],
-        total_open: totalOpenCount || 0,
-        has_critical: inboxItems?.some((i: any) => i.priority <= 2) || false,
-      },
-      brief: briefData ? {
-        week_end: briefData.brief_week_end,
-        narrative: briefData.narrative,
-        metrics: briefData.metrics_json,
-        variances: briefData.variances_json,
-        recommendations: briefData.recommendations_json,
-      } : null,
-    },
-    evidence: [
-      { table: 'ops_inbox_item', summary: `${totalOpenCount || 0} total open inbox items (showing top 5 by priority)` },
-      ...(briefData ? [{ table: 'weekly_brief', summary: `Weekly brief for ${briefData.brief_week_end}` }] : []),
-    ],
-  };
-}
-
-/**
  * Execute batch_categorize_transactions tool
  * Preview-first pattern: preview=true shows changes, confirmed=true executes
  */
@@ -3353,7 +3256,7 @@ async function executeBatchCategorizeTransactions(
     return { ok: false, error: { code: 'NO_TRANSACTIONS', message: 'No matching transactions found' } };
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3376,7 +3279,7 @@ async function executeBatchCategorizeTransactions(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const { error: updateError } = await supabase
       .from('bank_transactions')
       .update({ category_id: category.id, is_categorized: true })
@@ -3437,7 +3340,7 @@ async function executeBatchCategorizePosSales(
 
   const { data: sales, error: salesError } = await supabase
     .from('unified_sales')
-    .select('id, item_name, total_price, sale_date, source')
+    .select(POS_SALE_PREVIEW_COLUMNS)
     .eq('restaurant_id', restaurantId)
     .in('id', sale_ids);
 
@@ -3449,7 +3352,7 @@ async function executeBatchCategorizePosSales(
     return { ok: false, error: { code: 'NO_SALES', message: 'No matching sales found' } };
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3461,7 +3364,7 @@ async function executeBatchCategorizePosSales(
           item_name: s.item_name,
           amount: s.total_price,
           date: s.sale_date,
-          source: s.source,
+          source: s.pos_system,
         })),
         count: sales.length,
         message: `Will categorize ${sales.length} POS sale(s) as "${category.account_name}". Please confirm to proceed.`,
@@ -3473,7 +3376,7 @@ async function executeBatchCategorizePosSales(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const { error: updateError } = await supabase
       .from('unified_sales')
       .update({ category_id: category.id, is_categorized: true })
@@ -3562,7 +3465,7 @@ async function executeCreateCategorizationRule(
     posMatchCount = count || 0;
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3584,7 +3487,7 @@ async function executeCreateCategorizationRule(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const appliesTo = source === 'bank' ? 'bank_transactions' : source === 'pos' ? 'pos_sales' : 'both';
     const { data: rule, error: ruleError } = await supabase
       .from('categorization_rules')
@@ -3623,69 +3526,12 @@ async function executeCreateCategorizationRule(
   return { ok: false, error: { code: 'INVALID_REQUEST', message: 'Must specify preview:true or confirmed:true' } };
 }
 
-/**
- * Execute resolve_inbox_item tool
- * Marks an ops inbox item as done or dismissed (low risk, no preview needed)
- */
-async function executeResolveInboxItem(
-  args: any,
-  restaurantId: string,
-  supabase: any,
-  userId: string
-): Promise<any> {
-  const { item_id, resolution } = args;
-
-  const { data: item, error: fetchError } = await supabase
-    .from('ops_inbox_item')
-    .select('id, title, status, kind, priority')
-    .eq('id', item_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (fetchError || !item) {
-    throw new Error(`Inbox item not found: ${item_id}`);
-  }
-
-  if (item.status === 'done' || item.status === 'dismissed') {
-    return {
-      ok: true,
-      data: {
-        action: 'resolve_inbox_item',
-        already_resolved: true,
-        item: { id: item.id, title: item.title, status: item.status },
-        message: `Item "${item.title}" is already ${item.status}.`,
-      },
-      evidence: [
-        { table: 'ops_inbox_item', id: item.id, summary: `Item already ${item.status}` },
-      ],
-    };
-  }
-
-  const { error: updateError } = await supabase
-    .from('ops_inbox_item')
-    .update({
-      status: resolution,
-      resolved_at: new Date().toISOString(),
-      resolved_by: userId,
-    })
-    .eq('id', item_id)
-    .eq('restaurant_id', restaurantId);
-
-  if (updateError) {
-    throw new Error(`Failed to resolve inbox item: ${updateError.message}`);
-  }
-
-  return {
-    ok: true,
-    data: {
-      action: 'resolve_inbox_item',
-      item: { id: item.id, title: item.title, previous_status: item.status, new_status: resolution },
-      message: `Marked "${item.title}" as ${resolution}.`,
-    },
-    evidence: [
-      { table: 'ops_inbox_item', id: item.id, summary: `Item ${resolution}: ${item.title}` },
-    ],
-  };
+/** JSON response with { ok: false, error } for the dispatcher. */
+function toolErrorResponse(status: number, error: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ ok: false, error }), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 serve(async (req) => {
@@ -3745,46 +3591,47 @@ serve(async (req) => {
     if (isCapabilityGatedTool(tool_name)) {
       const allowed = await canUseCapabilityGatedTool(tool_name, restaurant_id, supabase);
       if (!allowed) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            error: {
-              code: 'TOOL_PERMISSION_DENIED',
-              message: `You don't have permission to use ${tool_name}.`,
-              tool: tool_name,
-              required_capability: 'view:scheduling or view:payroll',
-            },
-          }),
-          {
-            status: 403,
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
+        return toolErrorResponse(403, {
+          code: 'TOOL_PERMISSION_DENIED',
+          message: `You don't have permission to use ${tool_name}.`,
+          tool: tool_name,
+          required_capability: 'view:scheduling or view:payroll',
+        });
       }
     } else if (!canUseTool(tool_name, userRestaurant.role)) {
       const requiredRole = requiredRoleFor(tool_name);
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: {
-            code: 'TOOL_PERMISSION_DENIED',
-            message: `You don't have permission to use ${tool_name}.`,
-            tool: tool_name,
-            required_role: requiredRole,
-          },
-        }),
-        {
-          status: 403,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      return toolErrorResponse(403, {
+        code: 'TOOL_PERMISSION_DENIED',
+        message: `You don't have permission to use ${tool_name}.`,
+        tool: tool_name,
+        required_role: requiredRole,
+      });
     }
+
+    // Reject a call with missing required arguments before any DB read. The
+    // answer is in band (HTTP 200, ok:false), so the model reads the names.
+    const missing = missingRequiredArgs(tool_name, args);
+    if (missing.length > 0) {
+      return toolErrorResponse(200, {
+        code: 'INVALID_ARGUMENTS',
+        message: `Missing required argument(s) for ${tool_name}: ${missing.join(', ')}.`,
+        tool: tool_name,
+        missing,
+      });
+    }
+    const nonBoolean = nonBooleanFlagArgs(args);
+    if (nonBoolean.length > 0) {
+      return toolErrorResponse(200, {
+        code: 'INVALID_ARGUMENTS',
+        message: `${nonBoolean.join(', ')} must be true or false for ${tool_name}.`,
+        tool: tool_name,
+        invalid: nonBoolean,
+      });
+    }
+
+    // "Today" for the tools is the restaurant's local day (see restaurantDate.ts).
+    const restaurantTimeZone = await resolveRestaurantTimeZone(supabase, restaurant_id);
+    const restaurantNow = restaurantWallClock(new Date(), restaurantTimeZone);
 
     const startTime = Date.now();
     let result;
@@ -3795,7 +3642,7 @@ serve(async (req) => {
         result = executeNavigate(args);
         break;
       case 'get_kpis':
-        result = await executeGetKpis(args, restaurant_id, supabase);
+        result = await executeGetKpis(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_inventory_status':
         result = await executeGetInventoryStatus(args, restaurant_id, supabase);
@@ -3804,13 +3651,13 @@ serve(async (req) => {
         result = await executeGetRecipeAnalytics(args, restaurant_id, supabase);
         break;
       case 'get_sales_summary':
-        result = await executeGetSalesSummary(args, restaurant_id, supabase);
+        result = await executeGetSalesSummary(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_inventory_transactions':
-        result = await executeGetInventoryTransactions(args, restaurant_id, supabase);
+        result = await executeGetInventoryTransactions(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_financial_intelligence':
-        result = await executeGetFinancialIntelligence(args, restaurant_id, supabase);
+        result = await executeGetFinancialIntelligence(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_bank_transactions':
         result = await executeGetBankTransactions(args, restaurant_id, supabase);
@@ -3819,7 +3666,7 @@ serve(async (req) => {
         result = await executeGetFinancialStatement(args, restaurant_id, supabase);
         break;
       case 'get_ai_insights':
-        result = await executeGetAiInsights(args, restaurant_id, supabase);
+        result = await executeGetAiInsights(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'generate_report':
         result = await executeGenerateReport(args, restaurant_id, supabase);
@@ -3837,28 +3684,25 @@ serve(async (req) => {
         result = await executeGetPayrollSummary(args, restaurant_id, supabase);
         break;
       case 'get_tip_summary':
-        result = await executeGetTipSummary(args, restaurant_id, supabase);
+        result = await executeGetTipSummary(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_pending_outflows':
         result = await executeGetPendingOutflows(args, restaurant_id, supabase);
         break;
       case 'get_operating_costs':
-        result = await executeGetOperatingCosts(args, restaurant_id, supabase);
+        result = await executeGetOperatingCosts(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_monthly_trends':
-        result = await executeGetMonthlyTrends(args, restaurant_id, supabase);
+        result = await executeGetMonthlyTrends(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_expense_health':
-        result = await executeGetExpenseHealth(args, restaurant_id, supabase);
+        result = await executeGetExpenseHealth(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_daily_sales_totals':
-        result = await executeGetDailySalesTotals(args, restaurant_id, supabase);
+        result = await executeGetDailySalesTotals(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_break_even_progress':
-        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase);
-        break;
-      case 'get_proactive_insights':
-        result = await executeGetProactiveInsights(args, restaurant_id, supabase);
+        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'batch_categorize_transactions':
         result = await executeBatchCategorizeTransactions(args, restaurant_id, supabase);
@@ -3868,9 +3712,6 @@ serve(async (req) => {
         break;
       case 'create_categorization_rule':
         result = await executeCreateCategorizationRule(args, restaurant_id, supabase);
-        break;
-      case 'resolve_inbox_item':
-        result = await executeResolveInboxItem(args, restaurant_id, supabase, user.id);
         break;
       default:
         throw new Error(`Unknown tool: ${tool_name}`);
@@ -3901,21 +3742,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Failed to execute tool';
     console.error('Tool execution error:', error);
     
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: {
-          code: 'TOOL_EXECUTION_ERROR',
-          message: errorMessage,
-        },
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    return toolErrorResponse(500, {
+      code: 'TOOL_EXECUTION_ERROR',
+      message: errorMessage,
+    });
   }
 });

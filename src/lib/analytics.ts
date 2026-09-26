@@ -234,13 +234,13 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
 
       // trial_started fires only for self-serve signups. Invited team members
       // join an existing tenant's existing subscription/trial — they don't
-      // start their own. team_member_joined gives us a separate top-of-funnel
-      // for "team growth at existing customers" without polluting the prospect
-      // funnel.
+      // start their own. team_member_joined is NOT fired here: this function
+      // runs on any auth resolve, and the localStorage classification only
+      // proves the user once OPENED an invite link, not that they joined.
+      // The real join signal is recordTeamMemberJoined, called at accept
+      // success.
       if (classification.signup_path === 'self_serve') {
         posthog.capture('trial_started', { trial_ends_at: trialEndsAt, ...classification });
-      } else {
-        posthog.capture('team_member_joined', { ...classification });
       }
 
       clearStoredAttribution();
@@ -253,6 +253,22 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[analytics] recordAuthEvents failed:', msg);
+  }
+}
+
+/**
+ * Fire the real join signal. Call this only where a membership row was
+ * actually created or confirmed: invitation-accept success paths.
+ */
+export function recordTeamMemberJoined(
+  posthog: PostHogLike,
+  properties?: Record<string, unknown>,
+): void {
+  try {
+    posthog.capture('team_member_joined', properties);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[analytics] recordTeamMemberJoined failed:', msg);
   }
 }
 

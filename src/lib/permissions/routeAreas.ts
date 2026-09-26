@@ -16,12 +16,12 @@
  * hand-written lists at runtime; the calibration is what lets a custom role
  * assembled from the same areas reach the same pages and no more.
  *
- * `/budget`, `/labor`, `/stripe-account`, `/ops-inbox` and `/weekly-brief`
- * are mapped but unheld: each has an area (they're catalog rows like any
- * other), but no builtin role's seeded `role_areas` grants it, so no
- * collaborator reaches them today. That stays true only until an owner
- * grants one of these areas to a custom role — the map doesn't forbid it,
- * the seed data just doesn't do it yet.
+ * `/budget`, `/labor` and `/stripe-account` are mapped but unheld: each
+ * has an area (they're catalog rows like any other), but no builtin role's
+ * seeded `role_areas` grants it, so no collaborator reaches them today.
+ * That stays true only until an owner grants one of these areas to a
+ * custom role — the map doesn't forbid it, the seed data just doesn't do
+ * it yet.
  */
 
 import { AREA_DEFINITIONS, AREA_PRIORITY, AREA_LANDING_PATHS } from './areas';

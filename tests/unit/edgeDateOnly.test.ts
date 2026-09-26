@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { toDateOnlyString } from '../../supabase/functions/_shared/dateOnly';
 import { toDateOnlyString as toDateOnlyStringSrc } from '@/lib/dateOnly';
 
-// This module is a hand-maintained duplicate of `src/lib/dateOnly.ts`'s
-// `toDateOnlyString` (Deno edge functions can't import from `src/`). The two
-// are meant to stay in agreement — this suite locks that contract so a future
-// edit to one that isn't mirrored to the other fails loudly, instead of
-// silently reintroducing the process-receipt/process-expense-invoice bug
-// class (a calendar day serialized via UTC fields instead of local fields).
+// This module re-exports `toDateOnlyString` from
+// `supabase/functions/_shared/labor/dateOnly.ts`, which `src/lib/dateOnly.ts`
+// also re-exports. This suite locks the edge path to the same behavior, so a
+// later change cannot silently reintroduce the process-receipt /
+// process-expense-invoice bug class (a calendar day serialized via UTC fields
+// instead of local fields).
 
 describe('toDateOnlyString (supabase/functions/_shared/dateOnly)', () => {
   it('serializes local calendar fields, not UTC fields', () => {

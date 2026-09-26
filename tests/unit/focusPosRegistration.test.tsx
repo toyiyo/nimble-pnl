@@ -76,6 +76,9 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 }));
 
 // Stub FocusSync and FocusSetupWizard so we can assert they are rendered
+vi.mock('@/components/integrations/ConnectedAppsCard', () => ({
+  ConnectedAppsCard: () => null,
+}));
 vi.mock('@/components/FocusSync', () => ({
   FocusSync: ({ restaurantId }: { restaurantId: string }) => (
     <div data-testid="focus-sync" data-restaurant-id={restaurantId}>FocusSync</div>

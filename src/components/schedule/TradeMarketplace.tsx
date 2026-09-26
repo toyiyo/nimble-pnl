@@ -12,9 +12,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useMarketplaceTrades, useAcceptShiftTrade } from '@/hooks/useShiftTrades';
+import { useShiftProtection } from '@/hooks/useShiftProtection';
+import { tradeDeadlineFinding } from '@/lib/shiftProtection';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TentativeDraftBadge } from '@/components/schedule/TentativeDraftBadge';
+import { ShiftProtectionWarning } from '@/components/scheduling/ShiftProtectionWarning';
 import {
   Store,
   Clock,
@@ -60,6 +63,13 @@ export const TradeMarketplace = () => {
 
   const [selectedTrade, setSelectedTrade] = useState<TradeWithConflict | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+
+  // Shift Protection: show the deadline rule before the accept commits.
+  const { protection } = useShiftProtection(restaurantId);
+  const acceptFinding = selectedTrade
+    ? tradeDeadlineFinding(protection, selectedTrade.offered_shift.start_time, new Date())
+    : null;
+  const acceptBlocked = acceptFinding?.mode === 'block';
 
   const handleAcceptClick = (trade: TradeWithConflict) => {
     if (trade.hasConflict) {
@@ -236,6 +246,18 @@ export const TradeMarketplace = () => {
                   </p>
                 </div>
               )}
+
+              {acceptFinding && (
+                <ShiftProtectionWarning
+                  id="accept-policy-warning"
+                  messages={[acceptFinding.message]}
+                  footnote={
+                    acceptBlocked
+                      ? 'A shift protection rule closed this trade for accepts.'
+                      : 'A manager must still approve this late trade.'
+                  }
+                />
+              )}
             </div>
           )}
 
@@ -247,7 +269,11 @@ export const TradeMarketplace = () => {
             >
               Cancel
             </Button>
-            <Button onClick={handleConfirmAccept} disabled={isAccepting}>
+            <Button
+              onClick={handleConfirmAccept}
+              disabled={isAccepting || acceptBlocked}
+              aria-describedby={acceptBlocked ? 'accept-policy-warning' : undefined}
+            >
               {isAccepting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

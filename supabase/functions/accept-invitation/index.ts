@@ -100,8 +100,12 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Invitation has expired');
     }
 
-    // Check if the user's email matches
-    if (user.email !== invitation.email) {
+    // Check if the user's email matches. Lowercase both sides: historical
+    // invitation rows carry mixed case, and GoTrue lowercases the account
+    // email — an exact compare would reject a legitimate invitee. The
+    // client (AcceptInvitation.tsx emailsMatch) and accept_my_invitation
+    // use the same case-insensitive rule.
+    if (!user.email || user.email.toLowerCase() !== invitation.email.toLowerCase()) {
       throw new Error(`This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`);
     }
 
@@ -163,13 +167,18 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations
+    // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations.
+    // neq(id): a concurrent accept_my_invitation call can have flipped THIS
+    // row to accepted already — without the exclusion, this delete would
+    // remove the row the update below targets and lose the accepted_at/
+    // accepted_by audit record (mirror of the RPC's own guard).
     await supabase
       .from('invitations')
       .delete()
       .eq('restaurant_id', invitation.restaurant_id)
       .eq('email', invitation.email)
-      .eq('status', 'accepted');
+      .eq('status', 'accepted')
+      .neq('id', invitation.id);
 
     // Update invitation status
     const { error: updateError } = await supabase

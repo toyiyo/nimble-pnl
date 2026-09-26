@@ -4,7 +4,7 @@ import type { Database } from './types';
 
 // Production defaults - used when environment variables are not set
 // This ensures the app works on Lovable, Netlify, and other platforms without env var configuration
-const PRODUCTION_SUPABASE_URL = "https://ncdujvdgqtaunuyigflp.supabase.co";
+export const PRODUCTION_SUPABASE_URL = "https://ncdujvdgqtaunuyigflp.supabase.co";
 const PRODUCTION_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jZHVqdmRncXRhdW51eWlnZmxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc5NjgyMTYsImV4cCI6MjA3MzU0NDIxNn0.mlrSpU6RgiQLzLmYgtwcEBpOgoju9fow-_8xv4KRSZw";
 
 // Use environment variables if available (Vercel preview branches, local dev)

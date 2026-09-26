@@ -363,8 +363,14 @@ export default function Banking() {
                 <span className="sm:hidden">Categorize</span>
               </Button>
             )}
-            <Button 
-              onClick={() => setShowReconciliationDialog(true)} 
+            <Button asChild variant="outline" className="w-full sm:w-auto">
+              <Link to="/banking/deposit-match">
+                <ArrowLeftRight className="h-4 w-4 mr-2" />
+                Deposit Match
+              </Link>
+            </Button>
+            <Button
+              onClick={() => setShowReconciliationDialog(true)}
               variant="outline"
               className="w-full sm:w-auto"
             >

@@ -5,6 +5,7 @@ vi.mock('@/hooks/useRevenueBreakdown', () => ({
   useRevenueBreakdown: () => ({
     data: null,
     isLoading: false,
+    isFetching: false,
     error: null,
     refetch: () => {},
   }),
@@ -21,6 +22,7 @@ vi.mock('@/hooks/useCostsFromSource', () => ({
     totalCost: 0,
     capped: true,
     isLoading: false,
+    isFetching: false,
     error: null,
     refetch: () => {},
   }),

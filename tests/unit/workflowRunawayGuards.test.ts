@@ -51,6 +51,7 @@ function defaultResponder(label: string) {
   if (label.startsWith('coderabbit:')) return { result: { status: 'completed', clean: true } }
   if (label === 're-review-snapshot') return { result: { status: 'completed', newCommits: '', diff: '' } }
   if (label === 'verify') return { result: { status: 'completed', allPass: true, probeAbsentFromBundle: true } }
+  if (label === 'qa') return { result: { status: 'completed', qaPassed: true, reportPath: 'dev-tools/qa/qa-report.md', commits: [] } }
   if (label === 'ship') return { result: { status: 'completed', prNumber: 42 } }
   if (label.startsWith('ci:')) return { result: { status: 'completed', ciGreen: true } }
   if (label === 'triage') return { result: { status: 'completed', openCriticalOrMajor: 0, pushedFix: false } }
@@ -253,7 +254,8 @@ describe('dev-continue-verify-and-ship: same containment', () => {
     })
 
     expect(run.result.stopped).toBe(true)
-    expect(run.result.phase).toBe('Ship')
+    // QA (Phase 8.5) is the first phase after Verify, so the ceiling bites there.
+    expect(run.result.phase).toBe('QA')
     expect(run.result.reason).toContain('Token ceiling reached')
     // Verify ran and passed, but nothing was pushed and no PR was opened.
     expect(labelsOf(run)).toEqual(['verify'])

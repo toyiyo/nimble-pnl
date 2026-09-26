@@ -16,7 +16,10 @@ const HIGH_VOLUME_TABLES = [
 const FROM_RE = new RegExp(
   `\\.from\\(\\s*['"](?:${HIGH_VOLUME_TABLES.join('|')})['"]`
 );
-const PAGED_IMPORT_RE = /@\/(?:utils\/fetchAllRows|services\/cogsFetch)/;
+// `src/` files import the helper through the `@/` alias. The shared labor
+// engine (`supabase/functions/_shared/labor/`) imports it by relative path.
+const PAGED_IMPORT_RE =
+  /@\/(?:utils\/fetchAllRows|services\/cogsFetch)|['"]\.\/fetchAllRows\.ts['"]/;
 
 const ALLOWLIST = new Set([
   'src/components/POSSalesImportReview.tsx',
@@ -47,7 +50,6 @@ const ALLOWLIST = new Set([
   'src/hooks/useInventoryDeduction.tsx',
   'src/hooks/useInventoryMetrics.tsx',
   'src/hooks/useInventoryPurchases.tsx',
-  'src/hooks/useLaborCostsFromTransactions.tsx',
   'src/hooks/useLiquidityMetrics.tsx',
   'src/hooks/usePendingOutflows.tsx',
   'src/hooks/usePredictableExpenses.tsx',
@@ -74,6 +76,8 @@ const ALLOWLIST = new Set([
 
 const repoRoot = join(__dirname, '..', '..');
 const srcRoot = join(repoRoot, 'src');
+const sharedLaborRoot = join(repoRoot, 'supabase', 'functions', '_shared', 'labor');
+const GUARDED_ROOTS = [srcRoot, sharedLaborRoot];
 
 function walk(dir: string, acc: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -90,7 +94,7 @@ function walk(dir: string, acc: string[] = []): string[] {
 describe('high-volume query guard', () => {
   it('finds no unpaged high-volume queries outside the allowlist', () => {
     const offenders: string[] = [];
-    for (const full of walk(srcRoot)) {
+    for (const full of GUARDED_ROOTS.flatMap((root) => walk(root))) {
       const repoPath = relative(repoRoot, full);
       if (ALLOWLIST.has(repoPath)) continue;
       const content = readFileSync(full, 'utf8');
@@ -99,6 +103,14 @@ describe('high-volume query guard', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('walks the shared labor engine and accepts its relative helper import', () => {
+    const walked = walk(sharedLaborRoot).map((full) => relative(repoRoot, full));
+    expect(walked).toContain('supabase/functions/_shared/labor/fetchAllRows.ts');
+    expect(PAGED_IMPORT_RE.test("import { fetchAllRows } from './fetchAllRows.ts';")).toBe(true);
+    expect(PAGED_IMPORT_RE.test("import { fetchAllRows } from '@/utils/fetchAllRows';")).toBe(true);
+    expect(PAGED_IMPORT_RE.test("import { other } from './other.ts';")).toBe(false);
   });
 
   it('keeps the allowlist shrink-only', () => {

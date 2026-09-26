@@ -3,7 +3,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getModel, getModelFallbackList, getMalformedFallbackModels } from "../_shared/model-router.ts";
-import { getTools } from "../_shared/tools-registry.ts";
+import { getTools, hasSchedulingOrPayrollCapability } from "../_shared/tools-registry.ts";
+import { resolveRestaurantTimeZone } from "../_shared/timezone.ts";
+import { ymdInTimeZone } from "../_shared/restaurantDate.ts";
 import { logAICall, startStreamingSpan, type AICallMetadata } from "../_shared/braintrust.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -513,11 +515,31 @@ serve(async (req) => {
       throw new HttpError(403, 'Access denied to this restaurant');
     }
 
+    // "Today" is the restaurant's local day. The edge runtime is in UTC, so
+    // after 19:00 CDT the UTC date is already the next day and the model
+    // asks the tools for a day with no sales yet.
+    // The capability decides whether the labor tools are in the list. The
+    // check fails closed (false) and logs on an RPC error; the dispatcher
+    // still gates each call.
+    const [restaurantTimeZone, hasSchedulingOrPayroll] = await Promise.all([
+      resolveRestaurantTimeZone(supabase, projectRef),
+      hasSchedulingOrPayrollCapability(projectRef, supabase),
+    ]);
+    const todayStr = ymdInTimeZone(new Date(), restaurantTimeZone);
+
     // Get model configuration
     const modelConfig = getModel({ routingKey, requiresTools: true });
     
     // Get available tools based on user role
-    const tools = getTools(projectRef, userRestaurant.role);
+    const tools = getTools(projectRef, userRestaurant.role, { hasSchedulingOrPayroll });
+
+    // Name get_labor_costs only when the user can call it.
+    const laborToolsPrompt = hasSchedulingOrPayroll
+      ? `   - **get_labor_costs: REQUIRED for labor cost questions (aggregate totals available to all roles)**
+     * For per-employee detail (hours, cost, days worked) pass include_employee_breakdown: true. The employee_breakdown field is populated for manager/owner callers and null for everyone else.
+     * Example: "What's my labor cost this week?" → get_labor_costs with period: "week"
+     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours`
+      : `   - Labor cost and schedule tools are not available to this user. Labor data needs the view:scheduling or view:payroll permission. Tell the user this; do not estimate labor figures.`;
 
     // Add system message if not present
     const systemMessage = {
@@ -527,7 +549,7 @@ You help restaurant owners and managers with their operations, financials, inven
 
 Current restaurant ID: ${projectRef}
 User role: ${userRestaurant.role}
-Current date: ${new Date().toISOString().split('T')[0]} (use this as "today" when users don't specify dates)
+Current date: ${todayStr} (the restaurant's local date, timezone ${restaurantTimeZone}; use this as "today" when users don't specify dates)
 
 DATE HANDLING - CRITICAL:
 - "month" means the CURRENT calendar month only. On March 1st, period "month" queries March, which likely has minimal data.
@@ -538,7 +560,7 @@ DATE HANDLING - CRITICAL:
 - Examples:
   * "How were sales in February?" -> get_sales_summary with period: "custom", start_date: "2026-02-01", end_date: "2026-02-28"
   * "Sales last month" -> get_sales_summary with period: "last_month"
-  * "Sales for 2026" -> get_sales_summary with period: "custom", start_date: "2026-01-01", end_date: "${new Date().toISOString().split('T')[0]}"
+  * "Sales for 2026" -> get_sales_summary with period: "custom", start_date: "2026-01-01", end_date: "${todayStr}"
   * "Break-even for February" -> get_break_even_progress with month: "2026-02"
   * "KPIs for last month" -> get_kpis with period: "custom", start_date and end_date for previous month
 
@@ -584,11 +606,6 @@ EVIDENCE-BACKED RESPONSES:
 - When citing data, reference the evidence: "Based on [evidence label] — [key figure]"
 - Never state a number that wasn't provided by a tool result
 - Evidence helps users drill down into the source records
-
-PROACTIVE INSIGHTS:
-- At the start of a new conversation (when the first user message arrives), call get_proactive_insights to check for urgent operational items
-- If there are critical or high priority items, mention them briefly before responding to the user's question
-- Example: "Before we dive in — I noticed your food cost spiked to 38% yesterday. Want me to look into it?"
 
 CONVERSATION FLOW:
 - When presenting a multi-step plan, ALWAYS ask if the user wants to execute it
@@ -651,10 +668,7 @@ FINANCIAL DATA RULES:
      * Example: "Generate monthly P&L" → use type: 'monthly_pnl', then format the returned data as a table
 
 5. Labor & Time Punches:
-   - **get_labor_costs: REQUIRED for labor cost questions (aggregate totals available to all roles)**
-     * For per-employee detail (hours, cost, days worked) pass include_employee_breakdown: true. The employee_breakdown field is populated for manager/owner callers and null for everyone else.
-     * Example: "What's my labor cost this week?" → get_labor_costs with period: "week"
-     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours
+${laborToolsPrompt}
    - **get_time_punches (manager+owner only): REQUIRED to answer "who worked when" or to drill into specific shifts**
      * Returns one row per work period (clock-in/out pair) with hours and breaks deducted, joined to employee name/position.
      * Filter by employee_id, position, or min_hours when the user asks about a specific person, role, or full shifts only.
@@ -662,6 +676,11 @@ FINANCIAL DATA RULES:
      * Example: "Show me Maria's shifts last week" → get_time_punches with period: "last_week", employee_id: <Maria's id>
      * Example: "Which servers worked yesterday?" → get_time_punches with period: "yesterday", position: "Server"
      * If a tool call returns error code TOOL_PERMISSION_DENIED, tell the user which role is required (from required_role) — do NOT retry the same tool.
+
+6. Data changes (managers/owners):
+   - batch_categorize_transactions, batch_categorize_pos_sales, create_categorization_rule change data.
+   - ALWAYS call them with preview: true first, and show the preview to the user.
+   - Call them with confirmed: true ONLY after the user clearly approves the preview.
 
 🔴 REMEMBER: ANY question about numbers, data, or restaurant operations REQUIRES a tool call. NEVER make up data, even if it seems plausible. Real restaurants depend on accurate data.`,
     };

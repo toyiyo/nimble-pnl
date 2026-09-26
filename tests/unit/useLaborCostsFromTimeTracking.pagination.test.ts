@@ -11,8 +11,10 @@
  * This test mocks a `time_punches` fetch that requires exactly 2 pages
  * (1,000 + 39 = 1,039 rows, matching the real prod repro in
  * `laborPunchPaginationRepro.test.ts`) and asserts:
- *   1. `.range()` was called with advancing offsets (`[0,999]`, `[1000,1999]`)
- *      — proving the fetch is paginated, not a single unbounded `.select()`.
+ *   1. The fetch asks for two pages of 1,000 rows (`.range(0, 999)`), and
+ *      the second page starts after the last `(punch_time, id)` of the first
+ *      (keyset paging with `.or()`, not offsets) — proving the fetch is
+ *      paginated, not a single unbounded `.select()`.
  *   2. The newest day's computed labor is non-zero — the bug is fixed
  *      end-to-end through `calculateActualLaborCost`.
  */
@@ -20,6 +22,7 @@ import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { keysetAfterFilter } from '../../supabase/functions/_shared/labor/fetchAllRows';
 
 const RESTAURANT = '7c0c76e3-e770-401b-a2a9-c1edd407efed';
 
@@ -127,12 +130,17 @@ function makeChainable(): any {
 // resolves to successive pages so the fetch behaves like real paginated
 // Supabase/PostgREST calls — this is what actually exercises `fetchAllRows`.
 const rangeCalls: Array<[number, number]> = [];
+const orCalls: string[] = [];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeTimePunchesChain(): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain: any = {};
   ['select', 'eq', 'gte', 'lte', 'order'].forEach((m) => {
     chain[m] = vi.fn(() => chain);
+  });
+  chain.or = vi.fn((filters: string) => {
+    orCalls.push(filters);
+    return chain;
   });
   let callIndex = 0;
   chain.range = vi.fn((from: number, to: number) => {
@@ -180,10 +188,11 @@ const createWrapper = () => {
 describe('useLaborCostsFromTimeTracking pagination (1000-row cap fix)', () => {
   beforeEach(() => {
     rangeCalls.length = 0;
+    orCalls.length = 0;
     fromMock.mockClear();
   });
 
-  it('paginates time_punches via .range() with advancing offsets and computes non-zero labor for the newest day', async () => {
+  it('pages time_punches with keyset paging and computes non-zero labor for the newest day', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
     // Window matching the prod repro (host-local dates spanning the backlog
@@ -199,10 +208,15 @@ describe('useLaborCostsFromTimeTracking pagination (1000-row cap fix)', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     // Proves the fetch is paginated (not a single unbounded `.select()`):
-    // offsets advance across the 2 pages needed to cover all 1,039 rows.
+    // two pages of up to 1,000 rows, and the second page starts after the
+    // last (punch_time, id) of the first (keyset, no offset).
     expect(rangeCalls).toEqual([
       [0, 999],
-      [1000, 1999],
+      [0, 999],
+    ]);
+    const last = page0[page0.length - 1];
+    expect(orCalls).toEqual([
+      keysetAfterFilter('punch_time', { key: last.punch_time, id: last.id }),
     ]);
 
     // Proves the bug is fixed end-to-end: with only page 0 (oldest 1000

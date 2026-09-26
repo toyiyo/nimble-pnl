@@ -48,6 +48,7 @@ const summary: AuditSummary = {
   unscheduledClock: 1,
   inProgress: 4,
   matched: 6,
+  draft: 2,
 };
 
 const zeroSummary: AuditSummary = {
@@ -57,6 +58,7 @@ const zeroSummary: AuditSummary = {
   unscheduledClock: 0,
   inProgress: 0,
   matched: 0,
+  draft: 0,
 };
 
 const renderBar = (overrides: Partial<React.ComponentProps<typeof ClockAuditBar>> = {}) => {
@@ -84,8 +86,8 @@ describe('ClockAuditBar', () => {
     expect(screen.getByRole('button', { name: '5 to fix' })).toBeInTheDocument();
     // no clock-out = openClock = 1
     expect(screen.getByRole('button', { name: '1 no clock-out' })).toBeInTheDocument();
-    // info = unscheduledClock + inProgress = 5
-    expect(screen.getByRole('button', { name: '5 info' })).toBeInTheDocument();
+    // info = unscheduledClock + inProgress + draft = 7
+    expect(screen.getByRole('button', { name: '7 info' })).toBeInTheDocument();
     // matched = 6
     expect(screen.getByRole('button', { name: '6 matched' })).toBeInTheDocument();
   });

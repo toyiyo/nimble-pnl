@@ -5,17 +5,27 @@ import { cn } from '@/lib/utils';
 import { formatLocalTime } from '@/hooks/useShiftPlanner';
 import { formatCompactTime } from '@/lib/openShiftHelpers';
 
+import { ConflictBadge, CONFLICT_BORDER_CLASS } from './ConflictBadge';
+
 interface OffTemplateRowProps {
   area: string;
   weekDays: string[];
   /** Map<day, Shift[]> for this area's unmatched shifts. */
   shiftsByDay: Map<string, Shift[]>;
   onRemoveShift: (shiftId: string) => void;
+  /** shiftId -> display-ready conflict lines (usePlannerShiftConflicts). */
+  conflictsByShiftId?: Map<string, string[]>;
 }
 
 /** Read-only lane that surfaces shifts not bound to any active template.
  *  Renders the row label + 7 day cells; NOT a drag target (no useDroppable). */
-export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift }: Readonly<OffTemplateRowProps>) {
+export function OffTemplateRow({
+  area,
+  weekDays,
+  shiftsByDay,
+  onRemoveShift,
+  conflictsByShiftId,
+}: Readonly<OffTemplateRowProps>) {
   return (
     <div className="contents">
       <div className="border-t border-border/40 p-2 md:p-3 flex flex-col justify-center">
@@ -35,14 +45,17 @@ export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift }: R
           >
             {shifts.map((s) => {
               const employeeLabel = s.employee?.name ?? 'Unassigned';
+              const conflictLines = conflictsByShiftId?.get(s.id) ?? [];
               return (
                 <div
                   key={s.id}
                   className={cn(
                     'flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/60',
                     'bg-muted/30 text-[12px] text-foreground',
+                    conflictLines.length > 0 && CONFLICT_BORDER_CLASS,
                   )}
                 >
+                  <ConflictBadge lines={conflictLines} />
                   <span className="truncate">{employeeLabel}</span>
                   <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                     {formatCompactTime(formatLocalTime(s.start_time))}–{formatCompactTime(formatLocalTime(s.end_time))}

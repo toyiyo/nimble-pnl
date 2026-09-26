@@ -5,7 +5,7 @@ summary: "Set up fixed and variable operating costs, see your daily break-even t
 audience: ["owner", "manager"]
 order: 30
 keywords: ["break-even", "budget", "fixed cost", "variable cost", "operating cost", "run rate", "daily target", "food cost", "labor"]
-related: ["financial-statements", "banking-connect-and-transactions", "payroll-rules-and-types", "weekly-brief-performance-digest"]
+related: ["financial-statements", "banking-connect-and-transactions", "payroll-rules-and-types"]
 ---
 
 # Understand Your Break-Even and Set Operating Costs

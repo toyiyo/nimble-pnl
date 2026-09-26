@@ -52,6 +52,7 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { BroadcastOpenShiftsDialog } from '@/components/scheduling/BroadcastOpenShiftsDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
+import { ShiftProtectionSettingsDialog } from '@/components/scheduling/ShiftProtectionSettingsDialog';
 import { ScheduleMetricsRibbon } from '@/components/scheduling/ScheduleMetricsRibbon';
 import { useScheduleLaborBudget } from '@/hooks/useScheduleLaborBudget';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
@@ -101,6 +102,7 @@ import {
   CalendarClock,
   CalendarX,
   AlertTriangle,
+  Shield,
   Unlock,
   Send,
   History,
@@ -263,6 +265,7 @@ const Scheduling = () => {
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
+  const [protectionDialogOpen, setProtectionDialogOpen] = useState(false);
   const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
   const [exceptionDialogOpen, setExceptionDialogOpen] = useState(false);
   const [gridAvailability, setGridAvailability] = useState<EmployeeAvailability | undefined>();
@@ -1598,10 +1601,21 @@ const Scheduling = () => {
                     </CardDescription>
                   </div>
                 </div>
-                <Button onClick={() => setTimeOffDialogOpen(true)} className="shadow-sm">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Request
-                </Button>
+                <div className="flex items-center gap-2">
+                  {canManageSchedule && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setProtectionDialogOpen(true)}
+                    >
+                      <Shield className="h-4 w-4 mr-2" />
+                      Protection Rules
+                    </Button>
+                  )}
+                  <Button onClick={() => setTimeOffDialogOpen(true)} className="shadow-sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Request
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -1656,23 +1670,32 @@ const Scheduling = () => {
           <TabsContent value="trades">
             <Card className="border-border/50 overflow-hidden">
               <CardHeader className="bg-gradient-to-r from-muted/30 via-muted/50 to-muted/30 border-b border-border/50 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-warning/10">
-                    <ArrowLeftRight className="h-5 w-5 text-warning" />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-warning/10">
+                      <ArrowLeftRight className="h-5 w-5 text-warning" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        Shift Trade Requests
+                        {pendingTradeCount > 0 && (
+                          <Badge className="bg-warning/15 text-warning border border-warning/30 text-xs">
+                            {pendingTradeCount} pending
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="text-sm">
+                        Review and approve shift swap requests from your team
+                      </CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      Shift Trade Requests
-                      {pendingTradeCount > 0 && (
-                        <Badge className="bg-warning/15 text-warning border border-warning/30 text-xs">
-                          {pendingTradeCount} pending
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="text-sm">
-                      Review and approve shift swap requests from your team
-                    </CardDescription>
-                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setProtectionDialogOpen(true)}
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    Protection Rules
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
@@ -1735,6 +1758,13 @@ const Scheduling = () => {
             onOpenChange={setTimeOffDialogOpen}
             restaurantId={restaurantId}
           />
+          {canManageSchedule && (
+            <ShiftProtectionSettingsDialog
+              open={protectionDialogOpen}
+              onOpenChange={setProtectionDialogOpen}
+              restaurantId={restaurantId}
+            />
+          )}
           <AvailabilityDialog
             open={availabilityDialogOpen}
             onOpenChange={(open) => {

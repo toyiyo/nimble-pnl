@@ -1,0 +1,14 @@
+-- supabase: no-transaction
+-- Delete the plain (restaurant_id, item_name) index (20260727130000). The
+-- covering index idx_unified_sales_restaurant_item_name_cover (20260926120000)
+-- has the same key columns in the same order, so it serves every query the old
+-- one served. Keeping both costs a second index write on every sale insert.
+-- 20260926120100 stops the run before this file if the new index is not valid.
+--
+-- Rollback by hand:
+--   CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_unified_sales_restaurant_item_name
+--     ON public.unified_sales (restaurant_id, item_name);
+-- CONCURRENTLY cannot run inside a transaction, so this lives in its own
+-- migration file containing only this statement.
+-- Design: docs/superpowers/specs/2026-09-26-recipe-sales-stats-timeout-design.md
+DROP INDEX CONCURRENTLY IF EXISTS public.idx_unified_sales_restaurant_item_name;

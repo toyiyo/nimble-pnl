@@ -39,6 +39,13 @@ Function environment variables (API keys, etc.) are NOT deployed by this pipelin
 - **Dashboard:** Project > Edge Functions > Select function > Secrets
 - **CLI:** `supabase secrets set KEY=value --project-ref ncdujvdgqtaunuyigflp`
 
+## Deleted Edge Functions
+
+`supabase functions deploy` does not delete a remote function when the repo no longer contains it. The old function stays live in production, with its secrets. After a merge that deletes a function directory, delete the hosted function:
+
+- **CLI:** `supabase functions delete <function-name> --project-ref ncdujvdgqtaunuyigflp`
+- **Dashboard:** Project > Edge Functions > Select function > Delete
+
 ## Troubleshooting
 
 ### Migration fails

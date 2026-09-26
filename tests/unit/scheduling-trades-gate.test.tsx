@@ -12,6 +12,9 @@ import { render, screen } from '@testing-library/react';
 
 const hasCapabilityMock = vi.fn();
 let isResolvedMock = true;
+// Shared stub: the real hooks need a QueryClientProvider these tests lack.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
+
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({
     hasCapability: hasCapabilityMock,

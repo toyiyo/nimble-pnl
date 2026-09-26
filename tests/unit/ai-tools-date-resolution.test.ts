@@ -1,102 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import {
+  calculateDateRange as calculateDateRangeAt,
+  type PeriodType,
+} from '../../supabase/functions/_shared/restaurantDate';
 
-// Replicate the exact calculateDateRange function from ai-execute-tool/index.ts
-// since the actual function lives in a Deno edge function and can't be imported directly.
-
-type PeriodType =
-  | 'today' | 'yesterday' | 'tomorrow'
-  | 'week' | 'month' | 'quarter' | 'year'
-  | 'current_week' | 'last_week' | 'current_month' | 'last_month'
-  | 'custom';
-
-interface DateRange {
-  startDate: Date;
-  endDate: Date;
-  startDateStr: string;
-  endDateStr: string;
-}
-
-function calculateDateRange(
-  period: PeriodType,
-  customStartDate?: string,
-  customEndDate?: string
-): DateRange {
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
-
-  switch (period) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      break;
-    case 'tomorrow':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
-      break;
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'current_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - dayOfWeek), 23, 59, 59);
-      break;
-    }
-    case 'last_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 7);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 1, 23, 59, 59);
-      break;
-    }
-    case 'month':
-    case 'current_month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      break;
-    case 'last_month':
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      break;
-    case 'quarter': {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      break;
-    }
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    case 'custom':
-      if (!customStartDate || !customEndDate) {
-        throw new Error('Custom period requires start_date and end_date');
-      }
-      const [sy, sm, sd] = customStartDate.split('-').map(Number);
-      startDate = new Date(sy, sm - 1, sd);
-      const [ey, em, ed] = customEndDate.split('-').map(Number);
-      endDate = new Date(ey, em - 1, ed, 23, 59, 59);
-      break;
-    default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-  }
-
-  const toLocalYMD = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
-  return {
-    startDate,
-    endDate,
-    startDateStr: toLocalYMD(startDate),
-    endDateStr: toLocalYMD(endDate),
-  };
-}
+// The tests below use the host clock as "now". restaurantDate.test.ts covers
+// the restaurant-timezone clock.
+const calculateDateRange = (period: PeriodType, start?: string, end?: string) =>
+  calculateDateRangeAt(period, start, end, new Date());
 
 // Helper to format Date as local YYYY-MM-DD (avoids UTC timezone shift from toISOString)
 function formatLocalDate(d: Date): string {

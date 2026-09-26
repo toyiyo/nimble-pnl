@@ -124,3 +124,21 @@ describe('regression: Tristen Liu off-by-one', () => {
     // helper test above proves the FIX is TZ-independent.
   });
 });
+
+describe('dayTokenEnd and dayTokens (shared labor engine)', () => {
+  it('gives the local end of the day: 23:59:59.999 on the same local day', async () => {
+    const { dayTokenEnd } = await import('../../supabase/functions/_shared/labor/dateOnly');
+    const end = dayTokenEnd('2026-03-08');
+    expect([end.getFullYear(), end.getMonth(), end.getDate()]).toEqual([2026, 2, 8]);
+    expect([end.getHours(), end.getMinutes(), end.getSeconds(), end.getMilliseconds()]).toEqual([23, 59, 59, 999]);
+  });
+
+  it('gives local midnight of the first day and the local end of the last day', async () => {
+    const { dayTokens } = await import('../../supabase/functions/_shared/labor/dateOnly');
+    const { dayStart, dayEnd } = dayTokens('2026-07-20', '2026-07-26');
+    expect(toDateOnlyString(dayStart)).toBe('2026-07-20');
+    expect(dayStart.getHours()).toBe(0);
+    expect(toDateOnlyString(dayEnd)).toBe('2026-07-26');
+    expect(dayEnd.getTime()).toBe(new Date(2026, 6, 26, 23, 59, 59, 999).getTime());
+  });
+});

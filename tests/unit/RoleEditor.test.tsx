@@ -191,7 +191,7 @@ describe('RoleEditor', () => {
   it('renders one row per gateable page, grouped by sidebar group', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
-    expect(screen.getAllByRole('radiogroup')).toHaveLength(33);
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(31);
     // A heading query, not getByText: 'Inventory' is both a group heading and
     // a page row label (the Inventory page itself), so a plain text match is
     // ambiguous.

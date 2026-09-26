@@ -111,6 +111,25 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/** Waits for a promise. Rejects when the signal aborts first. */
+function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      }
+    );
+  });
+}
+
 /** Reads one chunk. Rejects and cancels the reader when the signal aborts. */
 function readWithAbort(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -279,7 +298,8 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
         const combined = anySignal([signal, timeout.signal]);
         cleanupSignal = combined.cleanup;
         const toolSignal = combined.signal;
-        const { data: { session } } = await supabase.auth.getSession();
+        // getSession can wait for a token refresh. The tool timeout and the user abort cover it too.
+        const { data: { session } } = await withAbort(supabase.auth.getSession(), toolSignal);
         if (!session) throw new Error('Not authenticated');
 
         const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-execute-tool`, {

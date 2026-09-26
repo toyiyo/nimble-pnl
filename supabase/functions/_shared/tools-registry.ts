@@ -85,7 +85,7 @@ export function getTools(
             description: 'End date for custom period (YYYY-MM-DD)'
           }
         },
-        required: ['period']
+        required: [] // The handler defaults period to 'month'.
       }
     },
 
@@ -172,7 +172,7 @@ export function getTools(
             default: false
           }
         },
-        required: ['period']
+        required: [] // The handler defaults period to 'month'.
       }
     },
 
@@ -913,6 +913,25 @@ export function canUseTool(toolName: string, userRole: string): boolean {
   }
 
   return false;
+}
+
+let allToolsByName: Map<string, ToolDefinition> | undefined;
+
+/**
+ * Return the required fields of a tool call that are missing. A value of
+ * null, undefined or '' counts as missing. When args is not a plain object
+ * (for example the raw string of bad JSON from the model), every required
+ * field is missing. Uses the full registry, not a role-filtered list.
+ * Returns [] for an unknown tool; the dispatcher rejects those itself.
+ */
+export function missingRequiredArgs(toolName: string, args: unknown): string[] {
+  allToolsByName ??= new Map(getTools('', 'owner').map((tool) => [tool.name, tool]));
+  const required = allToolsByName.get(toolName)?.parameters.required ?? [];
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+    return [...required];
+  }
+  const values = args as Record<string, unknown>;
+  return required.filter((field) => values[field] === undefined || values[field] === null || values[field] === '');
 }
 
 /**

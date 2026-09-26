@@ -7,6 +7,7 @@ import {
   canUseCapabilityGatedTool,
   hasSchedulingOrPayrollCapability,
   hasPayRatesCapability,
+  missingRequiredArgs,
   type CapabilityCheckClient,
 } from '../../supabase/functions/_shared/tools-registry';
 import { PAY_HIDDEN_TOOL_HINT } from '../../supabase/functions/_shared/payHidden';
@@ -463,5 +464,59 @@ describe('tools-registry: getTools follows the scheduling/payroll capability (D9
       (t) => t.name,
     );
     expect(names).not.toContain('get_kpis');
+  });
+});
+
+describe('tools-registry: missingRequiredArgs (D10)', () => {
+  it('lists the missing required fields', () => {
+    expect(missingRequiredArgs('get_bank_transactions', {})).toEqual(['start_date', 'end_date']);
+    expect(missingRequiredArgs('get_bank_transactions', { start_date: '2026-09-01' })).toEqual(['end_date']);
+  });
+
+  it('returns [] for a complete call', () => {
+    expect(missingRequiredArgs('get_bank_transactions', { start_date: '2026-09-01', end_date: '2026-09-30' })).toEqual([]);
+  });
+
+  it('treats null, undefined and empty string as missing', () => {
+    expect(missingRequiredArgs('navigate', { section: null })).toEqual(['section']);
+    expect(missingRequiredArgs('navigate', { section: undefined })).toEqual(['section']);
+    expect(missingRequiredArgs('navigate', { section: '' })).toEqual(['section']);
+  });
+
+  it('reports every required field when args is not a plain object', () => {
+    // ai-chat-stream forwards the raw string when the model sends bad JSON.
+    for (const args of ['{"start_date": 2026', null, undefined, 42, ['start_date']]) {
+      expect(missingRequiredArgs('get_bank_transactions', args)).toEqual(['start_date', 'end_date']);
+    }
+  });
+
+  it('returns [] for a tool with no required fields and for an unknown tool', () => {
+    expect(missingRequiredArgs('get_inventory_status', undefined)).toEqual([]);
+    expect(missingRequiredArgs('no_such_tool', {})).toEqual([]);
+  });
+
+  it('checks the full registry, not a role-filtered list', () => {
+    // get_kpis is hidden from collaborator_operations_manager, but the check
+    // still knows its schema.
+    expect(missingRequiredArgs('create_categorization_rule', {})).toEqual([
+      'rule_name', 'pattern_type', 'pattern_value', 'category_id',
+    ]);
+  });
+
+  it.each(['get_kpis', 'get_sales_summary'])('%s does not require period (the handler defaults it)', (name) => {
+    expect(missingRequiredArgs(name, {})).toEqual([]);
+  });
+});
+
+describe('tools-registry: every dispatcher case has a registry entry', () => {
+  it('matches the switch in ai-execute-tool', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const src = readFileSync(resolve(__dirname, '../../supabase/functions/ai-execute-tool/index.ts'), 'utf8');
+    const switchBody = src.slice(src.indexOf('switch (tool_name) {'));
+    const cases = [...switchBody.matchAll(/^\s+case '([a-z_]+)':/gm)].map((m) => m[1]);
+    const registered = getTools('rest-1', 'owner').map((t) => t.name);
+    expect(cases.length).toBeGreaterThan(20);
+    expect([...cases].sort()).toEqual([...registered].sort());
   });
 });

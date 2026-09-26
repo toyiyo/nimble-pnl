@@ -13,7 +13,7 @@ import {
 } from '../_shared/restaurantDate.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability } from "../_shared/tools-registry.ts";
+import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -3619,6 +3619,30 @@ serve(async (req) => {
         }),
         {
           status: 403,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
+    // Reject a call with missing required arguments before any DB read. The
+    // answer is in band (HTTP 200, ok:false), so the model reads the names.
+    const missing = missingRequiredArgs(tool_name, args);
+    if (missing.length > 0) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: {
+            code: 'INVALID_ARGUMENTS',
+            message: `Missing required argument(s) for ${tool_name}: ${missing.join(', ')}.`,
+            tool: tool_name,
+            missing,
+          },
+        }),
+        {
+          status: 200,
           headers: {
             ...corsHeaders,
             'Content-Type': 'application/json',

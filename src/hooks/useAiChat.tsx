@@ -517,8 +517,8 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
         }
         setError(TOO_MANY_STEPS_ERROR);
       } catch (err) {
-        const reason = controller.signal.reason as { name?: string } | undefined;
-        if (controller.signal.aborted && reason?.name === 'TimeoutError') {
+        const { reason } = controller.signal;
+        if (controller.signal.aborted && reason instanceof DOMException && reason.name === 'TimeoutError') {
           setError(TIMEOUT_ERROR);
         } else if (controller.signal.aborted) {
           // The user stopped the turn. This is not an error.

@@ -155,8 +155,10 @@ test.describe('Teammates need cover', () => {
     await page.goto('/employee/schedule');
     await expect(page.getByRole('heading', { name: 'My Schedule' })).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('region', { name: 'Teammates need cover' })).toHaveCount(0);
+    // exact: a plain name match would also accept "More, 1 shift up for grabs".
     await expect(
-      page.getByRole('navigation', { name: 'Employee navigation' }).getByRole('link', { name: 'More' }),
+      page.getByRole('navigation', { name: 'Employee navigation' }).getByRole('link', { name: 'More', exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole('link', { name: /up for grabs/ })).toHaveCount(0);
   });
 });

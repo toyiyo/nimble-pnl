@@ -3389,7 +3389,34 @@
 - **Mistake:** Four code-quality bot threads got replies of the form "Fixed in cf245d71. ...". The `pr-comment-response` check read them as `no verdict in reply` and failed. The cloud container has no `gh`, so `node dev-tools/pr-triage.js reply` cannot post the reply there.
 - **Correction:** Build the body with `composeReply({verdict, commit, rationale})` from `dev-tools/pr-triage.js`, and post it with the GitHub MCP reply tool. Check it first with `classifyThreads` (give each reply an `authorAssociation`, or the check reports a non-maintainer).
 - **Rule:** Every reply to a review finding opens with the `<!-- pr-triage: <verdict> -->` marker that `composeReply` writes. The check re-runs only on a push or on its schedule, and the MCP token cannot re-run it (403). So post the verdict reply before the push that carries the fix.
+- **Confirmed (PR #812):** The same mistake happened again. Free-text "Agreed, fixed in <sha>" replies failed the gate with `no verdict in reply`. Marker replies passed on the next push. Read this lesson before the first reply in Phase 9d, not after the gate fails.
 
 ### [2026-09-25] Green CI is not proof: check the change in the preview environment (PR #809)
 - **Mistake:** PR #809 went to review with only unit, E2E and CI evidence. Nobody opened the Vercel preview to see the changed pages work on the preview database.
 - **Rule (from the user):** Before you report a change as working, show proof from the preview environment. Use the Vercel preview: it reads the Supabase preview branch. The Netlify preview has no Supabase variables, so it falls back to the production database. Never sign up test users there. The preview branch has no seed data: sign up a test user and create the data that the check needs. The cloud container must allow the preview hosts (`*.vercel.app` and the preview `*.supabase.co` project) in its network settings.
+- **Confirmed (PR #812):** The preview check did not run. The container network policy blocked both preview hosts (`CONNECT tunnel failed, response 403`). The gap showed only in Phase 10. Check access to the preview hosts in Phase 8.5. If a host is blocked, ask the user to allow it before the PR goes to review.
+
+## Category: Supabase / Cron (continued)
+
+### [2026-09-26] A cron command must not read `app.settings.*` without `missing_ok` (PR #812)
+- **Mistake:** The first `shift-trade-reminders` cron command built its URL from `current_setting('app.settings.supabase_url')`. Production does not set that value (`20260702160000_focus_crons_gateless.sql:6-9`). Without `missing_ok`, the call raises on each run, and no reminder sends. The `bank-reauth-notices` cron has the same problem.
+- **Correction:** The cron calls `dispatch_shift_trade_reminders()`. That function uses a constant project URL. It reads the key from `app.settings.service_role_key` with `missing_ok`, then from Vault. With no key, it returns NULL and sends nothing.
+- **Rule:** Before a new cron uses a setting, grep the migrations for the setting and check that production sets it. Put the HTTP call in a dispatcher function with a pgTAP test for the "no key" path.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-26] Start Docker in the main session before the QA agent runs (PR #812)
+- **Mistake:** The QA agent found Docker down. The permission policy refused its `dockerd` call, and QA stopped. Starting `dockerd` for the agent after that refusal is permission laundering.
+- **Correction:** The user approved one Docker restart. The main session ran `(dockerd &)`, then `npx supabase start`, and QA passed.
+- **Rule:** At the start of Phase 8, check `docker info` in the main session. If Docker is down, ask the user before you start it. Launch the QA agent only after Supabase is up.
+
+### [2026-09-26] Do not run the unit suite at the same time as the E2E suite (PR #812)
+- **Mistake:** The post-QA unit run went in parallel with the full E2E run. `usePredictableExpenses.test.tsx` failed at the default 1000 ms `waitFor`, because of CPU load. The file was not in the diff, and it passed alone in 474 ms.
+- **Rule:** Run the full unit suite with no other heavy load. A timeout failure under load is not proof of a bug or of a flake. Run the suite again alone before you decide.
+
+## Category: UI Patterns (continued)
+
+### [2026-09-26] Check a reserved-height slot when an element moves around it (PR #812)
+- **Mistake:** The urgent "Teammates need cover" card moved above `ScheduleStatusBanner`. The banner kept its fixed 76 px slot with no content, and a gap showed under the card.
+- **Correction:** The banner got a `reserveHeight` prop. With no content and no reserved height, it returns null.
+- **Rule:** When a new element moves around a component that reserves height, check the layout at both positions. Make the reserved height a prop, not a constant.

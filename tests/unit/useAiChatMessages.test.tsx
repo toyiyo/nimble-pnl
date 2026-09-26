@@ -3,9 +3,10 @@ import React, { type ReactNode } from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const { from, insertCalls } = vi.hoisted(() => ({
+const { from, insertCalls, upsertOptions } = vi.hoisted(() => ({
   from: vi.fn(),
   insertCalls: [] as unknown[],
+  upsertOptions: [] as unknown[],
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -20,11 +21,13 @@ import { useAiChatMessages } from '@/hooks/useAiChatMessages';
  */
 function builder(result: { data: unknown; error: unknown }) {
   const b: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'order', 'single']) {
+  for (const method of ['select', 'eq', 'order', 'single', 'maybeSingle']) {
     b[method] = vi.fn(() => b);
   }
-  b.insert = vi.fn((rows: unknown) => {
+  // Writes go through upsert, so a retry of the same row is a no-op.
+  b.upsert = vi.fn((rows: unknown, options: unknown) => {
     insertCalls.push(rows);
+    upsertOptions.push(options);
     return b;
   });
   b.then = (onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) =>
@@ -32,14 +35,17 @@ function builder(result: { data: unknown; error: unknown }) {
   return b;
 }
 
+let queryClient: QueryClient;
+
 function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
 describe('useAiChatMessages', () => {
   beforeEach(() => {
     insertCalls.length = 0;
+    upsertOptions.length = 0;
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     from.mockReset();
     from.mockImplementation(() => builder({ data: [], error: null }));
   });
@@ -49,8 +55,9 @@ describe('useAiChatMessages', () => {
 
     await act(async () => {
       await result.current.saveMessagesBatch([
-        { session_id: 'session-1', role: 'user', content: 'Q', created_at: '2026-09-26T10:00:00.001Z' },
+        { id: 'id-1', session_id: 'session-1', role: 'user', content: 'Q', created_at: '2026-09-26T10:00:00.001Z' },
         {
+          id: 'id-2',
           session_id: 'session-1',
           role: 'assistant',
           content: '',
@@ -77,6 +84,7 @@ describe('useAiChatMessages', () => {
 
     await act(async () => {
       await result.current.saveMessage({
+        id: 'id-1',
         session_id: 'session-1',
         role: 'user',
         content: 'Q',
@@ -92,10 +100,52 @@ describe('useAiChatMessages', () => {
     const { result } = renderHook(() => useAiChatMessages('session-1'), { wrapper });
 
     await act(async () => {
-      await result.current.saveMessagesBatch([{ session_id: 'session-1', role: 'user', content: 'Q' }]);
+      await result.current.saveMessagesBatch([{ id: 'id-1', session_id: 'session-1', role: 'user', content: 'Q' }]);
     });
 
     const rows = insertCalls.at(-1) as Array<Record<string, unknown>>;
     expect(rows[0]).not.toHaveProperty('created_at');
+  });
+
+  it('sends the client id and ignores a duplicate id, so a retry is idempotent', async () => {
+    const { result } = renderHook(() => useAiChatMessages('session-1'), { wrapper });
+
+    await act(async () => {
+      await result.current.saveMessagesBatch([
+        { id: 'id-1', session_id: 'session-1', role: 'user', content: 'Q' },
+        { id: 'id-2', session_id: 'session-1', role: 'assistant', content: 'A' },
+      ]);
+    });
+
+    const rows = insertCalls.at(-1) as Array<Record<string, unknown>>;
+    expect(rows.map((r) => r.id)).toEqual(['id-1', 'id-2']);
+    expect(upsertOptions.at(-1)).toEqual({ onConflict: 'id', ignoreDuplicates: true });
+  });
+
+  it('sends the client id in saveMessage', async () => {
+    from.mockImplementation(() => builder({ data: { id: 'id-1' }, error: null }));
+    const { result } = renderHook(() => useAiChatMessages('session-1'), { wrapper });
+
+    await act(async () => {
+      await result.current.saveMessage({ id: 'id-1', session_id: 'session-1', role: 'user', content: 'Q' });
+    });
+
+    expect((insertCalls.at(-1) as Record<string, unknown>).id).toBe('id-1');
+    expect(upsertOptions.at(-1)).toEqual({ onConflict: 'id', ignoreDuplicates: true });
+  });
+
+  it('invalidates the messages of the target session, not the current one', async () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useAiChatMessages('session-current'), { wrapper });
+
+    await act(async () => {
+      await result.current.saveMessagesBatch([
+        { id: 'id-1', session_id: 'session-old', role: 'user', content: 'Q' },
+      ]);
+    });
+
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toContainEqual(['ai-chat-messages', 'session-old']);
+    expect(keys).not.toContainEqual(['ai-chat-messages', 'session-current']);
   });
 });

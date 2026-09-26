@@ -18,7 +18,7 @@ import { useAiChatSessions } from '@/hooks/useAiChatSessions';
 import { useAiChatMessages } from '@/hooks/useAiChatMessages';
 import { useSubscription } from '@/hooks/useSubscription';
 import { AiChatConversationList } from './AiChatConversationList';
-import { selectUnsavedMessages, titleForSession } from '@/lib/aiChatPersistence';
+import { mergeLoadedMessages, selectUnsavedMessages, titleForSession } from '@/lib/aiChatPersistence';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 
@@ -76,32 +76,38 @@ export function AiChatPanel() {
   // Track the last synced session to prevent overwriting in-flight streaming content
   const lastSyncedSessionRef = useRef<string | null>(null);
   const hasLoadedInitialMessages = useRef(false);
+  // The session that owns the running turn. The value is null when no turn runs.
+  const turnSessionRef = useRef<string | null>(null);
 
   // IDs of the messages that are in the database. Message IDs are UUIDs, so one
-  // set serves all sessions. The set is not reset when the session changes, so
-  // rows of the old session are not saved into the new session.
+  // set serves all sessions. The panel does not reset the set when the session
+  // changes, so it does not save rows of the old session into the new session.
   const savedMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Load messages from database only when session actually switches
   useEffect(() => {
-    // Session changed - mark that we need to load messages
     if (currentSessionId !== lastSyncedSessionRef.current) {
       hasLoadedInitialMessages.current = false;
       lastSyncedSessionRef.current = currentSessionId;
 
-      if (!currentSessionId) {
+      // A turn of another session must not add rows to this session. The
+      // submit of a new session's first turn sets turnSessionRef, so that
+      // turn continues.
+      if (turnSessionRef.current !== currentSessionId) {
+        abortStream();
         clearMessages();
-        return;
       }
+      if (!currentSessionId) return;
     }
 
-    // Load messages once when they become available for the current session
-    if (currentSessionId && !hasLoadedInitialMessages.current && dbMessages.length > 0) {
+    // Load the rows once when they arrive. A streaming turn owns the messages,
+    // so the load waits for the end of the turn.
+    if (currentSessionId && !hasLoadedInitialMessages.current && !isStreaming && dbMessages.length > 0) {
       dbMessages.forEach((m) => savedMessageIdsRef.current.add(m.id));
-      setMessages(dbMessages);
+      setMessages((prev) => mergeLoadedMessages(dbMessages, prev));
       hasLoadedInitialMessages.current = true;
     }
-  }, [currentSessionId, dbMessages, setMessages, clearMessages]);
+  }, [currentSessionId, dbMessages, isStreaming, setMessages, clearMessages, abortStream]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -112,8 +118,8 @@ export function AiChatPanel() {
   useEffect(() => {
     const saveMessages = async () => {
       if (!isStreaming && currentSessionId && messages.length > 0) {
-        // Dedupe by message ID only. Tool-call rows all have content '', so a
-        // content match drops rows.
+        // Compare the message IDs only. All tool-call rows have content '', so
+        // a content comparison drops rows.
         const newMessages = selectUnsavedMessages(messages, savedMessageIdsRef.current);
 
         if (newMessages.length > 0) {
@@ -181,6 +187,8 @@ export function AiChatPanel() {
   const handleNewConversation = useCallback(async () => {
     if (!restaurantId) return;
 
+    // The running turn belongs to the old conversation.
+    abortStream();
     try {
       const session = await createSession({ restaurantId });
       switchSession(session.id);
@@ -188,16 +196,20 @@ export function AiChatPanel() {
     } catch (err) {
       console.error('Failed to create session:', err);
     }
-  }, [restaurantId, createSession, switchSession, clearMessages]);
+  }, [restaurantId, createSession, switchSession, clearMessages, abortStream]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isStreaming) return;
 
     // Create session if needed
-    if (!currentSessionId && restaurantId) {
+    let turnSessionId = currentSessionId;
+    if (!turnSessionId && restaurantId) {
       try {
         const session = await createSession({ restaurantId });
+        turnSessionId = session.id;
+        // Set the owner before the switch, so the load effect keeps this turn.
+        turnSessionRef.current = turnSessionId;
         switchSession(session.id);
       } catch (err) {
         console.error('Failed to create session:', err);
@@ -207,7 +219,12 @@ export function AiChatPanel() {
 
     const message = input;
     setInput('');
-    await sendMessage(message);
+    turnSessionRef.current = turnSessionId;
+    try {
+      await sendMessage(message);
+    } finally {
+      if (turnSessionRef.current === turnSessionId) turnSessionRef.current = null;
+    }
   };
 
   const handleQuickAction = (prompt: string) => {

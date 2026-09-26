@@ -223,8 +223,13 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
     messagesRef.current = messages;
   }, [messages]);
 
-  // Stop the turn when the component unmounts.
-  useEffect(() => () => abortControllerRef.current?.abort(), []);
+  // Stop the turn when the restaurant changes or the component unmounts.
+  // The rows of a stopped turn must not go into another restaurant or session.
+  useEffect(
+    () => () =>
+      abortControllerRef.current?.abort(new DOMException('The restaurant changed.', 'AbortError')),
+    [restaurantId]
+  );
 
   const executeTool = useCallback(
     async (toolName: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
@@ -304,6 +309,10 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       stamp: Stamp
     ): Promise<RoundResult> => {
       const { signal } = controller;
+      // After an abort, the turn adds and changes no rows. The panel can show another session.
+      const updateIfLive: typeof setMessages = (update) => {
+        if (!signal.aborted) setMessages(update);
+      };
       let idleId: ReturnType<typeof setTimeout> | undefined;
       const clearIdle = () => clearTimeout(idleId);
       const armIdle = () => {
@@ -357,7 +366,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
           assistantId = id;
           assistantCreatedAt = stamp();
           const row: ChatMessage = { id, role: 'assistant', content: '', created_at: assistantCreatedAt };
-          setMessages((prev) => [...prev, row]);
+          updateIfLive((prev) => [...prev, row]);
         };
 
         const handleEvent = async (event: SSEEvent) => {
@@ -371,7 +380,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
                 content += event.delta;
                 const id = assistantId;
                 const text = content;
-                setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: text } : m)));
+                updateIfLive((prev) => prev.map((m) => (m.id === id ? { ...m, content: text } : m)));
               }
               break;
             case 'tool_call':
@@ -496,6 +505,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       try {
         for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
           const { assistant, toolMessages } = await runRound(turnHistory, round, controller, stamp);
+          if (controller.signal.aborted) throw abortError(controller.signal);
 
           setMessages((prev) => [
             ...prev.map((m) => (m.id === assistant.id ? { ...m, tool_calls: assistant.tool_calls } : m)),

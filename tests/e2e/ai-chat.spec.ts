@@ -30,7 +30,7 @@ function sse(events: Array<Record<string, unknown>>): string {
   return events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
 }
 
-// Request bodies are shaped by the client, not a typed contract.
+// The client builds the request bodies. No typed contract covers them.
 type StreamMessage = {
   role: string;
   content: string;

@@ -5,15 +5,39 @@ import { ChatMessage, AiChatMessageDB } from '@/types/ai-chat';
 
 type AiChatMessageInsert = Database['public']['Tables']['ai_chat_messages']['Insert'];
 
+/** A client message and the session that the panel saves it into. */
+export type ChatMessageToSave = ChatMessage & { session_id: string };
+
+/**
+ * The upsert ignores a row whose ID is in the table. A retry of a save is then
+ * a no-op, and the client IDs stay equal to the DB IDs.
+ */
+const UPSERT_OPTIONS = { onConflict: 'id', ignoreDuplicates: true } as const;
+
+/**
+ * Copies the tool calls into plain objects. An interface has no index
+ * signature, so TypeScript accepts only the plain objects as Json.
+ */
+function toolCallsJson(toolCalls: ChatMessage['tool_calls']): Json | null {
+  return (
+    toolCalls?.map((tc) => ({
+      id: tc.id,
+      type: tc.type,
+      function: { name: tc.function.name, arguments: tc.function.arguments },
+    })) ?? null
+  );
+}
+
 /** Maps a client message to a DB row. The client created_at keeps the turn order. */
-function toInsertRow(message: Omit<ChatMessage, 'id'> & { session_id: string }): AiChatMessageInsert {
+function toInsertRow(message: ChatMessageToSave): AiChatMessageInsert {
   return {
+    id: message.id,
     session_id: message.session_id,
     role: message.role,
     content: message.content,
     name: message.name || null,
     tool_call_id: message.tool_call_id || null,
-    tool_calls: (message.tool_calls as unknown as Json) || null,
+    tool_calls: toolCallsJson(message.tool_calls),
     ...(message.created_at && { created_at: message.created_at }),
   };
 }
@@ -62,22 +86,21 @@ export function useAiChatMessages(sessionId?: string) {
     enabled: !!sessionId,
   });
 
-  // Save a single message
+  // Save a single message. The result is null when the row is already saved.
   const saveMessageMutation = useMutation({
-    mutationFn: async (
-      message: Omit<ChatMessage, 'id'> & { session_id: string }
-    ): Promise<AiChatMessageDB> => {
+    mutationFn: async (message: ChatMessageToSave): Promise<AiChatMessageDB | null> => {
       const { data, error } = await supabase
         .from('ai_chat_messages')
-        .insert(toInsertRow(message))
+        .upsert(toInsertRow(message), UPSERT_OPTIONS)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-      return data as unknown as AiChatMessageDB;
+      return data as unknown as AiChatMessageDB | null;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-chat-messages', sessionId] });
+    onSuccess: (_data, message) => {
+      // Refresh the session of the saved row. The current session can be another one.
+      queryClient.invalidateQueries({ queryKey: ['ai-chat-messages', message.session_id] });
       // Also invalidate sessions to update the preview text
       queryClient.invalidateQueries({ queryKey: ['ai-chat-sessions'] });
     },
@@ -85,18 +108,21 @@ export function useAiChatMessages(sessionId?: string) {
 
   // Save multiple messages (batch)
   const saveMessagesBatchMutation = useMutation({
-    mutationFn: async (
-      messages: Array<Omit<ChatMessage, 'id'> & { session_id: string }>
-    ): Promise<void> => {
+    mutationFn: async (messages: ChatMessageToSave[]): Promise<void> => {
       if (messages.length === 0) return;
 
       // One batch otherwise shares one now(), so the load order is lost.
-      const { error } = await supabase.from('ai_chat_messages').insert(messages.map(toInsertRow));
+      const { error } = await supabase
+        .from('ai_chat_messages')
+        .upsert(messages.map(toInsertRow), UPSERT_OPTIONS);
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-chat-messages', sessionId] });
+    onSuccess: (_data, messages) => {
+      // Refresh the sessions of the saved rows. The current session can be another one.
+      for (const id of new Set(messages.map((m) => m.session_id))) {
+        queryClient.invalidateQueries({ queryKey: ['ai-chat-messages', id] });
+      }
       queryClient.invalidateQueries({ queryKey: ['ai-chat-sessions'] });
     },
   });

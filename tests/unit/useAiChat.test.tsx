@@ -443,6 +443,80 @@ describe('useAiChat', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('stops the turn and adds no more rows when restaurantId changes', async () => {
+    let hung!: () => void;
+    const hangReached = new Promise<void>((resolve) => {
+      hung = resolve;
+    });
+    streamResponder = (n) =>
+      n === 1
+        ? sseResponse([start(), toolCall('call_1', 'get_kpis'), end()])
+        : sseResponse([start(), { hang: true, onHang: hung }]);
+    const { result, rerender } = renderHook(({ id }) => useAiChat({ restaurantId: id }), {
+      initialProps: { id: 'rest-1' },
+    });
+
+    let done!: Promise<void>;
+    act(() => {
+      done = result.current.sendMessage('Hi');
+    });
+    await act(async () => {
+      await hangReached;
+    });
+    const rowsBefore = result.current.messages.map((m) => m.id);
+
+    // A sync act renders the new props now. An async act renders them only at its end.
+    act(() => {
+      rerender({ id: 'rest-2' });
+    });
+    await act(async () => {
+      await done;
+    });
+
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(streamBodies).toHaveLength(2);
+    // No row of the stopped turn is added after the change.
+    expect(result.current.messages.every((m) => rowsBefore.includes(m.id))).toBe(true);
+    // The empty round-2 assistant row is gone.
+    expect(result.current.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+  });
+
+  it('adds no rows after an abort, also when the server answers late', async () => {
+    let releaseTool!: () => void;
+    const toolGate = new Promise<void>((resolve) => {
+      releaseTool = resolve;
+    });
+    let toolStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      toolStarted = resolve;
+    });
+    // This tool ignores the abort signal and answers late.
+    toolResponder = async () => {
+      toolStarted();
+      await toolGate;
+      return jsonResponse(200, { ok: true, data: {} });
+    };
+    streamResponder = () => sseResponse([start(), toolCall('call_1', 'get_kpis'), end()]);
+    const { result } = renderChat();
+
+    let done!: Promise<void>;
+    act(() => {
+      done = result.current.sendMessage('Hi');
+    });
+    await act(async () => {
+      await started;
+    });
+    await act(async () => {
+      result.current.abortStream();
+      releaseTool();
+      await done;
+    });
+
+    expect(streamBodies).toHaveLength(1);
+    expect(result.current.messages.map((m) => m.role)).toEqual(['user']);
+  });
+
   it('does not retry a round after a tool_call, so the tool runs once', async () => {
     streamResponder = () =>
       sseResponse([start(), toolCall('call_1', 'create_item'), { fail: new TypeError('network lost') }]);

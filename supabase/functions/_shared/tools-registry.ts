@@ -30,7 +30,7 @@ export function getTools(
     // Navigation tools - available to all users
     {
       name: 'navigate',
-      description: 'Navigate to a specific section of the application. Use this to help users find what they need.',
+      description: 'Navigate to a specific section of the application.',
       parameters: {
         type: 'object',
         properties: {
@@ -65,7 +65,7 @@ export function getTools(
     // KPI/Metrics tools - available to all users
     {
       name: 'get_kpis',
-      description: `Get key performance indicators for the restaurant. Returns comprehensive metrics including revenue, COGS (Cost of Goods Sold / Food Cost), labor cost, prime cost, margins, profitability, and inventory value. Use this to answer questions about costs, profitability, and financial performance. ${PAY_HIDDEN_TOOL_HINT}`,
+      description: `Get key performance indicators for the restaurant. Returns comprehensive metrics including revenue, COGS (Cost of Goods Sold / Food Cost), labor cost, prime cost, margins, profitability, and inventory value. Covers costs, profitability, and financial performance. ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -312,7 +312,7 @@ export function getTools(
     // Daily sales totals - available to all users
     {
       name: 'get_daily_sales_totals',
-      description: 'Get daily sales revenue totals and transaction counts for a date range. Use this to answer questions about daily, weekly, or monthly sales performance, revenue trends, and transaction volume.',
+      description: 'Get daily sales revenue totals and transaction counts for a date range. Covers daily, weekly, or monthly sales performance, revenue trends, and transaction volume.',
       parameters: {
         type: 'object',
         properties: {
@@ -371,7 +371,7 @@ export function getTools(
       },
       {
         name: 'get_time_punches',
-        description: `List individual work periods (clock-in/clock-out pairs with computed hours and breaks deducted) for a date range. Use this to answer 'who worked when' and to drill into specific shifts. Returns parsed work periods (one row per shift), joined to employee name/position. Manager+owner only. ${PAY_HIDDEN_TOOL_HINT}`,
+        description: `List individual work periods (clock-in/clock-out pairs with computed hours and breaks deducted) for a date range. Shows who worked when, shift by shift. Returns parsed work periods (one row per shift), joined to employee name/position. Manager+owner only. ${PAY_HIDDEN_TOOL_HINT}`,
         parameters: {
           type: 'object',
           properties: {
@@ -573,7 +573,7 @@ export function getTools(
       },
       {
         name: 'get_break_even_progress',
-        description: 'Get detailed break-even analysis with daily history showing sales vs break-even threshold for each day. Includes month-to-date progress toward break-even goal, days above/below, trend direction, and projected month-end status. Use this to answer questions about break-even progress, daily performance tracking, and budget coverage. Use the month parameter to query a specific month (e.g., "2026-02" for February 2026).',
+        description: 'Get detailed break-even analysis with daily history showing sales vs break-even threshold for each day. Includes month-to-date progress toward break-even goal, days above/below, trend direction, and projected month-end status. Covers break-even progress, daily performance, and budget coverage. The month parameter selects a specific month (e.g., "2026-02" for February 2026).',
         parameters: {
           type: 'object',
           properties: {
@@ -710,7 +710,7 @@ export function getTools(
     tools.push(
       {
         name: 'batch_categorize_transactions',
-        description: 'Categorize a batch of uncategorized bank transactions. Call with preview:true first to show what will change, then with confirmed:true after user approves. Returns evidence references.',
+        description: 'Categorize a batch of uncategorized bank transactions. With preview:true, it returns the changes and saves nothing. With confirmed:true, it saves the changes. Returns evidence references.',
         parameters: {
           type: 'object',
           properties: {
@@ -730,7 +730,7 @@ export function getTools(
             },
             confirmed: {
               type: 'boolean',
-              description: 'If true, executes the categorization. Must call with preview:true first.',
+              description: 'If true, saves the categorization.',
               default: false
             }
           },
@@ -739,7 +739,7 @@ export function getTools(
       },
       {
         name: 'batch_categorize_pos_sales',
-        description: 'Categorize a batch of uncategorized POS sales items. Call with preview:true first, then confirmed:true after user approves. Returns evidence references.',
+        description: 'Categorize a batch of uncategorized POS sales items. With preview:true, it returns the changes and saves nothing. With confirmed:true, it saves the changes. Returns evidence references.',
         parameters: {
           type: 'object',
           properties: {
@@ -759,7 +759,7 @@ export function getTools(
             },
             confirmed: {
               type: 'boolean',
-              description: 'If true, executes the categorization. Must call with preview:true first.',
+              description: 'If true, saves the categorization.',
               default: false
             }
           },
@@ -768,7 +768,7 @@ export function getTools(
       },
       {
         name: 'create_categorization_rule',
-        description: 'Create a new auto-categorization rule from a pattern. Call with preview:true to show rule details, then confirmed:true to create. Returns evidence references.',
+        description: 'Create a new auto-categorization rule from a pattern. With preview:true, it returns the rule details and saves nothing. With confirmed:true, it creates the rule. Returns evidence references.',
         parameters: {
           type: 'object',
           properties: {
@@ -802,7 +802,7 @@ export function getTools(
             },
             confirmed: {
               type: 'boolean',
-              description: 'If true, creates the rule. Must call with preview:true first.',
+              description: 'If true, creates the rule.',
               default: false
             }
           },

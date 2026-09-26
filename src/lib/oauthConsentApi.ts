@@ -38,18 +38,21 @@ export class ConsentApiError extends Error {
   }
 }
 
-/** Hosts that Claude uses for its OAuth callback on the web. */
-const CLAUDE_REDIRECT_HOSTS = ['claude.ai', 'claude.com'];
+/**
+ * Web hosts of the AI assistants that EasyShiftHQ supports, for their OAuth
+ * callback: Claude (claude.ai, claude.com) and ChatGPT (chatgpt.com).
+ */
+const TRUSTED_REDIRECT_HOSTS = ['claude.ai', 'claude.com', 'chatgpt.com'];
 /** Claude Code and Claude Desktop receive the callback on this computer. */
 const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
 /**
- * - `claude`: a Claude web host over HTTPS.
+ * - `trusted`: a supported AI assistant host (Claude, ChatGPT) over HTTPS.
  * - `loopback`: an app on this computer. This is not proof that the app is
  *   Claude, so the page shows a note.
  * - `unknown`: any other host. The page does not let the user allow it.
  */
-export type RedirectHostKind = 'claude' | 'loopback' | 'unknown';
+export type RedirectHostKind = 'trusted' | 'loopback' | 'unknown';
 
 export function redirectHost(redirectUri: string): string | null {
   try {
@@ -70,8 +73,8 @@ export function classifyRedirectUri(redirectUri: string): RedirectHostKind {
   if (LOOPBACK_HOSTS.includes(host) && (url.protocol === 'http:' || url.protocol === 'https:')) {
     return 'loopback';
   }
-  const claudeHost = CLAUDE_REDIRECT_HOSTS.some((trusted) => host === trusted || host.endsWith(`.${trusted}`));
-  return claudeHost && url.protocol === 'https:' ? 'claude' : 'unknown';
+  const trustedHost = TRUSTED_REDIRECT_HOSTS.some((trusted) => host === trusted || host.endsWith(`.${trusted}`));
+  return trustedHost && url.protocol === 'https:' ? 'trusted' : 'unknown';
 }
 
 function authorizationUrl(authorizationId: string, suffix = ''): string {

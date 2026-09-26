@@ -677,6 +677,11 @@ ${laborToolsPrompt}
      * Example: "Which servers worked yesterday?" → get_time_punches with period: "yesterday", position: "Server"
      * If a tool call returns error code TOOL_PERMISSION_DENIED, tell the user which role is required (from required_role) — do NOT retry the same tool.
 
+6. Data changes (managers/owners):
+   - batch_categorize_transactions, batch_categorize_pos_sales, create_categorization_rule change data.
+   - ALWAYS call them with preview: true first, and show the preview to the user.
+   - Call them with confirmed: true ONLY after the user clearly approves the preview.
+
 🔴 REMEMBER: ANY question about numbers, data, or restaurant operations REQUIRES a tool call. NEVER make up data, even if it seems plausible. Real restaurants depend on accurate data.`,
     };
 

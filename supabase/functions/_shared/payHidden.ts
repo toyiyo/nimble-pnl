@@ -18,7 +18,7 @@ export const PAY_HIDDEN_REASON =
 
 /** The sentence each labor tool description ends with. */
 export const PAY_HIDDEN_TOOL_HINT =
-  'If the result has pay_hidden, tell the user that labor cost figures are hidden for their role. Do not report them as $0.';
+  'A result with pay_hidden has its labor cost figures hidden for the caller\'s role. Those figures are null or missing, not $0.';
 
 export interface PayHidden {
   reason: string;

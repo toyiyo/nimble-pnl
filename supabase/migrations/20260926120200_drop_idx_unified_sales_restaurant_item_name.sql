@@ -5,7 +5,7 @@
 -- 20260926120100 stops the run before this file if the new index is not valid.
 --
 -- Rollback by hand:
---   CREATE INDEX CONCURRENTLY idx_unified_sales_restaurant_item_name
+--   CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_unified_sales_restaurant_item_name
 --     ON public.unified_sales (restaurant_id, item_name);
 -- CONCURRENTLY cannot run inside a transaction, so this lives in its own
 -- migration file containing only this statement.

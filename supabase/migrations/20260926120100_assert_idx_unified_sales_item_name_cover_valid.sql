@@ -13,8 +13,13 @@ BEGIN
       AND i.indisvalid
       AND i.indisready
   ) THEN
+    -- The CLI records 20260926120000 as applied even when IF NOT EXISTS
+    -- skipped an INVALID index, so a second push does not run it again. The
+    -- operator must build the index by hand.
     RAISE EXCEPTION 'idx_unified_sales_restaurant_item_name_cover is missing or INVALID; '
-      'run DROP INDEX CONCURRENTLY IF EXISTS public.idx_unified_sales_restaurant_item_name_cover '
-      'and apply 20260926120000 again before this migration';
+      'run DROP INDEX CONCURRENTLY IF EXISTS public.idx_unified_sales_restaurant_item_name_cover; '
+      'then CREATE INDEX CONCURRENTLY idx_unified_sales_restaurant_item_name_cover '
+      'ON public.unified_sales (restaurant_id, item_name) INCLUDE (quantity, total_price, unit_price); '
+      'then push again';
   END IF;
 END $$;

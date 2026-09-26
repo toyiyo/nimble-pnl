@@ -79,7 +79,8 @@ SELECT hasnt_index(
 -- The plan check runs EXPLAIN on the function body, not on the call: the
 -- function has `SET search_path`, so Postgres does not inline it and EXPLAIN on
 -- the call shows only a Function Scan. The query is a copy of the body at
--- 20260727120000_get_recipe_sales_stats.sql:34-43. Seq and bitmap scans are off so the
+-- 20260727120000_get_recipe_sales_stats.sql:34-43. When a migration changes
+-- that body, change this copy too. Seq and bitmap scans are off so the
 -- result does not depend on the table statistics of the test database. It
 -- asserts the index name and not "Index Only Scan": this transaction cannot
 -- VACUUM, so the visibility map is empty and the planner may pick an Index Scan.

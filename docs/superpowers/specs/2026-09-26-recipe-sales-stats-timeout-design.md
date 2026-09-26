@@ -47,6 +47,34 @@ restart and OS page cache flush before each run.
 | `(restaurant_id, item_name)` (current) | Bitmap Heap Scan, 750,000 heap blocks | 751k | 7.3 s |
 | `(restaurant_id, item_name) INCLUDE (quantity, total_price, unit_price)` | Index Only Scan, `Heap Fetches: 0` | 6.5k | 0.9 s |
 
+The benchmark index is named `idx_us_cover`. It has the same definition as
+`idx_unified_sales_restaurant_item_name_cover`.
+
+### Second run: a tenant of production size
+
+A comment in `supabase/migrations/20260728140000_search_pos_items.sql:105`
+gives the largest production tenant as about 70k sale rows (July 2026). So the
+second run uses a tenant with 100k rows, mixed in time order with 900k rows of
+other tenants. 37,500 of the rows match a mapped recipe.
+
+| Index | Pages read (cold) |
+|---|---|
+| `(restaurant_id, item_name)` (current) | 38,000 (23,156 from disk) |
+| covering index | 900 (299 from disk) |
+
+The local disk is NVMe, so both runs finish in under 100 ms here. On a network
+volume each random page read costs about 0.5 to 1 ms. At that cost, 23k cold
+reads are 11 to 23 s, which is more than the timeout. The covering index needs
+about 300 reads.
+
+### Premise not confirmed on production
+
+The `supabase-prod` MCP server is not connected in this session. So the
+diagnosis has no production `EXPLAIN (ANALYZE, BUFFERS)`. Before merge, run
+the query body of `get_recipe_sales_stats` with `EXPLAIN (ANALYZE, BUFFERS)`
+for the affected restaurant. A Bitmap Heap Scan on `unified_sales` with a
+high `read=` count confirms this design.
+
 Supabase sets `statement_timeout = 8s` for the `authenticated` role
 (https://supabase.com/docs/guides/database/postgres/timeouts). No file in this
 repo changes it. The current plan is at the limit with 2M rows. A larger tenant or a slower disk
@@ -71,17 +99,20 @@ migration run if the new index is missing or not valid:
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_index i
-    JOIN pg_class c ON c.oid = i.indexrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public'
-      AND c.relname = 'idx_unified_sales_restaurant_item_name_cover'
-      AND i.indisvalid AND i.indisready
+    SELECT 1
+    FROM pg_index i
+    WHERE i.indexrelid = to_regclass('public.idx_unified_sales_restaurant_item_name_cover')
+      AND i.indisvalid
+      AND i.indisready
   ) THEN
-    RAISE EXCEPTION '...';
+    RAISE EXCEPTION '...';  -- the message gives the manual rebuild steps
   END IF;
 END $$;
 ```
+
+The CLI records the create migration as applied even when `IF NOT EXISTS`
+skipped an INVALID index. So the error message tells the operator to build the
+index by hand, not to push again.
 
 Then delete the old index in a third migration:
 
@@ -116,12 +147,17 @@ not change, because the query does not change.
   server is not connected in this session. The build is `CONCURRENTLY`, so it
   does not block writes. Apply it at a low-traffic time.
 - **HOT updates.** After this change, an `UPDATE` that changes `quantity`,
-  `total_price` or `unit_price` cannot be a HOT update. The categorization
-  paths change `category_id` and related columns, not these three.
+  `total_price` or `unit_price` cannot be a HOT update. The Toast upsert sets
+  these three from `EXCLUDED`
+  (`supabase/migrations/20260127000000_toast_sync_improvements.sql:108-110`).
+  Postgres keeps an update HOT when the values do not change, so only a real
+  price or quantity correction on re-sync writes to the index. The
+  categorization paths change `category_id` and related columns.
 - **`get_unmapped_sale_item_names` still reads the heap.** It filters on
   `parent_sale_id`, which is not in the index
   (`supabase/migrations/20260728120000_get_unmapped_sale_item_names.sql:42`).
-  Its plan does not change from today.
+  Its plan does not change from today. It walks a larger index (about 8
+  times the old size), but its cost is the heap reads, which stay the same.
 - **Rollback.** To restore the old index by hand, run
   `CREATE INDEX CONCURRENTLY idx_unified_sales_restaurant_item_name ON public.unified_sales (restaurant_id, item_name);`.
 - **Visibility map.** An index-only scan skips the heap only for all-visible
@@ -135,7 +171,8 @@ not change, because the query does not change.
 
 ## Tests
 
-- Rewrite `supabase/tests/idx_unified_sales_restaurant_item_name.sql` to check:
+- Rewrite the index test and rename it to
+  `supabase/tests/idx_unified_sales_restaurant_item_name_cover.sql`. It checks:
   the new index exists, the key columns are `(restaurant_id, item_name)`,
   the `INCLUDE` list has `quantity`, `total_price`, `unit_price`, the index is
   not partial, and the old index does not exist.

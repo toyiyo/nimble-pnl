@@ -96,6 +96,17 @@ describe('buildMcpTools', () => {
     expect(new Set(tools.map((t) => t.title)).size).toBe(tools.length);
   });
 
+  it('keeps model instructions out of tool and parameter descriptions (directory rule)', () => {
+    const directive = /\b(use this|call (it|with|them)|must call|always|never|tell the user|do not)\b/i;
+    for (const tool of buildMcpTools(['owner', 'manager', 'chef'])) {
+      expect(tool.description, tool.name).not.toMatch(directive);
+      for (const [param, schema] of Object.entries(tool.inputSchema.properties)) {
+        const text = (schema as { description?: string }).description ?? '';
+        expect(text, `${tool.name}.${param}`).not.toMatch(directive);
+      }
+    }
+  });
+
   it('returns only list_restaurants when the user has no roles', () => {
     expect(buildMcpTools([]).map((t) => t.name)).toEqual(['list_restaurants']);
   });

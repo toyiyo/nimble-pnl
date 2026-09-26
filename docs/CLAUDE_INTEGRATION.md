@@ -194,7 +194,7 @@ Submit at [claude.ai/directory/manage](https://claude.ai/directory/manage) →
 | HTTPS server on the EasyShiftHQ domain | `https://app.easyshifthq.com/mcp` (setup step 5) |
 | OAuth with dynamic client registration | Supabase OAuth server (setup step 1) |
 | A `title` and `readOnlyHint` or `destructiveHint` on every tool | `MCP_TOOL_TITLES` and `MCP_WRITE_TOOLS` in `supabase/functions/_shared/mcpHandler.ts` |
-| Tool descriptions describe the tool and do not tell Claude how to behave | `tools-registry.ts`, `payHidden.ts` |
+| Tool descriptions describe the tool and do not tell Claude how to behave | `tools-registry.ts`, `payHidden.ts`. A unit test in `tests/unit/mcpHandler.test.ts` checks it. The preview-first rule for write tools is in the server instructions (`mcpHandler.ts`) and the in-app prompt (`ai-chat-stream`). |
 | Public privacy policy URL | Owner: legal. Must cover collection, use, storage, sharing, retention, and a contact. |
 | Public documentation with setup steps and at least 3 example prompts | Publish this page's "Connect" and "Example questions" as a help article. |
 | Support contact, icon, company details | Portal fields |

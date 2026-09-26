@@ -281,6 +281,10 @@ Deferred, with reasons:
 - `PAY_HIDDEN_TOOL_HINT` describes the field and no longer tells the model
   what to say. Directory review rejects behavior instructions in tool
   descriptions.
+- The other descriptions in `tools-registry.ts` drop "Use this to…" and
+  "Call with preview:true first". The write tools now say what `preview` and
+  `confirmed` do. The preview-first rule moves to the in-app prompt
+  (`ai-chat-stream`). The MCP server instructions already carry it.
 - The connector URL moves to `https://app.easyshifthq.com/mcp`. Vercel (and
   the Netlify `_redirects`) proxy it to the function. The directory asks that
   the server domain match the service. `MCP_PUBLIC_URL` sets the metadata

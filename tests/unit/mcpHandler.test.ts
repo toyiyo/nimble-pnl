@@ -143,8 +143,17 @@ describe('handleMcpRequest transport', () => {
       resource: RESOURCE_URL,
       authorization_servers: [ISSUER],
       bearer_methods_supported: ['header'],
+      scopes_supported: ['email', 'offline_access'],
       resource_name: 'EasyShiftHQ',
     });
+  });
+
+  it('never advertises openid: the project signs with HS256, and Supabase refuses an HS256 ID token', async () => {
+    const req = new Request('https://proj.supabase.co/mcp/.well-known/oauth-protected-resource', { method: 'GET' });
+    const body = await (await handleMcpRequest(req, makeDeps())).json();
+    expect(body.scopes_supported).not.toContain('openid');
+    const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 1, method: 'ping' }, { token: null }), makeDeps());
+    expect(res.headers.get('WWW-Authenticate')).not.toMatch(/openid/);
   });
 
   it('rejects GET on the MCP endpoint with 405', async () => {
@@ -161,7 +170,7 @@ describe('handleMcpRequest transport', () => {
     const res = await handleMcpRequest(rpc({ jsonrpc: '2.0', id: 1, method: 'ping' }, { token: null }), deps);
     expect(res.status).toBe(401);
     expect(res.headers.get('WWW-Authenticate')).toBe(
-      `Bearer resource_metadata="${RESOURCE_URL}/.well-known/oauth-protected-resource"`,
+      `Bearer resource_metadata="${RESOURCE_URL}/.well-known/oauth-protected-resource", scope="email offline_access"`,
     );
     expect(deps.getUser).not.toHaveBeenCalled();
   });

@@ -257,6 +257,23 @@ Deferred, with reasons:
   tab can also follow the return path. The single-use authorization makes
   the second tab show "This request expired", with a link to the app.
 
+## Follow-up: the token exchange failed in production
+
+- The Auth log showed `POST /oauth/token` → 500 with
+  `HS256 is not supported for ID token signing`, after a good consent.
+- Claude asked for the `openid` scope, because `mcp` advertised no scopes.
+  With `openid`, Supabase Auth must sign an ID token. The project signs
+  tokens with the legacy HS256 secret, and Supabase does not sign an ID
+  token with HS256.
+- Fix: `mcp` sends `scope="email offline_access"` in `WWW-Authenticate`
+  and `scopes_supported` in the resource metadata. MCP clients take the
+  scope from the header first (MCP spec 2025-11-25, "Scope Selection
+  Strategy").
+- Rejected: a move to asymmetric signing keys. 66 functions use
+  `verify_jwt = true`, a deliberate security setting
+  (`memory/lessons.md`, "verify_jwt = false is not 'no auth'"). The
+  Supabase guide warns that a key rotation can break those functions.
+
 ## Test plan
 
 - Unit (`tests/unit/mcpHandler.test.ts`): each JSON-RPC method, 401 and

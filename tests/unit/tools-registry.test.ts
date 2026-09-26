@@ -8,6 +8,7 @@ import {
   hasSchedulingOrPayrollCapability,
   hasPayRatesCapability,
   missingRequiredArgs,
+  nonBooleanFlagArgs,
   type CapabilityCheckClient,
 } from '../../supabase/functions/_shared/tools-registry';
 import { PAY_HIDDEN_TOOL_HINT } from '../../supabase/functions/_shared/payHidden';
@@ -548,5 +549,24 @@ describe('tools-registry: every dispatcher case has a registry entry', () => {
     const registered = getTools('rest-1', 'owner').map((t) => t.name);
     expect(cases.length).toBeGreaterThan(20);
     expect([...cases].sort()).toEqual([...registered].sort());
+  });
+});
+
+describe('tools-registry: nonBooleanFlagArgs', () => {
+  // The write handlers read preview and confirmed. A string "true" or a 1
+  // must not count as a confirm, so these flags must be real booleans.
+  it('accepts true, false and absent flags', () => {
+    expect(nonBooleanFlagArgs({ preview: true })).toEqual([]);
+    expect(nonBooleanFlagArgs({ confirmed: false })).toEqual([]);
+    expect(nonBooleanFlagArgs({})).toEqual([]);
+    expect(nonBooleanFlagArgs('not an object')).toEqual([]);
+  });
+
+  it.each([['true'], [1], ['yes'], [null]])('rejects confirmed = %j', (value) => {
+    expect(nonBooleanFlagArgs({ confirmed: value })).toEqual(['confirmed']);
+  });
+
+  it('rejects a non-boolean preview', () => {
+    expect(nonBooleanFlagArgs({ preview: 'true', confirmed: true })).toEqual(['preview']);
   });
 });

@@ -922,13 +922,19 @@ let allToolsByName: Map<string, ToolDefinition> | undefined;
 // get_sales_summary: month). Calls without period worked before this check.
 const DEFAULTED_ARGS = new Set(['period']);
 
+const BOOLEAN_FLAG_ARGS = ['preview', 'confirmed'] as const;
+
 /**
- * Return the required fields of a tool call that are missing. A value of
- * null or undefined, a blank string, or an empty array counts as missing. When args is not a plain object
- * (for example the raw string of bad JSON from the model), every required
- * field is missing. Uses the full registry, not a role-filtered list.
- * Returns [] for an unknown tool; the dispatcher rejects those itself.
+ * Return the flag arguments (preview, confirmed) that are present but not a
+ * boolean. The write tools must not treat "true" or 1 as a confirm.
  */
+export function nonBooleanFlagArgs(args: unknown): string[] {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return [];
+  const values = args as Record<string, unknown>;
+  return BOOLEAN_FLAG_ARGS.filter((flag) => flag in values && typeof values[flag] !== 'boolean');
+}
+
+/** True for null, undefined, a blank string, or an empty array. */
 function isMissingValue(value: unknown): boolean {
   if (value === undefined || value === null) return true;
   if (typeof value === 'string') return value.trim() === '';
@@ -936,6 +942,13 @@ function isMissingValue(value: unknown): boolean {
   return false;
 }
 
+/**
+ * Return the required fields of a tool call that are missing (see
+ * isMissingValue). When args is not a plain object (for example the raw
+ * string of bad JSON from the model), every required field is missing.
+ * The check uses the full registry, not a role-filtered list. It returns []
+ * for an unknown tool; the dispatcher rejects those itself.
+ */
 export function missingRequiredArgs(toolName: string, args: unknown): string[] {
   allToolsByName ??= new Map(getTools('', 'owner').map((tool) => [tool.name, tool]));
   const required = (allToolsByName.get(toolName)?.parameters.required ?? []).filter(

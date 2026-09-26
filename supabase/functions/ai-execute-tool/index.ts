@@ -13,7 +13,7 @@ import {
 } from '../_shared/restaurantDate.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs } from "../_shared/tools-registry.ts";
+import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -3256,7 +3256,7 @@ async function executeBatchCategorizeTransactions(
     return { ok: false, error: { code: 'NO_TRANSACTIONS', message: 'No matching transactions found' } };
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3279,7 +3279,7 @@ async function executeBatchCategorizeTransactions(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const { error: updateError } = await supabase
       .from('bank_transactions')
       .update({ category_id: category.id, is_categorized: true })
@@ -3352,7 +3352,7 @@ async function executeBatchCategorizePosSales(
     return { ok: false, error: { code: 'NO_SALES', message: 'No matching sales found' } };
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3376,7 +3376,7 @@ async function executeBatchCategorizePosSales(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const { error: updateError } = await supabase
       .from('unified_sales')
       .update({ category_id: category.id, is_categorized: true })
@@ -3465,7 +3465,7 @@ async function executeCreateCategorizationRule(
     posMatchCount = count || 0;
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3487,7 +3487,7 @@ async function executeCreateCategorizationRule(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const appliesTo = source === 'bank' ? 'bank_transactions' : source === 'pos' ? 'pos_sales' : 'both';
     const { data: rule, error: ruleError } = await supabase
       .from('categorization_rules')
@@ -3617,6 +3617,15 @@ serve(async (req) => {
         message: `Missing required argument(s) for ${tool_name}: ${missing.join(', ')}.`,
         tool: tool_name,
         missing,
+      });
+    }
+    const nonBoolean = nonBooleanFlagArgs(args);
+    if (nonBoolean.length > 0) {
+      return toolErrorResponse(200, {
+        code: 'INVALID_ARGUMENTS',
+        message: `${nonBoolean.join(', ')} must be true or false for ${tool_name}.`,
+        tool: tool_name,
+        invalid: nonBoolean,
       });
     }
 

@@ -21,4 +21,14 @@ describe('ai-execute-tool checks required arguments (D10)', () => {
     expect(block).toMatch(/toolErrorResponse\(200,/);
     expect(block).toMatch(/missing/);
   });
+
+  it('checks that preview and confirmed are booleans', () => {
+    const block = src.slice(check, permissionEnd);
+    expect(block).toContain('nonBooleanFlagArgs(args)');
+  });
+
+  it('writes only when confirmed is the boolean true', () => {
+    expect(src).not.toMatch(/\n\s+if \(confirmed\) \{/);
+    expect(src.match(/if \(confirmed === true\) \{/g)?.length).toBe(3);
+  });
 });

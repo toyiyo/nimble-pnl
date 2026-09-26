@@ -570,3 +570,30 @@ describe('tools-registry: nonBooleanFlagArgs', () => {
     expect(nonBooleanFlagArgs({ preview: 'true', confirmed: true })).toEqual(['preview']);
   });
 });
+
+describe('tools-registry: list_categories', () => {
+  it.each(ALL_ROLES)('is visible and allowed only for manager/owner (%s)', (role) => {
+    const expected = MANAGER_OWNER.has(role);
+    expect(canUseTool('list_categories', role)).toBe(expected);
+    expect(getTools('rest-1', role).some((t) => t.name === 'list_categories')).toBe(expected);
+  });
+
+  it('takes an optional search, account_type, and include_inactive', () => {
+    const def = getTools('rest-1', 'owner').find((t) => t.name === 'list_categories')!;
+    expect(Object.keys(def.parameters.properties).sort()).toEqual(['account_type', 'include_inactive', 'search']);
+    expect(def.parameters.properties.account_type.enum).toEqual([
+      'asset', 'liability', 'equity', 'revenue', 'expense', 'cogs',
+    ]);
+    expect(def.parameters.required ?? []).toEqual([]);
+  });
+
+  it.each(['batch_categorize_transactions', 'batch_categorize_pos_sales', 'create_categorization_rule'])(
+    '%s takes an account code or an id in category_id',
+    (name) => {
+      const def = getTools('rest-1', 'owner').find((t) => t.name === name)!;
+      const text = def.parameters.properties.category_id.description;
+      expect(text).toContain('account code');
+      expect(text).toContain('list_categories');
+    },
+  );
+});

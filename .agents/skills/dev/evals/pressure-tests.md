@@ -54,6 +54,12 @@ The skill must make these rules explicit and testable:
 9. Classify every comment as fixed or declined with a public reply.
 10. Stop with `needs_human` for design changes, unresolved material findings,
     destructive actions, missing mandatory gates, or exhausted retry budgets.
+11. Run the `qa` phase (`.claude/skills/qa/SKILL.md`, fix mode) before `ship`.
+    Block `ship` until QA returns `qaPassed=true` with a report file. Run
+    Verify again when a QA fix commit moves HEAD.
+
+The nine-phase observations below predate the `qa` phase. Re-run Scenario A
+to record the ten-phase result.
 
 ## Results With `$dev`
 

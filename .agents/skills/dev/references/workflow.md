@@ -3,9 +3,9 @@
 ## Scope
 
 This skill replaces the Claude `/dev` runtime with a Codex skill and a Node
-state machine. The design and planning phases stay interactive. The nine
+state machine. The design and planning phases stay interactive. The ten
 post-approval phases run autonomously in this order: `build`, `ui-review`,
-`simplify`, `review`, `verify`, `ship`, `ci`, `triage`, and `done`.
+`simplify`, `review`, `verify`, `qa`, `ship`, `ci`, `triage`, and `done`.
 
 The state machine stores run data in the worktree's Git administrative path.
 It writes `progress.md` as a human-readable recovery file. Neither file belongs
@@ -164,10 +164,68 @@ It runs, in order:
 
 Fix failures and rerun. Stop after five failed local iterations.
 
+### QA
+
+QA is mandatory. It is the Codex form of the Claude `/dev` Phase 8.5. Follow
+the method in `.claude/skills/qa/SKILL.md` in **fix mode**. Do not copy the
+method here. That skill is the one source.
+
+In short, the method does these steps:
+
+1. Check that `.env.local` points at local Supabase. QA never runs against
+   production. If the check fails, halt with `needs_human`.
+2. Build a charter from the design and plan: one row for each user-facing
+   behavior, plus one adjacent flow.
+3. Drive the running app in Chromium. Apply each QA lens that fits a row.
+   Mark the other lenses `n/a` with a reason.
+4. Write the report to `dev-tools/qa/qa-report-<branch-slug>.md`. The
+   directory is gitignored.
+5. For each `critical` or `major` bug, write a failing regression test, fix
+   the code, and commit explicit paths: `fix(qa): <what> — QA bug <ID>`.
+   Stop after three rounds and halt with `needs_human`.
+
+A diff that changes only docs, `.claude/`, `.github/`, or config with no
+runtime effect does not start the app. Write the report with a one-sentence
+`exception`, set `charterRows` to 0, and set `qaPassed` to `true`. A change
+under `src/` or `supabase/` is never an exception.
+
+Record the QA result. It uses the same contract as `QA_SCHEMA` in
+`.claude/workflows/dev-build-and-ship.js`:
+
+```json
+{
+  "status": "completed",
+  "qaPassed": true,
+  "reportPath": "dev-tools/qa/qa-report-codex-example.md",
+  "headSha": "<current HEAD, after QA fix commits>",
+  "charterRows": 6,
+  "bugsFixed": 1,
+  "commits": ["<QA fix SHA>"],
+  "minorFindings": [{ "title": "...", "severity": "minor", "evidence": "..." }]
+}
+```
+
+The orchestrator applies these rules:
+
+- `evidence qa` fails when `headSha` is not the current HEAD, or when the
+  `reportPath` file does not exist.
+- When `headSha` differs from the Verify checks, the orchestrator clears the
+  Verify checks and sets `reverifyRequired`. This occurs after a QA fix commit.
+- Then run `verify` again during the `qa` phase. The post-QA run has its own
+  five-attempt budget. Its logs go to `verify-post-qa-<n>`.
+- `complete qa` fails when `qaPassed` is not `true`, when the report is
+  missing, or when Verify did not pass on the current HEAD.
+- `begin ship` fails without a passed QA result. Green tests are not a QA pass.
+
+When QA returns `qaPassed=false`, halt with `needs_human` and name the open
+bug IDs from the report.
+
 ### Ship
 
 Push the feature branch. Create or update the pull request. Include Summary,
-Test Plan, the design link, and deferred review findings.
+Test Plan, the design link, and deferred review findings. Add a `## QA`
+section with the verdict, the charter row count or the exception, the bugs
+fixed, the report path, and each open minor QA finding.
 
 Record ship evidence on the current SHA:
 
@@ -216,13 +274,16 @@ on the PR with the reason for declining it. Rerun affected checks after fixes.
 }
 ```
 
-If triage creates a commit, run `recheck`, repeat verification and shipping,
-return to CI, then perform triage again on the new SHA.
+If triage creates a commit, run `recheck`, repeat verification, QA, and
+shipping, return to CI, then perform triage again on the new SHA.
+
+`recheck` resets `qa` with the other phases after `verify`. QA runs again on
+each new revision, so no push skips QA.
 
 ### Done
 
-Start `done` only after triage. Confirm the current SHA has green CI, all
-comments have dispositions, the worktree is clean, and every prior phase is
+Start `done` only after triage. Confirm the current SHA has green CI, a passed
+QA result, all comments have dispositions, the worktree is clean, and every prior phase is
 complete. Run `complete done`. Only then report the PR ready for review.
 
 ## Halt And Resume

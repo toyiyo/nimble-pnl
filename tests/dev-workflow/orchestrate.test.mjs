@@ -45,8 +45,11 @@ test('skill metadata exposes the repository workflow as $dev', () => {
   assert.doesNotMatch(skill, /Use `\$(brainstorming|writing-plans|code-simplifier)`/);
   assert.match(
     workflow.replace(/\s+/g, ' '),
-    /build`, `ui-review`, `simplify`, `review`, `verify`, `ship`, `ci`, `triage`, and `done`/,
+    /build`, `ui-review`, `simplify`, `review`, `verify`, `qa`, `ship`, `ci`, `triage`, and `done`/,
   );
+  assert.match(skill, /\.claude\/skills\/qa\/SKILL\.md/);
+  assert.match(workflow, /\.claude\/skills\/qa\/SKILL\.md/);
+  assert.match(workflow, /fix mode/);
   assert.match(agent, /default_prompt: "Use \$dev /);
 });
 
@@ -57,6 +60,7 @@ test('workflow keeps every post-approval gate in strict order', () => {
     'simplify',
     'review',
     'verify',
+    'qa',
     'ship',
     'ci',
     'triage',
@@ -173,6 +177,162 @@ test('a post-CI or triage commit restarts verification on the new revision', () 
   assert.deepEqual(state.evidence.verify, { attempt: 0, checks: {} });
   assert.deepEqual(state.evidence.ci, {});
   assert.throws(() => restartVerification(state, 'newer-sha'), /CI or triage/);
+});
+
+test('ship cannot start or complete without a QA result', () => {
+  const state = stateAt('qa', 'qa-sha');
+  assert.throws(() => advancePhase(state, 'ship'), /expected qa/);
+  assert.throws(() => validateCompletion(state, 'qa', 'qa-sha'), /QA evidence needs qaPassed/);
+
+  const tampered = stateAt('ship', 'qa-sha');
+  tampered.phases.ship.status = 'pending';
+  tampered.currentPhase = 'ship';
+  assert.throws(() => advancePhase(tampered, 'ship'), /QA evidence needs qaPassed/);
+
+  const shipState = stateAt('ship', 'qa-sha');
+  shipState.evidence.ship = { prNumber: 123, sha: 'qa-sha' };
+  assert.throws(() => validateCompletion(shipState, 'ship', 'qa-sha'), /QA evidence needs qaPassed/);
+
+  shipState.evidence.verify = passingVerify('qa-sha');
+  shipState.evidence.qa = passingQa('qa-sha');
+  assert.doesNotThrow(() => validateCompletion(shipState, 'ship', 'qa-sha'));
+});
+
+test('ship stays blocked when QA returns qaPassed=false', () => {
+  const state = stateAt('qa', 'qa-sha');
+  state.phases.verify.sha = 'qa-sha';
+  state.evidence.verify = passingVerify('qa-sha');
+  applyEvidence(state, 'qa', { ...passingQa('qa-sha'), qaPassed: false }, 'qa-sha');
+
+  assert.throws(() => validateCompletion(state, 'qa', 'qa-sha'), /QA did not pass/);
+  assert.throws(() => advancePhase(state, 'ship'), /expected qa/);
+
+  const tampered = stateAt('ship', 'qa-sha');
+  tampered.phases.ship.status = 'pending';
+  tampered.evidence.qa = { ...passingQa('qa-sha'), qaPassed: false };
+  assert.throws(() => advancePhase(tampered, 'ship'), /QA did not pass/);
+});
+
+test('QA evidence needs a report file that exists and the current revision', () => {
+  const state = stateAt('qa', 'qa-sha');
+  assert.throws(
+    () => applyEvidence(state, 'qa', passingQa('old-sha'), 'qa-sha'),
+    /QA evidence is not from the current revision/,
+  );
+
+  const temp = mkdtempSync(path.join(tmpdir(), 'codex-dev-qa-'));
+  try {
+    assert.throws(
+      () => validateEvidenceArtifacts(temp, 'qa', passingQa('qa-sha'), 'qa-sha'),
+      /Evidence artifact does not exist: dev-tools\/qa\/qa-report\.md/,
+    );
+    mkdirSync(path.join(temp, 'dev-tools/qa'), { recursive: true });
+    writeFileSync(path.join(temp, 'dev-tools/qa/qa-report.md'), '# QA report\n');
+    assert.doesNotThrow(() => validateEvidenceArtifacts(temp, 'qa', passingQa('qa-sha'), 'qa-sha'));
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('a QA commit invalidates Verify and requires a new verify run before ship', () => {
+  const state = stateAt('qa', 'qa-fix-sha');
+  state.phases.verify.sha = 'verify-sha';
+  state.evidence.verify = passingVerify('verify-sha');
+
+  applyEvidence(state, 'qa', {
+    ...passingQa('qa-fix-sha'),
+    commits: ['qa-fix-sha'],
+    bugsFixed: 1,
+  }, 'qa-fix-sha');
+
+  assert.deepEqual(state.evidence.verify.checks, {});
+  assert.equal(state.evidence.verify.attempt, 0);
+  assert.equal(state.evidence.verify.e2eCoverage.status, 'covered');
+  assert.equal(state.evidence.qa.reverifyRequired, true);
+  assert.throws(() => validateCompletion(state, 'qa', 'qa-fix-sha'), /Verify is missing passing checks/);
+
+  state.evidence.verify = passingVerify('qa-fix-sha');
+  state.evidence.qa.reverifyRequired = false;
+  assert.doesNotThrow(() => validateCompletion(state, 'qa', 'qa-fix-sha'));
+
+  const clean = stateAt('qa', 'verify-sha');
+  clean.phases.verify.sha = 'verify-sha';
+  clean.evidence.verify = passingVerify('verify-sha');
+  applyEvidence(clean, 'qa', passingQa('verify-sha'), 'verify-sha');
+  assert.equal(clean.evidence.verify.checks.test.sha, 'verify-sha');
+  assert.equal(clean.evidence.qa.reverifyRequired, false);
+  assert.doesNotThrow(() => validateCompletion(clean, 'qa', 'verify-sha'));
+});
+
+test('the verify command re-runs during QA after a QA commit', () => {
+  const temp = initFeatureRepo();
+  try {
+    const { env } = temp;
+    const cwd = temp.dir;
+    const statePath = path.join(cwd, '.git/codex-dev/state.json');
+    const run = (...args) => spawnSync('node', [orchestratorPath, ...args], { cwd, encoding: 'utf8', env });
+
+    const verifySha = git(cwd, 'rev-parse', 'HEAD');
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    for (const phase of PHASES.slice(0, PHASES.indexOf('qa'))) {
+      state.phases[phase] = { status: 'completed', sha: verifySha };
+    }
+    state.phases.qa = { status: 'in_progress' };
+    state.currentPhase = 'qa';
+    state.evidence.verify = {
+      attempt: 1,
+      checks: passingVerify(verifySha).checks,
+      e2eCoverage: { status: 'exception', detail: 'Workflow-only test fixture' },
+    };
+    writeFileSync(statePath, JSON.stringify(state));
+
+    writeFileSync(path.join(cwd, 'fix.txt'), 'qa fix\n');
+    git(cwd, 'add', 'fix.txt');
+    git(cwd, 'commit', '-qm', 'fix(qa): example');
+    const qaSha = git(cwd, 'rev-parse', 'HEAD');
+
+    mkdirSync(path.join(cwd, 'dev-tools/qa'), { recursive: true });
+    writeFileSync(path.join(cwd, 'dev-tools/qa/qa-report.md'), '# QA report\n');
+    writeFileSync(path.join(cwd, 'dev-tools/qa-result.json'), JSON.stringify({
+      ...passingQa(qaSha),
+      commits: [qaSha],
+    }));
+    const recorded = run('evidence', 'qa', '--file', 'dev-tools/qa-result.json');
+    assert.equal(recorded.status, 0, recorded.stderr);
+
+    const blocked = run('complete', 'qa');
+    assert.notEqual(blocked.status, 0);
+    assert.match(blocked.stderr, /Verify is missing passing checks/);
+
+    const reverify = run('verify');
+    assert.equal(reverify.status, 0, reverify.stderr);
+    assert.match(reverify.stdout, /\[\$dev verify post-qa 1\/5\]/);
+
+    const completed = run('complete', 'qa');
+    assert.equal(completed.status, 0, completed.stderr);
+    assert.match(completed.stdout, /Next phase: ship/);
+
+    const after = JSON.parse(readFileSync(statePath, 'utf8'));
+    assert.equal(after.phases.verify.sha, qaSha);
+    assert.equal(after.evidence.qa.reverifyRequired, false);
+
+    const begun = run('begin', 'ship');
+    assert.equal(begun.status, 0, begun.stderr);
+  } finally {
+    rmSync(temp.dir, { recursive: true, force: true });
+  }
+});
+
+test('a post-CI commit resets QA so it runs again on the new revision', () => {
+  const state = stateAt('ci', 'old-sha');
+  state.phases.verify.sha = 'old-sha';
+  state.evidence.qa = passingQa('old-sha');
+
+  restartVerification(state, 'new-sha');
+
+  assert.equal(state.phases.qa.status, 'pending');
+  assert.deepEqual(state.evidence.qa, {});
+  assert.throws(() => advancePhase(state, 'qa'), /expected verify/);
 });
 
 test('evidence is phase-scoped, revision-scoped, and counts CI attempts', () => {
@@ -524,6 +684,63 @@ function stateAt(phase, headSha) {
   state.phases[phase].status = 'in_progress';
   state.currentPhase = phase;
   return state;
+}
+
+function passingVerify(sha) {
+  return {
+    attempt: 1,
+    checks: Object.fromEntries(REQUIRED_CHECKS.map((name) => [name, { status: 'passed', sha }])),
+    e2eCoverage: { status: 'covered', detail: 'tests/e2e/example.spec.ts' },
+  };
+}
+
+function passingQa(sha) {
+  return {
+    status: 'completed',
+    qaPassed: true,
+    reportPath: 'dev-tools/qa/qa-report.md',
+    headSha: sha,
+    charterRows: 3,
+    commits: [],
+    minorFindings: [],
+  };
+}
+
+function git(cwd, ...args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+// A feature repo with stub npm, gh, and vite so `verify` runs without the real suite.
+function initFeatureRepo() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'codex-dev-qa-cli-'));
+  git(dir, 'init', '-q');
+  git(dir, 'config', 'user.email', 'test@example.com');
+  git(dir, 'config', 'user.name', 'Test User');
+  mkdirSync(path.join(dir, 'docs'), { recursive: true });
+  mkdirSync(path.join(dir, 'node_modules/.bin'), { recursive: true });
+  mkdirSync(path.join(dir, 'bin'), { recursive: true });
+  writeFileSync(path.join(dir, 'docs/design.md'), '# Design\n');
+  writeFileSync(path.join(dir, 'docs/plan.md'), '# Plan\n');
+  writeFileSync(path.join(dir, '.gitignore'), 'node_modules\nbin\n*.local\nprogress.md\ndev-tools/\n');
+  writeFileSync(path.join(dir, '.env.local'), 'VITE_SUPABASE_URL=http://127.0.0.1:54321\n');
+  for (const stub of ['node_modules/.bin/vite', 'bin/gh', 'bin/npm']) {
+    writeFileSync(path.join(dir, stub), '#!/bin/sh\necho stub "$@"\n');
+    chmodSync(path.join(dir, stub), 0o755);
+  }
+  git(dir, 'add', 'docs/design.md', 'docs/plan.md', '.gitignore');
+  git(dir, 'commit', '-qm', 'docs: add plan');
+  git(dir, 'checkout', '-qb', 'codex/example');
+
+  const env = { ...process.env, PATH: `${path.join(dir, 'bin')}:${process.env.PATH}` };
+  execFileSync('node', [
+    orchestratorPath,
+    'init',
+    '--worktree', dir,
+    '--branch', 'codex/example',
+    '--design', 'docs/design.md',
+    '--plan', 'docs/plan.md',
+  ], { cwd: dir, env });
+  return { dir, env };
 }
 
 function runHook(event, input, cwd = repoRoot) {

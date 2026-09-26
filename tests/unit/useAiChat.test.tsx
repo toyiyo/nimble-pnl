@@ -444,6 +444,33 @@ describe('useAiChat', () => {
       expect(toolBodies[1].arguments).toMatchObject({ confirmed: true });
     });
 
+    it('lets one approved preview authorize only one write', async () => {
+      streamResponder = (n) => {
+        if (n === 1) return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true, ids: ['a'] }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3)
+          return sseResponse([
+            start(),
+            toolCall('call_c1', WRITE_TOOL, { confirmed: true, ids: ['a'] }),
+            toolCall('call_c2', WRITE_TOOL, { confirmed: true, ids: ['a'] }),
+            end(),
+          ]);
+        return sseResponse([start(), delta('Done.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await previewTurn(result);
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies.map((b) => b.arguments)).toEqual([
+        { preview: true, ids: ['a'] },
+        { confirmed: true, ids: ['a'] },
+      ]);
+      expect(lastToolResult(3)).toEqual(CONFIRMATION_REQUIRED);
+    });
+
     it('blocks a confirm of tool B after a preview of tool A in the last turn', async () => {
       const OTHER_TOOL = 'create_categorization_rule';
       streamResponder = (n) => {

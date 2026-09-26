@@ -294,7 +294,7 @@ interface ToolCallContext {
   round: number;
   signal: AbortSignal;
   /** Successful previews of the last assistant turn: tool name to payload keys. */
-  approvedPreviews: ReadonlyMap<string, ReadonlySet<string>>;
+  approvedPreviews: Map<string, Set<string>>;
   /** Write tools that this round previewed before this call. */
   roundPreviews: Set<string>;
 }
@@ -403,11 +403,12 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       if (round >= MAX_TOOL_ROUNDS) return STEP_LIMIT_RESULT;
       if (isWriteTool(name)) {
         if (args?.confirmed) {
-          const approved =
-            round === 1 &&
-            (approvedPreviews.get(name)?.has(writePayloadKey(args)) ?? false) &&
-            !roundPreviews.has(name);
+          const key = writePayloadKey(args);
+          const keys = approvedPreviews.get(name);
+          const approved = round === 1 && (keys?.has(key) ?? false) && !roundPreviews.has(name);
           if (!approved) return CONFIRMATION_REQUIRED_RESULT;
+          // One preview approves one write.
+          keys?.delete(key);
         } else if (args?.preview) {
           roundPreviews.add(name);
         }
@@ -424,7 +425,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       round: number,
       controller: AbortController,
       stamp: Stamp,
-      approvedPreviews: ReadonlyMap<string, ReadonlySet<string>>
+      approvedPreviews: Map<string, Set<string>>
     ): Promise<RoundResult> => {
       const { signal } = controller;
       const roundPreviews = new Set<string>();
@@ -588,7 +589,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       round: number,
       controller: AbortController,
       stamp: Stamp,
-      approvedPreviews: ReadonlyMap<string, ReadonlySet<string>>
+      approvedPreviews: Map<string, Set<string>>
     ): Promise<RoundResult> => {
       for (let attempt = 0; ; attempt++) {
         try {

@@ -167,7 +167,8 @@ as every role on a seeded local database:
    with sales, inventory, bank, labor, tip and cost data.
 2. `npx supabase functions serve --no-verify-jwt`.
 3. For each role and each tool, POST to `/functions/v1/ai-execute-tool` with
-   the user's JWT. Compare HTTP 403 against `canUseTool` and the
+   the user's JWT. Check role-gated tools with `canUseTool`. Check
+   capability-gated tools with `canUseCapabilityGatedTool` and the
    `user_has_capability` RPC. Every allowed call must return `ok: true`.
 4. Compare the owner results with the seeded values (units, totals, dates).
 5. Call each tool with `{}`. Only calls that cannot run may return

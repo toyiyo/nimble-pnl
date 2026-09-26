@@ -174,8 +174,8 @@ as every role on a seeded local database:
    `INVALID_ARGUMENTS`.
 6. To test `ai-chat-stream` without an OpenRouter key, point its fetch at a
    local mock that returns OpenRouter SSE chunks. Cover a tool round trip, two
-   tool rounds, `MALFORMED_FUNCTION_CALL`, HTTP 500 and 403 fallback, and all
-   models failing.
+   tool rounds, `MALFORMED_FUNCTION_CALL`, HTTP 500 and 403 fallback, and a case where all
+   models fail.
 
 #### Deploy
 

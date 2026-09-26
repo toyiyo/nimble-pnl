@@ -1,7 +1,7 @@
 # AI chat validation fixes: design
 
 Date: 2026-09-26. Branch: `claude/chatbot-feature-testing-bwissl`. STE-aligned.
-Revision 2: folds in the Phase 2.5 Supabase and frontend design reviews.
+Revision 2 adds the findings of the Phase 2.5 Supabase and frontend design reviews.
 
 ## 1. Context
 
@@ -64,7 +64,7 @@ redaction, and model fallback passed. This design does not change them.
   not change.
 - Tests: a unit test checks each column against the keys of
   `unified_sales.Row` in `src/integrations/supabase/types.ts`. A pgTAP file
-  `supabase/tests/ai_tool_projections.sql` asserts `has_column` for each
+  `supabase/tests/ai_tool_projections.test.sql` asserts `has_column` for each
   selected column.
 
 ### D3 (major): `quantity_sold` counts rows, not units
@@ -166,7 +166,7 @@ redaction, and model fallback passed. This design does not change them.
   showed that 10 period tools answered `ok` before. The first version of this
   fix rejected them. The `period` exemption keeps them working. Only
   `navigate` and `get_financial_intelligence` change from `ok` to
-  `INVALID_ARGUMENTS`; their old answers were garbage ("I can take you to
+  `INVALID_ARGUMENTS`; their old answers had no use ("I can take you to
   undefined"; no date range).
 - Tests: complete call, missing field, string/`null`/`undefined` args, unknown
   tool, and "every dispatcher case has a registry entry".
@@ -196,7 +196,7 @@ redaction, and model fallback passed. This design does not change them.
     sees `TOOL_PERMISSION_DENIED` or `INVALID_ARGUMENTS`.
   - The SSE parser keeps a last line with no newline in `buffer` (`:357`) and
     never flushes it.
-  - `tool_calls: []` is sent when it is empty (`:106`, `:326`).
+  - The hook sends `tool_calls: []` when the list is empty (`:106`, `:326`).
 - Fix: rewrite the turn as one loop.
   - `runRound(history, signal)` handles `message_start`, `message_delta`,
     `tool_call` and `message_end`, runs the tools, and returns
@@ -208,8 +208,8 @@ redaction, and model fallback passed. This design does not change them.
     round 4 still asks for tools, the hook sets the error "The assistant needed
     too many steps. Ask a more specific question."
   - One `AbortController` per turn. Each round has an idle timeout of 30 s
-    with no event; it aborts with a `TimeoutError` reason. The whole-turn timer
-    is deleted. `isStreaming` stays true until the loop exits.
+    with no event; it aborts with a `TimeoutError` reason. The fix deletes the
+    whole-turn timer. `isStreaming` stays true until the loop exits.
   - Retry (max 2, backoff) only on HTTP >= 500 or a network error before the
     first event of a round. No retry after a `tool_call` or `message_delta`,
     and no retry on a user abort.
@@ -218,8 +218,8 @@ redaction, and model fallback passed. This design does not change them.
   - Client IDs use `crypto.randomUUID()`. `created_at` values increase
     strictly within a turn.
   - `executeTool` returns the JSON body when it has `ok:false`, for any status.
-  - The parser flushes `buffer` at `done`. `tool_calls` is sent only when
-    its length is more than 0.
+  - The parser flushes `buffer` at `done`. The hook sends `tool_calls` only
+    when its length is more than 0.
   - An `isStreamingRef` blocks a second submit during a turn.
 - Tests: `tests/unit/useAiChat.test.tsx` with `renderHook`, fake timers, a
   mocked `fetch` (SSE bodies), and a mocked `supabase.auth.getSession`.
@@ -235,25 +235,25 @@ redaction, and model fallback passed. This design does not change them.
 
 - Fact: the save effect treats a message as saved when a DB row has the same
   `content` and `role` (`src/components/ai-chat/AiChatPanel.tsx:124-134`).
-  Every tool-call assistant message has `content: ''`, so only the first one
-  is saved. A reloaded session then has `tool` rows with no parent
+  Every tool-call assistant message has `content: ''`, so the effect saves
+  only the first one. A reloaded session then has `tool` rows with no parent
   `tool_calls`, which providers reject.
 - Fact: `saveMessagesBatch` sends no `created_at`
   (`src/hooks/useAiChatMessages.ts:84-93`). The default is `now()`
   (`supabase/migrations/20260128000000_ai_chat_persistence.sql:28`), so all
   rows of one batch share a timestamp. The load orders by `created_at`
   (`useAiChatMessages.ts:30`).
-- Fact: the loaded DB rows are set into the hook at
-  `AiChatPanel.tsx:92-95`. The saved-ID set is seeded only when the session ID
-  changes (`:108-116`), often before the rows arrive.
+- Fact: the panel sets the loaded DB rows into the hook at
+  `AiChatPanel.tsx:92-95`. The panel seeds the saved-ID set only when the
+  session ID changes (`:108-116`), often before the rows arrive.
 - Fact: the title rule `messages.length <= 3` (`:150`) fails for a first turn
   that uses tools.
-- Fix: dedupe by message ID only. Add the loaded DB IDs to the saved set at
+- Fix: duplicate check by message ID only. Add the loaded DB IDs to the saved set at
   the load point (`:92-95`). Send `created_at` from the client. Set the title
   when the session has exactly one user message.
 - Tests: extend the hook tests for `saveMessagesBatch` (sends `created_at`);
-  a panel-level unit test for the dedupe rule (two `''` assistant rows are
-  both saved; loaded rows are not saved again).
+  a unit test for the duplicate rule (the panel saves both `''` assistant
+  rows; the panel does not save loaded rows again).
 
 ### D8 (minor): stale "Processing..." bubble
 
@@ -296,7 +296,7 @@ redaction, and model fallback passed. This design does not change them.
   2026-05-07).
 - Live check after the fixes: re-run the scratch harness (225-call matrix,
   write checks, `{}` args for every tool before and after, chat stream with
-  the mock model, browser). The harness is not committed.
+  the mock model, browser). The branch does not include the harness.
 
 ## 5. Out of scope and follow-ups
 
@@ -308,3 +308,29 @@ redaction, and model fallback passed. This design does not change them.
   chains; `PromiseLike` in the other structural client types
   (`_shared/financialAggregates.ts:26` and others); pin the esm.sh
   supabase-js version.
+
+## 6. Phase 7 review decisions
+
+- Security (major): with D7, one user message can run a preview in round 1
+  and `confirmed: true` in round 2, with no approval from the user. The write
+  tools are `batch_categorize_transactions`, `batch_categorize_pos_sales` and
+  `create_categorization_rule` (`supabase/functions/_shared/tools-registry.ts:713`,
+  `:742`, `:771`: "confirmed:true after user approves"). Fix: in round 2 or
+  later of a turn, the hook does not send a write tool call with
+  `confirmed: true`. It returns `CONFIRMATION_REQUIRED` to the model. Round 1
+  of a new user message still allows the confirm.
+- Logic (major): the per-round idle timer restarts on every received chunk,
+  and the limit is 90 s, because the server sends no event while it tries
+  fallback models (`supabase/functions/ai-chat-stream/index.ts:330-352`,
+  `:689-720`).
+- Logic (major): a session change, a new conversation or a restaurant change
+  aborts the running turn. An aborted turn changes no more state.
+- Deferred, with reason:
+  - Run the tool calls of one round in parallel. The write tools need a fixed
+    order, and `main` also runs them in sequence.
+  - A server confirmation token for write tools. It needs a new table and a
+    migration. The client guard stops the model-driven confirm.
+  - Remove pay fields from saved `tool` rows. `main` already saves them for
+    round 1. This needs a product decision.
+  - Send short tool bodies for earlier turns, one capability RPC for many
+    capabilities, and a session-list invalidation that uses the restaurant.

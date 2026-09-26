@@ -21,7 +21,7 @@ in parallel. Inside each track, run the tasks in order.
 ### S2. D2-D6: pure formatters
 - Files: new `supabase/functions/_shared/aiToolFormatters.ts`, new
   `tests/unit/aiToolFormatters.test.ts`, new
-  `supabase/tests/ai_tool_projections.sql`.
+  `supabase/tests/ai_tool_projections.test.sql`.
 - Exports: `POS_SALE_PREVIEW_COLUMNS`, `mapTopSoldItems`,
   `buildCashFlowSummary`, `computeCashCoverage`, `incomeStatementBasis`,
   `monthlyPnlBasis`.
@@ -46,8 +46,8 @@ in parallel. Inside each track, run the tasks in order.
 ### S5. D10: required-argument check
 - Files: `tools-registry.ts`, `ai-execute-tool/index.ts`,
   `tests/unit/tools-registry.test.ts`.
-- `missingRequiredArgs`; HTTP 200 `INVALID_ARGUMENTS`; `period` leaves
-  `required` for `get_kpis` and `get_sales_summary`; "every dispatcher case
+- `missingRequiredArgs`; HTTP 200 `INVALID_ARGUMENTS`; the check does
+  not enforce `period` (every handler defaults it); "every dispatcher case
   has a registry entry" test.
 
 ## Client track
@@ -61,7 +61,7 @@ in parallel. Inside each track, run the tasks in order.
 ### C2. D7b: saved history
 - Files: `src/components/ai-chat/AiChatPanel.tsx`,
   `src/hooks/useAiChatMessages.ts`, tests.
-- Dedupe by ID; mark loaded rows; send `created_at`; title rule.
+- Remove duplicates by ID; mark loaded rows; send `created_at`; title rule.
 
 ### C3. D8: `ChatMessage`
 - Files: `src/components/ChatMessage.tsx`, `AiChatPanel.tsx` (a11y roles),

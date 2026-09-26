@@ -4,7 +4,6 @@ import { ChatMessage, SSEEvent, ToolCall } from '@/types/ai-chat';
 
 export interface UseAiChatOptions {
   restaurantId: string;
-  onToolCall?: (toolCall: ToolCall) => Promise<unknown>;
 }
 
 export interface UseAiChatReturn {
@@ -19,8 +18,12 @@ export interface UseAiChatReturn {
 
 /** Maximum number of stream requests in one turn. Round 1 counts. */
 export const MAX_TOOL_ROUNDS = 4;
-/** A round fails when it sends no event for this time. */
-export const ROUND_IDLE_TIMEOUT_MS = 30_000;
+/**
+ * A round fails when it receives no data for this time. The server can work
+ * for a long time with no event, for example when it tries the next model or
+ * streams tool arguments.
+ */
+export const ROUND_IDLE_TIMEOUT_MS = 90_000;
 /** Retries of one round. The hook retries only before the first event. */
 export const MAX_ROUND_RETRIES = 2;
 /** A tool call fails with TOOL_ERROR when it gives no result in this time. */
@@ -71,9 +74,12 @@ interface RoundResult {
 
 type Stamp = () => string;
 
-/** Returns a clock that gives strictly increasing ISO timestamps. */
-function createStamp(): Stamp {
-  let last = 0;
+/**
+ * Returns a clock that gives strictly increasing ISO timestamps. The first
+ * stamp is later than `after`, so a new turn sorts after the history.
+ */
+function createStamp(after: number): Stamp {
+  let last = after;
   return () => {
     last = Math.max(Date.now(), last + 1);
     return new Date(last).toISOString();
@@ -161,7 +167,51 @@ function parseSSELine(line: string): SSEEvent | null {
   }
 }
 
-export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAiChatReturn {
+/**
+ * Reads SSE events from a byte stream. It decodes the bytes, splits them into
+ * lines, and parses each `data:` line. It parses a last line with no newline.
+ * It calls `onChunk` after each read, also when the chunk has no full event.
+ * A read error or an abort rejects the iteration.
+ */
+export async function* readSseEvents(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+  onChunk?: () => void
+): AsyncGenerator<SSEEvent> {
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  while (true) {
+    const chunk = await readWithAbort(reader, signal);
+    onChunk?.();
+    if (chunk.done) {
+      buffer += decoder.decode();
+      break;
+    }
+    buffer += decoder.decode(chunk.value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const event = parseSSELine(line);
+      if (event) yield event;
+    }
+  }
+  for (const line of buffer.split('\n')) {
+    const event = parseSSELine(line);
+    if (event) yield event;
+  }
+}
+
+/** Returns the time of the last message, or 0 when no message has a time. */
+function lastCreatedAt(messages: ChatMessage[]): number {
+  let last = 0;
+  for (const m of messages) {
+    const t = m.created_at ? Date.parse(m.created_at) : NaN;
+    if (Number.isFinite(t) && t > last) last = t;
+  }
+  return last;
+}
+
+export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +317,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
       let assistantId: string | null = null;
       let assistantCreatedAt = '';
       let content = '';
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -293,13 +344,11 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         if (!response.ok) {
           throw new RoundError(await readHttpError(response), response.status >= 500);
         }
-        const reader = response.body?.getReader();
+        reader = response.body?.getReader();
         if (!reader) throw new RoundError(EMPTY_RESPONSE_ERROR, false);
 
-        const decoder = new TextDecoder('utf-8');
         const toolCalls: ToolCall[] = [];
         const toolMessages: ChatMessage[] = [];
-        let buffer = '';
         let receivedEvent = false;
 
         const ensureAssistant = () => {
@@ -347,7 +396,6 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                   tool_call_id: toolCall.id,
                   created_at: stamp(),
                 });
-                if (onToolCall) await onToolCall(toolCall);
               }
               break;
             case 'message_end':
@@ -357,34 +405,20 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
           }
         };
 
-        const processLines = async (lines: string[]) => {
-          for (const line of lines) {
-            const event = parseSSELine(line);
-            if (!event) continue;
-            receivedEvent = true;
-            armIdle();
-            await handleEvent(event);
-          }
-        };
-
+        // Every chunk re-arms the idle timer, also a chunk with no full event.
+        const events = readSseEvents(reader, signal, armIdle);
         while (true) {
-          let chunk: ReadableStreamReadResult<Uint8Array>;
+          let next: IteratorResult<SSEEvent>;
           try {
-            chunk = await readWithAbort(reader, signal);
+            next = await events.next();
           } catch (err) {
             if (signal.aborted) throw abortError(signal);
             console.error('[AI Chat] Stream read error:', err);
             throw new RoundError(NETWORK_ERROR, !receivedEvent);
           }
-          if (chunk.done) {
-            buffer += decoder.decode();
-            await processLines(buffer.split('\n'));
-            break;
-          }
-          buffer += decoder.decode(chunk.value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-          await processLines(lines);
+          if (next.done) break;
+          receivedEvent = true;
+          await handleEvent(next.value);
         }
 
         if (!assistantId) throw new RoundError(EMPTY_RESPONSE_ERROR, false);
@@ -406,9 +440,11 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         throw err;
       } finally {
         clearIdle();
+        // Close the stream also when an event handler throws.
+        reader?.cancel().catch(() => undefined);
       }
     },
-    [restaurantId, resolveToolCall, onToolCall]
+    [restaurantId, resolveToolCall]
   );
 
   /** One round, with a retry only before the first event. */
@@ -443,7 +479,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
-      const stamp = createStamp();
+      const stamp = createStamp(lastCreatedAt(messagesRef.current));
 
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -480,7 +516,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
           setError(err.message);
         } else {
           console.error('[AI Chat] Turn failed:', err);
-          setError((err as Error)?.message || 'Failed to send message');
+          setError((err instanceof Error && err.message) || 'Failed to send message');
         }
       } finally {
         if (abortControllerRef.current === controller) abortControllerRef.current = null;

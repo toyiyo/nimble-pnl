@@ -15,6 +15,8 @@ import {
   MAX_TOOL_ROUNDS,
   TOO_MANY_STEPS_ERROR,
   TOOL_TIMEOUT_MS,
+  ROUND_IDLE_TIMEOUT_MS,
+  readSseEvents,
 } from '@/hooks/useAiChat';
 
 // ---------------------------------------------------------------------------
@@ -530,12 +532,13 @@ describe('useAiChat', () => {
     expect(result.current.error).toBe('Forbidden');
   });
 
-  it('keeps streaming through a 2-round turn longer than 30 s in total', async () => {
+  it('keeps streaming through a 2-round turn longer than ROUND_IDLE_TIMEOUT_MS in total', async () => {
     vi.useFakeTimers();
+    const gap = Math.floor((ROUND_IDLE_TIMEOUT_MS * 2) / 3);
     streamResponder = (n) =>
       n === 1
-        ? sseResponse([start(), { wait: 20_000 }, toolCall('call_1', 'get_kpis'), end()])
-        : sseResponse([start(), { wait: 20_000 }, delta('Done'), { wait: 5_000 }, end()]);
+        ? sseResponse([start(), { wait: gap }, toolCall('call_1', 'get_kpis'), end()])
+        : sseResponse([start(), { wait: gap }, delta('Done'), { wait: 5_000 }, end()]);
     const { result } = renderChat();
 
     let done!: Promise<void>;
@@ -543,13 +546,13 @@ describe('useAiChat', () => {
       done = result.current.sendMessage('Hi');
     });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(35_000);
+      await vi.advanceTimersByTimeAsync(ROUND_IDLE_TIMEOUT_MS + 1_000);
     });
     expect(result.current.isStreaming).toBe(true);
     expect(result.current.error).toBeNull();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(gap + 5_000);
       await done;
     });
     expect(result.current.isStreaming).toBe(false);
@@ -557,7 +560,7 @@ describe('useAiChat', () => {
     expect(result.current.messages.at(-1)?.content).toBe('Done');
   });
 
-  it('sets a timeout error when a round sends no event for 30 s', async () => {
+  it('sets a timeout error when a round receives no data for ROUND_IDLE_TIMEOUT_MS', async () => {
     vi.useFakeTimers();
     streamResponder = () => sseResponse([start(), { hang: true }]);
     const { result } = renderChat();
@@ -567,7 +570,7 @@ describe('useAiChat', () => {
       done = result.current.sendMessage('Hi');
     });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(29_000);
+      await vi.advanceTimersByTimeAsync(ROUND_IDLE_TIMEOUT_MS - 1_000);
     });
     expect(result.current.isStreaming).toBe(true);
 
@@ -578,6 +581,56 @@ describe('useAiChat', () => {
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.error).toMatch(/stopped responding/i);
     expect(streamBodies).toHaveLength(1);
+  });
+
+  it('keeps a round alive while chunks arrive that hold no complete event', async () => {
+    vi.useFakeTimers();
+    const gap = ROUND_IDLE_TIMEOUT_MS - 1_000;
+    const payload = `data: ${JSON.stringify({ type: 'message_delta', delta: 'Slow answer' })}\n\n`;
+    streamResponder = () =>
+      sseResponse([
+        start(),
+        { wait: gap },
+        { raw: ': keep-alive\n' },
+        { wait: gap },
+        { raw: payload.slice(0, 10) },
+        { wait: gap },
+        { raw: payload.slice(10) },
+        end(),
+      ]);
+    const { result } = renderChat();
+
+    let done!: Promise<void>;
+    act(() => {
+      done = result.current.sendMessage('Hi');
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(gap * 3 + 1_000);
+      await done;
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.messages.at(-1)?.content).toBe('Slow answer');
+  });
+
+  it('stamps a new turn after the last loaded message, also when the clock is behind', async () => {
+    streamResponder = () => sseResponse([start(), delta('Answer'), end()]);
+    const { result } = renderChat();
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    act(() => {
+      result.current.setMessages([
+        { id: 'db-1', role: 'user', content: 'Old question', created_at: future },
+      ]);
+    });
+    await act(async () => {
+      await result.current.sendMessage('New question');
+    });
+
+    const times = result.current.messages.map((m) => Date.parse(m.created_at!));
+    expect(times).toHaveLength(3);
+    expect(times[1]).toBeGreaterThan(times[0]);
+    expect(times[2]).toBeGreaterThan(times[1]);
   });
 
   it('passes an ok:false tool body (TOOL_PERMISSION_DENIED) to the model', async () => {
@@ -681,5 +734,75 @@ describe('useAiChat', () => {
       { role: 'assistant', content: 'Answer 1' },
       { role: 'user', content: 'Q2' },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SSE byte framing
+// ---------------------------------------------------------------------------
+
+function readerOf(chunks: string[]): ReadableStreamDefaultReader<Uint8Array> {
+  const queue = chunks.map((c) => encoder.encode(c));
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const next = queue.shift();
+      if (next) controller.enqueue(next);
+      else controller.close();
+    },
+  }).getReader();
+}
+
+async function collect(chunks: string[], onChunk?: () => void) {
+  const events: unknown[] = [];
+  for await (const event of readSseEvents(readerOf(chunks), new AbortController().signal, onChunk)) {
+    events.push(event);
+  }
+  return events;
+}
+
+describe('readSseEvents', () => {
+  const line = (e: Record<string, unknown>) => `data: ${JSON.stringify(e)}\n\n`;
+
+  it('parses a line that is split across chunks', async () => {
+    const text = line({ type: 'message_delta', delta: 'Hello' });
+    expect(await collect([text.slice(0, 7), text.slice(7, 20), text.slice(20)])).toEqual([
+      { type: 'message_delta', delta: 'Hello' },
+    ]);
+  });
+
+  it('parses a last line that has no newline', async () => {
+    const events = await collect([
+      line({ type: 'message_start' }),
+      `data: ${JSON.stringify({ type: 'message_end' })}`,
+    ]);
+    expect(events).toEqual([{ type: 'message_start' }, { type: 'message_end' }]);
+  });
+
+  it('parses a multi-byte character that is split across chunks', async () => {
+    const bytes = encoder.encode(line({ type: 'message_delta', delta: 'caf\u00e9 \u{1F600}' }));
+    const cut = bytes.length - 8;
+    const reader = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, cut));
+        controller.enqueue(bytes.slice(cut));
+        controller.close();
+      },
+    }).getReader();
+    const events: unknown[] = [];
+    for await (const e of readSseEvents(reader, new AbortController().signal)) events.push(e);
+    expect(events).toEqual([{ type: 'message_delta', delta: 'caf\u00e9 \u{1F600}' }]);
+  });
+
+  it('skips comment lines and lines that are not JSON', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const events = await collect([': ping\n', 'data: {bad json\n\n', line({ type: 'message_end' })]);
+    expect(events).toEqual([{ type: 'message_end' }]);
+  });
+
+  it('calls onChunk for each read, also for a chunk with no complete event', async () => {
+    const onChunk = vi.fn();
+    await collect([': ping\n', 'data: {"type":', '"message_end"}\n\n'], onChunk);
+    // Three data chunks and the final done read.
+    expect(onChunk).toHaveBeenCalledTimes(4);
   });
 });

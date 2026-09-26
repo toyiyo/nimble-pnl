@@ -57,7 +57,10 @@ function fakeClient(results: Record<string, Result>, list: ListResult = { data: 
         // Awaited with no maybeSingle(): the list query of the name step.
         then<T>(resolve: (value: ListResult) => T) {
           queries.push({ ...filters, list: true });
-          return Promise.resolve(list).then(resolve);
+          const rows = list.data && 'is_active' in filters
+            ? list.data.filter((r) => r.is_active === filters.is_active)
+            : list.data;
+          return Promise.resolve({ ...list, data: rows }).then(resolve);
         },
       };
       return builder;
@@ -170,6 +173,14 @@ describe('resolveCategoryRef', () => {
     expect(queries.at(-1)).toEqual({ restaurant_id: RESTAURANT, is_active: true, list: true });
   });
 
+  it('does not match an inactive account by name', async () => {
+    const { client } = fakeClient({}, { data: [row({ is_active: false })], error: null });
+    expect(await resolveCategoryRef(client, RESTAURANT, 'Tenant Improvement Allowance')).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('Unknown category'),
+    });
+  });
+
   it('does not match part of a name', async () => {
     const { client } = fakeClient({}, { data: [row()], error: null });
     expect(await resolveCategoryRef(client, RESTAURANT, 'Tenant')).toMatchObject({ ok: false });
@@ -177,7 +188,7 @@ describe('resolveCategoryRef', () => {
 
   it('refuses a name that matches two accounts and lists their codes', async () => {
     const { client } = fakeClient({}, {
-      data: [row({ id: 'a', account_code: '2600-1' }), row({ id: 'b', account_code: '2600-2' })],
+      data: [row({ id: 'b', account_code: '2600-2' }), row({ id: 'a', account_code: '2600-1' })],
       error: null,
     });
     expect(await resolveCategoryRef(client, RESTAURANT, 'Tenant Improvement Allowance')).toEqual({

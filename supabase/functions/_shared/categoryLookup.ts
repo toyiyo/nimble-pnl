@@ -150,9 +150,13 @@ async function findActiveByName(
     .select(CATEGORY_COLUMNS)
     .eq('restaurant_id', restaurantId)
     .eq('is_active', true);
+  // PostgREST max-rows (1000) can cut this list with no error. A chart of
+  // accounts has far fewer rows (see the design's trade-offs).
   if (error) throw new Error(`Category lookup failed: ${error.message}`);
   const needle = name.toLowerCase();
-  return (data ?? []).filter((row) => row.account_name.trim().toLowerCase() === needle);
+  return (data ?? [])
+    .filter((row) => row.account_name.trim().toLowerCase() === needle)
+    .sort((a, b) => a.account_code.localeCompare(b.account_code));
 }
 
 /**
@@ -187,7 +191,7 @@ export async function resolveCategoryRef(
   category ??= await findBy(supabase, restaurantId, 'account_code', value);
 
   if (!category) {
-    const byName = await findActiveByName(supabase, restaurantId, value.toLowerCase());
+    const byName = await findActiveByName(supabase, restaurantId, value);
     if (byName.length > 1) {
       return {
         ok: false,

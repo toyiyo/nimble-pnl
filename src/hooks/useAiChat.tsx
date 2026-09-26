@@ -192,6 +192,48 @@ export async function* readSseEvents(
   }
 }
 
+function parseToolArguments(json: string): Record<string, unknown> | null {
+  try {
+    const args = JSON.parse(json);
+    return args && typeof args === 'object' ? (args as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Gives the names of the write tools that the last assistant turn called with a
+ * truthy `preview`. The last assistant turn is the assistant rows after the last
+ * user row. A turn can have more than one assistant row, one for each round.
+ */
+function previewedWriteTools(history: ChatMessage[]): Set<string> {
+  const names = new Set<string>();
+  let lastUser = -1;
+  history.forEach((m, i) => {
+    if (m.role === 'user') lastUser = i;
+  });
+  for (const m of history.slice(lastUser + 1)) {
+    if (m.role !== 'assistant') continue;
+    for (const call of m.tool_calls ?? []) {
+      const name = call.function?.name;
+      if (!name || !isWriteTool(name)) continue;
+      const args = parseToolArguments(call.function.arguments);
+      if (args && Boolean(args.preview)) names.add(name);
+    }
+  }
+  return names;
+}
+
+/** The facts that the write guard needs for one tool call. */
+interface ToolCallContext {
+  round: number;
+  signal: AbortSignal;
+  /** Write tools that the last assistant turn previewed. */
+  approvedPreviews: ReadonlySet<string>;
+  /** Write tools that this round previewed before this call. */
+  roundPreviews: Set<string>;
+}
+
 /** Returns the time of the last message, or 0 when no message has a time. */
 function lastCreatedAt(messages: ChatMessage[]): number {
   let last = 0;
@@ -277,14 +319,23 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
   /**
    * Gives the result of one tool call. Some calls do not go to the server:
    * - On the last round, no tool runs, because the model cannot answer after it.
-   * - After round 1, a write with `confirmed: true` does not run. The user did
-   *   not approve it in a new message.
+   * - A write with a truthy `confirmed` runs only in round 1, and only when the
+   *   last assistant turn previewed the same tool. The server also accepts
+   *   "true" and 1 as a confirm, so the guard checks for any truthy value.
+   * - A confirm does not run after a preview of the same tool in the same
+   *   round. The user did not see that preview.
    */
   const resolveToolCall = useCallback(
-    async (name: string, args: Record<string, unknown>, round: number, signal: AbortSignal): Promise<unknown> => {
+    async (name: string, args: Record<string, unknown>, context: ToolCallContext): Promise<unknown> => {
+      const { round, signal, approvedPreviews, roundPreviews } = context;
       if (round >= MAX_TOOL_ROUNDS) return STEP_LIMIT_RESULT;
-      if (round > 1 && isWriteTool(name) && args?.confirmed === true) {
-        return CONFIRMATION_REQUIRED_RESULT;
+      if (isWriteTool(name)) {
+        if (Boolean(args?.confirmed)) {
+          const approved = round === 1 && approvedPreviews.has(name) && !roundPreviews.has(name);
+          if (!approved) return CONFIRMATION_REQUIRED_RESULT;
+        } else if (Boolean(args?.preview)) {
+          roundPreviews.add(name);
+        }
       }
       return executeTool(name, args, signal);
     },
@@ -297,9 +348,11 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       history: ChatMessage[],
       round: number,
       controller: AbortController,
-      stamp: Stamp
+      stamp: Stamp,
+      approvedPreviews: ReadonlySet<string>
     ): Promise<RoundResult> => {
       const { signal } = controller;
+      const roundPreviews = new Set<string>();
       // After an abort, the turn adds and changes no rows. The panel can show another session.
       const updateIfLive: typeof setMessages = (update) => {
         if (!signal.aborted) setMessages(update);
@@ -385,7 +438,12 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
                 toolCalls.push(toolCall);
                 // The idle timer covers the stream only, not the tool run.
                 clearIdle();
-                const result = await resolveToolCall(event.tool.name, event.tool.arguments, round, signal);
+                const result = await resolveToolCall(event.tool.name, event.tool.arguments, {
+                  round,
+                  signal,
+                  approvedPreviews,
+                  roundPreviews,
+                });
                 if (signal.aborted) throw abortError(signal);
                 armIdle();
                 toolMessages.push({
@@ -453,11 +511,12 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       history: ChatMessage[],
       round: number,
       controller: AbortController,
-      stamp: Stamp
+      stamp: Stamp,
+      approvedPreviews: ReadonlySet<string>
     ): Promise<RoundResult> => {
       for (let attempt = 0; ; attempt++) {
         try {
-          return await attemptRound(history, round, controller, stamp);
+          return await attemptRound(history, round, controller, stamp, approvedPreviews);
         } catch (err) {
           const canRetry =
             !controller.signal.aborted &&
@@ -488,6 +547,8 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
         created_at: stamp(),
       };
       const turnHistory: ChatMessage[] = [...messagesRef.current, userMessage];
+      // Read the previews before the user message. A confirm needs a preview that the user saw.
+      const approvedPreviews = previewedWriteTools(messagesRef.current);
 
       setError(null);
       setMessages((prev) => [...prev, userMessage]);
@@ -495,7 +556,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
 
       try {
         for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
-          const { assistant, toolMessages } = await runRound(turnHistory, round, controller, stamp);
+          const { assistant, toolMessages } = await runRound(turnHistory, round, controller, stamp, approvedPreviews);
           if (controller.signal.aborted) throw abortError(controller.signal);
 
           setMessages((prev) => [

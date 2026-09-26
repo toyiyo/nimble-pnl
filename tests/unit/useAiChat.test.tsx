@@ -306,20 +306,148 @@ describe('useAiChat', () => {
       }
     );
 
-    it('runs a confirmed write in round 1 of a new user message', async () => {
-      streamResponder = (n) =>
-        n === 1
-          ? sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed: true }), end()])
-          : sseResponse([start(), delta('Done.'), end()]);
+    /** Runs one turn that previews the tool, then asks the user to confirm. */
+    async function previewTurn(result: { current: ReturnType<typeof useAiChat> }) {
+      await act(async () => {
+        await result.current.sendMessage('Categorize my transactions');
+      });
+    }
+
+    const CONFIRMATION_REQUIRED = {
+      ok: false,
+      error: {
+        code: 'CONFIRMATION_REQUIRED',
+        message: 'Show the preview to the user and ask them to confirm in a new message.',
+      },
+    };
+
+    function lastToolResult(streamIndex: number) {
+      const toolMsg = streamBodies[streamIndex].messages.at(-1)!;
+      expect(toolMsg.role).toBe('tool');
+      return JSON.parse(String(toolMsg.content));
+    }
+
+    it.each([['true'], [1], ['yes']])(
+      'blocks the truthy confirmed value %j in round 2',
+      async (confirmed) => {
+        streamResponder = (n) =>
+          n === 1
+            ? sseResponse([start(), toolCall('call_x', 'get_kpis'), end()])
+            : n === 2
+              ? sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed }), end()])
+              : sseResponse([start(), delta('Confirm?'), end()]);
+        const { result } = renderChat();
+
+        await act(async () => {
+          await result.current.sendMessage('Do it');
+        });
+
+        expect(toolBodies.map((b) => b.tool_name)).toEqual(['get_kpis']);
+        expect(lastToolResult(2)).toEqual(CONFIRMATION_REQUIRED);
+      }
+    );
+
+    it.each([[true], ['true'], [1], ['yes']])(
+      'blocks the confirmed value %j in round 1 when no earlier turn has a preview',
+      async (confirmed) => {
+        streamResponder = (n) =>
+          n === 1
+            ? sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed }), end()])
+            : sseResponse([start(), delta('Here is a preview first.'), end()]);
+        const { result } = renderChat();
+
+        await act(async () => {
+          await result.current.sendMessage('Yes, apply it');
+        });
+
+        expect(toolBodies).toEqual([]);
+        expect(lastToolResult(1)).toEqual(CONFIRMATION_REQUIRED);
+      }
+    );
+
+    it('runs a confirmed write in round 1 after a preview of the same tool in the last turn', async () => {
+      streamResponder = (n) => {
+        if (n === 1) return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3) return sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed: 'true' }), end()]);
+        return sseResponse([start(), delta('Done.'), end()]);
+      };
       const { result } = renderChat();
 
+      await previewTurn(result);
       await act(async () => {
         await result.current.sendMessage('Yes, apply it');
       });
 
       expect(toolBodies).toEqual([
-        { tool_name: WRITE_TOOL, arguments: { confirmed: true }, restaurant_id: 'rest-1' },
+        { tool_name: WRITE_TOOL, arguments: { preview: true }, restaurant_id: 'rest-1' },
+        { tool_name: WRITE_TOOL, arguments: { confirmed: 'true' }, restaurant_id: 'rest-1' },
       ]);
+    });
+
+    it('blocks a confirm of tool B after a preview of tool A in the last turn', async () => {
+      const OTHER_TOOL = 'create_categorization_rule';
+      streamResponder = (n) => {
+        if (n === 1) return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3) return sseResponse([start(), toolCall('call_c', OTHER_TOOL, { confirmed: true }), end()]);
+        return sseResponse([start(), delta('Preview first.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await previewTurn(result);
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies.map((b) => b.tool_name)).toEqual([WRITE_TOOL]);
+      expect(lastToolResult(3)).toEqual(CONFIRMATION_REQUIRED);
+    });
+
+    it('blocks a confirm that follows a preview of the same tool in the same round', async () => {
+      streamResponder = (n) => {
+        if (n === 1) return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3)
+          return sseResponse([
+            start(),
+            toolCall('call_p2', WRITE_TOOL, { preview: true }),
+            toolCall('call_c', WRITE_TOOL, { confirmed: true }),
+            end(),
+          ]);
+        return sseResponse([start(), delta('Confirm again.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await previewTurn(result);
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies.map((b) => b.arguments)).toEqual([{ preview: true }, { preview: true }]);
+      expect(lastToolResult(3)).toEqual(CONFIRMATION_REQUIRED);
+    });
+
+    it('blocks a confirm when the preview is in an older turn, not the last turn', async () => {
+      streamResponder = (n) => {
+        if (n === 1) return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3) return sseResponse([start(), delta('Sales are up.'), end()]);
+        if (n === 4) return sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed: true }), end()]);
+        return sseResponse([start(), delta('Preview first.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await previewTurn(result);
+      await act(async () => {
+        await result.current.sendMessage('How are sales?');
+      });
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies.map((b) => b.arguments)).toEqual([{ preview: true }]);
+      expect(lastToolResult(4)).toEqual(CONFIRMATION_REQUIRED);
     });
 
     it('runs a write in round 2 when it does not have confirmed:true', async () => {

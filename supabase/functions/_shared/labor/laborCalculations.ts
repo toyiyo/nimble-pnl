@@ -1,0 +1,1053 @@
+/**
+ * Centralized Labor Cost Calculation Service
+ * 
+ * SINGLE SOURCE OF TRUTH for all labor cost calculations across the application.
+ * 
+ * Used by:
+ * - Dashboard (usePeriodMetrics → useCostsFromSource → useLaborCostsFromTimeTracking)
+ * - Scheduling (useScheduledLaborCosts)
+ * - Payroll (usePayroll → payrollCalculations)
+ * 
+ * All calculations use the same underlying logic from compensationCalculations.ts
+ * to ensure consistency across the entire application.
+ * 
+ * @module services/laborCalculations
+ */
+
+import {
+  calculateDailySalaryAllocation,
+  calculateDailyContractorAllocation,
+  calculateEmployeeDailyCostForDate,
+  getEmployeeSnapshotForDate,
+  calculateSalaryForPeriod,
+  calculateContractorPayForPeriod,
+} from './compensationCalculations.ts';
+import { parseWorkPeriods, calculateEmployeePay } from './payrollCalculations.ts';
+import { calculateShiftHours } from './shiftHours.ts';
+import { dayTokenEnd, toDateOnlyString, parseDateOnly } from './dateOnly.ts';
+import {
+  addDaysToDateStr,
+  businessDaysBetween,
+  toBusinessDay,
+  weekEndDateStr,
+  weekStartDateStr,
+} from './restaurantClock.ts';
+import type {
+  LaborEmployee,
+  LaborShift,
+  LaborTimePunch,
+  CompensationType,
+} from './types.ts';
+
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Generate an array of date strings in YYYY-MM-DD format for the inclusive range.
+ * Uses local day boundaries (matches Payroll + Dashboard UI expectations).
+ *
+ * NOTE: `startDate`/`endDate` here are calendar-day tokens (already local
+ * midnight, e.g. from a date picker), not instants — so `toDateOnlyString`
+ * (local calendar fields) is correct, not `toBusinessDay`.
+ */
+function generateDateRange(startDate: Date, endDate: Date): string[] {
+  const dates: string[] = [];
+  const current = new Date(
+    startDate.getFullYear(),
+    startDate.getMonth(),
+    startDate.getDate()
+  );
+  const end = new Date(
+    endDate.getFullYear(),
+    endDate.getMonth(),
+    endDate.getDate()
+  );
+
+  while (current <= end) {
+    dates.push(toDateOnlyString(current));
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
+}
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface LaborCostBreakdown {
+  hourly: {
+    cost: number;
+    hours: number;
+  };
+  salary: {
+    cost: number;
+    employees: number;
+    daysScheduled: number;
+  };
+  contractor: {
+    cost: number;
+    employees: number;
+    daysScheduled: number;
+  };
+  daily_rate: {
+    cost: number;
+    employees: number;
+    daysScheduled: number;
+  };
+  total: number;
+}
+
+export interface DailyLaborCost {
+  date: string;
+  hourly_cost: number;
+  salary_cost: number;
+  contractor_cost: number;
+  daily_rate_cost: number;
+  total_cost: number;
+  hours_worked: number;
+}
+
+export interface EmployeeLaborCost {
+  employeeId: string;
+  employeeName: string;
+  compensationType: CompensationType;
+  dailyCost: number;
+  periodCost: number;
+  hoursWorked?: number;
+}
+
+/**
+ * Per-employee hours/cost summary used by the AI chat tools
+ * (get_labor_costs.employee_breakdown and get_time_punches).
+ */
+export interface EmployeeHoursSummary {
+  employee_id: string;
+  employee_name: string;
+  position: string | null;
+  compensation_type: CompensationType;
+  /** Sum of work-period hours across [startDate, endDate]; breaks excluded. */
+  total_hours: number;
+  /** Total cost in cents for the period.
+   *  Hourly: sum of per-day calculateEmployeeDailyCostForDate(emp, day, hours).
+   *  Daily rate: per-day daily-rate × days with hours > 0.
+   *  Salary/contractor: existing per-period helpers (snapshot-aware). */
+  total_cost_cents: number;
+  /** Distinct dates with hours > 0. */
+  days_worked: number;
+  /** 'YYYY-MM-DD' → hours that day. Keys align with DailyLaborCost.date. */
+  hours_per_day: Record<string, number>;
+  /** parseWorkPeriods output for this employee (breaks split out). */
+  work_periods: import('./payrollCalculations.ts').WorkPeriod[];
+}
+
+// ============================================================================
+// Core Calculation Functions
+// ============================================================================
+
+/**
+ * Calculate the daily labor cost for a single employee
+ * 
+ * This is the core function used by all other calculations.
+ * 
+ * @param employee - The employee record
+ * @param hoursWorked - Actual hours worked (for hourly employees only)
+ * @returns Daily labor cost in cents
+ */
+export function calculateEmployeeDailyCost(
+  employee: LaborEmployee,
+  hoursWorked?: number
+): number {
+  switch (employee.compensation_type) {
+    case 'hourly':
+      if (hoursWorked === undefined || hoursWorked === 0) {
+        return 0;
+      }
+      // hourly_rate is in cents, hours is decimal
+      return Math.round((employee.hourly_rate / 100) * hoursWorked * 100);
+
+    case 'salary':
+      if (!employee.salary_amount || !employee.pay_period_type) {
+        return 0;
+      }
+      // Returns cents
+      return calculateDailySalaryAllocation(
+        employee.salary_amount,
+        employee.pay_period_type
+      );
+
+    case 'contractor':
+      if (!employee.contractor_payment_amount || !employee.contractor_payment_interval) {
+        return 0;
+      }
+      if (employee.contractor_payment_interval === 'per-job') {
+        // Per-job contractors don't get daily allocation
+        return 0;
+      }
+      // Returns cents
+      return calculateDailyContractorAllocation(
+        employee.contractor_payment_amount,
+        employee.contractor_payment_interval
+      );
+
+    case 'daily_rate':
+      // Daily rate employees earn their daily rate if scheduled/worked
+      if (!employee.daily_rate_amount) {
+        return 0;
+      }
+      // Returns cents (daily_rate_amount is already in cents)
+      return employee.daily_rate_amount;
+
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Calculate labor cost for a period (date range)
+ * 
+ * Used by: Dashboard metrics, Payroll calculations
+ * 
+ * @param employee - The employee record
+ * @param startDate - Period start date
+ * @param endDate - Period end date (inclusive)
+ * @param hoursPerDay - Map of date string to hours worked (for hourly employees)
+ * @returns Period labor cost in cents
+ */
+export function calculateEmployeePeriodCost(
+  employee: LaborEmployee,
+  startDate: Date,
+  endDate: Date,
+  hoursPerDay?: Map<string, number>
+): number {
+  // Generate date range in UTC to avoid timezone issues
+  const dates = generateDateRange(startDate, endDate);
+  let totalCost = 0;
+
+  for (const dateStr of dates) {
+    const hours = hoursPerDay?.get(dateStr) || 0;
+    const snapshot = getEmployeeSnapshotForDate(employee, dateStr);
+
+    switch (snapshot.compensation_type) {
+      case 'hourly':
+        totalCost += calculateEmployeeDailyCostForDate(snapshot, dateStr, hours);
+        break;
+      case 'salary':
+        // Calculate once per period to avoid penny loss and distribute later if needed
+        if (dateStr === dates[dates.length - 1]) {
+          const periodCost = calculateSalaryForPeriod(employee, new Date(startDate), new Date(endDate));
+          totalCost += periodCost;
+        }
+        break;
+      case 'contractor':
+        if (snapshot.contractor_payment_interval !== 'per-job') {
+          if (dateStr === dates[dates.length - 1]) {
+            const contractorCost = calculateContractorPayForPeriod(employee, new Date(startDate), new Date(endDate));
+            totalCost += contractorCost;
+          }
+        }
+        break;
+    }
+  }
+
+  return totalCost;
+}
+
+// ============================================================================
+// Shared Logic
+// ============================================================================
+
+/**
+ * Distribute fixed period costs (salary/contractor) evenly across days
+ */
+function distributeFixedCosts(
+  employees: LaborEmployee[],
+  startDate: Date,
+  endDate: Date,
+  dateStrings: string[],
+  dateMap: Map<string, DailyLaborCost>,
+  costType: 'salary' | 'contractor'
+) {
+  employees.forEach(employee => {
+    // Calculate total cost for this employee across the entire date range
+    let periodCost = 0;
+    
+    if (costType === 'salary') {
+      periodCost = calculateSalaryForPeriod(employee, startDate, endDate) / 100;
+    } else {
+      periodCost = calculateContractorPayForPeriod(employee, startDate, endDate) / 100;
+    }
+    
+    if (periodCost > 0 && dateStrings.length > 0) {
+      // Distribute the period cost evenly across all days in the range
+      const dailyAllocation = periodCost / dateStrings.length;
+      
+      dateStrings.forEach(dateStr => {
+        const dayData = dateMap.get(dateStr);
+        if (dayData) {
+          if (costType === 'salary') {
+            dayData.salary_cost += dailyAllocation;
+          } else {
+            dayData.contractor_cost += dailyAllocation;
+          }
+          dayData.total_cost += dailyAllocation;
+        }
+      });
+    }
+  });
+}
+
+/**
+ * Generate standard labor cost breakdown from daily data
+ */
+function generateLaborBreakdown(
+  dailyCosts: DailyLaborCost[],
+  salaryEmployeesCount: number,
+  contractorEmployeesCount: number,
+  dailyRateEmployeesCount: number,
+  employeesScheduledPerDay?: Map<string, Set<string>>,
+  salaryEmployeeIds?: string[],
+  contractorEmployeeIds?: string[],
+  dailyRateEmployeeIds?: string[]
+): LaborCostBreakdown {
+  
+  // Calculate days scheduled helper
+  const getDaysScheduled = (employeeIds?: string[]) => {
+    if (!employeesScheduledPerDay || !employeeIds) {
+      // Fallback for actual costs where we count days with cost > 0
+      return 0; // Will be overridden by caller logic if needed, but here we can't easily do it without the correct logic
+    }
+    return Array.from(employeesScheduledPerDay.values()).filter(
+      emps => employeeIds.some(id => emps.has(id))
+    ).length;
+  };
+
+  return {
+    hourly: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.hourly_cost, 0),
+      hours: dailyCosts.reduce((sum, day) => sum + day.hours_worked, 0),
+    },
+    salary: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.salary_cost, 0),
+      employees: salaryEmployeesCount,
+      daysScheduled: employeesScheduledPerDay && salaryEmployeeIds 
+        ? getDaysScheduled(salaryEmployeeIds)
+        : dailyCosts.filter(d => d.salary_cost > 0).length,
+    },
+    contractor: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.contractor_cost, 0),
+      employees: contractorEmployeesCount,
+      daysScheduled: employeesScheduledPerDay && contractorEmployeeIds
+        ? getDaysScheduled(contractorEmployeeIds)
+        : dailyCosts.filter(d => d.contractor_cost > 0).length,
+    },
+    daily_rate: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.daily_rate_cost, 0),
+      employees: dailyRateEmployeesCount,
+      daysScheduled: employeesScheduledPerDay && dailyRateEmployeeIds
+        ? getDaysScheduled(dailyRateEmployeeIds)
+        : dailyCosts.filter(d => d.daily_rate_cost > 0).length,
+    },
+    total: dailyCosts.reduce((sum, day) => sum + day.total_cost, 0),
+  };
+}
+
+// ============================================================================
+// Scheduled Labor Calculations (Forward-Looking)
+// ============================================================================
+
+/**
+ * Calculate labor cost from scheduled shifts (future projection)
+ * 
+ * Used by: Scheduling page
+ * 
+ * @param shifts - Array of scheduled shifts
+ * @param employees - Array of employees
+ * @param startDate - Period start date
+ * @param endDate - Period end date
+ * @returns Labor cost breakdown with daily details
+ */
+export function calculateScheduledLaborCost(
+  shifts: LaborShift[],
+  employees: LaborEmployee[],
+  startDate: Date,
+  endDate: Date,
+  timezone: string
+): { breakdown: LaborCostBreakdown; dailyCosts: DailyLaborCost[] } {
+  const employeeMap = new Map(employees.map(e => [e.id, e]));
+  const dateMap = new Map<string, DailyLaborCost>();
+  
+  // Initialize all dates using UTC date range to avoid timezone issues
+  const dateStrings = generateDateRange(startDate, endDate);
+  dateStrings.forEach(dateStr => {
+    dateMap.set(dateStr, {
+      date: dateStr,
+      hourly_cost: 0,
+      salary_cost: 0,
+      contractor_cost: 0,
+      daily_rate_cost: 0,
+      total_cost: 0,
+      hours_worked: 0,
+    });
+  });
+
+  // Track which employees are scheduled each day (for salary/contractor)
+  const employeesScheduledPerDay = new Map<string, Set<string>>();
+  
+  // Track which daily_rate employees we've already added costs for each day
+  const dailyRateEmployeesCountedPerDay = new Map<string, Set<string>>();
+  
+  // Process hourly employee shifts
+  shifts.forEach(shift => {
+    const employee = employeeMap.get(shift.employee_id);
+    if (!employee || employee.status !== 'active') return;
+
+    const shiftDate = toBusinessDay(shift.start_time, timezone);
+    const dayData = dateMap.get(shiftDate);
+    if (!dayData) return;
+
+    const effectiveEmployee = getEmployeeSnapshotForDate(employee, shiftDate);
+
+    // Track scheduled employees
+    if (!employeesScheduledPerDay.has(shiftDate)) {
+      employeesScheduledPerDay.set(shiftDate, new Set());
+    }
+    employeesScheduledPerDay.get(shiftDate)?.add(employee.id);
+
+    // Calculate cost based on compensation type
+    if (effectiveEmployee.compensation_type === 'hourly') {
+      const hours = calculateShiftHours(shift);
+      const cost = calculateEmployeeDailyCost(effectiveEmployee, hours) / 100; // Convert to dollars
+      
+      dayData.hourly_cost += cost;
+      dayData.hours_worked += hours;
+      dayData.total_cost += cost;
+    } else if (effectiveEmployee.compensation_type === 'daily_rate') {
+      // Daily rate employees earn their daily rate for each day scheduled
+      // But only count each employee ONCE per day (even if multiple shifts)
+      if (!dailyRateEmployeesCountedPerDay.has(shiftDate)) {
+        dailyRateEmployeesCountedPerDay.set(shiftDate, new Set());
+      }
+      
+      const countedEmployees = dailyRateEmployeesCountedPerDay.get(shiftDate);
+      if (countedEmployees && !countedEmployees.has(employee.id)) {
+        const cost = calculateEmployeeDailyCost(effectiveEmployee) / 100; // Convert to dollars
+        
+        dayData.daily_rate_cost += cost;
+        dayData.total_cost += cost;
+        
+        countedEmployees.add(employee.id);
+      }
+    }
+  });
+
+  // Add salary costs - salary employees get paid per pay period regardless of scheduled hours
+  const salaryEmployees = employees.filter(e => 
+    e.compensation_type === 'salary' && e.status === 'active'
+  );
+  distributeFixedCosts(salaryEmployees, startDate, endDate, dateStrings, dateMap, 'salary');
+
+  // Add contractor costs
+  const contractorEmployees = employees.filter(e => 
+    e.compensation_type === 'contractor' && 
+    e.status === 'active' &&
+    e.contractor_payment_interval !== 'per-job'
+  );
+  distributeFixedCosts(contractorEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
+
+  // Daily rate employees - track separately (they're already handled in shift processing)
+  const dailyRateEmployees = employees.filter(e => 
+    e.compensation_type === 'daily_rate' && e.status === 'active'
+  );
+
+  // Calculate breakdown
+  const dailyCosts = Array.from(dateMap.values()).sort((a, b) => 
+    a.date.localeCompare(b.date)
+  );
+
+  const breakdown = generateLaborBreakdown(
+    dailyCosts,
+    salaryEmployees.length,
+    contractorEmployees.length,
+    dailyRateEmployees.length,
+    employeesScheduledPerDay,
+    salaryEmployees.map(e => e.id),
+    contractorEmployees.map(e => e.id),
+    dailyRateEmployees.map(e => e.id)
+  );
+
+  return { breakdown, dailyCosts };
+}
+
+// ============================================================================
+// Actual Labor Calculations (Historical/Time Punches)
+// ============================================================================
+
+/**
+ * Calculate actual labor cost from time punches (historical data)
+ * 
+ * Used by: Dashboard metrics, Payroll
+ * 
+ * @param employees - Array of employees
+ * @param timePunches - Array of time punch records
+ * @param startDate - Period start date
+ * @param endDate - Period end date
+ * @returns Labor cost breakdown with daily details
+ */
+export function calculateActualLaborCost(
+  employees: LaborEmployee[],
+  timePunches: LaborTimePunch[],
+  startDate: Date,
+  endDate: Date,
+  timezone: string
+): { breakdown: LaborCostBreakdown; dailyCosts: DailyLaborCost[] } {
+  const employeeMap = new Map(employees.map(e => [e.id, e]));
+  const dateMap = new Map<string, DailyLaborCost>();
+  
+  // Initialize all dates using UTC date range to avoid timezone issues
+  const dateStrings = generateDateRange(startDate, endDate);
+  dateStrings.forEach(dateStr => {
+    dateMap.set(dateStr, {
+      date: dateStr,
+      hourly_cost: 0,
+      salary_cost: 0,
+      contractor_cost: 0,
+      daily_rate_cost: 0,
+      total_cost: 0,
+      hours_worked: 0,
+    });
+  });
+
+  // Group time punches by employee and parse into work periods
+  const punchesByEmployee = new Map<string, LaborTimePunch[]>();
+  timePunches.forEach(punch => {
+    if (!punchesByEmployee.has(punch.employee_id)) {
+      punchesByEmployee.set(punch.employee_id, []);
+    }
+    const employeePunches = punchesByEmployee.get(punch.employee_id);
+    if (employeePunches) {
+      employeePunches.push(punch);
+    }
+  });
+
+  // Map to store hours worked per employee per day
+  const hoursPerEmployeePerDay = new Map<string, Map<string, number>>();
+  const employeesActivePerDay = new Map<string, Set<string>>();
+
+  // Parse work periods for each employee and calculate daily hours
+  punchesByEmployee.forEach((punches, employeeId) => {
+    const employee = employeeMap.get(employeeId);
+    if (!employee) {
+      return;
+    }
+
+    const { periods } = parseWorkPeriods(punches, timezone);
+    
+    if (!hoursPerEmployeePerDay.has(employeeId)) {
+      hoursPerEmployeePerDay.set(employeeId, new Map<string, number>());
+    }
+    const employeeHours = hoursPerEmployeePerDay.get(employeeId);
+    if (!employeeHours) return;
+
+    periods.forEach(period => {
+      // Skip break periods - only count actual work time
+      if (period.isBreak) {
+        return;
+      }
+      
+      const workDate = toBusinessDay(period.startTime, timezone);
+      const hoursWorked = period.hours;
+
+      // Accumulate hours for this employee on this date (start date of work period)
+      employeeHours.set(workDate, (employeeHours.get(workDate) || 0) + hoursWorked);
+
+      // Every restaurant-local day this period touches. Overnight periods are
+      // charged to both days, matching calculateHoursPerEmployee below.
+      businessDaysBetween(period.startTime, period.endTime, timezone).forEach((dateStr) => {
+        if (!employeesActivePerDay.has(dateStr)) {
+          employeesActivePerDay.set(dateStr, new Set());
+        }
+        const activeSet = employeesActivePerDay.get(dateStr);
+        if (activeSet) {
+          activeSet.add(employeeId);
+        }
+      });
+    });
+  });
+
+  // Calculate costs for each date
+  // For hourly employees: only count days they have time punches
+  // For salary/contractor employees: they get paid for the period regardless of time punches
+  //   (same logic as payrollCalculations.ts calculatePayrollPeriod)
+  
+  // First, handle hourly employees based on their time punches
+  dateStrings.forEach(dateStr => {
+    const dayData = dateMap.get(dateStr);
+    if (!dayData) {
+      return;
+    }
+
+    const activeEmployees = employeesActivePerDay.get(dateStr);
+    if (!activeEmployees) {
+      return;
+    }
+
+    activeEmployees.forEach(empId => {
+      const employee = employeeMap.get(empId);
+      if (!employee) return;
+
+      const effectiveEmployee = getEmployeeSnapshotForDate(employee, dateStr);
+      const employeeHours = hoursPerEmployeePerDay.get(empId);
+      const hoursWorked = employeeHours?.get(dateStr) || 0;
+
+      // Only handle hourly and daily_rate employees here - salary/contractor handled below for full period
+      if (effectiveEmployee.compensation_type === 'hourly' && hoursWorked > 0) {
+        const hourlyCost = calculateEmployeeDailyCostForDate(employee, dateStr, hoursWorked) / 100; // Convert to dollars
+        dayData.hourly_cost += hourlyCost;
+        dayData.hours_worked += hoursWorked;
+        dayData.total_cost += hourlyCost;
+      } else if (effectiveEmployee.compensation_type === 'daily_rate') {
+        // Daily rate employees earn their daily rate for each day they have punches (worked)
+        const dailyRateCost = calculateEmployeeDailyCost(effectiveEmployee) / 100; // Convert to dollars
+        dayData.daily_rate_cost += dailyRateCost;
+        dayData.total_cost += dailyRateCost;
+      }
+    });
+  });
+
+  // Handle salary employees
+  const salaryEmployees = employees.filter(e => 
+    e.compensation_type === 'salary'
+  );
+  distributeFixedCosts(salaryEmployees, startDate, endDate, dateStrings, dateMap, 'salary');
+
+  // Handle contractor employees
+  const contractorEmployees = employees.filter(e => 
+    e.compensation_type === 'contractor' && 
+    e.contractor_payment_interval !== 'per-job'
+  );
+  distributeFixedCosts(contractorEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
+
+  const dailyCosts = Array.from(dateMap.values()).sort((a, b) => 
+    a.date.localeCompare(b.date)
+  );
+
+  // Use active count for summary display consistent with previous behavior
+  const activeSalaryCount = employees.filter(e => e.compensation_type === 'salary' && e.status === 'active').length;
+  const activeContractorCount = employees.filter(e => e.compensation_type === 'contractor' && e.status === 'active').length;
+  const activeDailyRateCount = employees.filter(e => e.compensation_type === 'daily_rate' && e.status === 'active').length;
+
+  const breakdown = generateLaborBreakdown(
+    dailyCosts,
+    activeSalaryCount,
+    activeContractorCount,
+    activeDailyRateCount
+  );
+
+  return { breakdown, dailyCosts };
+}
+
+// ============================================================================
+// Per-employee Rollup (AI Chat: get_labor_costs.employee_breakdown,
+// get_time_punches)
+// ============================================================================
+
+/**
+ * Roll punches up per employee: total hours, per-day hours, cost, and the
+ * parsed work periods. Output is additive — one row per input employee, even
+ * if they have zero punches in the window (caller can filter).
+ *
+ * Cost is computed via per-day snapshots so an employee whose
+ * compensation_type changed mid-window is billed correctly for each segment.
+ * The four buckets run unconditionally — each helper internally skips days
+ * where the snapshot doesn't match its type, so they never double-count:
+ *   - calculateSalaryForPeriod / calculateContractorPayForPeriod walk every
+ *     day in the window and only add on days resolving to that comp type
+ *   - per-day hourly + daily_rate via getEmployeeSnapshotForDate on each
+ *     worked day, gated by the snapshot's compensation_type
+ *
+ * Periods whose startTime falls outside [startDate, endDate] are dropped.
+ * Callers that fetch with an end-of-window lookahead (to catch shifts whose
+ * clock_out punch lands just after `endDate`) rely on this filter to drop
+ * any orphan periods whose clock_in lands in the lookahead zone.
+ *
+ * Per-employee totals across the same comp type sum back to
+ * calculateActualLaborCost(...).breakdown.<type>.cost (× 100 cents).
+ */
+export function calculateHoursPerEmployee(
+  employees: LaborEmployee[],
+  timePunches: LaborTimePunch[],
+  startDate: Date,
+  endDate: Date,
+  timezone: string,
+): EmployeeHoursSummary[] {
+  const punchesByEmployee = new Map<string, LaborTimePunch[]>();
+  timePunches.forEach((punch) => {
+    if (!punchesByEmployee.has(punch.employee_id)) {
+      punchesByEmployee.set(punch.employee_id, []);
+    }
+    punchesByEmployee.get(punch.employee_id)!.push(punch);
+  });
+
+  // See the comment at the calculateSalaryForPeriod/calculateContractorPayForPeriod
+  // call sites below for why this conversion is needed. Hoisted out of the
+  // per-employee loop since startDate/endDate/timezone don't vary per employee.
+  const businessDayStart = parseDateOnly(toBusinessDay(startDate, timezone));
+  const businessDayEnd = parseDateOnly(toBusinessDay(endDate, timezone));
+
+  return employees.map((employee) => {
+    const punches = punchesByEmployee.get(employee.id) ?? [];
+    const { periods: rawPeriods } = parseWorkPeriods(punches, timezone);
+    const periods = rawPeriods.filter(
+      (p) => p.startTime >= startDate && p.startTime <= endDate,
+    );
+
+    // hoursPerDay is keyed by the period's start day (matches
+    // calculateActualLaborCost's hoursPerEmployeePerDay). activeDays tracks
+    // every calendar day a period touches — used for daily_rate cost so an
+    // overnight period (start day → next day) is charged for both days, in
+    // parity with calculateActualLaborCost's employeesActivePerDay loop.
+    const hoursPerDay: Record<string, number> = {};
+    const activeDays = new Set<string>();
+    let totalHours = 0;
+
+    periods.forEach((period) => {
+      if (period.isBreak) return;
+      const startDay = toBusinessDay(period.startTime, timezone);
+      hoursPerDay[startDay] = (hoursPerDay[startDay] ?? 0) + period.hours;
+      totalHours += period.hours;
+
+      businessDaysBetween(period.startTime, period.endTime, timezone).forEach((day) =>
+        activeDays.add(day)
+      );
+    });
+
+    const daysWorked = activeDays.size;
+
+    // calculateSalaryForPeriod/calculateContractorPayForPeriod iterate whole
+    // calendar days anchored at local midnight (case a) -- they are not
+    // instant-aware. startDate/endDate here ARE instants (case b, compared
+    // directly against punch timestamps above), so bucket the window's
+    // boundaries into the restaurant's business days first via toBusinessDay,
+    // then hand the two functions an already-anchored calendar-day Date via
+    // parseDateOnly. Bucketing once at the boundary (rather than per
+    // iterated day) is equivalent here: salary/contractor pay is prorated
+    // per whole day, so only the first/last business day the window touches
+    // matters, matching the inclusive-range semantics businessDaysBetween
+    // uses elsewhere in this file.
+    let totalCostCents = 0;
+    totalCostCents += calculateSalaryForPeriod(employee, businessDayStart, businessDayEnd);
+    totalCostCents += calculateContractorPayForPeriod(employee, businessDayStart, businessDayEnd);
+
+    for (const [day, hours] of Object.entries(hoursPerDay)) {
+      if (hours <= 0) continue;
+      const snapshot = getEmployeeSnapshotForDate(employee, day);
+      if (snapshot.compensation_type === 'hourly') {
+        totalCostCents += calculateEmployeeDailyCost(snapshot, hours);
+      }
+    }
+
+    for (const day of activeDays) {
+      const snapshot = getEmployeeSnapshotForDate(employee, day);
+      if (snapshot.compensation_type === 'daily_rate') {
+        totalCostCents += calculateEmployeeDailyCost(snapshot);
+      }
+    }
+
+    return {
+      employee_id: employee.id,
+      employee_name: employee.name,
+      position: employee.position ?? null,
+      compensation_type: employee.compensation_type,
+      total_hours: totalHours,
+      total_cost_cents: totalCostCents,
+      days_worked: daysWorked,
+      hours_per_day: hoursPerDay,
+      work_periods: periods,
+    };
+  });
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Validate employee compensation data is complete
+ */
+export function isEmployeeCompensationValid(employee: LaborEmployee): boolean {
+  switch (employee.compensation_type) {
+    case 'hourly':
+      return !!employee.hourly_rate && employee.hourly_rate > 0;
+    case 'salary':
+      return !!employee.salary_amount && 
+             employee.salary_amount > 0 && 
+             !!employee.pay_period_type;
+    case 'contractor':
+      return !!employee.contractor_payment_amount && 
+             employee.contractor_payment_amount > 0 && 
+             !!employee.contractor_payment_interval;
+    case 'daily_rate':
+      return !!employee.daily_rate_amount && 
+             employee.daily_rate_amount > 0;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Get human-readable description of employee's daily rate
+ */
+export function getEmployeeDailyRateDescription(employee: LaborEmployee): string {
+  if (!isEmployeeCompensationValid(employee)) {
+    return 'No rate configured';
+  }
+
+  const dailyCost = calculateEmployeeDailyCost(employee);
+  const dailyRate = (dailyCost / 100).toFixed(2);
+
+  switch (employee.compensation_type) {
+    case 'hourly':
+      return `$${(employee.hourly_rate / 100).toFixed(2)}/hr`;
+    case 'salary':
+      return `~$${dailyRate}/day (${employee.pay_period_type})`;
+    case 'contractor':
+      if (employee.contractor_payment_interval === 'per-job' && employee.contractor_payment_amount) {
+        return `$${(employee.contractor_payment_amount / 100).toFixed(2)}/job`;
+      }
+      return `~$${dailyRate}/day (${employee.contractor_payment_interval})`;
+    case 'daily_rate':
+      return `$${dailyRate}/day`;
+    default:
+      return 'Unknown';
+  }
+}
+
+// ============================================================================
+// Range Labor Cost (restaurant-local week OT banding + tipsOwed)
+// ============================================================================
+
+export interface RangeLaborInput {
+  employees: LaborEmployee[];
+  timePunches: LaborTimePunch[];
+  /**
+   * Per-employee tipsOwed for the date range, in integer cents.
+   * Caller is responsible for filtering tip_split_items to the range
+   * before passing.
+   */
+  tipsOwedByEmployee: Map<string, number>;
+  rangeStart: Date;
+  rangeEnd: Date;
+  /** Restaurant IANA timezone. Day bucketing is restaurant-local, not host-local. */
+  timezone: string;
+}
+
+export interface RangeLaborResult {
+  /** Wages for the range (regular + OT + double-time + salary + contractor + daily-rate), integer cents. */
+  wagesCents: number;
+  /** Tips the restaurant owes employees attributed to this range, integer cents. */
+  tipsOwedCents: number;
+  /** wages + tipsOwed, integer cents. */
+  actualLaborCents: number;
+}
+
+/**
+ * The first calendar day whose local noon is at or after `bound`.
+ *
+ * `bound` is a day token: its local fields name a calendar day. For a token
+ * at local midnight this is the day of the token. The noon rule also reads a
+ * token that some callers build at UTC midnight (`new Date('YYYY-MM-DD')`)
+ * as the day it names, for a host less than 12 h from UTC. This is the rule
+ * of the old `new Date(dateKey + 'T12:00:00') >= rangeStart` compare, now
+ * applied once to the bound, so the per-day check is a day-string compare.
+ */
+function firstDayWithNoonAtOrAfter(bound: Date): string {
+  const day = toDateOnlyString(bound);
+  const noon = new Date(bound.getFullYear(), bound.getMonth(), bound.getDate(), 12);
+  return bound.getTime() <= noon.getTime() ? day : addDaysToDateStr(day, 1);
+}
+
+/** The last calendar day whose local noon is at or before `bound`. See above. */
+function lastDayWithNoonAtOrBefore(bound: Date): string {
+  const day = toDateOnlyString(bound);
+  const noon = new Date(bound.getFullYear(), bound.getMonth(), bound.getDate(), 12);
+  return bound.getTime() >= noon.getTime() ? day : addDaysToDateStr(day, -1);
+}
+
+/**
+ * Calculate actual labor cost for a date range using restaurant-local week OT banding.
+ *
+ * For hourly employees: bucket each punch into the restaurant-local week that
+ * contains it (weekStartDateStr of its restaurant day), call calculateEmployeePay over the FULL
+ * week (so OT bands are computed on the full 40h+ week), and distribute the
+ * week's wage pay across the days actually worked in proportion to per-day
+ * hours. Days outside [rangeStart, rangeEnd] are excluded; the days inside
+ * the range sum to that range's contribution from the week.
+ *
+ * For salary / contractor / daily_rate employees: there's no OT band to
+ * preserve, so calculateEmployeePay is called directly over the date range
+ * window — same proration logic as the existing `calculateActualLaborCost`.
+ *
+ * tipsOwed is added on top of wages — caller passes a Map<employee_id, cents>
+ * pre-filtered to tip_splits whose split_date falls in [rangeStart, rangeEnd].
+ */
+export function calculateActualLaborCostForRange(
+  input: RangeLaborInput
+): RangeLaborResult {
+  const { employees, timePunches, tipsOwedByEmployee, rangeStart, rangeEnd, timezone } = input;
+  const rangeStartDay = firstDayWithNoonAtOrAfter(rangeStart);
+  const rangeEndDay = lastDayWithNoonAtOrBefore(rangeEnd);
+
+  let wagesCents = 0;
+
+  for (const employee of employees) {
+    const employeePunches = timePunches.filter((p) => p.employee_id === employee.id);
+    const compType = employee.compensation_type ?? 'hourly';
+
+    if (compType !== 'hourly') {
+      // No OT to band — call calculateEmployeePay over the date range window.
+      const pay = calculateEmployeePay(
+        employee,
+        employeePunches,
+        0, // tips intentionally 0; tipsOwed added separately below
+        timezone,
+        rangeStart,
+        rangeEnd
+      );
+      wagesCents +=
+        pay.regularPay + pay.overtimePay + pay.doubleTimePay +
+        pay.salaryPay + pay.contractorPay + pay.dailyRatePay;
+      continue;
+    }
+
+    // Hourly: bucket punches by the SHIFT's clock-in restaurant-local week (not each punch's
+    // own week) so an overnight shift clocking out in the next week stays whole
+    // in its clock-in week instead of splitting into two lone-punch buckets that
+    // parseWorkPeriods can't pair (dropping the shift's hours entirely).
+    // Defensively sorted — the clock-in-week state machine requires chronological
+    // order and must not rely on the caller's `.order('punch_time')`.
+    // The week key is the first day of the restaurant-local week of the punch.
+    // A host-local startOfWeek on the instant moves a Sunday-evening Chicago
+    // punch into the next week on a UTC host (memory/lessons.md, "Time / Timezone").
+    const weekKeyFor = (punchTime: string) => weekStartDateStr(toBusinessDay(punchTime, timezone));
+    const sortedPunches = [...employeePunches].sort(
+      (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
+    );
+    const punchesByWeek = new Map<string, LaborTimePunch[]>();
+    let currentWeekKey: string | null = null;
+    for (const p of sortedPunches) {
+      if (p.punch_type === 'clock_in') {
+        currentWeekKey = weekKeyFor(p.punch_time); // open shift → clock-in week
+      }
+      const weekKey = currentWeekKey ?? weekKeyFor(p.punch_time); // orphan → own week
+      const arr = punchesByWeek.get(weekKey) ?? [];
+      arr.push(p);
+      punchesByWeek.set(weekKey, arr);
+      if (p.punch_type === 'clock_out') currentWeekKey = null; // shift closed
+    }
+
+    for (const [weekKey, weekPunches] of punchesByWeek) {
+      // Day tokens for the week: local midnight of the first day and the local
+      // end of the last day. calculateEmployeePay reads their local fields.
+      const weekDayStart = parseDateOnly(weekKey);
+      const weekDayEnd = dayTokenEnd(weekEndDateStr(weekKey));
+
+      const pay = calculateEmployeePay(
+        employee,
+        weekPunches,
+        0,
+        timezone,
+        weekDayStart,
+        weekDayEnd
+      );
+      const weekWageCents = pay.regularPay + pay.overtimePay + pay.doubleTimePay;
+      if (weekWageCents <= 0) continue;
+
+      // Compute per-day hours for the week using parseWorkPeriods (consistent
+      // with the existing calculateActualLaborCost).
+      const { periods } = parseWorkPeriods(weekPunches, timezone);
+      const hoursByDate = new Map<string, number>();
+      for (const period of periods) {
+        if (period.isBreak) continue;
+        // Attribute by the shift's clock-in day (not the segment start), so a
+        // break-after-midnight segment's hours land on the clock-in day for both
+        // the proportional split and the [monthStart, monthEnd] clip.
+        const dateKey = toBusinessDay(period.clockIn ?? period.startTime, timezone);
+        hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
+      }
+
+      const totalHours = Array.from(hoursByDate.values()).reduce((a, b) => a + b, 0);
+      if (totalHours <= 0) continue;
+
+      // Distribute pay across days proportional to hours; last day takes the
+      // rounding remainder so the daily sum equals the weekly total to the cent.
+      const dateKeys = Array.from(hoursByDate.keys()).sort((a, b) => a.localeCompare(b));
+      let distributed = 0;
+      for (let i = 0; i < dateKeys.length; i++) {
+        const dateKey = dateKeys[i];
+        const hours = hoursByDate.get(dateKey)!;
+        const isLast = i === dateKeys.length - 1;
+        const dayCents = isLast
+          ? weekWageCents - distributed
+          : Math.round((weekWageCents * hours) / totalHours);
+        distributed += dayCents;
+
+        // Only count this day if it falls inside the date range window.
+        // Compare calendar-day strings (bounds read once, above).
+        if (dateKey >= rangeStartDay && dateKey <= rangeEndDay) {
+          wagesCents += dayCents;
+        }
+      }
+    }
+  }
+
+  // tipsOwed: caller already filtered to this range by split_date.
+  let tipsOwedCents = 0;
+  tipsOwedByEmployee.forEach((cents) => {
+    tipsOwedCents += cents;
+  });
+
+  return {
+    wagesCents,
+    tipsOwedCents,
+    actualLaborCents: wagesCents + tipsOwedCents,
+  };
+}
+
+// ============================================================================
+// Backward-compatible shim: calculateActualLaborCostForMonth
+// ============================================================================
+
+export interface MonthlyLaborInput {
+  employees: LaborEmployee[];
+  timePunches: LaborTimePunch[];
+  /**
+   * Per-employee tipsOwed for the calendar month, in integer cents.
+   * Caller is responsible for filtering tip_split_items to the month
+   * before passing.
+   */
+  tipsOwedByEmployee: Map<string, number>;
+  monthStart: Date;
+  monthEnd: Date;
+  /** Restaurant IANA timezone. Day bucketing is restaurant-local, not host-local. */
+  timezone: string;
+}
+
+export type MonthlyLaborResult = RangeLaborResult;
+
+/**
+ * Thin shim over calculateActualLaborCostForRange for existing callers that
+ * still speak in calendar-month terms.
+ */
+export function calculateActualLaborCostForMonth(input: MonthlyLaborInput): MonthlyLaborResult {
+  return calculateActualLaborCostForRange({
+    employees: input.employees,
+    timePunches: input.timePunches,
+    tipsOwedByEmployee: input.tipsOwedByEmployee,
+    rangeStart: input.monthStart,
+    rangeEnd: input.monthEnd,
+    timezone: input.timezone,
+  });
+}

@@ -1,6 +1,8 @@
 {
   "imports": {
+    "date-fns": "npm:date-fns@3.6.0",
     "date-fns-tz": "npm:date-fns-tz@3.2.0",
+    "date-fns/": "npm:/date-fns@3.6.0/",
     "fast-xml-parser": "npm:fast-xml-parser@4.5.6"
   }
 }

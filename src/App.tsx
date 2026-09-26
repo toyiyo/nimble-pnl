@@ -45,6 +45,7 @@ import Unsubscribe from "./pages/Unsubscribe";
 // route here is a static import, so adding this one the same way would
 // silently defeat the isolation.
 const ReviewPage = lazy(() => import("./pages/ReviewPage"));
+const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
 import Transactions from "./pages/Transactions";
 import ChartOfAccounts from "./pages/ChartOfAccounts";
 import FinancialStatements from "./pages/FinancialStatements";
@@ -431,6 +432,26 @@ const App = () => (
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/toast/callback" element={<ToastCallback />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
+            {/* OAuth 2.1 consent for the Claude connector. Public: the page
+                sends a signed-out user to /auth and back. */}
+            <Route
+              path="/oauth/consent"
+              element={
+                <Suspense
+                  fallback={
+                    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-8">
+                      <div className="w-full max-w-md rounded-xl border border-border/40 bg-background px-6 py-6 space-y-4">
+                        <Skeleton className="h-10 w-10 rounded-xl" />
+                        <Skeleton className="h-5 w-3/4" />
+                        <Skeleton className="h-24 w-full rounded-xl" />
+                      </div>
+                    </div>
+                  }
+                >
+                  <OAuthConsent />
+                </Suspense>
+              }
+            />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

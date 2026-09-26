@@ -838,6 +838,16 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
 }
 
 /**
+ * Tools that change data. The MCP connector marks them as destructive, so
+ * Claude asks the user before it calls them. Add every new write tool here.
+ */
+export const WRITE_TOOLS: readonly string[] = [
+  'batch_categorize_transactions',
+  'batch_categorize_pos_sales',
+  'create_categorization_rule',
+];
+
+/**
  * Check if user has permission to use a tool
  */
 export function canUseTool(toolName: string, userRole: string): boolean {

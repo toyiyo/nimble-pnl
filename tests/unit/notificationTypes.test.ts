@@ -25,6 +25,8 @@ const RESOLVER_TYPES: ResolverNotificationType[] = [
   'availability_reminder',
   'open_shift_claim_reviewed',
   'bank_reauth_required',
+  'shift_trade_reminder',
+  'shift_trade_unclaimed',
 ];
 
 // Compile-time guard: every catalog key must be assignable to the resolver's
@@ -36,8 +38,8 @@ function assertNotificationTypeAssignable(_key: NotificationType): ResolverNotif
 void assertNotificationTypeAssignable;
 
 describe('NOTIFICATION_TYPES catalog', () => {
-  it('has exactly 17 rows', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(17);
+  it('has exactly 19 rows', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(19);
   });
 
   it('has no duplicate keys', () => {
@@ -75,10 +77,29 @@ describe('NOTIFICATION_TYPES catalog', () => {
     expect(emailOnly).toEqual(['availability_reminder', 'time_off_requested'].sort());
   });
 
-  it('every type supports email (no push-only types exist yet)', () => {
-    for (const t of NOTIFICATION_TYPES) {
-      expect(t.channels).toContain('email');
-    }
+  it('push-only types (no email) are exactly shift_trade_reminder', () => {
+    const pushOnly = NOTIFICATION_TYPES.filter((t) => !t.channels.includes('email')).map((t) => t.key);
+    expect(pushOnly).toEqual(['shift_trade_reminder']);
+  });
+
+  it('shift_trade_reminder is a push-only Trades row', () => {
+    const row = NOTIFICATION_TYPES.find((t) => t.key === 'shift_trade_reminder');
+    expect(row).toEqual({
+      key: 'shift_trade_reminder',
+      label: 'Open trade reminder',
+      group: 'Trades',
+      channels: ['push'],
+    });
+  });
+
+  it('shift_trade_unclaimed is an email and push Trades row', () => {
+    const row = NOTIFICATION_TYPES.find((t) => t.key === 'shift_trade_unclaimed');
+    expect(row).toEqual({
+      key: 'shift_trade_unclaimed',
+      label: 'Open trade not taken',
+      group: 'Trades',
+      channels: ['email', 'push'],
+    });
   });
 
   it('does NOT include weekly_brief (the feature is deleted)', () => {

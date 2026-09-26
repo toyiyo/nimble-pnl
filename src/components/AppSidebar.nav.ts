@@ -116,6 +116,7 @@ export const staffNav: NavGroup[] = [
       { path: '/employee/clock', label: 'Time Clock', icon: Clock },
       { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
       { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
+      { path: '/employee/shifts', label: 'Shift Marketplace', icon: ShoppingBag },
       { path: '/employee/pay', label: 'My Pay', icon: Wallet },
       { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
     ],

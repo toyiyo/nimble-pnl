@@ -24,6 +24,11 @@ vi.mock('@/hooks/useDeviceToken', () => ({
   useDeviceToken: () => undefined,
 }));
 
+// MobileTabBar reads the claimable trade count for the More badge.
+vi.mock('@/hooks/useClaimableTradeBadge', () => ({
+  useClaimableTradeBadge: () => ({ count: 0, hasUrgentTrade: false }),
+}));
+
 vi.mock('@/hooks/useBiometricAuth', () => ({
   useBiometricAuth: () => ({
     isAvailable: false,

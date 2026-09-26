@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { OpenShift } from '@/types/scheduling';
-import type { ShiftTrade } from '@/hooks/useShiftTrades';
+import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
 import { useOpenShifts } from '@/hooks/useOpenShifts';
 import { useMarketplaceTrades } from '@/hooks/useShiftTrades';
 
@@ -9,12 +9,12 @@ export interface AvailableShiftItem {
   type: 'open_shift' | 'trade';
   date: string;
   openShift?: OpenShift;
-  trade?: ShiftTrade & { hasConflict?: boolean };
+  trade?: MarketplaceTrade;
 }
 
 export function mergeAvailableShifts(
   openShifts: OpenShift[],
-  trades: (ShiftTrade & { hasConflict?: boolean })[],
+  trades: readonly MarketplaceTrade[],
 ): AvailableShiftItem[] {
   const items: AvailableShiftItem[] = [];
 
@@ -47,17 +47,35 @@ export function useAvailableShifts(
   weekStart: Date | null,
   weekEnd: Date | null,
 ) {
-  const { openShifts, loading: openLoading } = useOpenShifts(restaurantId, weekStart, weekEnd);
-  const { trades, loading: tradesLoading } = useMarketplaceTrades(restaurantId, employeeId);
+  const {
+    openShifts,
+    loading: openLoading,
+    error: openError,
+    refetch: refetchOpenShifts,
+  } = useOpenShifts(restaurantId, weekStart, weekEnd);
+  const {
+    trades,
+    loading: tradesLoading,
+    error: tradesError,
+    refetch: refetchTrades,
+  } = useMarketplaceTrades(restaurantId, employeeId, { enabled: !!employeeId });
 
   const items = useMemo(
-    () => mergeAvailableShifts(openShifts, trades as any),
+    () => mergeAvailableShifts(openShifts, trades),
     [openShifts, trades],
+  );
+
+  // Retry both queries. A failed load must not look like an empty list.
+  const refetch = useCallback(
+    () => Promise.all([refetchOpenShifts(), refetchTrades()]),
+    [refetchOpenShifts, refetchTrades],
   );
 
   return {
     items,
     loading: openLoading || tradesLoading,
+    error: openError ?? tradesError ?? null,
+    refetch,
     openShiftCount: openShifts.length,
     tradeCount: trades.length,
   };

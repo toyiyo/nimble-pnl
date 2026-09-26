@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,11 +25,15 @@ import {
   type PosterTradeProgress,
   type TradeStepState,
 } from '@/lib/tradeStatusProgress';
+import { tradeDateTile } from '@/lib/claimableTrades';
+import { formatInstant } from '@/lib/restaurantClock';
 import { cn } from '@/lib/utils';
 
 interface MyShiftTradesCardProps {
   restaurantId: string;
   employeeId: string;
+  /** The restaurant's IANA time zone. Dates and times show in this zone, not the viewer's. */
+  timezone: string;
   /**
    * Focused after a withdraw empties the "Posted by you" section — the section
    * header (the usual focus-restore target) unmounts along with the last row,
@@ -72,19 +76,19 @@ const TradeStepper = ({ progress }: { progress: PosterTradeProgress }) => (
   </div>
 );
 
-const ShiftDateBlock = ({ trade }: { trade: ShiftTrade }) => {
+const ShiftDateBlock = ({ trade, timezone }: { trade: ShiftTrade; timezone: string }) => {
   // The activity hook filters ghost joins upstream, but that guarantee lives
   // in another file — guard locally instead of asserting with `!`.
   const shift = trade.offered_shift;
   if (!shift) return null;
   const start = parseISO(shift.start_time);
-  const end = parseISO(shift.end_time);
+  const tile = tradeDateTile(start, timezone);
   return (
     <div className="flex items-center gap-4 min-w-0">
       <div className="text-center flex-shrink-0">
-        <div className="text-[13px] font-medium text-muted-foreground">{format(start, 'EEE')}</div>
-        <div className="text-2xl font-bold text-foreground">{format(start, 'd')}</div>
-        <div className="text-[11px] text-muted-foreground">{format(start, 'MMM')}</div>
+        <div className="text-[13px] font-medium text-muted-foreground">{tile.weekday}</div>
+        <div className="text-2xl font-bold text-foreground">{tile.day}</div>
+        <div className="text-[11px] text-muted-foreground">{tile.month}</div>
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -92,7 +96,8 @@ const ShiftDateBlock = ({ trade }: { trade: ShiftTrade }) => {
           {shift.is_published === false && <TentativeDraftBadge />}
         </div>
         <div className="text-[13px] text-muted-foreground">
-          {format(start, 'h:mm a')} - {format(end, 'h:mm a')}
+          {formatInstant(shift.start_time, timezone, 'h:mm a')} -{' '}
+          {formatInstant(shift.end_time, timezone, 'h:mm a')}
         </div>
       </div>
     </div>
@@ -114,6 +119,7 @@ const ManagerNote = ({ note }: { note: string }) => (
 export const MyShiftTradesCard = ({
   restaurantId,
   employeeId,
+  timezone,
   fallbackFocusRef,
 }: MyShiftTradesCardProps) => {
   const { trades, loading, isError } = useMyTradeActivity(restaurantId, employeeId);
@@ -198,7 +204,7 @@ export const MyShiftTradesCard = ({
                   className="p-4 rounded-xl border border-border/40 bg-background space-y-2.5"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <ShiftDateBlock trade={trade} />
+                    <ShiftDateBlock trade={trade} timezone={timezone} />
                     {trade.status === 'open' && (
                       <Button
                         variant="outline"
@@ -234,7 +240,7 @@ export const MyShiftTradesCard = ({
                 className="p-4 rounded-xl border border-border/40 bg-background space-y-2"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <ShiftDateBlock trade={trade} />
+                  <ShiftDateBlock trade={trade} timezone={timezone} />
                   <span className="text-[13px] text-muted-foreground">
                     From {trade.offered_by?.name ?? 'a teammate'}
                   </span>
@@ -274,9 +280,9 @@ export const MyShiftTradesCard = ({
                 <span className="font-medium text-foreground">
                   {confirmTarget.offered_shift.position}
                 </span>{' '}
-                · {format(parseISO(confirmTarget.offered_shift.start_time), 'EEE, MMM d')} ·{' '}
-                {format(parseISO(confirmTarget.offered_shift.start_time), 'h:mm a')} -{' '}
-                {format(parseISO(confirmTarget.offered_shift.end_time), 'h:mm a')}
+                · {formatInstant(confirmTarget.offered_shift.start_time, timezone, 'EEE, MMM d')} ·{' '}
+                {formatInstant(confirmTarget.offered_shift.start_time, timezone, 'h:mm a')} -{' '}
+                {formatInstant(confirmTarget.offered_shift.end_time, timezone, 'h:mm a')}
               </div>
               {confirmTarget.offered_shift.is_published === false && (
                 <TentativeDraftBadge className="mt-1" />

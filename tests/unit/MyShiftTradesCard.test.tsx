@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockUseMyTradeActivity = vi.hoisted(() => vi.fn());
@@ -66,7 +66,8 @@ const setActivity = (trades: ShiftTrade[], loading = false, isError = false) => 
   mockUseMyTradeActivity.mockReturnValue({ trades, loading, isError, error: null });
 };
 
-const renderCard = () => render(<MyShiftTradesCard restaurantId="rest-1" employeeId={ME} />);
+const renderCard = (timezone = 'UTC') =>
+  render(<MyShiftTradesCard restaurantId="rest-1" employeeId={ME} timezone={timezone} />);
 
 describe('MyShiftTradesCard', () => {
   beforeEach(() => {
@@ -231,5 +232,36 @@ describe('MyShiftTradesCard', () => {
       .getAllByText('Tentative — draft')
       .filter((el) => el.closest('[role="dialog"]'));
     expect(badgesInDialog).toHaveLength(1);
+  });
+
+  it('shows the date and time in the restaurant zone, not the host zone', () => {
+    // 2026-10-03T01:00Z–2026-10-03T07:00Z is 2026-10-02 18:00–2026-10-03
+    // 00:00 in America/Los_Angeles. A card that formats in the host zone
+    // instead shows a different date or hour.
+    setActivity([
+      makeTrade({
+        id: 'trade-tz',
+        status: 'open',
+        offered_shift: {
+          id: 'shift-tz',
+          start_time: '2026-10-03T01:00:00Z',
+          end_time: '2026-10-03T07:00:00Z',
+          position: 'Server',
+          break_duration: 0,
+          is_published: true,
+        },
+      }),
+    ]);
+    renderCard('America/Los_Angeles');
+
+    expect(screen.getByText('Fri')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('Oct')).toBeInTheDocument();
+    expect(screen.getByText('6:00 PM - 12:00 AM')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /withdraw post/i }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Fri, Oct 2/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/6:00 PM - 12:00 AM/)).toBeInTheDocument();
   });
 });

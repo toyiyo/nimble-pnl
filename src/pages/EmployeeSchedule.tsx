@@ -416,6 +416,7 @@ const EmployeeSchedule = () => {
       <MyShiftTradesCard
         restaurantId={restaurantId}
         employeeId={currentEmployee.id}
+        timezone={restaurantTimezone}
         fallbackFocusRef={pageHeaderRef}
       />
 

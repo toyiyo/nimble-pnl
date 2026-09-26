@@ -36,6 +36,8 @@ describe('public/_redirects mcp proxy', () => {
   it.each([
     ['/mcp', FUNCTION_URL],
     ['/mcp/*', `${FUNCTION_URL}/:splat`],
+    // OAuth discovery for the /mcp resource (RFC 9728 path form), as in vercel.json.
+    ['/.well-known/oauth-protected-resource/mcp', `${FUNCTION_URL}/.well-known/oauth-protected-resource`],
   ])('proxies %s with status 200 before the SPA catch-all', (source, destination) => {
     const i = indexOf(source);
     expect(i).toBeGreaterThanOrEqual(0);

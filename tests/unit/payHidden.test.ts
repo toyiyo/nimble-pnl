@@ -40,6 +40,8 @@ describe('PAY_HIDDEN_TOOL_HINT', () => {
     // Only labor costs are hidden: get_kpis still returns a real food cost.
     expect(PAY_HIDDEN_TOOL_HINT).toContain('labor cost figures');
     expect(PAY_HIDDEN_TOOL_HINT).toMatch(/not \$0/i);
+    // get_labor_costs sets the figures to null; get_kpis leaves them out.
+    expect(PAY_HIDDEN_TOOL_HINT).toMatch(/null or missing/i);
     // Directory review rejects tool descriptions that tell Claude how to behave.
     expect(PAY_HIDDEN_TOOL_HINT).not.toMatch(/\b(tell the user|do not report)\b/i);
   });

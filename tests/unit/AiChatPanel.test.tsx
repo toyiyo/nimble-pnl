@@ -14,8 +14,9 @@ const store = vi.hoisted(() => {
     dbMessages: ChatMessage[];
     messages: ChatMessage[];
     isStreaming: boolean;
+    restaurantId: string;
   };
-  let state: State = { currentSessionId: null, dbMessages: [], messages: [], isStreaming: false };
+  let state: State = { currentSessionId: null, dbMessages: [], messages: [], isStreaming: false, restaurantId: 'rest-1' };
   const listeners = new Set<() => void>();
   return {
     get: () => state,
@@ -41,6 +42,7 @@ const spies = vi.hoisted(() => ({
   saveMessagesBatch: vi.fn(async () => undefined),
   createSession: vi.fn(async () => ({ id: 'session-new' })),
   updateTitle: vi.fn(),
+  clearCurrentSession: vi.fn(),
 }));
 
 function useStore() {
@@ -57,13 +59,15 @@ vi.mock('@/contexts/AiChatContext', () => ({
       closeChat: vi.fn(),
       minimizeChat: vi.fn(),
       switchSession: (id: string) => store.set({ currentSessionId: id }),
-      clearCurrentSession: vi.fn(),
+      clearCurrentSession: spies.clearCurrentSession,
     };
   },
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
-  useRestaurantContext: () => ({ selectedRestaurant: { restaurant_id: 'rest-1', role: 'owner' } }),
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant_id: useStore().restaurantId, role: 'owner' },
+  }),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -120,7 +124,9 @@ function renderPanel() {
 describe('AiChatPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.reset({ currentSessionId: 'session-a', dbMessages: [], messages: [], isStreaming: false });
+    store.reset({ currentSessionId: 'session-a', dbMessages: [], messages: [], isStreaming: false, restaurantId: 'rest-1' });
+    spies.createSession.mockImplementation(async () => ({ id: 'session-new' }));
+    spies.sendMessage.mockImplementation(async () => undefined);
   });
 
   it('stops the running turn when the user switches to another session', () => {
@@ -149,7 +155,7 @@ describe('AiChatPanel', () => {
   });
 
   it('does not stop the first turn of the session that the submit creates', async () => {
-    store.reset({ currentSessionId: null, dbMessages: [], messages: [], isStreaming: false });
+    store.reset({ currentSessionId: null, dbMessages: [], messages: [], isStreaming: false, restaurantId: 'rest-1' });
     spies.sendMessage.mockImplementation(async () => {
       store.set({ isStreaming: true });
     });
@@ -188,5 +194,79 @@ describe('AiChatPanel', () => {
       ['u1', 'session-a'],
       ['a1', 'session-a'],
     ]);
+  });
+  it('stops the turn and clears the session and the messages when the restaurant changes', () => {
+    store.set({ isStreaming: true, messages: [row('u1', 'user', 'Q')] });
+    renderPanel();
+    spies.abortStream.mockClear();
+    spies.clearMessages.mockClear();
+    expect(spies.clearCurrentSession).not.toHaveBeenCalled();
+
+    act(() => store.set({ restaurantId: 'rest-2' }));
+
+    expect(spies.abortStream).toHaveBeenCalled();
+    expect(spies.clearCurrentSession).toHaveBeenCalledTimes(1);
+    expect(spies.clearMessages).toHaveBeenCalled();
+  });
+
+  it('keeps the saved session when the restaurant loads for the first time', () => {
+    store.set({ restaurantId: '' });
+    renderPanel();
+
+    act(() => store.set({ restaurantId: 'rest-1' }));
+
+    expect(spies.clearCurrentSession).not.toHaveBeenCalled();
+  });
+
+  it('creates one session when the user submits twice while createSession waits', async () => {
+    store.set({ currentSessionId: null });
+    let resolveSession!: (value: { id: string }) => void;
+    spies.createSession.mockImplementation(
+      () =>
+        new Promise<{ id: string }>((resolve) => {
+          resolveSession = resolve;
+        })
+    );
+    renderPanel();
+
+    fireEvent.change(screen.getByLabelText('Chat message input'), { target: { value: 'How are sales?' } });
+    const form = screen.getByLabelText('Chat message input').closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    expect(spies.createSession).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveSession({ id: 'session-new' });
+    });
+    await waitFor(() => expect(spies.sendMessage).toHaveBeenCalledTimes(1));
+  });
+
+  it('lets the user submit again after createSession fails', async () => {
+    store.set({ currentSessionId: null });
+    spies.createSession.mockRejectedValueOnce(new Error('offline'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    renderPanel();
+
+    fireEvent.change(screen.getByLabelText('Chat message input'), { target: { value: 'Hi' } });
+    const form = screen.getByLabelText('Chat message input').closest('form')!;
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+
+    expect(spies.createSession).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(spies.sendMessage).toHaveBeenCalledWith('Hi'));
+  });
+
+  it('clears the messages when the current session becomes null and no turn runs', () => {
+    store.set({ messages: [row('u1', 'user', 'Q'), row('a1', 'assistant', 'A')] });
+    renderPanel();
+    spies.clearMessages.mockClear();
+
+    act(() => store.set({ currentSessionId: null }));
+
+    expect(spies.clearMessages).toHaveBeenCalled();
   });
 });

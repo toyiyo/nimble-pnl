@@ -78,6 +78,21 @@ export function AiChatPanel() {
   const hasLoadedInitialMessages = useRef(false);
   // The session that owns the running turn. The value is null when no turn runs.
   const turnSessionRef = useRef<string | null>(null);
+  // True while a submit waits for createSession. A second submit then does nothing.
+  const submittingRef = useRef(false);
+  const prevRestaurantIdRef = useRef(restaurantId);
+
+  // A session belongs to one restaurant. When the user selects another
+  // restaurant, stop the turn and leave the session of the old restaurant.
+  // The first load (no restaurant, then a restaurant) keeps the saved session.
+  useEffect(() => {
+    const previous = prevRestaurantIdRef.current;
+    prevRestaurantIdRef.current = restaurantId;
+    if (!previous || previous === restaurantId) return;
+    abortStream();
+    clearCurrentSession();
+    clearMessages();
+  }, [restaurantId, abortStream, clearCurrentSession, clearMessages]);
 
   // IDs of the messages that are in the database. Message IDs are UUIDs, so one
   // set serves all sessions. The panel does not reset the set when the session
@@ -92,8 +107,8 @@ export function AiChatPanel() {
 
       // A turn of another session must not add rows to this session. The
       // submit of a new session's first turn sets turnSessionRef, so that
-      // turn continues.
-      if (turnSessionRef.current !== currentSessionId) {
+      // turn continues. With no session, the view shows no rows.
+      if (!currentSessionId || turnSessionRef.current !== currentSessionId) {
         abortStream();
         clearMessages();
       }
@@ -200,30 +215,33 @@ export function AiChatPanel() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming || submittingRef.current) return;
+    submittingRef.current = true;
 
-    // Create session if needed
-    let turnSessionId = currentSessionId;
-    if (!turnSessionId && restaurantId) {
-      try {
-        const session = await createSession({ restaurantId });
-        turnSessionId = session.id;
-        // Set the owner before the switch, so the load effect keeps this turn.
-        turnSessionRef.current = turnSessionId;
-        switchSession(session.id);
-      } catch (err) {
-        console.error('Failed to create session:', err);
-        return;
-      }
-    }
-
-    const message = input;
-    setInput('');
-    turnSessionRef.current = turnSessionId;
     try {
-      await sendMessage(message);
+      let turnSessionId = currentSessionId;
+      if (!turnSessionId && restaurantId) {
+        try {
+          const session = await createSession({ restaurantId });
+          turnSessionId = session.id;
+        } catch (err) {
+          console.error('Failed to create session:', err);
+          return;
+        }
+      }
+
+      const message = input;
+      setInput('');
+      // Set the owner before the switch, so the load effect keeps this turn.
+      turnSessionRef.current = turnSessionId;
+      if (turnSessionId && turnSessionId !== currentSessionId) switchSession(turnSessionId);
+      try {
+        await sendMessage(message);
+      } finally {
+        if (turnSessionRef.current === turnSessionId) turnSessionRef.current = null;
+      }
     } finally {
-      if (turnSessionRef.current === turnSessionId) turnSessionRef.current = null;
+      submittingRef.current = false;
     }
   };
 

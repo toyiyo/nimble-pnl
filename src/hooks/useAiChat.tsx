@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase, SUPABASE_URL } from '@/integrations/supabase/client';
 import { ChatMessage, SSEEvent, ToolCall } from '@/types/ai-chat';
+import { isWriteTool } from '../../supabase/functions/_shared/aiWriteTools';
 
 export interface UseAiChatOptions {
   restaurantId: string;
@@ -28,16 +29,6 @@ export const ROUND_IDLE_TIMEOUT_MS = 90_000;
 export const MAX_ROUND_RETRIES = 2;
 /** A tool call fails with TOOL_ERROR when it gives no result in this time. */
 export const TOOL_TIMEOUT_MS = 60_000;
-
-/**
- * Tools that change data. The model must call them with `confirmed: true` only
- * after the user approves a preview in a new message.
- */
-const WRITE_TOOLS: ReadonlySet<string> = new Set([
-  'batch_categorize_transactions',
-  'batch_categorize_pos_sales',
-  'create_categorization_rule',
-]);
 
 const CONFIRMATION_REQUIRED_RESULT = {
   ok: false,
@@ -292,7 +283,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
   const resolveToolCall = useCallback(
     async (name: string, args: Record<string, unknown>, round: number, signal: AbortSignal): Promise<unknown> => {
       if (round >= MAX_TOOL_ROUNDS) return STEP_LIMIT_RESULT;
-      if (round > 1 && WRITE_TOOLS.has(name) && args?.confirmed === true) {
+      if (round > 1 && isWriteTool(name) && args?.confirmed === true) {
         return CONFIRMATION_REQUIRED_RESULT;
       }
       return executeTool(name, args, signal);

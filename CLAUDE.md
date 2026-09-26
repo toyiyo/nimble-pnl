@@ -281,6 +281,9 @@ curl -X POST http://localhost:54321/functions/v1/toast-bulk-sync \
 ### Banking (Stripe Financial Connections)
 Never store bank credentials. Use Stripe for credential storage. Always verify webhook signatures.
 
+### Claude connector (MCP)
+EasyShiftHQ is a remote MCP server for Claude: `supabase/functions/mcp/` (logic in `_shared/mcpHandler.ts`). It forwards tool calls to `ai-execute-tool`, so add new tools there and in `tools-registry.ts`. OAuth comes from the Supabase Auth OAuth 2.1 server; the consent page is `src/pages/OAuthConsent.tsx`. Runbook: `docs/CLAUDE_INTEGRATION.md`.
+
 ### AI (OpenRouter)
 Multi-model fallback: free models first (Llama, Gemma), then paid (Gemini, Claude, GPT). AI suggestions stored separately—user must approve before applying.
 

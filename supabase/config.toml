@@ -11,8 +11,17 @@ max_rows = 1000
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://ncdujvdgqtaunuyigflp.supabase.co"]
+additional_redirect_urls = ["https://ncdujvdgqtaunuyigflp.supabase.co", "http://localhost:8080/oauth/consent**"]
 jwt_expiry = 3600
+
+# OAuth 2.1 server for the Claude connector (MCP). Claude registers itself
+# through dynamic client registration and sends the user to the consent page.
+# `supabase config push` does not push this section (supabase/cli#6367):
+# enable it in the dashboard for production. See docs/CLAUDE_INTEGRATION.md.
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = true
 
 [db]
 port = 54322
@@ -174,6 +183,11 @@ verify_jwt = true
 
 [functions.ai-execute-tool]
 verify_jwt = true
+
+# Claude connector (MCP). The function answers 401 with WWW-Authenticate
+# itself and checks every call with auth.getUser.
+[functions.mcp]
+verify_jwt = false
 
 [functions.send-shift-trade-notification]
 verify_jwt = true

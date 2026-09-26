@@ -4,6 +4,7 @@ import posthog from 'posthog-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Capacitor } from '@capacitor/core';
 import { recordAuthEvents } from '@/lib/analytics';
+import { postAuthRedirectPath } from '@/lib/oauthReturnPath';
 
 interface AuthContextType {
   user: User | null;
@@ -172,7 +173,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       const redirectUrl = Capacitor.isNativePlatform()
         ? 'https://app.easyshifthq.com/'
-        : `${window.location.origin}/`;
+        // A pending Claude connector consent request returns here after the
+        // email confirmation, which usually opens in a new tab.
+        : `${window.location.origin}${postAuthRedirectPath()}`;
 
       const { error } = await supabase.auth.signUp({
         email,

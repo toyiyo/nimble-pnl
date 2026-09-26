@@ -16,9 +16,16 @@ export interface ToolDefinition {
  * Get available tools based on restaurant and user permissions
  * @param restaurantId The restaurant ID for scoping
  * @param userRole User's role (owner, manager, viewer)
+ * @param options.hasSchedulingOrPayroll Result of hasSchedulingOrPayrollCapability.
+ *   When it is false, getTools omits the capability-gated tools, because the
+ *   dispatcher denies them. When it is undefined, the capability has no effect.
  * @returns Array of tool definitions
  */
-export function getTools(restaurantId: string, userRole: string = 'viewer'): ToolDefinition[] {
+export function getTools(
+  restaurantId: string,
+  userRole: string = 'viewer',
+  options: { hasSchedulingOrPayroll?: boolean } = {}
+): ToolDefinition[] {
   const tools: ToolDefinition[] = [
     // Navigation tools - available to all users
     {
@@ -634,7 +641,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_financial_statement',
-        description: 'Get detailed financial statements including income statement, balance sheet, cash flow statement, or trial balance',
+        description: 'Get detailed financial statements including income statement, balance sheet, cash flow statement, or trial balance. The income statement result has a basis object: read it before you compare figures with generate_report or with a page in the app, because the sources differ.',
         parameters: {
           type: 'object',
           properties: {
@@ -659,7 +666,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'generate_report',
-        description: 'Generate a financial or operational report in various formats',
+        description: 'Generate a financial or operational report in various formats. The monthly_pnl result has a basis object: read it before you compare figures with get_financial_statement or with a page in the app, because the sources differ.',
         parameters: {
           type: 'object',
           properties: {
@@ -830,12 +837,26 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
   // the model for that role — canUseTool() denies it anyway, but omitting it
   // here avoids the AI assistant suggesting a tool call that will just be
   // rejected as TOOL_PERMISSION_DENIED.
+  const visible = options.hasSchedulingOrPayroll === false
+    ? tools.filter((tool) => !isCapabilityGatedTool(tool.name))
+    : tools;
+
   if (userRole === 'collaborator_operations_manager') {
-    return tools.filter((tool) => tool.name !== 'get_kpis');
+    return visible.filter((tool) => tool.name !== 'get_kpis');
   }
 
-  return tools;
+  return visible;
 }
+
+/**
+ * Tools that change data. The MCP connector marks them as destructive, so
+ * Claude asks the user before it calls them. Add every new write tool here.
+ */
+export const WRITE_TOOLS: readonly string[] = [
+  'batch_categorize_transactions',
+  'batch_categorize_pos_sales',
+  'create_categorization_rule',
+];
 
 /**
  * Check if user has permission to use a tool
@@ -904,6 +925,52 @@ export function canUseTool(toolName: string, userRole: string): boolean {
   return false;
 }
 
+let allToolsByName: Map<string, ToolDefinition> | undefined;
+
+// The check does not enforce period. Every handler with a period has a
+// default window (calculateDateRange: last 7 days; get_kpis and
+// get_sales_summary: month). Calls without period worked before this check.
+const DEFAULTED_ARGS = new Set(['period']);
+
+const BOOLEAN_FLAG_ARGS = ['preview', 'confirmed'] as const;
+
+/**
+ * Return the flag arguments (preview, confirmed) that are present but not a
+ * boolean. The write tools must not treat "true" or 1 as a confirm.
+ */
+export function nonBooleanFlagArgs(args: unknown): string[] {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) return [];
+  const values = args as Record<string, unknown>;
+  return BOOLEAN_FLAG_ARGS.filter((flag) => flag in values && typeof values[flag] !== 'boolean');
+}
+
+/** True for null, undefined, a blank string, or an empty array. */
+function isMissingValue(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
+/**
+ * Return the required fields of a tool call that are missing (see
+ * isMissingValue). When args is not a plain object (for example the raw
+ * string of bad JSON from the model), every required field is missing.
+ * The check uses the full registry, not a role-filtered list. It returns []
+ * for an unknown tool; the dispatcher rejects those itself.
+ */
+export function missingRequiredArgs(toolName: string, args: unknown): string[] {
+  allToolsByName ??= new Map(getTools('', 'owner').map((tool) => [tool.name, tool]));
+  const required = (allToolsByName.get(toolName)?.parameters.required ?? []).filter(
+    (field) => !DEFAULTED_ARGS.has(field)
+  );
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+    return required;
+  }
+  const values = args as Record<string, unknown>;
+  return required.filter((field) => isMissingValue(values[field]));
+}
+
 /**
  * Returns the lowest role that can use a given tool.
  * Used to build the TOOL_PERMISSION_DENIED error response.
@@ -927,11 +994,36 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
  */
 export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview'] as const;
 
+type CapabilityRpcResult = { data: boolean | null; error: unknown };
+
+/**
+ * supabase-js rpc() returns a PostgREST builder. The builder has then() and no
+ * catch(), so the return type is PromiseLike. Do not call .catch() on it.
+ */
 export interface CapabilityCheckClient {
   rpc: (
     fn: string,
     args: { p_restaurant_id: string; p_capability: string }
-  ) => Promise<{ data: boolean | null; error: unknown }>;
+  ) => PromiseLike<CapabilityRpcResult>;
+}
+
+/**
+ * Call user_has_capability and never reject. A thrown or rejected call becomes
+ * { data: null, error }, so the callers log it and fail closed.
+ */
+async function callCapabilityRpc(
+  supabase: CapabilityCheckClient,
+  restaurantId: string,
+  capability: string
+): Promise<CapabilityRpcResult> {
+  try {
+    return await supabase.rpc('user_has_capability', {
+      p_restaurant_id: restaurantId,
+      p_capability: capability,
+    });
+  } catch (err: unknown) {
+    return { data: null, error: err };
+  }
 }
 
 /**
@@ -946,24 +1038,11 @@ export async function hasSchedulingOrPayrollCapability(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
-  // `.catch()` on each call (rather than letting Promise.all reject) so a
-  // rejected RPC promise — e.g. a client that throws instead of resolving
-  // with an `error` field — still lands in the logged deny path below
-  // instead of escaping as an unhandled rejection that would bypass it.
-  const toResult = (err: unknown) => ({ data: null, error: err });
+  // callCapabilityRpc never rejects, so Promise.all cannot reject and skip
+  // the logged deny path below.
   const [scheduling, payroll] = await Promise.all([
-    supabase
-      .rpc('user_has_capability', {
-        p_restaurant_id: restaurantId,
-        p_capability: 'view:scheduling',
-      })
-      .catch(toResult),
-    supabase
-      .rpc('user_has_capability', {
-        p_restaurant_id: restaurantId,
-        p_capability: 'view:payroll',
-      })
-      .catch(toResult),
+    callCapabilityRpc(supabase, restaurantId, 'view:scheduling'),
+    callCapabilityRpc(supabase, restaurantId, 'view:payroll'),
   ]);
 
   // An RPC failure here must not disappear silently: without logging it, a
@@ -1000,12 +1079,7 @@ export async function hasPayRatesCapability(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
-  const result = await supabase
-    .rpc('user_has_capability', {
-      p_restaurant_id: restaurantId,
-      p_capability: 'view:pay_rates',
-    })
-    .catch((err: unknown) => ({ data: null, error: err }));
+  const result = await callCapabilityRpc(supabase, restaurantId, 'view:pay_rates');
 
   if (result.error) {
     console.error('hasPayRatesCapability: view:pay_rates RPC failed', {

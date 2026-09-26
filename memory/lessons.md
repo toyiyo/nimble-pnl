@@ -3384,12 +3384,37 @@
 - **Mistake:** The workflow preflight treats `gh` and `coderabbit` as hard dependencies. The cloud container has neither (GitHub goes through the MCP tools), so the workflow stopped at once. `npm install` also fails there, because the egress policy blocks `cdn.sheetjs.com` (the `xlsx` tarball).
 - **Correction:** Phases 4–9 ran inline in the main session, per the skill's reference contract: TDD commits, the five Phase 7a reviewers as agents, a Phase 7d re-review of the fix commit, the PR through the GitHub MCP tools. For install: a temporary `package.json` and lockfile without `xlsx`, `npm ci`, then restore both files. Four test files that import `xlsx` fail locally and pass in CI.
 - **Rule:** In the cloud container, expect the workflow preflight to fail. Run the phases inline and state in the PR body which local passes (CodeRabbit CLI, Codex) did not run.
+- **Confirmed (PR #816, 2026-09-26):** the preflight failed again for the same reason. The phases ran inline.
 
 ### [2026-09-25] A plain "Fixed in <sha>" reply fails the pr-comment-response gate (PR #809)
 - **Mistake:** Four code-quality bot threads got replies of the form "Fixed in cf245d71. ...". The `pr-comment-response` check read them as `no verdict in reply` and failed. The cloud container has no `gh`, so `node dev-tools/pr-triage.js reply` cannot post the reply there.
 - **Correction:** Build the body with `composeReply({verdict, commit, rationale})` from `dev-tools/pr-triage.js`, and post it with the GitHub MCP reply tool. Check it first with `classifyThreads` (give each reply an `authorAssociation`, or the check reports a non-maintainer).
 - **Rule:** Every reply to a review finding opens with the `<!-- pr-triage: <verdict> -->` marker that `composeReply` writes. The check re-runs only on a push or on its schedule, and the MCP token cannot re-run it (403). So post the verdict reply before the push that carries the fix.
+- **Confirmed (PR #816, 2026-09-26):** two plain "Fixed in" replies failed the gate again. Replies built with `composeReply` passed it.
+
+### [2026-09-26] Supabase OAuth + HS256: never let a client ask for `openid` (Claude connector)
+- **Mistake:** The `mcp` server advertised no scopes. Claude asked for `openid`, and the token exchange failed with `HS256 is not supported for ID token signing`. The first fix proposal was a move to asymmetric keys plus `verify_jwt = false` on 66 functions, which breaks the lesson below on `verify_jwt`.
+- **Correction:** `mcp` sends `scope="email offline_access"` in `WWW-Authenticate` and in `scopes_supported`. No key rotation, no `verify_jwt` change.
+- **Rule:** Read `memory/lessons.md` before you propose an auth or platform setting change. While the project signs with HS256, no OAuth client may get the `openid` scope. A signing-key rotation needs its own plan for every `verify_jwt = true` function.
 
 ### [2026-09-25] Green CI is not proof: check the change in the preview environment (PR #809)
 - **Mistake:** PR #809 went to review with only unit, E2E and CI evidence. Nobody opened the Vercel preview to see the changed pages work on the preview database.
 - **Rule (from the user):** Before you report a change as working, show proof from the preview environment. Use the Vercel preview: it reads the Supabase preview branch. The Netlify preview has no Supabase variables, so it falls back to the production database. Never sign up test users there. The preview branch has no seed data: sign up a test user and create the data that the check needs. The cloud container must allow the preview hosts (`*.vercel.app` and the preview `*.supabase.co` project) in its network settings.
+
+### [2026-09-26] A keyword search of this file misses recent lessons (PR #816)
+- **Mistake:** Phase 0 used a keyword grep only. It missed three lessons from 2026-09-24 and 2026-09-25 that applied directly: the preflight failure, the verdict-reply format, and the preview-proof rule. Two of those mistakes then happened again.
+- **Rule:** In Phase 0, read the newest 15 entries of this file in full, then run the keyword search.
+
+### [2026-09-26] Test a new argument check against the old behavior of every tool (PR #816)
+- **Mistake:** A required-argument check in `ai-execute-tool` rejected every call without `period`. Unit tests passed. A live call with `{}` to each tool, on the old and the new code, showed that 10 tools had answered with a default window before.
+- **Correction:** The check does not enforce `period`, because every handler defaults it.
+- **Rule:** When you add validation in front of existing handlers, call each handler with `{}` on the old and the new code. Reject only the calls that failed or gave output with no use before.
+
+### [2026-09-26] Multi-round AI tool calls need a strict write-confirm guard (PR #816)
+- **Mistake:** Multi-round turns let the model preview a write in round 1 and confirm it in round 2 with no user approval. Four review rounds each found one more gap: a truthy `"true"`, a confirm in the same round as the preview, a failed preview or other arguments, and two confirms from one preview.
+- **Rule:** A write confirm runs only in a new user message, after a successful preview of the same tool with the same arguments, once per preview. The server writes only on `confirmed === true`. Add the complete rule when you add a multi-step loop, not one gap at a time.
+
+### [2026-09-26] SonarCloud is blocked in the cloud container: run the type-aware rule locally (PR #816)
+- **Mistake:** The SonarCloud gate failed with "D Reliability Rating". The proxy blocks `sonarcloud.io`, and the check run has no issue list.
+- **Correction:** Install `eslint-plugin-sonarjs` and `typescript-eslint` in a scratch folder. Run `@typescript-eslint/no-base-to-string` with `checkUnknown: true` on the changed files. It found `String()` on `unknown` values in a sort comparator (Sonar S6551).
+- **Rule:** Do not call `String()` on a value typed `unknown` or `object`. When the Sonar gate fails in the container, run the type-aware rules on the diff of the failing commit.

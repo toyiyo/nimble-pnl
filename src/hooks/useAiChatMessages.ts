@@ -1,6 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database, Json } from '@/integrations/supabase/types';
 import { ChatMessage, AiChatMessageDB } from '@/types/ai-chat';
+
+type AiChatMessageInsert = Database['public']['Tables']['ai_chat_messages']['Insert'];
+
+/** Maps a client message to a DB row. The client created_at keeps the turn order. */
+function toInsertRow(message: Omit<ChatMessage, 'id'> & { session_id: string }): AiChatMessageInsert {
+  return {
+    session_id: message.session_id,
+    role: message.role,
+    content: message.content,
+    name: message.name || null,
+    tool_call_id: message.tool_call_id || null,
+    tool_calls: (message.tool_calls as unknown as Json) || null,
+    ...(message.created_at && { created_at: message.created_at }),
+  };
+}
 
 /**
  * Hook for managing AI chat messages within a session
@@ -53,14 +69,7 @@ export function useAiChatMessages(sessionId?: string) {
     ): Promise<AiChatMessageDB> => {
       const { data, error } = await supabase
         .from('ai_chat_messages')
-        .insert({
-          session_id: message.session_id,
-          role: message.role as string,
-          content: message.content,
-          name: message.name || null,
-          tool_call_id: message.tool_call_id || null,
-          tool_calls: (message.tool_calls as unknown) || null,
-        } as any)
+        .insert(toInsertRow(message))
         .select()
         .single();
 
@@ -81,16 +90,8 @@ export function useAiChatMessages(sessionId?: string) {
     ): Promise<void> => {
       if (messages.length === 0) return;
 
-      const { error } = await supabase.from('ai_chat_messages').insert(
-        messages.map((msg) => ({
-          session_id: msg.session_id,
-          role: msg.role as string,
-          content: msg.content,
-          name: msg.name || null,
-          tool_call_id: msg.tool_call_id || null,
-          tool_calls: (msg.tool_calls as unknown) || null,
-        })) as any
-      );
+      // One batch otherwise shares one now(), so the load order is lost.
+      const { error } = await supabase.from('ai_chat_messages').insert(messages.map(toInsertRow));
 
       if (error) throw error;
     },

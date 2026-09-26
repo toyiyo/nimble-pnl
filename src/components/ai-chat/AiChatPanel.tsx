@@ -18,6 +18,7 @@ import { useAiChatSessions } from '@/hooks/useAiChatSessions';
 import { useAiChatMessages } from '@/hooks/useAiChatMessages';
 import { useSubscription } from '@/hooks/useSubscription';
 import { AiChatConversationList } from './AiChatConversationList';
+import { selectUnsavedMessages, titleForSession } from '@/lib/aiChatPersistence';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 
@@ -76,6 +77,11 @@ export function AiChatPanel() {
   const lastSyncedSessionRef = useRef<string | null>(null);
   const hasLoadedInitialMessages = useRef(false);
 
+  // IDs of the messages that are in the database. Message IDs are UUIDs, so one
+  // set serves all sessions. The set is not reset when the session changes, so
+  // rows of the old session are not saved into the new session.
+  const savedMessageIdsRef = useRef<Set<string>>(new Set());
+
   // Load messages from database only when session actually switches
   useEffect(() => {
     // Session changed - mark that we need to load messages
@@ -91,6 +97,7 @@ export function AiChatPanel() {
 
     // Load messages once when they become available for the current session
     if (currentSessionId && !hasLoadedInitialMessages.current && dbMessages.length > 0) {
+      dbMessages.forEach((m) => savedMessageIdsRef.current.add(m.id));
       setMessages(dbMessages);
       hasLoadedInitialMessages.current = true;
     }
@@ -101,37 +108,13 @@ export function AiChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Track which messages have been saved to prevent duplicates
-  const savedMessageIdsRef = useRef<Set<string>>(new Set());
-
-  // Reset saved message tracking when session changes
-  useEffect(() => {
-    if (currentSessionId) {
-      // Initialize with existing DB message IDs when session loads
-      savedMessageIdsRef.current = new Set(dbMessages.map((m) => m.id));
-    } else {
-      savedMessageIdsRef.current.clear();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId]); // Intentionally only depend on sessionId to reset tracking
-
   // Save messages after streaming completes
   useEffect(() => {
     const saveMessages = async () => {
       if (!isStreaming && currentSessionId && messages.length > 0) {
-        // Find messages not yet in database by comparing content + role
-        // This avoids the ID mismatch issue (client IDs vs DB UUIDs)
-        const newMessages = messages.filter((msg) => {
-          // Skip if we've already processed this message
-          if (savedMessageIdsRef.current.has(msg.id)) {
-            return false;
-          }
-          // Check if a message with same content and role exists in DB
-          const existsInDb = dbMessages.some(
-            (dbMsg) => dbMsg.content === msg.content && dbMsg.role === msg.role
-          );
-          return !existsInDb;
-        });
+        // Dedupe by message ID only. Tool-call rows all have content '', so a
+        // content match drops rows.
+        const newMessages = selectUnsavedMessages(messages, savedMessageIdsRef.current);
 
         if (newMessages.length > 0) {
           try {
@@ -145,10 +128,9 @@ export function AiChatPanel() {
               }))
             );
 
-            // Auto-generate title from first user message
-            const firstUserMsg = messages.find((m) => m.role === 'user');
-            if (messages.length <= 3 && firstUserMsg) {
-              const title = firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '');
+            // Set the title from the first user message of the session.
+            const title = titleForSession(messages);
+            if (title) {
               updateTitle({ sessionId: currentSessionId, title });
             }
           } catch (err) {
@@ -161,7 +143,7 @@ export function AiChatPanel() {
     };
 
     saveMessages();
-  }, [isStreaming, currentSessionId, messages, dbMessages, saveMessagesBatch, updateTitle]);
+  }, [isStreaming, currentSessionId, messages, saveMessagesBatch, updateTitle]);
 
   // Resize handlers
   const handleResizeStart = useCallback((e: React.MouseEvent) => {

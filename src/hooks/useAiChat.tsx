@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase, SUPABASE_URL } from '@/integrations/supabase/client';
 import { ChatMessage, SSEEvent, ToolCall } from '@/types/ai-chat';
 
@@ -17,482 +17,417 @@ export interface UseAiChatReturn {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 }
 
+/** Maximum number of stream requests in one turn. Round 1 counts. */
+export const MAX_TOOL_ROUNDS = 4;
+/** A round fails when it sends no event for this time. */
+export const ROUND_IDLE_TIMEOUT_MS = 30_000;
+/** Retries of one round. The hook retries only before the first event. */
+export const MAX_ROUND_RETRIES = 2;
+
+export const TOO_MANY_STEPS_ERROR = 'The assistant needed too many steps. Ask a more specific question.';
+export const TIMEOUT_ERROR = 'The assistant stopped responding. Try again.';
+const NETWORK_ERROR = 'The connection to the assistant failed. Try again.';
+const EMPTY_RESPONSE_ERROR = 'The assistant sent an empty response. Try again.';
+
+/** A round failure. `retryable` is true only when the round can run again safely. */
+class RoundError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = 'RoundError';
+  }
+}
+
+interface RoundResult {
+  assistant: ChatMessage;
+  toolMessages: ChatMessage[];
+}
+
+type Stamp = () => string;
+
+/** Returns a clock that gives strictly increasing ISO timestamps. */
+function createStamp(): Stamp {
+  let last = 0;
+  return () => {
+    last = Math.max(Date.now(), last + 1);
+    return new Date(last).toISOString();
+  };
+}
+
+function toRequestMessage(m: ChatMessage) {
+  return {
+    role: m.role,
+    content: m.content,
+    ...(m.name && { name: m.name }),
+    ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
+    ...(m.tool_calls && m.tool_calls.length > 0 && { tool_calls: m.tool_calls }),
+  };
+}
+
+function abortError(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException('Aborted', 'AbortError');
+}
+
+/** Waits for `ms`. Rejects when the signal aborts. */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(abortError(signal));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(id);
+      reject(abortError(signal));
+    };
+    const id = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** Reads one chunk. Rejects and cancels the reader when the signal aborts. */
+function readWithAbort(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      reader.cancel().catch(() => undefined);
+      reject(abortError(signal));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    reader.read().then(
+      (result) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(result);
+      },
+      (err) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      }
+    );
+  });
+}
+
+async function readHttpError(response: Response): Promise<string> {
+  const fallback = `The assistant request failed (HTTP ${response.status}).`;
+  try {
+    const body = await response.json();
+    const err = body?.error;
+    if (typeof err === 'string' && err) return err;
+    if (err && typeof err.message === 'string' && err.message) return err.message;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function parseSSELine(line: string): SSEEvent | null {
+  if (!line.startsWith('data: ')) return null;
+  try {
+    return JSON.parse(line.slice(6)) as SSEEvent;
+  } catch (e) {
+    console.error('[AI Chat] Failed to parse SSE event:', e);
+    return null;
+  }
+}
+
 export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAiChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const currentMessageRef = useRef<string>('');
+  const isStreamingRef = useRef(false);
+  const messagesRef = useRef<ChatMessage[]>(messages);
 
-  const executeTool = useCallback(async (toolName: string, args: Record<string, unknown>) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
-      }
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/ai-execute-tool`,
-        {
+  // Stop the turn when the component unmounts.
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
+
+  const executeTool = useCallback(
+    async (toolName: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-execute-tool`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            tool_name: toolName,
-            arguments: args,
-            restaurant_id: restaurantId,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Tool execution failed');
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (err) {
-      const error = err as Error;
-      console.error('Tool execution error:', error);
-      return {
-        ok: false,
-        error: {
-          code: 'TOOL_ERROR',
-          message: error.message || 'Failed to execute tool',
-        },
-      };
-    }
-  }, [restaurantId]);
-
-  const streamFollowUp = useCallback(async (conversationHistory: ChatMessage[], retryCount = 0) => {
-    const MAX_RETRIES = 2;
-    const TIMEOUT_MS = 30000; // 30 second timeout
-    
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('No session for follow-up stream');
-        return;
-      }
-
-      abortControllerRef.current = new AbortController();
-      
-      // Add timeout to abort controller
-      const timeoutId = setTimeout(() => {
-        console.log('[Follow-up] Timeout reached, aborting stream');
-        abortControllerRef.current?.abort();
-      }, TIMEOUT_MS);
-
-      console.log(`[Follow-up] Starting stream (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
-      
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/ai-chat-stream`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            projectRef: restaurantId,
-            messages: conversationHistory.map(m => ({
-              role: m.role,
-              content: m.content,
-              ...(m.name && { name: m.name }),
-              ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
-              ...(m.tool_calls && { tool_calls: m.tool_calls }),
-            })),
-          }),
-          signal: abortControllerRef.current.signal,
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[Follow-up] HTTP error ${response.status}:`, errorText);
-        
-        // Retry on server errors
-        if (response.status >= 500 && retryCount < MAX_RETRIES) {
-          const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
-          console.log(`[Follow-up] Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return streamFollowUp(conversationHistory, retryCount + 1);
-        }
-        
-        return;
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        console.error('[Follow-up] No response body');
-        return;
-      }
-
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-      let assistantMessageId = '';
-      let hasReceivedData = false;
-      currentMessageRef.current = '';
-
-      console.log('[Follow-up] Starting to read stream...');
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log('[Follow-up] Stream completed');
-          console.log('[Follow-up] Final assistant message ID:', assistantMessageId);
-          console.log('[Follow-up] Final content length:', currentMessageRef.current.length);
-          break;
-        }
-
-        hasReceivedData = true;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            
-            try {
-              const event: SSEEvent = JSON.parse(data);
-              console.log('[AI Chat Follow-up] Received event:', event.type, 'ID:', event.id);
-
-              switch (event.type) {
-                case 'message_start':
-                  assistantMessageId = event.id || `assistant_${Date.now()}`;
-                  console.log('[Follow-up] Creating new assistant message with ID:', assistantMessageId);
-                  setMessages(prev => {
-                    console.log('[Follow-up] Messages before adding:', prev.length);
-                    return [
-                      ...prev,
-                      {
-                        id: assistantMessageId,
-                        role: 'assistant',
-                        content: '',
-                        created_at: new Date().toISOString(),
-                      },
-                    ];
-                  });
-                  break;
-
-                case 'message_delta':
-                  console.log('[AI Chat Follow-up] Delta received:', {
-                    hasAssistantId: !!assistantMessageId,
-                    assistantMessageId,
-                    deltaLength: event.delta?.length || 0,
-                    delta: event.delta,
-                  });
-                  
-                  if (event.delta && assistantMessageId) {
-                    currentMessageRef.current += event.delta;
-                    console.log('[Follow-up] Updating message, total content length:', currentMessageRef.current.length);
-                    
-                    setMessages(prev => {
-                      const messageIndex = prev.findIndex(msg => msg.id === assistantMessageId);
-                      console.log('[Follow-up] Found message at index:', messageIndex, 'out of', prev.length);
-                      
-                      if (messageIndex === -1) {
-                        console.error('[Follow-up] Could not find assistant message with ID:', assistantMessageId);
-                        return prev;
-                      }
-                      
-                      // Create completely new array to ensure React detects the change
-                      const updated = [...prev];
-                      updated[messageIndex] = {
-                        ...updated[messageIndex],
-                        content: currentMessageRef.current,
-                      };
-                      console.log('[Follow-up] Updated message content to:', updated[messageIndex].content.substring(0, 50));
-                      return updated;
-                    });
-                  } else {
-                    console.warn('[Follow-up] Skipping delta - missing data:', {
-                      hasDelta: !!event.delta,
-                      hasAssistantId: !!assistantMessageId,
-                    });
-                  }
-                  break;
-
-                case 'message_end':
-                  console.log('[Follow-up] Message end, final content:', currentMessageRef.current.substring(0, 100));
-                  // Don't reset currentMessageRef here - let it persist until stream is fully done
-                  // currentMessageRef.current = '';
-                  break;
-                  
-                case 'error':
-                  console.error('[Follow-up] Stream error event:', event.error);
-                  if (retryCount < MAX_RETRIES) {
-                    const delay = Math.pow(2, retryCount) * 1000;
-                    console.log(`[Follow-up] Retrying after error in ${delay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return streamFollowUp(conversationHistory, retryCount + 1);
-                  }
-                  break;
-              }
-            } catch (e) {
-              console.error('[Follow-up] Failed to parse SSE event:', e, 'data:', data);
-            }
-          }
-        }
-      }
-      
-      if (!hasReceivedData) {
-        console.warn('[Follow-up] No data received from stream');
-        if (retryCount < MAX_RETRIES) {
-          const delay = Math.pow(2, retryCount) * 1000;
-          console.log(`[Follow-up] Retrying due to no data in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return streamFollowUp(conversationHistory, retryCount + 1);
-        }
-      }
-    } catch (err) {
-      const error = err as Error & { name?: string };
-      if (error.name === 'AbortError') {
-        console.log('[Follow-up] Stream aborted');
-        if (retryCount < MAX_RETRIES) {
-          const delay = Math.pow(2, retryCount) * 1000;
-          console.log(`[Follow-up] Retrying after abort in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return streamFollowUp(conversationHistory, retryCount + 1);
-        }
-      } else {
-        console.error('[Follow-up] Stream error:', error);
-        if (retryCount < MAX_RETRIES) {
-          const delay = Math.pow(2, retryCount) * 1000;
-          console.log(`[Follow-up] Retrying after error in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return streamFollowUp(conversationHistory, retryCount + 1);
-        }
-      }
-    }
-  }, [restaurantId, setMessages]);
-
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || isStreaming) return;
-
-    setError(null);
-    
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: `user_${Date.now()}`,
-      role: 'user',
-      content: content.trim(),
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-
-    // Start streaming
-    setIsStreaming(true);
-    currentMessageRef.current = '';
-    
-    // Safety timeout to prevent stuck streaming state (30 seconds)
-    const streamTimeout = setTimeout(() => {
-      console.error('[AI Chat] Stream timeout after 30s, forcing completion');
-      setIsStreaming(false);
-      setError('Request timed out. Please try again.');
-    }, 30000);
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
-      }
-
-      // Create abort controller for this request
-      abortControllerRef.current = new AbortController();
-
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/ai-chat-stream`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            projectRef: restaurantId,
-            messages: [...messages, userMessage].map(m => ({
-              role: m.role,
-              content: m.content,
-              ...(m.name && { name: m.name }),
-              ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
-              ...(m.tool_calls && { tool_calls: m.tool_calls }),
-            })),
-          }),
-          signal: abortControllerRef.current.signal,
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Stream failed');
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response body');
-      }
-
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-      let assistantMessageId = '';
-      const toolCalls: ToolCall[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log('[AI Chat] Stream completed (main)');
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            
-            try {
-              const event: SSEEvent = JSON.parse(data);
-              console.log('[AI Chat] Received event:', event.type);
-
-              switch (event.type) {
-                case 'message_start':
-                  assistantMessageId = event.id || `assistant_${Date.now()}`;
-                  console.log('[AI Chat] Starting new message with ID:', assistantMessageId);
-                  currentMessageRef.current = ''; // Reset the content accumulator
-                  setMessages(prev => {
-                    console.log('[AI Chat] Current messages count before adding:', prev.length);
-                    return [
-                      ...prev,
-                      {
-                        id: assistantMessageId,
-                        role: 'assistant',
-                        content: '',
-                        created_at: new Date().toISOString(),
-                      },
-                    ];
-                  });
-                  break;
-
-                case 'message_delta':
-                  if (event.delta) {
-                    console.log('[AI Chat] Received delta:', JSON.stringify(event.delta));
-                    currentMessageRef.current += event.delta;
-                    console.log('[AI Chat] Current accumulated content length:', currentMessageRef.current.length);
-                    setMessages(prev => {
-                      const msgIndex = prev.findIndex(msg => msg.id === assistantMessageId);
-                      console.log('[AI Chat] Looking for message ID:', assistantMessageId, 'Found at index:', msgIndex, 'Total messages:', prev.length);
-                      if (msgIndex === -1) {
-                        console.error('[AI Chat] Message not found! Available IDs:', prev.map(m => m.id));
-                        return prev;
-                      }
-                      const updated = [...prev];
-                      updated[msgIndex] = { ...updated[msgIndex], content: currentMessageRef.current };
-                      console.log('[AI Chat] Updated message content length:', updated[msgIndex].content.length);
-                      return updated;
-                    });
-                  }
-                  break;
-
-                case 'tool_call':
-                  if (event.tool) {
-                    const toolCall: ToolCall = {
-                      id: event.id || `tc_${Date.now()}`,
-                      type: 'function',
-                      function: {
-                        name: event.tool.name,
-                        arguments: JSON.stringify(event.tool.arguments),
-                      },
-                    };
-                    toolCalls.push(toolCall);
-
-                    // Execute tool
-                    const result = await executeTool(event.tool.name, event.tool.arguments);
-                    
-                    // Add tool result as a message
-                    const toolResultMessage: ChatMessage = {
-                      id: `tool_${Date.now()}`,
-                      role: 'tool',
-                      content: JSON.stringify(result),
-                      name: event.tool.name,
-                      tool_call_id: toolCall.id,
-                      created_at: new Date().toISOString(),
-                    };
-
-                    setMessages(prev => [...prev, toolResultMessage]);
-
-                    // Call custom handler if provided
-                    if (onToolCall) {
-                      await onToolCall(toolCall);
-                    }
-                  }
-                  break;
-
-                case 'message_end':
-                  console.log('[AI Chat] Message end, final content length:', currentMessageRef.current.length);
-                  // If we have tool calls, we need to update the assistant message and continue the conversation
-                  if (toolCalls.length > 0) {
-                    setMessages(prev => 
-                      prev.map(msg =>
-                        msg.id === assistantMessageId
-                          ? { ...msg, tool_calls: toolCalls }
-                          : msg
-                      )
-                    );
-                  }
-                  // Don't reset currentMessageRef here - let it persist until all batched state updates complete
-                  // It will be reset in message_start when the next message begins
-                  // currentMessageRef.current = '';
-                  break;
-
-                case 'error':
-                  console.error('Stream error:', event.error);
-                  setError(event.error?.message || 'An error occurred');
-                  break;
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e);
-            }
-          }
-        }
-      }
-
-      // After streaming ends, if we have tool calls, send another request with tool results
-      if (toolCalls.length > 0) {
-        // Get all messages including tool results
-        const messagesWithTools = await new Promise<ChatMessage[]>((resolve) => {
-          setMessages(prev => {
-            resolve(prev);
-            return prev;
-          });
+          body: JSON.stringify({ tool_name: toolName, arguments: args, restaurant_id: restaurantId }),
+          signal,
         });
 
-        // Make a follow-up request to get AI's response based on tool results
-        await streamFollowUp(messagesWithTools);
+        let body: unknown = null;
+        try {
+          body = await response.json();
+        } catch {
+          body = null;
+        }
+
+        // The model must see in-band errors such as TOOL_PERMISSION_DENIED, for any status.
+        if (body && typeof body === 'object' && (body as { ok?: unknown }).ok === false) {
+          return body;
+        }
+        if (!response.ok) {
+          throw new Error(`Tool execution failed (HTTP ${response.status})`);
+        }
+        return body;
+      } catch (err) {
+        if (signal.aborted) throw abortError(signal);
+        const e = err as Error;
+        console.error('Tool execution error:', e);
+        return {
+          ok: false,
+          error: { code: 'TOOL_ERROR', message: e.message || 'Failed to execute tool' },
+        };
       }
-    } catch (err) {
-      const error = err as Error & { name?: string };
-      if (error.name === 'AbortError') {
-        console.log('Stream aborted');
-      } else {
-        console.error('Chat error:', error);
-        setError(error.message || 'Failed to send message');
+    },
+    [restaurantId]
+  );
+
+  /** One stream request, with no retry. */
+  const attemptRound = useCallback(
+    async (history: ChatMessage[], controller: AbortController, stamp: Stamp): Promise<RoundResult> => {
+      const { signal } = controller;
+      let idleId: ReturnType<typeof setTimeout> | undefined;
+      const clearIdle = () => clearTimeout(idleId);
+      const armIdle = () => {
+        clearIdle();
+        idleId = setTimeout(
+          () => controller.abort(new DOMException(TIMEOUT_ERROR, 'TimeoutError')),
+          ROUND_IDLE_TIMEOUT_MS
+        );
+      };
+
+      let assistantId: string | null = null;
+      let assistantCreatedAt = '';
+      let content = '';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new RoundError('Not authenticated', false);
+
+        armIdle();
+        let response: Response;
+        try {
+          response = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat-stream`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ projectRef: restaurantId, messages: history.map(toRequestMessage) }),
+            signal,
+          });
+        } catch (err) {
+          if (signal.aborted) throw abortError(signal);
+          console.error('[AI Chat] Network error:', err);
+          throw new RoundError(NETWORK_ERROR, true);
+        }
+
+        if (!response.ok) {
+          throw new RoundError(await readHttpError(response), response.status >= 500);
+        }
+        const reader = response.body?.getReader();
+        if (!reader) throw new RoundError(EMPTY_RESPONSE_ERROR, false);
+
+        const decoder = new TextDecoder('utf-8');
+        const toolCalls: ToolCall[] = [];
+        const toolMessages: ChatMessage[] = [];
+        let buffer = '';
+        let receivedEvent = false;
+
+        const ensureAssistant = () => {
+          if (assistantId) return;
+          const id = crypto.randomUUID();
+          assistantId = id;
+          assistantCreatedAt = stamp();
+          const row: ChatMessage = { id, role: 'assistant', content: '', created_at: assistantCreatedAt };
+          setMessages((prev) => [...prev, row]);
+        };
+
+        const handleEvent = async (event: SSEEvent) => {
+          switch (event.type) {
+            case 'message_start':
+              ensureAssistant();
+              break;
+            case 'message_delta':
+              if (event.delta) {
+                ensureAssistant();
+                content += event.delta;
+                const id = assistantId;
+                const text = content;
+                setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: text } : m)));
+              }
+              break;
+            case 'tool_call':
+              if (event.tool) {
+                ensureAssistant();
+                const toolCall: ToolCall = {
+                  id: event.id || crypto.randomUUID(),
+                  type: 'function',
+                  function: { name: event.tool.name, arguments: JSON.stringify(event.tool.arguments) },
+                };
+                toolCalls.push(toolCall);
+                // The idle timer covers the stream only, not the tool run.
+                clearIdle();
+                const result = await executeTool(event.tool.name, event.tool.arguments, signal);
+                if (signal.aborted) throw abortError(signal);
+                armIdle();
+                toolMessages.push({
+                  id: crypto.randomUUID(),
+                  role: 'tool',
+                  content: JSON.stringify(result),
+                  name: event.tool.name,
+                  tool_call_id: toolCall.id,
+                  created_at: stamp(),
+                });
+                if (onToolCall) await onToolCall(toolCall);
+              }
+              break;
+            case 'message_end':
+              break;
+            case 'error':
+              throw new RoundError(event.error?.message || 'An error occurred', false);
+          }
+        };
+
+        const processLines = async (lines: string[]) => {
+          for (const line of lines) {
+            const event = parseSSELine(line);
+            if (!event) continue;
+            receivedEvent = true;
+            armIdle();
+            await handleEvent(event);
+          }
+        };
+
+        while (true) {
+          let chunk: ReadableStreamReadResult<Uint8Array>;
+          try {
+            chunk = await readWithAbort(reader, signal);
+          } catch (err) {
+            if (signal.aborted) throw abortError(signal);
+            console.error('[AI Chat] Stream read error:', err);
+            throw new RoundError(NETWORK_ERROR, !receivedEvent);
+          }
+          if (chunk.done) {
+            buffer += decoder.decode();
+            await processLines(buffer.split('\n'));
+            break;
+          }
+          buffer += decoder.decode(chunk.value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          await processLines(lines);
+        }
+
+        if (!assistantId) throw new RoundError(EMPTY_RESPONSE_ERROR, false);
+
+        const assistant: ChatMessage = {
+          id: assistantId,
+          role: 'assistant',
+          content,
+          created_at: assistantCreatedAt,
+          ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+        };
+        return { assistant, toolMessages };
+      } catch (err) {
+        // A failed round deletes its empty assistant row.
+        if (assistantId && !content) {
+          const id = assistantId;
+          setMessages((prev) => prev.filter((m) => m.id !== id));
+        }
+        throw err;
+      } finally {
+        clearIdle();
       }
-    } finally {
-      clearTimeout(streamTimeout);
-      setIsStreaming(false);
-      abortControllerRef.current = null;
-    }
-  }, [messages, isStreaming, restaurantId, executeTool, onToolCall, streamFollowUp]);
+    },
+    [restaurantId, executeTool, onToolCall]
+  );
+
+  /** One round, with a retry only before the first event. */
+  const runRound = useCallback(
+    async (history: ChatMessage[], controller: AbortController, stamp: Stamp): Promise<RoundResult> => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await attemptRound(history, controller, stamp);
+        } catch (err) {
+          const canRetry =
+            !controller.signal.aborted &&
+            err instanceof RoundError &&
+            err.retryable &&
+            attempt < MAX_ROUND_RETRIES;
+          if (!canRetry) throw err;
+          await sleep(1000 * 2 ** attempt, controller.signal);
+        }
+      }
+    },
+    [attemptRound]
+  );
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim() || isStreamingRef.current) return;
+      isStreamingRef.current = true;
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const stamp = createStamp();
+
+      const userMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: text.trim(),
+        created_at: stamp(),
+      };
+      const turnHistory: ChatMessage[] = [...messagesRef.current, userMessage];
+
+      setError(null);
+      setMessages((prev) => [...prev, userMessage]);
+      setIsStreaming(true);
+
+      try {
+        for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+          const { assistant, toolMessages } = await runRound(turnHistory, controller, stamp);
+
+          setMessages((prev) => [
+            ...prev.map((m) => (m.id === assistant.id ? { ...m, tool_calls: assistant.tool_calls } : m)),
+            ...toolMessages,
+          ]);
+          turnHistory.push(assistant, ...toolMessages);
+
+          if (!assistant.tool_calls) return;
+        }
+        setError(TOO_MANY_STEPS_ERROR);
+      } catch (err) {
+        const reason = controller.signal.reason as { name?: string } | undefined;
+        if (controller.signal.aborted && reason?.name === 'TimeoutError') {
+          setError(TIMEOUT_ERROR);
+        } else if (controller.signal.aborted) {
+          // The user stopped the turn. This is not an error.
+        } else if (err instanceof RoundError) {
+          setError(err.message);
+        } else {
+          console.error('[AI Chat] Turn failed:', err);
+          setError((err as Error)?.message || 'Failed to send message');
+        }
+      } finally {
+        if (abortControllerRef.current === controller) abortControllerRef.current = null;
+        isStreamingRef.current = false;
+        setIsStreaming(false);
+      }
+    },
+    [runRound]
+  );
 
   const clearMessages = useCallback(() => {
     setMessages([]);
@@ -500,11 +435,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
   }, []);
 
   const abortStream = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsStreaming(false);
+    abortControllerRef.current?.abort(new DOMException('The user stopped the response.', 'AbortError'));
   }, []);
 
   return {

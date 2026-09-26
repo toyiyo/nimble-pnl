@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ACCOUNT_TYPES,
   CATEGORY_LIST_CAP,
   filterCategories,
+  isAccountType,
   resolveCategoryRef,
   type CategoryLookupClient,
   type CategoryRow,
@@ -27,7 +29,7 @@ function row(overrides: Partial<CategoryRow> = {}): CategoryRow {
 type Result = { data: CategoryRow | null; error: { message: string } | null };
 
 /**
- * A fake client that records each query. The handler maps each
+ * A fake client that records each query. The results map takes each
  * "column=value" key to a result; a missing key returns no row.
  */
 function fakeClient(results: Record<string, Result>) {
@@ -75,6 +77,27 @@ describe('filterCategories', () => {
     expect(filterCategories(rows, 'SALES').categories.map((c) => c.id)).toEqual(['c']);
   });
 
+  it('puts count and truncated before the list, so a cut result keeps them', () => {
+    expect(Object.keys(filterCategories(rows, undefined))).toEqual(['count', 'truncated', 'categories']);
+  });
+
+  it('leaves out is_active unless inactive rows were asked for', () => {
+    expect(filterCategories(rows, undefined).categories[0]).not.toHaveProperty('is_active');
+    expect(filterCategories(rows, undefined, { includeInactive: true }).categories[0]).toHaveProperty('is_active', true);
+  });
+
+  it('caps the list so it fits the connector text limit (40,000 chars)', () => {
+    const many = Array.from({ length: CATEGORY_LIST_CAP }, (_, i) =>
+      row({
+        id: `0b8e3c1a-5f2d-4a6b-9c7e-${String(i).padStart(12, '0')}`,
+        account_code: `9999-${i}`,
+        account_name: 'Long Category Name For A Size Check',
+        parent_account_id: UUID,
+      }),
+    );
+    expect(JSON.stringify(filterCategories(many, undefined)).length).toBeLessThan(40_000);
+  });
+
   it('keeps the first rows up to the cap and marks the result truncated', () => {
     const many = Array.from({ length: CATEGORY_LIST_CAP + 2 }, (_, i) =>
       row({ id: `r${i}`, account_code: String(1000 + i) }),
@@ -94,14 +117,10 @@ describe('resolveCategoryRef', () => {
   });
 
   it('finds an account code, trimmed, with its case kept', async () => {
-    const { client, queries } = fakeClient({ 'account_code=2600-1': { data: row(), error: null } });
-    const result = await resolveCategoryRef(client, RESTAURANT, '  2600-1 ');
+    const { client, queries } = fakeClient({ 'account_code=Bar-A1': { data: row({ account_code: 'Bar-A1' }), error: null } });
+    const result = await resolveCategoryRef(client, RESTAURANT, '  Bar-A1 ');
     expect(result.ok).toBe(true);
-    expect(queries).toEqual([{ restaurant_id: RESTAURANT, account_code: '2600-1' }]);
-
-    const lower = fakeClient({});
-    await resolveCategoryRef(lower.client, RESTAURANT, 'abc');
-    expect(lower.queries).toEqual([{ restaurant_id: RESTAURANT, account_code: 'abc' }]);
+    expect(queries).toEqual([{ restaurant_id: RESTAURANT, account_code: 'Bar-A1' }]);
   });
 
   it('falls back to the account code when a UUID matches no id', async () => {
@@ -136,5 +155,13 @@ describe('resolveCategoryRef', () => {
   it('throws a database error instead of calling it not found', async () => {
     const { client } = fakeClient({ 'account_code=2600-1': { data: null, error: { message: 'boom' } } });
     await expect(resolveCategoryRef(client, RESTAURANT, '2600-1')).rejects.toThrow('boom');
+  });
+});
+
+describe('isAccountType', () => {
+  it('accepts the six enum values only, with their exact spelling', () => {
+    expect(ACCOUNT_TYPES).toEqual(['asset', 'liability', 'equity', 'revenue', 'expense', 'cogs']);
+    for (const type of ACCOUNT_TYPES) expect(isAccountType(type)).toBe(true);
+    for (const bad of ['Expense', 'cogs ', '', 'income', 3, null]) expect(isAccountType(bad)).toBe(false);
   });
 });

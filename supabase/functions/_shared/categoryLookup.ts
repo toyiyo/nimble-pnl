@@ -9,24 +9,41 @@
 export const CATEGORY_COLUMNS =
   'id, account_code, account_name, account_type, account_subtype, parent_account_id, is_active';
 
-/** Maximum number of categories in one list_categories result. */
-export const CATEGORY_LIST_CAP = 500;
+/**
+ * Maximum number of categories in one list_categories result. A row is about
+ * 245 characters of JSON, and the connector cuts a tool result at 40,000
+ * characters (MAX_TOOL_TEXT_CHARS in mcpHandler.ts).
+ */
+export const CATEGORY_LIST_CAP = 150;
+
+/** The values of account_type_enum. */
+export const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense', 'cogs'] as const;
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
+
+/** True for one of the six account_type_enum values, with its exact spelling. */
+export function isAccountType(value: unknown): value is AccountType {
+  return typeof value === 'string' && (ACCOUNT_TYPES as readonly string[]).includes(value);
+}
 
 export interface CategoryRow {
   id: string;
   account_code: string;
   account_name: string;
-  account_type: string;
+  account_type: AccountType;
   account_subtype: string;
   parent_account_id: string | null;
   is_active: boolean;
 }
 
+/** A listed category. is_active is left out when only active rows are listed. */
+export type ListedCategory = Omit<CategoryRow, 'is_active'> & { is_active?: boolean };
+
+/** count and truncated come first, so a result cut at the end keeps them. */
 export interface CategoryList {
-  categories: CategoryRow[];
   /** Number of rows that matched, before the cap. */
   count: number;
   truncated: boolean;
+  categories: ListedCategory[];
 }
 
 /**
@@ -34,7 +51,11 @@ export interface CategoryList {
  * first CATEGORY_LIST_CAP of them. The search runs here and not in a
  * PostgREST or() string, so its text cannot change the query.
  */
-export function filterCategories(rows: CategoryRow[], search: string | undefined): CategoryList {
+export function filterCategories(
+  rows: CategoryRow[],
+  search: string | undefined,
+  { includeInactive = false }: { includeInactive?: boolean } = {},
+): CategoryList {
   const needle = (search ?? '').trim().toLowerCase();
   const matched = needle
     ? rows.filter(
@@ -43,10 +64,11 @@ export function filterCategories(rows: CategoryRow[], search: string | undefined
           row.account_name.toLowerCase().includes(needle),
       )
     : rows;
+  const kept = matched.slice(0, CATEGORY_LIST_CAP);
   return {
-    categories: matched.slice(0, CATEGORY_LIST_CAP),
     count: matched.length,
     truncated: matched.length > CATEGORY_LIST_CAP,
+    categories: includeInactive ? kept : kept.map(({ is_active: _active, ...rest }) => rest),
   };
 }
 

@@ -51,7 +51,7 @@ Claude ──(1) POST /functions/v1/mcp, no token──────────�
 | `get_payroll_summary`, `get_time_punches`, `get_tip_summary` | read | Manager or owner. |
 | `get_pending_outflows`, `get_operating_costs`, `get_monthly_trends`, `get_expense_health`, `get_break_even_progress` | read | Manager or owner. |
 | `list_categories` | read | Manager or owner. The chart of accounts: id, account code, name, and type. |
-| `batch_categorize_transactions`, `batch_categorize_pos_sales`, `create_categorization_rule` | **write** | Manager or owner. Marked destructive, so Claude asks before it calls them. `category_id` takes the category id or the account code, such as `2600-1`. An inactive category is refused. |
+| `batch_categorize_transactions`, `batch_categorize_pos_sales`, `create_categorization_rule` | **write** | Manager or owner. Marked destructive, so Claude asks before it calls them. `category_id` takes the category id or the account code, such as `4000`. An inactive category is refused. |
 
 Every tool except `list_restaurants` takes `restaurant_id`. A user with one
 restaurant can omit it.

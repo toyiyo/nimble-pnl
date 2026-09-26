@@ -32,7 +32,7 @@ import {
 } from "../_shared/payHidden.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
 import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
-import { CATEGORY_COLUMNS, filterCategories, resolveCategoryRef, type CategoryRow } from "../_shared/categoryLookup.ts";
+import { ACCOUNT_TYPES, CATEGORY_COLUMNS, filterCategories, isAccountType, resolveCategoryRef, type CategoryRow } from "../_shared/categoryLookup.ts";
 import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 import {
@@ -3400,26 +3400,36 @@ async function executeBatchCategorizePosSales(
  * the model can pick a category id or account code for the write tools.
  */
 async function executeListCategories(
-  args: any,
+  args: any, // raw tool arguments from the model
   restaurantId: string,
-  supabase: any
-): Promise<any> {
+  supabase: any // same forwarded-JWT client as the other execute* handlers
+): Promise<any> { // same result shape as the other execute* handlers
   const { search, account_type, include_inactive = false } = args ?? {};
+  const includeInactive = include_inactive === true;
+
+  // A value outside account_type_enum makes Postgres fail the cast. Answer in
+  // band, so the model reads the valid values.
+  if (account_type !== undefined && account_type !== null && account_type !== '' && !isAccountType(account_type)) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_ARGUMENTS', message: `account_type must be one of: ${ACCOUNT_TYPES.join(', ')}.` },
+    };
+  }
 
   let query = supabase
     .from('chart_of_accounts')
     .select(CATEGORY_COLUMNS)
     .eq('restaurant_id', restaurantId);
-  if (typeof account_type === 'string' && account_type) {
+  if (isAccountType(account_type)) {
     query = query.eq('account_type', account_type);
   }
-  if (include_inactive !== true) {
+  if (!includeInactive) {
     query = query.eq('is_active', true);
   }
   const { data, error } = await query.order('account_code', { ascending: true });
   if (error) throw new Error(`Failed to list categories: ${error.message}`);
 
-  const list = filterCategories((data ?? []) as CategoryRow[], typeof search === 'string' ? search : undefined);
+  const list = filterCategories((data ?? []) as CategoryRow[], typeof search === 'string' ? search : undefined, { includeInactive });
   return {
     ok: true,
     data: list,

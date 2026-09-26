@@ -53,7 +53,13 @@ The user chose both fixes, and the manager and owner gate.
   TypeScript function, not in a PostgREST `or()` string, so a comma or a
   parenthesis in `search` cannot change the query.
 - Cap: the search runs on all rows that the select returns. Then the result
-  keeps the first 500 and sets `truncated: true` when more rows matched.
+  keeps the first 150 and sets `truncated: true` when more rows matched.
+  150 rows fit the 40,000-character connector limit (`MAX_TOOL_TEXT_CHARS`,
+  `supabase/functions/_shared/mcpHandler.ts:40`). `count` and `truncated`
+  come before `categories`. `is_active` is left out unless
+  `include_inactive` is true.
+- An `account_type` outside the six values returns `INVALID_ARGUMENTS` in
+  band. Postgres would fail the enum cast with a 500.
 
 ### 2. The write tools accept an account code
 
@@ -79,8 +85,8 @@ The user chose both fixes, and the manager and owner gate.
   resolved account before a save.
 - The error text changes to name both forms:
   `Unknown category "<ref>". Use a category id or an account code from list_categories.`
-- The argument description changes to "Category id or account code from
-  list_categories (for example 4000)."
+- The argument description changes to "Category to assign: its id or its
+  account code (for example 4000), from list_categories".
 
 ### 3. Connector and prompt
 
@@ -88,6 +94,8 @@ The user chose both fixes, and the manager and owner gate.
   (`supabase/functions/_shared/mcpHandler.ts:57-81`). It is not in
   `WRITE_TOOL_NAMES` (`supabase/functions/_shared/aiWriteTools.ts:9-13`), so
   the connector marks it `readOnlyHint: true`.
+- The connector server instructions and the in-app prompt tell the model to
+  send the same `category_id` in the preview and in the confirm.
 - The in-app prompt section "6. Data changes"
   (`supabase/functions/ai-chat-stream/index.ts:680-683`) gets one line: find
   the category with `list_categories` first.

@@ -3390,6 +3390,11 @@
 - **Correction:** Build the body with `composeReply({verdict, commit, rationale})` from `dev-tools/pr-triage.js`, and post it with the GitHub MCP reply tool. Check it first with `classifyThreads` (give each reply an `authorAssociation`, or the check reports a non-maintainer).
 - **Rule:** Every reply to a review finding opens with the `<!-- pr-triage: <verdict> -->` marker that `composeReply` writes. The check re-runs only on a push or on its schedule, and the MCP token cannot re-run it (403). So post the verdict reply before the push that carries the fix.
 
+### [2026-09-26] Supabase OAuth + HS256: never let a client ask for `openid` (Claude connector)
+- **Mistake:** The `mcp` server advertised no scopes. Claude asked for `openid`, and the token exchange failed with `HS256 is not supported for ID token signing`. The first fix proposal was a move to asymmetric keys plus `verify_jwt = false` on 66 functions, which breaks the lesson below on `verify_jwt`.
+- **Correction:** `mcp` sends `scope="email offline_access"` in `WWW-Authenticate` and in `scopes_supported`. No key rotation, no `verify_jwt` change.
+- **Rule:** Read `memory/lessons.md` before you propose an auth or platform setting change. While the project signs with HS256, no OAuth client may get the `openid` scope. A signing-key rotation needs its own plan for every `verify_jwt = true` function.
+
 ### [2026-09-25] Green CI is not proof: check the change in the preview environment (PR #809)
 - **Mistake:** PR #809 went to review with only unit, E2E and CI evidence. Nobody opened the Vercel preview to see the changed pages work on the preview database.
 - **Rule (from the user):** Before you report a change as working, show proof from the preview environment. Use the Vercel preview: it reads the Supabase preview branch. The Netlify preview has no Supabase variables, so it falls back to the production database. Never sign up test users there. The preview branch has no seed data: sign up a test user and create the data that the check needs. The cloud container must allow the preview hosts (`*.vercel.app` and the preview `*.supabase.co` project) in its network settings.

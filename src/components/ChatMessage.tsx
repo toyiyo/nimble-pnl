@@ -1,13 +1,13 @@
-import { ChatMessage as ChatMessageType } from "@/types/ai-chat";
-import { User, Wrench, ArrowRight, ChefHat } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { memo, useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { ArrowRight, ChefHat, User, Wrench } from "lucide-react";
+import { ChatMessage as ChatMessageType } from "@/types/ai-chat";
+import { cn } from "@/lib/utils";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -143,7 +143,10 @@ function navigationTarget(argumentsJson: string): NavigationTarget | null {
     return null;
   }
   const section = NAVIGATION_SECTIONS[args.section];
-  const hasEntity = args.entity_id !== undefined && args.entity_id !== null && args.entity_id !== "";
+  const entityId = args.entity_id;
+  const hasEntity =
+    (typeof entityId === "string" && entityId !== "") ||
+    (typeof entityId === "number" && Number.isFinite(entityId));
   const path = hasEntity ? `${section.path}?id=${encodeURIComponent(String(args.entity_id))}` : section.path;
   return { path, label: section.label };
 }
@@ -159,12 +162,10 @@ const MARKDOWN_COMPONENTS: Components = {
     const code = String(children).replace(/\n$/, "");
     const inline = !className;
 
-    // Check if it's a mermaid diagram
     if (match && match[1] === "mermaid") {
       return <MermaidChart chart={code} />;
     }
 
-    // Regular code block
     if (!inline && match) {
       return (
         <pre className="bg-background/50 p-3 rounded-md overflow-x-auto max-w-full">
@@ -175,7 +176,6 @@ const MARKDOWN_COMPONENTS: Components = {
       );
     }
 
-    // Inline code
     return (
       <code className="bg-background/50 px-1.5 py-0.5 rounded text-sm break-words" {...props}>
         {children}
@@ -341,9 +341,7 @@ function ChatMessageView({ message, onNavigate }: ChatMessageProps) {
 
 /**
  * The hook replaces a message object only when the message changes. A stream
- * delta then renders only the message that it changes.
+ * delta then renders only the message that it changes. The shallow compare of
+ * memo is enough, because the props are the message and the onNavigate callback.
  */
-export const ChatMessage = memo(
-  ChatMessageView,
-  (prev, next) => prev.message === next.message && prev.onNavigate === next.onNavigate
-);
+export const ChatMessage = memo(ChatMessageView);

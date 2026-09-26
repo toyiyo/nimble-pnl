@@ -3,6 +3,20 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 
+/** Counts the renders of ChatMessage. The component calls useNavigate once per render. */
+const renders = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return {
+    ...actual,
+    useNavigate: () => {
+      renders.count += 1;
+      return actual.useNavigate();
+    },
+  };
+});
+
 vi.mock('mermaid', () => ({
   default: {
     initialize: vi.fn(),
@@ -154,15 +168,55 @@ describe('ChatMessage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/recipes?id=a%20b%26tab%3Dx');
   });
 
-  it('is a memo component that compares the message object identity', () => {
-    const memo = ChatMessage as unknown as {
-      $$typeof: symbol;
-      compare: (a: { message: ChatMessageType }, b: { message: ChatMessageType }) => boolean;
-    };
-    expect(memo.$$typeof).toBe(Symbol.for('react.memo'));
-
+  it('does not render again when the parent renders with the same props', () => {
     const message: ChatMessageType = { id: 'a1', role: 'assistant', content: 'Hi' };
-    expect(memo.compare({ message }, { message })).toBe(true);
-    expect(memo.compare({ message }, { message: { ...message } })).toBe(false);
+    const onNavigate = vi.fn();
+    const view = (m: ChatMessageType, nav: (path: string) => void) => (
+      <MemoryRouter>
+        <ChatMessage message={m} onNavigate={nav} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view(message, onNavigate));
+    const afterMount = renders.count;
+
+    rerender(view(message, onNavigate));
+    expect(renders.count).toBe(afterMount);
+
+    rerender(view({ ...message, content: 'Hi there' }, onNavigate));
+    expect(renders.count).toBe(afterMount + 1);
+    expect(screen.getByText('Hi there')).toBeInTheDocument();
+
+    rerender(view({ ...message, content: 'Hi there' }, vi.fn()));
+    expect(renders.count).toBe(afterMount + 2);
+  });
+
+  it('adds a numeric entity ID, also 0, to the navigate path', () => {
+    renderMessage({
+      id: 'a1',
+      role: 'assistant',
+      content: 'Here.',
+      tool_calls: [navigateCall({ section: 'recipes', entity_id: 0 })],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Recipes' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/recipes?id=0');
+  });
+
+  it.each([
+    ['an empty string', ''],
+    ['an object', { id: 'r-9' }],
+    ['an array', ['r-9']],
+    ['a boolean', true],
+    ['null', null],
+  ])('does not add the entity ID when it is %s', (_label, entityId) => {
+    renderMessage({
+      id: 'a1',
+      role: 'assistant',
+      content: 'Here.',
+      tool_calls: [navigateCall({ section: 'recipes', entity_id: entityId })],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Recipes' }));
+    expect(screen.getByTestId('location').textContent).toBe('/recipes');
   });
 });

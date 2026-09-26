@@ -430,3 +430,38 @@ describe('tools-registry: labor tool descriptions explain pay_hidden', () => {
     },
   );
 });
+
+describe('tools-registry: getTools follows the scheduling/payroll capability (D9)', () => {
+  // Without view:scheduling or view:payroll the dispatcher denies these two
+  // tools. Offering them makes the model call a tool that returns 403.
+  it('omits the capability-gated tools when hasSchedulingOrPayroll is false', () => {
+    const names = getTools('rest-1', 'staff', { hasSchedulingOrPayroll: false }).map((t) => t.name);
+    for (const gated of CAPABILITY_GATED_TOOLS) {
+      expect(names).not.toContain(gated);
+    }
+    expect(names).toContain('get_sales_summary');
+  });
+
+  it('keeps them when hasSchedulingOrPayroll is true', () => {
+    const names = getTools('rest-1', 'chef', { hasSchedulingOrPayroll: true }).map((t) => t.name);
+    for (const gated of CAPABILITY_GATED_TOOLS) {
+      expect(names).toContain(gated);
+    }
+  });
+
+  it('keeps today\'s list when the option is not given', () => {
+    expect(getTools('rest-1', 'staff').map((t) => t.name)).toEqual(
+      getTools('rest-1', 'staff', {}).map((t) => t.name),
+    );
+    expect(getTools('rest-1', 'staff').map((t) => t.name)).toEqual(
+      expect.arrayContaining([...CAPABILITY_GATED_TOOLS]),
+    );
+  });
+
+  it('still hides get_kpis from collaborator_operations_manager with the option set', () => {
+    const names = getTools('rest-1', 'collaborator_operations_manager', { hasSchedulingOrPayroll: true }).map(
+      (t) => t.name,
+    );
+    expect(names).not.toContain('get_kpis');
+  });
+});

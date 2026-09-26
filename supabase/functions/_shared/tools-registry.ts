@@ -16,9 +16,16 @@ export interface ToolDefinition {
  * Get available tools based on restaurant and user permissions
  * @param restaurantId The restaurant ID for scoping
  * @param userRole User's role (owner, manager, viewer)
+ * @param options.hasSchedulingOrPayroll Result of hasSchedulingOrPayrollCapability.
+ *   When false, the capability-gated tools are omitted, because the dispatcher
+ *   denies them. When undefined, the list does not depend on the capability.
  * @returns Array of tool definitions
  */
-export function getTools(restaurantId: string, userRole: string = 'viewer'): ToolDefinition[] {
+export function getTools(
+  restaurantId: string,
+  userRole: string = 'viewer',
+  options: { hasSchedulingOrPayroll?: boolean } = {}
+): ToolDefinition[] {
   const tools: ToolDefinition[] = [
     // Navigation tools - available to all users
     {
@@ -830,11 +837,15 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
   // the model for that role — canUseTool() denies it anyway, but omitting it
   // here avoids the AI assistant suggesting a tool call that will just be
   // rejected as TOOL_PERMISSION_DENIED.
+  const visible = options.hasSchedulingOrPayroll === false
+    ? tools.filter((tool) => !isCapabilityGatedTool(tool.name))
+    : tools;
+
   if (userRole === 'collaborator_operations_manager') {
-    return tools.filter((tool) => tool.name !== 'get_kpis');
+    return visible.filter((tool) => tool.name !== 'get_kpis');
   }
 
-  return tools;
+  return visible;
 }
 
 /**

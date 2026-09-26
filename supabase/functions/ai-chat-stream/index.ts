@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getModel, getModelFallbackList, getMalformedFallbackModels } from "../_shared/model-router.ts";
-import { getTools } from "../_shared/tools-registry.ts";
+import { getTools, hasSchedulingOrPayrollCapability } from "../_shared/tools-registry.ts";
 import { resolveRestaurantTimeZone } from "../_shared/timezone.ts";
 import { ymdInTimeZone } from "../_shared/restaurantDate.ts";
 import { logAICall, startStreamingSpan, type AICallMetadata } from "../_shared/braintrust.ts";
@@ -518,14 +518,28 @@ serve(async (req) => {
     // "Today" is the restaurant's local day. The edge runtime is in UTC, so
     // after 19:00 CDT the UTC date is already the next day and the model
     // asks the tools for a day with no sales yet.
-    const restaurantTimeZone = await resolveRestaurantTimeZone(supabase, projectRef);
+    // The capability decides whether the labor tools are in the list. The
+    // check fails closed (false) and logs on an RPC error; the dispatcher
+    // still gates each call.
+    const [restaurantTimeZone, hasSchedulingOrPayroll] = await Promise.all([
+      resolveRestaurantTimeZone(supabase, projectRef),
+      hasSchedulingOrPayrollCapability(projectRef, supabase),
+    ]);
     const todayStr = ymdInTimeZone(new Date(), restaurantTimeZone);
 
     // Get model configuration
     const modelConfig = getModel({ routingKey, requiresTools: true });
     
     // Get available tools based on user role
-    const tools = getTools(projectRef, userRestaurant.role);
+    const tools = getTools(projectRef, userRestaurant.role, { hasSchedulingOrPayroll });
+
+    // Name get_labor_costs only when the user can call it.
+    const laborToolsPrompt = hasSchedulingOrPayroll
+      ? `   - **get_labor_costs: REQUIRED for labor cost questions (aggregate totals available to all roles)**
+     * For per-employee detail (hours, cost, days worked) pass include_employee_breakdown: true. The employee_breakdown field is populated for manager/owner callers and null for everyone else.
+     * Example: "What's my labor cost this week?" → get_labor_costs with period: "week"
+     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours`
+      : `   - Labor cost and schedule tools are not available to this user. Labor data needs the view:scheduling or view:payroll permission. Tell the user this; do not estimate labor figures.`;
 
     // Add system message if not present
     const systemMessage = {
@@ -654,10 +668,7 @@ FINANCIAL DATA RULES:
      * Example: "Generate monthly P&L" → use type: 'monthly_pnl', then format the returned data as a table
 
 5. Labor & Time Punches:
-   - **get_labor_costs: REQUIRED for labor cost questions (aggregate totals available to all roles)**
-     * For per-employee detail (hours, cost, days worked) pass include_employee_breakdown: true. The employee_breakdown field is populated for manager/owner callers and null for everyone else.
-     * Example: "What's my labor cost this week?" → get_labor_costs with period: "week"
-     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours
+${laborToolsPrompt}
    - **get_time_punches (manager+owner only): REQUIRED to answer "who worked when" or to drill into specific shifts**
      * Returns one row per work period (clock-in/out pair) with hours and breaks deducted, joined to employee name/position.
      * Filter by employee_id, position, or min_hours when the user asks about a specific person, role, or full shifts only.

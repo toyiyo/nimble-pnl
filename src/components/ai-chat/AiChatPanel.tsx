@@ -18,6 +18,7 @@ import { useAiChatSessions } from '@/hooks/useAiChatSessions';
 import { useAiChatMessages } from '@/hooks/useAiChatMessages';
 import { useSubscription } from '@/hooks/useSubscription';
 import { AiChatConversationList } from './AiChatConversationList';
+import { mergeLoadedMessages, selectUnsavedMessages, titleForSession } from '@/lib/aiChatPersistence';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 
@@ -75,63 +76,66 @@ export function AiChatPanel() {
   // Track the last synced session to prevent overwriting in-flight streaming content
   const lastSyncedSessionRef = useRef<string | null>(null);
   const hasLoadedInitialMessages = useRef(false);
+  // The session that owns the running turn. The value is null when no turn runs.
+  const turnSessionRef = useRef<string | null>(null);
+  // True while a submit waits for createSession. A second submit then does nothing.
+  const submittingRef = useRef(false);
+  const prevRestaurantIdRef = useRef(restaurantId);
+
+  // A session belongs to one restaurant. When the user selects another
+  // restaurant, stop the turn and leave the session of the old restaurant.
+  // The first load (no restaurant, then a restaurant) keeps the saved session.
+  useEffect(() => {
+    const previous = prevRestaurantIdRef.current;
+    prevRestaurantIdRef.current = restaurantId;
+    if (!previous || previous === restaurantId) return;
+    abortStream();
+    clearCurrentSession();
+    clearMessages();
+  }, [restaurantId, abortStream, clearCurrentSession, clearMessages]);
+
+  // IDs of the messages that are in the database. Message IDs are UUIDs, so one
+  // set serves all sessions. The panel does not reset the set when the session
+  // changes, so it does not save rows of the old session into the new session.
+  const savedMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Load messages from database only when session actually switches
   useEffect(() => {
-    // Session changed - mark that we need to load messages
     if (currentSessionId !== lastSyncedSessionRef.current) {
       hasLoadedInitialMessages.current = false;
       lastSyncedSessionRef.current = currentSessionId;
 
-      if (!currentSessionId) {
+      // A turn of another session must not add rows to this session. The
+      // submit of a new session's first turn sets turnSessionRef, so that
+      // turn continues. With no session, the view shows no rows.
+      if (!currentSessionId || turnSessionRef.current !== currentSessionId) {
+        abortStream();
         clearMessages();
-        return;
       }
+      if (!currentSessionId) return;
     }
 
-    // Load messages once when they become available for the current session
-    if (currentSessionId && !hasLoadedInitialMessages.current && dbMessages.length > 0) {
-      setMessages(dbMessages);
+    // Load the rows once when they arrive. A streaming turn owns the messages,
+    // so the load waits for the end of the turn.
+    if (currentSessionId && !hasLoadedInitialMessages.current && !isStreaming && dbMessages.length > 0) {
+      dbMessages.forEach((m) => savedMessageIdsRef.current.add(m.id));
+      setMessages((prev) => mergeLoadedMessages(dbMessages, prev));
       hasLoadedInitialMessages.current = true;
     }
-  }, [currentSessionId, dbMessages, setMessages, clearMessages]);
+  }, [currentSessionId, dbMessages, isStreaming, setMessages, clearMessages, abortStream]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Track which messages have been saved to prevent duplicates
-  const savedMessageIdsRef = useRef<Set<string>>(new Set());
-
-  // Reset saved message tracking when session changes
-  useEffect(() => {
-    if (currentSessionId) {
-      // Initialize with existing DB message IDs when session loads
-      savedMessageIdsRef.current = new Set(dbMessages.map((m) => m.id));
-    } else {
-      savedMessageIdsRef.current.clear();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId]); // Intentionally only depend on sessionId to reset tracking
-
   // Save messages after streaming completes
   useEffect(() => {
     const saveMessages = async () => {
       if (!isStreaming && currentSessionId && messages.length > 0) {
-        // Find messages not yet in database by comparing content + role
-        // This avoids the ID mismatch issue (client IDs vs DB UUIDs)
-        const newMessages = messages.filter((msg) => {
-          // Skip if we've already processed this message
-          if (savedMessageIdsRef.current.has(msg.id)) {
-            return false;
-          }
-          // Check if a message with same content and role exists in DB
-          const existsInDb = dbMessages.some(
-            (dbMsg) => dbMsg.content === msg.content && dbMsg.role === msg.role
-          );
-          return !existsInDb;
-        });
+        // Compare the message IDs only. All tool-call rows have content '', so
+        // a content comparison drops rows.
+        const newMessages = selectUnsavedMessages(messages, savedMessageIdsRef.current);
 
         if (newMessages.length > 0) {
           try {
@@ -145,10 +149,9 @@ export function AiChatPanel() {
               }))
             );
 
-            // Auto-generate title from first user message
-            const firstUserMsg = messages.find((m) => m.role === 'user');
-            if (messages.length <= 3 && firstUserMsg) {
-              const title = firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '');
+            // Set the title from the first user message of the session.
+            const title = titleForSession(messages);
+            if (title) {
               updateTitle({ sessionId: currentSessionId, title });
             }
           } catch (err) {
@@ -161,7 +164,7 @@ export function AiChatPanel() {
     };
 
     saveMessages();
-  }, [isStreaming, currentSessionId, messages, dbMessages, saveMessagesBatch, updateTitle]);
+  }, [isStreaming, currentSessionId, messages, saveMessagesBatch, updateTitle]);
 
   // Resize handlers
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -199,6 +202,8 @@ export function AiChatPanel() {
   const handleNewConversation = useCallback(async () => {
     if (!restaurantId) return;
 
+    // The running turn belongs to the old conversation.
+    abortStream();
     try {
       const session = await createSession({ restaurantId });
       switchSession(session.id);
@@ -206,26 +211,38 @@ export function AiChatPanel() {
     } catch (err) {
       console.error('Failed to create session:', err);
     }
-  }, [restaurantId, createSession, switchSession, clearMessages]);
+  }, [restaurantId, createSession, switchSession, clearMessages, abortStream]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming || submittingRef.current) return;
+    submittingRef.current = true;
 
-    // Create session if needed
-    if (!currentSessionId && restaurantId) {
-      try {
-        const session = await createSession({ restaurantId });
-        switchSession(session.id);
-      } catch (err) {
-        console.error('Failed to create session:', err);
-        return;
+    try {
+      let turnSessionId = currentSessionId;
+      if (!turnSessionId && restaurantId) {
+        try {
+          const session = await createSession({ restaurantId });
+          turnSessionId = session.id;
+        } catch (err) {
+          console.error('Failed to create session:', err);
+          return;
+        }
       }
-    }
 
-    const message = input;
-    setInput('');
-    await sendMessage(message);
+      const message = input;
+      setInput('');
+      // Set the owner before the switch, so the load effect keeps this turn.
+      turnSessionRef.current = turnSessionId;
+      if (turnSessionId && turnSessionId !== currentSessionId) switchSession(turnSessionId);
+      try {
+        await sendMessage(message);
+      } finally {
+        if (turnSessionRef.current === turnSessionId) turnSessionRef.current = null;
+      }
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   const handleQuickAction = (prompt: string) => {
@@ -300,15 +317,15 @@ export function AiChatPanel() {
                       ))}
                     </Suspense>
                     {isStreaming && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2" role="status" aria-live="polite">
                         <div className="flex-shrink-0">
                           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
-                            <ChefHat className="h-3.5 w-3.5 text-primary-foreground" />
+                            <ChefHat className="h-3.5 w-3.5 text-primary-foreground" aria-hidden="true" />
                           </div>
                         </div>
                         <Card className="max-w-[85%] px-3 py-2 bg-muted/50 border-0 shadow-none">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                             <span>Cooking up a response...</span>
                           </div>
                         </Card>
@@ -321,9 +338,9 @@ export function AiChatPanel() {
 
               {/* Error */}
               {error && (
-                <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+                <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20" role="alert">
                   <div className="flex items-center gap-2 text-sm text-destructive">
-                    <XCircle className="h-4 w-4" />
+                    <XCircle className="h-4 w-4" aria-hidden="true" />
                     <span className="text-xs">{error}</span>
                   </div>
                 </div>

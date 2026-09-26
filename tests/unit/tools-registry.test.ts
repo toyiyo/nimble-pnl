@@ -11,6 +11,18 @@ import {
 } from '../../supabase/functions/_shared/tools-registry';
 import { PAY_HIDDEN_TOOL_HINT } from '../../supabase/functions/_shared/payHidden';
 
+type RpcResult = { data: boolean | null; error: unknown };
+
+/**
+ * Copy of the supabase-js PostgREST builder shape: it has then() and no
+ * catch() or finally(). A mock that returns a real Promise hides a .catch()
+ * call on the builder (lesson 2026-07-29).
+ */
+function thenable(result: RpcResult | Error): PromiseLike<RpcResult> {
+  const settled = result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+  return { then: (onFulfilled, onRejected) => settled.then(onFulfilled, onRejected) };
+}
+
 /**
  * Tests for AI chat tool registration + role gating.
  *
@@ -214,7 +226,7 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
   function mockSupabase(responses: Record<string, boolean | null>): CapabilityCheckClient {
     return {
       rpc: vi.fn((_fn: string, args: { p_restaurant_id: string; p_capability: string }) =>
-        Promise.resolve({ data: responses[args.p_capability] ?? false, error: null }),
+        thenable({ data: responses[args.p_capability] ?? false, error: null }),
       ),
     };
   }
@@ -262,8 +274,8 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
     const supabase: CapabilityCheckClient = {
       rpc: vi.fn((_fn: string, args: { p_restaurant_id: string; p_capability: string }) =>
         args.p_capability === 'view:scheduling'
-          ? Promise.resolve({ data: null, error: rpcError })
-          : Promise.resolve({ data: false, error: null }),
+          ? thenable({ data: null, error: rpcError })
+          : thenable({ data: false, error: null }),
       ),
     };
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -289,8 +301,8 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
     const supabase: CapabilityCheckClient = {
       rpc: vi.fn((_fn: string, args: { p_restaurant_id: string; p_capability: string }) =>
         args.p_capability === 'view:scheduling'
-          ? Promise.reject(rpcError)
-          : Promise.resolve({ data: false, error: null }),
+          ? thenable(rpcError)
+          : thenable({ data: false, error: null }),
       ),
     };
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -310,6 +322,25 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
       consoleErrorSpy.mockRestore();
     }
   });
+
+  it('hasSchedulingOrPayrollCapability: fails closed AND logs when rpc() throws synchronously', async () => {
+    const rpcError = new Error('client not ready');
+    const supabase: CapabilityCheckClient = {
+      rpc: vi.fn(() => {
+        throw rpcError;
+      }),
+    };
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(await hasSchedulingOrPayrollCapability('rest-1', supabase)).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view:scheduling'),
+        expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
 });
 
 describe('tools-registry: hasPayRatesCapability', () => {
@@ -318,7 +349,7 @@ describe('tools-registry: hasPayRatesCapability', () => {
   // labor tools must know when a $0 cost is a masked value.
   function rpcReturning(result: { data: boolean | null; error: unknown } | Error) {
     return vi.fn((_fn: string, _args: { p_restaurant_id: string; p_capability: string }) =>
-      result instanceof Error ? Promise.reject(result) : Promise.resolve(result),
+      thenable(result),
     );
   }
 
@@ -360,6 +391,23 @@ describe('tools-registry: hasPayRatesCapability', () => {
     try {
       const result = await hasPayRatesCapability('rest-1', { rpc: rpcReturning(rpcError) });
       expect(result).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view:pay_rates'),
+        expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('fails closed and logs when rpc() throws synchronously', async () => {
+    const rpcError = new Error('client not ready');
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const rpc = vi.fn(() => {
+        throw rpcError;
+      });
+      expect(await hasPayRatesCapability('rest-1', { rpc })).toBe(false);
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('view:pay_rates'),
         expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),

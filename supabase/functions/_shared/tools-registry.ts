@@ -927,11 +927,36 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
  */
 export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview'] as const;
 
+type CapabilityRpcResult = { data: boolean | null; error: unknown };
+
+/**
+ * supabase-js rpc() returns a PostgREST builder. The builder has then() and no
+ * catch(), so the return type is PromiseLike. Do not call .catch() on it.
+ */
 export interface CapabilityCheckClient {
   rpc: (
     fn: string,
     args: { p_restaurant_id: string; p_capability: string }
-  ) => Promise<{ data: boolean | null; error: unknown }>;
+  ) => PromiseLike<CapabilityRpcResult>;
+}
+
+/**
+ * Call user_has_capability and never reject. A thrown or rejected call becomes
+ * { data: null, error }, so the callers log it and fail closed.
+ */
+async function callCapabilityRpc(
+  supabase: CapabilityCheckClient,
+  restaurantId: string,
+  capability: string
+): Promise<CapabilityRpcResult> {
+  try {
+    return await supabase.rpc('user_has_capability', {
+      p_restaurant_id: restaurantId,
+      p_capability: capability,
+    });
+  } catch (err: unknown) {
+    return { data: null, error: err };
+  }
 }
 
 /**
@@ -946,24 +971,11 @@ export async function hasSchedulingOrPayrollCapability(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
-  // `.catch()` on each call (rather than letting Promise.all reject) so a
-  // rejected RPC promise — e.g. a client that throws instead of resolving
-  // with an `error` field — still lands in the logged deny path below
-  // instead of escaping as an unhandled rejection that would bypass it.
-  const toResult = (err: unknown) => ({ data: null, error: err });
+  // callCapabilityRpc never rejects, so Promise.all cannot reject and skip
+  // the logged deny path below.
   const [scheduling, payroll] = await Promise.all([
-    supabase
-      .rpc('user_has_capability', {
-        p_restaurant_id: restaurantId,
-        p_capability: 'view:scheduling',
-      })
-      .catch(toResult),
-    supabase
-      .rpc('user_has_capability', {
-        p_restaurant_id: restaurantId,
-        p_capability: 'view:payroll',
-      })
-      .catch(toResult),
+    callCapabilityRpc(supabase, restaurantId, 'view:scheduling'),
+    callCapabilityRpc(supabase, restaurantId, 'view:payroll'),
   ]);
 
   // An RPC failure here must not disappear silently: without logging it, a
@@ -1000,12 +1012,7 @@ export async function hasPayRatesCapability(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
-  const result = await supabase
-    .rpc('user_has_capability', {
-      p_restaurant_id: restaurantId,
-      p_capability: 'view:pay_rates',
-    })
-    .catch((err: unknown) => ({ data: null, error: err }));
+  const result = await callCapabilityRpc(supabase, restaurantId, 'view:pay_rates');
 
   if (result.error) {
     console.error('hasPayRatesCapability: view:pay_rates RPC failed', {

@@ -77,7 +77,13 @@ Do these steps in order.
    Google, SSO, and email confirmation return to this URL.
 4. **Deploy.** A merge to `main` deploys the `mcp` function
    (`.github/workflows/deploy-supabase.yml`) and the app (Vercel).
-5. **Check the token path.** `ai-execute-tool` has `verify_jwt = true`. If the
+5. **Use the EasyShiftHQ domain.** Vercel proxies `https://app.easyshifthq.com/mcp`
+   to the `mcp` function (`vercel.json`). After the app deploy, set the Supabase
+   secret `MCP_PUBLIC_URL` to `https://app.easyshifthq.com/mcp`. Then remove
+   and add every existing connector again with the new URL: the metadata
+   `resource` changes, and clients refuse a resource that does not match the
+   URL they connect to.
+6. **Check the token path.** `ai-execute-tool` has `verify_jwt = true`. If the
    project uses asymmetric JWT signing keys, check that the gateway accepts
    an OAuth access token. Do the "Smoke test" below before you announce the
    connector.
@@ -91,13 +97,16 @@ The function needs no new secrets. It reads `SUPABASE_URL` and
 | `MCP_PUBLIC_URL` | Full public URL of the MCP endpoint. |
 | `MCP_AUTH_ISSUER` | OAuth issuer. Default: `<public URL>/auth/v1`. |
 
-## Connect Claude
+## Connect Claude or ChatGPT
 
 The connector URL is:
 
 ```text
-https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/mcp
+https://app.easyshifthq.com/mcp
 ```
+
+Before the `MCP_PUBLIC_URL` secret is set, use the function URL
+`https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/mcp`.
 
 - **claude.ai and Claude Desktop:** open **Settings → Connectors → Add custom
   connector**. Enter the name `EasyShiftHQ` and the URL. Click **Connect**,
@@ -106,8 +115,11 @@ https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/mcp
   `easyshifthq` to sign in.
 
   ```bash
-  claude mcp add --transport http easyshifthq https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/mcp
+  claude mcp add --transport http easyshifthq https://app.easyshifthq.com/mcp
   ```
+- **ChatGPT:** turn on developer mode (**Settings → Apps & Connectors →
+  Advanced settings**), then create a connector with the URL and OAuth
+  authentication. The consent page allows the `chatgpt.com` callback.
 
 Example questions:
 
@@ -118,19 +130,21 @@ Example questions:
 
 ## Stop the access
 
-1. In EasyShiftHQ, open **Integrations → Claude and connected apps**.
+1. In EasyShiftHQ, open **Integrations → AI assistants and connected apps**.
 2. Click **Revoke** next to the app. Supabase Auth deletes the grant, and the
    tokens of that app stop working.
-3. In Claude, delete the connector.
+3. In Claude or ChatGPT, delete the connector.
 
 ## Consent page protections
 
 - The page shows the host of the redirect URL.
-- A `claude.ai` or `claude.com` host over HTTPS gets **Allow**.
+- A `claude.ai`, `claude.com`, or `chatgpt.com` host over HTTPS gets
+  **Allow**. The list is `TRUSTED_REDIRECT_HOSTS` in
+  `src/lib/oauthConsentApi.ts`. Add a host there to support another assistant.
 - A loopback host (`localhost`, `127.0.0.1`) gets **Allow** and a note. Claude
   Code and Claude Desktop use it.
 - Any other host gets **Deny** only. Dynamic registration is open, so any
-  party can register a client named "Claude". The host check stops a phishing
+  party can register a client named "Claude" or "ChatGPT". The host check stops a phishing
   client from getting a token.
 - The page does not work inside a frame, and Vercel sends
   `frame-ancestors 'none'` for `/oauth/*`.
@@ -143,7 +157,7 @@ Example questions:
 Run these requests after a deploy. Replace `$TOKEN` with a user access token.
 
 ```bash
-URL=https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/mcp
+URL=https://app.easyshifthq.com/mcp
 
 # 1. No token: expect 401 and a WWW-Authenticate header.
 curl -si -X POST "$URL" -H 'Content-Type: application/json' \
@@ -169,6 +183,25 @@ curl -s -X POST "$URL" -H 'Content-Type: application/json' -H "Authorization: Be
    not commit that change.
 3. Use the MCP Inspector (`npx @modelcontextprotocol/inspector`) with the URL
    `http://127.0.0.1:54321/functions/v1/mcp`.
+
+## List in the Claude Connectors Directory
+
+Submit at [claude.ai/directory/manage](https://claude.ai/directory/manage) →
+**Submit new** → **MCP connector**. Any paid Claude plan can submit.
+
+| Requirement | Where it is |
+|-------------|-------------|
+| HTTPS server on the EasyShiftHQ domain | `https://app.easyshifthq.com/mcp` (setup step 5) |
+| OAuth with dynamic client registration | Supabase OAuth server (setup step 1) |
+| A `title` and `readOnlyHint` or `destructiveHint` on every tool | `MCP_TOOL_TITLES` and `MCP_WRITE_TOOLS` in `supabase/functions/_shared/mcpHandler.ts` |
+| Tool descriptions describe the tool and do not tell Claude how to behave | `tools-registry.ts`, `payHidden.ts` |
+| Public privacy policy URL | Owner: legal. Must cover collection, use, storage, sharing, retention, and a contact. |
+| Public documentation with setup steps and at least 3 example prompts | Publish this page's "Connect" and "Example questions" as a help article. |
+| Support contact, icon, company details | Portal fields |
+| Reviewer test account with a fully populated restaurant | A demo login with sales, labor, inventory, and banking data |
+| Every tool tested in Claude | Portal step **Test & launch** |
+
+Escalations: `mcp-review@anthropic.com`.
 
 ## Troubleshooting
 

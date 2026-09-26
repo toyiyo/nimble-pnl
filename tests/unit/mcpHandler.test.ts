@@ -86,6 +86,16 @@ describe('buildMcpTools', () => {
     );
   });
 
+  it('gives every tool a unique title, top-level and in annotations (directory rule)', () => {
+    const tools = buildMcpTools(['owner', 'manager', 'chef']);
+    for (const tool of tools) {
+      expect(tool.title, tool.name).toMatch(/\S/);
+      expect(tool.annotations.title).toBe(tool.title);
+      expect(tool.name.length).toBeLessThanOrEqual(64);
+    }
+    expect(new Set(tools.map((t) => t.title)).size).toBe(tools.length);
+  });
+
   it('returns only list_restaurants when the user has no roles', () => {
     expect(buildMcpTools([]).map((t) => t.name)).toEqual(['list_restaurants']);
   });

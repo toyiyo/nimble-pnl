@@ -11,7 +11,11 @@ vi.mock('@/lib/oauthConsentApi', () => ({
   listOAuthGrants: mockListOAuthGrants,
   revokeOAuthGrant: mockRevokeOAuthGrant,
 }));
-vi.mock('@/integrations/supabase/client', () => ({ SUPABASE_URL: 'https://proj.supabase.co' }));
+const mockClient = vi.hoisted(() => ({
+  SUPABASE_URL: 'https://proj.supabase.co',
+  PRODUCTION_SUPABASE_URL: 'https://prod.supabase.co',
+}));
+vi.mock('@/integrations/supabase/client', () => mockClient);
 
 import { ConnectedAppsCard, CLAUDE_CONNECTOR_URL } from '@/components/integrations/ConnectedAppsCard';
 
@@ -40,11 +44,22 @@ describe('ConnectedAppsCard', () => {
     await screen.findByText('Claude');
   });
 
+  it('uses the EasyShiftHQ domain on production', async () => {
+    vi.resetModules();
+    mockClient.SUPABASE_URL = mockClient.PRODUCTION_SUPABASE_URL;
+    try {
+      const mod = await import('@/components/integrations/ConnectedAppsCard');
+      expect(mod.CLAUDE_CONNECTOR_URL).toBe('https://app.easyshifthq.com/mcp');
+    } finally {
+      mockClient.SUPABASE_URL = 'https://proj.supabase.co';
+    }
+  });
+
   it('copies the connector URL', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     renderCard();
-    fireEvent.click(screen.getByRole('button', { name: /copy the claude connector url/i }));
+    fireEvent.click(screen.getByRole('button', { name: /copy the connector url/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(CLAUDE_CONNECTOR_URL));
   });
 

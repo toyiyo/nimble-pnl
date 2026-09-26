@@ -216,7 +216,7 @@ in Claude. A later task can add a card to `/integrations`.
 
 - **Unknown redirect host:** the consent page shows only **Deny**. Loopback
   hosts get a note. (security)
-- **Stop the access:** a new "Claude and connected apps" card on
+- **Stop the access:** a new "AI assistants and connected apps" card on
   `/integrations` lists the OAuth grants and revokes them
   (`GET`/`DELETE /auth/v1/user/oauth/grants`). (security)
 - **Frames:** the page refuses to work in a frame. `vercel.json` covers
@@ -273,6 +273,20 @@ Deferred, with reasons:
   `verify_jwt = true`, a deliberate security setting
   (`memory/lessons.md`, "verify_jwt = false is not 'no auth'"). The
   Supabase guide warns that a key rotation can break those functions.
+
+## Follow-up: prepare the Connectors Directory listing, and add ChatGPT
+
+- Every tool gets a `title`, top-level and in `annotations`
+  (`MCP_TOOL_TITLES`). The directory requires it.
+- `PAY_HIDDEN_TOOL_HINT` describes the field and no longer tells the model
+  what to say. Directory review rejects behavior instructions in tool
+  descriptions.
+- The connector URL moves to `https://app.easyshifthq.com/mcp`. Vercel (and
+  the Netlify `_redirects`) proxy it to the function. The directory asks that
+  the server domain match the service. `MCP_PUBLIC_URL` sets the metadata
+  `resource` to the same URL.
+- `chatgpt.com` joins the trusted redirect hosts, so ChatGPT can connect.
+  The card and the consent page name Claude or ChatGPT.
 
 ## Test plan
 

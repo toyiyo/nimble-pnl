@@ -110,6 +110,21 @@ describe('OAuthConsent page', () => {
     expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
   });
 
+  it('keeps Allow for a ChatGPT redirect', async () => {
+    mockGetAuthorization.mockResolvedValue({
+      kind: 'consent',
+      details: {
+        ...DETAILS,
+        client: { ...DETAILS.client, name: 'ChatGPT' },
+        redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
+      },
+    });
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    expect(await screen.findByRole('button', { name: 'Allow' })).toBeEnabled();
+    expect(screen.queryByTestId('oauth-untrusted-host')).not.toBeInTheDocument();
+    expect(screen.getByText(/started this connection from Claude or ChatGPT/i)).toBeInTheDocument();
+  });
+
   it('shows a note and keeps Allow for a loopback redirect (Claude Code)', async () => {
     mockGetAuthorization.mockResolvedValue({
       kind: 'consent',

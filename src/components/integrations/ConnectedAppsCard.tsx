@@ -8,9 +8,15 @@ import { Check, Copy, Link2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useOAuthGrants } from '@/hooks/useOAuthGrants';
 
-import { SUPABASE_URL } from '@/integrations/supabase/client';
+import { PRODUCTION_SUPABASE_URL, SUPABASE_URL } from '@/integrations/supabase/client';
 
-export const CLAUDE_CONNECTOR_URL = `${SUPABASE_URL}/functions/v1/mcp`;
+/**
+ * Production uses the EasyShiftHQ domain: Vercel proxies /mcp to the mcp edge
+ * function (vercel.json). Other environments use the function URL directly.
+ */
+export const CONNECTOR_PUBLIC_URL = 'https://app.easyshifthq.com/mcp';
+export const CLAUDE_CONNECTOR_URL =
+  SUPABASE_URL === PRODUCTION_SUPABASE_URL ? CONNECTOR_PUBLIC_URL : `${SUPABASE_URL}/functions/v1/mcp`;
 
 const GRANT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
 
@@ -54,14 +60,14 @@ export function ConnectedAppsCard() {
       <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-foreground" aria-hidden="true" />
         <h2 id="connected-apps-heading" className="text-[13px] font-semibold text-foreground">
-          Claude and connected apps
+          AI assistants and connected apps
         </h2>
       </div>
 
       <div className="p-4 space-y-4">
         <div className="space-y-2">
           <p className="text-[14px] text-foreground">
-            Ask Claude about your sales, P&amp;L, labor, and inventory. In Claude, add a custom connector with
+            Ask Claude or ChatGPT about your sales, P&amp;L, labor, and inventory. Add a custom connector with
             this URL, then sign in to EasyShiftHQ.
           </p>
           <div className="flex items-center gap-2">
@@ -72,7 +78,7 @@ export function ConnectedAppsCard() {
               type="button"
               variant="ghost"
               onClick={copyUrl}
-              aria-label="Copy the Claude connector URL"
+              aria-label="Copy the connector URL"
               className="h-9 px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
             >
               {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}

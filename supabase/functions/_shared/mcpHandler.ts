@@ -50,6 +50,43 @@ const MCP_EXCLUDED_TOOLS: ReadonlySet<string> = new Set(['navigate', 'get_ai_ins
 
 const LIST_RESTAURANTS = 'list_restaurants';
 
+/**
+ * Human-readable tool titles. The Connectors Directory requires a title on
+ * every tool. A tool with no entry gets a title from its name.
+ */
+const MCP_TOOL_TITLES: Readonly<Record<string, string>> = {
+  get_kpis: 'Get KPIs',
+  get_inventory_status: 'Get inventory status',
+  get_recipe_analytics: 'Get recipe analytics',
+  get_sales_summary: 'Get sales summary',
+  get_inventory_transactions: 'Get inventory transactions',
+  get_labor_costs: 'Get labor costs',
+  get_schedule_overview: 'Get schedule overview',
+  get_daily_sales_totals: 'Get daily sales totals',
+  get_financial_intelligence: 'Get financial intelligence',
+  get_time_punches: 'Get time punches',
+  get_payroll_summary: 'Get payroll summary',
+  get_tip_summary: 'Get tip summary',
+  get_pending_outflows: 'Get pending outflows',
+  get_operating_costs: 'Get operating costs',
+  get_monthly_trends: 'Get monthly trends',
+  get_expense_health: 'Get expense health',
+  get_break_even_progress: 'Get break-even progress',
+  get_bank_transactions: 'Get bank transactions',
+  get_financial_statement: 'Get financial statement',
+  generate_report: 'Generate report',
+  batch_categorize_transactions: 'Categorize bank transactions',
+  batch_categorize_pos_sales: 'Categorize POS sales',
+  create_categorization_rule: 'Create categorization rule',
+};
+
+function titleFor(name: string): string {
+  const title = MCP_TOOL_TITLES[name];
+  if (title) return title;
+  const words = name.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 const INSTRUCTIONS =
   'EasyShiftHQ is a restaurant management system. Call list_restaurants first ' +
   'to get the restaurant ids that the user can access. Pass restaurant_id to ' +
@@ -83,7 +120,7 @@ export interface McpDeps {
 
 export interface McpTool {
   name: string;
-  title?: string;
+  title: string;
   description: string;
   inputSchema: {
     type: 'object';
@@ -91,6 +128,7 @@ export interface McpTool {
     required?: string[];
   };
   annotations: {
+    title: string;
     readOnlyHint: boolean;
     destructiveHint?: boolean;
     openWorldHint: boolean;
@@ -109,7 +147,7 @@ const LIST_RESTAURANTS_TOOL: McpTool = {
   description:
     'List the restaurants that the signed-in user can access, with the id, name, and role of the user in each.',
   inputSchema: { type: 'object', properties: {} },
-  annotations: { readOnlyHint: true, openWorldHint: false },
+  annotations: { title: 'List restaurants', readOnlyHint: true, openWorldHint: false },
 };
 
 /** Memberships that can use the connector. Drops staff, kiosk and a null role. */
@@ -119,8 +157,10 @@ export function eligibleMemberships(memberships: Membership[]): Membership[] {
 
 function toMcpTool(tool: ToolDefinition): McpTool {
   const write = WRITE_TOOL_SET.has(tool.name);
+  const title = titleFor(tool.name);
   return {
     name: tool.name,
+    title,
     description: tool.description,
     inputSchema: {
       type: 'object',
@@ -128,8 +168,8 @@ function toMcpTool(tool: ToolDefinition): McpTool {
       ...(tool.parameters.required ? { required: tool.parameters.required } : {}),
     },
     annotations: write
-      ? { readOnlyHint: false, destructiveHint: true, openWorldHint: false }
-      : { readOnlyHint: true, openWorldHint: false },
+      ? { title, readOnlyHint: false, destructiveHint: true, openWorldHint: false }
+      : { title, readOnlyHint: true, openWorldHint: false },
   };
 }
 

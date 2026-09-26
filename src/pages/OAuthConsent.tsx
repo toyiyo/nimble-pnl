@@ -23,7 +23,7 @@ import {
   saveConsentReturnPath,
 } from '@/lib/oauthReturnPath';
 
-const START_AGAIN = 'Start the connection again in Claude.';
+const START_AGAIN = 'Start the connection again in Claude or ChatGPT.';
 /** Supabase Auth answers these statuses for an expired or used authorization. */
 const EXPIRED_STATUSES: ReadonlySet<number> = new Set([400, 404, 410]);
 
@@ -303,8 +303,8 @@ export default function OAuthConsent() {
           >
             <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
             <p>
-              This request sends you to <span className="font-medium">{host}</span>, which is not a Claude
-              site. EasyShiftHQ does not allow it. Deny the request.
+              This request sends you to <span className="font-medium">{host}</span>, which is not a
+              supported assistant (Claude or ChatGPT). EasyShiftHQ does not allow it. Deny the request.
             </p>
           </div>
         )}
@@ -380,7 +380,7 @@ export default function OAuthConsent() {
           </button>
         </div>
 
-        <p className="text-[13px] text-muted-foreground">Allow only if you started this connection from Claude.</p>
+        <p className="text-[13px] text-muted-foreground">Allow only if you started this connection from Claude or ChatGPT.</p>
 
         {decision.isError && (
           <p role="alert" className="text-[13px] text-destructive">

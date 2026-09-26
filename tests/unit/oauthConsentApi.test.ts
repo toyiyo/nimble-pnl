@@ -114,9 +114,12 @@ describe('submitConsent', () => {
 
 describe('classifyRedirectUri', () => {
   it.each([
-    ['https://claude.ai/api/mcp/auth_callback', 'claude'],
-    ['https://claude.com/cb', 'claude'],
-    ['https://www.claude.ai/cb', 'claude'],
+    ['https://claude.ai/api/mcp/auth_callback', 'trusted'],
+    ['https://claude.com/cb', 'trusted'],
+    ['https://www.claude.ai/cb', 'trusted'],
+    ['https://chatgpt.com/connector_platform_oauth_redirect', 'trusted'],
+    ['http://chatgpt.com/cb', 'unknown'],
+    ['https://chatgpt.com.evil.com/cb', 'unknown'],
     ['http://claude.ai/cb', 'unknown'],
     ['http://localhost:33418/callback', 'loopback'],
     ['http://127.0.0.1:5000/cb', 'loopback'],

@@ -1,1 +1,3 @@
+/mcp https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/mcp 200
+/mcp/* https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/mcp/:splat 200
 /* /index.html 200

@@ -85,7 +85,7 @@ export function getTools(
             description: 'End date for custom period (YYYY-MM-DD)'
           }
         },
-        required: [] // The handler defaults period to 'month'.
+        required: ['period']
       }
     },
 
@@ -172,7 +172,7 @@ export function getTools(
             default: false
           }
         },
-        required: [] // The handler defaults period to 'month'.
+        required: ['period']
       }
     },
 
@@ -923,10 +923,18 @@ let allToolsByName: Map<string, ToolDefinition> | undefined;
  * (for example the raw string of bad JSON from the model), every required
  * field is missing. Uses the full registry, not a role-filtered list.
  * Returns [] for an unknown tool; the dispatcher rejects those itself.
+ *
+ * period is not enforced: every handler with a period has a default window
+ * (calculateDateRange: last 7 days; get_kpis and get_sales_summary: month),
+ * and calls without it worked before this check.
  */
+const DEFAULTED_ARGS = new Set(['period']);
+
 export function missingRequiredArgs(toolName: string, args: unknown): string[] {
   allToolsByName ??= new Map(getTools('', 'owner').map((tool) => [tool.name, tool]));
-  const required = allToolsByName.get(toolName)?.parameters.required ?? [];
+  const required = (allToolsByName.get(toolName)?.parameters.required ?? []).filter(
+    (field) => !DEFAULTED_ARGS.has(field)
+  );
   if (typeof args !== 'object' || args === null || Array.isArray(args)) {
     return [...required];
   }

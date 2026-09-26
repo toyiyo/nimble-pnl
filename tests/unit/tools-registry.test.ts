@@ -503,8 +503,29 @@ describe('tools-registry: missingRequiredArgs (D10)', () => {
     ]);
   });
 
-  it.each(['get_kpis', 'get_sales_summary'])('%s does not require period (the handler defaults it)', (name) => {
+  // Every handler with a period falls back to a default window
+  // (calculateDateRange: last 7 days; get_kpis and get_sales_summary: month).
+  // A call without period worked before this check, so it must still work.
+  const periodTools = getTools('rest-1', 'owner')
+    .filter((t) => t.parameters.required?.includes('period'))
+    .map((t) => t.name);
+
+  it('finds the period tools', () => {
+    expect(periodTools).toEqual(expect.arrayContaining(['get_kpis', 'get_sales_summary', 'get_labor_costs', 'get_expense_health']));
+  });
+
+  it.each(periodTools)('%s does not reject a call without period', (name) => {
     expect(missingRequiredArgs(name, {})).toEqual([]);
+  });
+
+  it('still rejects the calls that gave garbage before (navigate, get_financial_intelligence)', () => {
+    expect(missingRequiredArgs('navigate', {})).toEqual(['section']);
+    expect(missingRequiredArgs('get_financial_intelligence', {})).toEqual(['analysis_type', 'start_date', 'end_date']);
+  });
+
+  it.each(['get_kpis', 'get_sales_summary'])('%s still tells the model that period is required', (name) => {
+    const def = getTools('rest-1', 'owner').find((t) => t.name === name);
+    expect(def?.parameters.required).toEqual(['period']);
   });
 });
 

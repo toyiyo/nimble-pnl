@@ -158,7 +158,16 @@ redaction, and model fallback passed. This design does not change them.
   name. `null`, `undefined` and `''` count as missing. The dispatcher runs it
   after the permission check and before `resolveRestaurantTimeZone`. It returns
   HTTP 200 `{ ok:false, error:{ code:'INVALID_ARGUMENTS', missing, message } }`.
-  Remove `period` from `required` for `get_kpis` and `get_sales_summary`.
+  The check does not enforce `period`: every handler with a period has a
+  default window (`supabase/functions/_shared/restaurantDate.ts:203-205`: last
+  7 days; `get_kpis` and `get_sales_summary`: month). The registry still lists
+  `period` as required, so the model sends it.
+- Build finding (2026-09-26): a live `{}` call per tool on the old and new code
+  showed that 10 period tools answered `ok` before. The first version of this
+  fix rejected them. The `period` exemption keeps them working. Only
+  `navigate` and `get_financial_intelligence` change from `ok` to
+  `INVALID_ARGUMENTS`; their old answers were garbage ("I can take you to
+  undefined"; no date range).
 - Tests: complete call, missing field, string/`null`/`undefined` args, unknown
   tool, and "every dispatcher case has a registry entry".
 

@@ -46,17 +46,30 @@ The user chose both fixes, and the manager and owner gate.
 - Access: manager and owner. Add it to `managerOwnerTools`
   (`supabase/functions/_shared/tools-registry.ts:898-917`) and to the
   manager/owner block of `getTools` (`supabase/functions/_shared/tools-registry.ts:341`).
-- Query: one select on `chart_of_accounts` for the restaurant, through the
-  caller's JWT, so RLS applies. A chart has some hundred rows. The filter
-  runs in a pure TypeScript function, not in a PostgREST `or()` string, so a
-  comma or a parenthesis in `search` cannot change the query.
-- Cap: 500 rows. The result says when it is truncated.
+- Query: one select on `chart_of_accounts` through the caller's JWT, so RLS
+  applies. The select always has `.eq('restaurant_id', restaurantId)`: RLS
+  alone returns the rows of every restaurant of the user. `account_type` and
+  `is_active` are `.eq()` filters too. The `search` filter runs in a pure
+  TypeScript function, not in a PostgREST `or()` string, so a comma or a
+  parenthesis in `search` cannot change the query.
+- Cap: the search runs on all rows that the select returns. Then the result
+  keeps the first 500 and sets `truncated: true` when more rows matched.
 
 ### 2. The write tools accept an account code
 
-- A new pure helper, `resolveCategoryRef`, in
-  `supabase/functions/_shared/categoryLookup.ts`. It looks up a UUID by `id`
-  and any other text by `account_code`, in the same restaurant.
+- A new helper, `resolveCategoryRef`, in
+  `supabase/functions/_shared/categoryLookup.ts`. The rules:
+  - Trim the input. Do not change its case. Match with `.eq()`, because the
+    unique key is case-sensitive.
+  - A UUID-shaped input: look up `id` first. With no row, look up
+    `account_code`, because `account_code` is free text
+    (`supabase/migrations/20251018183326_5da7500b-3a17-4a58-af24-d2175258f871.sql:92`).
+  - Other input: look up `account_code`.
+  - Always filter on `restaurant_id`. Use `.maybeSingle()`.
+  - No row: return "not found". A database error: throw it, so it does not
+    show as "not found".
+  - An inactive account: return an error that names it. Do not categorize to
+    an inactive account.
 - The code lookup is safe: `(restaurant_id, account_code)` is unique
   (`supabase/migrations/20251018183326_5da7500b-3a17-4a58-af24-d2175258f871.sql:104`,
   `supabase/migrations/20251021205038_e14802bd-3989-4537-a92c-ce799399b250.sql:4-5`).
@@ -88,12 +101,15 @@ The user chose both fixes, and the manager and owner gate.
 - `get_financial_statement` rows still have no `id`. `list_categories` gives
   the id, so this change does not widen the statement output.
 - The 19 restaurants under one login is data, not code. It is out of scope.
+- PostgREST `max-rows` can cut a select at 1000 rows with no error. A chart
+  of accounts has far fewer rows, so the design accepts this limit.
 
 ## Tests
 
-- Unit: `resolveCategoryRef` (UUID path, code path, trimmed code, unknown
-  ref, other restaurant not matched by the query filter), the pure filter
-  (search on code and name, type filter, inactive filter, cap).
+- Unit: `resolveCategoryRef` (UUID path, code path, trimmed code, case kept,
+  UUID-shaped code falls back to the code, unknown ref, inactive account,
+  database error passes through, `restaurant_id` in every query), the pure
+  filter (search on code and name, no case, cap and `truncated`).
 - Unit: `list_categories` in `getTools` for manager and owner only;
   `canUseTool` gate; MCP title and `readOnlyHint`; no model instructions in
   its descriptions (existing test in `tests/unit/mcpHandler.test.ts`).

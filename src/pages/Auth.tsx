@@ -16,6 +16,7 @@ import { AppLogo } from '@/components/AppLogo';
 import { supabase } from '@/integrations/supabase/client';
 import { signInWithOAuthNative } from '@/utils/nativeRedirect';
 import { SIGNUP_PATH_STORAGE_KEY, storeAttribution, storeSignupPath } from '@/lib/analytics';
+import { postAuthRedirectPath, takeConsentReturnPath } from '@/lib/oauthReturnPath';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -52,6 +53,12 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
+      // A Claude connector consent request sent the user here to sign in.
+      const consentPath = takeConsentReturnPath();
+      if (consentPath) {
+        navigate(consentPath, { replace: true });
+        return;
+      }
       // Check if user has seen the welcome modal
       const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
       if (hasSeenWelcome) {
@@ -160,7 +167,7 @@ const Auth = () => {
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
-      const { error } = await signInWithOAuthNative('google', '/');
+      const { error } = await signInWithOAuthNative('google', postAuthRedirectPath());
 
       if (error) {
         throw error;

@@ -11,7 +11,7 @@ max_rows = 1000
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://ncdujvdgqtaunuyigflp.supabase.co"]
+additional_redirect_urls = ["https://ncdujvdgqtaunuyigflp.supabase.co", "http://localhost:8080/oauth/consent**"]
 jwt_expiry = 3600
 
 # OAuth 2.1 server for the Claude connector (MCP). Claude registers itself

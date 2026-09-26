@@ -33,17 +33,19 @@ type Result = { data: CategoryRow | null; error: { message: string } | null };
  * A fake client that records each query. The results map takes each
  * "column=value" key to a result; a missing key returns no row.
  */
-function fakeClient(results: Record<string, Result>) {
-  const queries: Array<Record<string, string>> = [];
+type ListResult = { data: CategoryRow[] | null; error: { message: string } | null };
+
+function fakeClient(results: Record<string, Result>, list: ListResult = { data: [], error: null }) {
+  const queries: Array<Record<string, string | boolean>> = [];
   const client: CategoryLookupClient = {
     from(table) {
       expect(table).toBe('chart_of_accounts');
-      const filters: Record<string, string> = {};
+      const filters: Record<string, string | boolean> = {};
       const builder = {
         select() {
           return builder;
         },
-        eq(column: string, value: string) {
+        eq(column: string, value: string | boolean) {
           filters[column] = value;
           return builder;
         },
@@ -51,6 +53,14 @@ function fakeClient(results: Record<string, Result>) {
           queries.push({ ...filters });
           const key = 'id' in filters ? `id=${filters.id}` : `account_code=${filters.account_code}`;
           return Promise.resolve(results[key] ?? { data: null, error: null });
+        },
+        // Awaited with no maybeSingle(): the list query of the name step.
+        then<T>(resolve: (value: ListResult) => T) {
+          queries.push({ ...filters, list: true });
+          const rows = list.data && 'is_active' in filters
+            ? list.data.filter((r) => r.is_active === filters.is_active)
+            : list.data;
+          return Promise.resolve({ ...list, data: rows }).then(resolve);
         },
       };
       return builder;
@@ -150,10 +160,56 @@ describe('resolveCategoryRef', () => {
     const { client } = fakeClient({});
     expect(await resolveCategoryRef(client, RESTAURANT, '9999')).toEqual({
       ok: false,
-      message: 'Unknown category "9999". Use a category id or an account code from list_categories.',
+      message: 'Unknown category "9999". Use a category id, account code, or exact name from list_categories.',
     });
     expect(await resolveCategoryRef(client, RESTAURANT, '   ')).toMatchObject({ ok: false });
     expect(await resolveCategoryRef(client, RESTAURANT, undefined)).toMatchObject({ ok: false });
+  });
+
+  it('finds an exact account name, not case-sensitive, among active accounts', async () => {
+    const tia = row();
+    const { client, queries } = fakeClient({}, { data: [row({ id: 'x', account_name: 'Cash' }), tia], error: null });
+    expect(await resolveCategoryRef(client, RESTAURANT, ' tenant improvement ALLOWANCE ')).toEqual({ ok: true, category: tia });
+    expect(queries.at(-1)).toEqual({ restaurant_id: RESTAURANT, is_active: true, list: true });
+  });
+
+  it('does not match an inactive account by name', async () => {
+    const { client } = fakeClient({}, { data: [row({ is_active: false })], error: null });
+    expect(await resolveCategoryRef(client, RESTAURANT, 'Tenant Improvement Allowance')).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('Unknown category'),
+    });
+  });
+
+  it('does not match part of a name', async () => {
+    const { client } = fakeClient({}, { data: [row()], error: null });
+    expect(await resolveCategoryRef(client, RESTAURANT, 'Tenant')).toMatchObject({ ok: false });
+  });
+
+  it('refuses a name that matches two accounts and lists their codes', async () => {
+    const { client } = fakeClient({}, {
+      data: [row({ id: 'b', account_code: '2600-2' }), row({ id: 'a', account_code: '2600-1' })],
+      error: null,
+    });
+    expect(await resolveCategoryRef(client, RESTAURANT, 'Tenant Improvement Allowance')).toEqual({
+      ok: false,
+      message: 'Category name "Tenant Improvement Allowance" matches 2 categories: 2600-1, 2600-2. Use the account code.',
+    });
+  });
+
+  it('uses the code before the name', async () => {
+    const coded = row({ id: 'by-code', account_code: 'Cash' });
+    const { client, queries } = fakeClient({ 'account_code=Cash': { data: coded, error: null } }, {
+      data: [row({ id: 'by-name', account_name: 'Cash' })],
+      error: null,
+    });
+    expect(await resolveCategoryRef(client, RESTAURANT, 'Cash')).toEqual({ ok: true, category: coded });
+    expect(queries.some((q) => q.list)).toBe(false);
+  });
+
+  it('throws a database error from the name step', async () => {
+    const { client } = fakeClient({}, { data: null, error: { message: 'list boom' } });
+    await expect(resolveCategoryRef(client, RESTAURANT, 'Cash')).rejects.toThrow('list boom');
   });
 
   it('refuses an inactive account and names it', async () => {

@@ -51,7 +51,7 @@ Claude ──(1) POST /functions/v1/mcp, no token──────────�
 | `get_payroll_summary`, `get_time_punches`, `get_tip_summary` | read | Manager or owner. |
 | `get_pending_outflows`, `get_operating_costs`, `get_monthly_trends`, `get_expense_health`, `get_break_even_progress` | read | Manager or owner. |
 | `list_categories` | read | Manager or owner. The chart of accounts: id, account code, name, and type. |
-| `batch_categorize_transactions`, `batch_categorize_pos_sales`, `create_categorization_rule` | **write** | Manager or owner. Marked destructive, so Claude asks before it calls them. `category_id` takes the category id or the account code, such as `4000`. An inactive category is refused. |
+| `batch_categorize_transactions`, `batch_categorize_pos_sales`, `create_categorization_rule` | **write** | Manager or owner. Marked destructive, so Claude asks before it calls them. `category_id` takes the category id, the account code (such as `4000`), or the exact account name when only one active account has it. An inactive category is refused. |
 
 Every tool except `list_restaurants` takes `restaurant_id`. A user with one
 restaurant can omit it.
@@ -128,6 +128,10 @@ Example questions:
 - "Which recipes have the lowest margin this month?"
 - "Which inventory items are low on stock?"
 - "Compare labor cost this month to last month."
+
+After a deploy that adds or changes a tool, disconnect and connect the
+connector again in Claude. Claude saves the tool list when it connects, and it
+does not load the list again by itself.
 
 ## Stop the access
 

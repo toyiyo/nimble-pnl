@@ -124,3 +124,28 @@ The user chose both fixes, and the manager and owner gate.
 - E2E: none. The change adds an edge-function tool with no UI. The AI chat
   E2E (`tests/e2e/ai-chat.spec.ts`) stubs the model, so it cannot drive a
   real tool choice.
+
+## Follow-up: exact account name in `category_id`
+
+A live test after the deploy showed that `2600-1` works. It also showed that
+`"Tenant Improvement Allowance"` fails. The user chose: exact name, one match.
+
+- `resolveCategoryRef` tries the id, then the code, then the name
+  (`supabase/functions/_shared/categoryLookup.ts:138-165`).
+- The name step reads the active accounts of the restaurant (`restaurant_id`
+  and `is_active = true` filters) and compares in TypeScript: trimmed, not
+  case-sensitive, full name. It uses no `ilike`, so `%` or `_` in the name
+  cannot act as a wildcard.
+- Exactly one match: use it. Two or more: return
+  `Category name "<name>" matches 2 categories: 2600-1, 2600-2. Use the account code.`
+  No match: the usual "not found" text, which now names all three forms.
+- The name step runs only after the id and code steps miss, so the old
+  behavior does not change for an id or a code.
+- The `category_id` descriptions and the runbook name the three forms.
+
+Tests: one match, no case, two matches, inactive account not matched, code
+still wins over a name, database error on the list query.
+
+Note: Claude saves a connector's tool list when it connects. After a tool
+change, reconnect the connector in claude.ai to load the new list. The runbook
+says so.

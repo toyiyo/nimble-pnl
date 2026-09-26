@@ -1,6 +1,6 @@
 ---
 name: development-workflow
-description: "MANDATORY — invoke BEFORE any implementation, feature, bugfix, or code change. Orchestrates: consult lessons → brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → PR → CI loop → retrospective."
+description: "MANDATORY — invoke BEFORE any implementation, feature, bugfix, or code change. Orchestrates: consult lessons → brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → QA → PR → CI loop → retrospective."
 ---
 
 # Development Workflow
@@ -624,6 +624,44 @@ failure, not a judgment call.
 
 **Skip condition:** None. Evidence before assertions, always.
 
+## Phase 8.5: QA
+
+**Invoke:** the `qa` skill (`.claude/skills/qa/SKILL.md`) in **fix mode**.
+The workflow runs it as the `QA` phase, after the Verify gate and before Ship.
+
+Phase 8 proves that the code passes the tests its author wrote. Phase 8.5
+uses the running app as a tester does, on local Supabase, in Chromium. It
+looks for what the author's tests miss.
+
+- Build a charter from the design doc and plan: one row per user-facing
+  behavior, plus one adjacent flow.
+- Apply each of the 10 QA lenses that fits the row. Mark the others `n/a`
+  with a reason. The lenses: persistence, loading/empty/error states, input
+  edges, roles, tenant isolation, 1280px and 390px viewports, keyboard access,
+  console and network errors, data correctness, flow abuse.
+- Write the report to `dev-tools/qa/qa-report-<branch-slug>.md` (gitignored).
+- For each `critical` or `major` bug: add a failing regression test, fix,
+  commit. Max 3 rounds.
+- If QA committed a fix, or HEAD moved after Verify, the workflow re-runs the
+  full Phase 8 suite (`verify:post-qa`) before Ship.
+- To resume after a QA halt, pass `args.qaResolutionNote`. To resume after a
+  `verify:post-qa` halt, pass `args.postQaVerifyResolutionNote`.
+- Open `minor` findings go into a `## QA` section of the PR body.
+
+<HARD-GATE>
+**No push before QA passes.** Ship runs only when the QA agent returns
+`qaPassed=true`: every charter row is `pass` or a justified `n/a`, and zero
+`critical` or `major` bugs stay open. Green tests are not a QA pass.
+
+QA never runs against production. If `.env.local` does not point at local
+Supabase, QA returns `needs_human`.
+</HARD-GATE>
+
+**Skip condition:** None. A diff that touches only docs, `.claude/`,
+`.github/`, or other config with no runtime effect writes a report with a
+one-sentence exception and does not start the app. A change under `src/` or
+`supabase/` is never an exception.
+
 ## Phase 9: Ship & CI Loop
 
 This phase is **fully autonomous**. Do not ask the user what to do — push, open the PR, and iterate until CI is green **and every review comment is triaged**.
@@ -906,6 +944,7 @@ After the user approves the plan (end of Phase 3), the workflow should run auton
 3. **Ambiguous review comments** (Phase 9d) — When a reviewer's intent
    is unclear.
 4. **Persistent CI failures** (Phase 9c) — After 5 failed iterations.
+   The same applies to a QA bug (Phase 8.5) that stays open after 3 fix rounds.
 5. **Architectural decisions** — When a fix requires changing the
    approved design.
 6. **Genuine blockers** — Environment issues, missing credentials, etc.
@@ -919,6 +958,8 @@ feedback, not a reason to stop.
 
 - Phase 8 (Verify): tests, typecheck, lint, build must actually run and
   pass before push.
+- Phase 8.5 (QA): the browser QA pass must run and return
+  `qaPassed=true` before any push. A green Phase 8 does not replace it.
 - Phase 9d (Review-Comment Triage): the `gh api` fetches for inline
   comments, issue comments, and PR-level reviews are non-skippable on
   every PR, including PRs where 9b reported zero open queue items. "CI
@@ -951,6 +992,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 7c CodeRabbit | `coderabbit review --agent --committed --base origin/main` | Never |
 | 7d Re-review | Five reviewers on `<7a snapshot SHA>..HEAD` (one pass) | No commits after the 7a snapshot |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
+| 8.5 QA | `qa` skill, fix mode (`.claude/skills/qa/SKILL.md`) | Never — a docs/`.claude/`/config-only diff writes a one-sentence exception instead |
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |
 | 9c Iteration limits | — | Informational only |

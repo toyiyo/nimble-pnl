@@ -110,6 +110,11 @@
 
 ## Category: Development Workflow
 
+### [2026-09-25] A workflow gate must not depend on an optional field that an agent reports
+- **Mistake:** The first cut of the /dev Phase 8.5 QA gate re-ran Verify only when the QA agent listed SHAs in `commits`. That field was optional in the schema. A QA agent that committed a fix and left `commits` out would ship code that no Verify run saw. A resume after a failed `verify:post-qa` also replayed the cached halt, because its prompt had no resolution note.
+- **Correction:** Verify and QA both return a required `headSha`. The script re-verifies when QA lists commits OR when HEAD moved after Verify. `args.postQaVerifyResolutionNote` re-keys the re-verify on resume. The sound-logic reviewer found both defects before the push.
+- **Rule:** When a script-level gate decides whether a safety step runs, base the decision on a required, objective value (HEAD SHA, exit code), not on an optional list the agent can omit. Give every agent call that can halt its own resolution note, so a resume can re-run it.
+
 ### [2026-04-22] Worktree must be created BEFORE brainstorm/plan, not after
 - **Mistake:** Ran `/dev` brainstorm + plan phases from the main branch, committing `docs/superpowers/specs/*-design.md` and `docs/superpowers/plans/*-plan.md` directly to `main`. The development-workflow skill's phase order was Brainstorm → Plan → Isolate, which guarantees that every spec and plan commit lands on `main`.
 - **Correction:** Always create the feature worktree FIRST, before any artifact is written. Design docs, plans, and code all get authored in the worktree and commit to the feature branch. `main` never receives work-in-progress artifacts for a task.

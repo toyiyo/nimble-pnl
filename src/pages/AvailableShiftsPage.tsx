@@ -348,6 +348,7 @@ export default function AvailableShiftsPage() {
     currentEmployee?.id ?? null,
     weekStart,
     weekEnd,
+    tz,
   );
   const { claims, loading: claimsLoading } = useOpenShiftClaims(restaurantId, currentEmployee?.id);
   const claimMutation = useClaimOpenShift();

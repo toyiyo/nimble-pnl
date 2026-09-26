@@ -1,3 +1,4 @@
+-- supabase: no-transaction
 -- Delete the plain (restaurant_id, item_name) index (20260727130000). The
 -- covering index idx_unified_sales_restaurant_item_name_cover (20260926120000)
 -- has the same key columns in the same order, so it serves every query the old

@@ -4,7 +4,8 @@ Design: `docs/superpowers/specs/2026-09-26-recipe-sales-stats-timeout-design.md`
 
 ## Task 1 — RED: rewrite the index pgTAP test
 
-File: `supabase/tests/idx_unified_sales_restaurant_item_name.sql`
+File: `supabase/tests/idx_unified_sales_restaurant_item_name_cover.sql`
+(renamed from `idx_unified_sales_restaurant_item_name.sql`)
 
 Assert:
 1. `idx_unified_sales_restaurant_item_name_cover` exists.

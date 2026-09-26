@@ -1,3 +1,4 @@
+-- supabase: no-transaction
 -- Covering index for get_recipe_sales_stats
 -- (20260727120000_get_recipe_sales_stats.sql). The RPC aggregates all-time
 -- sales per mapped item and reads quantity, total_price and unit_price from

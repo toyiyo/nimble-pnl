@@ -150,8 +150,9 @@ not change, because the query does not change.
   `total_price` or `unit_price` cannot be a HOT update. The Toast upsert sets
   these three from `EXCLUDED`
   (`supabase/migrations/20260127000000_toast_sync_improvements.sql:108-110`).
-  Postgres keeps an update HOT when the values do not change, so only a real
-  price or quantity correction on re-sync writes to the index. The
+  An update with unchanged indexed values can stay HOT, but only when the new
+  row fits on the same heap page. Otherwise it writes new index entries, as
+  it does for every index on the table today. The
   categorization paths change `category_id` and related columns.
 - **`get_unmapped_sale_item_names` still reads the heap.** It filters on
   `parent_sale_id`, which is not in the index

@@ -32,7 +32,7 @@ import {
 } from "../_shared/payHidden.ts";
 import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
 import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
-import { ACCOUNT_TYPES, CATEGORY_COLUMNS, filterCategories, isAccountType, resolveCategoryRef, type CategoryRow } from "../_shared/categoryLookup.ts";
+import { ACCOUNT_TYPES, CATEGORY_COLUMNS, filterCategories, isAccountType, normalizeAccountType, resolveCategoryRef, type CategoryRow } from "../_shared/categoryLookup.ts";
 import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 import {
@@ -3400,11 +3400,12 @@ async function executeBatchCategorizePosSales(
  * the model can pick a category id or account code for the write tools.
  */
 async function executeListCategories(
-  args: any, // raw tool arguments from the model
+  args: { search?: unknown; account_type?: unknown; include_inactive?: unknown } | null | undefined,
   restaurantId: string,
-  supabase: any // same forwarded-JWT client as the other execute* handlers
-): Promise<any> { // same result shape as the other execute* handlers
-  const { search, account_type, include_inactive = false } = args ?? {};
+  supabase: ReturnType<typeof createClient>
+): Promise<Record<string, unknown>> {
+  const { search, include_inactive = false } = args ?? {};
+  const account_type = normalizeAccountType(args?.account_type);
   const includeInactive = include_inactive === true;
 
   // A value outside account_type_enum makes Postgres fail the cast. Answer in

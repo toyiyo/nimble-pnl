@@ -16,9 +16,24 @@ export const CATEGORY_COLUMNS =
  */
 export const CATEGORY_LIST_CAP = 150;
 
+/**
+ * Maximum JSON size of the listed categories. It leaves room under the
+ * 40,000-character connector limit for the result envelope, because
+ * account_name is free text and a long name makes a row larger.
+ */
+export const CATEGORY_TEXT_BUDGET = 36_000;
+
 /** The values of account_type_enum. */
 export const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense', 'cogs'] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
+
+/**
+ * Trims and lowercases a string from the model, so "Expense" matches the enum.
+ * Any other value comes back unchanged.
+ */
+export function normalizeAccountType(value: unknown): unknown {
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
 
 /** True for one of the six account_type_enum values, with its exact spelling. */
 export function isAccountType(value: unknown): value is AccountType {
@@ -48,8 +63,9 @@ export interface CategoryList {
 
 /**
  * Keeps the rows whose code or name contains `search` (no case), then the
- * first CATEGORY_LIST_CAP of them. The search runs here and not in a
- * PostgREST or() string, so its text cannot change the query.
+ * first rows up to CATEGORY_LIST_CAP and CATEGORY_TEXT_BUDGET. The search
+ * runs here and not in a PostgREST or() string, so its text cannot change
+ * the query.
  */
 export function filterCategories(
   rows: CategoryRow[],
@@ -64,12 +80,23 @@ export function filterCategories(
           row.account_name.toLowerCase().includes(needle),
       )
     : rows;
-  const kept = matched.slice(0, CATEGORY_LIST_CAP);
+  const categories: ListedCategory[] = [];
+  let size = 2; // the brackets of the JSON array
+  for (const row of matched.slice(0, CATEGORY_LIST_CAP)) {
+    const listed: ListedCategory = includeInactive ? row : omitIsActive(row);
+    size += JSON.stringify(listed).length + 1; // the comma between rows
+    if (size > CATEGORY_TEXT_BUDGET) break;
+    categories.push(listed);
+  }
   return {
     count: matched.length,
-    truncated: matched.length > CATEGORY_LIST_CAP,
-    categories: includeInactive ? kept : kept.map(({ is_active: _active, ...rest }) => rest),
+    truncated: categories.length < matched.length,
+    categories,
   };
+}
+
+function omitIsActive({ is_active: _active, ...rest }: CategoryRow): ListedCategory {
+  return rest;
 }
 
 type LookupResult = { data: CategoryRow | null; error: { message: string } | null };

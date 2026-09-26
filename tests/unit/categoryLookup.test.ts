@@ -5,6 +5,7 @@ import {
   CATEGORY_LIST_CAP,
   filterCategories,
   isAccountType,
+  normalizeAccountType,
   resolveCategoryRef,
   type CategoryLookupClient,
   type CategoryRow,
@@ -86,6 +87,17 @@ describe('filterCategories', () => {
     expect(filterCategories(rows, undefined, { includeInactive: true }).categories[0]).toHaveProperty('is_active', true);
   });
 
+  it('stops before the text budget when names are long, and marks the result truncated', () => {
+    const long = Array.from({ length: CATEGORY_LIST_CAP }, (_, i) =>
+      row({ id: `${UUID}-${i}`, account_code: `9999-${i}`, account_name: 'N'.repeat(200), parent_account_id: UUID }),
+    );
+    const result = filterCategories(long, undefined, { includeInactive: true });
+    const envelope = JSON.stringify({ ok: true, data: result, evidence: [{ table: 'chart_of_accounts', summary: 'x'.repeat(80) }] });
+    expect(envelope.length).toBeLessThan(40_000);
+    expect(result.categories.length).toBeLessThan(CATEGORY_LIST_CAP);
+    expect(result).toMatchObject({ count: CATEGORY_LIST_CAP, truncated: true });
+  });
+
   it('caps the list so it fits the connector text limit (40,000 chars)', () => {
     const many = Array.from({ length: CATEGORY_LIST_CAP }, (_, i) =>
       row({
@@ -163,5 +175,12 @@ describe('isAccountType', () => {
     expect(ACCOUNT_TYPES).toEqual(['asset', 'liability', 'equity', 'revenue', 'expense', 'cogs']);
     for (const type of ACCOUNT_TYPES) expect(isAccountType(type)).toBe(true);
     for (const bad of ['Expense', 'cogs ', '', 'income', 3, null]) expect(isAccountType(bad)).toBe(false);
+  });
+
+  it('normalizes the case and the spaces of a model value', () => {
+    expect(normalizeAccountType(' Expense ')).toBe('expense');
+    expect(normalizeAccountType('COGS')).toBe('cogs');
+    expect(normalizeAccountType('income')).toBe('income');
+    expect(normalizeAccountType(3)).toBe(3);
   });
 });

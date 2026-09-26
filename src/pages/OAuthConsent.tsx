@@ -90,6 +90,14 @@ function describeLookupError(error: unknown): { title: string; message: string; 
   };
 }
 
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 function isFramed(): boolean {
   try {
     return window.top !== window.self;
@@ -107,7 +115,7 @@ export default function OAuthConsent() {
   const [pendingAction, setPendingAction] = useState<ConsentAction | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const [redirectRefused, setRedirectRefused] = useState(false);
-  const [signOutFailed, setSignOutFailed] = useState(false);
+  const [deniedUnknownHost, setDeniedUnknownHost] = useState(false);
   // A second click before React Query publishes isPending would send a second
   // decision for a single-use authorization.
   const decisionSent = useRef(false);
@@ -143,7 +151,14 @@ export default function OAuthConsent() {
   // Consent exists already: go back to the client at once.
   const existingRedirect = authorization.data?.kind === 'redirect' ? authorization.data.redirectUrl : null;
   useEffect(() => {
-    if (existingRedirect) sendToClient(existingRedirect);
+    if (!existingRedirect) return;
+    // A consent from before the host rule can exist. Do not send the code to
+    // a host that the page does not allow.
+    if (classifyRedirectUri(existingRedirect) === 'unknown') {
+      setRedirectRefused(true);
+      return;
+    }
+    sendToClient(existingRedirect);
   }, [existingRedirect]);
 
   const details = authorization.data?.kind === 'consent' ? authorization.data.details : null;
@@ -152,11 +167,24 @@ export default function OAuthConsent() {
   }, [details]);
 
   const decide = (action: ConsentAction) => {
-    if (decisionSent.current) return;
+    if (decisionSent.current || !details) return;
     decisionSent.current = true;
     setPendingAction(action);
+    const shownUri = details.redirect_uri;
     decision.mutate(action, {
-      onSuccess: sendToClient,
+      onSuccess: (redirectUrl) => {
+        // Deny on a host that is not allowed: do not send the user there.
+        if (classifyRedirectUri(shownUri) === 'unknown') {
+          setDeniedUnknownHost(true);
+          return;
+        }
+        // The redirect must go to the host that the page showed.
+        if (originOf(redirectUrl) !== originOf(shownUri)) {
+          setRedirectRefused(true);
+          return;
+        }
+        sendToClient(redirectUrl);
+      },
       onError: () => {
         decisionSent.current = false;
       },
@@ -166,16 +194,9 @@ export default function OAuthConsent() {
 
   const switchAccount = async () => {
     if (!authorizationId) return;
-    setSignOutFailed(false);
-    // Save first: signOut can leave the page before it returns.
+    // Save first: signOut goes to /auth itself and does not throw.
     saveConsentReturnPath(consentPathFor(authorizationId));
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('OAuthConsent: sign-out failed', error);
-      setSignOutFailed(true);
-      return;
-    }
+    await signOut();
     navigate('/auth', { replace: true });
   };
 
@@ -193,6 +214,15 @@ export default function OAuthConsent() {
       <ErrorCard
         title="This link is not valid"
         message={`The link has no connection request. ${START_AGAIN}`}
+      />
+    );
+  }
+
+  if (deniedUnknownHost) {
+    return (
+      <ErrorCard
+        title="Request denied"
+        message="You denied the request. The application did not get access to your account. You can close this page."
       />
     );
   }
@@ -351,12 +381,6 @@ export default function OAuthConsent() {
         </div>
 
         <p className="text-[13px] text-muted-foreground">Allow only if you started this connection from Claude.</p>
-
-        {signOutFailed && (
-          <p role="alert" className="text-[13px] text-destructive">
-            We could not sign you out. Try again.
-          </p>
-        )}
 
         {decision.isError && (
           <p role="alert" className="text-[13px] text-destructive">

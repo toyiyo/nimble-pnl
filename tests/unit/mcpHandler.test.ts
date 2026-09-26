@@ -235,10 +235,12 @@ describe('handleMcpRequest transport', () => {
 
   it('rejects an unsupported MCP-Protocol-Version header with 400', async () => {
     const req = rpc({ jsonrpc: '2.0', id: 1, method: 'ping' });
-    req.headers.set('MCP-Protocol-Version', '1999-01-01');
+    req.headers.set('MCP-Protocol-Version', `1999-01-01${'x'.repeat(200)}`);
     const res = await handleMcpRequest(req, makeDeps());
     expect(res.status).toBe(400);
-    expect((await res.json()).error.code).toBe(-32600);
+    const { error } = await res.json();
+    expect(error.code).toBe(-32600);
+    expect(error.message.length).toBeLessThan(80);
   });
 
   it('accepts a supported MCP-Protocol-Version header', async () => {

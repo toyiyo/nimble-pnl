@@ -372,7 +372,7 @@ export async function handleMcpRequest(req: Request, deps: McpDeps): Promise<Res
   }
   const versionHeader = req.headers.get('mcp-protocol-version');
   if (versionHeader && !(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(versionHeader)) {
-    return rpcError(null, -32600, `Unsupported protocol version: ${versionHeader}`, 400);
+    return rpcError(null, -32600, `Unsupported protocol version: ${versionHeader.slice(0, 32)}`, 400);
   }
 
   // A response from the client, or a notification (no id), gets no body.

@@ -146,13 +146,32 @@ describe('OAuthConsent page', () => {
     }
   });
 
-  it('shows an error when sign-out fails for a different account', async () => {
-    const signOut = vi.fn().mockRejectedValue(new Error('offline'));
-    mockUseAuth.mockReturnValue({ ...signedIn, signOut });
+  it('refuses an existing consent redirect to a host that is not allowed', async () => {
+    mockGetAuthorization.mockResolvedValue({ kind: 'redirect', redirectUrl: 'https://evil.example/cb?code=z' });
     renderAt(`/oauth/consent?authorization_id=${ID}`);
-    fireEvent.click(await screen.findByRole('button', { name: /use a different account/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not sign you out/i);
-    expect(screen.queryByText('AUTH PAGE')).not.toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/return address is not valid/i);
+    expect(mockGoToClientRedirect).not.toHaveBeenCalled();
+  });
+
+  it('shows Request denied, with no redirect, after Deny on a host that is not allowed', async () => {
+    mockGetAuthorization.mockResolvedValue({
+      kind: 'consent',
+      details: { ...DETAILS, redirect_uri: 'https://evil.example/cb' },
+    });
+    mockSubmitConsent.mockResolvedValue('https://evil.example/cb?error=access_denied');
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Deny' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/request denied/i);
+    expect(mockSubmitConsent).toHaveBeenCalledWith(ID, 'deny');
+    expect(mockGoToClientRedirect).not.toHaveBeenCalled();
+  });
+
+  it('refuses a decision redirect to a host that the page did not show', async () => {
+    mockSubmitConsent.mockResolvedValue('https://claude.com/other?code=abc');
+    renderAt(`/oauth/consent?authorization_id=${ID}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/return address is not valid/i);
+    expect(mockGoToClientRedirect).not.toHaveBeenCalled();
   });
 
   it('warns when the user has no restaurant that the connector can read', async () => {

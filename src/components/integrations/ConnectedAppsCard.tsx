@@ -12,9 +12,15 @@ import { SUPABASE_URL } from '@/integrations/supabase/client';
 
 export const CLAUDE_CONNECTOR_URL = `${SUPABASE_URL}/functions/v1/mcp`;
 
-/** The grant date as YYYY-MM-DD (UTC). A grant belongs to the user, not to a restaurant clock. */
+const GRANT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+
+/**
+ * The grant date in the viewer's time zone. A grant belongs to the user, not
+ * to a restaurant, so the restaurant clock does not apply.
+ */
 function formatGrantDate(value: string): string {
-  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : GRANT_DATE_FORMAT.format(date);
 }
 
 /**
@@ -26,6 +32,7 @@ export function ConnectedAppsCard() {
   const { grants, revoke } = useOAuthGrants(user?.id ?? null);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [confirmClientId, setConfirmClientId] = useState<string | null>(null);
 
   const copyUrl = async () => {
     try {
@@ -99,32 +106,60 @@ export function ConnectedAppsCard() {
 
           {grants.data && grants.data.length > 0 && (
             <ul className="space-y-2">
-              {grants.data.map((grant) => (
-                <li
-                  key={grant.client.id}
-                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/40 bg-background"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
-                      <Link2 className="h-4 w-4 text-foreground" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[14px] font-medium text-foreground truncate">{grant.client.name}</p>
-                      <p className="text-[13px] text-muted-foreground">Allowed {formatGrantDate(grant.granted_at)}</p>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => revoke.mutate(grant.client.id)}
-                    disabled={revoke.isPending}
-                    aria-label={`Revoke access for ${grant.client.name}`}
-                    className="h-9 px-3 rounded-lg text-[13px] font-medium text-destructive hover:text-destructive/80"
+              {grants.data.map((grant) => {
+                const name = grant.client.name || 'An application';
+                const confirming = confirmClientId === grant.client.id;
+                return (
+                  <li
+                    key={grant.client.id}
+                    className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/40 bg-background"
                   >
-                    {revokingId === grant.client.id ? 'Revoking…' : 'Revoke'}
-                  </Button>
-                </li>
-              ))}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
+                        <Link2 className="h-4 w-4 text-foreground" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[14px] font-medium text-foreground truncate">{name}</p>
+                        <p className="text-[13px] text-muted-foreground">Allowed {formatGrantDate(grant.granted_at)}</p>
+                      </div>
+                    </div>
+                    {confirming ? (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setConfirmClientId(null)}
+                          disabled={revoke.isPending}
+                          className="h-9 px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => revoke.mutate(grant.client.id, { onSettled: () => setConfirmClientId(null) })}
+                          disabled={revoke.isPending}
+                          aria-label={`Confirm: revoke access for ${name}`}
+                          className="h-9 px-3 rounded-lg text-[13px] font-medium text-destructive hover:text-destructive/80"
+                        >
+                          {revokingId === grant.client.id ? 'Revoking…' : 'Confirm revoke'}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setConfirmClientId(grant.client.id)}
+                        disabled={revoke.isPending}
+                        aria-label={`Revoke access for ${name}`}
+                        className="h-9 px-3 rounded-lg text-[13px] font-medium text-destructive hover:text-destructive/80"
+                      >
+                        Revoke
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
 

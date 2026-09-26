@@ -66,9 +66,25 @@ describe('ConnectedAppsCard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not load your connected apps/i);
   });
 
-  it('revokes a grant and reloads the list', async () => {
+  it('asks for a confirm and can cancel', async () => {
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke access for Claude' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Revoke access for Claude' })).toBeInTheDocument();
+    expect(mockRevokeOAuthGrant).not.toHaveBeenCalled();
+  });
+
+  it('uses a fallback name for a client with no name', async () => {
+    mockListOAuthGrants.mockResolvedValue([{ ...GRANT, client: { id: 'c-2', name: '' } }]);
+    renderCard();
+    expect(await screen.findByRole('button', { name: 'Revoke access for An application' })).toBeInTheDocument();
+  });
+
+  it('revokes a grant after the confirm and reloads the list', async () => {
+    renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke access for Claude' }));
+    expect(mockRevokeOAuthGrant).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm: revoke access for Claude' }));
     await waitFor(() => expect(mockRevokeOAuthGrant).toHaveBeenCalledWith('c-1'));
     await waitFor(() => expect(mockListOAuthGrants).toHaveBeenCalledTimes(2));
   });
@@ -77,6 +93,7 @@ describe('ConnectedAppsCard', () => {
     mockRevokeOAuthGrant.mockRejectedValue(new Error('boom'));
     renderCard();
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke access for Claude' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm: revoke access for Claude' }));
     expect(await screen.findByText(/could not revoke the access/i)).toBeInTheDocument();
   });
 });

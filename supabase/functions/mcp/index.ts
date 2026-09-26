@@ -81,8 +81,10 @@ const deps: McpDeps = {
       // the handler returns a tool error.
       signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
     });
-    const text = await response.text();
-    if (text.length > MAX_FORWARD_BODY_CHARS) {
+    const declaredLength = Number(response.headers.get('content-length') ?? '0');
+    const text = declaredLength > MAX_FORWARD_BODY_CHARS ? '' : await response.text();
+    if (declaredLength > MAX_FORWARD_BODY_CHARS || text.length > MAX_FORWARD_BODY_CHARS) {
+      await response.body?.cancel().catch(() => undefined);
       return {
         status: 413,
         body: { ok: false, error: { message: 'The result is too large. Ask for a shorter period or a narrower filter.' } },

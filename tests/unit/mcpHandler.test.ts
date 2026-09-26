@@ -86,6 +86,14 @@ describe('buildMcpTools', () => {
     );
   });
 
+  it('offers list_categories to a manager as a read-only tool with a title', () => {
+    const tool = buildMcpTools(['manager']).find((t) => t.name === 'list_categories');
+    expect(tool).toBeDefined();
+    expect(tool!.title).toBe('List categories');
+    expect(tool!.annotations).toMatchObject({ readOnlyHint: true, title: 'List categories' });
+    expect(buildMcpTools(['chef']).map((t) => t.name)).not.toContain('list_categories');
+  });
+
   it('gives every tool a unique title, top-level and in annotations (directory rule)', () => {
     const tools = buildMcpTools(['owner', 'manager', 'chef']);
     for (const tool of tools) {

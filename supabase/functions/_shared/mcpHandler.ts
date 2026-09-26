@@ -75,6 +75,7 @@ const MCP_TOOL_TITLES: Readonly<Record<string, string>> = {
   get_bank_transactions: 'Get bank transactions',
   get_financial_statement: 'Get financial statement',
   generate_report: 'Generate report',
+  list_categories: 'List categories',
   batch_categorize_transactions: 'Categorize bank transactions',
   batch_categorize_pos_sales: 'Categorize POS sales',
   create_categorization_rule: 'Create categorization rule',

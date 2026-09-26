@@ -84,13 +84,25 @@ New file `supabase/tests/76_bank_reauth_cron_dispatcher.test.sql`:
 4. The dispatcher does not read `app.settings.supabase_url`.
 5. The dispatcher reads the key setting only with `missing_ok`.
 6. With no key setting and no Vault secret, the dispatcher returns NULL.
-   The test uses the reference guard: when the Vault secret exists locally,
-   the check passes without a call. This keeps a local database from a
-   call to the production function.
+   The test deletes the Vault secret `supabase_service_role_key` inside the
+   test transaction, so the call always runs. `ROLLBACK` restores the secret.
+   The reference test skips the call when the secret exists
+   (`supabase/tests/73_shift_trade_reminders_schema.test.sql:181-188`). This
+   test does not skip.
 7. The "no key" call adds no row to `net.http_request_queue`.
-8. `anon` cannot execute the dispatcher.
-9. `authenticated` cannot execute the dispatcher.
-10. `service_role` can execute the dispatcher.
+8. With a test key in `app.settings.service_role_key`, the dispatcher returns
+   a request id.
+9. That queue row has the URL
+   `https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/bank-reauth-notices`.
+10. That queue row has the header `Authorization: Bearer <test key>`.
+11. `anon` cannot execute the dispatcher.
+12. `authenticated` cannot execute the dispatcher.
+13. `service_role` can execute the dispatcher.
+
+The pg_net worker reads only committed queue rows. The test ends with
+`ROLLBACK`, so no request leaves the local database. The `postgres` role can
+read `net.http_request_queue` and delete from `vault.secrets` in a local
+transaction (checked on the local stack, 2026-09-26).
 
 ## E2E
 
@@ -101,7 +113,8 @@ page, route, or request path changes. The Playwright suite cannot drive pg_cron.
 
 TLA+: not applicable (no concurrent writers). The cron has one writer. The
 edge function already dedupes with `ON CONFLICT DO NOTHING` on
-`bank_reauth_notices_once`.
+`bank_reauth_notices_once` (`supabase/functions/bank-reauth-notices/index.ts:126`,
+constraint at `supabase/migrations/20260723130100_bank_reauth_notices.sql:30`).
 
 ## Deploy note
 

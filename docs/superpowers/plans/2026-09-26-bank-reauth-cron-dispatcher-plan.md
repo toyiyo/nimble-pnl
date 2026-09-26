@@ -5,11 +5,11 @@ Branch: `fix/bank-reauth-cron-dispatcher`
 
 ## Task 1: pgTAP test (RED)
 
-1. Write `supabase/tests/76_bank_reauth_cron_dispatcher.test.sql` with the 10
+1. Write `supabase/tests/76_bank_reauth_cron_dispatcher.test.sql` with the 13
    cases from the design, section "Tests (pgTAP)".
-2. Use `BEGIN; SELECT plan(10); ... SELECT * FROM finish(); ROLLBACK;`.
-3. Copy the "no key" guard from
-   `supabase/tests/73_shift_trade_reminders_schema.test.sql:178-188`.
+2. Use `BEGIN; SELECT plan(13); ... SELECT * FROM finish(); ROLLBACK;`.
+3. Delete the Vault secret inside the transaction before the "no key" call.
+   Do not copy the skip branch from test 73.
 4. Run `npm run db:reset`, then run the file with `npx supabase test db`.
 5. Expect failures: the dispatcher does not exist, and the cron command still
    reads `app.settings`.

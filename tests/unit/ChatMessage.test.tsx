@@ -127,4 +127,42 @@ describe('ChatMessage', () => {
     expect(icons.length).toBeGreaterThan(0);
     icons.forEach((icon) => expect(icon).toHaveAttribute('aria-hidden', 'true'));
   });
+
+  it.each(['admin', '__proto__', 'toString', 'constructor'])(
+    'shows no "Go to" button for the section %s, which is not a known section',
+    (section) => {
+      renderMessage({
+        id: 'a1',
+        role: 'assistant',
+        content: 'Look here.',
+        tool_calls: [navigateCall({ section })],
+      });
+      expect(screen.queryByRole('button', { name: /^Go to/ })).not.toBeInTheDocument();
+      expect(screen.getByText('Using tools: navigate')).toBeInTheDocument();
+    }
+  );
+
+  it('encodes the entity ID in the navigate path', () => {
+    renderMessage({
+      id: 'a1',
+      role: 'assistant',
+      content: 'Here.',
+      tool_calls: [navigateCall({ section: 'recipes', entity_id: 'a b&tab=x' })],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Recipes' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/recipes?id=a%20b%26tab%3Dx');
+  });
+
+  it('is a memo component that compares the message object identity', () => {
+    const memo = ChatMessage as unknown as {
+      $$typeof: symbol;
+      compare: (a: { message: ChatMessageType }, b: { message: ChatMessageType }) => boolean;
+    };
+    expect(memo.$$typeof).toBe(Symbol.for('react.memo'));
+
+    const message: ChatMessageType = { id: 'a1', role: 'assistant', content: 'Hi' };
+    expect(memo.compare({ message }, { message })).toBe(true);
+    expect(memo.compare({ message }, { message: { ...message } })).toBe(false);
+  });
 });

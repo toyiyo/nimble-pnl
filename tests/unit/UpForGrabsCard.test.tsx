@@ -165,7 +165,18 @@ describe('UpForGrabsCard', () => {
     renderCard({ trades: [today] });
     const chip = screen.getByText('Starts in 7 h');
     expect(chip).toHaveClass('bg-amber-500/10', 'text-amber-700');
-    expect(chip).toHaveAttribute('aria-label', 'Starts in 7 hours');
+    // The row link carries the spoken text; a label on the inner span is not announced.
+    expect(chip).not.toHaveAttribute('aria-label');
+    expect(chip).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('puts the time range, the urgency and the reason in the row link name', () => {
+    renderCard({ trades: [today] });
+    expect(
+      screen.getByRole('link', {
+        name: 'View Server shift on Friday, September 25, 5:00 PM to 11:00 PM, from Maria Lopez. Starts in 7 hours. Reason: Family event',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows the muted "Tomorrow" chip for a trade after 24 h', () => {
@@ -184,7 +195,9 @@ describe('UpForGrabsCard', () => {
     renderCard({ trades: [tomorrow] });
     const links = within(screen.getByRole('listitem')).getAllByRole('link');
     expect(links).toHaveLength(1);
-    const link = screen.getByRole('link', { name: 'View Host shift on Saturday, September 26 from Ken Ito' });
+    const link = screen.getByRole('link', {
+      name: 'View Host shift on Saturday, September 26, 5:00 PM to 11:00 PM, from Ken Ito. Tomorrow',
+    });
     expect(link).toHaveAttribute('href', '/employee/shifts?trade=b&restaurant=rest-1&from=home');
     expect(link).toHaveClass('min-h-[64px]');
   });

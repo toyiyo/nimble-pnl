@@ -135,12 +135,26 @@ function UpForGrabsRow({
     'h:mm a'
   )}`;
   const spokenDate = formatInstant(startsAt, timezone, 'EEEE, MMMM d');
+  const spokenTime = `${formatInstant(shift.start_time, timezone, 'h:mm a')} to ${formatInstant(
+    shift.end_time,
+    timezone,
+    'h:mm a'
+  )}`;
+  // An aria-label on the link replaces its content for a screen reader, so the
+  // label must carry everything a sighted user reads on the row.
+  const linkLabel = [
+    `View ${shift.position} shift on ${spokenDate}, ${spokenTime}, from ${name}`,
+    chip?.spoken,
+    trade.reason ? `Reason: ${trade.reason}` : null,
+  ]
+    .filter(Boolean)
+    .join('. ');
 
   return (
     <li>
       <Link
         to={tradeLinkHref(trade.id, restaurantId, 'home')}
-        aria-label={`View ${shift.position} shift on ${spokenDate} from ${name}`}
+        aria-label={linkLabel}
         className="flex items-center gap-3 px-4 py-3 min-h-[64px] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground"
       >
         <div className="w-10 text-center flex-shrink-0">
@@ -155,7 +169,7 @@ function UpForGrabsRow({
             </span>
             {chip && (
               <span
-                aria-label={chip.spoken}
+                aria-hidden="true"
                 className={cn(
                   'flex-shrink-0 text-[11px] px-1.5 py-0.5 rounded-md',
                   isUrgent

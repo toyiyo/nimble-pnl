@@ -356,10 +356,10 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       const { round, signal, approvedPreviews, roundPreviews } = context;
       if (round >= MAX_TOOL_ROUNDS) return STEP_LIMIT_RESULT;
       if (isWriteTool(name)) {
-        if (Boolean(args?.confirmed)) {
+        if (args?.confirmed) {
           const approved = round === 1 && approvedPreviews.has(name) && !roundPreviews.has(name);
           if (!approved) return CONFIRMATION_REQUIRED_RESULT;
-        } else if (Boolean(args?.preview)) {
+        } else if (args?.preview) {
           roundPreviews.add(name);
         }
       }

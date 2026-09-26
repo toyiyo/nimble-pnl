@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase, SUPABASE_URL } from '@/integrations/supabase/client';
 import { ChatMessage, SSEEvent, ToolCall } from '@/types/ai-chat';
+import { anySignal } from '@/lib/anySignal';
 import { isWriteTool } from '../../supabase/functions/_shared/aiWriteTools';
 
 export interface UseAiChatOptions {
@@ -268,12 +269,16 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
     async (toolName: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
       // The tool timeout gives a TOOL_ERROR result. It does not stop the turn.
       const timeout = new AbortController();
-      const timeoutId = setTimeout(
-        () => timeout.abort(new DOMException(TOOL_TIMEOUT_MESSAGE, 'TimeoutError')),
-        TOOL_TIMEOUT_MS
-      );
-      const toolSignal = AbortSignal.any([signal, timeout.signal]);
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let cleanupSignal: (() => void) | undefined;
       try {
+        timeoutId = setTimeout(
+          () => timeout.abort(new DOMException(TOOL_TIMEOUT_MESSAGE, 'TimeoutError')),
+          TOOL_TIMEOUT_MS
+        );
+        const combined = anySignal([signal, timeout.signal]);
+        cleanupSignal = combined.cleanup;
+        const toolSignal = combined.signal;
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
 
@@ -311,6 +316,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
         return { ok: false, error: { code: 'TOOL_ERROR', message } };
       } finally {
         clearTimeout(timeoutId);
+        cleanupSignal?.();
       }
     },
     [restaurantId]

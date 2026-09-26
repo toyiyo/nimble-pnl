@@ -504,6 +504,36 @@ describe('useAiChat', () => {
       expect(result.current.messages.at(-1)?.content).toBe('The tool failed.');
     });
 
+    it('gives a TOOL_ERROR result on timeout also when AbortSignal.any does not exist', async () => {
+      const originalAny = AbortSignal.any;
+      delete (AbortSignal as { any?: typeof AbortSignal.any }).any;
+      try {
+        vi.useFakeTimers();
+        toolResponder = hangingTool;
+        streamResponder = (n) =>
+          n === 1
+            ? sseResponse([start(), toolCall('call_1', 'get_kpis'), end()])
+            : sseResponse([start(), delta('The tool failed.'), end()]);
+        const { result } = renderChat();
+
+        let done!: Promise<void>;
+        act(() => {
+          done = result.current.sendMessage('Hi');
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(TOOL_TIMEOUT_MS + 1_000);
+          await done;
+        });
+
+        expect(streamBodies).toHaveLength(2);
+        const toolMsg = streamBodies[1].messages.at(-1)!;
+        expect(JSON.parse(String(toolMsg.content))).toMatchObject({ ok: false, error: { code: 'TOOL_ERROR' } });
+        expect(result.current.error).toBeNull();
+      } finally {
+        AbortSignal.any = originalAny;
+      }
+    });
+
     it('stops the turn when the user aborts while a tool runs', async () => {
       let toolStarted!: () => void;
       const started = new Promise<void>((resolve) => {

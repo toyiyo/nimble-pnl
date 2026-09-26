@@ -23,6 +23,33 @@ export const MAX_TOOL_ROUNDS = 4;
 export const ROUND_IDLE_TIMEOUT_MS = 30_000;
 /** Retries of one round. The hook retries only before the first event. */
 export const MAX_ROUND_RETRIES = 2;
+/** A tool call fails with TOOL_ERROR when it gives no result in this time. */
+export const TOOL_TIMEOUT_MS = 60_000;
+
+/**
+ * Tools that change data. The model must call them with `confirmed: true` only
+ * after the user approves a preview in a new message.
+ */
+const WRITE_TOOLS: ReadonlySet<string> = new Set([
+  'batch_categorize_transactions',
+  'batch_categorize_pos_sales',
+  'create_categorization_rule',
+]);
+
+const CONFIRMATION_REQUIRED_RESULT = {
+  ok: false,
+  error: {
+    code: 'CONFIRMATION_REQUIRED',
+    message: 'Show the preview to the user and ask them to confirm in a new message.',
+  },
+} as const;
+
+const STEP_LIMIT_RESULT = {
+  ok: false,
+  error: { code: 'STEP_LIMIT', message: 'The turn has no more steps. The tool did not run.' },
+} as const;
+
+const TOOL_TIMEOUT_MESSAGE = `The tool gave no result in ${TOOL_TIMEOUT_MS / 1000} seconds.`;
 
 export const TOO_MANY_STEPS_ERROR = 'The assistant needed too many steps. Ask a more specific question.';
 export const TIMEOUT_ERROR = 'The assistant stopped responding. Try again.';
@@ -151,6 +178,13 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
 
   const executeTool = useCallback(
     async (toolName: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
+      // The tool timeout gives a TOOL_ERROR result. It does not stop the turn.
+      const timeout = new AbortController();
+      const timeoutId = setTimeout(
+        () => timeout.abort(new DOMException(TOOL_TIMEOUT_MESSAGE, 'TimeoutError')),
+        TOOL_TIMEOUT_MS
+      );
+      const toolSignal = AbortSignal.any([signal, timeout.signal]);
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
@@ -162,7 +196,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ tool_name: toolName, arguments: args, restaurant_id: restaurantId }),
-          signal,
+          signal: toolSignal,
         });
 
         let body: unknown = null;
@@ -182,20 +216,43 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         return body;
       } catch (err) {
         if (signal.aborted) throw abortError(signal);
-        const e = err as Error;
-        console.error('Tool execution error:', e);
-        return {
-          ok: false,
-          error: { code: 'TOOL_ERROR', message: e.message || 'Failed to execute tool' },
-        };
+        console.error('Tool execution error:', err);
+        const message = timeout.signal.aborted
+          ? TOOL_TIMEOUT_MESSAGE
+          : (err instanceof Error && err.message) || 'Failed to execute tool';
+        return { ok: false, error: { code: 'TOOL_ERROR', message } };
+      } finally {
+        clearTimeout(timeoutId);
       }
     },
     [restaurantId]
   );
 
+  /**
+   * Gives the result of one tool call. Some calls do not go to the server:
+   * - On the last round, no tool runs, because the model cannot answer after it.
+   * - After round 1, a write with `confirmed: true` does not run. The user did
+   *   not approve it in a new message.
+   */
+  const resolveToolCall = useCallback(
+    async (name: string, args: Record<string, unknown>, round: number, signal: AbortSignal): Promise<unknown> => {
+      if (round >= MAX_TOOL_ROUNDS) return STEP_LIMIT_RESULT;
+      if (round > 1 && WRITE_TOOLS.has(name) && args?.confirmed === true) {
+        return CONFIRMATION_REQUIRED_RESULT;
+      }
+      return executeTool(name, args, signal);
+    },
+    [executeTool]
+  );
+
   /** One stream request, with no retry. */
   const attemptRound = useCallback(
-    async (history: ChatMessage[], controller: AbortController, stamp: Stamp): Promise<RoundResult> => {
+    async (
+      history: ChatMessage[],
+      round: number,
+      controller: AbortController,
+      stamp: Stamp
+    ): Promise<RoundResult> => {
       const { signal } = controller;
       let idleId: ReturnType<typeof setTimeout> | undefined;
       const clearIdle = () => clearTimeout(idleId);
@@ -279,7 +336,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
                 toolCalls.push(toolCall);
                 // The idle timer covers the stream only, not the tool run.
                 clearIdle();
-                const result = await executeTool(event.tool.name, event.tool.arguments, signal);
+                const result = await resolveToolCall(event.tool.name, event.tool.arguments, round, signal);
                 if (signal.aborted) throw abortError(signal);
                 armIdle();
                 toolMessages.push({
@@ -351,15 +408,20 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
         clearIdle();
       }
     },
-    [restaurantId, executeTool, onToolCall]
+    [restaurantId, resolveToolCall, onToolCall]
   );
 
   /** One round, with a retry only before the first event. */
   const runRound = useCallback(
-    async (history: ChatMessage[], controller: AbortController, stamp: Stamp): Promise<RoundResult> => {
+    async (
+      history: ChatMessage[],
+      round: number,
+      controller: AbortController,
+      stamp: Stamp
+    ): Promise<RoundResult> => {
       for (let attempt = 0; ; attempt++) {
         try {
-          return await attemptRound(history, controller, stamp);
+          return await attemptRound(history, round, controller, stamp);
         } catch (err) {
           const canRetry =
             !controller.signal.aborted &&
@@ -397,7 +459,7 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
 
       try {
         for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
-          const { assistant, toolMessages } = await runRound(turnHistory, controller, stamp);
+          const { assistant, toolMessages } = await runRound(turnHistory, round, controller, stamp);
 
           setMessages((prev) => [
             ...prev.map((m) => (m.id === assistant.id ? { ...m, tool_calls: assistant.tool_calls } : m)),

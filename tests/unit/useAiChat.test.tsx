@@ -10,7 +10,12 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: { auth: { getSession } },
 }));
 
-import { useAiChat, MAX_TOOL_ROUNDS, TOO_MANY_STEPS_ERROR } from '@/hooks/useAiChat';
+import {
+  useAiChat,
+  MAX_TOOL_ROUNDS,
+  TOO_MANY_STEPS_ERROR,
+  TOOL_TIMEOUT_MS,
+} from '@/hooks/useAiChat';
 
 // ---------------------------------------------------------------------------
 // SSE stream helpers
@@ -85,7 +90,11 @@ const toolCall = (id: string, name: string, args: Record<string, unknown> = {}):
 });
 
 type StreamResponder = (callIndex: number, body: StreamBody) => FakeResponse | Promise<FakeResponse>;
-type ToolResponder = (callIndex: number, body: ToolBody) => FakeResponse | Promise<FakeResponse>;
+type ToolResponder = (
+  callIndex: number,
+  body: ToolBody,
+  signal: AbortSignal
+) => FakeResponse | Promise<FakeResponse>;
 
 interface StreamBody {
   projectRef: string;
@@ -114,7 +123,7 @@ function installFetch() {
     }
     if (url.endsWith('/functions/v1/ai-execute-tool')) {
       toolBodies.push(body);
-      return toolResponder(toolBodies.length, body);
+      return toolResponder(toolBodies.length, body, init.signal as AbortSignal);
     }
     throw new Error(`Unexpected fetch: ${url}`);
   });
@@ -226,7 +235,7 @@ describe('useAiChat', () => {
     }
   });
 
-  it('stops at MAX_TOOL_ROUNDS requests and sets the too-many-steps error', async () => {
+  it('stops at MAX_TOOL_ROUNDS requests and does not run the tools of the last round', async () => {
     streamResponder = (n) => sseResponse([start(), toolCall(`call_${n}`, 'get_kpis'), end()]);
     const { result } = renderChat();
 
@@ -234,14 +243,165 @@ describe('useAiChat', () => {
       await result.current.sendMessage('Loop forever');
     });
 
-    expect(MAX_TOOL_ROUNDS).toBe(4);
-    expect(streamBodies).toHaveLength(4);
-    expect(toolBodies).toHaveLength(4);
+    expect(streamBodies).toHaveLength(MAX_TOOL_ROUNDS);
+    // The last round gets no answer, so its tool must not run.
+    expect(toolBodies).toHaveLength(MAX_TOOL_ROUNDS - 1);
     expect(result.current.error).toBe(TOO_MANY_STEPS_ERROR);
-    expect(TOO_MANY_STEPS_ERROR).toBe(
-      'The assistant needed too many steps. Ask a more specific question.'
-    );
     expect(result.current.isStreaming).toBe(false);
+
+    const last = result.current.messages.at(-1)!;
+    expect(last).toMatchObject({ role: 'tool', tool_call_id: `call_${MAX_TOOL_ROUNDS}` });
+    expect(JSON.parse(last.content)).toMatchObject({ ok: false, error: { code: 'STEP_LIMIT' } });
+  });
+
+  describe('write tool confirmation', () => {
+    const WRITE_TOOL = 'batch_categorize_transactions';
+
+    it('does not run a confirmed write in round 2 after a preview in round 1', async () => {
+      streamResponder = (n) => {
+        if (n === 1) return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true }), end()]);
+        if (n === 2) return sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed: true }), end()]);
+        return sseResponse([start(), delta('Please confirm.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await act(async () => {
+        await result.current.sendMessage('Categorize my transactions');
+      });
+
+      // Only the preview reaches ai-execute-tool.
+      expect(toolBodies).toEqual([
+        { tool_name: WRITE_TOOL, arguments: { preview: true }, restaurant_id: 'rest-1' },
+      ]);
+      const toolMsg = streamBodies[2].messages.at(-1)!;
+      expect(toolMsg).toMatchObject({ role: 'tool', tool_call_id: 'call_c' });
+      expect(JSON.parse(String(toolMsg.content))).toEqual({
+        ok: false,
+        error: {
+          code: 'CONFIRMATION_REQUIRED',
+          message: 'Show the preview to the user and ask them to confirm in a new message.',
+        },
+      });
+      expect(result.current.error).toBeNull();
+    });
+
+    it.each(['batch_categorize_pos_sales', 'create_categorization_rule'])(
+      'blocks a confirmed %s call in round 2',
+      async (tool) => {
+        streamResponder = (n) =>
+          n === 1
+            ? sseResponse([start(), toolCall('call_x', 'get_kpis'), end()])
+            : n === 2
+              ? sseResponse([start(), toolCall('call_c', tool, { confirmed: true }), end()])
+              : sseResponse([start(), delta('Confirm?'), end()]);
+        const { result } = renderChat();
+
+        await act(async () => {
+          await result.current.sendMessage('Do it');
+        });
+
+        expect(toolBodies.map((b) => b.tool_name)).toEqual(['get_kpis']);
+      }
+    );
+
+    it('runs a confirmed write in round 1 of a new user message', async () => {
+      streamResponder = (n) =>
+        n === 1
+          ? sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed: true }), end()])
+          : sseResponse([start(), delta('Done.'), end()]);
+      const { result } = renderChat();
+
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies).toEqual([
+        { tool_name: WRITE_TOOL, arguments: { confirmed: true }, restaurant_id: 'rest-1' },
+      ]);
+    });
+
+    it('runs a write in round 2 when it does not have confirmed:true', async () => {
+      streamResponder = (n) =>
+        n === 1
+          ? sseResponse([start(), toolCall('call_x', 'get_kpis'), end()])
+          : n === 2
+            ? sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true }), end()])
+            : sseResponse([start(), delta('Here is the preview.'), end()]);
+      const { result } = renderChat();
+
+      await act(async () => {
+        await result.current.sendMessage('Preview it');
+      });
+
+      expect(toolBodies.map((b) => b.tool_name)).toEqual(['get_kpis', WRITE_TOOL]);
+    });
+  });
+
+  describe('tool timeout', () => {
+    /** A tool response that never comes. It rejects when the request signal aborts. */
+    const hangingTool: ToolResponder = (_n, _body, signal) =>
+      new Promise<FakeResponse>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+
+    it('gives a TOOL_ERROR result when a tool does not answer in TOOL_TIMEOUT_MS', async () => {
+      vi.useFakeTimers();
+      toolResponder = hangingTool;
+      streamResponder = (n) =>
+        n === 1
+          ? sseResponse([start(), toolCall('call_1', 'get_kpis'), end()])
+          : sseResponse([start(), delta('The tool failed.'), end()]);
+      const { result } = renderChat();
+
+      let done!: Promise<void>;
+      act(() => {
+        done = result.current.sendMessage('Hi');
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TOOL_TIMEOUT_MS - 1_000);
+      });
+      expect(streamBodies).toHaveLength(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+        await done;
+      });
+
+      expect(streamBodies).toHaveLength(2);
+      const toolMsg = streamBodies[1].messages.at(-1)!;
+      expect(JSON.parse(String(toolMsg.content))).toMatchObject({ ok: false, error: { code: 'TOOL_ERROR' } });
+      expect(result.current.error).toBeNull();
+      expect(result.current.messages.at(-1)?.content).toBe('The tool failed.');
+    });
+
+    it('stops the turn when the user aborts while a tool runs', async () => {
+      let toolStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        toolStarted = resolve;
+      });
+      toolResponder = (n, body, signal) => {
+        toolStarted();
+        return hangingTool(n, body, signal);
+      };
+      streamResponder = () => sseResponse([start(), toolCall('call_1', 'get_kpis'), end()]);
+      const { result } = renderChat();
+
+      let done!: Promise<void>;
+      act(() => {
+        done = result.current.sendMessage('Hi');
+      });
+      await act(async () => {
+        await started;
+      });
+      await act(async () => {
+        result.current.abortStream();
+        await done;
+      });
+
+      expect(streamBodies).toHaveLength(1);
+      expect(result.current.error).toBeNull();
+      expect(result.current.messages.map((m) => m.role)).toEqual(['user']);
+    });
   });
 
   it('stops the turn with no more requests when the user aborts in round 2', async () => {

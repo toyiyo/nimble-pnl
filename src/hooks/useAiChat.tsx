@@ -222,34 +222,77 @@ function parseToolArguments(json: string): Record<string, unknown> | null {
 }
 
 /**
- * Gives the names of the write tools that the last assistant turn called with a
- * truthy `preview`. The last assistant turn is the assistant rows after the last
- * user row. A turn can have more than one assistant row, one for each round.
+ * Gives a key for the arguments of a write call, with preview and confirmed
+ * left out. Object keys and arrays of plain values are sorted, so the same
+ * request in another order gives the same key.
  */
-function previewedWriteTools(history: ChatMessage[]): Set<string> {
-  const names = new Set<string>();
+export function writePayloadKey(args: Record<string, unknown>): string {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      const items = value.map(canonical);
+      return items.every((v) => typeof v !== 'object' || v === null)
+        ? [...items].sort((a, b) => String(a).localeCompare(String(b)))
+        : items;
+    }
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.keys(value as Record<string, unknown>)
+          .sort()
+          .map((k) => [k, canonical((value as Record<string, unknown>)[k])])
+      );
+    }
+    return value;
+  };
+  const { preview: _preview, confirmed: _confirmed, ...rest } = args;
+  return JSON.stringify(canonical(rest));
+}
+
+/** True when a tool message holds a result with ok: true. */
+function isSuccessfulResult(message: ChatMessage | undefined): boolean {
+  if (!message || message.role !== 'tool') return false;
+  try {
+    return (JSON.parse(String(message.content)) as { ok?: unknown })?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Gives the write previews that the user saw in the last assistant turn: for
+ * each write tool, the payload keys of its previews that succeeded. The last
+ * assistant turn is the rows after the last user row. A turn can have more than
+ * one assistant row, one for each round. A confirm must match one of these.
+ */
+function previewedWriteTools(history: ChatMessage[]): Map<string, Set<string>> {
+  const previews = new Map<string, Set<string>>();
   let lastUser = -1;
   history.forEach((m, i) => {
     if (m.role === 'user') lastUser = i;
   });
-  for (const m of history.slice(lastUser + 1)) {
+  const turn = history.slice(lastUser + 1);
+  for (const m of turn) {
     if (m.role !== 'assistant') continue;
     for (const call of m.tool_calls ?? []) {
       const name = call.function?.name;
       if (!name || !isWriteTool(name)) continue;
       const args = parseToolArguments(call.function.arguments);
-      if (args && Boolean(args.preview)) names.add(name);
+      if (!args || !args.preview) continue;
+      const result = turn.find((t) => t.role === 'tool' && t.tool_call_id === call.id);
+      if (!isSuccessfulResult(result)) continue;
+      const keys = previews.get(name) ?? new Set<string>();
+      keys.add(writePayloadKey(args));
+      previews.set(name, keys);
     }
   }
-  return names;
+  return previews;
 }
 
 /** The facts that the write guard needs for one tool call. */
 interface ToolCallContext {
   round: number;
   signal: AbortSignal;
-  /** Write tools that the last assistant turn previewed. */
-  approvedPreviews: ReadonlySet<string>;
+  /** Successful previews of the last assistant turn: tool name to payload keys. */
+  approvedPreviews: ReadonlyMap<string, ReadonlySet<string>>;
   /** Write tools that this round previewed before this call. */
   roundPreviews: Set<string>;
 }
@@ -346,7 +389,8 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
    * Gives the result of one tool call. Some calls do not go to the server:
    * - On the last round, no tool runs, because the model cannot answer after it.
    * - A write with a truthy `confirmed` runs only in round 1, and only when the
-   *   last assistant turn previewed the same tool. The server also accepts
+   *   last assistant turn has a successful preview of the same tool with the
+   *   same arguments. The server also accepts
    *   "true" and 1 as a confirm, so the guard checks for any truthy value.
    * - A confirm does not run after a preview of the same tool in the same
    *   round. The user did not see that preview.
@@ -357,7 +401,10 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       if (round >= MAX_TOOL_ROUNDS) return STEP_LIMIT_RESULT;
       if (isWriteTool(name)) {
         if (args?.confirmed) {
-          const approved = round === 1 && approvedPreviews.has(name) && !roundPreviews.has(name);
+          const approved =
+            round === 1 &&
+            (approvedPreviews.get(name)?.has(writePayloadKey(args)) ?? false) &&
+            !roundPreviews.has(name);
           if (!approved) return CONFIRMATION_REQUIRED_RESULT;
         } else if (args?.preview) {
           roundPreviews.add(name);
@@ -375,7 +422,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       round: number,
       controller: AbortController,
       stamp: Stamp,
-      approvedPreviews: ReadonlySet<string>
+      approvedPreviews: ReadonlyMap<string, ReadonlySet<string>>
     ): Promise<RoundResult> => {
       const { signal } = controller;
       const roundPreviews = new Set<string>();
@@ -399,10 +446,11 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        // Stop and the idle timeout must also end a stalled token refresh.
+        armIdle();
+        const { data: { session } } = await withAbort(supabase.auth.getSession(), signal);
         if (!session) throw new RoundError('Not authenticated', false);
 
-        armIdle();
         let response: Response;
         try {
           response = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat-stream`, {
@@ -538,7 +586,7 @@ export function useAiChat({ restaurantId }: UseAiChatOptions): UseAiChatReturn {
       round: number,
       controller: AbortController,
       stamp: Stamp,
-      approvedPreviews: ReadonlySet<string>
+      approvedPreviews: ReadonlyMap<string, ReadonlySet<string>>
     ): Promise<RoundResult> => {
       for (let attempt = 0; ; attempt++) {
         try {

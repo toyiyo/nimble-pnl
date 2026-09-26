@@ -385,6 +385,65 @@ describe('useAiChat', () => {
       ]);
     });
 
+    it('blocks a confirm when the preview in the last turn failed', async () => {
+      toolResponder = () => jsonResponse(200, { ok: false, error: { code: 'INVALID_ARGUMENTS', message: 'bad' } });
+      streamResponder = (n) => {
+        if (n === 1) return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true, ids: ['a'] }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3) return sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed: true, ids: ['a'] }), end()]);
+        return sseResponse([start(), delta('Preview first.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await previewTurn(result);
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies.map((b) => b.arguments)).toEqual([{ preview: true, ids: ['a'] }]);
+      expect(lastToolResult(3)).toEqual(CONFIRMATION_REQUIRED);
+    });
+
+    it('blocks a confirm whose arguments differ from the previewed arguments', async () => {
+      streamResponder = (n) => {
+        if (n === 1)
+          return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true, ids: ['a'], category_id: 'c1' }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3)
+          return sseResponse([start(), toolCall('call_c', WRITE_TOOL, { confirmed: true, ids: ['a', 'b'], category_id: 'c1' }), end()]);
+        return sseResponse([start(), delta('Preview first.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await previewTurn(result);
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies).toHaveLength(1);
+      expect(lastToolResult(3)).toEqual(CONFIRMATION_REQUIRED);
+    });
+
+    it('allows a confirm with the same arguments in another key and ID order', async () => {
+      streamResponder = (n) => {
+        if (n === 1)
+          return sseResponse([start(), toolCall('call_p', WRITE_TOOL, { preview: true, ids: ['b', 'a'], category_id: 'c1' }), end()]);
+        if (n === 2) return sseResponse([start(), delta('Please confirm.'), end()]);
+        if (n === 3)
+          return sseResponse([start(), toolCall('call_c', WRITE_TOOL, { category_id: 'c1', ids: ['a', 'b'], confirmed: true }), end()]);
+        return sseResponse([start(), delta('Done.'), end()]);
+      };
+      const { result } = renderChat();
+
+      await previewTurn(result);
+      await act(async () => {
+        await result.current.sendMessage('Yes, apply it');
+      });
+
+      expect(toolBodies).toHaveLength(2);
+      expect(toolBodies[1].arguments).toMatchObject({ confirmed: true });
+    });
+
     it('blocks a confirm of tool B after a preview of tool A in the last turn', async () => {
       const OTHER_TOOL = 'create_categorization_rule';
       streamResponder = (n) => {
@@ -532,6 +591,32 @@ describe('useAiChat', () => {
       } finally {
         AbortSignal.any = originalAny;
       }
+    });
+
+    it('ends the turn on Stop while the round waits for getSession', async () => {
+      getSession.mockImplementation(() => new Promise(() => {}));
+      const { result } = renderChat();
+
+      let done = false;
+      act(() => {
+        void result.current.sendMessage('Hello').then(() => {
+          done = true;
+        });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(result.current.isStreaming).toBe(true);
+
+      await act(async () => {
+        result.current.abortStream();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(done).toBe(true);
+      expect(result.current.isStreaming).toBe(false);
+      expect(streamBodies).toHaveLength(0);
     });
 
     it('gives a TOOL_ERROR result when getSession does not answer in TOOL_TIMEOUT_MS', async () => {

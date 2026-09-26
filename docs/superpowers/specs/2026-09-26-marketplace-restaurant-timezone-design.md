@@ -58,18 +58,48 @@ local midnight can show before an item on the day before.
    - For a trade, `startsAt` is `Date.parse(offered_shift.start_time)`.
    - A trade's `date` becomes `toBusinessDay(start_time, tz)`, not the UTC date.
    - Sort by `startsAt` ascending. Equal values keep the input order (stable
-     sort). An item with no start time sorts first, as today.
-   - `useAvailableShifts` gets a `tz` argument. The page passes its `tz`.
+     sort).
+   - A trade with no `offered_shift.start_time` gets
+     `startsAt = Number.NEGATIVE_INFINITY` and `date = ''`. It sorts first, as
+     today (`src/hooks/useAvailableShifts.ts:31`). Do not let `NaN` reach the
+     comparator.
+   - The comparator does not subtract (`-Infinity - -Infinity` is `NaN`). It
+     returns `a.startsAt < b.startsAt ? -1 : a.startsAt > b.startsAt ? 1 : 0`.
+   - `get_open_shifts` returns `shift_date` as a local `DATE` and
+     `start_time` as a local `TIME`
+     (`supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql:52-174`).
+     `WALL_CLOCK_RE` accepts the `HH:MM:SS` form
+     (`supabase/functions/_shared/labor/restaurantClock.ts:32`).
+   - `useAvailableShifts(restaurantId, employeeId, weekStart, weekEnd, tz)`
+     gets `tz: string` as the last argument. The page passes its `tz`. That
+     value is never empty: `useRestaurantClock` returns `safeTz(...)`, which
+     falls back to `DEFAULT_TIMEZONE`
+     (`src/hooks/useRestaurantClock.ts:41`,
+     `supabase/functions/_shared/labor/restaurantClock.ts:93`).
+   - Add `tz` to the `useMemo` deps of `items`
+     (`src/hooks/useAvailableShifts.ts:63-66`).
+   - Import `parseWallClock`, `toBusinessDay` and `formatInstant` from
+     `@/lib/restaurantClock`, as `src/lib/claimableTrades.ts:14` does. Do not
+     import the `supabase/functions/...` path directly.
 2. **TradeCard (QA-3).** Add a `timezone` prop. Format the date label and the
-   time range with `formatInstant(…, timezone, …)`. Add `timezone` to the memo
-   comparator.
+   time range with `formatInstant(…, timezone, …)`. Add
+   `prev.timezone === next.timezone` to the memo comparator. Keep every
+   current check: trade `id`, `status`, `is_published`, `start_time`,
+   `end_time`, `position`, `isAccepting`, `currentEmployeeId`, the two
+   `areaMismatch` areas, `isHighlighted` and `highlightSource`.
 3. **MyShiftTradesCard (QA-3).** Add a required `timezone` prop.
    `ShiftDateBlock` uses `tradeDateTile` and `formatInstant`, as the home card
    does. The withdraw dialog uses `formatInstant`. `EmployeeSchedule` passes
    `restaurantTimezone`.
 
-The time range text keeps its current separator (` - `). The date, the day and
-the clock times match the home card. This keeps existing text assertions valid.
+Each surface keeps its current text shape. Only the zone changes:
+
+- `TradeCard` date: `EEE, MMM d`. Time: `h:mm a - h:mm a`.
+- `ShiftDateBlock` tile: `EEE` / `d` / `MMM`. Time: `h:mm a - h:mm a`.
+- Withdraw dialog: `{position} · EEE, MMM d · h:mm a - h:mm a`.
+
+The date, the day and the clock times match the home card. This keeps
+existing text assertions valid.
 
 ### Rejected alternatives
 
@@ -89,11 +119,13 @@ the clock times match the home card. This keeps existing text assertions valid.
     shift first.
   - A trade at 23:30 local on 1 Oct (06:30Z on 2 Oct). Its `date` is
     `2026-10-01`.
+  - A trade with no `offered_shift`. It sorts first. Its `date` is `''`.
+    Two such trades keep their input order.
 - `tests/unit/AvailableShiftsPage.tradeCard.test.tsx`: the trade card shows the
   restaurant-zone date and time. Update the one assertion that uses the host
   zone.
-- `tests/unit/MyShiftTradesCard.test.tsx`: the date tile and the time show in
-  the restaurant zone.
+- `tests/unit/MyShiftTradesCard.test.tsx`: the date tile, the time and the
+  withdraw dialog text show in the restaurant zone.
 - Run the unit suite under `TZ=UTC` and under `TZ=Asia/Tokyo`
   (lesson at `memory/lessons.md:1322-1325`).
 - E2E: extend `tests/e2e/shift-trade-up-for-grabs.spec.ts`. Pin the restaurant

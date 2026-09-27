@@ -14,6 +14,15 @@ export interface AvailableShiftItem {
   trade?: MarketplaceTrade;
 }
 
+// Note: two open items with no start time both get NEGATIVE_INFINITY.
+// Subtraction (a.startsAt - b.startsAt) turns that pair into NaN, so this
+// comparator uses explicit checks instead of a numeric difference.
+function compareByStartsAt(a: AvailableShiftItem, b: AvailableShiftItem): number {
+  if (a.startsAt < b.startsAt) return -1;
+  if (a.startsAt > b.startsAt) return 1;
+  return 0;
+}
+
 export function mergeAvailableShifts(
   openShifts: OpenShift[],
   trades: readonly MarketplaceTrade[],
@@ -45,7 +54,7 @@ export function mergeAvailableShifts(
     });
   }
 
-  items.sort((a, b) => (a.startsAt < b.startsAt ? -1 : a.startsAt > b.startsAt ? 1 : 0));
+  items.sort(compareByStartsAt);
   return items;
 }
 

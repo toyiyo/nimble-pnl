@@ -148,13 +148,24 @@ Guards, in this order:
 
 Time zone: read `restaurants.timezone`. If it is null or not in
 `pg_timezone_names`, use `'America/Chicago'`. This matches `safeTz`.
+Reassign the variable in the guard (lesson on the `pg_timezone_names`
+guard). `pg_timezone_names` is in `pg_catalog`. Postgres always searches
+`pg_catalog`, so the pinned `search_path` does not hide it. Write this in a
+migration comment, so that a later change to `search_path` keeps the guard.
+
+Rounding: use `round(v::numeric, 2)`. The RPC becomes the only source of
+the hourly numbers, so no JS rounding must match it. A negative half value
+(for example −0.005) rounds away from zero in Postgres. A pgTAP case pins
+this.
 
 Rows: `unified_sales` where `restaurant_id = p_restaurant_id`, `item_type =
 'sale'`, `parent_sale_id IS NULL`, `sale_date BETWEEN p_start_date AND
 p_end_date`. `sale_date` is a DATE column, so a DATE bound is correct here.
-The existing index `idx_unified_sales_restaurant_date (restaurant_id,
-sale_date)` serves this filter
-(supabase/migrations/20251109151058_60662d3d-422f-439e-b321-5d8ab299960b.sql:50).
+The index `idx_unified_sales_restaurant_keyset (restaurant_id, sale_date,
+created_at, id)` serves this filter with its first two columns
+(supabase/migrations/20260720120001_bulk_deduction_keyset_batching.sql:159-160).
+The same migration deletes the older `idx_unified_sales_restaurant_date`
+(:158). Do not cite the older index.
 
 Minute of day for a row:
 
@@ -219,6 +230,9 @@ Output:
 - `days` sorts by `day_of_week` (weekday) or `date` (by_date). `slots` sorts
   by `start_minute`.
 - `GRANT EXECUTE … TO authenticated`. `REVOKE … FROM anon, public`.
+  `service_role` and `postgres` do not need a grant. The edge function calls
+  the RPC with the user JWT, not with the service role
+  (supabase/functions/ai-execute-tool/index.ts:3578-3583).
 
 ### 4.2 Shift Timeline change
 
@@ -233,6 +247,12 @@ In `useWeekStaffingSuggestions`:
 - Map each `days[i]` to `HourlySalesData[]` (`hour = start_minute / 60`,
   `avgSales = sales`, `sampleCount = sample_count`) and its
   `has_hourly_breakdown`. Then call `computeStaffingSuggestions` as today.
+  The formula `start_minute / 60` is correct only at 60 minutes. Write this
+  in a code comment.
+- A weekday in `weekDays` that is not in `days[]` maps to `{ data: [],
+  hasHourlyBreakdown: false }`. This is the result of
+  `aggregateHourlySales([])` today (src/hooks/useHourlySalesPattern.ts:74).
+  Never send `undefined` to `computeStaffingSuggestions`.
 - Change `computeActualSplh` to take `totalSales: number` in place of the
   sales rows.
 - `hasSalesData` becomes `days.length > 0`.
@@ -249,8 +269,27 @@ Clean-up after the switch:
   src/lib/splhAnalytics.ts:48-57. Change the comments at
   src/lib/splhAnalytics.ts:52 and :187 and src/lib/salesTrends.ts:600 to
   point at the RPC, because they name the deleted file.
-- Change tests/unit/StaffingOverlay.tz.test.tsx and
-  tests/unit/useWeekStaffingSuggestions.*.test.ts to mock the RPC.
+- Test files to change or delete:
+  - Delete tests/unit/useHourlySalesPattern.test.ts. Its cases move to
+    pgTAP 77.
+  - tests/unit/useWeekStaffingSuggestions.pagination.test.ts checks the
+    20-page cap that this change deletes. Replace it with one test: the hook
+    calls `supabase.rpc('get_hourly_sales_pattern', …)` one time, and it
+    does not call `supabase.from('unified_sales')`.
+  - tests/unit/useWeekStaffingSuggestions.tz.test.ts mocks `.from()`
+    (:37-68). Change it to mock `.rpc()`. Assert that `p_start_date` and
+    `p_end_date` are the restaurant business days for the given `tz`.
+  - tests/unit/StaffingOverlay.tz.test.tsx spies on `aggregateHourlySales`
+    (:12-24). The client does not bucket by hour after the change. Replace
+    the spy with an assertion on the RPC date arguments for the restaurant
+    `tz`.
+  - tests/unit/useWeekStaffingSuggestions.actualSplh.test.ts calls
+    `computeActualSplh(sales, punches)`. Change every call to
+    `computeActualSplh(totalSales, punches)`.
+  - Check the other tests that mock the hook or the `'hourly-sales-all'`
+    key (for example tests/unit/shiftTimelineTab.test.tsx,
+    tests/unit/StaffingOverlay.wiring.test.tsx). Change a test only when it
+    mocks the sales query itself.
 - Delete the entry for the deleted file in
   tests/unit/highVolumeQueryGuard.test.ts:48.
 
@@ -319,7 +358,11 @@ Size limit. The 31-day `by_date` limit holds for 60 minutes. For smaller
 slots, the limit gets smaller so that the text always fits under 40,000
 characters: 31 days at 60 minutes, 15 days at 30 minutes, 7 days at 15
 minutes. A larger span returns `INVALID_ARGUMENTS` with the limit in the
-message. A unit test builds the worst case (every slot of every day filled,
+message. Byte budget: a worst-case row `["23:45",99999.99,99,999],` has 32
+characters. At 15 minutes, 7 days × 96 rows × 32 = 21,504 characters. At
+30 minutes, 15 × 48 × 32 = 23,040. At 60 minutes, 31 × 24 × 32 = 23,808. The
+day headers and notes add less than 4,000. Write this budget in a comment
+at the limit constants. A unit test builds the worst case (every slot of every day filled,
 largest values) and checks `length <= 40_000`.
 
 ### 4.4 Docs and prompts
@@ -353,6 +396,9 @@ largest values) and checks `length <= 40_000`.
   - `total_sales` equals the sum of the window.
   - A DST case: a sale at local 01:30 on a fall-back date in
     `America/Chicago`.
+  - `restaurants.timezone` has a value that is not in `pg_timezone_names`.
+    The RPC uses `'America/Chicago'` and returns it in `time_zone`.
+  - A slot average of a negative half value rounds with `round(numeric, 2)`.
 - Vitest:
   - `hourlyStaffing` parity with `staffingCalculator`.
   - `executeGetHourlySales`: arguments, defaults, sub-hour recommendation
@@ -361,9 +407,12 @@ largest values) and checks `length <= 40_000`.
   - mcpHandler: title and `readOnlyHint`.
   - `useWeekStaffingSuggestions`: maps the RPC result, `actualSplh` from
     `total_sales`, pin `process.env.TZ` (lesson 2026-08-19).
-- E2E: extend the Shift Timeline spec so that the coverage chart shows the
-  hourly sales from seeded `unified_sales` rows. This checks the seam between
-  the RPC and the timeline.
+- E2E: extend the test at tests/e2e/staffing-suggestions.spec.ts:69
+  ("seeded sales produce shift blocks…"). The test seeds `unified_sales`
+  rows. After the change, those rows go through the RPC. Add two
+  assertions: the `rpc/get_hourly_sales_pattern` response has status 200,
+  and the first suggested block starts at the first seeded sales hour. This
+  checks the seam between the RPC and the timeline.
 
 ## 6. Out of scope
 
@@ -375,7 +424,18 @@ largest values) and checks `length <= 40_000`.
   time. The new RPC keeps the timeline rule, because the goal is a match
   with the timeline.
 
-## 7. Risks
+## 7. Decided trade-offs
+
+- Time zone source. The client computes the date window with
+  `safeTz(selectedRestaurant.restaurant.timezone)`
+  (src/hooks/useWeekStaffingSuggestions.ts:73). The RPC buckets slots with
+  `restaurants.timezone` from the database. Both values come from the same
+  column. They differ only when a user changes the zone and the client
+  context is not yet refreshed. The window then moves by one day at most for
+  one query. The next refetch fixes it. We accept this risk. The RPC returns
+  `time_zone`, so a later change can compare the two values.
+
+## 8. Risks
 
 - The timeline switch changes a live screen. The E2E test and the hook tests
   cover the seam. The hook return shape does not change.

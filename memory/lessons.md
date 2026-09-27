@@ -1842,6 +1842,7 @@
 - **Rule:** A red local DB test is not evidence of a code defect until you have confirmed your own migration is still applied — check first, re-apply, re-run, *then* debug. With ~5 concurrent worktrees on one Postgres, local full-suite e2e is not an authority; CI is. Delegating it is the stronger signal, not the weaker one — but say so explicitly rather than reporting a suite as "passing" when it never finished.
 - **Confirmed [2026-08-20] (PR #767):** The worktree count grew to ~13, and the contention hit three times in one run: `test:db` in Phase 7b, the full E2E suite in Phase 8, and a `psql` check in Phase 9d. Four sibling worktrees ran `supabase db reset` in an overlap of 20+ minutes, so no quiet window came. The clean hand-back: the workflow stopped on a `needs_human` gate with the evidence, and the resume carried the decision in `args.verifyResolutionNote` — accept CI as the authoritative gate for the full suite, and do not run `db:reset` locally. CI's four isolated shards passed. Two earlier timed local passes of the branch's own new spec kept the local signal honest.
 - **[2026-08-20] CONFIRMED again (PR #770), plus a coordination protocol that worked:** three mid-run resets from sibling worktrees during one task (one run lost the connection at 27/37 pgTAP tests; another hit a freshly reset db with no `pgtap` extension — `function plan(integer) does not exist`). Two additions: (1) a peer session sent a cross-session message declaring its e2e window and a reset window; replying with this session's own schedule (what already ran, what remains, a hold commitment for any late local run) avoided every further collision — answer these messages with concrete timestamps, and before replying check the workflow journal for what is *actually* still running rather than assuming. (2) CodeRabbit flagged that a plan's RED step ran `test:db` with no preceding `db:reset` while the same plan documented sibling-migration drift — on a shared db, the RED step needs the reset as much as the verify step does (fixed in `9d2172a3`).
+- **Confirmed [2026-09-26] (PR #824):** `test:db` deadlocked on a different SQL file in each attempt. `pg_stat_activity` showed the blocking PIDs as PostgREST connections from a sibling session. The same busy stack made 25 E2E specs fail at signup, before any branch-specific step. The user decided to stop the local E2E and let CI run it. The resume passed that decision in `args.verifyNotes`.
 
 ## Category: Development Workflow (continued)
 
@@ -2403,6 +2404,7 @@
 - **Mistake:** Ran `npm run test:e2e | tail -40 > out.log` in the background and treated the still-running process as a stuck test suite. `ps` showed 04:03:58 elapsed and the output file was 0 bytes, which read as "wedged before printing anything." I killed PIDs 73082/73054 assuming lost work. The log, once flushed, ended with `166 passed (29.2m)` followed by `Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.` — the default `html` reporter starts a **blocking web server** after the run and waits for Ctrl+C forever. The 0-byte file was `tail` buffering, not silence.
 - **Correction:** `npx playwright test --reporter=line 2>&1 | tee <file>` — a reporter that streams and then exits.
 - **Rule:** Never run Playwright non-interactively with the default reporter. `--reporter=line` (or `list`, or `--reporter=html --reporter-open=never`) for anything an agent launches. Two corollaries with teeth: (1) a piped-through-`tail` command produces **no output at all** until it exits, so an empty log file is evidence of nothing — redirect the full stream and read the tail of the *file*; (2) before killing a long-running job, read what it already wrote. This is the CLAUDE.md "No Unbounded Waits" failure class arriving from the tool's own default rather than from a hand-rolled loop, so the "don't write poll loops" rule alone does not catch it.
+- **Confirmed [2026-09-26] (PR #824):** The Phase 8 verify agent ran `npm run test:e2e`. The run finished and then served its report on `localhost:9323`. The workflow saw no progress for 6 × 180 s and stopped with `needs_human`. The Phase 8 prompt still says `npm run test:e2e` with no reporter flag. **Rule:** In an agent prompt, write `npx playwright test --reporter=line`, not `npm run test:e2e`.
 
 ## Category: Accessibility (continued)
 
@@ -3459,6 +3461,7 @@
 ### [2026-09-26] Do not run the unit suite at the same time as the E2E suite (PR #812)
 - **Mistake:** The post-QA unit run went in parallel with the full E2E run. `usePredictableExpenses.test.tsx` failed at the default 1000 ms `waitFor`, because of CPU load. The file was not in the diff, and it passed alone in 474 ms.
 - **Rule:** Run the full unit suite with no other heavy load. A timeout failure under load is not proof of a bug or of a flake. Run the suite again alone before you decide.
+- **Confirmed [2026-09-26] (PR #824):** The same `usePredictableExpenses > stops at 20 pages` failure came back in a full run under load. It passed alone, and it passed in the next full run.
 
 ## Category: UI Patterns (continued)
 
@@ -3466,3 +3469,10 @@
 - **Mistake:** The urgent "Teammates need cover" card moved above `ScheduleStatusBanner`. The banner kept its fixed 76 px slot with no content, and a gap showed under the card.
 - **Correction:** The banner got a `reserveHeight` prop. With no content and no reserved height, it returns null.
 - **Rule:** When a new element moves around a component that reserves height, check the layout at both positions. Make the reserved height a prop, not a constant.
+
+## Category: Development Workflow (continued)
+
+### [2026-09-26] Launch the /dev workflow from the worktree copy of the script (PR #824)
+- **Mistake:** The workflow ran with `scriptPath` set to the main checkout copy of `.claude/workflows/dev-build-and-ship.js`. The main checkout was on another branch, with local edits to that file. That copy had no Phase 8.5, so no browser QA ran. The PR merged with no check of the real screens. The user asked "did you qa it using the chrome tools?", and the answer was no.
+- **Correction:** None before the merge. `grep -c "PHASE 8.5"` gave 0 for the main checkout copy and 2 for `origin/main`.
+- **Rule:** Set `scriptPath` to the script in the task worktree, which is on a branch from `origin/main`. Before the launch, run `grep -c "PHASE 8.5"` on that path. If the result is 0, stop and find the correct copy.

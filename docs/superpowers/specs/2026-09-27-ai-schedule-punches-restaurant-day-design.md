@@ -66,9 +66,15 @@ The file has no Deno imports, so Vitest can import it (header comment,
   - `end` = the UTC instant of the next day after `endYmd` at 00:00 in
     `timeZone`, minus 1 ms. So the range is inclusive and fits the existing
     `<=` filters.
-  - Uses `zonedNaiveToUtc` (`_shared/timezone.ts:98`), which is DST-aware
-    (two-pass fix). An invalid zone falls back to `America/Chicago`
-    (`safeTz`).
+  - Build `start` with `zonedNaiveToUtc(`${startYmd}T00:00:00`, tz)`.
+    Build `end` with `zonedNaiveToUtc(`${nextDay(endYmd)}T00:00:00`, tz)`
+    minus 1 ms. Get `nextDay` with UTC calendar math on the `YYYY-MM-DD`
+    string. Do not add a fixed 24 h, because a DST day is 23 h or 25 h.
+  - `zonedNaiveToUtc` (`_shared/timezone.ts:98`) is DST-aware (two-pass
+    fix). An invalid zone falls back to `America/Chicago` (`safeTz`).
+  - The outputs are real instants. A code comment tells callers to compare
+    them as instants or read them with `ymdInTimeZone`. Never read them with
+    `getFullYear()` / `getDate()`.
 - `ymdInTimeZone` already exists (`_shared/restaurantDate.ts:45`). The
   day keys use it.
 
@@ -85,6 +91,24 @@ The file has no Deno imports, so Vitest can import it (header comment,
   with `restaurantNow`. This keeps the current forward-looking semantics
   (`ai-execute-tool/index.ts:2235-2240`), with "today" from the restaurant.
 
+### New pure module — `supabase/functions/_shared/timePunchShifts.ts`
+
+- `buildTimePunchShifts(employees, punches, bounds, timeZone, minHours)`
+  returns the `Shift[]` rows that `executeGetTimePunches` builds today
+  (`ai-execute-tool/index.ts:2147-2180`).
+- It groups punches by employee and calls `parseWorkPeriods`
+  (`_shared/laborCalculations.ts:338`). It keeps a period when
+  `bounds.start <= startTime <= bounds.end`, it is not a break, and
+  `hours >= minHours`.
+- It does not call `calculateHoursPerEmployee`. That function also feeds
+  `startDate` / `endDate` to `calculateSalaryForPeriod` and
+  `calculateContractorPayForPeriod` (`_shared/laborCalculations.ts:722-723`).
+  Those read UTC calendar fields, so instant bounds would count one extra day
+  (Phase 2.5 review, major). The tool output never read those totals.
+- `date` = `ymdInTimeZone(startTime, timeZone)`. The pay snapshot uses the
+  same day. The cost rule does not change: hourly snapshot gives
+  `hourly_rate × hours`; other types give `null`.
+
 ### `ai-execute-tool/index.ts`
 
 - The dispatcher already has `restaurantTimeZone` and `restaurantNow`
@@ -100,13 +124,9 @@ The file has no Deno imports, so Vitest can import it (header comment,
 - `executeGetTimePunches`:
   - Days from `calculateDateRange(..., restaurantNow)`.
   - Instants from `restaurantDayBounds`. Pass them to `fetchLaborData` (the
-    18 h lookahead stays) and to `calculateHoursPerEmployee`, which filters
-    periods by these instants.
-  - Each shift `date` = `ymdInTimeZone(p.startTime, tz)`. The pay snapshot
-    uses the same day.
-  - The output reads only `work_periods` from the engine
-    (`ai-execute-tool/index.ts:2160-2180`), so the engine's UTC
-    `hours_per_day` keys do not reach the output.
+    18 h lookahead stays).
+  - Build the rows with `buildTimePunchShifts(..., tz, minHours)`. The sort,
+    the limit and the output shape do not change.
 
 ## Decided trade-offs
 
@@ -125,6 +145,11 @@ The file has no Deno imports, so Vitest can import it (header comment,
   `America/Chicago` in CDT and CST, a DST change day (2026-11-01), `UTC`, and
   an invalid zone. Assertions compare ISO strings, so they do not depend on
   the host zone.
+- `tests/unit/timePunchShifts.test.ts`: a Friday 21:00 CDT clock-in gets
+  `date` `2026-09-25`. A clock-in before `bounds.start` or after `bounds.end`
+  is dropped, and an overnight shift that ends after `bounds.end` is kept.
+  `min_hours` and breaks filter as before. The hourly cost uses the snapshot
+  of the restaurant day.
 - `tests/unit/scheduleOverview.test.ts`: a Friday 21:00 CDT shift
   (`2026-09-26T02:00:00Z`) groups under `2026-09-25`. A Saturday 22:00 shift
   groups under Saturday. A `UTC` restaurant keeps the UTC day.

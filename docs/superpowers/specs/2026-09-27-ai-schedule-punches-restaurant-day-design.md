@@ -102,7 +102,7 @@ The file has no Deno imports, so Vitest can import it (header comment,
   `hours >= minHours`.
 - It does not call `calculateHoursPerEmployee`. That function also feeds
   `startDate` / `endDate` to `calculateSalaryForPeriod` and
-  `calculateContractorPayForPeriod` (`_shared/laborCalculations.ts:722-723`).
+  `calculateContractorPayForPeriod` (`_shared/laborCalculations.ts:723-724`).
   Those read UTC calendar fields, so instant bounds would count one extra day
   (Phase 2.5 review, major). The tool output never read those totals.
 - `date` = `ymdInTimeZone(startTime, timeZone)`. The pay snapshot uses the

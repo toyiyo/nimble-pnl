@@ -18,7 +18,17 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { format, parseISO } from 'date-fns';
+import { formatInstant } from '@/lib/restaurantClock';
+
+// The page reads the restaurant's time zone through useRestaurantClock and
+// passes it to TradeCard. Fix it to a zone that differs from UTC and from
+// most host machines, so a test that renders in the host zone instead of
+// the restaurant zone fails.
+const RESTAURANT_TZ = 'America/Los_Angeles';
+
+vi.mock('@/hooks/useRestaurantClock', () => ({
+  useRestaurantClock: vi.fn(() => ({ tz: RESTAURANT_TZ })),
+}));
 
 // ---------------------------------------------------------------------------
 // Hoisted mock — date-fns/parseISO would work without mocking because we only
@@ -347,6 +357,49 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
     expect(panel).not.toBeNull();
   });
 
+  it('shows the date and time in the restaurant zone, not the host zone', async () => {
+    // 2026-10-03T01:00Z–2026-10-03T07:00Z is 2026-10-02 18:00–2026-10-03
+    // 00:00 in America/Los_Angeles (the mocked restaurant zone). A card that
+    // formats in the host zone instead shows a different date or hour.
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: [
+        {
+          key: 'trade-tz',
+          type: 'trade',
+          date: new Date('2026-10-03T01:00:00Z'),
+          trade: {
+            id: 'trade-tz',
+            status: 'open',
+            offered_shift: {
+              id: 'shift-tz',
+              start_time: '2026-10-03T01:00:00Z',
+              end_time: '2026-10-03T07:00:00Z',
+              position: 'Server',
+              break_duration: 0,
+              is_published: true,
+            },
+            offered_by: {
+              id: 'emp-poster',
+              name: 'Bob Poster',
+              position: 'Server',
+              area: 'FOH',
+            },
+            reason: null,
+            target_employee_id: null,
+          },
+          openShift: undefined,
+        },
+      ],
+      loading: false,
+    });
+
+    renderPage();
+
+    expect(screen.getByText('Fri, Oct 2')).toBeInTheDocument();
+    expect(screen.getByText('6:00 PM - 12:00 AM')).toBeInTheDocument();
+  });
+
   it('marks a draft offered shift as tentative', async () => {
     // Same fixture builder as the other tests, with is_published: false.
     const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
@@ -467,10 +520,11 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
       },
     ];
 
-    // Build the expected label the same way the component does (parseISO +
-    // format), so the assertion holds under any test-runner timezone.
+    // Build the expected label the same way the component does — in the
+    // restaurant time zone, not the host machine's — so the assertion holds
+    // under any test-runner timezone.
     const startLabel = (hour: string) =>
-      format(parseISO(`${DAY_A}T${hour}:00:00Z`), 'h:mm a');
+      formatInstant(`${DAY_A}T${hour}:00:00Z`, RESTAURANT_TZ, 'h:mm a');
 
     (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
       items: buildItems('14'),

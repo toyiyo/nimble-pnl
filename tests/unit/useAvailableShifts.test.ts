@@ -26,13 +26,15 @@ describe('useAvailableShifts', () => {
     mocks.useMarketplaceTrades.mockReturnValue({ trades: [], loading: false, error: null, refetch: vi.fn() });
   });
 
+  const TZ = 'America/Los_Angeles';
+
   it('holds the trades query until the employee is known', () => {
-    renderHook(() => useAvailableShifts('rest-1', null, START, END));
+    renderHook(() => useAvailableShifts('rest-1', null, START, END, TZ));
     expect(mocks.useMarketplaceTrades).toHaveBeenCalledWith('rest-1', null, { enabled: false });
   });
 
   it('enables the trades query with an employee', () => {
-    renderHook(() => useAvailableShifts('rest-1', 'emp-1', START, END));
+    renderHook(() => useAvailableShifts('rest-1', 'emp-1', START, END, TZ));
     expect(mocks.useMarketplaceTrades).toHaveBeenCalledWith('rest-1', 'emp-1', { enabled: true });
   });
 });

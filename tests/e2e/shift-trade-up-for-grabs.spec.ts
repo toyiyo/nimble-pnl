@@ -5,10 +5,19 @@ import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } fr
 /** The helpers that `exposeSupabaseHelpers` puts on `window`. */
 type E2EWindow = Window & { __supabase: SupabaseClient; __getRestaurantId: () => string };
 
+/** The restaurant zone under test. It differs from the browser's zone. */
+const RESTAURANT_TZ = 'America/Los_Angeles';
+
+/** Formats `date` in `RESTAURANT_TZ`, matching a `date-fns` pattern's output. */
+function formatInLA(date: Date, opts: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: RESTAURANT_TZ, ...opts }).format(date);
+}
+
 /**
  * E2E for the "Teammates need cover" home card, the "More" tab badge, and the
  * marketplace deep link.
  * Design: docs/superpowers/specs/2026-09-25-shift-trade-reminders-design.md (Part A).
+ * Design: docs/superpowers/specs/2026-09-26-marketplace-restaurant-timezone-design.md.
  *
  * P (owner) posts an open trade for P's own shift. Q (a staff user) opens the
  * home screen on a phone viewport. Q sees the card and the badge, taps the
@@ -17,8 +26,13 @@ type E2EWindow = Window & { __supabase: SupabaseClient; __getRestaurantId: () =>
  *
  * The seed copies tests/e2e/shift-trade-accept.spec.ts: RLS requires the
  * trade's offerer to be the caller's own employee, so P seeds as P.
+ *
+ * The browser zone is Tokyo. The restaurant zone is Los Angeles. The home
+ * card and the marketplace card must both show the shift in the restaurant
+ * zone, not the browser zone — see
+ * tests/e2e/coverage-chart-explainer.spec.ts:41 for the zone-pin pattern.
  */
-test.use({ viewport: { width: 390, height: 844 } });
+test.use({ viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Tokyo' });
 
 test.describe('Teammates need cover', () => {
   test('a staff user sees an open trade on the home screen and accepts it through the deep link', async ({ page }) => {
@@ -30,8 +44,34 @@ test.describe('Teammates need cover', () => {
     const restaurantId = await page.evaluate(() => (window as unknown as E2EWindow).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
+    // Pin the restaurant zone to LA, which differs from the browser's Tokyo
+    // zone. Both the home card and the marketplace card must read this zone,
+    // not the browser zone.
+    {
+      const tzError = await page.evaluate(
+        async ({ restId, tz }) => {
+          const supabase = (window as unknown as E2EWindow).__supabase;
+          const { error } = await supabase.from('restaurants').update({ timezone: tz }).eq('id', restId);
+          return error?.message ?? null;
+        },
+        { restId: restaurantId as string, tz: RESTAURANT_TZ },
+      );
+      expect(tzError).toBeNull();
+    }
+
+    // A fixed UTC instant 3 days out: 01:00Z-07:00Z. That is 18:00-00:00 in
+    // Los Angeles (a different calendar day at each end) and a different day
+    // again in Tokyo, so a bug that used the browser zone or the UTC day
+    // would show a different date or time than the restaurant zone does.
+    const base = new Date();
+    base.setUTCDate(base.getUTCDate() + 3);
+    const startAt = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), 1, 0, 0));
+    const endAt = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), 7, 0, 0));
+    const startIso = startAt.toISOString();
+    const endIso = endAt.toISOString();
+
     const seed = await page.evaluate(
-      async ({ restId, qEmail, qPassword, pEmail, pPassword }) => {
+      async ({ restId, qEmail, qPassword, pEmail, pPassword, startTime, endTime }) => {
         const supabase = (window as unknown as E2EWindow).__supabase;
 
         const pUserId = (await supabase.auth.getUser()).data.user?.id;
@@ -48,16 +88,11 @@ test.describe('Teammates need cover', () => {
 
         // A future published shift, 3 days out. Q has no shift then, so the
         // trade is claimable for Q.
-        const start = new Date();
-        start.setDate(start.getDate() + 3);
-        start.setHours(16, 0, 0, 0);
-        const end = new Date(start);
-        end.setHours(22, 0, 0, 0);
         const { data: shift, error: sErr } = await supabase
           .from('shifts')
           .insert({
             restaurant_id: restId, employee_id: pEmp.id,
-            start_time: start.toISOString(), end_time: end.toISOString(),
+            start_time: startTime, end_time: endTime,
             position: 'Server', status: 'scheduled', break_duration: 30,
             is_published: true, locked: false,
           })
@@ -100,7 +135,10 @@ test.describe('Teammates need cover', () => {
 
         return { tradeId: trade.id as string, qEmpId: qEmp.id as string };
       },
-      { restId: restaurantId as string, qEmail: acceptor.email, qPassword: acceptor.password, pEmail: primary.email, pPassword: primary.password },
+      {
+        restId: restaurantId as string, qEmail: acceptor.email, qPassword: acceptor.password,
+        pEmail: primary.email, pPassword: primary.password, startTime: startIso, endTime: endIso,
+      },
     );
 
     await page.evaluate(async ({ qEmail, qPassword }) => {
@@ -109,12 +147,25 @@ test.describe('Teammates need cover', () => {
       if (error) throw new Error(`Q signin: ${error.message}`);
     }, { qEmail: acceptor.email, qPassword: acceptor.password });
 
-    // 1. The home screen shows the card with P's trade.
+    // The expected date and time, computed in the restaurant zone (LA), not
+    // the browser zone (Tokyo) and not the UTC day.
+    const homeSpokenDate = formatInLA(startAt, { weekday: 'long', month: 'long', day: 'numeric' });
+    const homeStartTime = formatInLA(startAt, { hour: 'numeric', minute: '2-digit', hour12: true });
+    const homeEndTime = formatInLA(endAt, { hour: 'numeric', minute: '2-digit', hour12: true });
+    const marketDate = formatInLA(startAt, { weekday: 'short', month: 'short', day: 'numeric' });
+
+    // 1. The home screen shows the card with P's trade, in the restaurant zone.
     await page.goto('/employee/schedule');
     const card = page.getByRole('region', { name: 'Teammates need cover' });
     await expect(card).toBeVisible({ timeout: 20000 });
     await expect(card.getByText(/It fits around your shifts/i)).toBeVisible();
     await expect(card.getByText(/Family event/)).toBeVisible();
+    const homeLink = card.getByRole('link', {
+      name: new RegExp(
+        `View Server shift on ${homeSpokenDate}, ${homeStartTime} to ${homeEndTime}, from Pat Offerer`,
+      ),
+    });
+    await expect(homeLink).toBeVisible();
 
     // 2. The "More" tab carries the count in its accessible name.
     await expect(
@@ -122,9 +173,16 @@ test.describe('Teammates need cover', () => {
     ).toBeVisible();
 
     // 3. The row is one link. It opens the marketplace on the linked trade.
-    await card.getByRole('link', { name: /View Server shift on .* from Pat Offerer/ }).click();
+    await homeLink.click();
     await page.waitForURL(/\/employee\/shifts/, { timeout: 15000 });
     await expect(page.getByText('From your home screen')).toBeVisible({ timeout: 20000 });
+
+    // The highlighted marketplace card shows the same restaurant-zone date
+    // and time as the home card — not the browser's Tokyo zone.
+    const highlighted = page.locator(`[data-trade-id="${seed.tradeId}"]`);
+    await expect(highlighted).toHaveAttribute('aria-current', 'true');
+    await expect(highlighted.getByText(marketDate)).toBeVisible();
+    await expect(highlighted.getByText(`${homeStartTime} - ${homeEndTime}`)).toBeVisible();
 
     // 4. Q accepts the highlighted trade through the one accept flow.
     const acceptButton = page.getByRole('button', { name: /accept trade from pat offerer/i }).first();

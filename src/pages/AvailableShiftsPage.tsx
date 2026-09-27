@@ -63,7 +63,8 @@ import type { MarketplaceTrade } from '@/hooks/useShiftTrades';
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
 import type { TradeLinkSource } from '@/lib/tradeDeepLink';
 
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
+import { formatInstant } from '@/lib/restaurantClock';
 import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
 import { hasScheduleConflict } from '@/lib/openShiftHelpers';
 import { tradeDeadlineFinding, type PolicyFinding } from '@/lib/shiftProtection';
@@ -81,6 +82,8 @@ interface TradeCardProps {
   /** The deep link points at this trade. */
   isHighlighted: boolean;
   highlightSource: TradeLinkSource | null;
+  /** The restaurant's time zone. All date and time labels use it, not the viewer's. */
+  timezone: string;
 }
 
 const HIGHLIGHT_SOURCE_LABEL: Record<TradeLinkSource, { icon: LucideIcon; text: string }> = {
@@ -88,10 +91,10 @@ const HIGHLIGHT_SOURCE_LABEL: Record<TradeLinkSource, { icon: LucideIcon; text: 
   home: { icon: Home, text: 'From your home screen' },
 };
 
-function formatTradeTime(startTime: string, endTime: string): string {
-  const start = parseISO(startTime);
-  const end = parseISO(endTime);
-  return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
+function formatTradeTime(startTime: string, endTime: string, timezone: string): string {
+  const startLabel = formatInstant(startTime, timezone, 'h:mm a');
+  const endLabel = formatInstant(endTime, timezone, 'h:mm a');
+  return `${startLabel} - ${endLabel}`;
 }
 
 const TradeCard = memo(function TradeCard({
@@ -102,13 +105,17 @@ const TradeCard = memo(function TradeCard({
   areaMismatch,
   isHighlighted,
   highlightSource,
+  timezone,
 }: TradeCardProps) {
   if (!trade?.offered_shift) return null;
 
-  const shiftStart = parseISO(trade.offered_shift.start_time);
-  const isPast = shiftStart < new Date();
-  const dateLabel = format(shiftStart, 'EEE, MMM d');
-  const timeLabel = formatTradeTime(trade.offered_shift.start_time, trade.offered_shift.end_time);
+  const isPast = new Date(trade.offered_shift.start_time) < new Date();
+  const dateLabel = formatInstant(trade.offered_shift.start_time, timezone, 'EEE, MMM d');
+  const timeLabel = formatTradeTime(
+    trade.offered_shift.start_time,
+    trade.offered_shift.end_time,
+    timezone,
+  );
   const name = trade.offered_by?.name ?? 'teammate';
 
   const mismatchId = `area-mismatch-${trade.id}`;
@@ -232,7 +239,8 @@ const TradeCard = memo(function TradeCard({
     prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&
     prev.areaMismatch?.claimerArea === next.areaMismatch?.claimerArea &&
     prev.isHighlighted === next.isHighlighted &&
-    prev.highlightSource === next.highlightSource
+    prev.highlightSource === next.highlightSource &&
+    prev.timezone === next.timezone
   );
 });
 
@@ -348,6 +356,7 @@ export default function AvailableShiftsPage() {
     currentEmployee?.id ?? null,
     weekStart,
     weekEnd,
+    tz,
   );
   const { claims, loading: claimsLoading } = useOpenShiftClaims(restaurantId, currentEmployee?.id);
   const claimMutation = useClaimOpenShift();
@@ -557,6 +566,7 @@ export default function AvailableShiftsPage() {
                             areaMismatch={getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)}
                             isHighlighted={highlightedTradeId === item.trade.id}
                             highlightSource={highlightedTradeId === item.trade.id ? highlightSource : null}
+                            timezone={tz}
                           />
                         ) : null}
                       </div>

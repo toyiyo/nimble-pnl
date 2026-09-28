@@ -7,6 +7,7 @@ import {
   calculateDateRange,
   daysBetweenYmd,
   laborWindowMismatchReason,
+  restaurantDayBounds,
 } from '../../supabase/functions/_shared/restaurantDate';
 
 // Every assertion uses a fixed UTC instant and compares calendar strings, so
@@ -142,5 +143,50 @@ describe('laborWindowMismatchReason', () => {
     const sales = calculateDateRange('today', undefined, undefined, restaurantWallClock(instant, 'America/Chicago'));
     const labor = calculateDateRange('today', undefined, undefined, restaurantWallClock(instant, 'UTC'));
     expect(laborWindowMismatchReason(sales, labor)).toBeDefined();
+  });
+});
+
+describe('restaurantDayBounds', () => {
+  it('gives the CDT instant bounds for a single restaurant day', () => {
+    const { start, end } = restaurantDayBounds('2026-09-25', '2026-09-25', 'America/Chicago');
+    expect(start.toISOString()).toBe('2026-09-25T05:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-09-26T04:59:59.999Z');
+  });
+
+  it('gives the CST instant bounds for a single restaurant day', () => {
+    const { start, end } = restaurantDayBounds('2026-12-10', '2026-12-10', 'America/Chicago');
+    expect(start.toISOString()).toBe('2026-12-10T06:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-12-11T05:59:59.999Z');
+  });
+
+  it('gives a 25-hour window on the DST end day', () => {
+    const { start, end } = restaurantDayBounds('2026-11-01', '2026-11-01', 'America/Chicago');
+    expect(start.toISOString()).toBe('2026-11-01T05:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-11-02T05:59:59.999Z');
+    expect(end.getTime() - start.getTime()).toBe(25 * 60 * 60 * 1000 - 1);
+  });
+
+  it('gives bounds across a multi-day range', () => {
+    const { start, end } = restaurantDayBounds('2026-09-21', '2026-09-27', 'America/Chicago');
+    expect(start.toISOString()).toBe('2026-09-21T05:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-09-28T04:59:59.999Z');
+  });
+
+  it('gives UTC midnight bounds for the UTC zone', () => {
+    const { start, end } = restaurantDayBounds('2026-09-25', '2026-09-25', 'UTC');
+    expect(start.toISOString()).toBe('2026-09-25T00:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-09-25T23:59:59.999Z');
+  });
+
+  it('falls back to America/Chicago for an invalid zone', () => {
+    const chicago = restaurantDayBounds('2026-09-25', '2026-09-25', 'America/Chicago');
+    const invalid = restaurantDayBounds('2026-09-25', '2026-09-25', 'Not/AZone');
+    expect(invalid.start.toISOString()).toBe(chicago.start.toISOString());
+    expect(invalid.end.toISOString()).toBe(chicago.end.toISOString());
+  });
+
+  it('rolls the end day across a month end', () => {
+    const { end } = restaurantDayBounds('2026-09-30', '2026-09-30', 'America/Chicago');
+    expect(end.toISOString()).toBe('2026-10-01T04:59:59.999Z');
   });
 });

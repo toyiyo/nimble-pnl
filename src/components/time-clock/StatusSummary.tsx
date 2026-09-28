@@ -9,6 +9,10 @@ interface StatusSummaryProps {
   date: string;
   anomalies?: number;
   incompleteSessions?: number;
+  offsiteCount?: number;
+  onShowOffsite?: () => void;
+  locationUnavailableCount?: number;
+  onShowLocationUnavailable?: () => void;
 }
 
 export function StatusSummary({
@@ -19,6 +23,10 @@ export function StatusSummary({
   date,
   anomalies = 0,
   incompleteSessions = 0,
+  offsiteCount = 0,
+  onShowOffsite,
+  locationUnavailableCount = 0,
+  onShowLocationUnavailable,
 }: StatusSummaryProps) {
   return (
     <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8 p-4 rounded-lg bg-card border">
@@ -70,6 +78,28 @@ export function StatusSummary({
           <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
             {anomalies} anomal{anomalies !== 1 ? 'ies' : 'y'}
           </Badge>
+        )}
+
+        {offsiteCount > 0 && (
+          <button
+            type="button"
+            onClick={onShowOffsite}
+            aria-label={`${offsiteCount} off-site punches. Show them in the punch list.`}
+            className="min-h-6 min-w-6 whitespace-nowrap rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 focus-visible:ring-1 focus-visible:ring-border"
+          >
+            {offsiteCount} off-site
+          </button>
+        )}
+
+        {locationUnavailableCount > 0 && (
+          <button
+            type="button"
+            onClick={onShowLocationUnavailable}
+            aria-label={`${locationUnavailableCount} no-location punches. Show them in the punch list.`}
+            className="min-h-6 min-w-6 whitespace-nowrap rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 focus-visible:ring-1 focus-visible:ring-border"
+          >
+            {locationUnavailableCount} no location
+          </button>
         )}
       </div>
     </div>

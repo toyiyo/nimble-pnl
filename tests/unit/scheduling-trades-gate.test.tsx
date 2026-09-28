@@ -117,6 +117,16 @@ vi.mock('@/hooks/useScheduledLaborCosts', () => ({
   useScheduledLaborCosts: () => ({ breakdown: [] }),
 }));
 
+vi.mock('@/hooks/useDailyLaborPercent', () => ({
+  useDailyLaborPercent: () => ({
+    byDay: new Map(),
+    isLoading: false,
+    hasSalesData: false,
+    targetLaborPct: 22,
+    lookbackWeeks: 4,
+  }),
+}));
+
 vi.mock('@/hooks/useEmployeeLaborCosts', () => ({
   useEmployeeLaborCosts: () => ({}),
 }));

@@ -28,6 +28,8 @@ import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } fr
 import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
+import { useDailyLaborPercent } from '@/hooks/useDailyLaborPercent';
+import { DailyLaborPercentBadge } from '@/components/scheduling/DailyLaborPercentBadge';
 import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -409,12 +411,15 @@ const Scheduling = () => {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Calculate scheduled labor costs with breakdown
-  const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
+  const { breakdown: laborCostBreakdown, dailyCosts: scheduledDailyCosts } = useScheduledLaborCosts(
     shifts,
     currentWeekStart,
     weekEnd,
     restaurantId
   );
+
+  // Daily labor cost % for the grid day headers: scheduled cost / projected sales.
+  const dailyLaborPercent = useDailyLaborPercent(restaurantId, weekDayKeys, scheduledDailyCosts);
 
   // Calculate per-employee labor costs with outlier detection
   const laborCostSummary = useEmployeeLaborCosts(shifts, allEmployees);
@@ -1291,7 +1296,19 @@ const Scheduling = () => {
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Team Member</span>
                     </th>
                     {weekDays.map((day) => {
-                      const dayIsToday = toDateOnlyString(day) === restaurantToday;
+                      const dayKey = toDateOnlyString(day);
+                      const dayIsToday = dayKey === restaurantToday;
+                      const laborPercentFooter = (
+                        <DailyLaborPercentBadge
+                          value={dailyLaborPercent.byDay.get(dayKey)}
+                          isLoading={dailyLaborPercent.isLoading}
+                          targetLaborPct={dailyLaborPercent.targetLaborPct}
+                          lookbackWeeks={dailyLaborPercent.lookbackWeeks}
+                          dayLabel={format(day, 'EEEE, MMM d')}
+                          // In selection mode the header is a button: no nested focus stop.
+                          variant={selectionMode ? 'plain' : 'tooltip'}
+                        />
+                      );
                       return (
                         <th
                           key={day.toISOString()}
@@ -1303,14 +1320,14 @@ const Scheduling = () => {
                           {selectionMode ? (
                             <button
                               type="button"
-                              onClick={() => selectShiftsForDay(toDateOnlyString(day))}
+                              onClick={() => selectShiftsForDay(dayKey)}
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
                               aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
                             >
-                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize />
+                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize footer={laborPercentFooter} />
                             </button>
                           ) : (
-                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} />
+                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} footer={laborPercentFooter} />
                           )}
                         </th>
                       );

@@ -11,6 +11,11 @@ import { render, screen } from '@testing-library/react';
 // 2026-08-20-trade-approval-area-grant-design.md §3).
 
 const hasCapabilityMock = vi.fn();
+const { useDailyLaborPercentSpy, useScheduledLaborCostsSpy, shiftsRef } = vi.hoisted(() => ({
+  useDailyLaborPercentSpy: vi.fn(),
+  useScheduledLaborCostsSpy: vi.fn(),
+  shiftsRef: { current: [] as Array<{ id: string; status: string }> },
+}));
 let isResolvedMock = true;
 // Shared stub: the real hooks need a QueryClientProvider these tests lack.
 vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
@@ -50,7 +55,7 @@ vi.mock('@/hooks/useEmployees', () => ({
 }));
 
 vi.mock('@/hooks/useShifts', () => ({
-  useShifts: () => ({ shifts: [], loading: false, error: null }),
+  useShifts: () => ({ shifts: shiftsRef.current, loading: false, error: null }),
   useDeleteShift: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false }),
   useDeleteShiftSeries: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false }),
   useUpdateShiftSeries: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false }),
@@ -114,17 +119,23 @@ vi.mock('@/hooks/useScheduleChangeLogs', () => ({
 }));
 
 vi.mock('@/hooks/useScheduledLaborCosts', () => ({
-  useScheduledLaborCosts: () => ({ breakdown: [] }),
+  useScheduledLaborCosts: (...args: unknown[]) => {
+    useScheduledLaborCostsSpy(...args);
+    return { breakdown: [], dailyCosts: [] };
+  },
 }));
 
 vi.mock('@/hooks/useDailyLaborPercent', () => ({
-  useDailyLaborPercent: () => ({
-    byDay: new Map(),
-    isLoading: false,
-    hasSalesData: false,
-    targetLaborPct: 22,
-    lookbackWeeks: 4,
-  }),
+  useDailyLaborPercent: (...args: unknown[]) => {
+    useDailyLaborPercentSpy(...args);
+    return {
+      byDay: new Map(),
+      isLoading: false,
+      hasError: false,
+      targetLaborPct: 22,
+      lookbackWeeks: 4,
+    };
+  },
 }));
 
 vi.mock('@/hooks/useEmployeeLaborCosts', () => ({
@@ -319,5 +330,40 @@ describe('Scheduling page — Shift Trades tab capability gate', () => {
     render(<Scheduling />);
 
     expect(screen.queryByRole('tab', { name: /shift trades/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('Scheduling page — daily labor percent', () => {
+  beforeEach(() => {
+    hasCapabilityMock.mockReset();
+    useDailyLaborPercentSpy.mockReset();
+    useScheduledLaborCostsSpy.mockReset();
+    isResolvedMock = true;
+    shiftsRef.current = [];
+  });
+
+  it('enables the percent only with view:pay_rates and view:pos_sales', () => {
+    hasCapabilityMock.mockImplementation((cap: string) =>
+      cap === 'view:pay_rates' || cap === 'view:pos_sales',
+    );
+    render(<Scheduling />);
+    expect(useDailyLaborPercentSpy.mock.calls.at(-1)?.[2]).toMatchObject({ enabled: true });
+  });
+
+  it('disables the percent without view:pay_rates', () => {
+    hasCapabilityMock.mockImplementation((cap: string) => cap === 'view:pos_sales');
+    render(<Scheduling />);
+    expect(useDailyLaborPercentSpy.mock.calls.at(-1)?.[2]).toMatchObject({ enabled: false });
+  });
+
+  it('does not cost cancelled shifts', () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    shiftsRef.current = [
+      { id: 's1', status: 'scheduled' },
+      { id: 's2', status: 'cancelled' },
+    ];
+    render(<Scheduling />);
+    const costedShifts = useScheduledLaborCostsSpy.mock.calls.at(-1)?.[0] as Array<{ id: string }>;
+    expect(costedShifts.map((shift) => shift.id)).toEqual(['s1']);
   });
 });

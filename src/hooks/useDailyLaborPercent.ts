@@ -1,48 +1,58 @@
 import { useMemo } from 'react';
 
-import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
+import { useQuery } from '@tanstack/react-query';
 
-import { computeDailyLaborPercent, type DailyLaborPercentInput } from '@/lib/dailyLaborPercent';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { useStaffingSettings } from '@/hooks/useStaffingSettings';
+import { lookbackSalesQueryOptions } from '@/hooks/useWeekStaffingSuggestions';
+
+import type { DailyLaborPercentInput, DailyLaborPercentView } from '@/lib/dailyLaborPercent';
+
+import { computeDailyLaborPercent, projectDailySales } from '@/lib/dailyLaborPercent';
+
+interface UseDailyLaborPercentOptions {
+  /** `dailyCosts` from `useScheduledLaborCosts` for the same week. */
+  dailyCosts: DailyLaborPercentInput['dailyCosts'];
+  /** True while the shifts or the employees for `dailyCosts` load. */
+  costsLoading: boolean;
+  /** False skips the sales query (for example, the viewer cannot see wages or sales). */
+  enabled: boolean;
+}
 
 /**
  * Daily labor cost % for a week of the schedule.
  *
- * Projected sales come from `useWeekStaffingSuggestions` with no overrides, so
- * the percent uses the saved lookback-weeks setting. The planner uses the same
- * source for its hourly labor %. React Query shares the sales query between
- * the callers.
+ * Projected sales use the saved lookback-weeks setting and the same sales
+ * query as the planner (`lookbackSalesQueryOptions`), so React Query shares
+ * one cache entry. This hook does not run the planner's staffing pipeline or
+ * its time punch query.
  *
  * @param weekDays - Days of the week as `yyyy-MM-dd`.
- * @param dailyCosts - `dailyCosts` from `useScheduledLaborCosts` for the same week.
  */
 export function useDailyLaborPercent(
   restaurantId: string | null,
   weekDays: string[],
-  dailyCosts: DailyLaborPercentInput['dailyCosts'],
-) {
-  const { daySuggestions, activeSettings, isLoading, hasSalesData } = useWeekStaffingSuggestions(
-    restaurantId,
-    weekDays,
-    null,
-  );
+  { dailyCosts, costsLoading, enabled }: UseDailyLaborPercentOptions,
+): DailyLaborPercentView {
+  const { tz, today } = useRestaurantClock();
+  const { effectiveSettings, isLoading: settingsLoading } = useStaffingSettings(restaurantId);
+  const { target_labor_pct: targetLaborPct, lookback_weeks: lookbackWeeks } = effectiveSettings;
 
-  const targetLaborPct = activeSettings.target_labor_pct;
+  const salesQuery = lookbackSalesQueryOptions(restaurantId, lookbackWeeks, tz);
+  const { data: sales, isLoading: salesLoading, isError } = useQuery({
+    ...salesQuery,
+    enabled: salesQuery.enabled && enabled,
+  });
 
   const byDay = useMemo(() => {
-    const projectedSalesByDay = new Map<string, number>();
-    for (const [day, suggestion] of daySuggestions) {
-      projectedSalesByDay.set(day, suggestion.totalProjectedSales);
-    }
+    const projectedSalesByDay = projectDailySales(sales ?? [], weekDays, today);
     return computeDailyLaborPercent({ weekDays, dailyCosts, projectedSalesByDay, targetLaborPct });
-  }, [daySuggestions, weekDays, dailyCosts, targetLaborPct]);
+  }, [sales, weekDays, today, dailyCosts, targetLaborPct]);
 
-  return {
-    byDay,
-    isLoading,
-    hasSalesData,
-    targetLaborPct,
-    lookbackWeeks: activeSettings.lookback_weeks,
-  };
+  const isLoading = settingsLoading || salesLoading || costsLoading;
+
+  return useMemo(
+    () => ({ byDay, isLoading, hasError: isError, targetLaborPct, lookbackWeeks }),
+    [byDay, isLoading, isError, targetLaborPct, lookbackWeeks],
+  );
 }
-
-export type DailyLaborPercentState = ReturnType<typeof useDailyLaborPercent>;

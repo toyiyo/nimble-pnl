@@ -59,12 +59,11 @@ import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
 import { usePlannerShiftConflicts } from '@/hooks/usePlannerShiftConflicts';
-import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
-import { useDailyLaborPercent } from '@/hooks/useDailyLaborPercent';
-import { DailyLaborPercentBadge } from '../DailyLaborPercentBadge';
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
+import { DailyLaborPercentBadge } from '../DailyLaborPercentBadge';
+import type { DailyLaborPercentView } from '@/lib/dailyLaborPercent';
 import type {
   GuardShiftChangeOptions,
   NotifyAfterDeferredCommitArgs,
@@ -86,6 +85,11 @@ interface ShiftPlannerTabProps {
    * timeline tab.
    */
   notifyAfterDeferredCommit: (args: NotifyAfterDeferredCommitArgs) => void | Promise<void>;
+  /**
+   * Daily labor cost % for the day headers, computed once by the Scheduling
+   * page for the same week. Omitted when the viewer cannot see wages or sales.
+   */
+  dailyLaborPercent?: DailyLaborPercentView;
 }
 
 /** Stable empty index for the conflict load/error states — a module-level
@@ -139,6 +143,7 @@ export function ShiftPlannerTab({
   onWeekStartChange,
   guardShiftChange,
   notifyAfterDeferredCommit,
+  dailyLaborPercent,
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
@@ -177,38 +182,25 @@ export function ShiftPlannerTab({
     tz: restaurantTimezone,
   });
 
-  // Daily labor cost % for the day headers: scheduled cost / projected sales.
-  const { dailyCosts: scheduledDailyCosts } = useScheduledLaborCosts(
-    shifts,
-    weekStart,
-    weekEnd,
-    restaurantId,
-  );
-  const dailyLaborPercent = useDailyLaborPercent(restaurantId, weekDays, scheduledDailyCosts);
-
-  const renderLaborPercent = useCallback(
-    (day: string, variant: 'tooltip' | 'plain', inverse = false) => (
-      <DailyLaborPercentBadge
-        value={dailyLaborPercent.byDay.get(day)}
-        isLoading={dailyLaborPercent.isLoading}
-        targetLaborPct={dailyLaborPercent.targetLaborPct}
-        lookbackWeeks={dailyLaborPercent.lookbackWeeks}
-        dayLabel={formatDayLabel(day)}
-        variant={variant}
-        inverse={inverse}
-      />
-    ),
-    [dailyLaborPercent],
-  );
-  const renderGridDayFooter = useCallback(
-    (day: string) => renderLaborPercent(day, 'tooltip'),
-    [renderLaborPercent],
-  );
+  const renderGridDayFooter = useMemo(() => {
+    if (!dailyLaborPercent) return undefined;
+    return (day: string) => (
+      <DailyLaborPercentBadge labor={dailyLaborPercent} day={day} dayLabel={formatDayLabel(day)} />
+    );
+  }, [dailyLaborPercent]);
   // The timeline footer sits inside a day button: plain text, no focus stop.
-  const renderTimelineDayFooter = useCallback(
-    (day: string, selected: boolean) => renderLaborPercent(day, 'plain', selected),
-    [renderLaborPercent],
-  );
+  const renderTimelineDayFooter = useMemo(() => {
+    if (!dailyLaborPercent) return undefined;
+    return (day: string, selected: boolean) => (
+      <DailyLaborPercentBadge
+        labor={dailyLaborPercent}
+        day={day}
+        dayLabel={formatDayLabel(day)}
+        variant="plain"
+        inverse={selected}
+      />
+    );
+  }, [dailyLaborPercent]);
 
   const {
     templates: allTemplates,

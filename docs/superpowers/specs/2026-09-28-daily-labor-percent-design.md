@@ -18,104 +18,103 @@ daily labor % = scheduled labor cost for the day / projected sales for the day �
 - **Scheduled labor cost** comes from the real shifts on the schedule.
   `useScheduledLaborCosts` returns `dailyCosts[]` with one row per day
   (`src/hooks/useScheduledLaborCosts.tsx:29-50`). The shared calculator
-  buckets each shift by restaurant business day
-  (`supabase/functions/_shared/labor/laborCalculations.ts:407`). It also
-  spreads salary and contractor cost across scheduled days.
-- **Projected sales** come from the same source the planner uses for the
-  hourly percent. `useWeekStaffingSuggestions` reads
-  `staffing_settings.lookback_weeks` (`src/hooks/useWeekStaffingSuggestions.ts:104-128`)
-  and returns `daySuggestions` per day
-  (`src/hooks/useWeekStaffingSuggestions.ts:270-284`). Each day has
-  `totalProjectedSales` (`src/hooks/useStaffingSuggestions.ts:56`). The
-  Planner "Plan" view already shows this value as the day's projected sales
-  (`src/components/scheduling/ShiftPlanner/StaffingDayColumn.tsx:50,64`).
+  buckets each hourly shift by restaurant business day
+  (`supabase/functions/_shared/labor/laborCalculations.ts:407`).
+  `distributeFixedCosts` spreads salary and contractor cost evenly across
+  all days of the range (`laborCalculations.ts:283-297`), so a day with no
+  shifts still carries its share of salary cost.
+- **Cancelled shifts** do not count. The page filters them out before the
+  cost calculation. This also fixes the week labor total in
+  `ScheduleMetricsRibbon`, which used the same unfiltered list.
+- **Projected sales** use the same data and the same lookback setting as the
+  planner. The query is `lookbackSalesQueryOptions` (extracted from
+  `useWeekStaffingSuggestions`, same key `['hourly-sales-all', restaurantId,
+  lookback_weeks, tz]`), and it reads `staffing_settings.lookback_weeks`.
+  `projectDailySales` computes, for each weekday, the average of the daily
+  sales totals of the same weekday in the lookback. Dates with no sales and
+  today (partial sales) do not count.
 - **Target** is `staffing_settings.target_labor_pct`
   (`src/types/scheduling.ts:278`, default 22 at
   `src/hooks/useStaffingSettings.ts:14`).
+- The header shows a whole number. The "over target" flag compares the whole
+  number with the target, so "22%" is never red at a 22% target. Values
+  above 999 show as `>999%`.
 
-The hourly planner percent uses recommended staff × average wage
-(`src/lib/staffingCalculator.ts:136-167`). The new daily percent uses the real
-scheduled shifts. This is the purpose of the feature: "as we add people to the
-schedule, I can see what my percentage of labor cost is".
+### Why not the planner's day total
+
+The Plan view header shows `totalProjectedSales`, the sum of hourly averages
+(`src/hooks/useStaffingSuggestions.ts:56`). `aggregateHourlySales` divides
+each hour by the number of dates with a sale in that hour
+(`src/hooks/useHourlySalesPattern.ts:98-100`). A sparse late hour therefore
+adds its full value, not its share, and the day total is too high. A too-high
+denominator gives a too-low labor %, so the daily percent uses the average of
+daily totals instead. The hourly chart keeps its own model.
+
+## Who sees it
+
+The badge shows only when the viewer has `view:pay_rates` and
+`view:pos_sales`. Without `view:pay_rates`, `employees_secure` masks coworker
+wages, so the percent would be too low. Without the two capabilities, the
+page does not run the sales query for the badge.
 
 ## Views that get the percent
 
-| View | Day header location | Data in scope |
-|------|---------------------|---------------|
-| Schedule tab grid | `src/pages/Scheduling.tsx:1293-1317` renders `ScheduleDayHeaderContent` (`src/pages/SchedulingDayHeaderContent.tsx:27`) | `shifts` (:335), `weekDayKeys` (:348), `useScheduledLaborCosts` result (:412) |
-| Planner "Plan" view (shift templates grid) | `src/components/scheduling/ShiftPlanner/TemplateGrid.tsx:142-163` | `weekDays: string[]`, no shifts. Parent `ShiftPlannerTab` has `shifts`, `weekStart`, `weekEnd` (`ShiftPlannerTab.tsx:154-175`) |
-| Planner "Timeline" view | day selector buttons, `src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx:914-932` | parent `ShiftPlannerTab` mounts it at `ShiftPlannerTab.tsx:861` |
+| View | Day header location |
+|------|---------------------|
+| Schedule tab grid | `ScheduleDayHeaderContent` gets a generic `footer` slot |
+| Planner "Plan" view (shift templates grid) | `TemplateGrid` gets a `renderDayFooter(day)` slot |
+| Planner "Timeline" view | `ShiftTimelineTab` gets a `renderDayFooter(day, selected)` slot in each day button |
 
 "Templates" is not a separate page. The shift templates show only as rows of
-`TemplateGrid` in the Planner "Plan" view (`ShiftPlannerTab.tsx:960`).
+`TemplateGrid` in the Planner "Plan" view.
 
-The mobile week pills (`src/components/scheduling/WeekScheduleMobile.tsx:45-66`)
+The mobile week pills (`src/components/scheduling/WeekScheduleMobile.tsx`)
 are out of scope. They are too narrow for a second line.
 
 ## Architecture
 
-1. **Pure util** `src/lib/dailyLaborPercent.ts`:
-   `computeDailyLaborPercent({ weekDays, dailyCosts, projectedSalesByDay, targetLaborPct })`
-   returns `Map<string, DailyLaborPercent>`:
-   ```ts
-   interface DailyLaborPercent {
-     laborCost: number;          // dollars
-     projectedSales: number;     // dollars
-     percent: number | null;     // null when projectedSales <= 0
-     overTarget: boolean;        // percent > targetLaborPct
-   }
-   ```
-2. **Hook** `src/hooks/useDailyLaborPercent.ts`:
-   `useDailyLaborPercent(restaurantId, weekDays: string[], dailyCosts)`.
-   It calls `useWeekStaffingSuggestions(restaurantId, weekDays, null)` and
-   builds `projectedSalesByDay` from `daySuggestions`. It returns
-   `{ byDay, isLoading, hasSalesData }`. The caller passes `dailyCosts`, so the
-   Schedule page reuses its existing `useScheduledLaborCosts` call.
-3. **Component** `src/components/scheduling/DailyLaborPercentBadge.tsx`.
-   It shows `Labor 24%`. A tooltip shows the scheduled cost, the projected
-   sales, the target, and the lookback weeks. States:
-   - loading → a small `Skeleton`;
-   - no projected sales → `Labor —` with tooltip "No sales history for this weekday";
-   - percent over target → `text-destructive`;
-   - else → `text-muted-foreground`.
-   The trigger is a `<span tabIndex={0}>` with an `aria-label` that has the
-   full sentence, so keyboard and screen reader users get the numbers.
-4. **Wiring**
-   - `Scheduling.tsx`: take `dailyCosts` from the existing
-     `useScheduledLaborCosts` call. Call `useDailyLaborPercent`. Pass the day's
-     value to `ScheduleDayHeaderContent` through a new optional prop
-     `laborPercent`.
-   - `ShiftPlannerTab.tsx`: call `useScheduledLaborCosts(shifts, weekStart, weekEnd, restaurantId)`
-     and `useDailyLaborPercent`. Pass `laborPercentByDay` to `TemplateGrid` and
-     to `ShiftTimelineTab` as new optional props.
-
-## Query cost
-
-`useWeekStaffingSuggestions` keys the sales query on
-`['hourly-sales-all', restaurantId, lookback_weeks, tz]`
-(`src/hooks/useWeekStaffingSuggestions.ts:134`). The Planner already runs this
-query in `StaffingOverlay` (`StaffingOverlay.tsx:48`) and `ShiftTimelineTab`
-(`ShiftTimelineTab.tsx:380`). React Query shares the cache entry, so the Planner
-gets no new network request. The Schedule tab gets one new cached query set
-(sales and punches) with `staleTime: 60000`.
+1. **Pure functions** in `src/lib/dailyLaborPercent.ts`:
+   `computeDailyLaborPercent`, `projectDailySales`,
+   `formatDailyLaborPercent`, `describeDailyLaborPercent`.
+2. **Hook** `useDailyLaborPercent(restaurantId, weekDays, { dailyCosts, costsLoading, enabled })`
+   returns a memoized `DailyLaborPercentView`:
+   `{ byDay, isLoading, hasError, targetLaborPct, lookbackWeeks }`.
+   It reads only the staffing settings and the shared sales query. It does
+   not run the planner's staffing pipeline or its time punch query.
+3. **Component** `DailyLaborPercentBadge` (`labor`, `day`, `dayLabel`,
+   `variant`, `inverse`). States: loading (a `<span>` skeleton, valid inside
+   a button), error ("could not load projected sales"), no sales ("—"),
+   over target (`text-destructive`), else `text-muted-foreground`. The
+   `tooltip` variant is a focusable `<span>` with a full `aria-label`. The
+   `plain` variant is text only, for use inside a button.
+4. **Wiring:** `Scheduling.tsx` computes the view one time and passes it to
+   `ShiftPlannerTab` as the `dailyLaborPercent` prop. Both views show the
+   same week (`useSharedWeek`). In selection mode, the header button's
+   `aria-label` includes the percent sentence, because the label replaces
+   the button text.
 
 ## Decided trade-offs
 
-- Salary and contractor cost are part of the daily cost, because
-  `calculateScheduledLaborCost` spreads them per scheduled day. This matches
-  the week labor total in `ScheduleMetricsRibbon`.
-- The percent rounds to a whole number to fit narrow columns.
-- No new DB object, RPC, or migration.
+- **Red, not amber.** The planner's hourly bars use amber. The badge uses
+  `text-destructive`, because red keeps its contrast on both the plain
+  header and the inverse (`bg-foreground`) selected-day button.
+- **Error text.** On a failed sales query the badge shows "—" and the
+  label says "could not load projected sales". It does not claim that there
+  is no sales history.
+- **No new RPC.** A server-side weekday average returns 7 rows, not up to
+  20,000. The client query already exists and React Query shares it, so this
+  change keeps it. A server RPC is a possible follow-up.
+- **Existing limit.** The sales query stops at 20 pages of 1,000 rows
+  (`MAX_PAGES` in `lookbackSalesQueryOptions`). This limit is not new.
 
 ## Tests
 
-- `tests/unit/dailyLaborPercent.test.ts`: formula, zero sales → `null`,
-  missing cost row → 0, over-target flag, rounding is left to the UI.
-- `tests/unit/useDailyLaborPercent.test.ts`: hook maps `daySuggestions` to
-  projected sales (mock `useWeekStaffingSuggestions`).
-- `tests/unit/dailyLaborPercentBadge.test.tsx`: the three states and the
-  aria-label.
-- Extend `tests/unit/scheduleDayHeaderContent.test.tsx` and
-  `tests/unit/TemplateGrid.test.tsx` for the new optional props.
-- E2E: extend a scheduling spec to check that a day header shows `Labor`
-  text. The local Supabase stack is needed for this.
+- `tests/unit/dailyLaborPercent.test.ts`: formula, rounding and the target,
+  projection by weekday, excluded today, text and aria sentence.
+- `tests/unit/useDailyLaborPercent.test.tsx`: shared query, loading, error,
+  disabled, and a stable return object.
+- `tests/unit/dailyLaborPercentBadge.test.tsx`: all states and variants.
+- `tests/unit/scheduling-trades-gate.test.tsx`: the capability gate and the
+  cancelled-shift filter on the page.
+- Footer slots: `scheduleDayHeaderContent`, `TemplateGrid`,
+  `shiftTimelineTab`, and the two `shiftPlannerTab.*Wiring` tests.

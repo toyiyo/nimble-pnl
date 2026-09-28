@@ -119,6 +119,13 @@ describe('scheduleOverviewDays', () => {
     expect(endDateStr).toBe('2026-10-25');
   });
 
+  it("clamps period 'month' to the target month's last day (Jan 31 -> Feb 28)", () => {
+    const now = new Date(2026, 0, 31, 21, 0, 0); // wall clock: 2026-01-31 21:00
+    const { startDateStr, endDateStr } = scheduleOverviewDays('month', undefined, undefined, now);
+    expect(startDateStr).toBe('2026-01-31');
+    expect(endDateStr).toBe('2026-02-28');
+  });
+
   it("gives the same days as calculateDateRange for period 'custom'", () => {
     const now = new Date(2026, 8, 25, 21, 0, 0);
     const expected = calculateDateRange('custom', '2026-09-01', '2026-09-07', now);

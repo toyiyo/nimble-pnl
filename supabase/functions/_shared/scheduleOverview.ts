@@ -73,7 +73,12 @@ export function scheduleOverviewDays(
     return { startDateStr: toLocalYMD(now), endDateStr: toLocalYMD(addDays(now, 7)) };
   }
   if (period === 'month') {
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    // One month out from today, day clamped to the target month's last day
+    // (2026-01-31 + 1 month -> 2026-02-28, not an overflow into March).
+    const targetMonth = now.getMonth() + 1;
+    const daysInTargetMonth = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
+    const day = Math.min(now.getDate(), daysInTargetMonth);
+    const end = new Date(now.getFullYear(), targetMonth, day);
     return { startDateStr: toLocalYMD(now), endDateStr: toLocalYMD(end) };
   }
   const range = calculateDateRange(period, startDateArg, endDateArg, now);

@@ -131,6 +131,24 @@ describe('buildTimePunchShifts', () => {
     expect(shifts[0].cost_cents).toBe(9000); // 6h x $15.00/hr = $90.00, in cents
   });
 
+  it('gives cost_cents = round(hourly_rate x hours) without a divide-then-multiply rounding error', () => {
+    // At $10.01/hr for 3.5h, rate*hours ($35.035, in cents: 3504.5) rounds
+    // to 3504. The old (rate/100)*hours*100 path lost this half-cent step
+    // to floating-point error and gave 3503 instead.
+    const employees = [hourlyEmployee({ hourly_rate: 1001 })];
+    const punches = [
+      punch('p1', 'e1', '2026-09-26T02:00:00Z', 'clock_in'),
+      punch('p2', 'e1', '2026-09-26T05:30:00Z', 'clock_out'),
+    ];
+    const bounds = restaurantDayBounds('2026-09-24', '2026-09-27', TZ);
+
+    const shifts = buildTimePunchShifts(employees, punches, bounds, TZ, 0);
+
+    expect(shifts).toHaveLength(1);
+    expect(shifts[0].hours).toBe(3.5);
+    expect(shifts[0].cost_cents).toBe(3504);
+  });
+
   it('gives cost_cents = null for a salary or contractor employee', () => {
     const employees = [
       hourlyEmployee({

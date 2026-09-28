@@ -78,7 +78,7 @@ export function buildTimePunchShifts(
       const snapshot = getEmployeeSnapshotForDate(employee, day);
       const cost_cents =
         snapshot.compensation_type === 'hourly' && snapshot.hourly_rate
-          ? Math.round((snapshot.hourly_rate / 100) * period.hours * 100)
+          ? Math.round(snapshot.hourly_rate * period.hours)
           : null;
 
       shifts.push({

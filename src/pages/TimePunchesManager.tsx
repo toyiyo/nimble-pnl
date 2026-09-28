@@ -66,8 +66,11 @@ import {
   KioskModeCard,
   EmployeePinsCard,
   PinRevealDialog,
+  PunchLocationFlag,
   type RevealedPin,
 } from '@/components/time-clock';
+import { getPunchLocationFlag, formatDistance } from '@/utils/punchLocationFlag';
+import { useOffsitePunchAlerts } from '@/hooks/useOffsitePunchAlerts';
 
 const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000;
 
@@ -107,7 +110,9 @@ const TimePunchesManager = () => {
   const [pinForceReset, setPinForceReset] = useState(false);
   const [revealedPins, setRevealedPins] = useState<RevealedPin[]>([]);
   const [revealOpen, setRevealOpen] = useState(false);
+  const [locationFilter, setLocationFilter] = useState<'all' | 'offsite' | 'unavailable'>('all');
   const isMountedRef = useRef(true);
+  const punchListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -336,6 +341,37 @@ const TimePunchesManager = () => {
     [filteredPunches, dateRange.start, dateRange.end],
   );
 
+  // Off-site and no-location counts for the viewed window.
+  const offsiteCount = useMemo(
+    () => windowPunches.filter((punch) => getPunchLocationFlag(punch.location) === 'offsite').length,
+    [windowPunches],
+  );
+  const locationUnavailableCount = useMemo(
+    () => windowPunches.filter((punch) => getPunchLocationFlag(punch.location) === 'unavailable').length,
+    [windowPunches],
+  );
+
+  // Punch List rows, narrowed by the location filter above the list.
+  const locationFilteredPunches = useMemo(() => {
+    if (locationFilter === 'all') return windowPunches;
+    return windowPunches.filter((punch) => getPunchLocationFlag(punch.location) === locationFilter);
+  }, [windowPunches, locationFilter]);
+
+  const showLocationFilter = (flag: 'offsite' | 'unavailable') => {
+    setLocationFilter(flag);
+    setTableOpen(true);
+    punchListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const openPunchDetail = (punchId: string) => {
+    const punch = punches.find((p) => p.id === punchId);
+    if (punch) {
+      setViewingPunch(punch);
+    }
+  };
+
+  useOffsitePunchAlerts(restaurantId ?? undefined, openPunchDetail);
+
   // Process punches (buffered set, so overnight shifts pair whole)
   const processedData = useMemo(() => {
     return processPunchesForPeriod(filteredPunches);
@@ -563,8 +599,9 @@ const TimePunchesManager = () => {
       return;
     }
 
-    const headers = ['Employee', 'Position', 'Punch Type', 'Date', 'Time', 'Notes', 'Location'];
+    const headers = ['Employee', 'Position', 'Punch Type', 'Date', 'Time', 'Notes', 'Location', 'Distance (m)', 'Off-site'];
     const rows = windowPunches.map((punch) => {
+      const flag = getPunchLocationFlag(punch.location);
       return [
         punch.employee?.name || 'Unknown',
         punch.employee?.position || '',
@@ -578,6 +615,8 @@ const TimePunchesManager = () => {
         punch.location?.latitude != null && punch.location?.longitude != null
           ? `${punch.location.latitude},${punch.location.longitude}`
           : punch.location?.location_unavailable ? 'unavailable' : '',
+        punch.location?.distance_meters != null ? String(punch.location.distance_meters) : '',
+        flag === 'offsite' ? 'Yes' : punch.location && flag === null ? 'No' : '',
       ];
     });
 
@@ -623,6 +662,10 @@ const TimePunchesManager = () => {
         date={getDateRangeLabel()}
         anomalies={windowAnomalies}
         incompleteSessions={incompleteSessions.length}
+        offsiteCount={offsiteCount}
+        onShowOffsite={() => showLocationFilter('offsite')}
+        locationUnavailableCount={locationUnavailableCount}
+        onShowLocationUnavailable={() => showLocationFilter('unavailable')}
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -817,7 +860,7 @@ const TimePunchesManager = () => {
 
       {/* Collapsible Punch List */}
       <Collapsible open={tableOpen} onOpenChange={setTableOpen}>
-        <Card>
+        <Card ref={punchListRef}>
           <CollapsibleTrigger asChild>
             <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
               <div className="flex items-center justify-between">
@@ -831,17 +874,63 @@ const TimePunchesManager = () => {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <CardContent>
+              <div role="radiogroup" aria-label="Filter by location" className="flex flex-wrap items-center gap-2 mb-4">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={locationFilter === 'all'}
+                  onClick={() => setLocationFilter('all')}
+                  className={cn(
+                    'h-8 px-3 rounded-lg text-[13px] font-medium border transition-colors',
+                    locationFilter === 'all'
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'bg-muted/30 text-muted-foreground border-border/40 hover:text-foreground'
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={locationFilter === 'offsite'}
+                  onClick={() => setLocationFilter('offsite')}
+                  className={cn(
+                    'h-8 px-3 rounded-lg text-[13px] font-medium border transition-colors',
+                    locationFilter === 'offsite'
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'bg-muted/30 text-muted-foreground border-border/40 hover:text-foreground'
+                  )}
+                >
+                  Off-site ({offsiteCount})
+                </button>
+                {locationUnavailableCount > 0 && (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={locationFilter === 'unavailable'}
+                    onClick={() => setLocationFilter('unavailable')}
+                    className={cn(
+                      'h-8 px-3 rounded-lg text-[13px] font-medium border transition-colors',
+                      locationFilter === 'unavailable'
+                        ? 'bg-foreground text-background border-foreground'
+                        : 'bg-muted/30 text-muted-foreground border-border/40 hover:text-foreground'
+                    )}
+                  >
+                    No location ({locationUnavailableCount})
+                  </button>
+                )}
+              </div>
               {loading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-16 w-full" />
                   <Skeleton className="h-16 w-full" />
                   <Skeleton className="h-16 w-full" />
                 </div>
-              ) : windowPunches.length === 0 ? (
+              ) : locationFilteredPunches.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No time punches found</p>
               ) : (
                 <div className="space-y-2">
-                  {windowPunches.map((punch) => (
+                  {locationFilteredPunches.map((punch) => (
                     <div
                       key={punch.id}
                       className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
@@ -880,32 +969,8 @@ const TimePunchesManager = () => {
                             </Badge>
                           )}
                           {punch.location && (
-                            punch.location.location_unavailable ? (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge variant="outline" className="text-xs bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20">
-                                      <MapPinOff className="h-3 w-3" />
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Location was unavailable at clock-in</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ) : punch.location.within_geofence === false ? (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
-                                      <MapPin className="h-3 w-3" />
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Clocked in {punch.location.distance_meters ?? '?'}m from restaurant</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                            getPunchLocationFlag(punch.location) ? (
+                              <PunchLocationFlag location={punch.location} />
                             ) : (
                               <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
                                 <MapPin className="h-3 w-3" />
@@ -1201,7 +1266,12 @@ const TimePunchesManager = () => {
                       {viewingPunch.location.within_geofence === false && (
                         <p className="text-sm text-amber-600 flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5" />
-                          {viewingPunch.location.distance_meters ?? '?'}m from restaurant
+                          {typeof viewingPunch.location.distance_meters === 'number'
+                            ? formatDistance(viewingPunch.location.distance_meters)
+                            : '? m'}{' '}
+                          from the restaurant
+                          {typeof viewingPunch.location.geofence_radius_meters === 'number' &&
+                            ` (limit ${formatDistance(viewingPunch.location.geofence_radius_meters)})`}
                         </p>
                       )}
                     </>

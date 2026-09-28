@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { ToastAction } from '@/components/ui/toast';
+import { ToastAction, type ToastActionElement } from '@/components/ui/toast';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { formatDistance } from '@/utils/punchLocationFlag';
 
@@ -105,7 +105,7 @@ export function useOffsitePunchAlerts(
             onClick: () => onViewPunch(row.id),
           },
           'View punch',
-        ),
+        ) as unknown as ToastActionElement,
       });
     }
     // Only new rows drive new toasts; toast/onViewPunch/formatInstant are

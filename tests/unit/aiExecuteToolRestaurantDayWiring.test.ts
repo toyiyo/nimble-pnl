@@ -62,7 +62,7 @@ describe('executeGetScheduleOverview', () => {
   });
 
   it('gets the days from scheduleOverviewDays with restaurantNow', () => {
-    expect(body).toMatch(/scheduleOverviewDays\([^)]*restaurantNow\)/);
+    expect(body).toMatch(/scheduleOverviewDays\([^)]*restaurantNow\s*\)/);
   });
 
   it('gets the instants from restaurantDayBounds', () => {

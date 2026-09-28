@@ -816,6 +816,7 @@ const TimePunchesManager = () => {
         <TabsContent value="cards" className="mt-0">
           <EmployeeCardView
             sessions={todaySessions}
+            punches={windowPunches}
             loading={loading}
             date={currentDate}
           />
@@ -824,6 +825,7 @@ const TimePunchesManager = () => {
         <TabsContent value="barcode" className="mt-0">
           <BarcodeStripeView
             sessions={todaySessions}
+            punches={windowPunches}
             loading={loading}
             date={currentDate}
           />
@@ -841,6 +843,7 @@ const TimePunchesManager = () => {
           {selectedEmployee !== 'all' ? (
             <ReceiptStyleView
               sessions={todaySessions}
+              punches={windowPunches}
               loading={loading}
               employeeId={selectedEmployee}
               employeeName={employees.find(e => e.id === selectedEmployee)?.name}

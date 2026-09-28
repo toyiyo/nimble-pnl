@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,9 +12,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { PunchLocationFlag } from '@/components/time-clock/PunchLocationFlag';
+import { buildLocationFlagIndex, sessionLocationFlags, worstLocationFlag } from '@/utils/punchLocationFlag';
+import type { TimePunch } from '@/types/timeTracking';
 
 interface BarcodeStripeViewProps {
   sessions: WorkSession[];
+  punches: TimePunch[];
   loading?: boolean;
   date: Date;
 }
@@ -24,7 +30,9 @@ interface EmployeeStripe {
   total_hours: number;
 }
 
-export const BarcodeStripeView = ({ sessions, loading, date }: BarcodeStripeViewProps) => {
+export const BarcodeStripeView = ({ sessions, punches, loading, date }: BarcodeStripeViewProps) => {
+  const locationFlagIndex = useMemo(() => buildLocationFlagIndex(punches), [punches]);
+
   // Group sessions by employee
   const employeeStripes = sessions.reduce((acc, session) => {
     const existing = acc.find(s => s.employee_id === session.employee_id);
@@ -129,13 +137,18 @@ export const BarcodeStripeView = ({ sessions, loading, date }: BarcodeStripeView
         <TooltipProvider>
           {employeeStripes.map((stripe) => {
             const stripePattern = createStripe(stripe.sessions);
-            
+            const flaggedPunches = stripe.sessions.flatMap((session) =>
+              sessionLocationFlags(session, locationFlagIndex)
+            );
+            const worstFlagged = worstLocationFlag(flaggedPunches);
+
             return (
               <div key={stripe.employee_id} className="flex items-center gap-3">
-                <div className="w-32 text-sm font-medium truncate">
-                  {stripe.employee_name}
+                <div className="w-32 flex items-center gap-1.5 min-w-0">
+                  <span className="text-sm font-medium truncate">{stripe.employee_name}</span>
                 </div>
-                
+                {worstFlagged && <PunchLocationFlag location={worstFlagged.location} />}
+
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="flex-1 h-8 border rounded flex overflow-hidden cursor-pointer hover:shadow-md transition-shadow">

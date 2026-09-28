@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -6,15 +8,21 @@ import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 import { Coffee, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PunchLocationFlag } from '@/components/time-clock/PunchLocationFlag';
+import { buildLocationFlagIndex, sessionLocationFlags, worstLocationFlag } from '@/utils/punchLocationFlag';
+import type { TimePunch } from '@/types/timeTracking';
 
 interface ReceiptStyleViewProps {
   sessions: WorkSession[];
+  punches: TimePunch[];
   loading?: boolean;
   employeeId?: string;
   employeeName?: string;
 }
 
-export const ReceiptStyleView = ({ sessions, loading, employeeId, employeeName }: ReceiptStyleViewProps) => {
+export const ReceiptStyleView = ({ sessions, punches, loading, employeeId, employeeName }: ReceiptStyleViewProps) => {
+  const locationFlagIndex = useMemo(() => buildLocationFlagIndex(punches), [punches]);
+
   // Filter by employee if specified
   const filteredSessions = employeeId
     ? sessions.filter(s => s.employee_id === employeeId)
@@ -60,8 +68,11 @@ export const ReceiptStyleView = ({ sessions, loading, employeeId, employeeName }
       )}
 
       {/* Session cards */}
-      {sortedSessions.map((session, idx) => (
-        <Card 
+      {sortedSessions.map((session, idx) => {
+        const worstFlagged = worstLocationFlag(sessionLocationFlags(session, locationFlagIndex));
+
+        return (
+        <Card
           key={session.sessionId}
           className={cn(
             "font-mono",
@@ -71,7 +82,10 @@ export const ReceiptStyleView = ({ sessions, loading, employeeId, employeeName }
           <CardContent className="pt-6 space-y-3">
             {/* Session number */}
             <div className="flex justify-between items-center text-sm text-muted-foreground">
-              <span>Session {idx + 1}</span>
+              <span className="flex items-center gap-2">
+                Session {idx + 1}
+                {worstFlagged && <PunchLocationFlag location={worstFlagged.location} />}
+              </span>
               {session.has_anomalies && (
                 <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
                   <AlertCircle className="h-3 w-3 mr-1" />
@@ -156,7 +170,8 @@ export const ReceiptStyleView = ({ sessions, loading, employeeId, employeeName }
             )}
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
 
       {/* Daily summary */}
       <Card className="bg-gradient-to-br from-primary/5 to-accent/5">

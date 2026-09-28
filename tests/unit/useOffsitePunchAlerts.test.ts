@@ -110,6 +110,7 @@ describe('useOffsitePunchAlerts', () => {
     await act(async () => {
       await result.current.refetch();
     });
+    await waitFor(() => expect(result.current.data?.length).toBe(3));
 
     expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock.mock.calls[0][0]).toMatchObject({
@@ -174,6 +175,7 @@ describe('useOffsitePunchAlerts', () => {
     await act(async () => {
       await result.current.refetch();
     });
+    await waitFor(() => expect(result.current.data?.length).toBe(2));
 
     expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock.mock.calls[0][0]).toMatchObject({

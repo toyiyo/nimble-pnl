@@ -24,8 +24,14 @@ interface DailyLaborPercentBadgeProps {
   className?: string;
 }
 
+const DOLLARS = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
 function formatDollars(value: number): string {
-  return `$${Math.round(value).toLocaleString('en-US')}`;
+  return DOLLARS.format(value);
 }
 
 function buildAriaLabel(

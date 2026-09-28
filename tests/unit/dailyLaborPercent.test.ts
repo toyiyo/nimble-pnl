@@ -155,10 +155,24 @@ describe('projectDailySales', () => {
         { sale_date: '2026-09-28', total_price: 20 },
       ],
       ['2026-09-28'],
-      '2026-09-28',
+      { excludeDate: '2026-09-28' },
     );
 
     expect(sales.get('2026-09-28')).toBe(1000.5);
+  });
+
+  it('does not count the last date of a truncated result', () => {
+    const sales = projectDailySales(
+      [
+        { sale_date: '2026-09-14', total_price: 1000 },
+        // The row cap cut this date off after a few rows.
+        { sale_date: '2026-09-21', total_price: 100 },
+      ],
+      ['2026-09-28'],
+      { truncated: true },
+    );
+
+    expect(sales.get('2026-09-28')).toBe(1000);
   });
 
   it('returns zero for a weekday with no sales', () => {
@@ -230,6 +244,16 @@ describe('describeDailyLaborPercent', () => {
     expect(describeDailyLaborPercent(undefined, 'Mon, Sep 28', VIEW)).toBe(
       'Mon, Sep 28 labor cost: no projected sales. No sales history for this weekday in the last 4 weeks.',
     );
+  });
+
+  it('starts with "Labor cost" when the day label is empty', () => {
+    expect(
+      describeDailyLaborPercent(
+        { laborCost: 300, projectedSales: 1000, percent: 30, overTarget: true },
+        '',
+        VIEW,
+      ),
+    ).toBe('Labor cost: 30% of projected sales. $300 scheduled, $1,000 projected sales, over the 22% target.');
   });
 
   it('says when the sales history did not load', () => {

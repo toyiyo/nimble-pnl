@@ -24,8 +24,9 @@ daily labor % = scheduled labor cost for the day / projected sales for the day Ã
   all days of the range (`laborCalculations.ts:283-297`), so a day with no
   shifts still carries its share of salary cost.
 - **Cancelled shifts** do not count. The page filters them out before the
-  cost calculation. This also fixes the week labor total in
-  `ScheduleMetricsRibbon`, which used the same unfiltered list.
+  cost calculation. The week labor total and the per-employee costs in
+  `ScheduleMetricsRibbon` use the same filtered list, so the page agrees
+  with itself.
 - **Projected sales** use the same data and the same lookback setting as the
   planner. The query is `lookbackSalesQueryOptions` (extracted from
   `useWeekStaffingSuggestions`, same key `['hourly-sales-all', restaurantId,
@@ -104,8 +105,19 @@ are out of scope. They are too narrow for a second line.
 - **No new RPC.** A server-side weekday average returns 7 rows, not up to
   20,000. The client query already exists and React Query shares it, so this
   change keeps it. A server RPC is a possible follow-up.
-- **Existing limit.** The sales query stops at 20 pages of 1,000 rows
-  (`MAX_PAGES` in `lookbackSalesQueryOptions`). This limit is not new.
+- **Row cap.** The sales query stops at 20 pages of 1,000 rows
+  (`LOOKBACK_SALES_ROW_CAP`). This limit is not new. When a result reaches
+  the cap, its last date is partial, so `projectDailySales` does not count it.
+- **Past weeks.** Projected sales always come from the N weeks before today,
+  also for a past week. The badge is a planning aid, not a report of actual
+  sales.
+- **Midnight.** The query key has no date. A page that stays open past
+  midnight can count yesterday's partial rows until the next refetch
+  (window focus or mount). This case is rare and the error is small.
+- **Follow-up, not in this change.** `loadScheduledLaborCost` (MCP and AI
+  labor tools) does not filter cancelled shifts either
+  (`supabase/functions/_shared/labor/scheduledLaborCost.ts`). Fix it in a
+  separate change, because it changes the tool outputs.
 
 ## Tests
 

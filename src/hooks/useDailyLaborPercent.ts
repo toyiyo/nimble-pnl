@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
-import { lookbackSalesQueryOptions } from '@/hooks/useWeekStaffingSuggestions';
+import { LOOKBACK_SALES_ROW_CAP, lookbackSalesQueryOptions } from '@/hooks/useWeekStaffingSuggestions';
 
 import type { DailyLaborPercentInput, DailyLaborPercentView } from '@/lib/dailyLaborPercent';
 
@@ -41,18 +41,25 @@ export function useDailyLaborPercent(
   const salesQuery = lookbackSalesQueryOptions(restaurantId, lookbackWeeks, tz);
   const { data: sales, isLoading: salesLoading, isError } = useQuery({
     ...salesQuery,
-    enabled: salesQuery.enabled && enabled,
+    // Wait for the saved lookback, so the default does not start a wasted fetch.
+    enabled: salesQuery.enabled && enabled && !settingsLoading,
   });
 
   const byDay = useMemo(() => {
-    const projectedSalesByDay = projectDailySales(sales ?? [], weekDays, today);
+    const rows = sales ?? [];
+    const projectedSalesByDay = projectDailySales(rows, weekDays, {
+      excludeDate: today,
+      truncated: rows.length >= LOOKBACK_SALES_ROW_CAP,
+    });
     return computeDailyLaborPercent({ weekDays, dailyCosts, projectedSalesByDay, targetLaborPct });
   }, [sales, weekDays, today, dailyCosts, targetLaborPct]);
 
   const isLoading = settingsLoading || salesLoading || costsLoading;
+  // A failed background refetch keeps the last good rows: keep showing them.
+  const hasError = isError && !sales;
 
   return useMemo(
-    () => ({ byDay, isLoading, hasError: isError, targetLaborPct, lookbackWeeks }),
-    [byDay, isLoading, isError, targetLaborPct, lookbackWeeks],
+    () => ({ byDay, isLoading, hasError, targetLaborPct, lookbackWeeks }),
+    [byDay, isLoading, hasError, targetLaborPct, lookbackWeeks],
   );
 }

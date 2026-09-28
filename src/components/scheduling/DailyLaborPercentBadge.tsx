@@ -11,7 +11,7 @@ import {
 } from '@/lib/dailyLaborPercent';
 import { cn } from '@/lib/utils';
 
-export type DailyLaborPercentBadgeVariant = 'tooltip' | 'plain';
+type DailyLaborPercentBadgeVariant = 'tooltip' | 'plain';
 
 interface DailyLaborPercentBadgeProps {
   labor: DailyLaborPercentView;

@@ -40,7 +40,7 @@ export interface DailyLaborPercentInput {
 }
 
 /** Percent values above this show as ">999%" so they fit a narrow header. */
-export const MAX_SHOWN_LABOR_PERCENT = 999;
+const MAX_SHOWN_LABOR_PERCENT = 999;
 
 export function computeDailyLaborPercent({
   weekDays,
@@ -74,16 +74,18 @@ export function computeDailyLaborPercent({
  *
  * Each date's total is the sum of its sale rows. Dates with no sales (closed
  * days) do not count. `excludeDate` (today) does not count, because its sales
- * are partial.
+ * are partial. When `truncated` is true, the query stopped at its row cap and
+ * the last date (rows are in date order) is partial, so it does not count.
  */
 export function projectDailySales(
   rows: ReadonlyArray<{ sale_date: string; total_price: number | string | null }>,
   weekDays: string[],
-  excludeDate?: string,
+  { excludeDate, truncated = false }: { excludeDate?: string; truncated?: boolean } = {},
 ): Map<string, number> {
+  const partialDate = truncated ? rows.at(-1)?.sale_date : undefined;
   const totalByDate = new Map<string, number>();
   for (const row of rows) {
-    if (row.sale_date === excludeDate) continue;
+    if (row.sale_date === excludeDate || row.sale_date === partialDate) continue;
     const amount = Number(row.total_price) || 0;
     totalByDate.set(row.sale_date, (totalByDate.get(row.sale_date) ?? 0) + amount);
   }
@@ -106,12 +108,17 @@ export function projectDailySales(
   return salesByDay;
 }
 
+/** The percent as shown: "24%" or ">999%". */
+function formatPercentValue(percent: number): string {
+  const rounded = Math.round(percent);
+  if (rounded > MAX_SHOWN_LABOR_PERCENT) return `>${MAX_SHOWN_LABOR_PERCENT}%`;
+  return `${rounded}%`;
+}
+
 /** Header text for a day: "Labor 24%", "Labor >999%" or "Labor —". */
 export function formatDailyLaborPercent(value: DailyLaborPercent | undefined): string {
   if (!value || value.percent === null) return 'Labor —';
-  const rounded = Math.round(value.percent);
-  if (rounded > MAX_SHOWN_LABOR_PERCENT) return `Labor >${MAX_SHOWN_LABOR_PERCENT}%`;
-  return `Labor ${rounded}%`;
+  return `Labor ${formatPercentValue(value.percent)}`;
 }
 
 const DOLLARS = new Intl.NumberFormat('en-US', {
@@ -120,22 +127,27 @@ const DOLLARS = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 });
 
-/** Full sentence for screen readers and for the day button `aria-label`. */
+/**
+ * Full sentence for screen readers. With a `dayLabel` it starts "Mon, Sep 28
+ * labor cost:"; with an empty `dayLabel` (the label already names the day) it
+ * starts "Labor cost:".
+ */
 export function describeDailyLaborPercent(
   value: DailyLaborPercent | undefined,
   dayLabel: string,
   view: Pick<DailyLaborPercentView, 'hasError' | 'targetLaborPct' | 'lookbackWeeks'>,
 ): string {
+  const prefix = dayLabel ? `${dayLabel} labor cost` : 'Labor cost';
   if (view.hasError) {
-    return `${dayLabel} labor cost: could not load projected sales.`;
+    return `${prefix}: could not load projected sales.`;
   }
   if (!value || value.percent === null) {
-    return `${dayLabel} labor cost: no projected sales. No sales history for this weekday in the last ${view.lookbackWeeks} weeks.`;
+    return `${prefix}: no projected sales. No sales history for this weekday in the last ${view.lookbackWeeks} weeks.`;
   }
   const target = value.overTarget
     ? `over the ${view.targetLaborPct}% target`
     : `target ${view.targetLaborPct}%`;
-  return `${dayLabel} labor cost: ${formatDailyLaborPercent(value).replace('Labor ', '')} of projected sales. ${DOLLARS.format(value.laborCost)} scheduled, ${DOLLARS.format(value.projectedSales)} projected sales, ${target}.`;
+  return `${prefix}: ${formatPercentValue(value.percent)} of projected sales. ${DOLLARS.format(value.laborCost)} scheduled, ${DOLLARS.format(value.projectedSales)} projected sales, ${target}.`;
 }
 
 export function formatDollars(value: number): string {

@@ -64,6 +64,14 @@ export function computeActualSplh(
   return Math.round(totalSales / totalHours);
 }
 
+const SALES_PAGE_SIZE = 1000;
+const SALES_MAX_PAGES = 20;
+/**
+ * Most rows the lookback sales query returns. A result of this size is cut
+ * off: the last `sale_date` in it (rows are ordered by date) is partial.
+ */
+export const LOOKBACK_SALES_ROW_CAP = SALES_PAGE_SIZE * SALES_MAX_PAGES;
+
 /**
  * The lookback window as restaurant business days. `sale_date` is a date-only
  * column, so both bounds must be the restaurant's business day, not the UTC
@@ -81,7 +89,7 @@ export function lookbackDateRange(lookbackWeeks: number, tz: string, now: Date =
 
 /**
  * Query options for the lookback sales history. Exported so that every caller
- * (this hook and `useProjectedDailySales`) shares one React Query cache entry.
+ * (this hook and `useDailyLaborPercent`) shares one React Query cache entry.
  *
  * `tz` belongs in the key because the date range is derived from it --
  * without it, changing the restaurant's zone leaves this window cached
@@ -95,8 +103,8 @@ export function lookbackSalesQueryOptions(
   return {
     queryKey: ['hourly-sales-all', restaurantId, lookbackWeeks, tz],
     queryFn: async (): Promise<HourlySaleRow[]> => {
-      const dateRange = lookbackDateRange(lookbackWeeks, tz);
       if (!restaurantId) return [];
+      const dateRange = lookbackDateRange(lookbackWeeks, tz);
       // Paginated (matches useSplhData.ts's fetchAllPunches / the time-punch
       // query in useWeekStaffingSuggestions): an unbounded select is subject to PostgREST's default
       // row cap, which a busy restaurant's multi-week lookback easily exceeds.
@@ -104,11 +112,9 @@ export function lookbackSalesQueryOptions(
       // the most-recent days first — so the current week (including today, the
       // default-selected day) would aggregate to zero sales and the coverage
       // chart would render every hour as "No sales history".
-      const PAGE_SIZE = 1000;
-      const MAX_PAGES = 20;
       const rows: HourlySaleRow[] = [];
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const from = page * PAGE_SIZE;
+      for (let page = 0; page < SALES_MAX_PAGES; page++) {
+        const from = page * SALES_PAGE_SIZE;
         const { data, error } = await supabase
           .from('unified_sales')
           .select('sale_date, sale_time, sold_at, total_price')
@@ -122,10 +128,10 @@ export function lookbackSalesQueryOptions(
           .order('sale_date')
           .order('created_at')
           .order('id')
-          .range(from, from + PAGE_SIZE - 1);
+          .range(from, from + SALES_PAGE_SIZE - 1);
         if (error) throw error;
         rows.push(...((data ?? []) as unknown as HourlySaleRow[]));
-        if (!data || data.length < PAGE_SIZE) break;
+        if (!data || data.length < SALES_PAGE_SIZE) break;
       }
       return rows;
     },

@@ -412,7 +412,7 @@ const Scheduling = () => {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // A cancelled shift costs nothing. Without this filter, a cancel does not
-  // lower the day's labor % or the week labor total.
+  // lower the day's labor %, the week labor total or the per-employee costs.
   const costedShifts = useMemo(
     () => shifts.filter((shift) => shift.status !== 'cancelled'),
     [shifts],
@@ -438,7 +438,7 @@ const Scheduling = () => {
   });
 
   // Calculate per-employee labor costs with outlier detection
-  const laborCostSummary = useEmployeeLaborCosts(shifts, allEmployees);
+  const laborCostSummary = useEmployeeLaborCosts(costedShifts, allEmployees);
 
   // Calculate labor budget comparison
   const laborBudgetData = useScheduleLaborBudget(
@@ -1326,7 +1326,7 @@ const Scheduling = () => {
                       ) : null;
                       // The button's aria-label replaces its text, so it carries the percent too.
                       const laborPercentLabel = canViewLaborPercent && !dailyLaborPercent.isLoading
-                        ? ` ${describeDailyLaborPercent(dailyLaborPercent.byDay.get(dayKey), dayLabel, dailyLaborPercent)}`
+                        ? ` ${describeDailyLaborPercent(dailyLaborPercent.byDay.get(dayKey), '', dailyLaborPercent)}`
                         : '';
                       return (
                         <th

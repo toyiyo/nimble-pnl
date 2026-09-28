@@ -60,6 +60,8 @@ interface TemplateGridProps {
   onShowHidden?: () => void;
   /** shiftId -> display-ready conflict lines (usePlannerShiftConflicts). */
   conflictsByShiftId?: Map<string, string[]>;
+  /** Optional line under each day header (e.g., the daily labor cost %). */
+  renderDayFooter?: (day: string) => ReactNode;
 }
 
 export function TemplateGrid({
@@ -86,6 +88,7 @@ export function TemplateGrid({
   hiddenLaneByDay,
   onShowHidden,
   conflictsByShiftId,
+  renderDayFooter,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -158,6 +161,7 @@ export function TemplateGrid({
               >
                 {number}
               </div>
+              {renderDayFooter?.(day)}
             </div>
           );
         })}

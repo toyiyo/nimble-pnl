@@ -91,50 +91,94 @@ Function `public.set_punch_geofence()`:
   - `within_geofence` — `distance_meters <= geofence_radius_meters`.
   - `geofence_radius_meters` — the radius at punch time, for the review UI.
 - Keep `location_unavailable` as the client sent it.
+- Parse defensively. Cast `latitude` and `longitude` only when
+  `jsonb_typeof(...) = 'number'` and the value is in range (latitude
+  -90..90, longitude -180..180). Any other value gives "no flag". A bad
+  value must never raise an error, because an error blocks the punch.
+- On `UPDATE`: if the new `latitude` and `longitude` are equal to the old
+  values, copy the three server keys from `OLD.location`. This keeps the
+  radius at punch time. If the coordinates change, recalculate against the
+  current restaurant settings.
+- The function writes to no other table. It changes only `NEW`.
 - Trigger: `BEFORE INSERT OR UPDATE OF location ON public.time_punches
   FOR EACH ROW`. A manager edit of `punch_time` does not fire it.
+- `sling_sync_rpc` never writes `location`
+  (`supabase/migrations/20260223100100_sling_sync_rpc.sql`), so the trigger
+  is a no-op for Sling punches.
 
-Backfill in the same migration: recalculate rows where
-`location ? 'latitude'` and the restaurant has coordinates. This is a
-small set (1 restaurant).
+Backfill in the same migration, after the trigger exists. Join
+`time_punches` to `restaurants` with coordinates, and filter on
+`location ? 'latitude'`. The statement is idempotent. The current set is
+small (1 restaurant).
 
-Limit: the trigger stops a false **flag**. It does not stop a false **GPS
-position**. We state this in the help text.
+Limits: the trigger stops a false **flag**. It does not stop a false **GPS
+position**. A client can also send `location_unavailable: true` with no GPS
+to get a "No location" chip in place of an off-site chip. We state both in
+the help text.
 
 pgTAP test `supabase/tests/time_punch_geofence_trigger.sql`:
-inside, outside, no coordinates on restaurant, no location, client sends
-`within_geofence: true` from outside (server overrides), `location_unavailable`
-kept, update of `punch_time` does not change flags.
+inside, outside, no coordinates on restaurant, `location IS NULL`, a
+Sling-style insert with no `location` (no-op), client sends
+`within_geofence: true` from outside (server overrides), string or
+out-of-range `latitude` (insert succeeds, no flag), `location_unavailable`
+kept, update of `punch_time` does not change flags, update of `location`
+with the same coordinates keeps the old radius.
+
+Implementation check: run `EXPLAIN` on the poll query to confirm that the
+planner uses the partial index.
 
 ### 2. Shared helper and chip
 
 - `src/utils/punchLocationFlag.ts`:
   - `getPunchLocationFlag(location) → 'offsite' | 'unavailable' | null`.
   - `formatDistance(meters)` → `"450 m"` below 1000, `"1.2 km"` from 1000.
-  - `sessionLocationFlags(session, punches)` → the flags of the punches of
+  - `buildLocationFlagIndex(punches)` → flagged punches by `employee_id`.
+  - `sessionLocationFlags(session, index)` → the flags of the punches of
     that employee between `clock_in` and `clock_out` (or now).
 - `src/components/time-clock/PunchLocationFlag.tsx`: one chip.
   - Off-site: amber tint, `MapPin` icon, text "1.2 km away".
   - Unavailable: muted, `MapPinOff` icon, text "No location".
   - `null`: no output.
-  - Visible text, so no tooltip is necessary. `aria-label` on the icon
-    wrapper: "Punched 1.2 km from the restaurant".
+  - Visible text carries the accessible name. The icon has
+    `aria-hidden="true"`. No `aria-label` on the wrapper, so a screen reader
+    does not read the text two times.
+  - Colors: semantic tokens only, plus the amber tint pattern that
+    CLAUDE.md allows for warnings. No `blue-*` or `text-amber-700` classes.
 
 ### 3. Status bar
 
 `StatusSummary` gets two optional props: `offsiteCount`,
-`locationUnavailableCount`. Each shows a pill button when the count is
-above 0. A click sets the Punch List filter and opens the list. Counts come
-from `windowPunches` (the viewed day / week / month).
+`locationUnavailableCount`. Each shows a pill when the count is above 0.
+Counts come from `windowPunches` (the viewed day / week / month).
+
+- Each pill is a real `<button type="button">`. Today the warnings are
+  static `<Badge>` elements (`src/components/time-clock/StatusSummary.tsx:60-70`).
+- `aria-label` states the count and the result, for example
+  "2 off-site punches. Show them in the punch list."
+- Minimum target 24×24 px. Add `focus-visible:ring-1 focus-visible:ring-border`.
+- A click sets the Punch List filter and opens the list.
+- Mobile (375 px): the row already uses `flex flex-wrap`
+  (`StatusSummary.tsx:23,36`). The pills wrap to a new line as a group.
+  Each pill has `whitespace-nowrap` and a short label ("2 off-site",
+  "1 no location"). The pills never shrink the title.
 
 ### 4. Review surfaces
 
 - Punch List: replace the three location badges with `PunchLocationFlag`.
   Add a segmented filter: "All" / "Off-site (N)". CSV export adds columns
   `Distance (m)` and `Off-site`.
-- Punch Stream: add the chip to each punch row.
-- Cards, Barcode, Receipt: add the chip to each session, from
-  `sessionLocationFlags`.
+- Punch Stream: add the chip to each punch row. `original_punch` is on
+  `WorkSession` punches (`src/utils/timePunchProcessing.ts:24`).
+- Cards, Barcode, Receipt: add a `punches: TimePunch[]` prop to each view.
+  Today they take only `sessions`
+  (`src/components/time-tracking/EmployeeCardView.tsx:10,18`,
+  `BarcodeStripeView.tsx:15,23`, `ReceiptStyleView.tsx:11`).
+  `TimePunchesManager` passes `windowPunches`.
+- Performance: do not scan all punches for each session. Add
+  `buildLocationFlagIndex(punches)` in `punchLocationFlag.ts`. It keeps only
+  flagged punches, grouped by `employee_id` and sorted by time. Each view
+  builds the index one time with `useMemo`. `sessionLocationFlags(session,
+  index)` then reads only the flagged punches of one employee.
 - Manual timeline editor: no change. It is an edit surface. The status bar
   pill links to the list.
 - Detail dialog: show "1.2 km from the restaurant (limit 200 m)". Keep the
@@ -155,6 +199,9 @@ New hook `src/hooks/useOffsitePunchAlerts.ts`:
 - Each later new ID shows one toast: title "Maria Lopez clocked in
   off-site", description "1.2 km from the restaurant · 3:58 PM", action
   "View punch" (opens the detail dialog).
+- The action uses `ToastAction` from `@/components/ui/toast`, with
+  `altText="View the off-site punch of Maria Lopez"`. This is the pattern at
+  `src/pages/PurchaseOrderEditor.tsx:572`.
 - On a restaurant change, clear the set.
 
 Index: add a partial index

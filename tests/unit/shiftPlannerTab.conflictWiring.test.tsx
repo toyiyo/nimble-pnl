@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner/ShiftPlannerTab';
@@ -192,6 +192,20 @@ vi.mock('@/hooks/useGenerateSchedule', async () => {
   };
 });
 
+// The day-header labor % (useDailyLaborPercent) has its own unit tests.
+vi.mock('@/hooks/useDailyLaborPercent', () => ({
+  useDailyLaborPercent: () => ({
+    byDay: new Map(),
+    isLoading: false,
+    hasSalesData: false,
+    targetLaborPct: 22,
+    lookbackWeeks: 4,
+  }),
+}));
+vi.mock('@/hooks/useScheduledLaborCosts', () => ({
+  useScheduledLaborCosts: () => ({ dailyCosts: [], totalCost: 0, breakdown: null }),
+}));
+
 vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: () => ({
     daySuggestions: new Map(),
@@ -256,6 +270,17 @@ describe('ShiftPlannerTab — conflict wiring', () => {
     });
     useEmployeeAvailabilitySpy.mockReturnValue({ availability: [], loading: false, error: null });
     useAvailabilityExceptionsSpy.mockReturnValue({ exceptions: [], loading: false, error: null });
+  });
+
+  it('passes a renderDayFooter that shows the daily labor percent to TemplateGrid', () => {
+    renderTab();
+    const props = templateGridSpy.mock.calls.at(-1)?.[0] as {
+      renderDayFooter: (day: string) => React.ReactNode;
+    };
+    expect(typeof props.renderDayFooter).toBe('function');
+    // The mocked hook has no projected sales, so the badge shows a dash.
+    render(<>{props.renderDayFooter('2026-07-13')}</>);
+    expect(screen.getByText('Labor —')).toBeInTheDocument();
   });
 
   it('fetches time-off requests for the restaurant', () => {

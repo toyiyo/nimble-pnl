@@ -144,6 +144,20 @@ vi.mock('@/hooks/useGenerateSchedule', async () => {
   };
 });
 
+// The day-header labor % (useDailyLaborPercent) has its own unit tests.
+vi.mock('@/hooks/useDailyLaborPercent', () => ({
+  useDailyLaborPercent: () => ({
+    byDay: new Map(),
+    isLoading: false,
+    hasSalesData: false,
+    targetLaborPct: 22,
+    lookbackWeeks: 4,
+  }),
+}));
+vi.mock('@/hooks/useScheduledLaborCosts', () => ({
+  useScheduledLaborCosts: () => ({ dailyCosts: [], totalCost: 0, breakdown: null }),
+}));
+
 vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: () => ({
     daySuggestions: new Map(),
@@ -229,5 +243,17 @@ describe('ShiftPlannerTab — availability wiring', () => {
     const props = lastCall[0] as { availabilityByEmployee: Map<string, Map<number, EffectiveAvailability>> };
     expect(props.availabilityByEmployee).toBeInstanceOf(Map);
     expect(props.availabilityByEmployee.get('e1')).toBeInstanceOf(Map);
+  });
+
+  it('passes a plain labor percent footer to the ShiftTimelineTab day buttons', () => {
+    renderTab();
+    fireEvent.click(screen.getByRole('radio', { name: /^timeline$/i }));
+
+    const lastCall = timelineTabSpy.mock.calls[timelineTabSpy.mock.calls.length - 1];
+    const props = lastCall[0] as { renderDayFooter: (day: string, selected: boolean) => React.ReactNode };
+    render(<>{props.renderDayFooter('2027-07-12', false)}</>);
+    const footer = screen.getByText('Labor —');
+    // Plain variant: no focus stop inside the day button.
+    expect(footer).not.toHaveAttribute('tabindex');
   });
 });

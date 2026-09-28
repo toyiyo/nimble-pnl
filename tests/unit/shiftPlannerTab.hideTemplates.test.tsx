@@ -135,6 +135,20 @@ vi.mock('@/hooks/useGenerateSchedule', async () => {
   };
 });
 
+// The day-header labor % (useDailyLaborPercent) has its own unit tests.
+vi.mock('@/hooks/useDailyLaborPercent', () => ({
+  useDailyLaborPercent: () => ({
+    byDay: new Map(),
+    isLoading: false,
+    hasSalesData: false,
+    targetLaborPct: 22,
+    lookbackWeeks: 4,
+  }),
+}));
+vi.mock('@/hooks/useScheduledLaborCosts', () => ({
+  useScheduledLaborCosts: () => ({ dailyCosts: [], totalCost: 0, breakdown: null }),
+}));
+
 vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: () => ({
     daySuggestions: new Map(),

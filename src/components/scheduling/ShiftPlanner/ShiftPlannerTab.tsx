@@ -31,7 +31,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 import { computeCellFill } from '@/lib/shiftFill';
 import { computeLoanedOut, assignLoanedOutCell } from '@/lib/loanedOut';
 import { safeTz } from '@/lib/restaurantClock';
-import { formatLocalDateInTz } from '@/lib/shiftInterval';
+import { formatDayLabel, formatLocalDateInTz } from '@/lib/shiftInterval';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -59,6 +59,9 @@ import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
 import { usePlannerShiftConflicts } from '@/hooks/usePlannerShiftConflicts';
+import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
+import { useDailyLaborPercent } from '@/hooks/useDailyLaborPercent';
+import { DailyLaborPercentBadge } from '../DailyLaborPercentBadge';
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
@@ -173,6 +176,39 @@ export function ShiftPlannerTab({
     onExternalWeekStartChange: onWeekStartChange,
     tz: restaurantTimezone,
   });
+
+  // Daily labor cost % for the day headers: scheduled cost / projected sales.
+  const { dailyCosts: scheduledDailyCosts } = useScheduledLaborCosts(
+    shifts,
+    weekStart,
+    weekEnd,
+    restaurantId,
+  );
+  const dailyLaborPercent = useDailyLaborPercent(restaurantId, weekDays, scheduledDailyCosts);
+
+  const renderLaborPercent = useCallback(
+    (day: string, variant: 'tooltip' | 'plain', inverse = false) => (
+      <DailyLaborPercentBadge
+        value={dailyLaborPercent.byDay.get(day)}
+        isLoading={dailyLaborPercent.isLoading}
+        targetLaborPct={dailyLaborPercent.targetLaborPct}
+        lookbackWeeks={dailyLaborPercent.lookbackWeeks}
+        dayLabel={formatDayLabel(day)}
+        variant={variant}
+        inverse={inverse}
+      />
+    ),
+    [dailyLaborPercent],
+  );
+  const renderGridDayFooter = useCallback(
+    (day: string) => renderLaborPercent(day, 'tooltip'),
+    [renderLaborPercent],
+  );
+  // The timeline footer sits inside a day button: plain text, no focus stop.
+  const renderTimelineDayFooter = useCallback(
+    (day: string, selected: boolean) => renderLaborPercent(day, 'plain', selected),
+    [renderLaborPercent],
+  );
 
   const {
     templates: allTemplates,
@@ -869,6 +905,7 @@ export function ShiftPlannerTab({
           availabilityByEmployee={availabilityByEmployee}
           guardShiftChange={guardShiftChange}
           notifyAfterDeferredCommit={notifyAfterDeferredCommit}
+          renderDayFooter={renderTimelineDayFooter}
         />
       )}
 
@@ -981,6 +1018,7 @@ export function ShiftPlannerTab({
                   conflictsByShiftId={effectiveConflictsByShiftId}
                   hiddenLaneByDay={hiddenLaneByDay}
                   onShowHidden={handleShowHidden}
+                  renderDayFooter={renderGridDayFooter}
                 />
               </div>
             )}

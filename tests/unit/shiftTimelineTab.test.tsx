@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
@@ -158,6 +158,24 @@ describe('ShiftTimelineTab', () => {
     const dayButtons = screen.getAllByRole('button');
     // At least 7 day selector buttons
     expect(dayButtons.length).toBeGreaterThanOrEqual(7);
+  });
+
+  it('renders renderDayFooter inside each day button and passes the selected flag', () => {
+    const renderDayFooter = vi.fn((day: string, selected: boolean) => (
+      <span>{`${selected ? 'selected' : 'other'} ${day}`}</span>
+    ));
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={[]}
+        employees={[makeEmployee('e1', 'Ann')]}
+        renderDayFooter={renderDayFooter}
+      />,
+    );
+    const group = screen.getByRole('group', { name: 'Select day' });
+    const pressed = within(group).getByRole('button', { pressed: true });
+    expect(pressed).toHaveTextContent(/selected \d{4}-\d{2}-\d{2}/);
+    expect(within(group).getAllByText(/^other /)).toHaveLength(WEEK_DAYS.length - 1);
   });
 
   it('renders the group-by toggle with Area and Position options', () => {

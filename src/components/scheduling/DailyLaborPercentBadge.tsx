@@ -19,6 +19,8 @@ interface DailyLaborPercentBadgeProps {
    * `plain` is text only, for use inside a parent button.
    */
   variant?: 'tooltip' | 'plain';
+  /** True on a `bg-foreground` parent (a selected day button). */
+  inverse?: boolean;
   className?: string;
 }
 
@@ -52,6 +54,7 @@ export const DailyLaborPercentBadge = memo(function DailyLaborPercentBadge({
   lookbackWeeks,
   dayLabel,
   variant = 'tooltip',
+  inverse = false,
   className,
 }: Readonly<DailyLaborPercentBadgeProps>) {
   if (isLoading) {
@@ -67,7 +70,7 @@ export const DailyLaborPercentBadge = memo(function DailyLaborPercentBadge({
   const text = percent === null ? 'Labor —' : `Labor ${Math.round(percent)}%`;
   const textClass = cn(
     'block text-[11px] font-medium tabular-nums whitespace-nowrap',
-    value?.overTarget ? 'text-destructive' : 'text-muted-foreground',
+    value?.overTarget ? 'text-destructive' : inverse ? 'text-background/80' : 'text-muted-foreground',
     className,
   );
 

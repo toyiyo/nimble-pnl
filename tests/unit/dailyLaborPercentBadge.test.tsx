@@ -70,3 +70,18 @@ describe('DailyLaborPercentBadge', () => {
     expect(badge).toHaveClass('text-destructive');
   });
 });
+
+describe('DailyLaborPercentBadge inverse', () => {
+  it('uses the inverse text color under the target', () => {
+    render(
+      <DailyLaborPercentBadge
+        {...BASE}
+        variant="plain"
+        inverse
+        isLoading={false}
+        value={{ laborCost: 100, projectedSales: 1000, percent: 10, overTarget: false }}
+      />,
+    );
+    expect(screen.getByText('Labor 10%')).toHaveClass('text-background/80');
+  });
+});

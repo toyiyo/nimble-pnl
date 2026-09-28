@@ -4,6 +4,7 @@ import {
   formatDistance,
   buildLocationFlagIndex,
   sessionLocationFlags,
+  worstLocationFlag,
 } from '@/utils/punchLocationFlag';
 import type { TimePunch } from '@/types/timeTracking';
 import type { WorkSession } from '@/utils/timePunchProcessing';
@@ -181,5 +182,44 @@ describe('sessionLocationFlags', () => {
     const flags = sessionLocationFlags(session, index);
 
     expect(flags.some((p) => p.employee_id === 'emp-2')).toBe(false);
+  });
+});
+
+describe('worstLocationFlag', () => {
+  it('returns null for an empty list', () => {
+    expect(worstLocationFlag([])).toBeNull();
+  });
+
+  it('returns null when no punch is flagged', () => {
+    const punches = [makePunch({ id: 'p1', location: { within_geofence: true } })];
+    expect(worstLocationFlag(punches)).toBeNull();
+  });
+
+  it('picks the off-site punch with the largest distance', () => {
+    const punches = [
+      makePunch({ id: 'p1', location: { within_geofence: false, distance_meters: 300 } }),
+      makePunch({ id: 'p2', location: { within_geofence: false, distance_meters: 900 } }),
+      makePunch({ id: 'p3', location: { within_geofence: false, distance_meters: 500 } }),
+    ];
+
+    expect(worstLocationFlag(punches)?.id).toBe('p2');
+  });
+
+  it('picks off-site over unavailable', () => {
+    const punches = [
+      makePunch({ id: 'p1', location: { location_unavailable: true } }),
+      makePunch({ id: 'p2', location: { within_geofence: false, distance_meters: 300 } }),
+    ];
+
+    expect(worstLocationFlag(punches)?.id).toBe('p2');
+  });
+
+  it('falls back to unavailable when there is no off-site punch', () => {
+    const punches = [
+      makePunch({ id: 'p1', location: { within_geofence: true } }),
+      makePunch({ id: 'p2', location: { location_unavailable: true } }),
+    ];
+
+    expect(worstLocationFlag(punches)?.id).toBe('p2');
   });
 });

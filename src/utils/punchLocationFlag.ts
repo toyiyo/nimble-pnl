@@ -91,3 +91,43 @@ export function sessionLocationFlags(
     return punchTime >= start && punchTime <= end;
   });
 }
+
+/**
+ * Picks the one punch to show as a chip from a list of flagged punches.
+ * Off-site outranks unavailable. Among off-site punches, the largest
+ * distance wins. Returns null when the list has no flagged punch.
+ */
+export function worstLocationFlag(punches: TimePunch[]): TimePunch | null {
+  let worst: TimePunch | null = null;
+  let worstFlag: PunchLocationFlag = null;
+
+  for (const punch of punches) {
+    const flag = getPunchLocationFlag(punch.location);
+
+    if (flag === null) {
+      continue;
+    }
+
+    if (flag === 'offsite' && worstFlag !== 'offsite') {
+      worst = punch;
+      worstFlag = flag;
+      continue;
+    }
+
+    if (flag === 'offsite' && worstFlag === 'offsite') {
+      const currentDistance = worst?.location?.distance_meters ?? 0;
+      const candidateDistance = punch.location?.distance_meters ?? 0;
+      if (candidateDistance > currentDistance) {
+        worst = punch;
+      }
+      continue;
+    }
+
+    if (flag === 'unavailable' && worstFlag === null) {
+      worst = punch;
+      worstFlag = flag;
+    }
+  }
+
+  return worst;
+}

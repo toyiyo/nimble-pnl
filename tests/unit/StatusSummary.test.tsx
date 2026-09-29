@@ -59,7 +59,7 @@ describe('StatusSummary off-site and no-location pills', () => {
     );
 
     const button = screen.getByRole('button', {
-      name: '1 no-location punches. Show them in the punch list.',
+      name: '1 no-location punch. Show them in the punch list.',
     });
     expect(button).toBeInTheDocument();
 

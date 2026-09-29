@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { AlertCircle, Clock, Coffee, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PunchLocationFlag } from '@/components/time-clock/PunchLocationFlag';
-import { buildLocationFlagIndex, sessionLocationFlags, worstLocationFlag } from '@/utils/punchLocationFlag';
+import { buildLocationFlagIndex, worstLocationFlagForSessions } from '@/utils/punchLocationFlag';
 import type { TimePunch } from '@/types/timeTracking';
 
 interface EmployeeCardViewProps {
@@ -91,10 +91,7 @@ export const EmployeeCardView = ({ sessions, punches, loading, date }: EmployeeC
         const lastSession = summary.sessions[summary.sessions.length - 1];
         const earliestIn = firstSession?.clock_in;
         const latestOut = lastSession?.clock_out;
-        const flaggedPunches = summary.sessions.flatMap((session) =>
-          sessionLocationFlags(session, locationFlagIndex)
-        );
-        const worstFlagged = worstLocationFlag(flaggedPunches);
+        const worstFlagged = worstLocationFlagForSessions(summary.sessions, locationFlagIndex);
 
         return (
           <Card 

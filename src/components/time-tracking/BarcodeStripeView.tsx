@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { PunchLocationFlag } from '@/components/time-clock/PunchLocationFlag';
-import { buildLocationFlagIndex, sessionLocationFlags, worstLocationFlag } from '@/utils/punchLocationFlag';
+import { buildLocationFlagIndex, worstLocationFlagForSessions } from '@/utils/punchLocationFlag';
 import type { TimePunch } from '@/types/timeTracking';
 
 interface BarcodeStripeViewProps {
@@ -137,10 +137,7 @@ export const BarcodeStripeView = ({ sessions, punches, loading, date }: BarcodeS
         <TooltipProvider>
           {employeeStripes.map((stripe) => {
             const stripePattern = createStripe(stripe.sessions);
-            const flaggedPunches = stripe.sessions.flatMap((session) =>
-              sessionLocationFlags(session, locationFlagIndex)
-            );
-            const worstFlagged = worstLocationFlag(flaggedPunches);
+            const worstFlagged = worstLocationFlagForSessions(stripe.sessions, locationFlagIndex);
 
             return (
               <div key={stripe.employee_id} className="flex items-center gap-3">

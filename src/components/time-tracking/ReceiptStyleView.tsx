@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Coffee, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PunchLocationFlag } from '@/components/time-clock/PunchLocationFlag';
-import { buildLocationFlagIndex, sessionLocationFlags, worstLocationFlag } from '@/utils/punchLocationFlag';
+import { buildLocationFlagIndex, worstLocationFlagForSessions } from '@/utils/punchLocationFlag';
 import type { TimePunch } from '@/types/timeTracking';
 
 interface ReceiptStyleViewProps {
@@ -69,7 +69,7 @@ export const ReceiptStyleView = ({ sessions, punches, loading, employeeId, emplo
 
       {/* Session cards */}
       {sortedSessions.map((session, idx) => {
-        const worstFlagged = worstLocationFlag(sessionLocationFlags(session, locationFlagIndex));
+        const worstFlagged = worstLocationFlagForSessions([session], locationFlagIndex);
 
         return (
         <Card

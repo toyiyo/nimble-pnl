@@ -878,50 +878,31 @@ const TimePunchesManager = () => {
           <CollapsibleContent>
             <CardContent>
               <div role="radiogroup" aria-label="Filter by location" className="flex flex-wrap items-center gap-2 mb-4">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={locationFilter === 'all'}
-                  onClick={() => setLocationFilter('all')}
-                  className={cn(
-                    'h-8 px-3 rounded-lg text-[13px] font-medium border transition-colors',
-                    locationFilter === 'all'
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-muted/30 text-muted-foreground border-border/40 hover:text-foreground'
-                  )}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={locationFilter === 'offsite'}
-                  onClick={() => setLocationFilter('offsite')}
-                  className={cn(
-                    'h-8 px-3 rounded-lg text-[13px] font-medium border transition-colors',
-                    locationFilter === 'offsite'
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-muted/30 text-muted-foreground border-border/40 hover:text-foreground'
-                  )}
-                >
-                  Off-site ({offsiteCount})
-                </button>
-                {locationUnavailableCount > 0 && (
+                {(
+                  [
+                    { value: 'all', label: 'All' },
+                    { value: 'offsite', label: `Off-site (${offsiteCount})` },
+                    ...(locationUnavailableCount > 0
+                      ? [{ value: 'unavailable', label: `No location (${locationUnavailableCount})` }] as const
+                      : []),
+                  ] as const
+                ).map(({ value, label }) => (
                   <button
+                    key={value}
                     type="button"
                     role="radio"
-                    aria-checked={locationFilter === 'unavailable'}
-                    onClick={() => setLocationFilter('unavailable')}
+                    aria-checked={locationFilter === value}
+                    onClick={() => setLocationFilter(value)}
                     className={cn(
                       'h-8 px-3 rounded-lg text-[13px] font-medium border transition-colors',
-                      locationFilter === 'unavailable'
+                      locationFilter === value
                         ? 'bg-foreground text-background border-foreground'
                         : 'bg-muted/30 text-muted-foreground border-border/40 hover:text-foreground'
                     )}
                   >
-                    No location ({locationUnavailableCount})
+                    {label}
                   </button>
-                )}
+                ))}
               </div>
               {loading ? (
                 <div className="space-y-3">

@@ -131,3 +131,15 @@ export function worstLocationFlag(punches: TimePunch[]): TimePunch | null {
 
   return worst;
 }
+
+/**
+ * Picks the one punch to show as a chip for a group of sessions
+ * (for example, all sessions of one employee on one day).
+ */
+export function worstLocationFlagForSessions(
+  sessions: WorkSession[],
+  index: LocationFlagIndex
+): TimePunch | null {
+  const flaggedPunches = sessions.flatMap((session) => sessionLocationFlags(session, index));
+  return worstLocationFlag(flaggedPunches);
+}

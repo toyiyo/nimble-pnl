@@ -82,6 +82,39 @@ function nextYmd(ymd: string): string {
   return `${next.getUTCFullYear()}-${nm}-${nd}`;
 }
 
+const MINUTE_MS = 60_000;
+const SEARCH_MINUTES = 12 * 60;
+
+/**
+ * The first instant of restaurant calendar day `ymd`, in `tz`.
+ *
+ * `zonedNaiveToUtc(`${ymd}T00:00:00`, tz)` is correct on almost every day,
+ * but a zone whose DST clocks jump forward AT local midnight (for example
+ * America/Santiago on 2026-09-06) has no `00:00` to map: the naive two-pass
+ * probe then lands on the wrong side of the transition and reads back as the
+ * previous day. Detect that case and binary-search minute-by-minute for the
+ * true first instant, the same fallback `firstInstantOfDayInZone` uses in
+ * `_shared/labor/restaurantClock.ts`.
+ */
+function firstInstantOfRestaurantDay(ymd: string, tz: string): Date {
+  const guess = zonedNaiveToUtc(`${ymd}T00:00:00`, tz);
+  if (ymdInTimeZone(guess, tz) === ymd && ymdInTimeZone(new Date(guess.getTime() - 1), tz) < ymd) {
+    return guess;
+  }
+  // Binary search on whole minutes around the guess for the first minute
+  // whose restaurant day is `ymd` or later. The day string compare is
+  // monotone, so this always converges to the true boundary.
+  let lo = -SEARCH_MINUTES;
+  let hi = SEARCH_MINUTES;
+  const base = guess.getTime();
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (ymdInTimeZone(new Date(base + mid * MINUTE_MS), tz) >= ymd) hi = mid;
+    else lo = mid + 1;
+  }
+  return new Date(base + lo * MINUTE_MS);
+}
+
 /**
  * Instant bounds `[start, end]` of a restaurant-day range, in `timeZone`.
  *
@@ -100,8 +133,8 @@ export function restaurantDayBounds(
   timeZone: string,
 ): { start: Date; end: Date } {
   const tz = safeTz(timeZone);
-  const start = zonedNaiveToUtc(`${startYmd}T00:00:00`, tz);
-  const dayAfterEnd = zonedNaiveToUtc(`${nextYmd(endYmd)}T00:00:00`, tz);
+  const start = firstInstantOfRestaurantDay(startYmd, tz);
+  const dayAfterEnd = firstInstantOfRestaurantDay(nextYmd(endYmd), tz);
   const end = new Date(dayAfterEnd.getTime() - 1);
   return { start, end };
 }

@@ -597,8 +597,8 @@ export function deriveInsights(data: SalesTrendsData): SalesTrendsInsights {
 
 // ---------------------------------------------------------------------------
 // hourCoverage — fraction of revenue that carried a usable hour (mirrors
-// useHourlySalesPattern's hasHourlyBreakdown flag, but as a continuous ratio
-// so the panel can surface a "hour data partial" note).
+// the `get_hourly_sales_pattern` RPC's hasHourlyBreakdown flag, but as a
+// continuous ratio so the panel can surface a "hour data partial" note).
 // ---------------------------------------------------------------------------
 
 export function hourCoverage(data: SalesTrendsData): number {

@@ -44,13 +44,15 @@ BEGIN
   -- description string exactly: throws_ok(sql, '22023', description) routes
   -- to the 4-arg form as (sql, sqlstate, message => description, NULL), so
   -- pgTAP compares SQLERRM against the description, not just SQLSTATE.
-  IF p_interval_minutes NOT IN (15, 30, 60) THEN
+  IF p_interval_minutes IS NULL OR p_interval_minutes NOT IN (15, 30, 60) THEN
     RAISE EXCEPTION 'a bad interval_minutes (%) raises SQLSTATE 22023', p_interval_minutes
       USING ERRCODE = '22023';
   END IF;
 
-  -- Guard 3: view.
-  IF p_view NOT IN ('weekday', 'by_date') THEN
+  -- Guard 3: view. NULL fails the IS NULL check first, so it never reaches
+  -- NOT IN, where a null operand would make the whole guard evaluate to
+  -- NULL (not TRUE) and silently skip the check.
+  IF p_view IS NULL OR p_view NOT IN ('weekday', 'by_date') THEN
     RAISE EXCEPTION 'a bad view (%) raises SQLSTATE 22023', p_view
       USING ERRCODE = '22023';
   END IF;

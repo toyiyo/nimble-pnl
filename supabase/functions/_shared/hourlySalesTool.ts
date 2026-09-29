@@ -38,6 +38,22 @@ function argError(message: string): { ok: false; error: ArgError } {
 }
 
 /**
+ * Check that a YYYY-MM-DD string is a real calendar date, not just a string
+ * that matches the shape. "2026-02-30" and "2026-13-01" match YMD_RE but
+ * are not real dates; Date.UTC rolls them into the next month, so round-trip
+ * the parsed value back to a string and compare.
+ */
+function isValidYmd(ymd: string): boolean {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
+/**
  * Check and default the raw tool arguments. Returns in-band
  * INVALID_ARGUMENTS for a bad enum, a bad date, or end_date before
  * start_date -- the same pattern as list_categories (ced3eac8).
@@ -76,16 +92,16 @@ export function parseHourlySalesArgs(args: unknown): ParseArgsResult {
   let start_date: string | undefined;
   if (a.start_date !== undefined && a.start_date !== null) {
     start_date = String(a.start_date);
-    if (!YMD_RE.test(start_date)) {
-      return argError('start_date must be a YYYY-MM-DD date.');
+    if (!YMD_RE.test(start_date) || !isValidYmd(start_date)) {
+      return argError('start_date must be a real YYYY-MM-DD date.');
     }
   }
 
   let end_date: string | undefined;
   if (a.end_date !== undefined && a.end_date !== null) {
     end_date = String(a.end_date);
-    if (!YMD_RE.test(end_date)) {
-      return argError('end_date must be a YYYY-MM-DD date.');
+    if (!YMD_RE.test(end_date) || !isValidYmd(end_date)) {
+      return argError('end_date must be a real YYYY-MM-DD date.');
     }
   }
 

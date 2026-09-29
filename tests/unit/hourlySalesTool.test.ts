@@ -55,6 +55,16 @@ describe('parseHourlySalesArgs', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('rejects a start_date that is not a real calendar date', () => {
+    const result = parseHourlySalesArgs({ start_date: '2026-02-30' });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects an end_date that is not a real calendar date', () => {
+    const result = parseHourlySalesArgs({ end_date: '2026-13-01' });
+    expect(result.ok).toBe(false);
+  });
+
   it('rejects end_date before start_date', () => {
     const result = parseHourlySalesArgs({ start_date: '2026-09-10', end_date: '2026-09-01' });
     expect(result.ok).toBe(false);

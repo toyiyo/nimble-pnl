@@ -8,7 +8,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(29);
+SELECT plan(31);
 
 -- Fixed identities for this test.
 -- restaurant A: 00000000-0000-0000-0000-0000000000a1 (America/Chicago)
@@ -152,6 +152,18 @@ SELECT throws_ok(
   $$SELECT get_hourly_sales_pattern('00000000-0000-0000-0000-0000000000a1'::uuid, '2026-09-01'::date, '2026-09-02'::date, 60, 'x')$$,
   '22023',
   'a bad view (x) raises SQLSTATE 22023'
+);
+
+SELECT throws_ok(
+  $$SELECT get_hourly_sales_pattern('00000000-0000-0000-0000-0000000000a1'::uuid, '2026-09-01'::date, '2026-09-02'::date, NULL, 'weekday')$$,
+  '22023',
+  'a bad interval_minutes (<NULL>) raises SQLSTATE 22023'
+);
+
+SELECT throws_ok(
+  $$SELECT get_hourly_sales_pattern('00000000-0000-0000-0000-0000000000a1'::uuid, '2026-09-01'::date, '2026-09-02'::date, 60, NULL)$$,
+  '22023',
+  'a bad view (<NULL>) raises SQLSTATE 22023'
 );
 
 SELECT throws_ok(

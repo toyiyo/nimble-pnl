@@ -74,6 +74,11 @@ describe('executeGetScheduleOverview', () => {
     expect(body).toMatch(/\.lte\('start_time', \w+\.end\.toISOString\(\)\)/);
   });
 
+  it('gives the cost engine scheduledCostInputs, not the instant bounds', () => {
+    expect(body).toMatch(/scheduledCostInputs\(/);
+    expect(body).not.toMatch(/calculateScheduledLaborCost\([^)]*bounds\./);
+  });
+
   it('groups with groupShiftsByRestaurantDay', () => {
     expect(body).toMatch(/groupShiftsByRestaurantDay\(/);
   });

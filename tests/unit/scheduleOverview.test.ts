@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { groupShiftsByRestaurantDay, scheduleOverviewDays } from '../../supabase/functions/_shared/scheduleOverview';
-import { calculateDateRange } from '../../supabase/functions/_shared/restaurantDate';
+import { groupShiftsByRestaurantDay, scheduleOverviewDays, scheduledCostInputs } from '../../supabase/functions/_shared/scheduleOverview';
+import { calculateDateRange, toLocalYMD } from '../../supabase/functions/_shared/restaurantDate';
+import { calculateScheduledLaborCost } from '../../supabase/functions/_shared/laborCalculations';
 
 describe('groupShiftsByRestaurantDay', () => {
   it('groups a shift at 21:00 CDT (crosses to the next UTC day) under the Chicago day', () => {
@@ -132,5 +133,75 @@ describe('scheduleOverviewDays', () => {
     const { startDateStr, endDateStr } = scheduleOverviewDays('custom', '2026-09-01', '2026-09-07', now);
     expect(startDateStr).toBe(expected.startDateStr);
     expect(endDateStr).toBe(expected.endDateStr);
+  });
+});
+
+describe('scheduledCostInputs', () => {
+  // A Chicago week: 2026-09-25 (Fri) .. 2026-10-02 (Fri), 8 restaurant days.
+  const salaryEmployee = {
+    id: 'sal-1',
+    name: 'Sal',
+    position: 'Manager',
+    status: 'active',
+    hire_date: '2024-01-01',
+    compensation_type: 'salary',
+    salary_amount: 70000, // $700/week in cents = $100/day
+    pay_period_type: 'weekly',
+  };
+  const hourlyEmployee = {
+    id: 'hr-1',
+    name: 'Ana',
+    position: 'Server',
+    status: 'active',
+    hire_date: '2024-01-01',
+    compensation_type: 'hourly',
+    hourly_rate: 1500, // $15/hr in cents
+  };
+
+  it('gives start and end Dates whose local fields are the restaurant days', () => {
+    const { startDate, endDate } = scheduledCostInputs([], '2026-09-25', '2026-10-02', 'America/Chicago');
+    expect(toLocalYMD(startDate)).toBe('2026-09-25');
+    expect(toLocalYMD(endDate)).toBe('2026-10-02');
+  });
+
+  it('moves each shift start to the restaurant wall clock and keeps its length', () => {
+    const { shiftData } = scheduledCostInputs(
+      [{ employee_id: 'hr-1', start_time: '2026-10-03T02:00:00Z', end_time: '2026-10-03T06:30:00Z', break_duration: 30 }],
+      '2026-09-25',
+      '2026-10-02',
+      'America/Chicago'
+    );
+    const start = new Date(shiftData[0].start_time);
+    const end = new Date(shiftData[0].end_time);
+    // Fri 2026-10-02 21:00 CDT
+    expect(toLocalYMD(start)).toBe('2026-10-02');
+    expect(start.getHours()).toBe(21);
+    expect(end.getTime() - start.getTime()).toBe(4.5 * 3_600_000);
+    expect(shiftData[0].break_duration).toBe(30);
+    expect(shiftData[0].employee_id).toBe('hr-1');
+  });
+
+  it('keeps the cost engine on exactly the restaurant days', () => {
+    const { shiftData, startDate, endDate } = scheduledCostInputs(
+      [{ employee_id: 'hr-1', start_time: '2026-10-03T02:00:00Z', end_time: '2026-10-03T06:00:00Z', break_duration: 0 }],
+      '2026-09-25',
+      '2026-10-02',
+      'America/Chicago'
+    );
+    const { dailyCosts, breakdown } = calculateScheduledLaborCost(
+      shiftData,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [salaryEmployee, hourlyEmployee] as any,
+      startDate,
+      endDate
+    );
+    expect(dailyCosts.map((d) => d.date)).toEqual([
+      '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28',
+      '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02',
+    ]);
+    // The Friday-night shift on the last day counts: 4 h x $15.
+    expect(breakdown.hourly.hours).toBeCloseTo(4, 6);
+    expect(breakdown.hourly.cost).toBeCloseTo(60, 6);
+    expect(breakdown.salary.daysScheduled).toBe(8);
   });
 });

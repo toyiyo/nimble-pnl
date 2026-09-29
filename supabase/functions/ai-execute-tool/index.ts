@@ -12,7 +12,7 @@ import {
   daysBetweenYmd,
   restaurantDayBounds,
 } from '../_shared/restaurantDate.ts';
-import { scheduleOverviewDays, groupShiftsByRestaurantDay } from '../_shared/scheduleOverview.ts';
+import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
 import { buildTimePunchShifts } from '../_shared/timePunchShifts.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import { corsHeaders } from "../_shared/cors.ts";
@@ -2216,14 +2216,24 @@ async function executeGetScheduleOverview(
   // view:pay_rates every rate is a masked NULL, so the projection is skipped.
   let projectedCosts = null;
   if (include_projected_costs && hasPayRates && shifts.length > 0) {
-    const shiftData = shifts.map((s: any) => ({
-      employee_id: s.employee_id,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      break_duration: s.break_duration || 0,
-    }));
+    const costInputs = scheduledCostInputs(
+      shifts.map((s: any) => ({
+        employee_id: s.employee_id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        break_duration: s.break_duration || 0,
+      })),
+      startDateStr,
+      endDateStr,
+      restaurantTimeZone
+    );
 
-    const { breakdown } = calculateScheduledLaborCost(shiftData, employees, bounds.start, bounds.end);
+    const { breakdown } = calculateScheduledLaborCost(
+      costInputs.shiftData,
+      employees,
+      costInputs.startDate,
+      costInputs.endDate
+    );
     projectedCosts = breakdown;
   }
 

@@ -9,7 +9,7 @@
  * lands on the day staff mean.
  */
 
-import { addDays, calculateDateRange, ymdInTimeZone, toLocalYMD, PeriodType } from './restaurantDate.ts';
+import { addDays, calculateDateRange, restaurantWallClock, ymdInTimeZone, toLocalYMD, PeriodType } from './restaurantDate.ts';
 
 export interface ScheduleShiftInput {
   id: string;
@@ -83,4 +83,43 @@ export function scheduleOverviewDays(
   }
   const range = calculateDateRange(period, startDateArg, endDateArg, now);
   return { startDateStr: range.startDateStr, endDateStr: range.endDateStr };
+}
+
+export interface ScheduledCostShift {
+  employee_id: string;
+  start_time: string;
+  end_time: string;
+  break_duration: number;
+}
+
+/**
+ * Inputs for calculateScheduledLaborCost, on restaurant days.
+ *
+ * The cost engine keys each day by runtime-local fields. So give it
+ * wall-clock values: startDate and endDate hold the restaurant start and
+ * end days, and each shift start moves to the restaurant wall clock. The
+ * shift length does not change. Do not pass restaurantDayBounds instants to
+ * the engine: it reads the UTC day of the end instant and counts one extra
+ * salary day.
+ */
+export function scheduledCostInputs(
+  shifts: ScheduledCostShift[],
+  startDateStr: string,
+  endDateStr: string,
+  timeZone: string
+): { shiftData: ScheduledCostShift[]; startDate: Date; endDate: Date } {
+  const [sy, sm, sd] = startDateStr.split('-').map(Number);
+  const [ey, em, ed] = endDateStr.split('-').map(Number);
+  const shiftData = shifts.map((s) => {
+    const start = new Date(s.start_time);
+    const wallStart = restaurantWallClock(start, timeZone);
+    const lengthMs = new Date(s.end_time).getTime() - start.getTime();
+    return {
+      employee_id: s.employee_id,
+      start_time: wallStart.toISOString(),
+      end_time: new Date(wallStart.getTime() + lengthMs).toISOString(),
+      break_duration: s.break_duration,
+    };
+  });
+  return { shiftData, startDate: new Date(sy, sm - 1, sd), endDate: new Date(ey, em - 1, ed) };
 }

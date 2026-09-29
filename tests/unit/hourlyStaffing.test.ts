@@ -3,7 +3,7 @@ import {
   minStaffFromCrew,
   recommendForSlots,
   recommendStaffForHour,
-  type HourlySales,
+  type HourlySlotSales,
   type MinCrew,
 } from '../../supabase/functions/_shared/hourlyStaffing';
 import {
@@ -57,7 +57,7 @@ describe('recommendStaffForHour parity with buildHourlyRecommendations', () => {
 
 describe('recommendForSlots', () => {
   it('gives each sub-hour slot the recommendation of the hour that contains it', () => {
-    const hourly: HourlySales[] = [
+    const hourly: HourlySlotSales[] = [
       { hour: 11, avgSales: 100 },
       { hour: 12, avgSales: 400 },
     ];

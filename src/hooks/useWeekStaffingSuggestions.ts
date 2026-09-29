@@ -34,12 +34,18 @@ export type { StaffingSuggestionsResult };
  *
  * Returns `null` when there's no usable data (no sales, no punches, or no
  * worked hours across all sessions).
+ *
+ * `hasSalesData` tells apart "no sales data was fetched" from "sales data
+ * exists and totals exactly $0" (a fully refunded day) — `totalSales`
+ * alone cannot, since both cases show as 0. It defaults to `totalSales !==
+ * 0` so a caller that has no better signal keeps the old behavior.
  */
 export function computeActualSplh(
   totalSales: number,
   punches: TimePunch[],
+  hasSalesData: boolean = totalSales !== 0,
 ): number | null {
-  if (totalSales === 0 || !punches.length) return null;
+  if (!hasSalesData || !punches.length) return null;
 
   const sessions = identifyWorkSessions(normalizePunches(punches));
   const totalHours = sessions.reduce((sum, s) => sum + s.worked_minutes / 60, 0);
@@ -254,7 +260,12 @@ export function useWeekStaffingSuggestions(
 
   // Compute actual SPLH from historical sales and labor hours
   const actualSplh = useMemo(
-    () => computeActualSplh(hourlySalesResult?.total_sales ?? 0, timePunches ?? []),
+    () =>
+      computeActualSplh(
+        hourlySalesResult?.total_sales ?? 0,
+        timePunches ?? [],
+        (hourlySalesResult?.days?.length ?? 0) > 0,
+      ),
     [hourlySalesResult, timePunches],
   );
 

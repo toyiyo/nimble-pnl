@@ -65,7 +65,8 @@ describe('get_hourly_sales checks its arguments in band (task-5)', () => {
   });
 
   it('propagates the shared helper error from both the primary and sub-hour fetch', () => {
-    expect(handlerBody.match(/if \(!(primary|hourly)\.ok\) return \{ ok: false, error: \1\.error \};/g)?.length).toBe(2);
+    expect(handlerBody).toMatch(/if \(!primary\.ok\) return \{ ok: false, error: primary\.error \};/);
+    expect(handlerBody).toMatch(/if \(hourly && !hourly\.ok\) return \{ ok: false, error: hourly\.error \};/);
   });
 
   it('calls the shared fetch helper a second time at 60 minutes only for a sub-hour interval', () => {

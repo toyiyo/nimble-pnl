@@ -20,7 +20,8 @@ import {
   type RpcResult,
   type ArgError,
 } from '../_shared/hourlySalesTool.ts';
-import { minStaffFromCrew, recommendStaffForHour } from '../_shared/hourlyStaffing.ts';
+import { minStaffFromCrew, recommendForSlots, recommendStaffForHour } from '../_shared/hourlyStaffing.ts';
+import type { HourlySlotSales } from '../_shared/hourlyStaffing.ts';
 import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
@@ -3039,7 +3040,7 @@ type HourlySalesRpcCall =
  * in interval_minutes.
  */
 async function fetchHourlySalesPattern(
-  supabase: any,
+  supabase: any, // Supabase client; typed `any` to match every other executeGetXxx handler in this file.
   restaurantId: string,
   window: { start_date: string; end_date: string },
   intervalMinutes: number,
@@ -3065,13 +3066,13 @@ async function fetchHourlySalesPattern(
  * Execute get_hourly_sales tool
  * Calls the get_hourly_sales_pattern RPC and formats the compact output of
  * design §4.3. For a sub-hour interval_minutes, also calls the RPC at 60
- * minutes so the staff recommendation reads the containing hour's average,
- * not the sub-hour slot's own average.
+ * minutes (in parallel with the primary call) so the staff recommendation
+ * reads the containing hour's average, not the sub-hour slot's own average.
  */
 async function executeGetHourlySales(
-  args: any,
+  args: any, // Raw MCP tool args; typed `any` to match every other executeGetXxx handler in this file.
   restaurantId: string,
-  supabase: any,
+  supabase: any, // Supabase client; typed `any` to match every other executeGetXxx handler in this file.
   restaurantNow: Date
 ): Promise<any> {
   const parsed = parseHourlySalesArgs(args);
@@ -3100,14 +3101,19 @@ async function executeGetHourlySales(
   }
   const window = windowResult.value;
 
-  const primary = await fetchHourlySalesPattern(
-    supabase,
-    restaurantId,
-    window,
-    parsedArgs.interval_minutes,
-    parsedArgs.view,
-  );
+  // The primary fetch and the sub-hour lookup fetch (design §4.3 decision 4)
+  // do not depend on each other's result, so run them together instead of
+  // one after the other — this halves the RPC round-trip time for a
+  // sub-hour view.
+  const isSubHour = parsedArgs.interval_minutes !== 60;
+  const [primary, hourly] = await Promise.all([
+    fetchHourlySalesPattern(supabase, restaurantId, window, parsedArgs.interval_minutes, parsedArgs.view),
+    isSubHour
+      ? fetchHourlySalesPattern(supabase, restaurantId, window, 60, parsedArgs.view)
+      : Promise.resolve(null),
+  ]);
   if (!primary.ok) return { ok: false, error: primary.error };
+  if (hourly && !hourly.ok) return { ok: false, error: hourly.error };
 
   let rpc = primary.value;
   if (parsedArgs.day_of_week !== undefined) {
@@ -3115,34 +3121,30 @@ async function executeGetHourlySales(
   }
 
   // Sub-hour recommendation lookup: the containing hour's own averaged
-  // sales, keyed by the same day key formatHourlySales uses.
-  const hourlyByDayKey = new Map<string, Map<number, number>>();
-  let hourlySourceRpc: RpcResult = rpc;
-
-  if (parsedArgs.interval_minutes !== 60) {
-    const hourly = await fetchHourlySalesPattern(supabase, restaurantId, window, 60, parsedArgs.view);
-    if (!hourly.ok) return { ok: false, error: hourly.error };
-    hourlySourceRpc = hourly.value;
-  }
-
+  // sales, keyed by the same day key formatHourlySales uses, fed to the
+  // shared, parity-tested recommendForSlots helper below.
+  const hourlySourceRpc: RpcResult = hourly ? hourly.value : rpc;
+  const hourlyByDayKey = new Map<string, HourlySlotSales[]>();
   for (const day of hourlySourceRpc.days) {
     const key = dayKeyFor(day, hourlySourceRpc.view);
-    const bySlot = new Map<number, number>();
-    for (const slot of day.slots) {
-      bySlot.set(Math.floor(slot.start_minute / 60), slot.sales);
-    }
-    hourlyByDayKey.set(key, bySlot);
+    hourlyByDayKey.set(
+      key,
+      day.slots.map((slot) => ({ hour: Math.floor(slot.start_minute / 60), avgSales: slot.sales })),
+    );
   }
 
   const effectiveMinStaff = minStaffFromCrew(settings.min_crew, settings.min_staff);
 
   const recommendStaff = (dayKey: string, startMinute: number, slotSales: number) => {
-    if (parsedArgs.interval_minutes === 60) {
+    if (!isSubHour) {
       return recommendStaffForHour(slotSales, settings.target_splh, effectiveMinStaff);
     }
-    const hour = Math.floor(startMinute / 60);
-    const hourlySales = hourlyByDayKey.get(dayKey)?.get(hour) ?? slotSales;
-    return recommendStaffForHour(hourlySales, settings.target_splh, effectiveMinStaff);
+    const [rec] = recommendForSlots(
+      [{ startMinute, sales: slotSales }],
+      hourlyByDayKey.get(dayKey) ?? [],
+      { targetSplh: settings.target_splh, minStaff: effectiveMinStaff, minCrew: null },
+    );
+    return rec.recommendedStaff;
   };
 
   const formatted = formatHourlySales(

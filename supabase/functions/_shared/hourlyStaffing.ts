@@ -13,14 +13,19 @@ export interface MinCrew {
 }
 
 /** One hour's averaged sales, the shape the RPC returns at 60-minute width. */
-export interface HourlySales {
+export interface HourlySlotSales {
   hour: number;
   avgSales: number;
 }
 
-/** One sub-hour slot, identified by its start offset in minutes from midnight. */
+/**
+ * One sub-hour slot, identified by its start offset in minutes from
+ * midnight. `sales` is the slot's own average sales, used as the
+ * recommendation fallback when no containing-hour entry exists.
+ */
 export interface StaffingSlot {
   startMinute: number;
+  sales?: number;
 }
 
 export interface StaffingSettingsInput {
@@ -62,11 +67,14 @@ export function recommendStaffForHour(sales: number, targetSplh: number, minStaf
 /**
  * A recommendation for each sub-hour slot, using the sales of the 60-minute
  * hour that contains it (design §4.3 decision 4: the sub-hour recommendation
- * reads the hourly, not the sub-hour, sales average).
+ * reads the hourly, not the sub-hour, sales average). When the containing
+ * hour has no entry in `hourly`, falls back to the slot's own `sales` (or 0
+ * when the slot gives none), so a missing hour never understates a slot
+ * that has real sub-hour data.
  */
 export function recommendForSlots(
   slots: StaffingSlot[],
-  hourly: HourlySales[],
+  hourly: HourlySlotSales[],
   settings: StaffingSettingsInput,
 ): SlotRecommendation[] {
   const effectiveMinStaff = minStaffFromCrew(settings.minCrew, settings.minStaff);
@@ -74,7 +82,7 @@ export function recommendForSlots(
 
   return slots.map((slot) => {
     const hour = Math.floor(slot.startMinute / 60);
-    const sales = salesByHour.get(hour) ?? 0;
+    const sales = salesByHour.get(hour) ?? slot.sales ?? 0;
     return {
       startMinute: slot.startMinute,
       hour,

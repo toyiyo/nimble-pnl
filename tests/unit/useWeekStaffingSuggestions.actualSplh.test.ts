@@ -46,6 +46,15 @@ describe('computeActualSplh', () => {
     ).toBeNull();
   });
 
+  it('returns 0, not null, for a day with sales records that net to $0 (e.g. fully refunded)', () => {
+    const punches: TimePunch[] = [
+      punch('p1', 'e1', 'clock_in', '2026-07-01T09:00:00Z'),
+      punch('p2', 'e1', 'clock_out', '2026-07-01T12:00:00Z'), // 3h
+    ];
+    // hasSalesData=true tells this apart from "no sales data was fetched".
+    expect(computeActualSplh(0, punches, true)).toBe(0);
+  });
+
   it('sums hours across multiple employees and ignores unmatched clock_out', () => {
     const punches: TimePunch[] = [
       punch('p1', 'e1', 'clock_in', '2026-07-01T09:00:00Z'),

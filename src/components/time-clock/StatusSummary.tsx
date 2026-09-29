@@ -15,6 +15,9 @@ interface StatusSummaryProps {
   onShowLocationUnavailable?: () => void;
 }
 
+const LOCATION_PILL_CLASS =
+  'min-h-6 min-w-6 whitespace-nowrap rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 focus-visible:ring-1 focus-visible:ring-border';
+
 export function StatusSummary({
   kioskActive,
   totalHours,
@@ -85,7 +88,7 @@ export function StatusSummary({
             type="button"
             onClick={onShowOffsite}
             aria-label={`${offsiteCount} off-site ${offsiteCount === 1 ? 'punch' : 'punches'}. Show them in the punch list.`}
-            className="min-h-6 min-w-6 whitespace-nowrap rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 focus-visible:ring-1 focus-visible:ring-border"
+            className={LOCATION_PILL_CLASS}
           >
             {offsiteCount} off-site
           </button>
@@ -96,7 +99,7 @@ export function StatusSummary({
             type="button"
             onClick={onShowLocationUnavailable}
             aria-label={`${locationUnavailableCount} no-location ${locationUnavailableCount === 1 ? 'punch' : 'punches'}. Show them in the punch list.`}
-            className="min-h-6 min-w-6 whitespace-nowrap rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 focus-visible:ring-1 focus-visible:ring-border"
+            className={LOCATION_PILL_CLASS}
           >
             {locationUnavailableCount} no location
           </button>

@@ -115,9 +115,14 @@ export function worstLocationFlag(punches: TimePunch[]): TimePunch | null {
     }
 
     if (flag === 'offsite' && worstFlag === 'offsite') {
-      const currentDistance = worst?.location?.distance_meters ?? 0;
-      const candidateDistance = punch.location?.distance_meters ?? 0;
-      if (candidateDistance > currentDistance) {
+      // A missing distance must never win, and must never lose to a real
+      // (even tiny) distance by comparing against a 0 default.
+      const currentDistance = worst?.location?.distance_meters;
+      const candidateDistance = punch.location?.distance_meters;
+      if (
+        candidateDistance != null &&
+        (currentDistance == null || candidateDistance > currentDistance)
+      ) {
         worst = punch;
       }
       continue;

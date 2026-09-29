@@ -602,6 +602,12 @@ const TimePunchesManager = () => {
     const headers = ['Employee', 'Position', 'Punch Type', 'Date', 'Time', 'Notes', 'Location', 'Distance (m)', 'Off-site'];
     const rows = windowPunches.map((punch) => {
       const flag = getPunchLocationFlag(punch.location);
+      let offsiteColumn = '';
+      if (flag === 'offsite') {
+        offsiteColumn = 'Yes';
+      } else if (punch.location && flag === null) {
+        offsiteColumn = 'No';
+      }
       return [
         punch.employee?.name || 'Unknown',
         punch.employee?.position || '',
@@ -616,7 +622,7 @@ const TimePunchesManager = () => {
           ? `${punch.location.latitude},${punch.location.longitude}`
           : punch.location?.location_unavailable ? 'unavailable' : '',
         punch.location?.distance_meters != null ? String(punch.location.distance_meters) : '',
-        flag === 'offsite' ? 'Yes' : punch.location && flag === null ? 'No' : '',
+        offsiteColumn,
       ];
     });
 
@@ -952,14 +958,8 @@ const TimePunchesManager = () => {
                               <Camera className="h-3 w-3" />
                             </Badge>
                           )}
-                          {punch.location && (
-                            getPunchLocationFlag(punch.location) ? (
-                              <PunchLocationFlag location={punch.location} />
-                            ) : (
-                              <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
-                                <MapPin className="h-3 w-3" />
-                              </Badge>
-                            )
+                          {punch.location && getPunchLocationFlag(punch.location) && (
+                            <PunchLocationFlag location={punch.location} />
                           )}
                         </div>
                       </div>

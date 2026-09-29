@@ -58,8 +58,11 @@ BEGIN
   END IF;
 
   -- Parse defensively. A bad value must never raise an error, because an
-  -- error blocks the punch.
-  IF jsonb_typeof(NEW.location -> 'latitude') <> 'number'
+  -- error blocks the punch. Check key existence first: jsonb_typeof()
+  -- on a missing key returns SQL NULL, and `IF NULL THEN` is false, so
+  -- checking only `<> 'number'` would let a missing key fall through.
+  IF NOT (NEW.location ? 'latitude' AND NEW.location ? 'longitude')
+    OR jsonb_typeof(NEW.location -> 'latitude') <> 'number'
     OR jsonb_typeof(NEW.location -> 'longitude') <> 'number'
   THEN
     RETURN NEW;

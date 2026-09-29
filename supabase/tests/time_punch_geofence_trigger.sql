@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(17);
+SELECT plan(18);
 
 -- Restaurant with coordinates: San Francisco Ferry Building, radius 200 m.
 INSERT INTO public.restaurants (id, name, latitude, longitude, geofence_radius_meters)
@@ -165,6 +165,14 @@ SELECT is(
   (SELECT location->>'location_unavailable' FROM public.time_punches WHERE id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'),
   'true',
   'location_unavailable stays true'
+);
+
+-- The restaurant has coordinates, but this punch has no latitude/longitude
+-- keys at all. The server must skip the flag, not write null server keys.
+SELECT ok(
+  NOT (SELECT location ?| array['within_geofence', 'distance_meters', 'geofence_radius_meters']
+       FROM public.time_punches WHERE id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'),
+  'a punch with no GPS keys gets no server keys, even at a restaurant with coordinates'
 );
 
 -- 10. UPDATE ... SET punch_time: the flags do not change.

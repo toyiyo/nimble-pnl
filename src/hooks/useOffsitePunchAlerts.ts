@@ -2,8 +2,8 @@ import { createElement, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
 import { ToastAction, type ToastActionElement } from '@/components/ui/toast';
+import { useToast } from '@/hooks/use-toast';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { formatDistance } from '@/utils/punchLocationFlag';
 
@@ -45,7 +45,7 @@ export function useOffsitePunchAlerts(
   onViewPunch: (punchId: string) => void,
 ) {
   const { toast } = useToast();
-  const { today, tz, formatInstant, parseWallClock } = useRestaurantClock();
+  const { today, formatInstant, parseWallClock } = useRestaurantClock();
   const dayStart = parseWallClock(`${today}T00:00`);
 
   const seenIds = useRef<Set<string> | null>(null);
@@ -63,11 +63,15 @@ export function useOffsitePunchAlerts(
 
   // A restaurant change must reset the seen set, not carry it forward: the
   // new restaurant's punches are all unseen from this hook's point of view,
-  // but they are not NEW off-site punches — do not toast for them.
-  if (seenRestaurantId.current !== restaurantId) {
-    seenRestaurantId.current = restaurantId;
-    seenIds.current = null;
-  }
+  // but they are not NEW off-site punches — do not toast for them. This
+  // runs in an effect, not during render, because mutating a ref during
+  // render is unsafe under React concurrent rendering.
+  useEffect(() => {
+    if (seenRestaurantId.current !== restaurantId) {
+      seenRestaurantId.current = restaurantId;
+      seenIds.current = null;
+    }
+  }, [restaurantId]);
 
   useEffect(() => {
     const rows = query.data;

@@ -708,6 +708,7 @@
 - **Correction:** Scoped the gate check to the PR's own diff: `git diff origin/main..HEAD --name-only` ∩ queue `origin_ref.file`. Only items on `scheduleTimeOff.ts` / `Scheduling.tsx` / `tailwind.config.ts` count. Verified each survivor against current file content (the tailwind one was stale — confirmed via `eslint tailwind.config.ts` clean + `grep require(` empty), then `node dev-tools/mark-task.js --id <id> --status fixed --note "stale: ..."`. Documented the shared-queue caveat in the 9d triage artifact.
 - **Rule:** The 9e queue check means "zero open critical/major *attributable to this PR's diff*," not "zero in the whole shared file." Always intersect open items with `git diff --name-only origin/main..HEAD`, and before treating a survivor as a blocker, verify the finding against the CURRENT file (stale line refs from old ingests are common). Record the scoping rationale in the triage artifact so the next run doesn't re-chase other branches' debt.
 - **[2026-07-04] CONFIRMED on PR #580:** refresh-queue ingested 34,319 open items (whole-repo eslint debt); intersection with the PR's two changed files = 0. Scoping rule applied as written; also `git checkout -- dev-tools/review_queue.json` afterwards so the polluted churn doesn't ride the PR.
+- **[2026-09-28] CONFIRMED on PR #827:** The Done-gate agent stopped with needs_human on 5546 open items. The intersection with the diff gave 1059 old `no-explicit-any` / `no-case-declarations` items on `ai-execute-tool/index.ts`. The `: any` count was 119 on main and 119 on HEAD, so the diff added none. Give the Done-gate agent this rule in its prompt, so it does not stop again.
 
 ---
 
@@ -3476,3 +3477,27 @@
 - **Mistake:** The workflow ran with `scriptPath` set to the main checkout copy of `.claude/workflows/dev-build-and-ship.js`. The main checkout was on another branch, with local edits to that file. That copy had no Phase 8.5, so no browser QA ran. The PR merged with no check of the real screens. The user asked "did you qa it using the chrome tools?", and the answer was no.
 - **Correction:** None before the merge. `grep -c "PHASE 8.5"` gave 0 for the main checkout copy and 2 for `origin/main`.
 - **Rule:** Set `scriptPath` to the script in the task worktree, which is on a branch from `origin/main`. Before the launch, run `grep -c "PHASE 8.5"` on that path. If the result is 0, stop and find the correct copy.
+
+## Category: Time / Timezone (continued)
+
+### [2026-09-28] Instant day bounds give an extra day to a consumer that keys days by local fields (PR #827)
+- **Mistake:** The AI schedule tool moved to `restaurantDayBounds` instants. The executor also passed these instants to `calculateScheduledLaborCost`. That engine keys days with `generateDateRange` and `formatDateLocal`. In the UTC runtime, the Chicago end instant falls on the next UTC day. An 8-day week gave 9 salary days. The Phase 2.5 review found this fault for `calculateHoursPerEmployee`, but not for `calculateScheduledLaborCost`. The operator found it at the verify step.
+- **Correction:** Add `scheduledCostInputs` in `_shared/scheduleOverview.ts`. It gives the engine wall-clock start and end days and wall-clock shift starts. The shift length does not change. A test checks 8 daily rows and a Friday-night shift on Friday.
+- **Rule:** When a range changes from wall-clock days to real instants, list every consumer of that range. Grep each consumer for `getDate`, `formatDateLocal`, `generateDateRange` and `toLocalYMD`. A consumer that reads local fields must get wall-clock inputs, not instants. Add a test that counts the days the consumer produces.
+
+### [2026-09-28] Local midnight does not exist in some zones on a DST day (PR #827)
+- **Mistake:** `restaurantDayBounds` used `zonedNaiveToUtc(`${ymd}T00:00:00`, tz)` for the first instant of a day. `America/Santiago` moves its clocks forward at local midnight (2026-09-06), so `00:00` does not exist. The result fell on the previous day. Codex found this on the PR.
+- **Correction:** Check the guess with `ymdInTimeZone`. If the check fails, do a binary search by minute for the first instant of the day. This is the same fallback as `firstInstantOfDayInZone` in `_shared/labor/restaurantClock.ts`.
+- **Rule:** Do not assume that local `00:00` exists. For the start of a restaurant day, use a helper that checks the result and has a DST fallback. Add a test for a zone with a DST change at midnight.
+
+## Category: Development Workflow (continued)
+
+### [2026-09-28] The verify agent stalls on a long foreground command with no output (PR #827)
+- **Mistake:** The Phase 8 verify agent stalled 6 times. Each time, a foreground test command gave no output for 180 s, and the agent stopped. One vitest run under `Pacific/Auckland` hung for 16 minutes. When I ran it again, all 59 tests passed.
+- **Correction:** The operator ran the checks directly. Then the workflow resumed with `verifyNotes`. The notes told the agent to run long commands in the background, listed the checks already done, and gave the reasons to skip `test:db` and E2E.
+- **Rule:** When a verify agent stalls, do not start it again with no change. Resume it with `verifyNotes` that list the finished checks and tell it to run long commands in the background. When one time zone run hangs, stop that run and run it again before you look for a code fault.
+
+### [2026-09-28] An empty reviewer result is not a pass (PR #827)
+- **Mistake:** In Phase 7, Codex gave no findings because its CLI version was too old. CodeRabbit gave no output in 7c. Both results looked like a clean review. The late fix commit 866e787e also got no reviewer-agent pass. Only CI and the CodeRabbit PR review saw it.
+- **Correction:** Codex found a real DST fault on the PR after the push. That fault is fixed in commit 5156596f.
+- **Rule:** When a reviewer gives no output, look for the cause (CLI version, auth, rate limit) before you record a pass. Record "reviewer did not run" in `progress.md`. When a fix commit comes after Phase 7, run at least one reviewer agent on that commit.

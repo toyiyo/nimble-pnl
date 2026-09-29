@@ -120,8 +120,11 @@ export function worstLocationFlag(punches: TimePunch[]): TimePunch | null {
       const currentDistance = worst?.location?.distance_meters;
       const candidateDistance = punch.location?.distance_meters;
       if (
-        candidateDistance != null &&
-        (currentDistance == null || candidateDistance > currentDistance)
+        candidateDistance !== null &&
+        candidateDistance !== undefined &&
+        (currentDistance === null ||
+          currentDistance === undefined ||
+          candidateDistance > currentDistance)
       ) {
         worst = punch;
       }

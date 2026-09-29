@@ -958,7 +958,7 @@ const TimePunchesManager = () => {
                               <Camera className="h-3 w-3" />
                             </Badge>
                           )}
-                          {punch.location && getPunchLocationFlag(punch.location) && (
+                          {getPunchLocationFlag(punch.location) && (
                             <PunchLocationFlag location={punch.location} />
                           )}
                         </div>

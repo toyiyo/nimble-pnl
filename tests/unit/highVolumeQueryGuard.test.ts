@@ -51,6 +51,9 @@ const ALLOWLIST = new Set([
   'src/hooks/useInventoryMetrics.tsx',
   'src/hooks/useInventoryPurchases.tsx',
   'src/hooks/useLiquidityMetrics.tsx',
+  // Bounded by one restaurant, one business day, and
+  // `within_geofence = false` — never a high-volume scan of the table.
+  'src/hooks/useOffsitePunchAlerts.ts',
   'src/hooks/usePendingOutflows.tsx',
   'src/hooks/usePredictableExpenses.tsx',
   'src/hooks/usePredictiveMetrics.tsx',

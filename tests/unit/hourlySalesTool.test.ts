@@ -182,7 +182,8 @@ describe('formatHourlySales', () => {
     };
 
     const out = formatHourlySales(rpc, { target_splh: 60, min_staff: 1 }, recommend);
-    const day = (out.days as any[])[0];
+    const days = out.days as { rows: number[][] }[];
+    const day = days[0];
     // Both sub-hour rows use the containing hour's recommendation, not one
     // computed from each slot's own (differing) sales value.
     expect(day.rows[0][3]).toBe(expectedStaff);

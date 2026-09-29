@@ -172,7 +172,7 @@ const DEFAULT_PROPS = {
   notifyAfterDeferredCommit: vi.fn(),
 } as const;
 
-function renderTab(props = DEFAULT_PROPS) {
+function renderTab(props: React.ComponentProps<typeof ShiftPlannerTab> = DEFAULT_PROPS) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -229,5 +229,29 @@ describe('ShiftPlannerTab — availability wiring', () => {
     const props = lastCall[0] as { availabilityByEmployee: Map<string, Map<number, EffectiveAvailability>> };
     expect(props.availabilityByEmployee).toBeInstanceOf(Map);
     expect(props.availabilityByEmployee.get('e1')).toBeInstanceOf(Map);
+  });
+
+  it('passes a plain labor percent footer to the ShiftTimelineTab day buttons', () => {
+    renderTab({
+      ...DEFAULT_PROPS,
+      dailyLaborPercent: {
+        byDay: new Map([
+          ['2027-07-12', { laborCost: 100, projectedSales: 1000, percent: 10, overTarget: false }],
+        ]),
+        isLoading: false,
+        hasError: false,
+        targetLaborPct: 22,
+        lookbackWeeks: 4,
+      },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /^timeline$/i }));
+
+    const lastCall = timelineTabSpy.mock.calls[timelineTabSpy.mock.calls.length - 1];
+    const props = lastCall[0] as { renderDayFooter: (day: string, selected: boolean) => React.ReactNode };
+    render(<>{props.renderDayFooter('2027-07-12', true)}</>);
+    const footer = screen.getByText('Labor 10%');
+    // Plain variant: no focus stop inside the day button; inverse color when selected.
+    expect(footer).not.toHaveAttribute('tabindex');
+    expect(footer).toHaveClass('text-background/80');
   });
 });

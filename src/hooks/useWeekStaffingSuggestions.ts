@@ -26,7 +26,7 @@ interface ActualSplhSaleRow {
 
 /** Row shape selected by the hourly-sales query. Mirrors `aggregateHourlySales`'s
  *  `RawSale` so the paginated result feeds straight into the aggregation. */
-interface HourlySaleRow {
+export interface HourlySaleRow {
   sale_date: string;
   sale_time: string | null;
   sold_at: string | null;
@@ -62,6 +62,84 @@ export function computeActualSplh(
 
   if (totalHours <= 0) return null;
   return Math.round(totalSales / totalHours);
+}
+
+const SALES_PAGE_SIZE = 1000;
+const SALES_MAX_PAGES = 20;
+/**
+ * Most rows the lookback sales query returns. A result of this size is cut
+ * off: the last `sale_date` in it (rows are ordered by date) is partial.
+ */
+export const LOOKBACK_SALES_ROW_CAP = SALES_PAGE_SIZE * SALES_MAX_PAGES;
+
+/**
+ * The lookback window as restaurant business days. `sale_date` is a date-only
+ * column, so both bounds must be the restaurant's business day, not the UTC
+ * day. UTC days slide the whole lookback window by a day for zones west of
+ * Greenwich in the evening.
+ */
+export function lookbackDateRange(lookbackWeeks: number, tz: string, now: Date = new Date()) {
+  const startDate = new Date(now);
+  startDate.setDate(now.getDate() - lookbackWeeks * 7);
+  return {
+    startStr: toBusinessDay(startDate, tz),
+    endStr: toBusinessDay(now, tz),
+  };
+}
+
+/**
+ * Query options for the lookback sales history. Exported so that every caller
+ * (this hook and `useDailyLaborPercent`) shares one React Query cache entry.
+ *
+ * `tz` belongs in the key because the date range is derived from it --
+ * without it, changing the restaurant's zone leaves this window cached
+ * against the old business days.
+ */
+export function lookbackSalesQueryOptions(
+  restaurantId: string | null,
+  lookbackWeeks: number,
+  tz: string,
+) {
+  return {
+    queryKey: ['hourly-sales-all', restaurantId, lookbackWeeks, tz],
+    queryFn: async (): Promise<HourlySaleRow[]> => {
+      if (!restaurantId) return [];
+      const dateRange = lookbackDateRange(lookbackWeeks, tz);
+      // Paginated (matches useSplhData.ts's fetchAllPunches / the time-punch
+      // query in useWeekStaffingSuggestions): an unbounded select is subject to PostgREST's default
+      // row cap, which a busy restaurant's multi-week lookback easily exceeds.
+      // Because the rows are ordered by `sale_date`, silent truncation drops
+      // the most-recent days first — so the current week (including today, the
+      // default-selected day) would aggregate to zero sales and the coverage
+      // chart would render every hour as "No sales history".
+      const rows: HourlySaleRow[] = [];
+      for (let page = 0; page < SALES_MAX_PAGES; page++) {
+        const from = page * SALES_PAGE_SIZE;
+        const { data, error } = await supabase
+          .from('unified_sales')
+          .select('sale_date, sale_time, sold_at, total_price')
+          .eq('restaurant_id', restaurantId)
+          .eq('item_type', 'sale')
+          // Split-sale guard (§5 S-M1): exclude split-parent/child rows so a
+          // split sale's total isn't summed twice, matching useSplhData.ts.
+          .is('parent_sale_id', null)
+          .gte('sale_date', dateRange.startStr)
+          .lte('sale_date', dateRange.endStr)
+          .order('sale_date')
+          .order('created_at')
+          .order('id')
+          .range(from, from + SALES_PAGE_SIZE - 1);
+        if (error) throw error;
+        rows.push(...((data ?? []) as unknown as HourlySaleRow[]));
+        if (!data || data.length < SALES_PAGE_SIZE) break;
+      }
+      return rows;
+    },
+    enabled: !!restaurantId,
+    staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  };
 }
 
 export function useWeekStaffingSuggestions(
@@ -113,64 +191,14 @@ export function useWeekStaffingSuggestions(
   }, [effectiveSettings, settingsOverrides]);
 
   // Compute date range once for both queries
-  const dateRange = useMemo(() => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - activeSettings.lookback_weeks * 7);
-    // Both bounds are compared against sale_date (a date-only column) below,
-    // so they need to be the restaurant's business day, not the UTC day --
-    // UTC days slide the whole lookback window by a day for zones west of
-    // Greenwich in the evening.
-    return {
-      startStr: toBusinessDay(startDate, tz),
-      endStr: toBusinessDay(endDate, tz),
-    };
-  }, [activeSettings.lookback_weeks, tz]);
+  const dateRange = useMemo(
+    () => lookbackDateRange(activeSettings.lookback_weeks, tz),
+    [activeSettings.lookback_weeks, tz],
+  );
 
-  const { data: allSales, isLoading: salesLoading, error: salesError, refetch: refetchSales } = useQuery({
-    // `tz` belongs in the key because `dateRange` is now derived from it --
-    // without it, changing the restaurant's zone leaves this window cached
-    // against the old business days. The punch query below already keys on tz.
-    queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks, tz],
-    queryFn: async () => {
-      if (!restaurantId) return [];
-      // Paginated (matches useSplhData.ts's fetchAllPunches / the time-punch
-      // query below): an unbounded select is subject to PostgREST's default
-      // row cap, which a busy restaurant's multi-week lookback easily exceeds.
-      // Because the rows are ordered by `sale_date`, silent truncation drops
-      // the most-recent days first — so the current week (including today, the
-      // default-selected day) would aggregate to zero sales and the coverage
-      // chart would render every hour as "No sales history".
-      const PAGE_SIZE = 1000;
-      const MAX_PAGES = 20;
-      const rows: HourlySaleRow[] = [];
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const from = page * PAGE_SIZE;
-        const { data, error } = await supabase
-          .from('unified_sales')
-          .select('sale_date, sale_time, sold_at, total_price')
-          .eq('restaurant_id', restaurantId)
-          .eq('item_type', 'sale')
-          // Split-sale guard (§5 S-M1): exclude split-parent/child rows so a
-          // split sale's total isn't summed twice, matching useSplhData.ts.
-          .is('parent_sale_id', null)
-          .gte('sale_date', dateRange.startStr)
-          .lte('sale_date', dateRange.endStr)
-          .order('sale_date')
-          .order('created_at')
-          .order('id')
-          .range(from, from + PAGE_SIZE - 1);
-        if (error) throw error;
-        rows.push(...((data ?? []) as unknown as HourlySaleRow[]));
-        if (!data || data.length < PAGE_SIZE) break;
-      }
-      return rows;
-    },
-    enabled: !!restaurantId,
-    staleTime: 60000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-  });
+  const { data: allSales, isLoading: salesLoading, error: salesError, refetch: refetchSales } = useQuery(
+    lookbackSalesQueryOptions(restaurantId, activeSettings.lookback_weeks, tz),
+  );
 
   // Fetch time punches to compute actual labor hours for SPLH hint.
   // isLoading and refetch are joined with the sales query so callers see a

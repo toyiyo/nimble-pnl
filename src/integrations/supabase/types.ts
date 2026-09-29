@@ -11340,6 +11340,16 @@ export type Database = {
           uncategorized_spend: number
         }[]
       }
+      get_hourly_sales_pattern: {
+        Args: {
+          p_end_date: string
+          p_interval_minutes?: number
+          p_restaurant_id: string
+          p_start_date: string
+          p_view?: string
+        }
+        Returns: Json
+      }
       get_inventory_usage_by_month: {
         Args: {
           p_end_date: string

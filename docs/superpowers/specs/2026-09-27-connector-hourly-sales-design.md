@@ -441,3 +441,10 @@ largest values) and checks `length <= 40_000`.
   cover the seam. The hook return shape does not change.
 - Two RPC calls for a sub-hour view. Each call reads the same index range.
   The cost is small compared with the edge function limits.
+- The two RPC calls for a sub-hour view are not atomic. The pg_cron job
+  `sync_all_toast_to_unified_sales` (jobid 4) writes `unified_sales` every 5
+  minutes. A write between the two calls can give a slot `sales` from one
+  snapshot and `recommended_staff` from the other. The handler runs the calls
+  in parallel, so the window is short. The effect is one advisory staff value
+  for one request, with no change to stored data. We accept this risk. A fix
+  needs one RPC that returns both granularities. That is out of scope.

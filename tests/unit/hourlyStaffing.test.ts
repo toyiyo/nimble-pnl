@@ -88,4 +88,16 @@ describe('recommendForSlots', () => {
 
     expect(result).toEqual([{ startMinute: 540, hour: 9, recommendedStaff: 3 }]);
   });
+
+  it('falls back to the slot own sales for an hour with no matching hourly entry', () => {
+    const result = recommendForSlots([{ startMinute: 540, sales: 240 }], [], {
+      targetSplh: 60,
+      minStaff: 1,
+      minCrew: null,
+    });
+
+    expect(result).toEqual([
+      { startMinute: 540, hour: 9, recommendedStaff: recommendStaffForHour(240, 60, 1) },
+    ]);
+  });
 });

@@ -20,8 +20,7 @@ import {
   type RpcResult,
   type ArgError,
 } from '../_shared/hourlySalesTool.ts';
-import { minStaffFromCrew, recommendForSlots, recommendStaffForHour } from '../_shared/hourlyStaffing.ts';
-import type { HourlySlotSales } from '../_shared/hourlyStaffing.ts';
+import { minStaffFromCrew, recommendForSlots, recommendStaffForHour, type HourlySlotSales } from '../_shared/hourlyStaffing.ts';
 import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
@@ -3135,16 +3134,29 @@ async function executeGetHourlySales(
 
   const effectiveMinStaff = minStaffFromCrew(settings.min_crew, settings.min_staff);
 
+  // Sub-hour recommendations, one recommendForSlots call per day (not per
+  // slot): building the hour->sales map inside recommendForSlots is O(hours)
+  // work, so calling it once per slot made day formatting O(slots x hours)
+  // instead of O(slots + hours). Precompute each day's recommendations here
+  // and have recommendStaff below do a plain map lookup.
+  const subHourRecsByDayKey = new Map<string, Map<number, number>>();
+  if (isSubHour) {
+    for (const day of rpc.days) {
+      const dayKey = dayKeyFor(day, rpc.view);
+      const recs = recommendForSlots(
+        day.slots.map((slot) => ({ startMinute: slot.start_minute, sales: slot.sales })),
+        hourlyByDayKey.get(dayKey) ?? [],
+        { targetSplh: settings.target_splh, minStaff: effectiveMinStaff, minCrew: null },
+      );
+      subHourRecsByDayKey.set(dayKey, new Map(recs.map((rec) => [rec.startMinute, rec.recommendedStaff])));
+    }
+  }
+
   const recommendStaff = (dayKey: string, startMinute: number, slotSales: number) => {
     if (!isSubHour) {
       return recommendStaffForHour(slotSales, settings.target_splh, effectiveMinStaff);
     }
-    const [rec] = recommendForSlots(
-      [{ startMinute, sales: slotSales }],
-      hourlyByDayKey.get(dayKey) ?? [],
-      { targetSplh: settings.target_splh, minStaff: effectiveMinStaff, minCrew: null },
-    );
-    return rec.recommendedStaff;
+    return subHourRecsByDayKey.get(dayKey)?.get(startMinute) ?? effectiveMinStaff;
   };
 
   const formatted = formatHourlySales(

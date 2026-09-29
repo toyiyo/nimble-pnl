@@ -34,6 +34,10 @@ describe('ai-execute-tool checks required arguments (D10)', () => {
 });
 
 describe('get_hourly_sales checks its arguments in band (task-5)', () => {
+  const helperStart = src.indexOf('async function fetchHourlySalesPattern(');
+  const helperEnd = src.indexOf('\n/**', helperStart + 1);
+  const helperBody = src.slice(helperStart, helperEnd);
+
   const handlerStart = src.indexOf('async function executeGetHourlySales(');
   const handlerEnd = src.indexOf('\n/**', handlerStart + 1);
   const handlerBody = src.slice(handlerStart, handlerEnd);
@@ -54,14 +58,18 @@ describe('get_hourly_sales checks its arguments in band (task-5)', () => {
     expect(handlerBody).toMatch(/if \(!parsed\.ok\) \{\s*\n\s*return \{ ok: false, error: parsed\.error \};/);
   });
 
-  it('maps a 22023 RPC error to INVALID_ARGUMENTS', () => {
-    const occurrences = handlerBody.match(/rpcError\.code === '22023'|hourlyError\.code === '22023'/g);
-    expect(occurrences?.length).toBe(2);
-    expect(handlerBody).toMatch(/code: 'INVALID_ARGUMENTS', message: rpcError\.message/);
+  it('maps a 22023 RPC error to INVALID_ARGUMENTS in the shared fetch helper', () => {
+    expect(helperStart).toBeGreaterThan(0);
+    expect(helperBody).toMatch(/error\.code === '22023'/);
+    expect(helperBody).toMatch(/code: 'INVALID_ARGUMENTS', message: error\.message/);
   });
 
-  it('calls the RPC a second time at 60 minutes only for a sub-hour interval', () => {
+  it('propagates the shared helper error from both the primary and sub-hour fetch', () => {
+    expect(handlerBody.match(/if \(!(primary|hourly)\.ok\) return \{ ok: false, error: \1\.error \};/g)?.length).toBe(2);
+  });
+
+  it('calls the shared fetch helper a second time at 60 minutes only for a sub-hour interval', () => {
     expect(handlerBody).toMatch(/parsedArgs\.interval_minutes !== 60/);
-    expect(handlerBody.match(/get_hourly_sales_pattern/g)?.length).toBe(2);
+    expect(handlerBody.match(/fetchHourlySalesPattern\(/g)?.length).toBe(2);
   });
 });

@@ -18,6 +18,7 @@ import {
   formatHourlySales,
   dayKeyFor,
   type RpcResult,
+  type ArgError,
 } from '../_shared/hourlySalesTool.ts';
 import { minStaffFromCrew, recommendStaffForHour } from '../_shared/hourlyStaffing.ts';
 import { corsHeaders } from "../_shared/cors.ts";
@@ -3027,6 +3028,39 @@ const DEFAULT_STAFFING_SETTINGS = {
   lookback_weeks: 4,
 };
 
+type HourlySalesRpcCall =
+  | { ok: true; value: RpcResult }
+  | { ok: false; error: ArgError };
+
+/**
+ * Call the get_hourly_sales_pattern RPC and map a bad-argument (22023)
+ * error to the tool's in-band INVALID_ARGUMENTS shape. Shared by the
+ * primary fetch and the sub-hour lookup fetch below, which differ only
+ * in interval_minutes.
+ */
+async function fetchHourlySalesPattern(
+  supabase: any,
+  restaurantId: string,
+  window: { start_date: string; end_date: string },
+  intervalMinutes: number,
+  view: string,
+): Promise<HourlySalesRpcCall> {
+  const { data, error } = await supabase.rpc('get_hourly_sales_pattern', {
+    p_restaurant_id: restaurantId,
+    p_start_date: window.start_date,
+    p_end_date: window.end_date,
+    p_interval_minutes: intervalMinutes,
+    p_view: view,
+  });
+  if (error) {
+    if (error.code === '22023') {
+      return { ok: false, error: { code: 'INVALID_ARGUMENTS', message: error.message } };
+    }
+    throw new Error(`Failed to fetch hourly sales: ${error.message}`);
+  }
+  return { ok: true, value: data as RpcResult };
+}
+
 /**
  * Execute get_hourly_sales tool
  * Calls the get_hourly_sales_pattern RPC and formats the compact output of
@@ -3066,22 +3100,16 @@ async function executeGetHourlySales(
   }
   const window = windowResult.value;
 
-  const { data: rpcData, error: rpcError } = await supabase.rpc('get_hourly_sales_pattern', {
-    p_restaurant_id: restaurantId,
-    p_start_date: window.start_date,
-    p_end_date: window.end_date,
-    p_interval_minutes: parsedArgs.interval_minutes,
-    p_view: parsedArgs.view,
-  });
+  const primary = await fetchHourlySalesPattern(
+    supabase,
+    restaurantId,
+    window,
+    parsedArgs.interval_minutes,
+    parsedArgs.view,
+  );
+  if (!primary.ok) return { ok: false, error: primary.error };
 
-  if (rpcError) {
-    if (rpcError.code === '22023') {
-      return { ok: false, error: { code: 'INVALID_ARGUMENTS', message: rpcError.message } };
-    }
-    throw new Error(`Failed to fetch hourly sales: ${rpcError.message}`);
-  }
-
-  let rpc = rpcData as RpcResult;
+  let rpc = primary.value;
   if (parsedArgs.day_of_week !== undefined) {
     rpc = { ...rpc, days: rpc.days.filter((d) => d.day_of_week === parsedArgs.day_of_week) };
   }
@@ -3092,20 +3120,9 @@ async function executeGetHourlySales(
   let hourlySourceRpc: RpcResult = rpc;
 
   if (parsedArgs.interval_minutes !== 60) {
-    const { data: hourlyData, error: hourlyError } = await supabase.rpc('get_hourly_sales_pattern', {
-      p_restaurant_id: restaurantId,
-      p_start_date: window.start_date,
-      p_end_date: window.end_date,
-      p_interval_minutes: 60,
-      p_view: parsedArgs.view,
-    });
-    if (hourlyError) {
-      if (hourlyError.code === '22023') {
-        return { ok: false, error: { code: 'INVALID_ARGUMENTS', message: hourlyError.message } };
-      }
-      throw new Error(`Failed to fetch hourly sales: ${hourlyError.message}`);
-    }
-    hourlySourceRpc = hourlyData as RpcResult;
+    const hourly = await fetchHourlySalesPattern(supabase, restaurantId, window, 60, parsedArgs.view);
+    if (!hourly.ok) return { ok: false, error: hourly.error };
+    hourlySourceRpc = hourly.value;
   }
 
   for (const day of hourlySourceRpc.days) {

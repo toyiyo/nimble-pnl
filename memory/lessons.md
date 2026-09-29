@@ -3476,3 +3476,26 @@
 - **Mistake:** The workflow ran with `scriptPath` set to the main checkout copy of `.claude/workflows/dev-build-and-ship.js`. The main checkout was on another branch, with local edits to that file. That copy had no Phase 8.5, so no browser QA ran. The PR merged with no check of the real screens. The user asked "did you qa it using the chrome tools?", and the answer was no.
 - **Correction:** None before the merge. `grep -c "PHASE 8.5"` gave 0 for the main checkout copy and 2 for `origin/main`.
 - **Rule:** Set `scriptPath` to the script in the task worktree, which is on a branch from `origin/main`. Before the launch, run `grep -c "PHASE 8.5"` on that path. If the result is 0, stop and find the correct copy.
+
+## Category: Domain — Scheduling / Labor %
+
+### [2026-09-29] A sum of hourly averages is not a daily projection (PR #826)
+- **Mistake:** The first daily labor % used `totalProjectedSales` from `computeStaffingSuggestions` as the denominator. That value is the sum of hourly averages. `aggregateHourlySales` divides each hour by the number of dates that had a sale in that hour, so a sparse late hour adds its full value. The day total is too high, and the labor % is too low. The design doc cited the value as "the same source the planner uses" and nobody checked the math.
+- **Correction:** The sound-logic reviewer found it. `projectDailySales` now averages full-day totals per weekday. It leaves out today (partial) and closed days, and it drops the last date when the query reaches its row cap.
+- **Rule:** Before you reuse a number as the denominator of a financial KPI, read how it is aggregated. "Same source as feature X" is not proof that the value fits the new use. Check the divisor.
+
+### [2026-09-29] Do not reuse a heavy hook for one field (PR #826)
+- **Mistake:** The daily % hook called `useWeekStaffingSuggestions` only to read the projected sales. That hook also pages the time punch query (up to 20,000 rows) and runs the full staffing pipeline. Each caller repeats the `useMemo` work, because React Query shares the fetch but not the computation. The Planner went from 1 to 3 instances.
+- **Correction:** Export the query options (`lookbackSalesQueryOptions`) so the key stays shared. Write a lean hook that uses only that query. Compute the view one time at page level and pass it down as a prop.
+- **Rule:** When a new feature needs one output of a large hook, share the query options, not the hook. A shared React Query key does not share the derived computation.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-29] `npm install` fails on the blocked `xlsx` CDN (PR #826)
+- **Mistake:** `npm install` returned 403 for `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`. The egress policy blocks that host.
+- **Correction:** Remove `xlsx` from `package.json` in a script, run `npm install`, then `git checkout package.json package-lock.json`. Typecheck and unit tests run. The 4 test files that import `xlsx` do not load, and `npm run build` fails.
+- **Rule:** In the remote container, use this workaround and say in the PR that the build and the `xlsx` test files did not run. Do not commit the changed package files.
+
+### [2026-09-29] The restaurant-clock lint rule also flags `Number.toLocaleString` (PR #826)
+- **Mistake:** `Math.round(v).toLocaleString('en-US')` for dollars failed the `no-restricted-syntax` rule "toLocale*String renders in the viewer's timezone". The rule matches the method name and does not check the type.
+- **Rule:** Format money with a module-level `Intl.NumberFormat`, not `toLocaleString`.

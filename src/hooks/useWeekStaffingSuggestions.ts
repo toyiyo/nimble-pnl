@@ -20,19 +20,6 @@ import type { TimePunch } from '@/types/timeTracking';
 
 export type { StaffingSuggestionsResult };
 
-interface ActualSplhSaleRow {
-  total_price: number | string;
-}
-
-/** Row shape selected by the hourly-sales query. Mirrors `aggregateHourlySales`'s
- *  `RawSale` so the paginated result feeds straight into the aggregation. */
-interface HourlySaleRow {
-  sale_date: string;
-  sale_time: string | null;
-  sold_at: string | null;
-  total_price: number;
-}
-
 /**
  * Sums total sales and divides by total worked hours to produce a rough
  * actual-SPLH figure. Pure helper (no hook deps) so it's independently
@@ -50,12 +37,10 @@ interface HourlySaleRow {
  * worked hours across all sessions).
  */
 export function computeActualSplh(
-  sales: ActualSplhSaleRow[],
+  totalSales: number,
   punches: TimePunch[],
 ): number | null {
-  if (!sales.length || !punches.length) return null;
-
-  const totalSales = sales.reduce((sum, s) => sum + Number(s.total_price), 0);
+  if (totalSales === 0 || !punches.length) return null;
 
   const sessions = identifyWorkSessions(normalizePunches(punches));
   const totalHours = sessions.reduce((sum, s) => sum + s.worked_minutes / 60, 0);

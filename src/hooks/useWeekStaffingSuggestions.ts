@@ -15,7 +15,7 @@ import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcess
 import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
-import type { StaffingSettings } from '@/types/scheduling';
+import type { StaffingSettings, HourlySalesData } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 
 export type { StaffingSuggestionsResult };
@@ -47,6 +47,64 @@ export function computeActualSplh(
 
   if (totalHours <= 0) return null;
   return Math.round(totalSales / totalHours);
+}
+
+interface HourlySalesPatternSlot {
+  start_minute: number;
+  sales: number;
+  sample_count: number;
+}
+
+interface HourlySalesPatternDay {
+  day_of_week: number;
+  has_hourly_breakdown: boolean;
+  slots: HourlySalesPatternSlot[];
+}
+
+interface HourlySalesPatternResult {
+  days?: HourlySalesPatternDay[] | null;
+}
+
+const EMPTY_DAY_ENTRY: { data: HourlySalesData[]; hasHourlyBreakdown: boolean } = {
+  data: [],
+  hasHourlyBreakdown: false,
+};
+
+/**
+ * Maps `get_hourly_sales_pattern`'s jsonb result to a Map keyed by
+ * `day_of_week` (0=Sunday..6=Saturday), one entry per weekday. A weekday
+ * absent from `days[]` (no sales in the lookback window) still gets an
+ * entry, with empty data -- so callers never guard a missing Map key with
+ * their own default.
+ *
+ * `hour = start_minute / 60` -- correct only at `p_interval_minutes = 60`,
+ * the only interval this hook requests.
+ */
+export function mapHourlySalesPattern(
+  result: HourlySalesPatternResult | null | undefined,
+): Map<number, { data: HourlySalesData[]; hasHourlyBreakdown: boolean }> {
+  const byDow = new Map<number, HourlySalesPatternDay>();
+  for (const day of result?.days ?? []) {
+    byDow.set(day.day_of_week, day);
+  }
+
+  const mapped = new Map<number, { data: HourlySalesData[]; hasHourlyBreakdown: boolean }>();
+  for (let dow = 0; dow <= 6; dow++) {
+    const day = byDow.get(dow);
+    if (!day) {
+      mapped.set(dow, EMPTY_DAY_ENTRY);
+      continue;
+    }
+    mapped.set(dow, {
+      hasHourlyBreakdown: day.has_hourly_breakdown,
+      data: (day.slots ?? []).map((slot) => ({
+        hour: slot.start_minute / 60,
+        avgSales: slot.sales,
+        sampleCount: slot.sample_count,
+      })),
+    });
+  }
+  return mapped;
 }
 
 export function useWeekStaffingSuggestions(

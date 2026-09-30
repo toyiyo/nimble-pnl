@@ -13,9 +13,10 @@ describe('mergePunchLocation', () => {
     expect(mergePunchLocation(undefined)).toBeUndefined();
   });
 
-  it('keeps the geofence data when base location is undefined', () => {
+  it('returns undefined for geofence data with no base location and no flag', () => {
+    // The server deletes a client distance, so a distance alone is not a position.
     const result = mergePunchLocation(undefined, { distanceMeters: 500, within: false });
-    expect(result).toEqual({ distance_meters: 500, within_geofence: false });
+    expect(result).toBeUndefined();
   });
 
   it('returns base location without geofence when no result provided', () => {
@@ -130,12 +131,60 @@ describe('punchContextLocation', () => {
     });
   });
 
-  it('does not set location_unavailable when the geofence check got a position', () => {
+  it('sets location_unavailable for a geofence distance with no coordinates', () => {
+    // The trigger deletes distance_meters and within_geofence, so without
+    // coordinates the stored punch has no position.
     const result = punchContextLocation(
       { location: undefined, device_info: 'agent' },
       { distanceMeters: 50, within: true }
     );
-    expect(result).toEqual({ distance_meters: 50, within_geofence: true });
+    expect(result).toEqual({
+      distance_meters: 50,
+      within_geofence: true,
+      location_unavailable: true,
+    });
+  });
+
+  it('sends the geofence coordinates when the quick read fails', () => {
+    const result = punchContextLocation(
+      { location: undefined, device_info: 'agent' },
+      { distanceMeters: 1500, within: false, latitude: 30.28, longitude: -97.74 }
+    );
+    expect(result).toEqual({
+      latitude: 30.28,
+      longitude: -97.74,
+      distance_meters: 1500,
+      within_geofence: false,
+    });
+    expect(result).not.toHaveProperty('location_unavailable');
+  });
+
+  it('prefers the quick-read coordinates over the geofence coordinates', () => {
+    const result = punchContextLocation(
+      { location: { latitude: 40.7, longitude: -74.0 }, device_info: 'agent' },
+      { distanceMeters: 20, within: true, latitude: 40.6, longitude: -73.9 }
+    );
+    expect(result).toEqual({
+      latitude: 40.7,
+      longitude: -74.0,
+      distance_meters: 20,
+      within_geofence: true,
+    });
+  });
+
+  it('ignores geofence coordinates that are not finite numbers', () => {
+    const result = punchContextLocation(null, {
+      distanceMeters: 50,
+      within: true,
+      latitude: Number.NaN,
+      longitude: -97.74,
+    });
+    expect(result).toEqual({
+      distance_meters: 50,
+      within_geofence: true,
+      location_unavailable: true,
+    });
+    expect(result).not.toHaveProperty('latitude');
   });
 
   it('sets location_unavailable when the geofence check reports no position', () => {

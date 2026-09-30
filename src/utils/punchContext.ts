@@ -11,9 +11,7 @@ export function mergePunchLocation(
   geofenceResult?: { distanceMeters?: number; within?: boolean },
   locationUnavailable?: boolean
 ): PunchLocation | undefined {
-  if (!baseLocation && !locationUnavailable && geofenceResult?.distanceMeters == null) {
-    return undefined;
-  }
+  if (!baseLocation && !locationUnavailable) return undefined;
   return {
     ...baseLocation,
     ...(geofenceResult?.distanceMeters != null && {
@@ -24,23 +22,40 @@ export function mergePunchLocation(
   };
 }
 
+export interface PunchGeofenceResult {
+  distanceMeters?: number;
+  within?: boolean;
+  latitude?: number;
+  longitude?: number;
+}
+
+function geofenceCoordinates(
+  geofenceResult?: PunchGeofenceResult
+): { latitude: number; longitude: number } | undefined {
+  const latitude = geofenceResult?.latitude;
+  const longitude = geofenceResult?.longitude;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return undefined;
+  return { latitude: latitude as number, longitude: longitude as number };
+}
+
 /**
  * Builds the punch location for a punch that tried to read GPS.
- * Sets `location_unavailable` when no position came back: the GPS read
- * failed or timed out, the context did not arrive in time, or the geofence
- * check failed. A geofence distance counts as a position.
+ * Uses the quick-read coordinates, else the geofence coordinates.
+ * Sets `location_unavailable` when there are no coordinates, or when the
+ * geofence check failed. A distance alone is not a position: the server
+ * trigger deletes a client distance and flags only from coordinates.
  * Do not use this for a punch that never reads GPS (manual or imported).
  */
 export function punchContextLocation(
   context: { location?: { latitude: number; longitude: number } } | null | undefined,
-  geofenceResult?: { distanceMeters?: number; within?: boolean },
+  geofenceResult?: PunchGeofenceResult,
   geofenceUnavailable = false
-): PunchLocation | undefined {
-  const hasPosition = context?.location != null || geofenceResult?.distanceMeters != null;
-  return mergePunchLocation(
-    context?.location,
-    geofenceResult,
-    geofenceUnavailable || !hasPosition
+): PunchLocation {
+  const base = context?.location ?? geofenceCoordinates(geofenceResult);
+  return (
+    mergePunchLocation(base, geofenceResult, geofenceUnavailable || base == null) ?? {
+      location_unavailable: true,
+    }
   );
 }
 

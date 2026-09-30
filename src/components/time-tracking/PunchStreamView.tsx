@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { AlertCircle, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { PunchLocationFlag } from '@/components/time-clock/PunchLocationFlag';
 
 interface PunchStreamViewProps {
   processedPunches: ProcessedPunch[];
@@ -140,6 +141,8 @@ export const PunchStreamView = ({ processedPunches, loading, employeeId }: Punch
                             <span className="font-mono text-sm font-medium">
                               {format(punch.punch_time, 'h:mm:ss a')}
                             </span>
+
+                            <PunchLocationFlag location={punch.original_punch.location} />
 
                             {punch.is_noise && (
                               <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20">

@@ -65,7 +65,7 @@ export function SizePackagingSection({ form, restaurantId, productId }: SizePack
   const purchaseUnit = form.watch('uom_purchase') || '';  // Package type (bag, case, etc.)
   const productName = form.watch('name') || '';
   const yieldPct = form.watch('yield_pct');
-  const { count: recipeUsageCount } = useProductRecipeUsageCount(
+  const { count: recipeUsageCount, isLoading: recipeUsageLoading } = useProductRecipeUsageCount(
     restaurantId ?? null,
     productId ?? null
   );
@@ -373,7 +373,7 @@ export function SizePackagingSection({ form, restaurantId, productId }: SizePack
         />
       </div>
 
-      {productId && (
+      {productId && !recipeUsageLoading && (
         <p className="text-xs text-muted-foreground">
           Used in {recipeUsageCount} {recipeUsageCount === 1 ? 'recipe' : 'recipes'}.
         </p>

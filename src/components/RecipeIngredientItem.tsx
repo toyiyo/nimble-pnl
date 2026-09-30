@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -225,7 +226,9 @@ export function RecipeIngredientItem({
           />
 
           <div className="w-20 text-right">
-            <FormLabel className="block">Cost</FormLabel>
+            {/* Plain Label: this value has no matching form field, so
+                FormLabel (which needs a FormField context) does not apply. */}
+            <Label className="block">Cost</Label>
             <div className="h-10 flex items-center justify-end text-[14px] font-medium tabular-nums">
               {lineCost ? `$${lineCost.loadedCost.toFixed(2)}` : '—'}
             </div>

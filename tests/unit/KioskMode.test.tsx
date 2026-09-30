@@ -480,7 +480,7 @@ describe('KioskMode — offline queue carries photoBlob argument (not state)', (
     // Race: punch A releases the lock before its background mutate settles.
     // Employee B opens the camera dialog. Then A's onError queues the punch
     // offline. The late offline queue must not reset B's camera state.
-    const onErrorCallbacks: Array<(err: unknown) => void> = [];
+    const onErrorCallbacks: Array<(err: unknown) => Promise<void>> = [];
     createPunchMutateMock.mockImplementation((_payload, opts) => {
       if (opts?.onError) onErrorCallbacks.push(opts.onError);
     });

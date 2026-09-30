@@ -4,10 +4,6 @@ import { computeActualSplh } from '@/hooks/useWeekStaffingSuggestions';
 
 import type { TimePunch } from '@/types/timeTracking';
 
-interface SaleFixture {
-  total_price: number;
-}
-
 /** Builds a minimal-but-TimePunch-shaped fixture row. */
 function punch(
   id: string,
@@ -30,30 +26,36 @@ function punch(
 
 describe('computeActualSplh', () => {
   it('computes actual SPLH from clock_in/clock_out punches', () => {
-    const sales: SaleFixture[] = [{ total_price: 600 }];
     const punches: TimePunch[] = [
       punch('p1', 'e1', 'clock_in', '2026-07-01T17:00:00Z'),
       punch('p2', 'e1', 'clock_out', '2026-07-01T21:00:00Z'),
     ];
-    expect(computeActualSplh(sales, punches)).toBe(150); // 600 / 4h
+    expect(computeActualSplh(600, punches)).toBe(150); // 600 / 4h
   });
 
   it('returns null when punches use no recognized types', () => {
-    const sales: SaleFixture[] = [{ total_price: 100 }];
     const punches: TimePunch[] = [punch('p1', 'e', 'in', '2026-07-01T17:00:00Z')];
-    expect(computeActualSplh(sales, punches)).toBeNull();
+    expect(computeActualSplh(100, punches)).toBeNull();
   });
 
   it('returns null when there is no sales or punch data', () => {
-    expect(computeActualSplh([], [])).toBeNull();
-    expect(computeActualSplh([{ total_price: 100 }], [])).toBeNull();
+    expect(computeActualSplh(0, [])).toBeNull();
+    expect(computeActualSplh(100, [])).toBeNull();
     expect(
-      computeActualSplh([], [punch('p1', 'e', 'clock_in', '2026-07-01T17:00:00Z')]),
+      computeActualSplh(0, [punch('p1', 'e', 'clock_in', '2026-07-01T17:00:00Z')]),
     ).toBeNull();
   });
 
+  it('returns 0, not null, for a day with sales records that net to $0 (e.g. fully refunded)', () => {
+    const punches: TimePunch[] = [
+      punch('p1', 'e1', 'clock_in', '2026-07-01T09:00:00Z'),
+      punch('p2', 'e1', 'clock_out', '2026-07-01T12:00:00Z'), // 3h
+    ];
+    // hasSalesData=true tells this apart from "no sales data was fetched".
+    expect(computeActualSplh(0, punches, true)).toBe(0);
+  });
+
   it('sums hours across multiple employees and ignores unmatched clock_out', () => {
-    const sales: SaleFixture[] = [{ total_price: 300 }, { total_price: 300 }];
     const punches: TimePunch[] = [
       punch('p1', 'e1', 'clock_in', '2026-07-01T09:00:00Z'),
       punch('p2', 'e1', 'clock_out', '2026-07-01T12:00:00Z'), // 3h
@@ -62,11 +64,10 @@ describe('computeActualSplh', () => {
       punch('p5', 'e3', 'clock_out', '2026-07-01T12:00:00Z'), // no matching clock_in, ignored
     ];
     // total hours = 6h, total sales = 600 -> 100/h
-    expect(computeActualSplh(sales, punches)).toBe(100);
+    expect(computeActualSplh(600, punches)).toBe(100);
   });
 
   it('excludes break time from worked hours (break-aware, unlike the old hand-rolled pairing)', () => {
-    const sales: SaleFixture[] = [{ total_price: 400 }];
     const punches: TimePunch[] = [
       punch('p1', 'e1', 'clock_in', '2026-07-01T09:00:00Z'),
       punch('p2', 'e1', 'break_start', '2026-07-01T11:00:00Z'),
@@ -74,6 +75,6 @@ describe('computeActualSplh', () => {
       punch('p4', 'e1', 'clock_out', '2026-07-01T13:00:00Z'),
     ];
     // total worked = 4h - 0.5h break = 3.5h, total sales = 400 -> ~114/h
-    expect(computeActualSplh(sales, punches)).toBe(Math.round(400 / 3.5));
+    expect(computeActualSplh(400, punches)).toBe(Math.round(400 / 3.5));
   });
 });

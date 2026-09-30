@@ -4,6 +4,7 @@ import {
   canUseTool,
   requiredRoleFor,
   CAPABILITY_GATED_TOOLS,
+  WRITE_TOOLS,
   canUseCapabilityGatedTool,
   hasSchedulingOrPayrollCapability,
   hasPayRatesCapability,
@@ -206,9 +207,9 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
   // view:payroll` (see the self-scoped-employee-data migration), so the
   // dispatcher must gate the tools on the same capability rather than a
   // second hard-coded role list that could drift from RLS.
-  it('lists exactly get_labor_costs and get_schedule_overview as capability-gated', () => {
+  it('lists exactly get_labor_costs, get_schedule_overview and get_hourly_sales as capability-gated', () => {
     expect([...CAPABILITY_GATED_TOOLS].sort()).toEqual(
-      ['get_labor_costs', 'get_schedule_overview'].sort(),
+      ['get_hourly_sales', 'get_labor_costs', 'get_schedule_overview'].sort(),
     );
   });
 
@@ -465,6 +466,22 @@ describe('tools-registry: getTools follows the scheduling/payroll capability (D9
       (t) => t.name,
     );
     expect(names).not.toContain('get_kpis');
+  });
+});
+
+describe('tools-registry: get_hourly_sales', () => {
+  it('is absent when hasSchedulingOrPayroll is false', () => {
+    const names = getTools('rest-1', 'owner', { hasSchedulingOrPayroll: false }).map((t) => t.name);
+    expect(names).not.toContain('get_hourly_sales');
+  });
+
+  it.each(['owner', 'manager'])('is present for %s when hasSchedulingOrPayroll is true', (role) => {
+    const names = getTools('rest-1', role, { hasSchedulingOrPayroll: true }).map((t) => t.name);
+    expect(names).toContain('get_hourly_sales');
+  });
+
+  it('is read-only: not in WRITE_TOOLS', () => {
+    expect(WRITE_TOOLS).not.toContain('get_hourly_sales');
   });
 });
 

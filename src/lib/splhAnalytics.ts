@@ -48,10 +48,10 @@ export const BALANCED_BAND = 0.15;
 
 /**
  * Default business-hours window used for the daily-spread fallback when no
- * sale in the window carries usable hour-of-day info. Mirrors
- * `useHourlySalesPattern.ts`'s `DEFAULT_OPEN_HOUR`/`DEFAULT_CLOSE_HOUR` (kept
- * as separate constants here — this lib intentionally has no dependency on
- * the hooks layer — but the values must stay identical).
+ * sale in the window carries usable hour-of-day info. Mirrors the
+ * `get_hourly_sales_pattern` RPC's `DEFAULT_OPEN_HOUR`/`DEFAULT_CLOSE_HOUR`
+ * (kept as separate constants here — this lib intentionally has no
+ * dependency on the RPC layer — but the values must stay identical).
  */
 export const FALLBACK_OPEN_HOUR = 9;
 export const FALLBACK_CLOSE_HOUR = 22; // 10pm
@@ -184,10 +184,10 @@ export function buildSplhGrid(
   const salesMap = new Map<number, number>();
   const hoursMap = new Map<number, number>();
 
-  // Derive each sale's hour once. Mirrors `aggregateHourlySales`'s contract
-  // (§4.2 of the design doc): when at least one sale in the window carries a
-  // usable hour, real per-sale (dow,hour) buckets are used (sales without an
-  // hour are skipped, same as before). Only when NONE of the sales have a
+  // Derive each sale's hour once. Mirrors the `get_hourly_sales_pattern`
+  // RPC's contract (§4.2 of the design doc): when at least one sale in the
+  // window carries a usable hour, real per-sale (dow,hour) buckets are used
+  // (sales without an hour are skipped, same as before). Only when NONE of the sales have a
   // derivable hour (e.g. CSV-imported sales lacking both `sold_at` and
   // `sale_time`) do we fall back to spreading each date's total evenly
   // across business hours — otherwise every cell would silently read

@@ -335,6 +335,51 @@ export function getTools(
         required: ['period']
       }
     },
+
+    // Hourly sales pattern - capability-gated (see CAPABILITY_GATED_TOOLS)
+    {
+      name: 'get_hourly_sales',
+      description: `Get sales split by time of day, as a weekday pattern averaged over past weeks or as day-by-day totals for a date range. Use it to answer questions about sales before/after a given time, or by hour. ${PAY_HIDDEN_TOOL_HINT}`,
+      parameters: {
+        type: 'object',
+        properties: {
+          view: {
+            type: 'string',
+            enum: ['weekday', 'by_date'],
+            description: 'weekday: average pattern by day of week over lookback_weeks. by_date: day-by-day totals for a date range.',
+            default: 'weekday'
+          },
+          interval_minutes: {
+            type: 'integer',
+            enum: [15, 30, 60],
+            description: 'Slot size in minutes (default: 60)',
+            default: 60
+          },
+          lookback_weeks: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 12,
+            description: 'weekday view only. Number of past weeks to average (default: the restaurant\'s staffing_settings.lookback_weeks, else 4)'
+          },
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'by_date view only. Start date (YYYY-MM-DD). Default: today minus 6 days.'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'by_date view only. End date (YYYY-MM-DD). Default: today (restaurant-local).'
+          },
+          day_of_week: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 6,
+            description: 'Optional filter for one day of week (0 = Sunday .. 6 = Saturday). Default: all days.'
+          }
+        }
+      }
+    },
   ];
 
   // Add financial intelligence for managers and owners
@@ -1017,7 +1062,7 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
  * dispatcher gate must match that RLS predicate instead of a second,
  * independently-maintained role list.
  */
-export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview'] as const;
+export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview', 'get_hourly_sales'] as const;
 
 type CapabilityRpcResult = { data: boolean | null; error: unknown };
 

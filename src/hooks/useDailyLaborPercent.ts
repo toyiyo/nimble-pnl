@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
-import { LOOKBACK_SALES_ROW_CAP, lookbackSalesQueryOptions } from '@/hooks/useWeekStaffingSuggestions';
+import { lookbackSalesQueryOptions } from '@/hooks/useWeekStaffingSuggestions';
 
 import type { DailyLaborPercentInput, DailyLaborPercentView } from '@/lib/dailyLaborPercent';
 
@@ -22,10 +22,10 @@ interface UseDailyLaborPercentOptions {
 /**
  * Daily labor cost % for a week of the schedule.
  *
- * Projected sales use the saved lookback-weeks setting and the same sales
- * query as the planner (`lookbackSalesQueryOptions`), so React Query shares
- * one cache entry. This hook does not run the planner's staffing pipeline or
- * its time punch query.
+ * Projected sales use the saved lookback-weeks setting and the daily totals
+ * from `lookbackSalesQueryOptions` (the `get_hourly_sales_pattern` RPC, by
+ * date). This hook does not run the planner's staffing pipeline or its time
+ * punch query.
  *
  * @param weekDays - Days of the week as `yyyy-MM-dd`.
  */
@@ -46,11 +46,7 @@ export function useDailyLaborPercent(
   });
 
   const byDay = useMemo(() => {
-    const rows = sales ?? [];
-    const projectedSalesByDay = projectDailySales(rows, weekDays, {
-      excludeDate: today,
-      truncated: rows.length >= LOOKBACK_SALES_ROW_CAP,
-    });
+    const projectedSalesByDay = projectDailySales(sales ?? [], weekDays, { excludeDate: today });
     return computeDailyLaborPercent({ weekDays, dailyCosts, projectedSalesByDay, targetLaborPct });
   }, [sales, weekDays, today, dailyCosts, targetLaborPct]);
 

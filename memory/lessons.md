@@ -708,6 +708,7 @@
 - **Correction:** Scoped the gate check to the PR's own diff: `git diff origin/main..HEAD --name-only` ∩ queue `origin_ref.file`. Only items on `scheduleTimeOff.ts` / `Scheduling.tsx` / `tailwind.config.ts` count. Verified each survivor against current file content (the tailwind one was stale — confirmed via `eslint tailwind.config.ts` clean + `grep require(` empty), then `node dev-tools/mark-task.js --id <id> --status fixed --note "stale: ..."`. Documented the shared-queue caveat in the 9d triage artifact.
 - **Rule:** The 9e queue check means "zero open critical/major *attributable to this PR's diff*," not "zero in the whole shared file." Always intersect open items with `git diff --name-only origin/main..HEAD`, and before treating a survivor as a blocker, verify the finding against the CURRENT file (stale line refs from old ingests are common). Record the scoping rationale in the triage artifact so the next run doesn't re-chase other branches' debt.
 - **[2026-07-04] CONFIRMED on PR #580:** refresh-queue ingested 34,319 open items (whole-repo eslint debt); intersection with the PR's two changed files = 0. Scoping rule applied as written; also `git checkout -- dev-tools/review_queue.json` afterwards so the polluted churn doesn't ride the PR.
+- **[2026-09-28] CONFIRMED on PR #827:** The Done-gate agent stopped with needs_human on 5546 open items. The intersection with the diff gave 1059 old `no-explicit-any` / `no-case-declarations` items on `ai-execute-tool/index.ts`. The `: any` count was 119 on main and 119 on HEAD, so the diff added none. Give the Done-gate agent this rule in its prompt, so it does not stop again.
 
 ---
 
@@ -975,6 +976,7 @@
 - **Mistake:** During Phase 8 verify, `npm run test:e2e` (159 tests, 4 local workers) reported 27 failures right after the 5589-test unit suite + build + local Supabase stack had loaded the machine. First instinct is "27 e2e failures = regression, halt."
 - **Correction:** The failing SET shifted between runs (permissions-roles:70/113/248 failed then passed; :218 passed then failed) — the signature of load-induced flakiness, not a deterministic regression. A targeted re-run of the 27 passed 25/27; the 2 stragglers both passed when re-run serially (`--workers=1`, 2 passed in 16.9s). None of the branch's changes touched any e2e-tested flow. CI then ran e2e in 4 parallel shards and all passed.
 - **Rule:** When local full-suite e2e fails under load, before assuming regression: (1) check whether the failing set is stable across runs — a shifting set means flake; (2) re-run the failures serially with `--workers=1`; (3) map the failures to the diff — if the branch touches none of the failing flows, it's environment, not code. Treat CI's sharded e2e as the authoritative gate; don't block a PR on single-machine full-suite e2e noise. (Reinforces the pre-existing e2e-flake entries.)
+- **[2026-09-30] CONFIRMED on PR #833.** I told the user that CI does not run E2E, because I read only the job names in `.github/workflows/unit-tests.yml`. The same workflow run holds `E2E Tests (Shard 1/4)` to `(Shard 4/4)` and `Database Tests (pgTAP)`. I then spent 20 minutes on a local full-suite run that CI finished faster. Read the check runs of a pushed commit before you say what CI runs.
 - **Confirmed [2026-09-26] (PR #822):** The PR deleted a dead component. The design doc listed E2E as a justified exception, because no route mounts the component. The Verify gate still ran the full local E2E suite and stopped on 11 load failures. A rerun with 2 workers passed 10 of them. The last spec passed with 1 worker on the branch and on `origin/main`. The user then said to skip local E2E. CI's four E2E shards were the real gate. **Rule addition:** When the design doc gives an E2E exception, pass that exception to the workflow at launch. Do not let local E2E block the change.
 
 ### [2026-07-06] codex-adversarial-review.sh: macOS has no `timeout`, and a stale output file yields a phantom finding
@@ -3493,3 +3495,85 @@
 - **Mistake:** A Python `json.dump` of the queue escaped every emoji and changed 2546 lines.
 - **Correction:** A second commit wrote the file again with Node `JSON.stringify(data, null, 2)`.
 - **Rule:** Change the queue with `dev-tools/mark-task.js`. If you must write it by hand, use Node `JSON.stringify(data, null, 2)` plus a final newline.
+
+## Category: Time / Timezone (continued)
+
+### [2026-09-28] Instant day bounds give an extra day to a consumer that keys days by local fields (PR #827)
+- **Mistake:** The AI schedule tool moved to `restaurantDayBounds` instants. The executor also passed these instants to `calculateScheduledLaborCost`. That engine keys days with `generateDateRange` and `formatDateLocal`. In the UTC runtime, the Chicago end instant falls on the next UTC day. An 8-day week gave 9 salary days. The Phase 2.5 review found this fault for `calculateHoursPerEmployee`, but not for `calculateScheduledLaborCost`. The operator found it at the verify step.
+- **Correction:** Add `scheduledCostInputs` in `_shared/scheduleOverview.ts`. It gives the engine wall-clock start and end days and wall-clock shift starts. The shift length does not change. A test checks 8 daily rows and a Friday-night shift on Friday.
+- **Rule:** When a range changes from wall-clock days to real instants, list every consumer of that range. Grep each consumer for `getDate`, `formatDateLocal`, `generateDateRange` and `toLocalYMD`. A consumer that reads local fields must get wall-clock inputs, not instants. Add a test that counts the days the consumer produces.
+
+### [2026-09-28] Local midnight does not exist in some zones on a DST day (PR #827)
+- **Mistake:** `restaurantDayBounds` used `zonedNaiveToUtc(`${ymd}T00:00:00`, tz)` for the first instant of a day. `America/Santiago` moves its clocks forward at local midnight (2026-09-06), so `00:00` does not exist. The result fell on the previous day. Codex found this on the PR.
+- **Correction:** Check the guess with `ymdInTimeZone`. If the check fails, do a binary search by minute for the first instant of the day. This is the same fallback as `firstInstantOfDayInZone` in `_shared/labor/restaurantClock.ts`.
+- **Rule:** Do not assume that local `00:00` exists. For the start of a restaurant day, use a helper that checks the result and has a DST fallback. Add a test for a zone with a DST change at midnight.
+
+## Category: Development Workflow (continued)
+
+### [2026-09-28] The verify agent stalls on a long foreground command with no output (PR #827)
+- **Mistake:** The Phase 8 verify agent stalled 6 times. Each time, a foreground test command gave no output for 180 s, and the agent stopped. One vitest run under `Pacific/Auckland` hung for 16 minutes. When I ran it again, all 59 tests passed.
+- **Correction:** The operator ran the checks directly. Then the workflow resumed with `verifyNotes`. The notes told the agent to run long commands in the background, listed the checks already done, and gave the reasons to skip `test:db` and E2E.
+- **Rule:** When a verify agent stalls, do not start it again with no change. Resume it with `verifyNotes` that list the finished checks and tell it to run long commands in the background. When one time zone run hangs, stop that run and run it again before you look for a code fault.
+
+### [2026-09-28] An empty reviewer result is not a pass (PR #827)
+- **Mistake:** In Phase 7, Codex gave no findings because its CLI version was too old. CodeRabbit gave no output in 7c. Both results looked like a clean review. The late fix commit 866e787e also got no reviewer-agent pass. Only CI and the CodeRabbit PR review saw it.
+- **Correction:** Codex found a real DST fault on the PR after the push. That fault is fixed in commit 5156596f.
+- **Rule:** When a reviewer gives no output, look for the cause (CLI version, auth, rate limit) before you record a pass. Record "reviewer did not run" in `progress.md`. When a fix commit comes after Phase 7, run at least one reviewer agent on that commit.
+## Category: Development Workflow (PR #829)
+
+### [2026-09-29] The workflow ran from the main checkout copy again, and no QA ran (PR #829)
+- **Mistake:** The PR #824 rule says to launch from the worktree copy of `.claude/workflows/dev-build-and-ship.js`. This run used the main checkout copy again. `grep -c "PHASE 8.5"` gave 0 for that copy. The workflow reported the PR green with no browser QA.
+- **Correction:** The main session found the gap in the retrospective. It ran Phase 8.5 as a separate agent before the merge.
+- **Rule:** The summary of a compacted session must include the full `scriptPath`, taken from the worktree. Before each launch or resume, run `grep -c "PHASE 8.5" <scriptPath>`. A resume must use the same path as a new launch.
+
+### [2026-09-29] A build agent stalls when a task spans many test files (PR #829)
+- **Mistake:** Task 7 changed one hook and five test files. The build agent planned in silence for 180 s before its first tool call. The watchdog stopped it 6 times.
+- **Correction:** The resume passed `resolutionNotes["task-7"]` as six ordered steps with a commit after each step. The task finished on the next run.
+- **Rule:** Write a plan task that touches more than three files as ordered steps, each with its own commit. Name the line ranges, so the agent does not read whole files.
+
+### [2026-09-29] Merge main before the review phase when a shared query changes shape (PR #829)
+- **Mistake:** This branch changed the result of the `'hourly-sales-all'` query from rows to the RPC result. Main PR #826 added `useDailyLaborPercent`, which read the old rows through the same key. GitHub found the conflict only after CI was green. Without a fix, the two hooks write two different shapes to one React Query cache entry.
+- **Correction:** The merge gave the shared query its own key, `'daily-sales-by-date'`. It now reads `get_hourly_sales_pattern` with `p_view: 'by_date'`.
+- **Rule:** When you change the return shape of a React Query, change its key too. Before Phase 7, merge `origin/main` and grep main for new users of each changed query key and export.
+
+### [2026-09-29] `sync_with_base_branch` refuses a worktree that the app did not make (PR #829)
+- **Mistake:** The host tool refused: "This session doesn't run in a worktree the app made for it". The `/dev` skill makes its own worktrees under `.claude/worktrees/`.
+- **Rule:** In a `/dev` worktree, merge with `git fetch origin main && git merge origin/main`. First move uncommitted local files, such as `dev-tools/review_queue.json`, to the scratchpad.
+
+## Category: Supabase / SQL (continued)
+
+### [2026-09-29] `NOT IN` does not reject a NULL argument (PR #829)
+- **Mistake:** The RPC guard `IF p_view NOT IN ('weekday', 'by_date')` is NULL for a NULL argument, so the guard did not raise. A NULL view went to the `by_date` branch. The Codex review found it.
+- **Correction:** `IF p_view IS NULL OR p_view NOT IN (...)`.
+- **Rule:** Put `x IS NULL OR` before each `NOT IN` guard on an RPC argument. Add a pgTAP case that sends NULL explicitly.
+
+### [2026-09-29] Two RPC calls in one request do not share a snapshot (PR #829)
+- **Mistake:** The design called the RPC twice for a sub-hour view. It named the CPU cost, but not the consistency. The review found that the 5-minute cron can write between the two calls. The workflow stopped for a design decision.
+- **Correction:** The operator accepted the risk and recorded it in design §8.
+- **Rule:** When a design reads the same table in more than one call, state in the design whether the calls must share a snapshot.
+
+## Category: Cloud Sessions (Claude Code on the web)
+
+### [2026-09-30] The cloud container can run pgTAP and E2E, with three workarounds (PR #833)
+- **Mistake:** `npm ci` failed with a 403, so I reported that E2E and pgTAP cannot run in the cloud session.
+- **Correction:** Only one package failed: `xlsx` comes from `cdn.sheetjs.com`, which the network policy blocks. Docker is installed but its daemon does not start by itself. The Supabase CLI pulls images from ECR, and the ECR blob host returns `Forbidden`.
+- **Rule:** In a cloud session, run these steps before you say a check cannot run:
+  1. Delete `xlsx` from a temporary copy of `package.json` and `package-lock.json`, run `npm ci`, then `git checkout` both files.
+  2. Run `npm i --no-save xlsx@0.18.5` from the npm registry so Vite and `tsc` can resolve the import. Check that `git status` stays clean.
+  3. Start Docker with `(dockerd > <scratch>/dockerd.log 2>&1 &)`.
+  4. Start Supabase with `SUPABASE_INTERNAL_IMAGE_REGISTRY=docker.io npx supabase start`.
+  5. Write `.env.local` from `npx supabase status -o env`, with local keys only.
+  With these steps, `npm run test:db` passed 3594 of 3594, and a Playwright spec ran against local Supabase.
+
+### [2026-09-30] A race between an optimistic punch and a late failure is testable in E2E (PR #833)
+- **Mistake:** The first plan omitted `npm run test:e2e`. A later draft said "a browser test cannot hold one mutate pending and then fail it". Codex flagged the missing E2E as P1.
+- **Correction:** `tests/e2e/kiosk-offline-queue-camera-race.spec.ts` holds the first `POST **/rest/v1/time_punches*` in `page.route`. It opens the dialog for the second employee, calls `context.setOffline(true)`, then `route.abort('internetdisconnected')`. The spec failed on the old code and passed with the fix. `PUNCH_INSERT_TIMEOUT_MS` (15 s) sets the maximum hold time.
+- **Rule:** Before you claim an E2E exception for a network race, try `page.route` to hold the request and `context.setOffline` to control `navigator.onLine`. Prove the spec is RED on the old code in a separate worktree. A worktree gets its own Playwright port, so the RED run does not touch a suite that runs in the main tree.
+
+### [2026-09-30] `pkill -f <pattern>` kills the shell that runs it
+- **Mistake:** `pkill -f "playwright test"` matched the command line of my own Bash shell and ended it with exit code 144.
+- **Rule:** Put a bracket in the pattern, as in `pgrep -af "[p]laywright test"`. Or use `pkill -x <name>` for an exact process name.
+
+### [2026-09-30] Do not push a guess for a bot finding you cannot read (PR #833)
+- **Mistake:** SonarCloud reported "1 New issue", and the network policy blocks `sonarcloud.io`. I guessed rule S4123 and pushed a type change. The next analysis still reported 1 issue, so the push cost one CI cycle and fixed nothing.
+- **Rule:** When a finding is not readable from the session, ask the user for the rule and the line, or ask them to allow the host. Push only a fix for a finding you can see. The first report of the issue also tells you which commit added it, so check that before you guess.

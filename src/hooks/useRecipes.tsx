@@ -46,6 +46,7 @@ export interface RecipeIngredient {
   quantity: number;
   unit: string;
   notes?: string;
+  yield_pct_override?: number | null;
   created_at: string;
   updated_at: string;
   product?: {
@@ -824,6 +825,7 @@ export const useRecipes = (restaurantId: string | null) => {
         quantity: number;
         unit: IngredientUnit;
         notes?: string;
+        yield_pct_override?: number | null;
       }[];
     }): Promise<boolean> => {
     try {
@@ -873,6 +875,7 @@ export const useRecipes = (restaurantId: string | null) => {
         quantity: number;
         unit: IngredientUnit;
         notes?: string;
+        yield_pct_override?: number | null;
       }[]
     ) => updateRecipeIngredientsMutation.mutateAsync({ recipeId, ingredients }),
     [updateRecipeIngredientsMutation]

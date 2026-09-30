@@ -788,7 +788,8 @@ const Index = () => {
             <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8 lg:items-start">
             <div className="space-y-8 min-w-0">
               {/* Today card */}
-              <section id="dash-today" className="scroll-mt-24">
+              <section id="dash-today" className="scroll-mt-24 space-y-3">
+                <h2 className="text-[17px] font-semibold text-foreground">Today</h2>
                 <DashboardTodayCard
                   todaySales={todaysData?.netRevenue || 0}
                   profitMargin={todayProfitMargin}

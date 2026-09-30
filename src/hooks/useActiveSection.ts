@@ -53,6 +53,14 @@ export function useActiveSection(sectionIds: string[], ready = true): string | n
 
     const observer = new IntersectionObserver(
       (entries) => {
+        // A single callback batch can report several sections above the
+        // view threshold at once (for example on first layout). Pick the
+        // most-visible one as active, not just the last entry in the
+        // batch, so the rail highlights the section the user actually
+        // sees most.
+        let mostVisibleId: string | null = null;
+        let mostVisibleRatio = -1;
+
         entries.forEach((entry) => {
           if (!entry.isIntersecting || entry.intersectionRatio < VIEW_THRESHOLD) {
             return;
@@ -63,13 +71,20 @@ export function useActiveSection(sectionIds: string[], ready = true): string | n
             return;
           }
 
-          setActiveSection(sectionId);
-
           if (!viewedRef.current.has(sectionId)) {
             viewedRef.current.add(sectionId);
             posthogRef.current?.capture('dashboard_section_viewed', { section_id: sectionId });
           }
+
+          if (entry.intersectionRatio > mostVisibleRatio) {
+            mostVisibleRatio = entry.intersectionRatio;
+            mostVisibleId = sectionId;
+          }
         });
+
+        if (mostVisibleId) {
+          setActiveSection(mostVisibleId);
+        }
       },
       { threshold: VIEW_THRESHOLD },
     );

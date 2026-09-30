@@ -10,7 +10,10 @@ import {
   laborServerNow,
   laborWindowMismatchReason,
   daysBetweenYmd,
+  restaurantDayBounds,
 } from '../_shared/restaurantDate.ts';
+import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
+import { buildTimePunchShifts } from '../_shared/timePunchShifts.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
@@ -2089,7 +2092,9 @@ async function executeGetTimePunches(
   args: any,
   restaurantId: string,
   supabase: any,
-  userRole: string
+  userRole: string,
+  restaurantTimeZone: string,
+  restaurantNow: Date
 ): Promise<any> {
   if (userRole !== 'manager' && userRole !== 'owner') {
     // Should never reach here — dispatcher blocks first. If it does, return the
@@ -2107,80 +2112,28 @@ async function executeGetTimePunches(
 
   const { period, start_date, end_date, employee_id, position, min_hours = 0, limit = 50 } = args;
 
-  const { calculateHoursPerEmployee, getEmployeeSnapshotForDate, formatDateLocal } = await import(
-    '../_shared/laborCalculations.ts'
-  );
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, laborServerNow());
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
+  const bounds = restaurantDayBounds(startDateStr, endDateStr, restaurantTimeZone);
 
   const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
   const minHours = Math.max(0, Number(min_hours) || 0);
 
   // 18h lookahead so shifts whose clock_out lands just after midnight at the
-  // end of the window still get paired. `calculateHoursPerEmployee` filters
-  // periods by startTime <= endDate so any orphan clock_in in the lookahead
-  // zone is dropped.
+  // end of the window still get paired. buildTimePunchShifts keeps a period
+  // when bounds.start <= startTime <= bounds.end, so any orphan clock_in in
+  // the lookahead zone is dropped.
   const [{ timePunches, employees }, hasPayRates] = await Promise.all([
     fetchLaborData(
       supabase,
       restaurantId,
-      startDate,
-      endDate,
+      bounds.start,
+      bounds.end,
       { employeeId: employee_id, position, endLookaheadHours: 18 },
     ),
     hasPayRatesCapability(restaurantId, supabase),
   ]);
 
-  const summaries = calculateHoursPerEmployee(employees, timePunches, startDate, endDate);
-  // Index by id so we can resolve the per-day compensation snapshot below
-  // without a linear scan per shift.
-  const employeesById: Record<string, typeof employees[number]> = {};
-  for (const e of employees) {
-    employeesById[(e as { id: string }).id] = e;
-  }
-
-  // Flatten to one row per work period (clock-in/out pair). Skip pure breaks
-  // and anything below min_hours. Per-shift cost uses the snapshot for that
-  // shift's date so mid-period comp changes are billed correctly:
-  //   - hourly snapshot   → hourly_rate × hours
-  //   - daily_rate / salary / contractor → null (period-allocated, not per-shift)
-  type Shift = {
-    employee_id: string;
-    employee_name: string;
-    position: string | null;
-    compensation_type: string;
-    start_time: string;
-    end_time: string;
-    hours: number;
-    cost_cents: number | null;
-    date: string;
-  };
-
-  const shifts: Shift[] = [];
-  for (const s of summaries) {
-    const workPeriods = s.work_periods.filter((p) => !p.isBreak && p.hours >= minHours);
-    const employee = employeesById[s.employee_id];
-
-    for (const p of workPeriods) {
-      const day = formatDateLocal(new Date(p.startTime));
-      const snapshot = employee ? getEmployeeSnapshotForDate(employee, day) : null;
-      const cost_cents =
-        snapshot && snapshot.compensation_type === 'hourly' && snapshot.hourly_rate
-          ? Math.round((snapshot.hourly_rate / 100) * p.hours * 100)
-          : null;
-
-      shifts.push({
-        employee_id: s.employee_id,
-        employee_name: s.employee_name,
-        position: s.position,
-        compensation_type: snapshot?.compensation_type ?? s.compensation_type,
-        start_time: p.startTime.toISOString(),
-        end_time: p.endTime.toISOString(),
-        hours: Number(p.hours.toFixed(4)),
-        cost_cents,
-        date: day,
-      });
-    }
-  }
+  const shifts = buildTimePunchShifts(employees, timePunches, bounds, restaurantTimeZone, minHours);
 
   // Newest first, then cap.
   shifts.sort((a, b) => (a.start_time < b.start_time ? 1 : -1));
@@ -2221,31 +2174,23 @@ async function executeGetTimePunches(
 async function executeGetScheduleOverview(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantTimeZone: string,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, include_projected_costs = true } = args;
 
   const { calculateScheduledLaborCost } = await import('../_shared/laborCalculations.ts');
 
-  // For schedule overview, 'week' and 'month' look forward from today.
-  const serverNow = laborServerNow();
-  let startDate: Date;
-  let endDate: Date;
-
-  if (period === 'week') {
-    startDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate());
-    endDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate() + 7);
-  } else if (period === 'month') {
-    startDate = new Date(serverNow.getFullYear(), serverNow.getMonth(), serverNow.getDate());
-    endDate = new Date(serverNow.getFullYear(), serverNow.getMonth() + 1, serverNow.getDate());
-  } else {
-    const range = calculateDateRange(period as PeriodType, start_date, end_date, serverNow);
-    startDate = range.startDate;
-    endDate = range.endDate;
-  }
-
-  const startDateStr = toLocalYMD(startDate);
-  const endDateStr = toLocalYMD(endDate);
+  // For schedule overview, 'week' and 'month' look forward from today (in the
+  // restaurant's own calendar).
+  const { startDateStr, endDateStr } = scheduleOverviewDays(
+    period as PeriodType,
+    start_date,
+    end_date,
+    restaurantNow
+  );
+  const bounds = restaurantDayBounds(startDateStr, endDateStr, restaurantTimeZone);
 
   // Fetch shifts and employees in parallel. The shift embed names only
   // granted employee columns: the caller cannot read hourly_rate on
@@ -2255,8 +2200,8 @@ async function executeGetScheduleOverview(
       .from('shifts')
       .select('*, employee:employees(id, name, position)')
       .eq('restaurant_id', restaurantId)
-      .gte('start_time', startDate.toISOString())
-      .lte('start_time', endDate.toISOString())
+      .gte('start_time', bounds.start.toISOString())
+      .lte('start_time', bounds.end.toISOString())
       .order('start_time', { ascending: true }),
     // Only the cost projection reads employees and the pay flag.
     include_projected_costs ? fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }) : Promise.resolve([]),
@@ -2271,33 +2216,29 @@ async function executeGetScheduleOverview(
   // view:pay_rates every rate is a masked NULL, so the projection is skipped.
   let projectedCosts = null;
   if (include_projected_costs && hasPayRates && shifts.length > 0) {
-    const shiftData = shifts.map((s: any) => ({
-      employee_id: s.employee_id,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      break_duration: s.break_duration || 0,
-    }));
+    const costInputs = scheduledCostInputs(
+      shifts.map((s: any) => ({
+        employee_id: s.employee_id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        break_duration: s.break_duration || 0,
+      })),
+      startDateStr,
+      endDateStr,
+      restaurantTimeZone
+    );
 
-    const { breakdown } = calculateScheduledLaborCost(shiftData, employees, startDate, endDate);
+    const { breakdown } = calculateScheduledLaborCost(
+      costInputs.shiftData,
+      employees,
+      costInputs.startDate,
+      costInputs.endDate
+    );
     projectedCosts = breakdown;
   }
 
-  // Group shifts by date
-  const shiftsByDate: Record<string, any[]> = {};
-  for (const shift of shifts) {
-    const dateKey = toLocalYMD(new Date(shift.start_time));
-    if (!shiftsByDate[dateKey]) {
-      shiftsByDate[dateKey] = [];
-    }
-    shiftsByDate[dateKey].push({
-      id: shift.id,
-      employee_name: shift.employee?.name || 'Unknown',
-      position: shift.position || shift.employee?.position,
-      start_time: shift.start_time,
-      end_time: shift.end_time,
-      status: shift.status,
-    });
-  }
+  // Group shifts by restaurant calendar day
+  const shiftsByDate = groupShiftsByRestaurantDay(shifts, restaurantTimeZone);
 
   return {
     ok: true,
@@ -3705,10 +3646,10 @@ serve(async (req) => {
         result = await executeGetLaborCosts(args, restaurant_id, supabase, userRestaurant.role);
         break;
       case 'get_time_punches':
-        result = await executeGetTimePunches(args, restaurant_id, supabase, userRestaurant.role);
+        result = await executeGetTimePunches(args, restaurant_id, supabase, userRestaurant.role, restaurantTimeZone, restaurantNow);
         break;
       case 'get_schedule_overview':
-        result = await executeGetScheduleOverview(args, restaurant_id, supabase);
+        result = await executeGetScheduleOverview(args, restaurant_id, supabase, restaurantTimeZone, restaurantNow);
         break;
       case 'get_payroll_summary':
         result = await executeGetPayrollSummary(args, restaurant_id, supabase);

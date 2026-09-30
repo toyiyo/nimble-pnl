@@ -14,7 +14,7 @@
  * Use toLocalYMD() to get its calendar day.
  */
 
-import { safeTz, tzOffsetMs } from './timezone.ts';
+import { safeTz, tzOffsetMs, zonedNaiveToUtc } from './timezone.ts';
 
 /**
  * Return the wall clock of `timeZone` at `instant`, shifted into UTC fields.
@@ -71,6 +71,72 @@ export function daysBetweenYmd(fromYmd: string, toYmd: string): number {
   const [fy, fm, fd] = fromYmd.split('-').map(Number);
   const [ty, tm, td] = toYmd.split('-').map(Number);
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+/** Return the calendar day after `ymd` ('YYYY-MM-DD'), by UTC date math. */
+function nextYmd(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  const nm = String(next.getUTCMonth() + 1).padStart(2, '0');
+  const nd = String(next.getUTCDate()).padStart(2, '0');
+  return `${next.getUTCFullYear()}-${nm}-${nd}`;
+}
+
+const MINUTE_MS = 60_000;
+const SEARCH_MINUTES = 12 * 60;
+
+/**
+ * The first instant of restaurant calendar day `ymd`, in `tz`.
+ *
+ * `zonedNaiveToUtc(`${ymd}T00:00:00`, tz)` is correct on almost every day,
+ * but a zone whose DST clocks jump forward AT local midnight (for example
+ * America/Santiago on 2026-09-06) has no `00:00` to map: the naive two-pass
+ * probe then lands on the wrong side of the transition and reads back as the
+ * previous day. Detect that case and binary-search minute-by-minute for the
+ * true first instant, the same fallback `firstInstantOfDayInZone` uses in
+ * `_shared/labor/restaurantClock.ts`.
+ */
+function firstInstantOfRestaurantDay(ymd: string, tz: string): Date {
+  const guess = zonedNaiveToUtc(`${ymd}T00:00:00`, tz);
+  if (ymdInTimeZone(guess, tz) === ymd && ymdInTimeZone(new Date(guess.getTime() - 1), tz) < ymd) {
+    return guess;
+  }
+  // Binary search on whole minutes around the guess for the first minute
+  // whose restaurant day is `ymd` or later. The day string compare is
+  // monotone, so this always converges to the true boundary.
+  let lo = -SEARCH_MINUTES;
+  let hi = SEARCH_MINUTES;
+  const base = guess.getTime();
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (ymdInTimeZone(new Date(base + mid * MINUTE_MS), tz) >= ymd) hi = mid;
+    else lo = mid + 1;
+  }
+  return new Date(base + lo * MINUTE_MS);
+}
+
+/**
+ * Instant bounds `[start, end]` of a restaurant-day range, in `timeZone`.
+ *
+ * `startYmd`/`endYmd` are restaurant calendar days ('YYYY-MM-DD'), inclusive
+ * on both ends. `end` is one millisecond before the next restaurant day
+ * starts, so the window covers a DST "fall back" day's 25 hours correctly.
+ *
+ * Guard: compare these outputs as instants (getTime()/toISOString()), or
+ * read them back into a calendar day with ymdInTimeZone(). Never read
+ * getFullYear()/getDate() directly off start/end — they are real UTC
+ * instants, not wall-clock Dates like the rest of this file.
+ */
+export function restaurantDayBounds(
+  startYmd: string,
+  endYmd: string,
+  timeZone: string,
+): { start: Date; end: Date } {
+  const tz = safeTz(timeZone);
+  const start = firstInstantOfRestaurantDay(startYmd, tz);
+  const dayAfterEnd = firstInstantOfRestaurantDay(nextYmd(endYmd), tz);
+  const end = new Date(dayAfterEnd.getTime() - 1);
+  return { start, end };
 }
 
 /**

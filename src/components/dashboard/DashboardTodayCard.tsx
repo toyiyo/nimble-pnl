@@ -13,6 +13,7 @@ interface BreakEvenStatusData {
   todayDelta: number;
   daysAbove: number;
   daysBelow: number;
+  completeDays: number;
 }
 
 interface DashboardTodayCardProps {
@@ -150,7 +151,7 @@ export function DashboardTodayCard({
   // A food cost of $0 with unmapped POS items is not a real $0. The sales
   // of those items have no recipe cost yet.
   const isFoodCostNotTracked = todayFoodCost === 0 && unmappedItemCount > 0;
-  const completeDays = breakEvenData ? breakEvenData.daysAbove + breakEvenData.daysBelow : 0;
+  const completeDays = breakEvenData?.completeDays ?? 0;
 
   return (
     <div className="rounded-xl border border-border/40 bg-background overflow-hidden">

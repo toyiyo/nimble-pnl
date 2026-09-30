@@ -20,6 +20,7 @@ const baseProps = {
     todayDelta: 1240,
     daysAbove: 9,
     daysBelow: 5,
+    completeDays: 14,
   },
   breakEvenLoading: false,
 };
@@ -97,6 +98,16 @@ describe('DashboardTodayCard', () => {
   it('counts the days in the above/below line from the days it shows', () => {
     render(<DashboardTodayCard {...baseProps} />);
     expect(screen.getByText(/Last 14 complete days:/)).toBeInTheDocument();
+  });
+
+  it('counts a day at break-even as a complete day', () => {
+    render(
+      <DashboardTodayCard
+        {...baseProps}
+        breakEvenData={{ ...baseProps.breakEvenData, completeDays: 15 }}
+      />
+    );
+    expect(screen.getByText(/Last 15 complete days:/)).toBeInTheDocument();
   });
 
   it('shows the sales, the target and the percent under the progress bar', () => {

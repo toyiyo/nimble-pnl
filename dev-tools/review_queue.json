@@ -121565,40 +121565,6 @@
     {
       "source": "problems",
       "origin_ref": {
-        "file": "dev-tools/qa/scratch/dashboard-briefing-withdata.spec.ts",
-        "line": 71
-      },
-      "title": "@typescript-eslint/no-explicit-any in dashboard-briefing-withdata.spec.ts",
-      "body": "Unexpected any. Specify a different type.",
-      "severity": "major",
-      "tests_to_run": [
-        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/dev-tools/qa/scratch/dashboard-briefing-withdata.spec.ts"
-      ],
-      "id": "6bd1c790a031e73790ba1a284b5b826f929526e4",
-      "status": "open",
-      "created_at": "2026-09-30T20:29:56.248Z",
-      "updated_at": "2026-09-30T20:29:56.248Z"
-    },
-    {
-      "source": "problems",
-      "origin_ref": {
-        "file": "dev-tools/qa/scratch/dashboard-briefing-withdata.spec.ts",
-        "line": 90
-      },
-      "title": "@typescript-eslint/no-explicit-any in dashboard-briefing-withdata.spec.ts",
-      "body": "Unexpected any. Specify a different type.",
-      "severity": "major",
-      "tests_to_run": [
-        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/dev-tools/qa/scratch/dashboard-briefing-withdata.spec.ts"
-      ],
-      "id": "143f30bcb73d068b5a5fa7c2f5210a703e10d3b7",
-      "status": "open",
-      "created_at": "2026-09-30T20:29:56.248Z",
-      "updated_at": "2026-09-30T20:29:56.248Z"
-    },
-    {
-      "source": "problems",
-      "origin_ref": {
         "file": "src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx",
         "line": 213
       },

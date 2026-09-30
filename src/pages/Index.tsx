@@ -809,6 +809,7 @@ const Index = () => {
                     todayDelta: breakEvenData.todayDelta,
                     daysAbove: breakEvenData.daysAbove,
                     daysBelow: breakEvenData.daysBelow,
+                    completeDays: breakEvenData.completeDays,
                   } : null}
                   breakEvenLoading={breakEvenLoading}
                   breakEvenError={Boolean(breakEvenError)}

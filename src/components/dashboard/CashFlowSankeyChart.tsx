@@ -591,7 +591,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
       </CardHeader>
       <CardContent>
         {/* The chart nodes take mouse clicks only. Screen readers get one
-            summary. The Expenses section has the same categories as a list. */}
+            summary and the category list below the chart. */}
         <div
           style={{ height: chartHeight }}
           className="relative"
@@ -611,6 +611,17 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
             </Sankey>
           </ResponsiveContainer>
         </div>
+        {/* role="img" hides the node labels. This list gives screen readers
+            each category and amount. */}
+        <ul className="sr-only" aria-label="Cash flow by category">
+          {sankeyData.links.map((link) => (
+            <li key={`${link.source}-${link.target}`}>
+              {link.targetName === 'Cash Flow'
+                ? `Income, ${link.sourceName}: ${formatCurrency(link.value)}`
+                : `Expense, ${link.targetName}: ${formatCurrency(link.value)}`}
+            </li>
+          ))}
+        </ul>
         
         {/* Legend */}
         <div className="mt-4 pt-4 border-t flex flex-wrap gap-4 justify-center">

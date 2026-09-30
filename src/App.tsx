@@ -112,7 +112,7 @@ function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.Reac
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0 overflow-x-clip">
             <AppHeader />
-            <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-clip focus:outline-none">
+            <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-clip scroll-mt-14 focus:outline-none">
               {viewMode === 'work' && (
                 <div className="mb-4">
                   <PersonalViewBanner variant="desktop" />

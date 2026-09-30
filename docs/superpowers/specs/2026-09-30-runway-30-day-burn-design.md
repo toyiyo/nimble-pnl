@@ -161,7 +161,7 @@ restaurant gets a false "0 days" alert.
    `isTransferCategoryType` import (line 49) if nothing else uses it.
    Check each with `grep` before the delete.
 
-`availableCash` (`src/pages/Index.tsx:299-307`) does not change. The tile
+`availableCash` (`src/pages/Index.tsx:300-308`) does not change. The tile
 still shows the bank balance.
 
 ### 4.3 `src/components/dashboard/OwnerSnapshotWidget.tsx`
@@ -175,7 +175,7 @@ still shows the bank balance.
    - The other thresholds do not change.
 4. The value line (line 171) shows `formatRunwayValue(cashRunway)`. The
    helper adds the `d` suffix, so the JSX does not.
-5. Change the tooltip text (line 167) to
+5. Change the tooltip text (line 166) to
    "Days of cash at the average net burn of the last 30 days. Target: 60+ days".
 
 "Cash growing" is longer than "168d". The tile cell uses

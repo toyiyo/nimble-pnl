@@ -51,6 +51,9 @@ const ALLOWLIST = new Set([
   'src/hooks/useInventoryMetrics.tsx',
   'src/hooks/useInventoryPurchases.tsx',
   'src/hooks/useLiquidityMetrics.tsx',
+  // Bounded by one restaurant, one business day, and
+  // `within_geofence = false` — never a high-volume scan of the table.
+  'src/hooks/useOffsitePunchAlerts.ts',
   'src/hooks/usePendingOutflows.tsx',
   'src/hooks/usePredictableExpenses.tsx',
   'src/hooks/usePredictiveMetrics.tsx',
@@ -69,6 +72,9 @@ const ALLOWLIST = new Set([
   'src/hooks/useWeekStaffingSuggestions.ts',
   'src/lib/expenseDataFetcher.ts',
   'src/pages/Banking.tsx',
+  // Fetches one punch by id (`.eq('id', punchId).maybeSingle()`), for the
+  // off-site alert "View punch" action. Never a scan of the table.
+  'src/pages/TimePunchesManager.tsx',
   'src/services/inventoryTransactions.service.ts',
   'src/services/recipeAnalytics.service.ts',
   'src/utils/offlineQueue.ts',

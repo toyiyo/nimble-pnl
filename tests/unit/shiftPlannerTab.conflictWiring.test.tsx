@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner/ShiftPlannerTab';
@@ -220,12 +220,12 @@ const DEFAULT_PROPS = {
   notifyAfterDeferredCommit: vi.fn(),
 } as const;
 
-function renderTab() {
+function renderTab(extraProps: Partial<React.ComponentProps<typeof ShiftPlannerTab>> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <TooltipProvider>
-        <ShiftPlannerTab {...DEFAULT_PROPS} />
+        <ShiftPlannerTab {...DEFAULT_PROPS} {...extraProps} />
       </TooltipProvider>
     </QueryClientProvider>,
   );
@@ -256,6 +256,31 @@ describe('ShiftPlannerTab — conflict wiring', () => {
     });
     useEmployeeAvailabilitySpy.mockReturnValue({ availability: [], loading: false, error: null });
     useAvailabilityExceptionsSpy.mockReturnValue({ exceptions: [], loading: false, error: null });
+  });
+
+  it('passes a renderDayFooter that shows the daily labor percent to TemplateGrid', () => {
+    renderTab({
+      dailyLaborPercent: {
+        byDay: new Map([
+          ['2026-07-13', { laborCost: 250, projectedSales: 1000, percent: 25, overTarget: true }],
+        ]),
+        isLoading: false,
+        hasError: false,
+        targetLaborPct: 22,
+        lookbackWeeks: 4,
+      },
+    });
+    const props = templateGridSpy.mock.calls.at(-1)?.[0] as {
+      renderDayFooter: (day: string) => React.ReactNode;
+    };
+    render(<>{props.renderDayFooter('2026-07-13')}</>);
+    expect(screen.getByText('Labor 25%')).toHaveAttribute('tabindex', '0');
+  });
+
+  it('passes no day footer when the page gives no labor percent', () => {
+    renderTab();
+    const props = templateGridSpy.mock.calls.at(-1)?.[0] as { renderDayFooter?: unknown };
+    expect(props.renderDayFooter).toBeUndefined();
   });
 
   it('fetches time-off requests for the restaurant', () => {

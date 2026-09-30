@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -122,6 +122,11 @@ interface ShiftTimelineTabProps {
   readonly notifyAfterDeferredCommit: (
     args: NotifyAfterDeferredCommitArgs,
   ) => void | Promise<void>;
+  /**
+   * Optional line under each day selector label (e.g., the daily labor cost
+   * %). It renders inside the day button, so it must not be focusable.
+   */
+  readonly renderDayFooter?: (day: string, selected: boolean) => ReactNode;
 }
 
 /**
@@ -286,6 +291,7 @@ export function ShiftTimelineTab({
   error,
   guardShiftChange,
   notifyAfterDeferredCommit,
+  renderDayFooter,
 }: ShiftTimelineTabProps) {
   // ── Local state ────────────────────────────────────────────────────────────
   const [selectedDayState, setSelectedDay] = useState<string>(() => defaultDay(weekDays));
@@ -919,7 +925,7 @@ export function ShiftTimelineTab({
             onClick={() => setSelectedDay(day)}
             aria-pressed={day === selectedDay}
             className={`
-              shrink-0 px-3 h-8 rounded-lg text-[12px] font-medium transition-colors
+              shrink-0 px-3 min-h-8 py-1 flex flex-col items-center justify-center rounded-lg text-[12px] font-medium transition-colors
               ${day === selectedDay
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -927,6 +933,7 @@ export function ShiftTimelineTab({
             `}
           >
             {formatDayLabel(day).split(',')[0]}
+            {renderDayFooter?.(day, day === selectedDay)}
           </button>
         ))}
       </fieldset>

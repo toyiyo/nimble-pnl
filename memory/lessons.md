@@ -3558,7 +3558,7 @@
 - **Mistake:** `npm ci` failed with a 403, so I reported that E2E and pgTAP cannot run in the cloud session.
 - **Correction:** Only one package failed: `xlsx` comes from `cdn.sheetjs.com`, which the network policy blocks. Docker is installed but its daemon does not start by itself. The Supabase CLI pulls images from ECR, and the ECR blob host returns `Forbidden`.
 - **Rule:** In a cloud session, run these steps before you say a check cannot run:
-  1. Delete `xlsx` from a temporary copy of `package.json` and `package-lock.json`, run `npm ci`, then `git checkout` both files.
+  1. Copy `package.json` and `package-lock.json` to the scratchpad. Delete `xlsx` from both files and run `npm ci`. Then copy the saved files back. Do not use `git checkout` here, because it also deletes other changes in those files.
   2. Run `npm i --no-save xlsx@0.18.5` from the npm registry so Vite and `tsc` can resolve the import. Check that `git status` stays clean.
   3. Start Docker with `(dockerd > <scratch>/dockerd.log 2>&1 &)`.
   4. Start Supabase with `SUPABASE_INTERNAL_IMAGE_REGISTRY=docker.io npx supabase start`.

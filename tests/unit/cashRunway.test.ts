@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { differenceInDays } from 'date-fns';
+import { differenceInDays, format } from 'date-fns';
 import {
   RUNWAY_WINDOW_DAYS,
   getRunwayWindow,
@@ -10,7 +10,7 @@ describe('getRunwayWindow', () => {
   it('starts 29 days before now at 00:00', () => {
     const now = new Date('2026-06-15T14:30:00');
     const { start } = getRunwayWindow(now);
-    expect(start.toISOString().slice(0, 10)).toBe('2026-05-17');
+    expect(format(start, 'yyyy-MM-dd')).toBe('2026-05-17');
     expect(start.getHours()).toBe(0);
     expect(start.getMinutes()).toBe(0);
     expect(start.getSeconds()).toBe(0);
@@ -20,7 +20,7 @@ describe('getRunwayWindow', () => {
   it('ends at now at 23:59:59.999', () => {
     const now = new Date('2026-06-15T14:30:00');
     const { end } = getRunwayWindow(now);
-    expect(end.toISOString().slice(0, 10)).toBe('2026-06-15');
+    expect(format(end, 'yyyy-MM-dd')).toBe('2026-06-15');
     expect(end.getHours()).toBe(23);
     expect(end.getMinutes()).toBe(59);
     expect(end.getSeconds()).toBe(59);
@@ -36,7 +36,7 @@ describe('getRunwayWindow', () => {
   it('spans 30 days across a month edge', () => {
     const now = new Date('2026-03-05T09:00:00');
     const { start, end } = getRunwayWindow(now);
-    expect(start.toISOString().slice(0, 10)).toBe('2026-02-04');
+    expect(format(start, 'yyyy-MM-dd')).toBe('2026-02-04');
     expect(differenceInDays(end, start) + 1).toBe(RUNWAY_WINDOW_DAYS);
   });
 

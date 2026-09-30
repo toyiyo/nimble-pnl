@@ -363,11 +363,49 @@ const TimePunchesManager = () => {
     punchListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const openPunchDetail = (punchId: string) => {
-    const punch = punches.find((p) => p.id === punchId);
-    if (punch) {
-      setViewingPunch(punch);
+  const openPunchDetail = async (punchId: string) => {
+    const localPunch = punches.find((p) => p.id === punchId);
+    if (localPunch) {
+      setViewingPunch(localPunch);
+      return;
     }
+
+    // The alerted punch may not be in `punches` yet: useTimePunches does not
+    // poll, and this page's date range or employee filter can scope the new
+    // punch out entirely. Fetch it directly so "View punch" on the off-site
+    // alert toast never silently does nothing.
+    const { data, error } = await supabase
+      .from('time_punches')
+      .select(`
+        id,
+        restaurant_id,
+        employee_id,
+        shift_id,
+        punch_type,
+        punch_time,
+        location,
+        device_info,
+        photo_path,
+        notes,
+        created_at,
+        updated_at,
+        created_by,
+        modified_by,
+        employee:employees(id, name, position)
+      `)
+      .eq('id', punchId)
+      .maybeSingle();
+
+    if (error || !data) {
+      toast({
+        title: 'Punch not found',
+        description: 'The punch may have been deleted.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setViewingPunch(data as unknown as TimePunch);
   };
 
   useOffsitePunchAlerts(restaurantId ?? undefined, openPunchDetail);
@@ -605,7 +643,11 @@ const TimePunchesManager = () => {
       let offsiteColumn = '';
       if (flag === 'offsite') {
         offsiteColumn = 'Yes';
-      } else if (punch.location && flag === null) {
+      } else if (punch.location?.within_geofence === true) {
+        // 'No' asserts a server-verified on-site result. A punch with
+        // coordinates but no `within_geofence` value (for example, a
+        // restaurant with no configured geofence) is unassessed, not
+        // on-site, so it must stay blank rather than claim 'No'.
         offsiteColumn = 'No';
       }
       return [

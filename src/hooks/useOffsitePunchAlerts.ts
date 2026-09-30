@@ -7,6 +7,16 @@ import { useToast } from '@/hooks/use-toast';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { formatDistance } from '@/utils/punchLocationFlag';
 
+// Maps each punch type to the verb the manager alert uses. `clock_in` and an
+// unrecognized type fall back to "clocked in" via the `?? 'clocked in'` at
+// the call site, so this map only needs the other three entries.
+const PUNCH_TYPE_VERB: Record<string, string> = {
+  clock_in: 'clocked in',
+  clock_out: 'clocked out',
+  break_start: 'started a break',
+  break_end: 'ended a break',
+};
+
 interface OffsitePunchAlertRow {
   id: string;
   punch_type: string;
@@ -91,7 +101,7 @@ export function useOffsitePunchAlerts(
       seenIds.current.add(row.id);
 
       const employeeName = row.employee?.name ?? 'An employee';
-      const verb = row.punch_type === 'clock_out' ? 'clocked out' : 'clocked in';
+      const verb = PUNCH_TYPE_VERB[row.punch_type] ?? 'clocked in';
       const distanceMeters = row.location?.distance_meters;
       const distanceLabel =
         distanceMeters != null

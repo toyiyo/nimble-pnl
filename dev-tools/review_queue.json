@@ -118235,6 +118235,2626 @@
       "status": "open",
       "created_at": "2026-09-03T10:27:01.479Z",
       "updated_at": "2026-09-03T10:27:01.479Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "830",
+        "comment_id": 4139354287,
+        "file": "src/pages/TimePunchesManager.tsx",
+        "line": 370
+      },
+      "title": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Fetch the alerted punch before opening details**",
+      "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Fetch the alerted punch before opening details**\n\nFor the normal live-alert case where a punch is created on another device, `useTimePunches` has not loaded that new row—it does not poll—and may also be scoped to another date or employee. The alert poll can therefore show a toast, but clicking “View punch” searches a stale/scoped `punches` array and silently does nothing. Fetch the row by ID or synchronize/invalidate the main punch query before opening the dialog.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "b5bc1ceb29afde93e4e2810beb557abca2d85b48",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.559Z",
+      "updated_at": "2026-09-29T23:58:35.559Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "830",
+        "comment_id": 4139354291,
+        "file": "src/utils/punchLocationFlag.ts",
+        "line": 16
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Preserve no-location flags for failed GPS captures**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Preserve no-location flags for failed GPS captures**\n\nWhen GPS collection fails, existing producers commonly submit no location object: `KioskMode` passes `punchContextSnapshot.location` directly, and `EmployeeClock` also produces `undefined` when collection fails while enforcement is off. Returning `null` here means those punches never contribute to the new no-location count, filter, or chip, despite having no GPS position. Ensure those capture paths persist `location_unavailable: true`, or otherwise normalize failed captures without classifying manual/imported punches as unavailable.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "54d9f754e351b3df6c84dd7690c7e2fe1bdb9de0",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.560Z",
+      "updated_at": "2026-09-29T23:58:35.560Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "830",
+        "comment_id": 4139354293,
+        "file": "src/hooks/useOffsitePunchAlerts.ts",
+        "line": 94
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Distinguish break punches in alert text**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Distinguish break punches in alert text**\n\nThe poll includes every punch type, but this binary mapping labels both `break_start` and `break_end` as “clocked in.” Whenever an employee starts or ends a break off-site, the manager receives a factually incorrect alert; map all four punch types to their corresponding actions or limit the query to the supported types.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "4c2448ec7898027135460264e891b7b7b31ddb57",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.561Z",
+      "updated_at": "2026-09-29T23:58:35.561Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "830",
+        "comment_id": 4139354298,
+        "file": "src/pages/TimePunchesManager.tsx",
+        "line": 609
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Export No only for server-verified on-site punches**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Export No only for server-verified on-site punches**\n\nA nonempty location does not imply an on-site result. For example, when a restaurant has no configured coordinates, the trigger preserves the submitted coordinates but writes no `within_geofence` value; this branch nevertheless exports `Off-site = No`. That turns an unknown result into a false assertion in the CSV, so `No` should require `location.within_geofence === true`, leaving unassessed locations empty.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "85ce3f6b3cc8538902301e41e93dbb3b5ac00615",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.561Z",
+      "updated_at": "2026-09-29T23:58:35.561Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDvj1K9KYX3XsvfeTeD",
+        "pr": "830",
+        "file": "src/utils/punchLocationFlag.ts",
+        "line": 100
+      },
+      "title": "Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.",
+      "body": "Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "ee578b3db5041d0a99f1fbf8b03664224195ab67",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.562Z",
+      "updated_at": "2026-09-29T23:58:35.562Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/SSOProviderButtons.tsx",
+        "line": 31
+      },
+      "title": "@typescript-eslint/no-explicit-any in SSOProviderButtons.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/components/SSOProviderButtons.tsx"
+      ],
+      "id": "884f8b4484ca646cecdf36be93bbcdabda2c9c0c",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.596Z",
+      "updated_at": "2026-09-29T23:58:35.596Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/integrations/ConnectedAppsCard.tsx",
+        "line": 18
+      },
+      "title": "react-refresh/only-export-components in ConnectedAppsCard.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/components/integrations/ConnectedAppsCard.tsx"
+      ],
+      "id": "6eca817530f51de44429268191a7063468105995",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.597Z",
+      "updated_at": "2026-09-29T23:58:35.597Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useAuth.tsx",
+        "line": 14
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useAuth.tsx"
+      ],
+      "id": "9b30f83f6a0a7aa069fe584de85f62990ed572f1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.601Z",
+      "updated_at": "2026-09-29T23:58:35.601Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useAuth.tsx",
+        "line": 17
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useAuth.tsx"
+      ],
+      "id": "a3df15417b557ebf5a7e0a1a3750a0b88b333d15",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.601Z",
+      "updated_at": "2026-09-29T23:58:35.601Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useAuth.tsx",
+        "line": 66
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useAuth.tsx"
+      ],
+      "id": "a006a29b61fc037000a61fea1347d7002d06033f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.601Z",
+      "updated_at": "2026-09-29T23:58:35.601Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useAuth.tsx",
+        "line": 121
+      },
+      "title": "react-hooks/exhaustive-deps in useAuth.tsx",
+      "body": "React Hook useEffect has missing dependencies: 'user.created_at' and 'user.email'. Either include them or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useAuth.tsx"
+      ],
+      "id": "6c6134ca5f6206cb45f1ed3cffa30fbc5c5122f4",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.601Z",
+      "updated_at": "2026-09-29T23:58:35.601Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useAuth.tsx",
+        "line": 299
+      },
+      "title": "react-refresh/only-export-components in useAuth.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useAuth.tsx"
+      ],
+      "id": "14c35628af3dd1b8d1610deca59667137cadcbcf",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.601Z",
+      "updated_at": "2026-09-29T23:58:35.601Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useCRUDEntity.tsx",
+        "line": 23
+      },
+      "title": "@typescript-eslint/no-explicit-any in useCRUDEntity.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useCRUDEntity.tsx"
+      ],
+      "id": "c303b387ed69928964c3cc23acd7a4a06ba6943e",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.602Z",
+      "updated_at": "2026-09-29T23:58:35.602Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useCRUDEntity.tsx",
+        "line": 24
+      },
+      "title": "@typescript-eslint/no-explicit-any in useCRUDEntity.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useCRUDEntity.tsx"
+      ],
+      "id": "1987ea98a632f8b96c355483e55d159a3648f7f7",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.602Z",
+      "updated_at": "2026-09-29T23:58:35.602Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useCRUDEntity.tsx",
+        "line": 57
+      },
+      "title": "@typescript-eslint/no-explicit-any in useCRUDEntity.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useCRUDEntity.tsx"
+      ],
+      "id": "5746e113e18808a95ce8c4f6c52a343bb56c1119",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.602Z",
+      "updated_at": "2026-09-29T23:58:35.602Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useCRUDEntity.tsx",
+        "line": 59
+      },
+      "title": "@typescript-eslint/no-explicit-any in useCRUDEntity.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useCRUDEntity.tsx"
+      ],
+      "id": "5c416279d8f4a8dbe96332cd25e07394468bfda9",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.602Z",
+      "updated_at": "2026-09-29T23:58:35.602Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useCRUDEntity.tsx",
+        "line": 93
+      },
+      "title": "@typescript-eslint/no-explicit-any in useCRUDEntity.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useCRUDEntity.tsx"
+      ],
+      "id": "27c5d9fa8108c0d6717813bbf0c8c748af92c6fa",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.602Z",
+      "updated_at": "2026-09-29T23:58:35.602Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useCRUDEntity.tsx",
+        "line": 94
+      },
+      "title": "@typescript-eslint/no-explicit-any in useCRUDEntity.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useCRUDEntity.tsx"
+      ],
+      "id": "a7b7d05e5e7237d3cb6a6772550ab82197a706bf",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.602Z",
+      "updated_at": "2026-09-29T23:58:35.602Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useMonthlyMetrics.tsx",
+        "line": 588
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "e45088c29fa09459aee03ba7e841d4a039344cac",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.606Z",
+      "updated_at": "2026-09-29T23:58:35.606Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useMonthlyMetrics.tsx",
+        "line": 634
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "b22a6762ce74c2a54a503624d33460bfb9203dd4",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.606Z",
+      "updated_at": "2026-09-29T23:58:35.606Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/usePayroll.tsx",
+        "line": 256
+      },
+      "title": "@typescript-eslint/no-explicit-any in usePayroll.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/usePayroll.tsx"
+      ],
+      "id": "4e73c1ec2b02b4422f2b2e0d575cdf462ddf077c",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.606Z",
+      "updated_at": "2026-09-29T23:58:35.606Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useSSO.tsx",
+        "line": 51
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSSO.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useSSO.tsx"
+      ],
+      "id": "f13862cf2b2e8ba7cbe0e2041267fa43d8fefecb",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.613Z",
+      "updated_at": "2026-09-29T23:58:35.613Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useSSO.tsx",
+        "line": 87
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSSO.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/hooks/useSSO.tsx"
+      ],
+      "id": "f8f13f6eff3878b55cad685ee252108d62946200",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.613Z",
+      "updated_at": "2026-09-29T23:58:35.613Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AcceptInvitation.tsx",
+        "line": 85
+      },
+      "title": "react-hooks/exhaustive-deps in AcceptInvitation.tsx",
+      "body": "React Hook useEffect has a missing dependency: 'validateInvitation'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/AcceptInvitation.tsx"
+      ],
+      "id": "e8af88dd89137bc56012a0a9c079ba0fb41c1294",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.614Z",
+      "updated_at": "2026-09-29T23:58:35.614Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AcceptInvitation.tsx",
+        "line": 112
+      },
+      "title": "react-hooks/exhaustive-deps in AcceptInvitation.tsx",
+      "body": "React Hook useEffect has a missing dependency: 'acceptInvitation'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/AcceptInvitation.tsx"
+      ],
+      "id": "510821af57258f2d792831c3e16a5bc5dbe16702",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.614Z",
+      "updated_at": "2026-09-29T23:58:35.614Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AcceptInvitation.tsx",
+        "line": 132
+      },
+      "title": "no-empty in AcceptInvitation.tsx",
+      "body": "Empty block statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/AcceptInvitation.tsx"
+      ],
+      "id": "0abd433d29a03fd68540bd8299c986f289c739a6",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.614Z",
+      "updated_at": "2026-09-29T23:58:35.614Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AcceptInvitation.tsx",
+        "line": 183
+      },
+      "title": "@typescript-eslint/no-explicit-any in AcceptInvitation.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/AcceptInvitation.tsx"
+      ],
+      "id": "ebb76a4cbf008e0ddbecc287ff31658c1203b789",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.614Z",
+      "updated_at": "2026-09-29T23:58:35.614Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AcceptInvitation.tsx",
+        "line": 208
+      },
+      "title": "@typescript-eslint/no-explicit-any in AcceptInvitation.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/AcceptInvitation.tsx"
+      ],
+      "id": "ada23e3aa33be4d01f3dc08b276879e561b9dde1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.614Z",
+      "updated_at": "2026-09-29T23:58:35.614Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AcceptInvitation.tsx",
+        "line": 244
+      },
+      "title": "@typescript-eslint/no-explicit-any in AcceptInvitation.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/AcceptInvitation.tsx"
+      ],
+      "id": "9e221de9f174e256921eb44e03aada2887ab6f76",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.614Z",
+      "updated_at": "2026-09-29T23:58:35.614Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/AcceptInvitation.tsx",
+        "line": 308
+      },
+      "title": "@typescript-eslint/no-explicit-any in AcceptInvitation.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/AcceptInvitation.tsx"
+      ],
+      "id": "8d7d0d1b8a68f052720cbf4c2a902a7b781c3d3f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Auth.tsx",
+        "line": 26
+      },
+      "title": "@typescript-eslint/no-explicit-any in Auth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Auth.tsx"
+      ],
+      "id": "98910044c6cadde7dd015bbe60c50dbfed966461",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Auth.tsx",
+        "line": 97
+      },
+      "title": "@typescript-eslint/no-explicit-any in Auth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Auth.tsx"
+      ],
+      "id": "f290c9fb0dbf4cb0004506105ced36ac65cefd07",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Auth.tsx",
+        "line": 179
+      },
+      "title": "@typescript-eslint/no-explicit-any in Auth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Auth.tsx"
+      ],
+      "id": "776336ba9ea324a6ed75e40aef6ae606101919cd",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Index.tsx",
+        "line": 205
+      },
+      "title": "@typescript-eslint/no-explicit-any in Index.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Index.tsx"
+      ],
+      "id": "d2ba04f7d8d03b8fcfe0a70b345eb2c00ce9e6e1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Index.tsx",
+        "line": 418
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "React Hook useMemo has a missing dependency: 'dailyAvgSpending'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Index.tsx"
+      ],
+      "id": "315ccc98a5a22dd34da12e9ac00df8da7582f1b1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Index.tsx",
+        "line": 421
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "The 'monthlyData' logical expression could make the dependencies of useEffect Hook (at line 507) change on every render. To fix this, wrap the initialization of 'monthlyData' in its own useMemo() Hook.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Index.tsx"
+      ],
+      "id": "38e090e383e60750cfdd25ba096906508f9b180b",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Integrations.tsx",
+        "line": 30
+      },
+      "title": "@typescript-eslint/no-explicit-any in Integrations.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Integrations.tsx"
+      ],
+      "id": "48486191d4d50cbce26e7fb3f2a504c942e999d5",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.615Z",
+      "updated_at": "2026-09-29T23:58:35.615Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 138
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Scheduling.tsx"
+      ],
+      "id": "33e890e8fd1d95c1174a344cb7dd563e22ba76a1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.617Z",
+      "updated_at": "2026-09-29T23:58:35.617Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 148
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Scheduling.tsx"
+      ],
+      "id": "07d25b9ccd23130f7e354589a316158f7c2ce920",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.617Z",
+      "updated_at": "2026-09-29T23:58:35.617Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 173
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Scheduling.tsx"
+      ],
+      "id": "1b024aa7d2f5168e793d574f97843989bfb27df0",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.617Z",
+      "updated_at": "2026-09-29T23:58:35.617Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 213
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Scheduling.tsx"
+      ],
+      "id": "8e7e16481ed9315173235a1a6598a686663b85d2",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.618Z",
+      "updated_at": "2026-09-29T23:58:35.618Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 452
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'setCurrentWeekStart'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/Scheduling.tsx"
+      ],
+      "id": "b83e60b0599a267ad912d888c9e155e81f8868e1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.618Z",
+      "updated_at": "2026-09-29T23:58:35.618Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/TimePunchesManager.tsx",
+        "line": 321
+      },
+      "title": "@typescript-eslint/no-explicit-any in TimePunchesManager.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/TimePunchesManager.tsx"
+      ],
+      "id": "091a914996b4d27436d3b62b4a2ef74e0d14bddd",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.618Z",
+      "updated_at": "2026-09-29T23:58:35.618Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/TimePunchesManager.tsx",
+        "line": 457
+      },
+      "title": "react-hooks/exhaustive-deps in TimePunchesManager.tsx",
+      "body": "React Hook useEffect has missing dependencies: 'photoThumbnails' and 'signedUrlCache'. Either include them or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/pages/TimePunchesManager.tsx"
+      ],
+      "id": "002ca6296204d921b2fad081d2f536312dd96562",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.618Z",
+      "updated_at": "2026-09-29T23:58:35.618Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/types/scheduling.ts",
+        "line": 243
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/src/types/scheduling.ts"
+      ],
+      "id": "8d70e670e65b763ccafc4960d94e0b7bee39089a",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.619Z",
+      "updated_at": "2026-09-29T23:58:35.619Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/accept-invitation/index.ts",
+        "line": 216
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/accept-invitation/index.ts"
+      ],
+      "id": "196567623a089aeae4ba4b49f86902fe8f4320b4",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.623Z",
+      "updated_at": "2026-09-29T23:58:35.623Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-chat-stream/index.ts",
+        "line": 43
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-chat-stream/index.ts"
+      ],
+      "id": "36bbc9c2bc10ea56f69cf3dae8e6f3b535baebe3",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.624Z",
+      "updated_at": "2026-09-29T23:58:35.624Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-chat-stream/index.ts",
+        "line": 59
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-chat-stream/index.ts"
+      ],
+      "id": "bbefbb807186e2314a5141afbde4cdab9c760de2",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.624Z",
+      "updated_at": "2026-09-29T23:58:35.624Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-chat-stream/index.ts",
+        "line": 157
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-chat-stream/index.ts"
+      ],
+      "id": "ab58f4bd5952939a599fa303585777dd8fb3b8db",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.624Z",
+      "updated_at": "2026-09-29T23:58:35.624Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 52
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "713f21f58ddf919708e014d77fad48a6a5e95920",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.624Z",
+      "updated_at": "2026-09-29T23:58:35.624Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 59
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ead7e35bbed8b62a87c6491db18797e2cbf97526",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.624Z",
+      "updated_at": "2026-09-29T23:58:35.624Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 113
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d39b1f4e7bafa01a1f851767e66d56b57a5dea6e",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.624Z",
+      "updated_at": "2026-09-29T23:58:35.624Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 115
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3ee873649475ad828c4923c90e82360e3577f2e8",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.624Z",
+      "updated_at": "2026-09-29T23:58:35.624Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 117
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ca246f4ee67c40659529b3e8fa11ce3ff65f3fac",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 335
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0491888f47f3ecd91f2d92a74949cf943ed0299a",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 337
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "279a033d5a6d0240fc9853f4044477f5a85de6a7",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 338
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "dc2b4b2dafbb4de40577338344306dea7d785632",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 379
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8b24471daa044b9c76a71f8f5a93dd3be7834314",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 425
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e1374571665b433338c2a24d50993458d67a5488",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 443
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a1e8751bd554a82f57dfc18569c505301239f02d",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 504
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "238152609bf2ca0ec3a5b4f742f4f15d5cd3eecf",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.625Z",
+      "updated_at": "2026-09-29T23:58:35.625Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 557
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "91fad651de954a36e645c925c96fc2043813cafb",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 608
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "015b1d030505eeda3cefaae9e37eda648d5b688f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 610
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6f99f0d0089a9926fd86b150fdaec63010aea2b8",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 631
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8826751a2352c553047427e032eba406cdbe1a3f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 641
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "cc7891910873a868340e3321c9d1d5d0f6399f38",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 659
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d11b67a2ae19317a6cddeaee770e37076604daeb",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 661
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "56ad6434e541a6801613113c52001a9ebf224ad8",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 662
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a251e6bee246e398ccc59f543c15bd116d993407",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.626Z",
+      "updated_at": "2026-09-29T23:58:35.626Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 720
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "643561478ca674b868f43e2364b9c1a434c66442",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.627Z",
+      "updated_at": "2026-09-29T23:58:35.627Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 722
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1dad63c09788ae2aa400b259e894580842afe429",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.627Z",
+      "updated_at": "2026-09-29T23:58:35.627Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 723
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "82d3068ea8c63af1a2a4589b696558fdf65b4b99",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.627Z",
+      "updated_at": "2026-09-29T23:58:35.627Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 750
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "cbca3bb7d81e0ca6658d8fc84103fe997b66d56b",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.627Z",
+      "updated_at": "2026-09-29T23:58:35.627Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 769
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "dfa027aadd9e606b4efb0b865bcf7d4e8d699e60",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.627Z",
+      "updated_at": "2026-09-29T23:58:35.627Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 771
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "408553ced8e30b5b6823cee5ef93cf5568e66254",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.627Z",
+      "updated_at": "2026-09-29T23:58:35.627Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 955
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d19201519c9dfe81030f38b2d40c08595eed4738",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 957
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "dab3446264ff6560f5fb6b84ae79aa5dd5ce8fce",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 958
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "376901a1893a3fba57bf4fc2b40b1656c2397325",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1128
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "990b5eeaf38701d558bdcd1db69c0bbcce0aea1c",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1133
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "57677144fae844ea5a32e14df23cc6d06849ef0c",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1184
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fd477627f9bf6db1f8f613372e12c0c985c238da",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1186
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0279c85d4c7814bc83448fd4723ec316471d0f61",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1188
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "26bc03fdcd47d6de8a8a60772500dd6ec3143ac6",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1344
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1e8aa56a8cc6153c767f6f2a5cac6a6d99e5ae74",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.628Z",
+      "updated_at": "2026-09-29T23:58:35.628Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1443
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "706905108f0f9fac7ab83e234e58562978779eb5",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1445
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "eefe2bac48c1d62030056306546db3b928231ed8",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1447
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d8d4871c1d8ee86828d5fc7d9b100be9daad1fa3",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1451
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6b12c8e6c3ebfa24d7370127f17276799fadc6bb",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1668
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1eb2b804bfc994f5dd07574221cd50f4f1b90a20",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1669
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "21921188003a0c50bf1be185ff076f6976d72abb",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1680
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "aa6f74d80f5fb8bd4db6adeb39a81768a16bb861",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1761
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "be323b254236d97110155267f485b9f78cd4c82c",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1790
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e7c3d805aa19a93a7b516843bf63d98199321251",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.629Z",
+      "updated_at": "2026-09-29T23:58:35.629Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1791
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c7b17746c6a76d41157d4b43bc83cb98491b1b58",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1798
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3b4e7df0f45e3d28df0c7e17bd8683a7f82e6d26",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1972
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "f088407c1b86f1e5235eb06577ce5455c93ec42b",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1977
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "49ea6f102f9c9f7c7757e3952ed8aaa6917975bf",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2015
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1768e355f47cdb8806e8e04de3b02938f9cc259f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2017
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "dc39da23c71b71e97587b8c2b76201f99315ddf4",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2019
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8cafa7e2d1deb6448bcedcdc50d7b49cff46d98e",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2093
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8e415b772fdd198c608759ff9a5e84651d78e247",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2222
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5ad90666d6eab07222a9d5de16a9bc0c8d80eff3",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2224
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "eb008d8149908be4f9b71421373d8ccdf1726cb7",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.630Z",
+      "updated_at": "2026-09-29T23:58:35.630Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2324
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "792556d9ba1b6101f3cf6967bc0aded0c638c7d3",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.631Z",
+      "updated_at": "2026-09-29T23:58:35.631Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2327
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a3b2c96f40be5cafa10d75505bac7f86326926bc",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.631Z",
+      "updated_at": "2026-09-29T23:58:35.631Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2372
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2873857bd2cc0ade257d64feee438721441336f1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.631Z",
+      "updated_at": "2026-09-29T23:58:35.631Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2387
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ad90238592c826eef6b5d130fa9ba4f9861c7965",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.631Z",
+      "updated_at": "2026-09-29T23:58:35.631Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2388
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e464285b10c9c38a5b30c829243fba8ba5f4dbcf",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.631Z",
+      "updated_at": "2026-09-29T23:58:35.631Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2406
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "aad2a7be7cd3aeb9387f8a23e843712c24e1f2bd",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.631Z",
+      "updated_at": "2026-09-29T23:58:35.631Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2443
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "eed5bc695996fcedf8efb21d020962df676ade03",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.632Z",
+      "updated_at": "2026-09-29T23:58:35.632Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2527
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "04728028d4cecbc74816406f7d0b81962891b357",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.632Z",
+      "updated_at": "2026-09-29T23:58:35.632Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2530
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "569b21e9cd56afc43c960a0d5d61d10eb43559ed",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.632Z",
+      "updated_at": "2026-09-29T23:58:35.632Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2557
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ac3010a6966ab9f7cbc7f68b81836521625a2f2c",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.632Z",
+      "updated_at": "2026-09-29T23:58:35.632Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2589
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2ef2128ec476d976517152a67769fab7f7f1525b",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.632Z",
+      "updated_at": "2026-09-29T23:58:35.632Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2590
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b32090256de88a8978f6d2eb10921c60b79b3deb",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.632Z",
+      "updated_at": "2026-09-29T23:58:35.632Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2602
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0d499917bcf61a2cf831f84fb130cb3fec300456",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2618
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "533b8e05bf2b96a0c5682a7c758cd18acfb13b90",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2620
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "256ff041776cf932914d5c687c1372d6d50f4f34",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2653
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a24fe0b4e06a7677a44ca706f1fbdc6b06464fb1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2718
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8afa068f83fda30c647d1ef52a2c40a2ec880db0",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2720
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "83bf7c80cca7bb51802c74f60809e5bccf9d7949",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2722
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "55e949c403af73ffe2104f8d29813999b3691385",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2756
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "68cc9139477878ecb8374595797e3483d63a8c8b",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2761
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "9520989ddfcb70e50591f6235799dc641de7f580",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2764
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "9b7329d8a31823db095ffa6278af547e068826c4",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.633Z",
+      "updated_at": "2026-09-29T23:58:35.633Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2769
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "991caed49275c5426e8a244097caad5335aa62d5",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2830
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "49531f54c8e92d427c41e3abf2e51e9a08b7b209",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2880
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "38843bb82ae54758c796f3c4571099630cb573ed",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2959
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d94cac9a2a31380afb84bf1cd871bc619e39be87",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2961
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a68eec280715b4c2a6e326d5e4162a901019d4ea",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2976
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a4d8a5d40acf999d29ad5e66ce29d48f2b89c2f0",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2977
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "96280077527b1ca75aeab03ad030d97e993b58e7",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2996
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5b799f545532f8111e9f005d90c330077f977a2f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3020
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "59e35e7b6daecacc7a4a43d306266438bd1be456",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3022
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "942461828faab91187b52ef42137eb72d283e3d4",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3024
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "49e117f8b90fd7edafc6c7305e0b8e3cc25ee8a8",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.634Z",
+      "updated_at": "2026-09-29T23:58:35.634Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3113
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b852ad8bb8579d1d6f9b671f781e1df8e1a1a5ec",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3162
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8e0c37d8bd7bc854cdf1122dc68476288a82c248",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3221
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e3225eb5827abb4e151f025d2b814e60c67151b1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3261
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "bc56de25694c83e295fdafc9b01d2f46f58ed417",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3311
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "cff851b8f33b8168de1f2fbb43b3bd74696fabc6",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3313
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c2ca64fbb3da3abd36ead47c23338eb6ece39b52",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3314
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ff637b9fb6dfaebbe02ba301e4f756e8037e286e",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3352
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b02c919c473931abfd54b0cf73e62041d3805cd8",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3448
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c8552e2c1d5f83cb14be04792f340e2e67c2c91f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3450
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "de2c5be31453301fa48b31b274f1590a8ff8e17f",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.635Z",
+      "updated_at": "2026-09-29T23:58:35.635Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3451
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5c1964073e9a47a3798fb43edb95990f4f922af4",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.636Z",
+      "updated_at": "2026-09-29T23:58:35.636Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/scheduling-conflicts.spec.ts",
+        "line": 696
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling-conflicts.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/tests/e2e/scheduling-conflicts.spec.ts"
+      ],
+      "id": "661b2e28c47c87e0140507f9c9cc65755296f2da",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.658Z",
+      "updated_at": "2026-09-29T23:58:35.658Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/scheduling-conflicts.spec.ts",
+        "line": 697
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling-conflicts.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/tests/e2e/scheduling-conflicts.spec.ts"
+      ],
+      "id": "d422b1bc7bcf2c54ce733c28c4a6e17f93f2ff5b",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.658Z",
+      "updated_at": "2026-09-29T23:58:35.658Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/scheduling-conflicts.spec.ts",
+        "line": 719
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling-conflicts.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/tests/e2e/scheduling-conflicts.spec.ts"
+      ],
+      "id": "139b0ab251f3b4b0863c8268a3d32de428e9282c",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.658Z",
+      "updated_at": "2026-09-29T23:58:35.658Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/scheduling-conflicts.spec.ts",
+        "line": 735
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling-conflicts.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/tests/e2e/scheduling-conflicts.spec.ts"
+      ],
+      "id": "2f42c6d8ab57659d67a1580ca08b9d73ec85bfc1",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.658Z",
+      "updated_at": "2026-09-29T23:58:35.658Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useAuth.test.tsx",
+        "line": 17
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "388bce534ecb47f22892819f8f7630c8e0d6a877",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.671Z",
+      "updated_at": "2026-09-29T23:58:35.671Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useAuth.test.tsx",
+        "line": 18
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "f36ab2c2b03cc9a9563b7267cd5b0d17b2c146eb",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.671Z",
+      "updated_at": "2026-09-29T23:58:35.671Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useAuth.test.tsx",
+        "line": 29
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/offsite-punch-flags/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "ed1b2aa999a4de48524637ae270e0d2ea9c14937",
+      "status": "open",
+      "created_at": "2026-09-29T23:58:35.671Z",
+      "updated_at": "2026-09-29T23:58:35.671Z"
     }
   ]
 }

@@ -50,7 +50,11 @@ const formSchema = z.object({
     quantity: z.number().min(0.001, 'Quantity must be greater than 0'),
     unit: z.enum(MEASUREMENT_UNITS),
     notes: z.string().optional(),
-    yield_pct_override: z.number().nullable().optional(),
+    yield_pct_override: z.number()
+      .min(50, 'Yield must be 50% or more')
+      .max(100, 'Yield must be 100% or less')
+      .nullable()
+      .optional(),
   })).min(1, 'At least one ingredient is required'),
 });
 
@@ -415,7 +419,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Basic Information */}
               <Card>

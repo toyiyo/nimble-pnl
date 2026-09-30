@@ -133,8 +133,12 @@ Desktop (`lg` and up) uses two columns:
 Mobile and tablet use one column. The rail is not shown. A horizontal chip
 row under the header gives the same jumps (section 4.7).
 
-The page uses one DOM tree for both sizes. Responsive classes change the
-layout. This follows the lesson on dual DOM trees (`memory/lessons.md`).
+The top blocks use one DOM tree for both sizes. Responsive classes change
+the layout. The only dual element is the section navigation (rail and chips,
+section 4.8). `memory/lessons.md:1295-1297` says that `hidden md:block` and
+`md:hidden` trees both stay mounted. Both trees then carry the same accessible
+names, and `getByText` or `getByRole` queries find two matches. Section 4.8
+gives the rule that prevents this.
 
 ### 4.2 Header
 
@@ -168,7 +172,9 @@ the same props (`src/components/dashboard/OwnerSnapshotWidget.tsx:32-42`).
 - Cash and runway move to the KPI strip (4.6). The runway value stays
   `cashRunway`.
 - The line "Last 14d: N above · N below" stays
-  (`src/components/dashboard/OwnerSnapshotWidget.tsx:237`).
+  (`src/components/dashboard/OwnerSnapshotWidget.tsx:237`). The `daysAbove`
+  count changes from `text-green-600` to `text-foreground`. The `daysBelow`
+  count keeps `text-destructive`.
 - Color: status uses semantic classes. Above uses `text-foreground` with a
   positive icon, below uses `text-destructive`. The card removes the direct
   `text-green-600` and `text-orange-500` classes that the old widget uses.
@@ -194,7 +200,10 @@ the same `criticalAlerts` array. It does not add or remove alerts.
 `MonthlyBreakEvenStrip` (`src/pages/Index.tsx:727`) keeps its props and logic.
 It moves into the right half of the row beside the attention list. Only the
 container classes change, so that it fits a half-width column. Its unit test
-`MonthlyBreakEvenStrip.test.tsx` must pass without change.
+`MonthlyBreakEvenStrip.test.tsx` must pass without change. The UI review
+(Phase 6) checks the strip at half width on a 1280 px and a 1024 px screen.
+If the text wraps badly at `lg`, the row stacks and the strip takes the full
+width below `xl`.
 
 ### 4.6 KPI strip (inside the Today card footer)
 
@@ -204,7 +213,7 @@ A row of small values under the Today card:
 |-------|--------|
 | Cash in bank | `availableCash` (`src/pages/Index.tsx:301`) |
 | Runway | `cashRunway` (`src/pages/Index.tsx:316`), formatted by the current `formatRunway` |
-| Prime cost | `todaysData.primeCostPercentage` (read at `src/pages/Index.tsx:545`) |
+| Prime cost | `todaysData.primeCostPercentage`. `todaysData` comes from `usePeriodMetrics` (`src/pages/Index.tsx:165`, `src/pages/Index.tsx:262`). The page reads this field today at `src/pages/Index.tsx:545`. |
 | Month to date | `monthlyProgress.mtdSales` |
 
 Each value has a label in `text-[12px] uppercase tracking-wider` and a value in
@@ -243,12 +252,27 @@ Each value has a label in `text-[12px] uppercase tracking-wider` and a value in
   rail receives an `onNavigate(sectionId)` callback from the page.
 - The active link follows the section in view. An `IntersectionObserver`
   inside a small hook `useActiveSection(ids)` sets it. The hook has unit tests
-  with a mocked observer.
+  with a mocked observer. jsdom has no `IntersectionObserver`, and
+  `tests/setup.ts` has no polyfill. The hook test stubs it with
+  `vi.stubGlobal('IntersectionObserver', …)` in the test file.
 - The rail is a `<nav aria-label="Dashboard sections">`. The active link has
   `aria-current="location"`.
 - Mobile: a horizontal chip row, `overflow-x-auto`, under the header. It uses
   the same list and the same callback.
 - If `prefers-reduced-motion` is set, the scroll uses `behavior: 'auto'`.
+- Accessible names: the rail and the chip row both stay mounted. Two
+  elements already have the name "Monthly Performance" (the page `h2` and the
+  table `CardTitle`, see `tests/e2e/dashboard-basis-labels.spec.ts:20-24`).
+  To keep the names unique, each rail link and each chip has an `aria-label`
+  "Go to <section>", for example "Go to Monthly Performance". The visible text
+  stays the short section name. The E2E specs use `getByRole('heading', …)`
+  and `getByText` with exact heading text. Tests for the rail must scope
+  queries to `nav[aria-label="Dashboard sections"]`.
+- The chip row is a second `<nav aria-label="Dashboard sections (compact)">`
+  so that each landmark has a unique name.
+- The rail and chips sit at `sticky top-20` and use `scroll-mt-24`. The app
+  header is `h-14` and `sticky top-0` (`src/components/AppHeader.tsx:212-214`),
+  so neither the rail nor a scroll target goes under the header.
 
 ### 4.9 Lower sections
 
@@ -272,8 +296,10 @@ block for the rail.
 
 ## 6. Accessibility
 
-- One `h1`. New blocks use `h2` for "Today" and "Needs your attention". The
-  rail links are not headings.
+- One `h1`. New blocks use `h2`: "Today", "Needs your attention",
+  "Month progress" and "Last 14 days". The KPI strip is part of the Today
+  card and has no heading. Its values use a `<dl>`. The rail links are not
+  headings.
 - All icon-only controls have `aria-label`.
 - The progress bar has `role="progressbar"`, `aria-valuemin`,
   `aria-valuemax` and `aria-valuenow`.

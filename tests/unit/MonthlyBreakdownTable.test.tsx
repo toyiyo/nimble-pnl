@@ -98,4 +98,14 @@ describe('MonthlyBreakdownTable — single source of truth', () => {
     renderWithClient(<MonthlyBreakdownTable monthlyData={[noPending]} />);
     expect(screen.queryByText(/Accrual basis/i)).toBeNull();
   });
+
+  it('hides the card title when showTitle is false', () => {
+    renderWithClient(<MonthlyBreakdownTable monthlyData={[aprilFixture]} showTitle={false} />);
+    expect(screen.queryByText('Monthly Performance')).toBeNull();
+  });
+
+  it('shows the card title by default', () => {
+    renderWithClient(<MonthlyBreakdownTable monthlyData={[aprilFixture]} />);
+    expect(screen.getByText('Monthly Performance')).toBeDefined();
+  });
 });

@@ -574,15 +574,15 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
           <div className="flex items-center gap-4 text-sm">
             <div className="text-right">
               <p className="text-muted-foreground text-xs">Income</p>
-              <p className="font-semibold text-emerald-600">{formatCurrency(totalIncome)}</p>
+              <p className="font-semibold text-success-strong">{formatCurrency(totalIncome)}</p>
             </div>
             <div className="text-right">
               <p className="text-muted-foreground text-xs">Expenses</p>
-              <p className="font-semibold text-rose-600">{formatCurrency(totalExpenses)}</p>
+              <p className="font-semibold text-destructive-strong">{formatCurrency(totalExpenses)}</p>
             </div>
             <div className="text-right border-l pl-4">
               <p className="text-muted-foreground text-xs">Net</p>
-              <p className={`font-bold ${netCashFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <p className={`font-bold ${netCashFlow >= 0 ? 'text-success-strong' : 'text-destructive-strong'}`}>
                 {formatCurrency(netCashFlow)}
               </p>
             </div>
@@ -590,7 +590,14 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
         </div>
       </CardHeader>
       <CardContent>
-        <div style={{ height: chartHeight }} className="relative">
+        {/* The chart nodes take mouse clicks only. Screen readers get one
+            summary and the category list below the chart. */}
+        <div
+          style={{ height: chartHeight }}
+          className="relative"
+          role="img"
+          aria-label={`Cash flow chart, ${selectedPeriod.label}: income ${formatCurrency(totalIncome)}, expenses ${formatCurrency(totalExpenses)}, net ${formatCurrency(netCashFlow)}.`}
+        >
           <ChartTooltip data={tooltipData} />
           <ResponsiveContainer width="100%" height="100%">
             <Sankey
@@ -604,6 +611,17 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
             </Sankey>
           </ResponsiveContainer>
         </div>
+        {/* role="img" hides the node labels. This list gives screen readers
+            each category and amount. */}
+        <ul className="sr-only" aria-label="Cash flow by category">
+          {sankeyData.links.map((link) => (
+            <li key={`${link.source}-${link.target}`}>
+              {link.targetName === 'Cash Flow'
+                ? `Income, ${link.sourceName}: ${formatCurrency(link.value)}`
+                : `Expense, ${link.targetName}: ${formatCurrency(link.value)}`}
+            </li>
+          ))}
+        </ul>
         
         {/* Legend */}
         <div className="mt-4 pt-4 border-t flex flex-wrap gap-4 justify-center">

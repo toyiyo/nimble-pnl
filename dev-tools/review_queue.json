@@ -121148,6 +121148,2391 @@
       "status": "open",
       "created_at": "2026-09-30T01:31:50.156Z",
       "updated_at": "2026-09-30T01:31:50.156Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148437808,
+        "file": "tests/unit/useActiveSection.test.ts",
+        "line": 1
+      },
+      "title": "## Unused variable, import, function or class",
+      "body": "## Unused variable, import, function or class\n\n<p>Unused import React.</p>",
+      "severity": "info",
+      "id": "c5603570e08f3f5dc3334aed4b91cc15721d2203",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.212Z",
+      "updated_at": "2026-09-30T20:29:56.212Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148461404,
+        "file": "src/pages/Index.tsx",
+        "line": 800
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Don't render unknown MTD sales as zero**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Don't render unknown MTD sales as zero**\n\nWhile `useBreakEvenAnalysis` is loading or has failed without cached data, `breakEvenData` is null and this coercion passes `0` even though the restaurant may have substantial month-to-date sales. Because `DashboardTodayCard` keeps its KPI footer visible during both loading and error states, owners are shown a fabricated `$0` value; pass the loading/error state through and render a placeholder instead of converting missing data to zero.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "a98954f0027f506007b886c8c2f2d38fa8f845a4",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.213Z",
+      "updated_at": "2026-09-30T20:29:56.213Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148461417,
+        "file": "src/pages/Index.tsx",
+        "line": 833
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Preserve loading and error states for break-even history**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Preserve loading and error states for break-even history**\n\nIf the independently loaded break-even query is still pending after the dashboard gate opens, or if it fails, this converts the absent history to an empty array. `BreakEvenDayGrid` consequently says “No break-even history yet,” falsely presenting unavailable data as a genuine empty history while the adjacent chart correctly shows loading or error state. Pass those states to the grid so it can distinguish missing history from data that has not loaded.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "f4278a641a8846c4671b144bd41fe3d1e724bd56",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.214Z",
+      "updated_at": "2026-09-30T20:29:56.214Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148461429,
+        "file": "src/components/dashboard/BreakEvenDayGrid.tsx",
+        "line": 30
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Expose day-cell details to sighted users**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Expose day-cell details to sighted users**\n\nEvery day is rendered as an empty 24px button whose date, sales, delta, and partial-day state exist only in its accessible name and background color. Hovering, focusing, or clicking provides no visible details, so sighted keyboard and mouse users cannot determine what any cell represents or distinguish a partial day without relying on color. Render the day number and provide a visible tooltip using `cell.ariaLabel` rather than leaving the buttons empty.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "59b7d1c93aea24c9424ba03517fec693b251b481",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.214Z",
+      "updated_at": "2026-09-30T20:29:56.214Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148461440,
+        "file": "src/hooks/useActiveSection.ts",
+        "line": 78
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Observe tall sections without requiring 50% visibility**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Observe tall sections without requiring 50% visibility**\n\nOn narrow screens, expanded sections such as `dash-performance-overview` stack many cards vertically and can be more than twice the viewport height. Since an intersection ratio is the visible area divided by the entire target area, such a section can never reach this 0.5 threshold, so its chip never becomes active and `dashboard_section_viewed` is never emitted. Observe a heading or sentinel, or use a threshold/root-margin strategy that remains reachable for tall sections.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "0436a7afa5c432fa02bcdcab3ac03b981caf2e3e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.214Z",
+      "updated_at": "2026-09-30T20:29:56.214Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148461452,
+        "file": "src/hooks/useActiveSection.ts",
+        "line": 48
+      },
+      "title": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep view-event deduplication across observer rebuilds**",
+      "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep view-event deduplication across observer rebuilds**\n\nThis effect rebuilds when `sectionIds` changes and clears the page-level deduplication set each time. In `Index`, `sectionIds` commonly changes when the revenue query transitions from loading to categorized data, and again across period changes, so sections already captured can emit `dashboard_section_viewed` repeatedly during one mount. Preserve the set across observer rebuilds and only remove entries when a section is genuinely new or the page unmounts.\n\nUseful? React with 👍 / 👎.",
+      "severity": "info",
+      "id": "abc3da85d8a8cbf515dc5434c56f2d228607ae73",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.215Z",
+      "updated_at": "2026-09-30T20:29:56.215Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148569742,
+        "file": "tests/unit/useActiveSection.test.ts",
+        "line": 1
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Deleted the unused React import in the test file. Fixed in `b8801dc3fca7fc88d86cfc0c6ce7fef65f637643`.",
+      "severity": "info",
+      "id": "b22b27a679187a8503941698876b91d8f699ed3a",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.215Z",
+      "updated_at": "2026-09-30T20:29:56.215Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148570893,
+        "file": "src/pages/Index.tsx",
+        "line": 800
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Passed breakEvenLoading and breakEvenError to DashboardTodayCard's month-to-date figure so it shows a skeleton or a dash instead of a fabricated $0. Fixed in `b8801dc3fca7fc88d86cfc0c6ce7fef65f637643`.",
+      "severity": "info",
+      "id": "67a1fa6cc4eaa55c5b12e2ad40a1abe97490c6e2",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.215Z",
+      "updated_at": "2026-09-30T20:29:56.215Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148571364,
+        "file": "src/pages/Index.tsx",
+        "line": 833
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Added isLoading and error props to BreakEvenDayGrid and passed breakEvenLoading/breakEvenError from Index.tsx, so the grid shows its own loading or error state instead of the empty-history text. Fixed in `b8801dc3fca7fc88d86cfc0c6ce7fef65f637643`.",
+      "severity": "info",
+      "id": "1f566bf40cf61a53d87cba2401ea0d72120ba94c",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.215Z",
+      "updated_at": "2026-09-30T20:29:56.215Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148572762,
+        "file": "src/components/dashboard/BreakEvenDayGrid.tsx",
+        "line": 30
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Rendered cell.dayNumber inside each button and set title to the same text as aria-label, so sighted users see the day and a hover tooltip. Fixed in `b8801dc3fca7fc88d86cfc0c6ce7fef65f637643`.",
+      "severity": "info",
+      "id": "e240314d636044cd2a0a1a0958ad84c23ffe0475",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.215Z",
+      "updated_at": "2026-09-30T20:29:56.215Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148573281,
+        "file": "src/hooks/useActiveSection.ts",
+        "line": 78
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Switched the active-section pick to viewport coverage from intersectionRect, with a multi-value threshold list, so a section taller than the viewport can still become active. Fixed in `b8801dc3fca7fc88d86cfc0c6ce7fef65f637643`.",
+      "severity": "info",
+      "id": "185f08d087ecd680f77d0910bead8080cfc0f7fa",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.215Z",
+      "updated_at": "2026-09-30T20:29:56.215Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "834",
+        "comment_id": 4148573812,
+        "file": "src/hooks/useActiveSection.ts",
+        "line": 48
+      },
+      "title": "<!-- pr-triage: agreed -->",
+      "body": "<!-- pr-triage: agreed -->\n**✅ Agreed** — Kept viewedRef across an observer rebuild, dropping only ids for sections no longer present, so dashboard_section_viewed no longer refires when sectionIds changes. Fixed in `b8801dc3fca7fc88d86cfc0c6ce7fef65f637643`.",
+      "severity": "info",
+      "id": "2c53f19b80e6aac30b1a87e7536b0397a90aa10e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.215Z",
+      "updated_at": "2026-09-30T20:29:56.215Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz4-XhEMdCo3whiVWC",
+        "pr": "834",
+        "file": "src/components/dashboard/BreakEvenDayGrid.tsx",
+        "line": 18
+      },
+      "title": "Mark the props of the component as read-only.",
+      "body": "Mark the props of the component as read-only.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "4b4cd62b379f728cbd0e069e729f1d705f3a80fc",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz4-XhEMdCo3whiVWD",
+        "pr": "834",
+        "file": "src/components/dashboard/BreakEvenDayGrid.tsx",
+        "line": 21
+      },
+      "title": "Use <details>, <fieldset>, <optgroup>, or <address> instead of the \"group\" role to ensure accessibility across all devices.",
+      "body": "Use <details>, <fieldset>, <optgroup>, or <address> instead of the \"group\" role to ensure accessibility across all devices.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "2f8a2292899d1c71321bea5244a368569ee49036",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz4-ZSEMdCo3whiVWE",
+        "pr": "834",
+        "file": "src/components/dashboard/DashboardTodayCard.tsx",
+        "line": 182
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "9b65c1f89c135f2df31ec103ee0a03f3c1d22bd0",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gWLh1DJNTFv4ZEa",
+        "pr": "834",
+        "file": "src/components/dashboard/DashboardTodayCard.tsx",
+        "line": 32
+      },
+      "title": "Mark the props of the component as read-only.",
+      "body": "Mark the props of the component as read-only.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "eab0f5968667bd22236545818609815cff6f96e0",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gWLh1DJNTFv4ZEb",
+        "pr": "834",
+        "file": "src/components/dashboard/DashboardTodayCard.tsx",
+        "line": 71
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "b9c2203f11d37a4d34d08c2f8fdc93cc187cee63",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gXVh1DJNTFv4ZEd",
+        "pr": "834",
+        "file": "src/components/DashboardSkeleton.tsx",
+        "line": 45
+      },
+      "title": "Use `new Array()` instead of `Array()`.",
+      "body": "Use `new Array()` instead of `Array()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "5a3b1f2c11c71dd2510ecac2a6baf25061c4cbf0",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gXVh1DJNTFv4ZEe",
+        "pr": "834",
+        "file": "src/components/DashboardSkeleton.tsx",
+        "line": 46
+      },
+      "title": "Do not use Array index in keys",
+      "body": "Do not use Array index in keys",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "3bb1e8b59ef2a5c1373081c441701cd805aa1262",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gV9h1DJNTFv4ZEZ",
+        "pr": "834",
+        "file": "src/components/dashboard/DashboardSectionRail.tsx",
+        "line": 16
+      },
+      "title": "Mark the props of the component as read-only.",
+      "body": "Mark the props of the component as read-only.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "a514f61901ce943d6412848944cc772136e3806d",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gSZh1DJNTFv4ZEY",
+        "pr": "834",
+        "file": "src/components/dashboard/BreakEvenDayGrid.tsx",
+        "line": 48
+      },
+      "title": "Use <details>, <fieldset>, <optgroup>, or <address> instead of the \"group\" role to ensure accessibility across all devices.",
+      "body": "Use <details>, <fieldset>, <optgroup>, or <address> instead of the \"group\" role to ensure accessibility across all devices.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "da9605c771790ab899dc698b95e70b02de057cc2",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.217Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gWLh1DJNTFv4ZEc",
+        "pr": "834",
+        "file": "src/components/dashboard/DashboardTodayCard.tsx",
+        "line": 91
+      },
+      "title": "Use <progress> instead of the \"progressbar\" role to ensure accessibility across all devices.",
+      "body": "Use <progress> instead of the \"progressbar\" role to ensure accessibility across all devices.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "32bcca7ea6ad815a784cb3d6ba308cc8078c5145",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.218Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AaDz1gQFh1DJNTFv4ZEW",
+        "pr": "834",
+        "file": "src/components/dashboard/DashboardAttentionList.tsx",
+        "line": 24
+      },
+      "title": "Mark the props of the component as read-only.",
+      "body": "Mark the props of the component as read-only.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "749770a1942df5e423f467e898276c8addd02a55",
+      "status": "fixed",
+      "created_at": "2026-09-30T20:29:56.218Z",
+      "updated_at": "2026-09-30T20:50:15.000Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx",
+        "line": 213
+      },
+      "title": "react-refresh/only-export-components in ShiftTimelineTab.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx"
+      ],
+      "id": "d76923e3fe2d5b4d36e14e869521e495f354b670",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.257Z",
+      "updated_at": "2026-09-30T20:29:56.257Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx",
+        "line": 228
+      },
+      "title": "react-refresh/only-export-components in ShiftTimelineTab.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx"
+      ],
+      "id": "391d7c7f42aad8518cb76e9c949189fcf24fd32a",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.257Z",
+      "updated_at": "2026-09-30T20:29:56.257Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx",
+        "line": 244
+      },
+      "title": "react-refresh/only-export-components in ShiftTimelineTab.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx"
+      ],
+      "id": "f6b6dcb9746d65e290cbd03d831bd11e9ca3053c",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.257Z",
+      "updated_at": "2026-09-30T20:29:56.257Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useShiftTemplates.tsx",
+        "line": 123
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/hooks/useShiftTemplates.tsx"
+      ],
+      "id": "c8e59745a9f79981c0047fc23a416b144316d454",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.273Z",
+      "updated_at": "2026-09-30T20:29:56.273Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useShiftTemplates.tsx",
+        "line": 167
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/hooks/useShiftTemplates.tsx"
+      ],
+      "id": "73bfdcdb3f97b2917569129a4b2d9c58aee31ba6",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.273Z",
+      "updated_at": "2026-09-30T20:29:56.273Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useShiftTemplates.tsx",
+        "line": 359
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/hooks/useShiftTemplates.tsx"
+      ],
+      "id": "a4d94489299790589e8b99b6c13474c8d559a68b",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.273Z",
+      "updated_at": "2026-09-30T20:29:56.273Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/hooks/useShiftTemplates.tsx",
+        "line": 378
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/hooks/useShiftTemplates.tsx"
+      ],
+      "id": "db26c9ddcfe9ed5b4d1de63bfeb271635a62a5cf",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.273Z",
+      "updated_at": "2026-09-30T20:29:56.273Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Index.tsx",
+        "line": 236
+      },
+      "title": "@typescript-eslint/no-explicit-any in Index.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/pages/Index.tsx"
+      ],
+      "id": "29c9bb3a408b53aaea5200adcc830aa6a65fa81b",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.275Z",
+      "updated_at": "2026-09-30T20:29:56.275Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Index.tsx",
+        "line": 474
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "React Hook useMemo has a missing dependency: 'dailyAvgSpending'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/pages/Index.tsx"
+      ],
+      "id": "6c5c584aca33e63917c1c2b0a112e67fcb582c76",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.275Z",
+      "updated_at": "2026-09-30T20:29:56.275Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Index.tsx",
+        "line": 477
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "The 'monthlyData' logical expression could make the dependencies of useEffect Hook (at line 563) change on every render. To fix this, wrap the initialization of 'monthlyData' in its own useMemo() Hook.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/pages/Index.tsx"
+      ],
+      "id": "af7a21c966f04e22f8cf2ae208c68228272e87dd",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.275Z",
+      "updated_at": "2026-09-30T20:29:56.275Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 151
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/pages/Scheduling.tsx"
+      ],
+      "id": "3e31a4fe75215d1b2e62dd74adbdeb166ba9a524",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.277Z",
+      "updated_at": "2026-09-30T20:29:56.277Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 176
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/pages/Scheduling.tsx"
+      ],
+      "id": "b24e27762f10757d1f5d845762b59486165e6c5d",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.278Z",
+      "updated_at": "2026-09-30T20:29:56.278Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 216
+      },
+      "title": "react-refresh/only-export-components in Scheduling.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/pages/Scheduling.tsx"
+      ],
+      "id": "35c946ea5867808983b0225b9afc5bc726a46947",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.278Z",
+      "updated_at": "2026-09-30T20:29:56.278Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 473
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'setCurrentWeekStart'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/src/pages/Scheduling.tsx"
+      ],
+      "id": "86185a0b605f88f91bec0a71389ba63e2e1d4fa1",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.278Z",
+      "updated_at": "2026-09-30T20:29:56.278Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 64
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "71b9b39d96f824850a4c3c6dcd8a0f710e532dcb",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.285Z",
+      "updated_at": "2026-09-30T20:29:56.285Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 71
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8753c33cce88620f3b618c94c6280aa14fca5eb3",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.285Z",
+      "updated_at": "2026-09-30T20:29:56.285Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 125
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "af5a7c83a36890f2b135a9c0010c159d315e95c2",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.285Z",
+      "updated_at": "2026-09-30T20:29:56.285Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 127
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ca49485a814d07af5b20af2d8527d59d454207e0",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.285Z",
+      "updated_at": "2026-09-30T20:29:56.285Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 129
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e115151023c3f4d6608cef2c3e9b3f0d0b375b7a",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.285Z",
+      "updated_at": "2026-09-30T20:29:56.285Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 347
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e3641e86b076e3c88efc5d5541c457d1bf0fdedd",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 349
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d1d4971d8dc10feafba180c2efb7a27a78939a74",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 350
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "56caae1c8daba46751c07927d53d84aa03f26ddb",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 356
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "31876219edce61a4c71cee2205e38f610b6a54fc",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 394
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "99e20b9d77dd599fc515e00b79290e533516738c",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 449
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1d8a57daae3de1ab035e18143da89b3763f52896",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 468
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "96cda4c3e3d3ef811c933740c7015f900bfda551",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 470
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "126280bce3100938a4500e6cee289bfb4bcf39c5",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 471
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "705ac2a5dd42880453bc5c92397fb90b521f95e3",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 525
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "79866d3fc681803b86d089d8360c3354e8423985",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.286Z",
+      "updated_at": "2026-09-30T20:29:56.286Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 527
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "60180259b4e136b7d7961b1fd439ecdc815aa354",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 528
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5c755ff604737c637e0f5cbb8ec7e96fa58bdcfe",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 620
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0ea6229876799b2b78dc2f0005230f5123da6d68",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 623
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e396c43d3a0882f6dec4cad0aadc3882f3abc180",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 643
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5d5c2c58d8693ceeae6c15d165701bdeba407bfb",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 644
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "7de897712206d95da743e52119c43852ad3051d1",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 673
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "bee201823bbd000a9294f8710be5aa8691a22155",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 674
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "97a786944aced899eb2845ecc5a2d85cab04a639",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.287Z",
+      "updated_at": "2026-09-30T20:29:56.287Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 758
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6a1e9dd044278ee76e3429639df9437676f57482",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 759
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "092f28eca6ba0d126cb029092317aae4c1c47956",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 762
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2db2c6ac47582491decbb20d42482e096200afc7",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 781
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "10ffa288dd76a41af9c1ed4a4cb32cef24a26317",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 835
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0777ddf9f44c80bb2798d809ba1be4aa28dcc528",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 837
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "41670c22e4b29c8acc1ec206e2f860c5c2fbf6ba",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 838
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "68bc4e6b66172ff568ba6c74e83f7cb090b838ae",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 945
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4eacecea8b04b4c4153c80e73b42dba16a13f431",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.288Z",
+      "updated_at": "2026-09-30T20:29:56.288Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 967
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b76ff8c011fa980c36973239313d21b6f43416d0",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 969
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2d844cb536a688c74526ae46b4b31cf1a8428ebd",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1140
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "75e68d2e3fdbd927b9cab53272f9733b1308b064",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1141
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d9f9eda2f20ff3fed082ac8fc487bbaadd36be7d",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1145
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e2d7bf23f6eafad46ed68fc4b2302ce5bf02ade7",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1196
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d28cb26425f7bc1d17eab56087455648f7ea0a8d",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1200
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b5ab83a8c76e88a67308be3c25186465514e56c5",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1352
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "672f37e60ace943ee4fedc4e34d90c90bd4961a0",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1354
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "09e7bbd7705a4347664062362a665135bfad1b70",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.289Z",
+      "updated_at": "2026-09-30T20:29:56.289Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1356
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "8af05b38aace84c53fc49ac58e143f0412797264",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1404
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c0e2104cbf3c1a14c738b24776457eb020a50a55",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1408
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "64f0c41d6bc6052c50892e60b63b0b4825da16f9",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1455
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3914f7fa25de8e7d15c9f2e33776016739267969",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1457
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "70c80b256f26b2d66bc788d0447a16f47de57f39",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1459
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ae8be56a8810cd0f11416b835b685919a452d09d",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1463
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "2b5143bc4ac0de04e4a6019397813204cf7ca43b",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1678
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "77c6ccca2f0433165bf418a03a45164685263764",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1692
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0ab1573a0bf20d10b968bf454b6be26c344cf728",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1742
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3059c4be286f871a36eb195f18abfa17b33072b7",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1773
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1bddd46dc17e4d02ee8aaf0f96e04c9ccb4d069d",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.290Z",
+      "updated_at": "2026-09-30T20:29:56.290Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1802
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "50c235ddb8d9a2df2e26b312e0028d324c1ea209",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1803
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "fd59ae10e8ff022ee89f2cb952787663bcd14af5",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1810
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "f022ace14fd963834c30f51f40d7317b2829b830",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1984
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "62d19bcaa5e42d170939fa9cad38c1db578f1d3f",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 1989
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0250956b10b14205e3aa691ea08235ac22540f44",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2027
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "442df7009d3fcd1615d1d6e47da532fa1a21a4d9",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2031
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "f467055e6af0b9e06c38d8fd9e46f7c8b8d66b7e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2101
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "339e932dcc965af3b2415ff18e573f1ebcc94d95",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2103
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "d71a4ff1688fbe9d467e28b0b4a308eaedf159e5",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2107
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "db5804a90bdfb60b4185379568b7a90665e38d2b",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.291Z",
+      "updated_at": "2026-09-30T20:29:56.291Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2184
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "0f193a1a2370e63d18b1369914e24f3af05125bc",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.292Z",
+      "updated_at": "2026-09-30T20:29:56.292Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2186
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6a954c92d373eb59fbc29d91c8e768ad13b1095f",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.292Z",
+      "updated_at": "2026-09-30T20:29:56.292Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2189
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "17ccfbf515533ac9776b92f14e7599a083181a24",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.292Z",
+      "updated_at": "2026-09-30T20:29:56.292Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2229
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1af8ef87fe8bd7feab0836c97e15bae0d9875419",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.292Z",
+      "updated_at": "2026-09-30T20:29:56.292Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2322
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "7e6f29992d751c5766363b4af32ff5bdabd5c8da",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.292Z",
+      "updated_at": "2026-09-30T20:29:56.292Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2337
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "b2be6f8e7ae68993b52e45df3b4a4d671d643639",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2338
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "51988a76ded84ef1af39c2760f8c642f34e54afb",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2358
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3b79ec2c7d34903813a3d0293d647314ab55245a",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2391
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "326cc7b5ee042d2fdfebb97bf4da06613d0bd3af",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2395
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "aa2785668ad949cbba90638f93b580062508286b",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2447
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "beb05cba4086ef8d24f8d3380ac56860f2d4e7f9",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2479
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "600459c3a7b5ee5dd4e3f2ccbd61a274306ef6a2",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2480
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "de4e9d966dcc1033bf73369d879dfcd90b101683",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2507
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5359d359afcb60619c5fc48608945995b22635fd",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.293Z",
+      "updated_at": "2026-09-30T20:29:56.293Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2552
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "6d26d7b367980f1ad0544dc557e53681abefcdae",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.294Z",
+      "updated_at": "2026-09-30T20:29:56.294Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2570
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "5ad38e8f92bf0ca7454b8f86a418d68eba33d0db",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.294Z",
+      "updated_at": "2026-09-30T20:29:56.294Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2572
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c2a8d5eceb4085e80107a1ca1d2c6f66be8c7745",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.294Z",
+      "updated_at": "2026-09-30T20:29:56.294Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2594
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4168cb225e9f8796049e44430d7b4fd04b6286bd",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.294Z",
+      "updated_at": "2026-09-30T20:29:56.294Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2603
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "dc3a03ab349be1429020de22ecb5697d8a6f92fa",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.294Z",
+      "updated_at": "2026-09-30T20:29:56.294Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2706
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "22fc40b5d46fbb7d72f0c63246faf9d515217a7a",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.294Z",
+      "updated_at": "2026-09-30T20:29:56.294Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2711
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "80937e6137fa4c25428dd32b02f263253563593e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.294Z",
+      "updated_at": "2026-09-30T20:29:56.294Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2719
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "3bc7d3cf2db530c9d67d3f12812a94f59761bbe8",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.295Z",
+      "updated_at": "2026-09-30T20:29:56.295Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2778
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c2184fed47fe8f657bb96cee090322220274af06",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.295Z",
+      "updated_at": "2026-09-30T20:29:56.295Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2909
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "4c1593a7dd99b9459e15ce14b4575d8fffe305b9",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.295Z",
+      "updated_at": "2026-09-30T20:29:56.295Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2926
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ad19ea1c24e2376fcb9407a0c29d72b02965992b",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.295Z",
+      "updated_at": "2026-09-30T20:29:56.295Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2946
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "32170a29f3afd5efd98990aced7a6f118580b57e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.295Z",
+      "updated_at": "2026-09-30T20:29:56.295Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 2983
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "1d819fc5482e4bdbf968743be3940f0f90c20c29",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.295Z",
+      "updated_at": "2026-09-30T20:29:56.295Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3013
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ec26845cc07b573c0f3b5989c8b395b7e0577921",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.295Z",
+      "updated_at": "2026-09-30T20:29:56.295Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3015
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "a259990e96bee1a96c75eb472815af47921d1e3e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3017
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c6feb314bb0cffc7bf879256f63a2024c464724c",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3130
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e0e353ca621377b0fec0a354adcf564293d0120e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3132
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "c3de415c901a1649cb25e682356dd6c725e512f0",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3223
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e83b24ea3667746c523d2e859bfe0bb90c229186",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3272
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "576b0611665ef20d46c6e17cca6687b9e15097c5",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3332
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "258cfba88ed5df58aa22ac862d57c79d6a77186f",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3421
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "ee5082fb74b3265d8f390c3c04e3857be7a12729",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.296Z",
+      "updated_at": "2026-09-30T20:29:56.296Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3424
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "753481bc470a823bdaaa1f4fc8ae0457c0bf9dda",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.297Z",
+      "updated_at": "2026-09-30T20:29:56.297Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3558
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "385f29747844878c406c2e522ed35f18073bf864",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.297Z",
+      "updated_at": "2026-09-30T20:29:56.297Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3560
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "700497a2c369028cb6f41c4e952c2fd682041c7e",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.297Z",
+      "updated_at": "2026-09-30T20:29:56.297Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/ai-execute-tool/index.ts",
+        "line": 3561
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/supabase/functions/ai-execute-tool/index.ts"
+      ],
+      "id": "e597ba213d685413d1674924b4b82f2822751bb4",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.297Z",
+      "updated_at": "2026-09-30T20:29:56.297Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useShiftTemplates.test.ts",
+        "line": 1309
+      },
+      "title": "@typescript-eslint/no-explicit-any in useShiftTemplates.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/dashboard-briefing/tests/unit/useShiftTemplates.test.ts"
+      ],
+      "id": "badea92a46150ba76152abe5a6be59dfa08c1a7c",
+      "status": "open",
+      "created_at": "2026-09-30T20:29:56.342Z",
+      "updated_at": "2026-09-30T20:29:56.342Z"
     }
   ]
 }

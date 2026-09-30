@@ -72,10 +72,12 @@ describe('MonthlyBreakEvenStrip', () => {
     expect(meter.getAttribute('aria-valuemax')).toBe('100');
     expect(meter.getAttribute('aria-label')).toMatch(/Ahead/);
 
-    expect(screen.getByText(/Monthly Break-Even · May 2026/)).toBeDefined();
+    expect(screen.getByText('May 2026')).toBeDefined();
     expect(screen.getByText(/\$42,000 of \$60,000 \(70%\)/)).toBeDefined();
     expect(screen.getByText(/\$1,200\/day to hit target/)).toBeDefined();
-    expect(screen.getByRole('status').textContent).toMatch(/Ahead/);
+    expect(screen.getByText('Ahead')).toBeDefined();
+    // The badge is static text. It must not be a live region that speaks on each render.
+    expect(screen.queryByRole('status')).toBeNull();
 
     const link = screen.getByRole('link', { name: /Open Budget page/ });
     expect(link.getAttribute('href')).toBe('/budget');
@@ -95,7 +97,8 @@ describe('MonthlyBreakEvenStrip', () => {
         isLoading={false}
       />,
     );
-    expect(screen.getByRole('status').textContent).toMatch(/Behind/);
+    expect(screen.getByText('Behind')).toBeDefined();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('omits "per day" sentence when dailyNeeded is 0 (target already hit)', () => {

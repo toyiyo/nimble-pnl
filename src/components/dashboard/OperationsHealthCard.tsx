@@ -79,8 +79,9 @@ function OperationsHealthCardBase({
             </div>
             {item.action && (
               <button
+                type="button"
                 onClick={() => navigate(item.action!.path)}
-                className="text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors shrink-0 ml-3"
+                className="inline-flex min-h-6 items-center text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors shrink-0 ml-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {item.action.label} →
               </button>

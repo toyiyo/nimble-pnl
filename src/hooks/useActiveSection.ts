@@ -25,6 +25,24 @@ export function useActiveSection(sectionIds: string[], ready = true): string | n
   const posthogRef = useRef(posthog);
   posthogRef.current = posthog;
   const viewedRef = useRef<Set<string>>(new Set());
+  const prevSectionIdsRef = useRef<string[] | null>(null);
+
+  if (process.env.NODE_ENV !== 'production') {
+    const prevSectionIds = prevSectionIdsRef.current;
+    if (
+      prevSectionIds !== null &&
+      prevSectionIds !== sectionIds &&
+      prevSectionIds.length === sectionIds.length &&
+      prevSectionIds.every((id, index) => id === sectionIds[index])
+    ) {
+      console.warn(
+        'useActiveSection: sectionIds changed reference but not content. ' +
+          'Pass a memoized array (for example from useMemo) to avoid ' +
+          'a needless re-observe on every render.',
+      );
+    }
+    prevSectionIdsRef.current = sectionIds;
+  }
 
   useEffect(() => {
     viewedRef.current = new Set();

@@ -1,12 +1,15 @@
-const wholeDollarFormatter = new Intl.NumberFormat('en-US', {
+const baseDollarFormatOptions: Intl.NumberFormatOptions = {
   style: 'currency',
   currency: 'USD',
+};
+
+const wholeDollarFormatter = new Intl.NumberFormat('en-US', {
+  ...baseDollarFormatOptions,
   maximumFractionDigits: 0,
 });
 
 const compactDollarFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
+  ...baseDollarFormatOptions,
   notation: 'compact',
   maximumFractionDigits: 1,
 });

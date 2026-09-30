@@ -296,13 +296,13 @@ const Index = () => {
   // exists (see the `dash-revenue-mix` block below). Drop its rail link and
   // chip when that is not the case, so a click never scrolls to a section
   // with no visible content.
-  const revenueMixSectionRenders = !revenueLoading && Boolean(revenueBreakdown?.has_categorization_data);
+  const showRevenueMixSection = !revenueLoading && Boolean(revenueBreakdown?.has_categorization_data);
   const dashboardSections = useMemo(
     () =>
-      revenueMixSectionRenders
+      showRevenueMixSection
         ? DASHBOARD_SECTIONS
         : DASHBOARD_SECTIONS.filter((section) => section.id !== 'dash-revenue-mix'),
-    [revenueMixSectionRenders]
+    [showRevenueMixSection]
   );
   const dashboardSectionIds = useMemo(
     () => dashboardSections.map((section) => section.id),
@@ -310,12 +310,12 @@ const Index = () => {
   );
   // The section elements are hidden behind DashboardSkeleton until this is
   // false, so the observer waits for it before it starts observing.
-  const dashboardSectionsReady = !(
+  const areDashboardSectionsReady = !(
     alertsLoading ||
     (todaysLoading && !todaysData) ||
     (periodLoading && !periodData)
   );
-  const activeSectionId = useActiveSection(dashboardSectionIds, dashboardSectionsReady);
+  const activeSectionId = useActiveSection(dashboardSectionIds, areDashboardSectionsReady);
 
   // Fetch liquidity metrics for cash runway
   const { data: liquidityMetrics } = useLiquidityMetrics(

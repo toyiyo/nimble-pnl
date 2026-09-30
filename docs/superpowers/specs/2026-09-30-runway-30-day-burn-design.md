@@ -1,6 +1,9 @@
 # Dashboard cash runway: use a 30-day burn — design
 
-Status: reviewed (frontend and Supabase design reviewers). Base: `main` at `5168b061`.
+Status: reviewed (frontend and Supabase design reviewers). Rebased on
+the merged PR #834. Base: `main` at `cbbd9a74`. The line numbers in
+sections 1 to 4.2 refer to `5168b061`, before #834. Find the same code by
+name in the current file.
 Source: item M1 in `docs/superpowers/specs/2026-09-30-dashboard-briefing-design.md`
 section 10 (on branch `feature/dashboard-briefing`, PR #834).
 
@@ -63,7 +66,8 @@ design):
 - `src/components/banking/LiquidityTab.tsx:18` uses the period and the bank
   account that the user selects.
 
-This PR does not change these two callers.
+This PR changes `BankSnapshotSection` to the shared window (section
+4.3.1). It does not change `LiquidityTab`.
 
 ## 2. Approved fix
 
@@ -80,7 +84,7 @@ pending outflows.
 ## 3. Approaches
 
 **A. Pass a 30-day range to the hook, and feed the tile and the alert from
-it (recommended).** This is a change in `Index.tsx` and in the tile. The
+it (recommended).** This is a change in `Index.tsx`, the Today card and the bank snapshot. The
 hook does not change. One number drives both places.
 
 B. Add a new hook or an RPC for the runway. This adds a second source for
@@ -110,14 +114,6 @@ export function getRunwayWindow(now: Date): { start: Date; end: Date } {
   };
 }
 
-// null = the value is not known yet (no data, or the query loads).
-// Infinity = the net burn is 0 or less.
-export function formatRunwayValue(daysOfCash: number | null): string;
-//   null      -> "—"
-//   Infinity  -> "Cash growing"
-//   > 365     -> "365+d"
-//   otherwise -> `${Math.floor(days)}d`
-
 export function buildCashRunwayAlert(daysOfCash: number | null): CashRunwayAlert | null;
 //   Returns null when daysOfCash is null, not finite, 0 or less, or 30 or more.
 //   Otherwise: id "cash-runway", type "cash",
@@ -146,8 +142,7 @@ restaurant gets a false "0 days" alert.
    Read `isLoading` from the hook too.
 3. Set `cashRunway = liquidityLoading || !liquidityMetrics ? null : liquidityMetrics.daysOfCash`.
    Today `|| 0` changes `Infinity` to `Infinity` but changes a load state to
-   `0`. The tile then shows a red "0d" while the query loads. Pass
-   `cashRunwayLoading={liquidityLoading}` to `OwnerSnapshotWidget` too.
+   `0`. The tile then shows "0 days" after an error.
 4. In `criticalAlerts`, replace lines 367-377 with
    `const runwayAlert = buildCashRunwayAlert(cashRunway); if (runwayAlert) alerts.push(runwayAlert);`.
    Put `cashRunway` in the memo dependencies. Delete `availableCash` from the
@@ -165,44 +160,42 @@ restaurant gets a false "0 days" alert.
 `availableCash` (`src/pages/Index.tsx:300-308`) does not change. The tile
 still shows the bank balance.
 
-### 4.3 `src/components/dashboard/OwnerSnapshotWidget.tsx`
+### 4.3 Runway text: `src/lib/formatRunway.ts` and `DashboardTodayCard`
 
-1. Change the prop to `cashRunway: number | null` (line 36). Add the prop
-   `cashRunwayLoading?: boolean`. `Index.tsx` passes `liquidityLoading`.
-2. Replace the local `formatRunway` (lines 75-78) with
-   `formatRunwayValue` from `src/lib/cashRunway.ts`.
-3. Change `getRunwayColor` (lines 69-73) to
-   `getRunwayColor(days: number | null)`.
-   - Put `if (days === null) return "text-muted-foreground";` on the first
-     line. Warning: `null < 30` is `true` in JS. Without this guard first,
-     `null` gives the red color.
-   - `Infinity` gives the healthy color, as today. `Infinity < 60` is
-     `false`, so no special case is necessary.
-   - The other thresholds do not change.
-4. The value line (line 171):
-   - While `cashRunwayLoading` is true, show `<Skeleton className="h-6 w-12 mt-1" />`.
-     This follows the Break-Even block in the same widget (lines 198-202).
-   - Otherwise show `formatRunwayValue(cashRunway)`. The helper adds the
-     `d` suffix, so the JSX does not.
-   - `null` after the load (an error, or no restaurant) shows "—" in the
-     muted color. Give the `<p>` the `aria-label` "Runway not available"
-     for this case only.
-5. Change the tooltip text (line 166) to
-   "Days of cash at the average net burn of the last 30 days. Target: 60+ days".
+PR #834 is merged. It deleted `OwnerSnapshotWidget.tsx`. The runway now
+shows in `src/components/dashboard/DashboardTodayCard.tsx` (the "Runway"
+`KpiValue`) with `formatRunwayDays` from `src/lib/formatRunway.ts`. The
+card already has a skeleton (`runwayLoading`) and a "—" state
+(`isError`). The card uses one neutral color and no tooltip, as the #834
+design decided. This PR keeps that.
 
-"Cash growing" has 12 characters. A `grid-cols-2` cell at 375 px has
-approximately 140 px of content width. At `text-[20px] font-semibold` the
-text can wrap. Thus:
+1. Change `formatRunwayDays(days: number)` so `Infinity` returns
+   "Cash growing". Values above 365 keep "365+ days". `formatRunway` does
+   not change.
+2. Change the card prop to `cashRunway: number | null`.
+3. Pass `isError={cashRunway === null}` to the runway `KpiValue`. After the
+   load, `null` (an error, or no restaurant) shows "—", not "0 days".
+4. `Index.tsx` passes `runwayLoading={liquidityLoading}`, as today.
 
-- When `cashRunway === Infinity`, use `text-[17px]` for the value. Use
-  `text-[20px]` for all other values, as today.
-- Add `whitespace-nowrap` to the value `<p>`.
-- QA checks the net-positive case at 375 px and at 1024 px (section 8).
+"Cash growing" has 12 characters. The KPI value is `text-[17px]`. QA
+checks the cell at 375 px and at 1024 px.
+
+### 4.3.1 `src/components/BankSnapshotSection.tsx`
+
+The dashboard also shows `BankSnapshotSection` (`src/pages/Index.tsx`, the
+Banking section). It calls the hook with `subDays(endOfDay(today), 30)` to
+`endOfDay(today)`. That is a 31-day window with a different query key.
+Without a change, the dashboard shows two different runway values.
+
+Change it to `getRunwayWindow(new Date())`, memoized by the day. The two
+callers then have the same query key. React Query runs one fetch, and the
+two places show the same number. The "At current pace" line does not
+change.
 
 ### 4.4 What does not change
 
 - `useLiquidityMetrics` does not change. Its tests do not change.
-- `LiquidityTab` and `BankSnapshotSection` do not change.
+- `LiquidityTab` does not change.
 - No SQL, RPC, RLS or migration change.
 
 ## 5. Effect on M2, M3 and M4
@@ -250,20 +243,10 @@ the reviewer can see it.
    change to local-day edges must change the hook and all its callers, so
    it is a separate follow-up.
 
-## 7. Merge with PR #834
+## 7. PR #834
 
-PR #834 deletes `OwnerSnapshotWidget.tsx`. It moves the runway text to
-`DashboardTodayCard.tsx` and `src/lib/formatRunway.ts`
-(`formatRunwayDays(Infinity)` returns "365+ days").
-
-Merge this PR first. It is small. Then rebase #834 on `main` and do these
-steps:
-
-- Use `cashRunway: number | null` and `formatRunwayValue` in
-  `DashboardTodayCard`, or change `formatRunwayDays` so `Infinity` gives
-  "Cash growing".
-- Keep `buildCashRunwayAlert` for the attention list.
-- Keep the `runwayLoading` skeleton from #834.
+PR #834 is merged on `main`. This branch is rebased on it. Section 4.3
+targets the merged code. The `runwayLoading` skeleton from #834 stays.
 
 ## 8. Tests
 
@@ -272,7 +255,6 @@ Unit (`tests/unit/cashRunway.test.ts`):
 - `getRunwayWindow`: the start is 29 days before `now` at 00:00. The end is
   `now` at 23:59:59.999. `differenceInDays(end, start) + 1` is 30. Check a
   month edge and a DST edge (2026-03-08, 2026-11-01).
-- `formatRunwayValue`: `null`, `Infinity`, 0, 0.9, 29.9, 365, 366.
 - `buildCashRunwayAlert`: `null`, `Infinity`, `NaN`, 0, -5, 13.9
   (critical), 14 (warning), 29.9 (warning), 30 (null).
 
@@ -292,14 +274,16 @@ Source test (`tests/unit/indexCashRunway.test.ts`), with the pattern from
 - `Index.tsx` sets `cashRunway` to `null` while `liquidityLoading` is true
   (a regex on `liquidityLoading` and `? null :`). This test fails if an
   edit adds `|| 0` again.
-- `Index.tsx` passes `cashRunwayLoading` to `OwnerSnapshotWidget`.
+- `BankSnapshotSection.tsx` calls `getRunwayWindow` and does not call
+  `subDays(today, 30)`.
 
-Component (`tests/unit/OwnerSnapshotWidget.runway.test.tsx`):
+`tests/unit/formatRunway.test.ts`: change the `Infinity` case to
+"Cash growing". Keep 400 → "365+ days".
 
-- `cashRunwayLoading` true shows a skeleton, not "0d".
-- `null` shows "—" with the muted color, not `text-destructive`.
-- `Infinity` shows "Cash growing" with `text-[17px]`.
-- 20 shows "20d" with `text-destructive`.
+`tests/unit/DashboardTodayCard.test.tsx`:
+
+- `cashRunway` `null` shows "—", not "0 days".
+- `cashRunway` `Infinity` shows "Cash growing".
 
 QA checklist on the preview:
 
@@ -307,7 +291,8 @@ QA checklist on the preview:
 - A net-positive restaurant shows "Cash growing" on one line at 375 px and
   at 1024 px. Most test restaurants burn cash, so QA must find or set up
   this case.
-- A slow network shows the skeleton, not a red "0d".
+- A slow network shows the skeleton, not "0 days".
+- The Today card and the Banking section show the same runway.
 
 E2E: justified exception. A useful E2E needs connected banks, balances and
 30 days of posted rows in the local database. No seed helper for that

@@ -13,7 +13,6 @@ interface MonthlyBreakEvenStripProps {
 interface StripStatusConfig {
   Icon: typeof CircleCheck;
   iconClass: string;
-  bgClass: string;
   badgeClass: string;
   fillClass: string;
   label: string;
@@ -27,7 +26,6 @@ function getStripStatusConfig(
       return {
         Icon: CircleCheck,
         iconClass: 'text-green-600 dark:text-green-400',
-        bgClass: 'border-green-200 dark:border-green-900',
         badgeClass:
           'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300',
         fillClass: 'bg-green-500 dark:bg-green-600',
@@ -37,7 +35,6 @@ function getStripStatusConfig(
       return {
         Icon: CircleMinus,
         iconClass: 'text-yellow-600 dark:text-yellow-400',
-        bgClass: 'border-yellow-200 dark:border-yellow-900',
         badgeClass:
           'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300',
         fillClass: 'bg-yellow-500 dark:bg-yellow-600',
@@ -47,7 +44,6 @@ function getStripStatusConfig(
       return {
         Icon: CircleX,
         iconClass: 'text-red-600 dark:text-red-400',
-        bgClass: 'border-red-200 dark:border-red-900',
         badgeClass: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
         fillClass: 'bg-red-500 dark:bg-red-600',
         label: 'Behind',
@@ -91,18 +87,18 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
     );
   }
 
-  const { Icon, iconClass, bgClass, badgeClass, fillClass, label } = getStripStatusConfig(progress.status);
+  const { Icon, iconClass, badgeClass, fillClass, label } = getStripStatusConfig(progress.status);
   const progressDisplay = Math.max(0, Math.min(100, progress.progressPercent));
   const paceDisplay = Math.max(0, Math.min(100, progress.expectedPercent));
   const ariaLabel = `Monthly break-even progress: ${Math.round(progress.progressPercent)}% — ${label}. Expected by today: ${Math.round(progress.expectedPercent)}%.`;
 
   return (
-    <div className={cn('rounded-xl border bg-background p-4 space-y-3', bgClass)}>
+    <div className="rounded-xl border border-border/40 bg-background p-4 space-y-3">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 min-w-0">
           <Icon className={cn('h-4 w-4 shrink-0', iconClass)} />
           <p className="text-[14px] font-medium text-foreground truncate">
-            Monthly Break-Even · {progress.monthLabel}
+            {progress.monthLabel}
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">

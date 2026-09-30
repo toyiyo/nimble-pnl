@@ -17,7 +17,7 @@ Rules for every task:
    `buildBreakEvenHeadline({ todayStatus, todayDelta, dailyBreakEven, todaySales })`.
    It returns `{ tone, sentence, progressPercent }`. Commit.
 
-2. **Day grid helper.** Write `tests/unit/breakEvenDayGrid.test.ts` (fails).
+2. **Day grid helper.** (Deleted after the preview review. See design 4.7.) Write `tests/unit/breakEvenDayGrid.test.ts` (fails).
    Cover the order of days, `isPartial` before `status`, the `aria-label`
    text and an empty history. Add `src/lib/breakEvenDayGrid.ts` with
    `buildDayGridCells(history)`. Commit.
@@ -50,7 +50,7 @@ Rules for every task:
    `formatRunway` output from `OwnerSnapshotWidget.tsx`. Move `formatRunway`
    to `src/lib/formatRunway.ts` with a unit test. Commit.
 
-7. **Day grid component.** Write `tests/unit/BreakEvenDayGrid.test.tsx`
+7. **Day grid component.** (Deleted after the preview review. See design 4.7.) Write `tests/unit/BreakEvenDayGrid.test.tsx`
    (fails). Cover one focusable `<button>` per day, the `aria-label`, the
    partial-day "so far" text, and the empty state text. Add
    `src/components/dashboard/BreakEvenDayGrid.tsx`. Commit.
@@ -83,7 +83,7 @@ Rules for every task:
    break. Commit.
 
 10. **Skeleton.** Change `src/components/DashboardSkeleton.tsx` to match the
-    new top (one card, two half cards, a grid row). Commit.
+    new top (one card and two half cards). Commit.
 
 11. **Delete old components.** Run `grep -rn "OwnerSnapshotWidget\|CriticalAlertsBar" src tests`.
     If only the old files match, delete
@@ -102,8 +102,15 @@ Rules for every task:
 
 14. Push the branch.
 
+15. **Preview review fixes.** Delete the day grid. Make the rail sticky
+    (`overflow-x-clip` on the app shell, the rail in a full-height `aside`).
+    Make the active rail link follow the scroll position. Show skeletons,
+    not fake values, while cash, runway and alerts load. Do not show the
+    Today headline in red while the day is open. Use one money format.
+    Delete the duplicate section titles. Restyle Smart Alerts and the
+    monthly table to the type scale and semantic tokens.
+
 ## Not in this plan
 
 - The runway data fix (M1). It is a separate PR from `main`.
 - M2, M3 and M4. The user validates each one first.
-- A full-month day grid. It needs a data change (design section 4.7).

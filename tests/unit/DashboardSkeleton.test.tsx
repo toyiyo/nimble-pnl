@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import React from 'react';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 
@@ -15,8 +15,8 @@ describe('DashboardSkeleton', () => {
     expect(screen.getByTestId('skeleton-half-card-month')).toBeInTheDocument();
   });
 
-  it('shows a day grid row placeholder', () => {
+  it('does not show a day grid row placeholder', () => {
     render(<DashboardSkeleton />);
-    expect(screen.getByTestId('skeleton-day-grid')).toBeInTheDocument();
+    expect(screen.queryByTestId('skeleton-day-grid')).not.toBeInTheDocument();
   });
 });

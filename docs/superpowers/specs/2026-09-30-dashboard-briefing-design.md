@@ -122,8 +122,6 @@ Desktop (`lg` and up) uses two columns:
 ├───────────────────────┬──────────────────────┤  (sticky)  │
 │ Needs your attention  │ Month progress       │            │
 ├───────────────────────┴──────────────────────┤            │
-│ Last 14 days grid                            │            │
-├──────────────────────────────────────────────┤            │
 │ Sales vs break-even chart (kept)             │            │
 │ Labor cost, Insights, Period selector (kept) │            │
 │ Performance Overview … Quick Actions (kept)  │            │
@@ -220,7 +218,11 @@ Each value has a label in `text-[12px] uppercase tracking-wider` and a value in
 `text-[17px] font-semibold`. The runway tile keeps its current value. Section
 10 describes the fix that comes later.
 
-### 4.7 Last 14 days grid (new `BreakEvenDayGrid`)
+### 4.7 Last 14 days grid (deleted after the preview review)
+
+> **Change after the preview review:** the grid is deleted. The fills made
+> the day numbers hard to read, and the Sales vs break-even chart below
+> shows the same 14 days. The text below is the first design, for history.
 
 - The concept shows a full month grid. The hook fetches 14 days of history
   (`src/pages/Index.tsx:272-275`). A full month grid needs a change to that
@@ -291,13 +293,12 @@ block for the rail.
   exist.
 - Break-even error: `breakEvenError` (`src/pages/Index.tsx:272`) shows a short
   line "Break-even is not available right now." The four values still show.
-- No history: the day grid shows "No sales history for the last 14 days yet."
 - No restaurant: the current state at `src/pages/Index.tsx:613-640` stays.
 
 ## 6. Accessibility
 
 - One `h1`. New blocks use `h2`: "Today", "Needs your attention",
-  "Month progress" and "Last 14 days". The KPI strip is part of the Today
+  and "Month progress". The KPI strip is part of the Today
   card and has no heading. Its values use a `<dl>`. The rail links are not
   headings.
 - All icon-only controls have `aria-label`.
@@ -323,9 +324,8 @@ restaurant names.
 
 | Item | Test |
 |------|------|
-| `buildDayGridCells` | `tests/unit/breakEvenDayGrid.test.ts` |
 | Headline sentence builder `buildBreakEvenHeadline` | `tests/unit/breakEvenHeadline.test.ts` |
-| `useActiveSection` | `tests/unit/useActiveSection.test.ts` |
+| `useActiveSection` (the last section above the activation line is active) | `tests/unit/useActiveSection.test.ts` |
 | `DashboardAttentionList` empty and filled | `tests/unit/DashboardAttentionList.test.tsx` |
 | Current E2E specs | `dashboard-basis-labels.spec.ts` and `labor-cost-alignment.spec.ts` pass without edit |
 | Current unit tests | `MonthlyBreakEvenStrip.test.tsx`, `salesVsBreakEvenChart*.test`, `dashboardMetricCard.caption.test.tsx`, `indexLaborCostSection.test.ts` pass |

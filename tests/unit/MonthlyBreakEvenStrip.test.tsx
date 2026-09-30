@@ -72,7 +72,7 @@ describe('MonthlyBreakEvenStrip', () => {
     expect(meter.getAttribute('aria-valuemax')).toBe('100');
     expect(meter.getAttribute('aria-label')).toMatch(/Ahead/);
 
-    expect(screen.getByText(/Monthly Break-Even · May 2026/)).toBeDefined();
+    expect(screen.getByText('May 2026')).toBeDefined();
     expect(screen.getByText(/\$42,000 of \$60,000 \(70%\)/)).toBeDefined();
     expect(screen.getByText(/\$1,200\/day to hit target/)).toBeDefined();
     expect(screen.getByRole('status').textContent).toMatch(/Ahead/);

@@ -18,7 +18,7 @@ export function DashboardSectionRail({
   activeSectionId,
   onNavigate,
   variant = "default",
-}: DashboardSectionRailProps) {
+}: Readonly<DashboardSectionRailProps>) {
   const isCompact = variant === "compact";
   const navLabel = isCompact ? "Dashboard sections (compact)" : "Dashboard sections";
 

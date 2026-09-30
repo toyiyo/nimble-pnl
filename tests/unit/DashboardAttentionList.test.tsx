@@ -36,9 +36,14 @@ describe('DashboardAttentionList', () => {
     expect(screen.getByText('Nothing needs your attention.')).toBeInTheDocument();
   });
 
-  it('shows a count badge with the number of alerts', () => {
-    renderList([alert, { ...alert, id: 'a2' }]);
-    expect(screen.getByText('2')).toBeInTheDocument();
+  it('shows a skeleton and no empty state while the alerts load', () => {
+    render(
+      <MemoryRouter>
+        <DashboardAttentionList alerts={[]} isLoading />
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId('attention-skeleton')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing needs your attention.')).not.toBeInTheDocument();
   });
 
   it('renders one list item per alert', () => {

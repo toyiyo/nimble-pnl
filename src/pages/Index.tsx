@@ -34,7 +34,6 @@ import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { DashboardTodayCard } from '@/components/dashboard/DashboardTodayCard';
 import { DashboardAttentionList } from '@/components/dashboard/DashboardAttentionList';
-import { BreakEvenDayGrid } from '@/components/dashboard/BreakEvenDayGrid';
 import { DashboardSectionRail } from '@/components/dashboard/DashboardSectionRail';
 import { DASHBOARD_SECTIONS } from '@/components/dashboard/dashboardSections';
 import { useActiveSection } from '@/hooks/useActiveSection';
@@ -92,7 +91,7 @@ const Index = () => {
   const {
     transactions: allTransactions = [],
   } = useBankTransactions(undefined, { autoLoadAll: true, pageSize: 200, sortBy: 'date', sortDirection: 'desc' }); // Fetch transactions incrementally for spending calculation
-  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const { unmappedItems, loading: unifiedSalesLoading } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { totalPending: totalPendingOutflows } = usePendingOutflowsSummary();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -318,7 +317,7 @@ const Index = () => {
   const activeSectionId = useActiveSection(dashboardSectionIds, areDashboardSectionsReady);
 
   // Fetch liquidity metrics for cash runway
-  const { data: liquidityMetrics } = useLiquidityMetrics(
+  const { data: liquidityMetrics, isLoading: liquidityLoading } = useLiquidityMetrics(
     todayStart,
     todayEnd,
     'all'
@@ -370,6 +369,9 @@ const Index = () => {
   }, [todaysData]);
 
   const cashRunway = liquidityMetrics?.daysOfCash || 0;
+  // The attention list reads bank balances and unmapped POS items. Show a
+  // skeleton until both load, so the page never shows a false "0 alerts".
+  const attentionLoading = banksLoading || unifiedSalesLoading;
 
   // Calculate daily average spending from actual transaction history + pending outflows
   const dailyAvgSpending = useMemo(() => {
@@ -651,7 +653,7 @@ const Index = () => {
         {monthlyWarnings.length > 0 && (
           <DataCompletenessWarning message={monthlyWarnings.join(' ')} />
         )}
-        <MonthlyBreakdownTable monthlyData={monthlyData} />
+        <MonthlyBreakdownTable monthlyData={monthlyData} showTitle={false} />
       </div>
     );
   }
@@ -785,7 +787,7 @@ const Index = () => {
           {alertsLoading || (todaysLoading && !todaysData) || (periodLoading && !periodData) ? (
             <DashboardSkeleton />
           ) : (
-            <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8 lg:items-start">
+            <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8">
             <div className="space-y-8 min-w-0">
               {/* Today card */}
               <section id="dash-today" className="scroll-mt-24 space-y-3">
@@ -795,6 +797,8 @@ const Index = () => {
                   profitMargin={todayProfitMargin}
                   availableCash={availableCash}
                   cashRunway={cashRunway}
+                  cashLoading={banksLoading}
+                  runwayLoading={liquidityLoading}
                   todayFoodCost={todaysData?.foodCost || 0}
                   todayLaborCost={todaysData?.laborCost || 0}
                   monthToDateSales={breakEvenData?.monthlyProgress?.mtdSales ?? 0}
@@ -815,8 +819,15 @@ const Index = () => {
               {/* Needs your attention + Month progress */}
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <section id="dash-attention" className="scroll-mt-24 space-y-3">
-                  <h2 className="text-[17px] font-semibold text-foreground">Needs your attention</h2>
-                  <DashboardAttentionList alerts={criticalAlerts} />
+                  <h2 className="flex items-center gap-2 text-[17px] font-semibold text-foreground">
+                    Needs your attention
+                    {!attentionLoading && (
+                      <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                        {criticalAlerts.length}
+                      </span>
+                    )}
+                  </h2>
+                  <DashboardAttentionList alerts={criticalAlerts} isLoading={attentionLoading} />
                 </section>
                 <div className="space-y-3">
                   <h2 className="text-[17px] font-semibold text-foreground">Month progress</h2>
@@ -825,16 +836,6 @@ const Index = () => {
                     isLoading={breakEvenLoading}
                   />
                 </div>
-              </div>
-
-              {/* Last 14 days */}
-              <div className="space-y-3">
-                <h2 className="text-[17px] font-semibold text-foreground">Last 14 days</h2>
-                <BreakEvenDayGrid
-                  history={breakEvenData?.history ?? []}
-                  isLoading={breakEvenLoading}
-                  error={Boolean(breakEvenError)}
-                />
               </div>
 
               {/* Sales vs Break-Even Chart */}
@@ -906,7 +907,7 @@ const Index = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
                     title="Your Sales (after discounts/refunds)"
-                    value={periodData ? `$${periodData.net_revenue.toFixed(0)}` : '--'}
+                    value={periodData ? currencyFormatter.format(periodData.net_revenue) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.net_revenue, previousPeriodData.net_revenue),
                       label: 'vs previous period'
@@ -917,7 +918,7 @@ const Index = () => {
                   />
                   <DashboardMetricCard
                     title="Inventory Purchases"
-                    value={inventoryPurchases ? `$${inventoryPurchases.totalPurchases.toFixed(0)}` : '--'}
+                    value={inventoryPurchases ? currencyFormatter.format(inventoryPurchases.totalPurchases) : '--'}
                     icon={Package}
                     variant="default"
                     subtitle={(() => {
@@ -932,7 +933,7 @@ const Index = () => {
                   />
                   <DashboardMetricCard
                     title="COGS"
-                    value={periodData ? `$${periodData.food_cost.toFixed(0)}` : '--'}
+                    value={periodData ? currencyFormatter.format(periodData.food_cost) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.food_cost_percentage, previousPeriodData.food_cost_percentage),
                       label: 'vs previous period'
@@ -946,7 +947,7 @@ const Index = () => {
                     title={periodData
                       ? `Labor Cost · ${periodData.labor_basis === 'accrued' ? 'Accrued' : 'Paid'}`
                       : 'Labor Cost (Wages + Payroll)'}
-                    value={periodData ? `$${periodData.labor_cost.toFixed(0)}` : '--'}
+                    value={periodData ? currencyFormatter.format(periodData.labor_cost) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.labor_cost_percentage, previousPeriodData.labor_cost_percentage),
                       label: 'vs previous period'
@@ -967,7 +968,7 @@ const Index = () => {
                     return (
                       <DashboardMetricCard
                         title="Gross Profit"
-                        value={periodData ? `$${profit.toFixed(0)}` : '--'}
+                        value={periodData ? currencyFormatter.format(profit) : '--'}
                         trend={periodData && previousPeriodData ? {
                           value: getTrendValue(profit, previousProfit),
                           label: 'vs previous period'
@@ -991,7 +992,7 @@ const Index = () => {
                     <div className="px-4 py-3 border-b border-border/40">
                       <p className="text-[14px] text-foreground">
                         <span className="font-medium">
-                          ${(periodData.net_revenue - periodData.food_cost - periodData.labor_cost).toFixed(0)}
+                          {currencyFormatter.format(periodData.net_revenue - periodData.food_cost - periodData.labor_cost)}
                         </span>{' '}
                         <span className="text-muted-foreground">earned after food and labor costs</span>
                         {periodData.net_revenue > 0 && (
@@ -1395,11 +1396,14 @@ const Index = () => {
               </Collapsible>
               </section>
             </div>
-            <DashboardSectionRail
-              sections={dashboardSections}
-              activeSectionId={activeSectionId}
-              onNavigate={handleSectionNavigate}
-            />
+            {/* The aside fills the grid row height, so the sticky nav inside it can follow the page. */}
+            <aside className="hidden lg:block">
+              <DashboardSectionRail
+                sections={dashboardSections}
+                activeSectionId={activeSectionId}
+                onNavigate={handleSectionNavigate}
+              />
+            </aside>
             </div>
           )}
         </div>

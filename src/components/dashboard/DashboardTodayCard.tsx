@@ -4,7 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { formatRunway } from "@/lib/formatRunway";
 import { buildBreakEvenHeadline } from "@/lib/breakEvenHeadline";
-import { formatWholeDollarAmount, formatCompactDollarAmount } from "@/lib/formatWholeDollarAmount";
+import type { BreakEvenHeadline, BreakEvenHeadlineTone } from "@/lib/breakEvenHeadline";
+import { formatWholeDollarAmount } from "@/lib/formatWholeDollarAmount";
 
 interface BreakEvenStatusData {
   dailyBreakEven: number;
@@ -27,6 +28,87 @@ interface DashboardTodayCardProps {
   breakEvenData?: BreakEvenStatusData | null;
   breakEvenLoading?: boolean;
   breakEvenError?: boolean;
+  cashLoading?: boolean;
+  runwayLoading?: boolean;
+}
+
+// The day is still open, so a shortfall is not final. Show it in the
+// normal text color, not in red.
+const HEADLINE_COLOR_BY_TONE: Record<BreakEvenHeadlineTone, string> = {
+  positive: 'text-foreground',
+  negative: 'text-foreground',
+  neutral: 'text-muted-foreground',
+};
+
+const KPI_LABEL_CLASS = "text-[12px] font-medium text-muted-foreground uppercase tracking-wider";
+const KPI_VALUE_CLASS = "text-[17px] font-semibold text-foreground mt-1";
+
+interface KpiValueProps {
+  readonly isLoading: boolean;
+  readonly isError?: boolean;
+  readonly children: React.ReactNode;
+}
+
+function KpiValue({ isLoading, isError = false, children }: KpiValueProps) {
+  if (isLoading) {
+    return (
+      <dd>
+        <Skeleton className="h-[17px] w-16 mt-1" />
+      </dd>
+    );
+  }
+  if (isError) {
+    return <dd className="text-[17px] font-semibold text-muted-foreground mt-1">—</dd>;
+  }
+  return <dd className={KPI_VALUE_CLASS}>{children}</dd>;
+}
+
+interface HeadlineProps {
+  readonly headline: BreakEvenHeadline;
+  readonly isLoading: boolean;
+  readonly isError: boolean;
+}
+
+function Headline({ headline, isLoading, isError }: HeadlineProps) {
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        <Skeleton className="h-6 w-2/3" />
+        <Skeleton className="h-2 w-full" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <p className="text-[14px] text-muted-foreground">
+        Break-even is not available right now.
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className={`text-[22px] font-semibold ${HEADLINE_COLOR_BY_TONE[headline.tone]}`}>
+        {headline.sentence}
+        {headline.tone === 'neutral' && !headline.hasTarget && (
+          <>
+            {' '}
+            <Link
+              to="/budget"
+              className="text-[14px] font-medium underline underline-offset-2"
+            >
+              Set operating costs
+            </Link>
+          </>
+        )}
+      </p>
+      <progress
+        value={headline.progressPercent}
+        max={100}
+        aria-label="Progress to today's break-even"
+        className="block h-2 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-foreground [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-foreground"
+      />
+    </>
+  );
 }
 
 export function DashboardTodayCard({
@@ -41,7 +123,9 @@ export function DashboardTodayCard({
   breakEvenData,
   breakEvenLoading = false,
   breakEvenError = false,
-}: DashboardTodayCardProps) {
+  cashLoading = false,
+  runwayLoading = false,
+}: Readonly<DashboardTodayCardProps>) {
   const headline = buildBreakEvenHeadline(
     breakEvenData
       ? {
@@ -53,56 +137,10 @@ export function DashboardTodayCard({
       : null
   );
 
-  const headlineColorByTone: Record<typeof headline.tone, string> = {
-    positive: 'text-foreground',
-    negative: 'text-destructive',
-    neutral: 'text-muted-foreground',
-  };
-  const headlineColor = headlineColorByTone[headline.tone];
-
   return (
     <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
       <div className="px-5 py-4 space-y-3">
-        {breakEvenLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-2 w-full" />
-          </div>
-        ) : breakEvenError ? (
-          <p className="text-[14px] text-muted-foreground">
-            Break-even is not available right now.
-          </p>
-        ) : (
-          <>
-            <p className={`text-[22px] font-semibold ${headlineColor}`}>
-              {headline.sentence}
-              {headline.tone === 'neutral' && !headline.hasTarget && (
-                <>
-                  {' '}
-                  <Link
-                    to="/budget"
-                    className="text-[14px] font-medium underline underline-offset-2"
-                  >
-                    Set operating costs
-                  </Link>
-                </>
-              )}
-            </p>
-            <div
-              role="progressbar"
-              aria-valuenow={headline.progressPercent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Progress to today's break-even"
-              className="h-2 w-full rounded-full bg-muted overflow-hidden"
-            >
-              <div
-                className="h-full rounded-full bg-foreground"
-                style={{ width: `${headline.progressPercent}%` }}
-              />
-            </div>
-          </>
-        )}
+        <Headline headline={headline} isLoading={breakEvenLoading} isError={breakEvenError} />
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1">
           <div>
@@ -150,42 +188,22 @@ export function DashboardTodayCard({
 
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border/40 border-t border-border/40">
         <div className="bg-background p-4">
-          <dt className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-            Cash in bank
-          </dt>
-          <dd className="text-[17px] font-semibold text-foreground mt-1">
-            {formatCompactDollarAmount(availableCash)}
-          </dd>
+          <dt className={KPI_LABEL_CLASS}>Cash in bank</dt>
+          <KpiValue isLoading={cashLoading}>{formatWholeDollarAmount(availableCash)}</KpiValue>
         </div>
         <div className="bg-background p-4">
-          <dt className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-            Runway
-          </dt>
-          <dd className="text-[17px] font-semibold text-foreground mt-1">
-            {formatRunway(cashRunway)}d
-          </dd>
+          <dt className={KPI_LABEL_CLASS}>Runway</dt>
+          <KpiValue isLoading={runwayLoading}>{formatRunway(cashRunway)}d</KpiValue>
         </div>
         <div className="bg-background p-4">
-          <dt className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-            Prime cost
-          </dt>
-          <dd className="text-[17px] font-semibold text-foreground mt-1">
-            {primeCostPercentage.toFixed(1)}%
-          </dd>
+          <dt className={KPI_LABEL_CLASS}>Prime cost</dt>
+          <KpiValue isLoading={false}>{primeCostPercentage.toFixed(1)}%</KpiValue>
         </div>
         <div className="bg-background p-4">
-          <dt className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-            Month to date
-          </dt>
-          {breakEvenLoading ? (
-            <Skeleton className="h-[17px] w-16 mt-1" />
-          ) : breakEvenError ? (
-            <dd className="text-[17px] font-semibold text-muted-foreground mt-1">—</dd>
-          ) : (
-            <dd className="text-[17px] font-semibold text-foreground mt-1">
-              {formatWholeDollarAmount(monthToDateSales)}
-            </dd>
-          )}
+          <dt className={KPI_LABEL_CLASS}>Month to date</dt>
+          <KpiValue isLoading={breakEvenLoading} isError={breakEvenError}>
+            {formatWholeDollarAmount(monthToDateSales)}
+          </KpiValue>
         </div>
       </dl>
     </div>

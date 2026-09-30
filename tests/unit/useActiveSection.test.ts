@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { useActiveSection } from '@/hooks/useActiveSection';
+import { ACTIVATION_LINE_PX, useActiveSection } from '@/hooks/useActiveSection';
 
 const mockCapture = vi.fn();
 
@@ -50,6 +50,21 @@ function mountSections(ids: string[]) {
   });
 }
 
+function setTop(id: string, top: number) {
+  const el = document.getElementById(id) as HTMLElement;
+  el.getBoundingClientRect = () => ({ top } as DOMRect);
+}
+
+// Queue animation frames so a test can run them on demand.
+let frameQueue: FrameRequestCallback[] = [];
+
+function scrollAndFlush() {
+  document.dispatchEvent(new Event('scroll'));
+  const frames = frameQueue;
+  frameQueue = [];
+  frames.forEach((frame) => frame(0));
+}
+
 function clearSections() {
   document.body.innerHTML = '';
 }
@@ -59,7 +74,17 @@ describe('useActiveSection', () => {
     mockCapture.mockClear();
     FakeIntersectionObserver.instances = [];
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+    frameQueue = [];
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+      frameQueue.push(frame);
+      return frameQueue.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
     mountSections(SECTION_IDS);
+    // The page is at the top: every section starts below the line.
+    setTop('dash-today', ACTIVATION_LINE_PX + 80);
+    setTop('dash-attention', ACTIVATION_LINE_PX + 800);
+    setTop('dash-cashflow', ACTIVATION_LINE_PX + 1600);
   });
 
   afterEach(() => {
@@ -73,14 +98,28 @@ describe('useActiveSection', () => {
     expect(result.current).toBe('dash-today');
   });
 
-  it('changes the active section when a new section intersects', () => {
+  it('makes the last section above the activation line active on scroll', () => {
+    const { result } = renderHook(() => useActiveSection(SECTION_IDS));
+
+    setTop('dash-today', -700);
+    setTop('dash-attention', ACTIVATION_LINE_PX - 10);
+    setTop('dash-cashflow', ACTIVATION_LINE_PX + 600);
+    act(() => {
+      scrollAndFlush();
+    });
+
+    expect(result.current).toBe('dash-attention');
+  });
+
+  it('keeps the first section active at the top even when a tall section fills the view', () => {
     const { result } = renderHook(() => useActiveSection(SECTION_IDS));
 
     act(() => {
-      intersect('dash-cashflow');
+      intersect('dash-cashflow', true, 0.9);
+      scrollAndFlush();
     });
 
-    expect(result.current).toBe('dash-cashflow');
+    expect(result.current).toBe('dash-today');
   });
 
   it('does not observe while ready is false, then observes once ready flips to true', () => {
@@ -104,8 +143,11 @@ describe('useActiveSection', () => {
     const observer = FakeIntersectionObserver.instances[0];
 
     unmount();
+    setTop('dash-cashflow', 0);
+    scrollAndFlush();
 
     expect(observer.disconnected).toBe(true);
+    expect(frameQueue).toHaveLength(0);
   });
 
   it('sends one dashboard_section_viewed capture per section per mount', () => {
@@ -163,6 +205,7 @@ describe('useActiveSection', () => {
     // observer.
     const nextIds = [...SECTION_IDS, 'dash-new'];
     mountSections(['dash-new']);
+    setTop('dash-new', ACTIVATION_LINE_PX + 2400);
     rerender({ ids: nextIds });
 
     act(() => {
@@ -173,42 +216,5 @@ describe('useActiveSection', () => {
     expect(
       mockCapture.mock.calls.filter((call) => call[1]?.section_id === 'dash-today')
     ).toHaveLength(1);
-  });
-
-  it('picks the section covering the most viewport height as active, not the highest intersectionRatio', () => {
-    const originalInnerHeight = window.innerHeight;
-    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
-
-    const { result } = renderHook(() => useActiveSection(SECTION_IDS));
-
-    act(() => {
-      const observer =
-        FakeIntersectionObserver.instances[FakeIntersectionObserver.instances.length - 1];
-      // A short section with a high ratio but little viewport coverage
-      // (for example a header just scrolling into view)...
-      const shortEl = document.getElementById('dash-attention') as Element;
-      // ...versus a section taller than the viewport, which can never
-      // reach a high intersectionRatio but fills most of the screen.
-      const tallEl = document.getElementById('dash-cashflow') as Element;
-
-      observer.callback([
-        {
-          target: shortEl,
-          isIntersecting: true,
-          intersectionRatio: 0.9,
-          intersectionRect: { height: 90 } as DOMRectReadOnly,
-        },
-        {
-          target: tallEl,
-          isIntersecting: true,
-          intersectionRatio: 0.3,
-          intersectionRect: { height: 700 } as DOMRectReadOnly,
-        },
-      ]);
-    });
-
-    expect(result.current).toBe('dash-cashflow');
-
-    Object.defineProperty(window, 'innerHeight', { value: originalInnerHeight, configurable: true });
   });
 });

@@ -53,8 +53,26 @@ describe('DashboardTodayCard', () => {
 
   it('shows a progressbar with the sales-to-break-even value', () => {
     render(<DashboardTodayCard {...baseProps} />);
-    const bar = screen.getByRole('progressbar');
-    expect(bar).toHaveAttribute('aria-valuenow', '100');
+    const bar = screen.getByRole('progressbar', { name: "Progress to today's break-even" });
+    expect(bar).toHaveAttribute('value', '100');
+    expect(bar).toHaveAttribute('max', '100');
+  });
+
+  it('does not show a below-break-even headline in red while the day is open', () => {
+    render(
+      <DashboardTodayCard
+        {...baseProps}
+        breakEvenData={{ ...baseProps.breakEvenData, todayStatus: 'below', todayDelta: -860 }}
+      />
+    );
+    const headline = screen.getByText('You need $860 more today to break even.');
+    expect(headline.className).not.toContain('text-destructive');
+  });
+
+  it('shows skeletons, not fake values, while cash and runway load', () => {
+    render(<DashboardTodayCard {...baseProps} cashLoading runwayLoading />);
+    expect(screen.queryByText('$18,000')).not.toBeInTheDocument();
+    expect(screen.queryByText('45d')).not.toBeInTheDocument();
   });
 
   it('shows the four core values', () => {

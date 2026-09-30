@@ -1,11 +1,14 @@
 import { useNavigate } from "react-router-dom";
 
+import { Skeleton } from "@/components/ui/skeleton";
+
 import { AlertTriangle, TrendingDown, Package, DollarSign } from "lucide-react";
 
 import type { CriticalAlert } from "@/types/dashboard";
 
 interface DashboardAttentionListProps {
   alerts: CriticalAlert[];
+  isLoading?: boolean;
 }
 
 function getAlertIcon(type: CriticalAlert["type"]) {
@@ -21,22 +24,23 @@ function getAlertIcon(type: CriticalAlert["type"]) {
   }
 }
 
-export function DashboardAttentionList({ alerts }: DashboardAttentionListProps) {
+export function DashboardAttentionList({ alerts, isLoading = false }: Readonly<DashboardAttentionListProps>) {
   const navigate = useNavigate();
 
   return (
     <div className="rounded-xl border border-border/40 bg-background">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
-        <h3 className="text-[13px] font-semibold text-foreground">Attention</h3>
-        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-          {alerts.length}
-        </span>
-      </div>
-      {alerts.length === 0 ? (
+      {isLoading && (
+        <div data-testid="attention-skeleton" className="p-4 space-y-2">
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-2/3" />
+        </div>
+      )}
+      {!isLoading && alerts.length === 0 && (
         <div className="px-4 py-6 text-[13px] text-muted-foreground text-center">
           Nothing needs your attention.
         </div>
-      ) : (
+      )}
+      {!isLoading && alerts.length > 0 && (
         <ul className="divide-y divide-border/40">
           {alerts.map((alert) => {
             const Icon = getAlertIcon(alert.type);
@@ -44,7 +48,7 @@ export function DashboardAttentionList({ alerts }: DashboardAttentionListProps) 
             return (
               <li key={alert.id} className="flex items-center gap-3 px-4 py-3">
                 <Icon
-                  className={`h-4 w-4 shrink-0 ${isCritical ? "text-destructive" : "text-orange-500"}`}
+                  className={`h-4 w-4 shrink-0 ${isCritical ? "text-destructive" : "text-muted-foreground"}`}
                   aria-hidden="true"
                 />
                 <div className="flex-1 min-w-0">

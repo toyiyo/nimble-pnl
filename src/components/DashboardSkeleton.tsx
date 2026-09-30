@@ -1,5 +1,11 @@
 import { Skeleton } from '@/components/ui/skeleton';
 
+// Stable keys for placeholder rows. The rows never reorder, but a named key
+// keeps the list free of array-index keys.
+function placeholderKeys(count: number): string[] {
+  return Array.from({ length: count }, (_, position) => `placeholder-${position + 1}`);
+}
+
 export function DashboardSkeleton() {
   return (
     <div className="space-y-8">
@@ -12,8 +18,8 @@ export function DashboardSkeleton() {
           <Skeleton className="h-4 w-32" />
         </div>
         <div className="grid grid-cols-5 gap-px bg-border/40">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="bg-background p-4">
+          {placeholderKeys(5).map((key) => (
+            <div key={key} className="bg-background p-4">
               <Skeleton className="h-3 w-16 mb-2" />
               <Skeleton className="h-6 w-24" />
             </div>
@@ -35,16 +41,6 @@ export function DashboardSkeleton() {
           <div className="rounded-xl border border-border/40 p-4">
             <Skeleton className="h-16 w-full rounded-lg" />
           </div>
-        </div>
-      </div>
-
-      {/* Last 14 days grid row skeleton */}
-      <div data-testid="skeleton-day-grid" className="space-y-3">
-        <Skeleton className="h-5 w-28" />
-        <div className="grid grid-cols-7 gap-2">
-          {[...Array(14)].map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
-          ))}
         </div>
       </div>
 
@@ -73,15 +69,15 @@ export function DashboardSkeleton() {
       <div className="space-y-4">
         <Skeleton className="h-5 w-40" />
         <div className="h-10 flex gap-4 border-b border-border/40">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-4 w-16" />
+          {placeholderKeys(6).map((key) => (
+            <Skeleton key={key} className="h-4 w-16" />
           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="p-4 rounded-xl border border-border/40">
+        {placeholderKeys(5).map((key) => (
+          <div key={key} className="p-4 rounded-xl border border-border/40">
             <Skeleton className="h-3 w-20 mb-3" />
             <Skeleton className="h-7 w-24 mb-1" />
             <Skeleton className="h-3 w-32" />
@@ -93,8 +89,8 @@ export function DashboardSkeleton() {
       <div className="space-y-3">
         <Skeleton className="h-5 w-28" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="p-4 rounded-xl border border-border/40">
+          {placeholderKeys(8).map((key) => (
+            <div key={key} className="p-4 rounded-xl border border-border/40">
               <Skeleton className="h-8 w-8 rounded-lg mb-3" />
               <Skeleton className="h-4 w-20 mb-1" />
               <Skeleton className="h-3 w-28" />

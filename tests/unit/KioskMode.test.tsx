@@ -475,6 +475,45 @@ describe('KioskMode — offline queue carries photoBlob argument (not state)', (
     const [, photoBlobArg] = addQueuedPunchMock.mock.calls[0];
     expect(photoBlobArg).toBe(blob);
   });
+
+  it("does NOT close a newer employee's camera dialog when an older punch queues offline late", async () => {
+    // Race: punch A releases the lock before its background mutate settles.
+    // Employee B opens the camera dialog. Then A's onError queues the punch
+    // offline. The late offline queue must not reset B's camera state.
+    const onErrorCallbacks: Array<(err: unknown) => Promise<void>> = [];
+    createPunchMutateMock.mockImplementation((_payload, opts) => {
+      if (opts?.onError) onErrorCallbacks.push(opts.onError);
+    });
+
+    render(<KioskMode />, { wrapper });
+
+    // Punch A — mutate is captured and not resolved.
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+    await screen.findByText(/Jose Delgado/);
+    await waitFor(() => {
+      expect(screen.queryByTestId('image-capture-mock')).toBeNull();
+    });
+
+    // Employee B opens the camera dialog.
+    enterPin('5678');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    expect(await screen.findByTestId('image-capture-mock')).toBeDefined();
+    imageCaptureStopMock.mockClear();
+
+    // Punch A fails while the device is offline.
+    isLikelyOfflineMock.mockReturnValue(true);
+    await act(async () => {
+      await onErrorCallbacks[0]?.(new Error('Network down'));
+    });
+
+    expect(addQueuedPunchMock).toHaveBeenCalledTimes(1);
+    // B's dialog stays open and B's camera stays on.
+    expect(screen.queryByTestId('image-capture-mock')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Confirm punch/i })).toBeDefined();
+    expect(imageCaptureStopMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('KioskMode — cache projection after optimistic punch', () => {

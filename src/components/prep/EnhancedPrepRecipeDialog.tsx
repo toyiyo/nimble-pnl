@@ -203,6 +203,7 @@ export function EnhancedPrepRecipeDialog({
               size_value: product.size_value,
               size_unit: product.size_unit,
               current_stock: product.current_stock,
+              yield_pct: product.yield_pct,
             }
           : undefined,
       };

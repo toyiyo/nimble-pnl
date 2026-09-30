@@ -10,6 +10,7 @@
  */
 
 import { calculateInventoryImpact, getProductUnitInfo } from './enhancedUnitConversion';
+import { resolveYieldPct } from './recipeYield';
 import type { IngredientUnit } from './recipeUnits';
 
 /**
@@ -24,6 +25,7 @@ export interface ProductInfo {
   size_value?: number | null;
   size_unit?: string | null;
   current_stock?: number | null;
+  yield_pct?: number | null;
 }
 
 /**
@@ -121,15 +123,20 @@ export function calculateIngredientCost(ingredient: IngredientInfo): IngredientC
     sizeUnit
   );
 
+  // Scale the deduction and cost by the product yield (waste allowance).
+  // A 90% yield needs 100/90 times the portion quantity to reach the plate.
+  const { yieldPct } = resolveYieldPct(product.yield_pct, null);
+  const yieldFactor = 100 / yieldPct;
+
   return {
     productId: ingredient.product_id,
     productName,
     quantity: ingredient.quantity,
     unit: ingredient.unit as string,
     costPerUnit,
-    inventoryDeduction: conversionResult.inventoryDeduction,
+    inventoryDeduction: conversionResult.inventoryDeduction * yieldFactor,
     inventoryDeductionUnit: conversionResult.inventoryDeductionUnit,
-    costImpact: conversionResult.costImpact,
+    costImpact: conversionResult.costImpact * yieldFactor,
     conversionApplied: !!conversionResult.conversionDetails,
     conversionPath: conversionResult.conversionDetails?.conversionPath,
   };

@@ -102,6 +102,7 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
               size_value: (ing.product as any).size_value,
               size_unit: (ing.product as any).size_unit,
               current_stock: ing.product.current_stock,
+              yield_pct: (ing.product as any).yield_pct,
             }
           : undefined,
       };

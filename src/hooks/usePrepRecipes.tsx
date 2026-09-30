@@ -164,7 +164,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             unit,
             notes,
             sort_order,
-            product:products(id, name, cost_per_unit, current_stock, uom_purchase, size_value, size_unit, category)
+            product:products(id, name, cost_per_unit, current_stock, uom_purchase, size_value, size_unit, category, yield_pct)
           ),
           procedure_steps:prep_recipe_procedure_steps(
             id,
@@ -194,7 +194,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
               unit,
               notes,
               sort_order,
-              product:products(id, name, cost_per_unit, current_stock, uom_purchase, size_value, size_unit, category)
+              product:products(id, name, cost_per_unit, current_stock, uom_purchase, size_value, size_unit, category, yield_pct)
             )
           `)
           .eq('restaurant_id', restaurantId)
@@ -288,7 +288,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     const { data: ingredientProducts, error: productError } = await supabase
       .from('products')
-      .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit, current_stock')
+      .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit, current_stock, yield_pct')
       .in('id', ingredientProductIds)
       .eq('restaurant_id', restaurant_id);
 
@@ -564,7 +564,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             unit,
             notes,
             sort_order,
-            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category)
+            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category, yield_pct)
           ),
           procedure_steps:prep_recipe_procedure_steps(
             id,
@@ -815,6 +815,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
               size_value: ing.product.size_value,
               size_unit: ing.product.size_unit,
               current_stock: ing.product.current_stock,
+              yield_pct: ing.product.yield_pct,
             }
           : undefined,
       }));

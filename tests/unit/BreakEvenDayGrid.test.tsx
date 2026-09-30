@@ -60,4 +60,35 @@ describe('BreakEvenDayGrid', () => {
       screen.getByRole('button', { name: 'Sep 30: $800 sales so far' })
     ).toBeInTheDocument();
   });
+
+  it('shows the day number visibly on each cell, not only in the aria-label', () => {
+    const history = [makeRow({ date: '2026-09-28' })];
+
+    render(<BreakEvenDayGrid history={history} />);
+
+    expect(screen.getByRole('button', { name: /Sep 28/ })).toHaveTextContent('28');
+  });
+
+  it('sets a visible tooltip from the same text as the aria-label', () => {
+    const history = [makeRow({ date: '2026-09-28' })];
+
+    render(<BreakEvenDayGrid history={history} />);
+
+    const button = screen.getByRole('button', { name: /Sep 28/ });
+    expect(button).toHaveAttribute('title', button.getAttribute('aria-label') ?? '');
+  });
+
+  it('shows a loading state instead of the empty-history text while loading', () => {
+    render(<BreakEvenDayGrid history={[]} isLoading />);
+
+    expect(screen.queryByText('No break-even history yet.')).not.toBeInTheDocument();
+    expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
+  });
+
+  it('shows an error message instead of the empty-history text on error', () => {
+    render(<BreakEvenDayGrid history={[]} error />);
+
+    expect(screen.queryByText('No break-even history yet.')).not.toBeInTheDocument();
+    expect(screen.getByText('Break-even history is not available right now.')).toBeInTheDocument();
+  });
 });

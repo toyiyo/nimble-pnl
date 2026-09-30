@@ -177,9 +177,15 @@ export function DashboardTodayCard({
           <dt className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
             Month to date
           </dt>
-          <dd className="text-[17px] font-semibold text-foreground mt-1">
-            {formatWholeDollarAmount(monthToDateSales)}
-          </dd>
+          {breakEvenLoading ? (
+            <Skeleton className="h-[17px] w-16 mt-1" />
+          ) : breakEvenError ? (
+            <dd className="text-[17px] font-semibold text-muted-foreground mt-1">—</dd>
+          ) : (
+            <dd className="text-[17px] font-semibold text-foreground mt-1">
+              {formatWholeDollarAmount(monthToDateSales)}
+            </dd>
+          )}
         </div>
       </dl>
     </div>

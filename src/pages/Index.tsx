@@ -830,7 +830,11 @@ const Index = () => {
               {/* Last 14 days */}
               <div className="space-y-3">
                 <h2 className="text-[17px] font-semibold text-foreground">Last 14 days</h2>
-                <BreakEvenDayGrid history={breakEvenData?.history ?? []} />
+                <BreakEvenDayGrid
+                  history={breakEvenData?.history ?? []}
+                  isLoading={breakEvenLoading}
+                  error={Boolean(breakEvenError)}
+                />
               </div>
 
               {/* Sales vs Break-Even Chart */}

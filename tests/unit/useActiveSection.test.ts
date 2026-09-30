@@ -1,4 +1,3 @@
-import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useActiveSection } from '@/hooks/useActiveSection';
@@ -144,5 +143,72 @@ describe('useActiveSection', () => {
     expect(mockCapture).toHaveBeenCalledWith('dashboard_section_viewed', {
       section_id: 'dash-attention',
     });
+  });
+
+  it('keeps a section marked viewed across an observer rebuild when sectionIds changes', () => {
+    const { result, rerender } = renderHook(
+      ({ ids }) => useActiveSection(ids),
+      { initialProps: { ids: SECTION_IDS } },
+    );
+
+    act(() => {
+      intersect('dash-today');
+    });
+    expect(
+      mockCapture.mock.calls.filter((call) => call[1]?.section_id === 'dash-today')
+    ).toHaveLength(1);
+
+    // sectionIds changes reference and content (for example a query moving
+    // from loading to loaded data adds a new section), which rebuilds the
+    // observer.
+    const nextIds = [...SECTION_IDS, 'dash-new'];
+    mountSections(['dash-new']);
+    rerender({ ids: nextIds });
+
+    act(() => {
+      intersect('dash-today');
+    });
+
+    expect(result.current).toBe('dash-today');
+    expect(
+      mockCapture.mock.calls.filter((call) => call[1]?.section_id === 'dash-today')
+    ).toHaveLength(1);
+  });
+
+  it('picks the section covering the most viewport height as active, not the highest intersectionRatio', () => {
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+
+    const { result } = renderHook(() => useActiveSection(SECTION_IDS));
+
+    act(() => {
+      const observer =
+        FakeIntersectionObserver.instances[FakeIntersectionObserver.instances.length - 1];
+      // A short section with a high ratio but little viewport coverage
+      // (for example a header just scrolling into view)...
+      const shortEl = document.getElementById('dash-attention') as Element;
+      // ...versus a section taller than the viewport, which can never
+      // reach a high intersectionRatio but fills most of the screen.
+      const tallEl = document.getElementById('dash-cashflow') as Element;
+
+      observer.callback([
+        {
+          target: shortEl,
+          isIntersecting: true,
+          intersectionRatio: 0.9,
+          intersectionRect: { height: 90 } as DOMRectReadOnly,
+        },
+        {
+          target: tallEl,
+          isIntersecting: true,
+          intersectionRatio: 0.3,
+          intersectionRect: { height: 700 } as DOMRectReadOnly,
+        },
+      ]);
+    });
+
+    expect(result.current).toBe('dash-cashflow');
+
+    Object.defineProperty(window, 'innerHeight', { value: originalInnerHeight, configurable: true });
   });
 });

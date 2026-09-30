@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { usePostHog } from 'posthog-js/react';
 
 const VIEW_THRESHOLD = 0.5;
+// Fire the observer callback at several points as a section crosses the
+// viewport, not only at 0.5. A single threshold of 0.5 also caps the ratio
+// the observer ever reports for a section taller than 2x the viewport, since
+// intersectionRatio is relative to the target's own height.
+const OBSERVER_THRESHOLDS = [0, 0.1, 0.25, 0.5, 0.75, 1];
 
 /**
  * Track which dashboard section is in view.
@@ -45,7 +50,14 @@ export function useActiveSection(sectionIds: string[], ready = true): string | n
   }
 
   useEffect(() => {
-    viewedRef.current = new Set();
+    // Keep ids already marked viewed when the observer rebuilds (for example
+    // when sectionIds changes as a query moves from loading to loaded data).
+    // Drop ids for sections that no longer exist, so a section can fire
+    // again if it is removed and later comes back.
+    const nextSectionIds = new Set(sectionIds);
+    viewedRef.current = new Set(
+      Array.from(viewedRef.current).filter((id) => nextSectionIds.has(id)),
+    );
 
     if (!ready || typeof IntersectionObserver === 'undefined' || sectionIds.length === 0) {
       return;
@@ -59,10 +71,10 @@ export function useActiveSection(sectionIds: string[], ready = true): string | n
         // batch, so the rail highlights the section the user actually
         // sees most.
         let mostVisibleId: string | null = null;
-        let mostVisibleRatio = -1;
+        let mostVisibleCoverage = -1;
 
         entries.forEach((entry) => {
-          if (!entry.isIntersecting || entry.intersectionRatio < VIEW_THRESHOLD) {
+          if (!entry.isIntersecting) {
             return;
           }
 
@@ -71,13 +83,28 @@ export function useActiveSection(sectionIds: string[], ready = true): string | n
             return;
           }
 
-          if (!viewedRef.current.has(sectionId)) {
+          // intersectionRatio is relative to the target's own height, so a
+          // section taller than 2x the viewport can never cross
+          // VIEW_THRESHOLD. intersectionRect is viewport-relative, so use
+          // the share of the viewport height the section fills instead —
+          // that stays reachable no matter how tall the section is. The
+          // test double only fakes intersectionRatio, so fall back to it
+          // when intersectionRect is not present.
+          const viewportHeight = typeof window !== 'undefined' ? window.innerHeight || 1 : 1;
+          const viewportCoverage = entry.intersectionRect
+            ? entry.intersectionRect.height / viewportHeight
+            : entry.intersectionRatio;
+
+          const crossesViewThreshold =
+            entry.intersectionRatio >= VIEW_THRESHOLD || viewportCoverage >= VIEW_THRESHOLD;
+
+          if (crossesViewThreshold && !viewedRef.current.has(sectionId)) {
             viewedRef.current.add(sectionId);
             posthogRef.current?.capture('dashboard_section_viewed', { section_id: sectionId });
           }
 
-          if (entry.intersectionRatio > mostVisibleRatio) {
-            mostVisibleRatio = entry.intersectionRatio;
+          if (viewportCoverage > mostVisibleCoverage) {
+            mostVisibleCoverage = viewportCoverage;
             mostVisibleId = sectionId;
           }
         });
@@ -86,7 +113,7 @@ export function useActiveSection(sectionIds: string[], ready = true): string | n
           setActiveSection(mostVisibleId);
         }
       },
-      { threshold: VIEW_THRESHOLD },
+      { threshold: OBSERVER_THRESHOLDS },
     );
 
     sectionIds.forEach((sectionId) => {

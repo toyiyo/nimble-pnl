@@ -92,6 +92,20 @@ describe('DashboardTodayCard', () => {
     expect(screen.getByText('Break-even is not available right now.')).toBeInTheDocument();
   });
 
+  it('does not show a fabricated $0 for month to date while break-even is loading', () => {
+    render(<DashboardTodayCard {...baseProps} breakEvenLoading monthToDateSales={0} />);
+    expect(screen.getByText('Month to date')).toBeInTheDocument();
+    expect(screen.queryByText('$0')).not.toBeInTheDocument();
+  });
+
+  it('does not show a fabricated $0 for month to date on a break-even error', () => {
+    render(
+      <DashboardTodayCard {...baseProps} breakEvenData={null} breakEvenError monthToDateSales={0} />
+    );
+    expect(screen.getByText('Month to date')).toBeInTheDocument();
+    expect(screen.queryByText('$0')).not.toBeInTheDocument();
+  });
+
   it('shows the "Set operating costs" link when dailyBreakEven is 0 on a truthy breakEvenData object', () => {
     render(
       <MemoryRouter>

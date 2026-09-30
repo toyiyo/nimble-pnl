@@ -118319,10 +118319,13 @@
         "npm run lint"
       ],
       "id": "ee578b3db5041d0a99f1fbf8b03664224195ab67",
-      "status": "resolved",
+      "status": "fixed",
       "created_at": "2026-09-29T23:58:35.562Z",
-      "updated_at": "2026-09-30T01:41:01.000Z",
-      "resolution": "Fixed: worstLocationFlag uses a rank table and the isFarther helper. Cognitive complexity is below 15."
+      "updated_at": "2026-09-30T02:20:52.791Z",
+      "resolution": "Fixed: worstLocationFlag uses a rank table and the isFarther helper. Cognitive complexity is below 15.",
+      "notes": [
+        "Fixed in 69061476: rank table and isFarther helper."
+      ]
     },
     {
       "source": "problems",

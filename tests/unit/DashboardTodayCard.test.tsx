@@ -100,6 +100,17 @@ describe('DashboardTodayCard', () => {
     expect(screen.getByText(/Last 14 complete days:/)).toBeInTheDocument();
   });
 
+  it('shows "—" for the runway when cashRunway is null, not "0 days"', () => {
+    render(<DashboardTodayCard {...baseProps} cashRunway={null} />);
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('0 days')).not.toBeInTheDocument();
+  });
+
+  it('shows "Cash growing" for the runway when cashRunway is Infinity', () => {
+    render(<DashboardTodayCard {...baseProps} cashRunway={Infinity} />);
+    expect(screen.getByText('Cash growing')).toBeInTheDocument();
+  });
+
   it('counts a day at break-even as a complete day', () => {
     render(
       <DashboardTodayCard

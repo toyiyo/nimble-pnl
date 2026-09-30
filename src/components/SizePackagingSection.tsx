@@ -59,7 +59,7 @@ const getProductSpecificConversions = (productName: string, sizeValue: number, s
   return conversions;
 };
 
-export function SizePackagingSection({ form, restaurantId, productId }: SizePackagingSectionProps) {
+export function SizePackagingSection({ form, restaurantId, productId }: Readonly<SizePackagingSectionProps>) {
   const sizeValue = form.watch('size_value') || 0;
   const sizeUnit = form.watch('size_unit') || '';  // Weight unit (oz, lb, etc.)
   const purchaseUnit = form.watch('uom_purchase') || '';  // Package type (bag, case, etc.)
@@ -326,8 +326,8 @@ export function SizePackagingSection({ form, restaurantId, productId }: SizePack
                       if (value === '') {
                         field.onChange(undefined);
                       } else {
-                        const parsed = parseFloat(value);
-                        field.onChange(isNaN(parsed) ? undefined : parsed);
+                        const parsed = Number.parseFloat(value);
+                        field.onChange(Number.isNaN(parsed) ? undefined : parsed);
                       }
                     }}
                   />

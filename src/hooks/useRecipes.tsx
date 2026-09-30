@@ -6,7 +6,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { MEASUREMENT_UNITS, type IngredientUnit } from '@/lib/recipeUnits';
-import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
 import { computeLineCost } from '@/lib/recipeYield';
 import { fetchAllRows, type PagedResult } from '@/utils/fetchAllRows';
 import { fetchInChunks } from '@/utils/fetchInChunks';

@@ -32,12 +32,8 @@ export function resolveYieldPct(
 ): ResolvedYield {
   const hasOverride = override !== null && override !== undefined;
   const source: ResolvedYield['source'] = hasOverride ? 'override' : 'product';
-  const rawValue = hasOverride
-    ? override
-    : productYield !== null && productYield !== undefined
-      ? productYield
-      : 100;
-  const yieldPct = Math.min(YIELD_MAX, Math.max(YIELD_MIN, rawValue as number));
+  const rawValue = hasOverride ? override : (productYield ?? 100);
+  const yieldPct = Math.min(YIELD_MAX, Math.max(YIELD_MIN, rawValue));
   return { yieldPct, source };
 }
 
@@ -88,7 +84,7 @@ export function computeLineCost(
   const { yieldPct, source } = resolveYieldPct(product?.yield_pct, ingredient.yield_pct_override);
   const loadedQty = loadedQuantity(ingredient.quantity, yieldPct);
 
-  if (!product || !product.cost_per_unit) {
+  if (!product?.cost_per_unit) {
     return { portionCost: 0, loadedCost: 0, wasteCost: 0, yieldPct, source, loadedQty };
   }
 

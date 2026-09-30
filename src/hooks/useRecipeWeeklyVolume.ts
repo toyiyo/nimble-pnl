@@ -33,7 +33,8 @@ export function useRecipeWeeklyVolume(
       const startStr = toDateOnlyString(startDate);
 
       // Paginate past PostgREST's default row cap: a popular item can have
-      // more than 1000 sale rows in a 7-day window.
+      // more than 1000 sale rows in a 7-day window. Order by a stable `id`
+      // before `.range()` so offset pages neither skip nor repeat a row.
       const { rows } = await fetchAllRows<{ quantity: number }>((from, to) =>
         supabase
           .from('unified_sales')
@@ -41,6 +42,7 @@ export function useRecipeWeeklyVolume(
           .eq('restaurant_id', restaurantId as string)
           .eq('item_name', posItemName as string)
           .gte('sale_date', startStr)
+          .order('id', { ascending: true })
           .range(from, to) as unknown as PromiseLike<{ data: { quantity: number }[] | null; error: unknown }>
       );
 

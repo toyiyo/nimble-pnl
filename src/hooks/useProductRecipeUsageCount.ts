@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export interface ProductRecipeUsageCountResult {
   count: number;
@@ -25,16 +26,21 @@ export function useProductRecipeUsageCount(
     queryKey: ['product-recipe-usage-count', restaurantId, productId],
     queryFn: async (): Promise<number> => {
       // Count distinct recipes, not ingredient lines: the same product can
-      // appear on more than one line of one recipe.
-      const { data, error } = await supabase
-        .from('recipe_ingredients')
-        .select('recipe_id, recipe:recipes!inner(restaurant_id)')
-        .eq('product_id', productId as string)
-        .eq('recipe.restaurant_id', restaurantId as string)
-        .is('yield_pct_override', null);
+      // appear on more than one line of one recipe. Paginate past
+      // PostgREST's default row cap, with a stable `id` order so offset
+      // pages neither skip nor repeat a row.
+      const { rows } = await fetchAllRows<{ recipe_id: string }>((from, to) =>
+        supabase
+          .from('recipe_ingredients')
+          .select('recipe_id, recipe:recipes!inner(restaurant_id)')
+          .eq('product_id', productId as string)
+          .eq('recipe.restaurant_id', restaurantId as string)
+          .is('yield_pct_override', null)
+          .order('id', { ascending: true })
+          .range(from, to) as unknown as PromiseLike<{ data: { recipe_id: string }[] | null; error: unknown }>
+      );
 
-      if (error) throw error;
-      const distinctRecipeIds = new Set((data ?? []).map((row) => row.recipe_id));
+      const distinctRecipeIds = new Set(rows.map((row) => row.recipe_id));
       return distinctRecipeIds.size;
     },
     enabled,

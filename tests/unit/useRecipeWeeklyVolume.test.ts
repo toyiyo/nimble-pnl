@@ -35,6 +35,13 @@ function setupChain(data: unknown[] | null, error: Error | null = null) {
   mockFromChain.range.mockResolvedValue({ data, error });
 }
 
+/** Queues one response per call to `.range()`, for a multi-page fetch. */
+function setupPages(...pages: unknown[][]) {
+  for (const page of pages) {
+    mockFromChain.range.mockResolvedValueOnce({ data: page, error: null });
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 
@@ -42,6 +49,7 @@ beforeEach(() => {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     gte: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
     range: vi.fn(),
   };
 
@@ -65,6 +73,23 @@ describe('useRecipeWeeklyVolume', () => {
     expect(mockFromChain.select).toHaveBeenCalledWith('quantity');
     expect(mockFromChain.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
     expect(mockFromChain.eq).toHaveBeenCalledWith('item_name', 'Cheeseburger');
+    expect(mockFromChain.order).toHaveBeenCalledWith('id', { ascending: true });
+  });
+
+  it('sums quantity across pages, neither skipping nor repeating a row', async () => {
+    const pageOne = Array.from({ length: 1000 }, () => ({ quantity: 1 }));
+    const pageTwo = [{ quantity: 5 }, { quantity: 7 }];
+    setupPages(pageOne, pageTwo);
+
+    const { result } = renderHook(() => useRecipeWeeklyVolume('rest-123', 'Cheeseburger'), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.weeklyVolume).toBe(1012);
+    expect(mockFromChain.range).toHaveBeenCalledTimes(2);
+    expect(mockFromChain.order).toHaveBeenCalledWith('id', { ascending: true });
   });
 
   it('returns zero when there are no sales in the window', async () => {

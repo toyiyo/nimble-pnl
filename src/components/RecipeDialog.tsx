@@ -29,8 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
+import { Plus, Trash2, Calculator, ChefHat } from 'lucide-react';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { Product } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
@@ -38,6 +37,8 @@ import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
 import { MEASUREMENT_UNITS, IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
 import { computeLineCost } from '@/lib/recipeYield';
+import { useRecipeWeeklyVolume } from '@/hooks/useRecipeWeeklyVolume';
+import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Recipe name is required'),
@@ -101,6 +102,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
 
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
+  const [portionCostTotal, setPortionCostTotal] = useState(0);
   const [expandedIngredients, setExpandedIngredients] = useState<Record<number, boolean>>({});
 
   const defaultValues: FormData = {
@@ -222,6 +224,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
     const subscription = form.watch((value) => {
       if (value.ingredients) {
         let totalCost = 0;
+        let totalPortionCost = 0;
         let hasValidIngredients = false;
 
         value.ingredients.forEach((ingredient: any) => {
@@ -240,6 +243,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                   product
                 );
                 totalCost += result.loadedCost;
+                totalPortionCost += result.portionCost;
               } catch (conversionError) {
                 console.warn(`Conversion error for ${product.name}:`, conversionError);
                 // Skip this ingredient in cost calculation rather than breaking everything
@@ -249,10 +253,26 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
         });
 
         setEstimatedCost(hasValidIngredients ? totalCost : 0);
+        setPortionCostTotal(hasValidIngredients ? totalPortionCost : 0);
       }
     });
     return () => subscription.unsubscribe();
   }, [products]);
+
+  // Cost summary tiles (design §6.2). Portion cost and loaded cost come
+  // from the effect above; waste allowance is the difference. Food cost %
+  // needs the recipe's average sale price, which a new recipe does not
+  // have yet.
+  const servingSizeValue = form.watch('serving_size') || 1;
+  const wasteAllowanceTotal = estimatedCost - portionCostTotal;
+  const wasteAllowancePerServing = wasteAllowanceTotal / servingSizeValue;
+  const foodCostPct = recipe?.avg_sale_price
+    ? (estimatedCost / recipe.avg_sale_price) * 100
+    : null;
+
+  const { weeklyVolume } = useRecipeWeeklyVolume(restaurantId, recipe?.pos_item_name ?? null);
+  const showWeeklyVolume = !!recipe?.pos_item_name && weeklyVolume > 0;
+  const weeklyWasteAllowance = wasteAllowancePerServing * weeklyVolume;
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -521,15 +541,49 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                     )}
                   />
 
-                  <div className="p-4 bg-muted rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">Estimated Cost:</span>
-                      <Badge variant="secondary" className="text-lg">
-                        <DollarSign className="w-4 h-4 mr-1" />
-                        {estimatedCost.toFixed(2)}
-                      </Badge>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Portion cost
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        ${portionCostTotal.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Waste allowance
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        ${wasteAllowanceTotal.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-foreground/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Loaded cost
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        ${estimatedCost.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Food cost %
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        {foodCostPct !== null ? `${foodCostPct.toFixed(1)}%` : '—'}
+                      </div>
                     </div>
                   </div>
+                  <p className="text-[13px] text-muted-foreground">
+                    Waste allowance: ${wasteAllowancePerServing.toFixed(2)} per serving
+                    {showWeeklyVolume
+                      ? ` · $${weeklyWasteAllowance.toFixed(0)} a week at current volume (${weeklyVolume} sold in the last 7 days).`
+                      : '.'}
+                    {wasteAllowanceTotal === 0 && (
+                      <span className="block mt-0.5">Set a yield on the product to include waste.</span>
+                    )}
+                  </p>
                 </CardContent>
               </Card>
             </div>

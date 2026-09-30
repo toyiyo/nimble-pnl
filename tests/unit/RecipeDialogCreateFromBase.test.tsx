@@ -21,6 +21,10 @@ vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: [] }),
 }));
 
+vi.mock("@/hooks/useRecipeWeeklyVolume", () => ({
+  useRecipeWeeklyVolume: () => ({ weeklyVolume: 0, isLoading: false, isError: false }),
+}));
+
 vi.mock("@/hooks/usePOSItems", () => ({
   usePOSItems: () => ({ posItems: [], loading: false }),
 }));

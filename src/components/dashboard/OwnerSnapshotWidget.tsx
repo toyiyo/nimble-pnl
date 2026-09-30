@@ -3,6 +3,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Info, Target, TrendingUp, CheckCircle, AlertTriangle, Minus } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { formatRunway } from "@/lib/formatRunway";
+
 const formatCurrency = (value: number, abbreviated = false) => {
   if (abbreviated && Math.abs(value) >= 1000) {
     return new Intl.NumberFormat("en-US", {
@@ -70,11 +72,6 @@ export function OwnerSnapshotWidget({
     if (days < 30) return "text-destructive";
     if (days < 60) return "text-orange-500";
     return "text-green-600";
-  };
-
-  const formatRunway = (days: number) => {
-    if (days > 365) return "365+";
-    return Math.floor(days).toString();
   };
 
   const getBreakEvenStatusDisplay = (status: 'above' | 'at' | 'below') => {

@@ -22,6 +22,7 @@ export interface PrepRecipeIngredient {
     size_value?: number | null;
     size_unit?: string | null;
     category?: string;
+    yield_pct?: number | null;
   };
 }
 

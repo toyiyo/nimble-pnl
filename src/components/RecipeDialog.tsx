@@ -230,9 +230,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
         let totalPortionCost = 0;
         let hasValidIngredients = false;
 
-        // `any`: react-hook-form's `watch` callback gives an untyped partial
-        // payload, so each array entry has no static shape here.
-        value.ingredients.forEach((ingredient: any) => {
+        value.ingredients.forEach((ingredient) => {
           if (ingredient?.product_id && ingredient?.quantity && ingredient?.unit) {
             const product = products.find(p => p.id === ingredient.product_id);
             if (product?.cost_per_unit) {

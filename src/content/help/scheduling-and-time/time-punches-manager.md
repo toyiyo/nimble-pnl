@@ -4,7 +4,7 @@ category: "scheduling-and-time"
 summary: "View, manually enter, edit, delete, and export time punch data; manage kiosk mode for PIN-based clock-in; and handle open sessions that need a forced clock-out."
 audience: ["owner", "manager"]
 order: 50
-keywords: ["time punch", "clock in", "kiosk", "PIN", "force out", "export", "timeline", "manager", "verification"]
+keywords: ["time punch", "clock in", "kiosk", "PIN", "force out", "export", "timeline", "manager", "verification", "off-site", "geofence", "location"]
 related: ["employee-time-clock", "run-payroll", "build-publish-weekly-schedule", "payroll-rules-and-types"]
 ---
 
@@ -27,6 +27,8 @@ When you open the Time Clock page at `/time-punches`, a summary bar at the top o
 - **PINs: X / Y** — how many of your employees have a kiosk PIN set.
 - **Open sessions badge** — appears when one or more employees are clocked in without a clock-out.
 - **Anomalies badge** — appears when the system detects unusual punch patterns (for example, overlapping sessions or very long shifts).
+- **Off-site button** (for example, **2 off-site**) — appears when punches in the period are outside the restaurant area. Click it to open the Punch List with only those punches.
+- **No location button** (for example, **1 no location**) — appears when punches in the period have no GPS position. Click it to open the Punch List with only those punches.
 
 ## Navigate dates and filter by employee
 
@@ -106,6 +108,24 @@ The eye icon only appears on punches that have a verification photo or location 
 1. Click the **trash icon** on the punch row.
 2. In the confirmation dialog, click **Delete** to confirm. This action cannot be undone.
 
+## Find off-site punches
+
+A punch is off-site when the employee is farther from the restaurant than the geofence radius. The server checks the distance for clock-in, clock-out, and breaks, from the employee app and from the kiosk. It checks each punch when your restaurant has a latitude and longitude, also when the enforcement mode is **Off**. See [Update Your Restaurant Profile](/help/restaurant-profile-general-settings) to set them.
+
+**Live alert:** Keep the Time Clock page open. When an off-site punch occurs today, a message shows, for example "Maria Lopez clocked in off-site". The message shows the distance and the time. Click **View punch** to open the punch details. The page checks for new off-site punches every 15 seconds.
+
+**Review:**
+
+1. Look for the amber chip with a distance, for example **1.2 km away**. It shows in the Punch List and in the Cards, Stripes, Stream, and Receipt views. Punches inside the area have no chip.
+2. A gray **No location** chip shows when the punch has no GPS position.
+3. In the Punch List header, click **Off-site (N)** to show only off-site punches. Click **All** to show all punches again.
+4. Click the eye icon on a punch to see the distance and the limit, for example "1.2 km from the restaurant (limit 200 m)".
+
+**Limits:**
+
+- The check uses the GPS position that the phone or tablet sends. The app cannot detect a false GPS position.
+- When an employee blocks location access, the punch gets the **No location** chip, not an off-site chip. Review these punches too.
+
 ## Handle open sessions (force clock-out)
 
 When an employee forgets to clock out, their session appears in the **Open Sessions** section with an amber border. The section shows how long the session has been open.
@@ -119,7 +139,7 @@ If the time you enter is earlier than the clock-in time, the button stays disabl
 ## Export punches to CSV
 
 1. Apply any date range and employee filters you need.
-2. Click the **download icon** (in the filters row on desktop). A file downloads with columns for Employee, Position, Punch Type, Date, Time, Notes, and Location.
+2. Click the **download icon** (in the filters row on desktop). A file downloads with columns for Employee, Position, Punch Type, Date, Time, Notes, Location, Distance (m), and Off-site.
 
 If there are no punches in the current view, a message appears and no file is downloaded.
 
@@ -205,7 +225,7 @@ The last save wins. If you are coordinating with another manager, communicate be
 Employees clock in from the Employee Time Clock page on their own device. The kiosk is a separate shared-tablet mode. Both methods create punch records you can view and edit here.
 
 **Does the system detect if someone clocks in from outside the restaurant?**
-Yes. If location data was captured at clock-in, the Punch List shows an amber map-pin icon and the distance from the restaurant when the employee was outside the expected area. Click the eye icon to see exact coordinates and a link to view the location on a map.
+Yes. When the punch has a GPS position and your restaurant has a latitude and longitude, off-site punches get an amber chip with the distance. This applies to clock-in, clock-out, and breaks. See [Find off-site punches](#find-off-site-punches). Click the eye icon to see exact coordinates and a link to view the location on a map.
 
 ## Related articles
 

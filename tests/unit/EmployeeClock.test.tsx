@@ -550,6 +550,57 @@ describe('EmployeeClock — punch location when the GPS read fails', () => {
     expect(payload.location).toEqual({ latitude: 40.7, longitude: -74.0 });
   });
 
+  it('sends the geofence coordinates when the geofence warns and the quick read fails', async () => {
+    const user = userEvent.setup();
+    checkLocationMock.mockResolvedValue({
+      action: 'warn',
+      checked: true,
+      within: false,
+      distanceMeters: 1500,
+      userLat: 30.28,
+      userLng: -97.74,
+    });
+    collectPunchContextMock.mockResolvedValue({ location: undefined, device_info: 'agent' });
+
+    render(<EmployeeClock />);
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /continue anyway/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({
+      latitude: 30.28,
+      longitude: -97.74,
+      distance_meters: 1500,
+      within_geofence: false,
+    });
+  });
+
+  it('sends location_unavailable after a failed geofence check, and Try Again resends it', async () => {
+    const user = userEvent.setup();
+    checkLocationMock.mockResolvedValue({ action: 'allow', checked: false, locationUnavailable: true });
+    collectPunchContextMock.mockResolvedValue({ location: undefined, device_info: 'agent' });
+    mutateMock.mockImplementation((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+
+    render(<EmployeeClock />);
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /continue anyway/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [firstPayload] = mutateMock.mock.calls[0];
+    expect(firstPayload.location).toEqual({ location_unavailable: true });
+
+    await user.click(await screen.findByRole('button', { name: /try again/i }));
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(2));
+    const [secondPayload] = mutateMock.mock.calls[1];
+    expect(secondPayload).toBe(firstPayload);
+  });
+
   it('sends location_unavailable when the GPS read does not finish in 3 seconds', async () => {
     collectPunchContextMock.mockReturnValue(new Promise(() => {}));
 

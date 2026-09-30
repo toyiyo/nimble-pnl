@@ -12,7 +12,26 @@ import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, 
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { collectPunchContext, punchContextLocation } from '@/utils/punchContext';
+import type { PunchGeofenceResult } from '@/utils/punchContext';
 import { useGeofenceCheck } from '@/hooks/useGeofenceCheck';
+
+// Keeps the geofence position, so the punch still has coordinates when the
+// quick GPS read fails (the native geofence read uses a separate provider).
+const toPunchGeofenceResult = (result: {
+  checked: boolean;
+  distanceMeters?: number;
+  within?: boolean;
+  userLat?: number;
+  userLng?: number;
+}): PunchGeofenceResult | undefined =>
+  result.checked
+    ? {
+        distanceMeters: result.distanceMeters,
+        within: result.within,
+        latitude: result.userLat,
+        longitude: result.userLng,
+      }
+    : undefined;
 
 const EmployeeClock = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -22,7 +41,7 @@ const EmployeeClock = () => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | null>(null);
-  const [pendingGeofenceResult, setPendingGeofenceResult] = useState<{ distanceMeters?: number; within?: boolean } | undefined>(undefined);
+  const [pendingGeofenceResult, setPendingGeofenceResult] = useState<PunchGeofenceResult | undefined>(undefined);
   const [geofenceWarning, setGeofenceWarning] = useState<{
     type: 'outside' | 'unavailable';
     distanceMeters?: number;
@@ -146,7 +165,7 @@ const EmployeeClock = () => {
       if (geofenceResult.action === 'warn') {
         // Show confirmation dialog instead of toast
         setPendingPunchType(punchType);
-        setPendingGeofenceResult(geofenceResult.checked ? { distanceMeters: geofenceResult.distanceMeters, within: geofenceResult.within } : undefined);
+        setPendingGeofenceResult(toPunchGeofenceResult(geofenceResult));
         setPendingLocationUnavailable(false);
         setGeofenceWarning({ type: 'outside', distanceMeters: geofenceResult.distanceMeters });
         return;
@@ -161,7 +180,7 @@ const EmployeeClock = () => {
         return;
       }
 
-      setPendingGeofenceResult(geofenceResult.checked ? { distanceMeters: geofenceResult.distanceMeters, within: geofenceResult.within } : undefined);
+      setPendingGeofenceResult(toPunchGeofenceResult(geofenceResult));
       setPendingLocationUnavailable(false);
     } else {
       setPendingGeofenceResult(undefined);

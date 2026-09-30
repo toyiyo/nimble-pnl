@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { verifyPinForRestaurant } from '@/hooks/useKioskPins';
+import type { PunchLocation } from '@/utils/punchContext';
 
 export type QueuedKioskPunch = {
   id: string;
@@ -10,10 +11,7 @@ export type QueuedKioskPunch = {
     punch_type: 'clock_in' | 'clock_out';
     punch_time: string;
     notes?: string;
-    location?: {
-      latitude: number;
-      longitude: number;
-    };
+    location?: PunchLocation;
     device_info?: string;
     photoDataUrl?: string | null;
   };

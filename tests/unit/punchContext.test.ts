@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   mergePunchLocation,
+  punchContextLocation,
   getDeviceInfo,
   collectPunchContext,
   startPunchContext,
@@ -10,6 +11,11 @@ import {
 describe('mergePunchLocation', () => {
   it('returns undefined when base location is undefined', () => {
     expect(mergePunchLocation(undefined)).toBeUndefined();
+  });
+
+  it('keeps the geofence data when base location is undefined', () => {
+    const result = mergePunchLocation(undefined, { distanceMeters: 500, within: false });
+    expect(result).toEqual({ distance_meters: 500, within_geofence: false });
   });
 
   it('returns base location without geofence when no result provided', () => {
@@ -91,6 +97,61 @@ describe('mergePunchLocation', () => {
   });
 });
 
+describe('punchContextLocation', () => {
+  it('returns the coordinates when the GPS read succeeds', () => {
+    const result = punchContextLocation({
+      location: { latitude: 40.7, longitude: -74.0 },
+      device_info: 'agent',
+    });
+    expect(result).toEqual({ latitude: 40.7, longitude: -74.0 });
+    expect(result).not.toHaveProperty('location_unavailable');
+  });
+
+  it('sets location_unavailable when the GPS read fails or times out', () => {
+    const result = punchContextLocation({ location: undefined, device_info: 'agent' });
+    expect(result).toEqual({ location_unavailable: true });
+  });
+
+  it('sets location_unavailable when no context arrives in time', () => {
+    expect(punchContextLocation(undefined)).toEqual({ location_unavailable: true });
+    expect(punchContextLocation(null)).toEqual({ location_unavailable: true });
+  });
+
+  it('merges the geofence result with the coordinates', () => {
+    const result = punchContextLocation(
+      { location: { latitude: 51.5, longitude: -0.1 }, device_info: 'agent' },
+      { distanceMeters: 500, within: false }
+    );
+    expect(result).toEqual({
+      latitude: 51.5,
+      longitude: -0.1,
+      distance_meters: 500,
+      within_geofence: false,
+    });
+  });
+
+  it('does not set location_unavailable when the geofence check got a position', () => {
+    const result = punchContextLocation(
+      { location: undefined, device_info: 'agent' },
+      { distanceMeters: 50, within: true }
+    );
+    expect(result).toEqual({ distance_meters: 50, within_geofence: true });
+  });
+
+  it('sets location_unavailable when the geofence check reports no position', () => {
+    const result = punchContextLocation(
+      { location: { latitude: 40.7, longitude: -74.0 }, device_info: 'agent' },
+      undefined,
+      true
+    );
+    expect(result).toEqual({
+      latitude: 40.7,
+      longitude: -74.0,
+      location_unavailable: true,
+    });
+  });
+});
+
 describe('getDeviceInfo', () => {
   it('returns a string', () => {
     const info = getDeviceInfo();
@@ -119,6 +180,22 @@ describe('collectPunchContext', () => {
   it('device_info is a string', async () => {
     const ctx = await collectPunchContext(50);
     expect(typeof ctx.device_info).toBe('string');
+  });
+
+  it('resolves to a location_unavailable punch location when the GPS read fails', async () => {
+    _resetPunchContextForTests();
+    const getCurrentPosition = vi.fn((_success: PositionCallback, error?: PositionErrorCallback) => {
+      error?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    const ctx = await collectPunchContext(50);
+
+    expect(ctx.location).toBeUndefined();
+    expect(punchContextLocation(ctx)).toEqual({ location_unavailable: true });
   });
 });
 

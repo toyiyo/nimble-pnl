@@ -12,7 +12,7 @@
  * Mocking pattern mirrors tests/unit/EmployeePin.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import EmployeeClock from '@/pages/EmployeeClock';
@@ -26,6 +26,7 @@ const {
   useEmployeePunchStatusMock,
   useCreateTimePunchMock,
   checkLocationMock,
+  collectPunchContextMock,
 } = vi.hoisted(() => ({
   mutateMock: vi.fn(),
   useCurrentEmployeeMock: vi.fn(),
@@ -36,6 +37,7 @@ const {
   // override this via `useCreateTimePunchMock.mockReturnValue(...)`.
   useCreateTimePunchMock: vi.fn(() => ({ mutate: mutateMock, isPending: false })),
   checkLocationMock: vi.fn(),
+  collectPunchContextMock: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -79,9 +81,10 @@ vi.mock('@/hooks/use-toast', () => ({
 
 // punchContext utilities make async calls (geolocation, device info) —
 // stub them so tests never hit real browser APIs.
-vi.mock('@/utils/punchContext', () => ({
-  collectPunchContext: vi.fn().mockResolvedValue(undefined),
-  mergePunchLocation: vi.fn().mockReturnValue(undefined),
+vi.mock('@/utils/punchContext', async (importOriginal) => ({
+  // Keep the pure location helpers real so tests check the payload shape.
+  ...(await importOriginal<typeof import('@/utils/punchContext')>()),
+  collectPunchContext: collectPunchContextMock,
 }));
 
 // ---------------------------------------------------------------------------
@@ -497,4 +500,63 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
 
     expect(screen.queryByText(/recording punch/i)).toBeNull();
   });
+});
+
+// ---------------------------------------------------------------------------
+// Punch location when the GPS read fails. The geofence is off in these tests,
+// so the quick GPS read from collectPunchContext is the only position source.
+// ---------------------------------------------------------------------------
+describe('EmployeeClock — punch location when the GPS read fails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mutateMock.mockReset();
+    collectPunchContextMock.mockReset();
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+    useCurrentEmployeeMock.mockReturnValue({ employee: EMPLOYEE, loading: false });
+    useEmployeePunchStatusMock.mockReturnValue({
+      status: { is_clocked_in: false, on_break: false, last_punch_time: null },
+      loading: false,
+    });
+    checkLocationMock.mockResolvedValue({ action: 'allow', checked: false });
+  });
+
+  const clockInWithoutPhoto = async () => {
+    const user = userEvent.setup();
+    render(<EmployeeClock />);
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+  };
+
+  it('sends location_unavailable when the GPS read fails and the geofence is off', async () => {
+    collectPunchContextMock.mockResolvedValue({ location: undefined, device_info: 'agent' });
+
+    await clockInWithoutPhoto();
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ location_unavailable: true });
+  });
+
+  it('sends the coordinates without location_unavailable when the GPS read succeeds', async () => {
+    collectPunchContextMock.mockResolvedValue({
+      location: { latitude: 40.7, longitude: -74.0 },
+      device_info: 'agent',
+    });
+
+    await clockInWithoutPhoto();
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ latitude: 40.7, longitude: -74.0 });
+  });
+
+  it('sends location_unavailable when the GPS read does not finish in 3 seconds', async () => {
+    collectPunchContextMock.mockReturnValue(new Promise(() => {}));
+
+    await clockInWithoutPhoto();
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1), { timeout: 4500 });
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ location_unavailable: true });
+  }, 10_000);
 });

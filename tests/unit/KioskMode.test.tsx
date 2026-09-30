@@ -136,7 +136,9 @@ vi.mock('@/hooks/useEmployeeTips', () => ({
   }),
 }));
 
-vi.mock('@/utils/punchContext', () => ({
+vi.mock('@/utils/punchContext', async (importOriginal) => ({
+  // Keep the pure location helpers real so tests check the payload shape.
+  ...(await importOriginal<typeof import('@/utils/punchContext')>()),
   collectPunchContext: collectPunchContextMock,
   startPunchContext: startPunchContextMock,
   _resetPunchContextForTests: resetPunchContextMock,
@@ -517,5 +519,79 @@ describe('KioskMode — cache projection after optimistic punch', () => {
     // RPC should NOT have run a second time because the projected cache value
     // (is_clocked_in: true) is fresh.
     expect(rpcMock.mock.calls.length).toBe(rpcCallsAfterFirst);
+  });
+});
+
+describe('KioskMode — punch location when the GPS read fails', () => {
+  it('sends location_unavailable when the GPS read fails', async () => {
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+
+    await waitFor(() => {
+      expect(createPunchMutateMock).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createPunchMutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ location_unavailable: true });
+  });
+
+  it('sends the coordinates without location_unavailable when the GPS read succeeds', async () => {
+    collectPunchContextMock.mockResolvedValue({
+      location: { latitude: 40.7, longitude: -74.0 },
+      device_info: 'test-agent',
+    });
+
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+
+    await waitFor(() => {
+      expect(createPunchMutateMock).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createPunchMutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ latitude: 40.7, longitude: -74.0 });
+  });
+
+  it('queues location_unavailable offline when the mutate fails after a failed GPS read', async () => {
+    isLikelyOfflineMock.mockReturnValue(true);
+    let capturedOnError: ((err: unknown) => void) | null = null;
+    createPunchMutateMock.mockImplementation((_payload, opts) => {
+      capturedOnError = opts?.onError ?? null;
+    });
+
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+    await screen.findByRole('status');
+
+    await act(async () => {
+      capturedOnError?.(new Error('Network down'));
+    });
+
+    expect(addQueuedPunchMock).toHaveBeenCalledTimes(1);
+    const [queued] = addQueuedPunchMock.mock.calls[0];
+    expect(queued.location).toEqual({ location_unavailable: true });
+  });
+
+  it('reads the started GPS result before it queues a punch whose status check failed offline', async () => {
+    isLikelyOfflineMock.mockReturnValue(true);
+    // The PIN matches, then the status RPC fails before handlePunch reads
+    // the punch context. The offline queue must read it.
+    rpcMock.mockRejectedValue(new Error('Failed to fetch'));
+
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+
+    await waitFor(() => {
+      expect(addQueuedPunchMock).toHaveBeenCalledTimes(1);
+    });
+    const [queued] = addQueuedPunchMock.mock.calls[0];
+    expect(queued.location).toEqual({ location_unavailable: true });
+    expect(queued.device_info).toBe('test-agent');
   });
 });

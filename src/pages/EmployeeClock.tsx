@@ -11,7 +11,7 @@ import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTime
 import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { collectPunchContext, mergePunchLocation } from '@/utils/punchContext';
+import { collectPunchContext, punchContextLocation } from '@/utils/punchContext';
 import { useGeofenceCheck } from '@/hooks/useGeofenceCheck';
 
 const EmployeeClock = () => {
@@ -245,7 +245,7 @@ const EmployeeClock = () => {
         employee_id: employee.id,
         punch_type: punchType,
         punch_time: new Date().toISOString(),
-        location: mergePunchLocation(context?.location, geofenceResult, locationUnavailable),
+        location: punchContextLocation(context, geofenceResult, locationUnavailable),
         device_info: context?.device_info,
         photoBlob,
       };

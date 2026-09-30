@@ -11,7 +11,9 @@ export function mergePunchLocation(
   geofenceResult?: { distanceMeters?: number; within?: boolean },
   locationUnavailable?: boolean
 ): PunchLocation | undefined {
-  if (!baseLocation && !locationUnavailable) return undefined;
+  if (!baseLocation && !locationUnavailable && geofenceResult?.distanceMeters == null) {
+    return undefined;
+  }
   return {
     ...baseLocation,
     ...(geofenceResult?.distanceMeters != null && {
@@ -20,6 +22,26 @@ export function mergePunchLocation(
     }),
     ...(locationUnavailable && { location_unavailable: true }),
   };
+}
+
+/**
+ * Builds the punch location for a punch that tried to read GPS.
+ * Sets `location_unavailable` when no position came back: the GPS read
+ * failed or timed out, the context did not arrive in time, or the geofence
+ * check failed. A geofence distance counts as a position.
+ * Do not use this for a punch that never reads GPS (manual or imported).
+ */
+export function punchContextLocation(
+  context: { location?: { latitude: number; longitude: number } } | null | undefined,
+  geofenceResult?: { distanceMeters?: number; within?: boolean },
+  geofenceUnavailable = false
+): PunchLocation | undefined {
+  const hasPosition = context?.location != null || geofenceResult?.distanceMeters != null;
+  return mergePunchLocation(
+    context?.location,
+    geofenceResult,
+    geofenceUnavailable || !hasPosition
+  );
 }
 
 const DEFAULT_LOCATION_TIMEOUT = 3000;

@@ -15,7 +15,7 @@ import { useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import type { PunchStatus } from '@/types/timeTracking';
-import { collectPunchContext, startPunchContext } from '@/utils/punchContext';
+import { collectPunchContext, punchContextLocation, startPunchContext } from '@/utils/punchContext';
 import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
 import type { QueuedKioskPunch } from '@/utils/offlineQueue';
 import { format } from 'date-fns';
@@ -421,7 +421,7 @@ const KioskMode = () => {
         punch_type: action,
         punch_time: nowIso,
         notes: 'Kiosk PIN punch',
-        location: punchContextSnapshot.location,
+        location: punchContextLocation(punchContextSnapshot),
         device_info: punchContextSnapshot.device_info,
         photoBlob: photoBlob || undefined,
         silent: true,
@@ -593,6 +593,10 @@ const KioskMode = () => {
     photoBlob: Blob | null
   ) => {
     if (!restaurantId) return false;
+    // A punch that fails before handlePunch reads the context still started
+    // a GPS read when the camera dialog opened. Read that result here so the
+    // queued punch does not lose its location or its location_unavailable flag.
+    const punchContext = context ?? (await collectPunchContext(3000));
     await addQueuedPunch(
       {
         restaurant_id: restaurantId,
@@ -600,8 +604,8 @@ const KioskMode = () => {
         punch_type: action,
         punch_time: new Date().toISOString(),
         notes: 'Queued offline (kiosk)',
-        location: context?.location,
-        device_info: context?.device_info,
+        location: punchContextLocation(punchContext),
+        device_info: punchContext.device_info,
       },
       photoBlob
     );

@@ -76,6 +76,8 @@ const updateSchema = z.object({
   reorder_point: z.coerce.number().min(0).optional(),
   shelf_life_days: z.coerce.number().int().min(0).optional(),
   image_url: z.string().optional(),
+  yield_pct: z.coerce.number().min(50).max(100).optional(),
+  waste_reason: z.string().optional(),
 });
 
 type UpdateFormData = z.infer<typeof updateSchema>;
@@ -171,6 +173,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
       reorder_point: product.reorder_point || undefined,
       shelf_life_days: product.shelf_life_days || undefined,
       image_url: product.image_url || '',
+      yield_pct: product.yield_pct ?? 100,
+      waste_reason: product.waste_reason || '',
     },
   });
 
@@ -199,6 +203,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
         reorder_point: product.reorder_point || undefined,
         shelf_life_days: product.shelf_life_days || undefined,
         image_url: product.image_url || '',
+        yield_pct: product.yield_pct ?? 100,
+        waste_reason: product.waste_reason || '',
       });
       setImageUrl(product.image_url || '');
       setPendingSupplierId(product.supplier_id || null);
@@ -357,6 +363,8 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
       reorder_point: data.reorder_point || 0,
       shelf_life_days: data.shelf_life_days || null,
       image_url: imageUrl || data.image_url,
+      yield_pct: data.yield_pct ?? 100,
+      waste_reason: data.waste_reason || null,
       current_stock: finalStock,
       supplier_id: pendingSupplierId ?? product.supplier_id,
     };
@@ -770,7 +778,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
             </Card>
 
             {/* Enhanced Size & Packaging Section */}
-            <SizePackagingSection form={form} />
+            <SizePackagingSection form={form} restaurantId={restaurantId} productId={product.id || null} />
 
             {/* Cost & Supplier */}
             <Card>

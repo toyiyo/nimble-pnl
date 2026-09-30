@@ -56,6 +56,7 @@ export interface Product {
   image_url?: string | null;
   barcode_data?: any | null;
   yield_pct?: number | null;
+  waste_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,6 +86,8 @@ export interface CreateProductData {
   pos_item_name?: string | null;
   image_url?: string | null;
   barcode_data?: any | null;
+  yield_pct?: number | null;
+  waste_reason?: string | null;
 }
 
 export const useProducts = (restaurantId: string | null) => {

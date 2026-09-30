@@ -26,6 +26,16 @@ BEGIN
   -- The server owns these three keys. Delete any client-sent value first.
   NEW.location := NEW.location - 'within_geofence' - 'distance_meters' - 'geofence_radius_meters';
 
+  -- A client may send location_unavailable alongside real coordinates.
+  -- getPunchLocationFlag() checks location_unavailable first, so a
+  -- stale true value here would hide a punch that does have coordinates.
+  -- Delete it whenever both coordinates are present and numeric.
+  IF jsonb_typeof(NEW.location -> 'latitude') = 'number'
+    AND jsonb_typeof(NEW.location -> 'longitude') = 'number'
+  THEN
+    NEW.location := NEW.location - 'location_unavailable';
+  END IF;
+
   -- On UPDATE, if the coordinates did not change, keep the radius at punch
   -- time by copying the server keys back from OLD.location. Skip this
   -- during the backfill below: current_setting('app.geofence_backfill')
@@ -122,6 +132,13 @@ CREATE INDEX IF NOT EXISTS idx_time_punches_offsite
 -- idempotent.
 SELECT set_config('app.geofence_backfill', 'on', true);
 
+-- The backfill sets location to its own value on each matching row.
+-- Disable the updated_at trigger around it, or that trigger would stamp
+-- updated_at = now() on every row, though nothing but the server keys
+-- inside location actually changed.
+ALTER TABLE public.time_punches
+  DISABLE TRIGGER update_time_punches_updated_at;
+
 UPDATE public.time_punches tp
 SET location = tp.location
 FROM public.restaurants r
@@ -129,5 +146,8 @@ WHERE r.id = tp.restaurant_id
   AND r.latitude IS NOT NULL
   AND r.longitude IS NOT NULL
   AND tp.location ? 'latitude';
+
+ALTER TABLE public.time_punches
+  ENABLE TRIGGER update_time_punches_updated_at;
 
 SELECT set_config('app.geofence_backfill', 'off', true);

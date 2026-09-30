@@ -37,7 +37,7 @@ Geofencing lets you require employees to be physically at your restaurant when t
 1. Open **Settings** and select the **General** tab as described above.
 2. Scroll down to the **Geofence Settings** card.
 3. Click the **Enforcement Mode** dropdown and choose one of the three options:
-   - **Off** — No location check is performed. Employees can clock in from anywhere.
+   - **Off** — Employees can clock in from anywhere. The server still checks and flags off-site punches for managers; see [Off-site flags](#off-site-flags) below.
    - **Warn (allow but flag)** — Employees outside the radius are allowed to clock in, but their punch is flagged for your review.
    - **Block (prevent clock-in)** — Employees outside the radius cannot complete a clock-in until they are within range.
 4. If you choose **Warn** or **Block**, the coordinate and radius fields appear:

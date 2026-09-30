@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(18);
+SELECT plan(19);
 
 -- Restaurant with coordinates: San Francisco Ferry Building, radius 200 m.
 INSERT INTO public.restaurants (id, name, latitude, longitude, geofence_radius_meters)
@@ -173,6 +173,24 @@ SELECT ok(
   NOT (SELECT location ?| array['within_geofence', 'distance_meters', 'geofence_radius_meters']
        FROM public.time_punches WHERE id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'),
   'a punch with no GPS keys gets no server keys, even at a restaurant with coordinates'
+);
+
+-- 9b. A client sends location_unavailable: true alongside real coordinates.
+-- The server deletes the stale flag, since getPunchLocationFlag() checks
+-- location_unavailable first and would otherwise hide a punch that has
+-- coordinates.
+INSERT INTO public.time_punches (id, restaurant_id, employee_id, punch_type, location)
+VALUES (
+  'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+  '11111111-1111-1111-1111-111111111111',
+  '33333333-3333-3333-3333-333333333333',
+  'clock_in',
+  jsonb_build_object('latitude', 37.7960, 'longitude', -122.3937, 'location_unavailable', true)
+);
+
+SELECT ok(
+  NOT (SELECT location ? 'location_unavailable' FROM public.time_punches WHERE id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'),
+  'location_unavailable is deleted when real coordinates are present'
 );
 
 -- 10. UPDATE ... SET punch_time: the flags do not change.

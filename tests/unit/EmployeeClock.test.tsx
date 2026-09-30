@@ -11,7 +11,7 @@
  *
  * Mocking pattern mirrors tests/unit/EmployeePin.test.tsx.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -27,6 +27,7 @@ const {
   useCreateTimePunchMock,
   checkLocationMock,
   collectPunchContextMock,
+  useTimePunchesMock,
 } = vi.hoisted(() => ({
   mutateMock: vi.fn(),
   useCurrentEmployeeMock: vi.fn(),
@@ -38,6 +39,7 @@ const {
   useCreateTimePunchMock: vi.fn(() => ({ mutate: mutateMock, isPending: false })),
   checkLocationMock: vi.fn(),
   collectPunchContextMock: vi.fn(),
+  useTimePunchesMock: vi.fn(() => ({ punches: [] as unknown[] })),
 }));
 
 // ---------------------------------------------------------------------------
@@ -64,7 +66,7 @@ vi.mock('@/hooks/useTimePunches', async () => {
     useEmployeePunchStatus: (...args: unknown[]) =>
       useEmployeePunchStatusMock(...args),
     useCreateTimePunch: () => useCreateTimePunchMock(),
-    useTimePunches: () => ({ punches: [] }),
+    useTimePunches: () => useTimePunchesMock(),
   };
 });
 
@@ -610,4 +612,46 @@ describe('EmployeeClock — punch location when the GPS read fails', () => {
     const [payload] = mutateMock.mock.calls[0];
     expect(payload.location).toEqual({ location_unavailable: true });
   }, 10_000);
+});
+
+// ---------------------------------------------------------------------------
+// Today's Activity location icon. A punch with location_unavailable has a
+// location object, but no GPS position: it must not show "Location verified".
+// ---------------------------------------------------------------------------
+describe("EmployeeClock — Today's Activity location icon", () => {
+  const punchWith = (id: string, location: unknown) => ({
+    id,
+    punch_type: 'clock_in',
+    punch_time: new Date().toISOString(),
+    photo_path: null,
+    location,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useCurrentEmployeeMock.mockReturnValue({ employee: EMPLOYEE, loading: false });
+    useEmployeePunchStatusMock.mockReturnValue({
+      status: { is_clocked_in: false, on_break: false, last_punch_time: null },
+      loading: false,
+    });
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+  });
+
+  afterEach(() => {
+    useTimePunchesMock.mockReturnValue({ punches: [] });
+  });
+
+  it('shows "Location verified" only for a punch with coordinates', () => {
+    useTimePunchesMock.mockReturnValue({
+      punches: [
+        punchWith('p1', { latitude: 40.7, longitude: -74.0 }),
+        punchWith('p2', { location_unavailable: true }),
+      ],
+    });
+
+    render(<EmployeeClock />);
+
+    expect(screen.getAllByLabelText('Location verified')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Location unavailable')).toHaveLength(1);
+  });
 });

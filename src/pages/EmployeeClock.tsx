@@ -526,7 +526,11 @@ const EmployeeClock = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     {punch.photo_path && <Camera className="h-4 w-4 text-green-600" aria-label="Photo verified" />}
-                    {punch.location && <MapPin className="h-4 w-4 text-blue-600" aria-label="Location verified" />}
+                    {typeof punch.location?.latitude === 'number' ? (
+                      <MapPin className="h-4 w-4 text-blue-600" aria-label="Location verified" />
+                    ) : punch.location?.location_unavailable ? (
+                      <MapPinOff className="h-4 w-4 text-muted-foreground" aria-label="Location unavailable" />
+                    ) : null}
                   </div>
                 </div>
               ))}

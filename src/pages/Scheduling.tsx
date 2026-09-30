@@ -24,10 +24,12 @@ import { WeeklyAvailabilityChip } from './SchedulingWeeklyAvailabilityChip';
 import { ShiftCard } from './SchedulingShiftCard';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
+import { DailyLaborPercentBadge } from '@/components/scheduling/DailyLaborPercentBadge';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
+import { useDailyLaborPercent } from '@/hooks/useDailyLaborPercent';
 import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -72,7 +74,8 @@ import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from 
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
-import { formatLocalDate } from '@/lib/shiftInterval';
+import { formatDayLabel, formatLocalDate } from '@/lib/shiftInterval';
+import { describeDailyLaborPercent } from '@/lib/dailyLaborPercent';
 import { capacityFloor } from '@/lib/shiftCoverage';
 import { distinctAssignedCount } from '@/lib/shiftFill';
 import type { ShiftTemplate } from '@/types/scheduling';
@@ -408,16 +411,34 @@ const Scheduling = () => {
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
+  // A cancelled shift costs nothing. Without this filter, a cancel does not
+  // lower the day's labor %, the week labor total or the per-employee costs.
+  const costedShifts = useMemo(
+    () => shifts.filter((shift) => shift.status !== 'cancelled'),
+    [shifts],
+  );
+
   // Calculate scheduled labor costs with breakdown
-  const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
-    shifts,
+  const { breakdown: laborCostBreakdown, dailyCosts: scheduledDailyCosts } = useScheduledLaborCosts(
+    costedShifts,
     currentWeekStart,
     weekEnd,
     restaurantId
   );
 
+  // The percent shows wage totals and sales, so it needs both capabilities.
+  // Without view:pay_rates the wages are masked and the percent is too low.
+  const canViewLaborPercent =
+    isResolved && hasCapability('view:pay_rates') && hasCapability('view:pos_sales');
+  // Computed once here and passed to the Planner, so the week is not computed twice.
+  const dailyLaborPercent = useDailyLaborPercent(restaurantId, weekDayKeys, {
+    dailyCosts: scheduledDailyCosts,
+    costsLoading: shiftsLoading || employeesLoading,
+    enabled: canViewLaborPercent,
+  });
+
   // Calculate per-employee labor costs with outlier detection
-  const laborCostSummary = useEmployeeLaborCosts(shifts, allEmployees);
+  const laborCostSummary = useEmployeeLaborCosts(costedShifts, allEmployees);
 
   // Calculate labor budget comparison
   const laborBudgetData = useScheduleLaborBudget(
@@ -1291,7 +1312,22 @@ const Scheduling = () => {
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Team Member</span>
                     </th>
                     {weekDays.map((day) => {
-                      const dayIsToday = toDateOnlyString(day) === restaurantToday;
+                      const dayKey = toDateOnlyString(day);
+                      const dayIsToday = dayKey === restaurantToday;
+                      const dayLabel = formatDayLabel(dayKey);
+                      const laborPercentFooter = canViewLaborPercent ? (
+                        <DailyLaborPercentBadge
+                          labor={dailyLaborPercent}
+                          day={dayKey}
+                          dayLabel={dayLabel}
+                          // In selection mode the header is a button: no nested focus stop.
+                          variant={selectionMode ? 'plain' : 'tooltip'}
+                        />
+                      ) : null;
+                      // The button's aria-label replaces its text, so it carries the percent too.
+                      const laborPercentLabel = canViewLaborPercent && !dailyLaborPercent.isLoading
+                        ? ` ${describeDailyLaborPercent(dailyLaborPercent.byDay.get(dayKey), '', dailyLaborPercent)}`
+                        : '';
                       return (
                         <th
                           key={day.toISOString()}
@@ -1303,14 +1339,14 @@ const Scheduling = () => {
                           {selectionMode ? (
                             <button
                               type="button"
-                              onClick={() => selectShiftsForDay(toDateOnlyString(day))}
+                              onClick={() => selectShiftsForDay(dayKey)}
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
-                              aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
+                              aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}.${laborPercentLabel}`}
                             >
-                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize />
+                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize footer={laborPercentFooter} />
                             </button>
                           ) : (
-                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} />
+                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} footer={laborPercentFooter} />
                           )}
                         </th>
                       );
@@ -1713,6 +1749,7 @@ const Scheduling = () => {
               onWeekStartChange={setCurrentWeekStart}
               guardShiftChange={guardShiftChange}
               notifyAfterDeferredCommit={notifyAfterDeferredCommit}
+              dailyLaborPercent={canViewLaborPercent ? dailyLaborPercent : undefined}
             />
           )}
         </TabsContent>

@@ -113,6 +113,73 @@ export function mapHourlySalesPattern(
   return mapped;
 }
 
+/**
+ * The lookback window as restaurant business days. `sale_date` is a date-only
+ * column, so both bounds must be the restaurant's business day, not the UTC
+ * day. UTC days slide the whole lookback window by a day for zones west of
+ * Greenwich in the evening.
+ */
+export function lookbackDateRange(lookbackWeeks: number, tz: string, now: Date = new Date()) {
+  const startDate = new Date(now);
+  startDate.setDate(now.getDate() - lookbackWeeks * 7);
+  return {
+    startStr: toBusinessDay(startDate, tz),
+    endStr: toBusinessDay(now, tz),
+  };
+}
+
+/** One sales total for each business day in the lookback window. */
+export interface LookbackDailySalesRow {
+  sale_date: string;
+  total_price: number;
+}
+
+interface HourlySalesByDateResult {
+  days?: { date: string; day_total: number | null }[] | null;
+}
+
+/**
+ * Query options for the daily sales totals of the lookback window. Exported
+ * so that every caller (for example `useDailyLaborPercent`) shares one React
+ * Query cache entry.
+ *
+ * `get_hourly_sales_pattern` with `p_view: 'by_date'` returns one total for
+ * each date with sales. The SQL function is authoritative for the filters
+ * (item_type 'sale', no split children). It has no row cap, so no date is
+ * partial.
+ *
+ * The key is not 'hourly-sales-all': that key holds the weekday result of the
+ * planner query, which has a different shape. `tz` belongs in the key because
+ * the date range is derived from it.
+ */
+export function lookbackSalesQueryOptions(
+  restaurantId: string | null,
+  lookbackWeeks: number,
+  tz: string,
+) {
+  return {
+    queryKey: ['daily-sales-by-date', restaurantId, lookbackWeeks, tz],
+    queryFn: async (): Promise<LookbackDailySalesRow[]> => {
+      if (!restaurantId) return [];
+      const dateRange = lookbackDateRange(lookbackWeeks, tz);
+      const { data, error } = await supabase.rpc('get_hourly_sales_pattern', {
+        p_restaurant_id: restaurantId,
+        p_start_date: dateRange.startStr,
+        p_end_date: dateRange.endStr,
+        p_interval_minutes: 60,
+        p_view: 'by_date',
+      });
+      if (error) throw error;
+      const days = (data as unknown as HourlySalesByDateResult | null)?.days ?? [];
+      return days.map((day) => ({ sale_date: day.date, total_price: Number(day.day_total) || 0 }));
+    },
+    enabled: !!restaurantId,
+    staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  };
+}
+
 export function useWeekStaffingSuggestions(
   restaurantId: string | null,
   weekDays: string[],
@@ -162,19 +229,10 @@ export function useWeekStaffingSuggestions(
   }, [effectiveSettings, settingsOverrides]);
 
   // Compute date range once for both queries
-  const dateRange = useMemo(() => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(endDate.getDate() - activeSettings.lookback_weeks * 7);
-    // Both bounds are compared against sale_date (a date-only column) below,
-    // so they need to be the restaurant's business day, not the UTC day --
-    // UTC days slide the whole lookback window by a day for zones west of
-    // Greenwich in the evening.
-    return {
-      startStr: toBusinessDay(startDate, tz),
-      endStr: toBusinessDay(endDate, tz),
-    };
-  }, [activeSettings.lookback_weeks, tz]);
+  const dateRange = useMemo(
+    () => lookbackDateRange(activeSettings.lookback_weeks, tz),
+    [activeSettings.lookback_weeks, tz],
+  );
 
   const {
     data: hourlySalesResult,

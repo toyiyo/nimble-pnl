@@ -31,7 +31,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 import { computeCellFill } from '@/lib/shiftFill';
 import { computeLoanedOut, assignLoanedOutCell } from '@/lib/loanedOut';
 import { safeTz } from '@/lib/restaurantClock';
-import { formatLocalDateInTz } from '@/lib/shiftInterval';
+import { formatDayLabel, formatLocalDateInTz } from '@/lib/shiftInterval';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -62,6 +62,8 @@ import { usePlannerShiftConflicts } from '@/hooks/usePlannerShiftConflicts';
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
+import { DailyLaborPercentBadge } from '../DailyLaborPercentBadge';
+import type { DailyLaborPercentView } from '@/lib/dailyLaborPercent';
 import type {
   GuardShiftChangeOptions,
   NotifyAfterDeferredCommitArgs,
@@ -83,6 +85,11 @@ interface ShiftPlannerTabProps {
    * timeline tab.
    */
   notifyAfterDeferredCommit: (args: NotifyAfterDeferredCommitArgs) => void | Promise<void>;
+  /**
+   * Daily labor cost % for the day headers, computed once by the Scheduling
+   * page for the same week. Omitted when the viewer cannot see wages or sales.
+   */
+  dailyLaborPercent?: DailyLaborPercentView;
 }
 
 /** Stable empty index for the conflict load/error states — a module-level
@@ -136,6 +143,7 @@ export function ShiftPlannerTab({
   onWeekStartChange,
   guardShiftChange,
   notifyAfterDeferredCommit,
+  dailyLaborPercent,
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
@@ -173,6 +181,26 @@ export function ShiftPlannerTab({
     onExternalWeekStartChange: onWeekStartChange,
     tz: restaurantTimezone,
   });
+
+  const renderGridDayFooter = useMemo(() => {
+    if (!dailyLaborPercent) return undefined;
+    return (day: string) => (
+      <DailyLaborPercentBadge labor={dailyLaborPercent} day={day} dayLabel={formatDayLabel(day)} />
+    );
+  }, [dailyLaborPercent]);
+  // The timeline footer sits inside a day button: plain text, no focus stop.
+  const renderTimelineDayFooter = useMemo(() => {
+    if (!dailyLaborPercent) return undefined;
+    return (day: string, selected: boolean) => (
+      <DailyLaborPercentBadge
+        labor={dailyLaborPercent}
+        day={day}
+        dayLabel={formatDayLabel(day)}
+        variant="plain"
+        inverse={selected}
+      />
+    );
+  }, [dailyLaborPercent]);
 
   const {
     templates: allTemplates,
@@ -869,6 +897,7 @@ export function ShiftPlannerTab({
           availabilityByEmployee={availabilityByEmployee}
           guardShiftChange={guardShiftChange}
           notifyAfterDeferredCommit={notifyAfterDeferredCommit}
+          renderDayFooter={renderTimelineDayFooter}
         />
       )}
 
@@ -981,6 +1010,7 @@ export function ShiftPlannerTab({
                   conflictsByShiftId={effectiveConflictsByShiftId}
                   hiddenLaneByDay={hiddenLaneByDay}
                   onShowHidden={handleShowHidden}
+                  renderDayFooter={renderGridDayFooter}
                 />
               </div>
             )}

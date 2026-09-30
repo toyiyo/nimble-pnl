@@ -468,7 +468,7 @@ async function executeGetRecipeAnalytics(
   } = args;
 
   // Import the shared service from _shared directory
-  const { calculateRecipeProfitability } = await import('../_shared/recipeAnalytics.ts');
+  const { calculateRecipeProfitability, buildRecipeDeductions } = await import('../_shared/recipeAnalytics.ts');
 
   try {
     const summary = await calculateRecipeProfitability(supabase, {
@@ -479,10 +479,60 @@ async function executeGetRecipeAnalytics(
       sortBy: sort_by
     });
 
+    // Limit to top 20 for AI responses. The ingredient fetch below runs
+    // AFTER this slice, in one query keyed on these 20 ids, so it never
+    // scales with the full recipe count. See design section 7.
+    const topRecipes = summary.recipes.slice(0, 20);
+    const topRecipeIds = topRecipes.map((recipe) => recipe.id);
+
+    let deductionsByRecipeId = new Map();
+    if (topRecipeIds.length > 0) {
+      const { data: ingredientRows, error: ingredientsError } = await supabase
+        .from('recipe_ingredients')
+        .select(`
+          recipe_id,
+          quantity,
+          unit,
+          yield_pct_override,
+          products ( name, cost_per_unit, uom_purchase, size_value, size_unit, yield_pct )
+        `)
+        .in('recipe_id', topRecipeIds);
+
+      if (ingredientsError) {
+        throw new Error(`Failed to fetch recipe ingredients: ${ingredientsError.message}`);
+      }
+
+      const deductionRows = (ingredientRows || []).map((row: any) => ({
+        recipe_id: row.recipe_id,
+        product_name: row.products?.name ?? '',
+        quantity: row.quantity,
+        unit: row.unit,
+        purchase_unit: row.products?.uom_purchase ?? row.unit,
+        size_value: row.products?.size_value ?? null,
+        size_unit: row.products?.size_unit ?? null,
+        cost_per_unit: row.products?.cost_per_unit ?? 0,
+        product_yield_pct: row.products?.yield_pct ?? null,
+        yield_pct_override: row.yield_pct_override ?? null,
+      }));
+
+      deductionsByRecipeId = buildRecipeDeductions(deductionRows);
+    }
+
+    const recipesWithDeductions = topRecipes.map((recipe) => {
+      const deduction = deductionsByRecipeId.get(recipe.id);
+      return {
+        ...recipe,
+        portion_cost: deduction?.portion_cost ?? null,
+        loaded_cost: deduction?.loaded_cost ?? null,
+        waste_cost: deduction?.waste_cost ?? null,
+        ingredients: deduction?.ingredients ?? [],
+      };
+    });
+
     return {
       ok: true,
       data: {
-        recipes: summary.recipes.slice(0, 20), // Limit to top 20 for AI responses
+        recipes: recipesWithDeductions,
         total_count: summary.totalRecipes,
         recipes_with_sales: summary.recipesWithSales,
         average_margin: summary.averageMargin,

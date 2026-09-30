@@ -3476,3 +3476,36 @@
 - **Mistake:** The workflow ran with `scriptPath` set to the main checkout copy of `.claude/workflows/dev-build-and-ship.js`. The main checkout was on another branch, with local edits to that file. That copy had no Phase 8.5, so no browser QA ran. The PR merged with no check of the real screens. The user asked "did you qa it using the chrome tools?", and the answer was no.
 - **Correction:** None before the merge. `grep -c "PHASE 8.5"` gave 0 for the main checkout copy and 2 for `origin/main`.
 - **Rule:** Set `scriptPath` to the script in the task worktree, which is on a branch from `origin/main`. Before the launch, run `grep -c "PHASE 8.5"` on that path. If the result is 0, stop and find the correct copy.
+
+## Category: Development Workflow (PR #829)
+
+### [2026-09-29] The workflow ran from the main checkout copy again, and no QA ran (PR #829)
+- **Mistake:** The PR #824 rule says to launch from the worktree copy of `.claude/workflows/dev-build-and-ship.js`. This run used the main checkout copy again. `grep -c "PHASE 8.5"` gave 0 for that copy. The workflow reported the PR green with no browser QA.
+- **Correction:** The main session found the gap in the retrospective. It ran Phase 8.5 as a separate agent before the merge.
+- **Rule:** The summary of a compacted session must include the full `scriptPath`, taken from the worktree. Before each launch or resume, run `grep -c "PHASE 8.5" <scriptPath>`. A resume must use the same path as a new launch.
+
+### [2026-09-29] A build agent stalls when a task spans many test files (PR #829)
+- **Mistake:** Task 7 changed one hook and five test files. The build agent planned in silence for 180 s before its first tool call. The watchdog stopped it 6 times.
+- **Correction:** The resume passed `resolutionNotes["task-7"]` as six ordered steps with a commit after each step. The task finished on the next run.
+- **Rule:** Write a plan task that touches more than three files as ordered steps, each with its own commit. Name the line ranges, so the agent does not read whole files.
+
+### [2026-09-29] Merge main before the review phase when a shared query changes shape (PR #829)
+- **Mistake:** This branch changed the result of the `'hourly-sales-all'` query from rows to the RPC result. Main PR #826 added `useDailyLaborPercent`, which read the old rows through the same key. GitHub found the conflict only after CI was green. Without a fix, the two hooks write two different shapes to one React Query cache entry.
+- **Correction:** The merge gave the shared query its own key, `'daily-sales-by-date'`. It now reads `get_hourly_sales_pattern` with `p_view: 'by_date'`.
+- **Rule:** When you change the return shape of a React Query, change its key too. Before Phase 7, merge `origin/main` and grep main for new users of each changed query key and export.
+
+### [2026-09-29] `sync_with_base_branch` refuses a worktree that the app did not make (PR #829)
+- **Mistake:** The host tool refused: "This session doesn't run in a worktree the app made for it". The `/dev` skill makes its own worktrees under `.claude/worktrees/`.
+- **Rule:** In a `/dev` worktree, merge with `git fetch origin main && git merge origin/main`. First move uncommitted local files, such as `dev-tools/review_queue.json`, to the scratchpad.
+
+## Category: Supabase / SQL (continued)
+
+### [2026-09-29] `NOT IN` does not reject a NULL argument (PR #829)
+- **Mistake:** The RPC guard `IF p_view NOT IN ('weekday', 'by_date')` is NULL for a NULL argument, so the guard did not raise. A NULL view went to the `by_date` branch. The Codex review found it.
+- **Correction:** `IF p_view IS NULL OR p_view NOT IN (...)`.
+- **Rule:** Put `x IS NULL OR` before each `NOT IN` guard on an RPC argument. Add a pgTAP case that sends NULL explicitly.
+
+### [2026-09-29] Two RPC calls in one request do not share a snapshot (PR #829)
+- **Mistake:** The design called the RPC twice for a sub-hour view. It named the CPU cost, but not the consistency. The review found that the 5-minute cron can write between the two calls. The workflow stopped for a design decision.
+- **Correction:** The operator accepted the risk and recorded it in design §8.
+- **Rule:** When a design reads the same table in more than one call, state in the design whether the calls must share a snapshot.

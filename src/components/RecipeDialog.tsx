@@ -38,7 +38,6 @@ import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelecto
 import { MEASUREMENT_UNITS, IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
 import { computeLineCost } from '@/lib/recipeYield';
 import { useRecipeWeeklyVolume } from '@/hooks/useRecipeWeeklyVolume';
-import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Recipe name is required'),

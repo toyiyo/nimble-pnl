@@ -1,6 +1,6 @@
 # Dashboard cash runway: use a 30-day burn — design
 
-Status: draft for review. Base: `main` at `5168b061`.
+Status: reviewed (frontend and Supabase design reviewers). Base: `main` at `5168b061`.
 Source: item M1 in `docs/superpowers/specs/2026-09-30-dashboard-briefing-design.md`
 section 10 (on branch `feature/dashboard-briefing`, PR #834).
 
@@ -146,7 +146,8 @@ restaurant gets a false "0 days" alert.
    Read `isLoading` from the hook too.
 3. Set `cashRunway = liquidityLoading || !liquidityMetrics ? null : liquidityMetrics.daysOfCash`.
    Today `|| 0` changes `Infinity` to `Infinity` but changes a load state to
-   `0`. The tile then shows a red "0d" while the query loads.
+   `0`. The tile then shows a red "0d" while the query loads. Pass
+   `cashRunwayLoading={liquidityLoading}` to `OwnerSnapshotWidget` too.
 4. In `criticalAlerts`, replace lines 367-377 with
    `const runwayAlert = buildCashRunwayAlert(cashRunway); if (runwayAlert) alerts.push(runwayAlert);`.
    Put `cashRunway` in the memo dependencies. Delete `availableCash` from the
@@ -166,21 +167,37 @@ still shows the bank balance.
 
 ### 4.3 `src/components/dashboard/OwnerSnapshotWidget.tsx`
 
-1. Change the prop to `cashRunway: number | null` (line 36).
+1. Change the prop to `cashRunway: number | null` (line 36). Add the prop
+   `cashRunwayLoading?: boolean`. `Index.tsx` passes `liquidityLoading`.
 2. Replace the local `formatRunway` (lines 75-78) with
    `formatRunwayValue` from `src/lib/cashRunway.ts`.
-3. Change `getRunwayColor` (lines 69-73):
-   - `null` gives `text-muted-foreground`.
-   - `Infinity` gives the healthy color, as today.
+3. Change `getRunwayColor` (lines 69-73) to
+   `getRunwayColor(days: number | null)`.
+   - Put `if (days === null) return "text-muted-foreground";` on the first
+     line. Warning: `null < 30` is `true` in JS. Without this guard first,
+     `null` gives the red color.
+   - `Infinity` gives the healthy color, as today. `Infinity < 60` is
+     `false`, so no special case is necessary.
    - The other thresholds do not change.
-4. The value line (line 171) shows `formatRunwayValue(cashRunway)`. The
-   helper adds the `d` suffix, so the JSX does not.
+4. The value line (line 171):
+   - While `cashRunwayLoading` is true, show `<Skeleton className="h-6 w-12 mt-1" />`.
+     This follows the Break-Even block in the same widget (lines 198-202).
+   - Otherwise show `formatRunwayValue(cashRunway)`. The helper adds the
+     `d` suffix, so the JSX does not.
+   - `null` after the load (an error, or no restaurant) shows "—" in the
+     muted color. Give the `<p>` the `aria-label` "Runway not available"
+     for this case only.
 5. Change the tooltip text (line 166) to
    "Days of cash at the average net burn of the last 30 days. Target: 60+ days".
 
-"Cash growing" is longer than "168d". The tile cell uses
-`text-[20px] font-semibold`. Check the cell at 375 px and at 1024 px. If the
-text wraps, use `text-[17px]` for the text value only.
+"Cash growing" has 12 characters. A `grid-cols-2` cell at 375 px has
+approximately 140 px of content width. At `text-[20px] font-semibold` the
+text can wrap. Thus:
+
+- When `cashRunway === Infinity`, use `text-[17px]` for the value. Use
+  `text-[20px]` for all other values, as today.
+- Add `whitespace-nowrap` to the value `<p>`.
+- QA checks the net-positive case at 375 px and at 1024 px (section 8).
 
 ### 4.4 What does not change
 
@@ -223,6 +240,15 @@ the reviewer can see it.
    not show the `truncated` flag.
 5. **No bank balance.** A negative book balance gives `daysOfCash = 0`.
    The `> 0` guard hides the alert for this case, as today.
+6. **Day edges in UTC.** In production, `bank_transactions.transaction_date`
+   is `timestamptz`. The hook sets the upper edge with `toInclusiveDayEnd`,
+   which appends `T23:59:59.999Z`. Thus the edges of the window are UTC
+   days, not restaurant-local days. For a US restaurant, some hours at the
+   two edges of the window move by one day. This defect exists on `main`
+   now. A 30-day window makes it smaller: it affects 2 edges of 30 days,
+   not the whole value of a 1-day window. This PR keeps the UTC edges. A
+   change to local-day edges must change the hook and all its callers, so
+   it is a separate follow-up.
 
 ## 7. Merge with PR #834
 
@@ -253,7 +279,8 @@ Unit (`tests/unit/cashRunway.test.ts`):
 Hook (`tests/unit/useLiquidityMetrics.test.tsx`): add one case. Give a
 30-day range with outflows of 3000 and inflows of 1500, and a balance of
 1000. Expect `daysOfCash` of 20 (1000 ÷ (1500 ÷ 30)). Add one case with
-inflows larger than outflows. Expect `Infinity`.
+inflows larger than outflows. Expect `Infinity`. Add one case with zero
+connected banks. Expect no error and `daysOfCash` of 0.
 
 Source test (`tests/unit/indexCashRunway.test.ts`), with the pattern from
 `tests/unit/indexLaborCostSection.test.ts`:
@@ -262,6 +289,25 @@ Source test (`tests/unit/indexCashRunway.test.ts`), with the pattern from
 - `Index.tsx` does not call `useLiquidityMetrics(todayStart, todayEnd`.
 - `Index.tsx` calls `buildCashRunwayAlert`.
 - `Index.tsx` does not contain `dailyAvgSpending` or `autoLoadAll`.
+- `Index.tsx` sets `cashRunway` to `null` while `liquidityLoading` is true
+  (a regex on `liquidityLoading` and `? null :`). This test fails if an
+  edit adds `|| 0` again.
+- `Index.tsx` passes `cashRunwayLoading` to `OwnerSnapshotWidget`.
+
+Component (`tests/unit/OwnerSnapshotWidget.runway.test.tsx`):
+
+- `cashRunwayLoading` true shows a skeleton, not "0d".
+- `null` shows "—" with the muted color, not `text-destructive`.
+- `Infinity` shows "Cash growing" with `text-[17px]`.
+- 20 shows "20d" with `text-destructive`.
+
+QA checklist on the preview:
+
+- The tile and the alert show the same number of days.
+- A net-positive restaurant shows "Cash growing" on one line at 375 px and
+  at 1024 px. Most test restaurants burn cash, so QA must find or set up
+  this case.
+- A slow network shows the skeleton, not a red "0d".
 
 E2E: justified exception. A useful E2E needs connected banks, balances and
 30 days of posted rows in the local database. No seed helper for that

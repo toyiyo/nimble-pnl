@@ -77,7 +77,7 @@ const updateSchema = z.object({
   shelf_life_days: z.coerce.number().int().min(0).optional(),
   image_url: z.string().optional(),
   yield_pct: z.coerce.number().min(50).max(100).optional(),
-  waste_reason: z.string().optional(),
+  waste_reason: z.string().max(120, 'Waste reason must be 120 characters or fewer').optional(),
 });
 
 type UpdateFormData = z.infer<typeof updateSchema>;

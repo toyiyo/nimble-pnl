@@ -93,15 +93,18 @@ export function calculateIngredientCost(ingredient: IngredientInfo): IngredientC
   const productName = product.name || 'Unknown Product';
   const costPerUnit = product.cost_per_unit || 0;
 
-  // If no cost, return zero-cost result
+  // If no cost, still scale the deduction by yield (waste allowance). A
+  // stock-sufficiency check must see the same deducted quantity the
+  // authoritative SQL deduction applies regardless of cost.
   if (costPerUnit === 0) {
+    const { yieldPct: zeroCostYieldPct } = resolveYieldPct(product.yield_pct, null);
     return {
       productId: ingredient.product_id,
       productName,
       quantity: ingredient.quantity,
       unit: ingredient.unit as string,
       costPerUnit: 0,
-      inventoryDeduction: ingredient.quantity,
+      inventoryDeduction: ingredient.quantity * (100 / zeroCostYieldPct),
       inventoryDeductionUnit: ingredient.unit as string,
       costImpact: 0,
       conversionApplied: false,

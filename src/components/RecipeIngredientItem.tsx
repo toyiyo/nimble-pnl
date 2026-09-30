@@ -49,10 +49,16 @@ export function RecipeIngredientItem({
     if (!quantityField || !unitField) {
       return null;
     }
-    return computeLineCost(
-      { quantity: quantityField, unit: unitField, yield_pct_override: yieldOverrideField ?? null },
-      selectedProduct
-    );
+    try {
+      return computeLineCost(
+        { quantity: quantityField, unit: unitField, yield_pct_override: yieldOverrideField ?? null },
+        selectedProduct
+      );
+    } catch {
+      // An incompatible or missing unit conversion throws here. The
+      // conversion warning below already reports the problem to the user.
+      return null;
+    }
   }, [quantityField, unitField, yieldOverrideField, selectedProduct]);
   
   // Check for conversion issues

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   YIELD_MIN,
   YIELD_MAX,
-  YIELD_REVIEW_BELOW,
   resolveYieldPct,
   loadedQuantity,
   computeLineCost,

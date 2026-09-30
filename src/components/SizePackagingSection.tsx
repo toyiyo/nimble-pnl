@@ -357,6 +357,7 @@ export function SizePackagingSection({ form, restaurantId, productId }: SizePack
                 <Input
                   list="waste-reason-suggestions"
                   placeholder="e.g., Trim"
+                  maxLength={120}
                   {...field}
                   value={field.value ?? ''}
                 />

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 import { toDateOnlyString } from '@/lib/dateOnly';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export interface RecipeWeeklyVolumeResult {
   weeklyVolume: number;
@@ -25,21 +26,25 @@ export function useRecipeWeeklyVolume(
   const { data, isLoading, isError } = useQuery({
     queryKey: ['recipe-weekly-volume', restaurantId, posItemName],
     queryFn: async (): Promise<number> => {
+      // `sale_date` is a calendar date and `gte` is inclusive, so 6 days
+      // back plus today covers exactly 7 restaurant days.
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 7);
+      startDate.setDate(startDate.getDate() - 6);
       const startStr = toDateOnlyString(startDate);
 
-      const { data, error } = await supabase
-        .from('unified_sales')
-        .select('quantity')
-        .eq('restaurant_id', restaurantId as string)
-        .eq('item_name', posItemName as string)
-        .gte('sale_date', startStr);
+      // Paginate past PostgREST's default row cap: a popular item can have
+      // more than 1000 sale rows in a 7-day window.
+      const { rows } = await fetchAllRows<{ quantity: number }>((from, to) =>
+        supabase
+          .from('unified_sales')
+          .select('quantity')
+          .eq('restaurant_id', restaurantId as string)
+          .eq('item_name', posItemName as string)
+          .gte('sale_date', startStr)
+          .range(from, to) as unknown as PromiseLike<{ data: { quantity: number }[] | null; error: unknown }>
+      );
 
-      if (error) throw error;
-      if (!data) return 0;
-
-      return data.reduce((sum, row) => sum + Number((row as { quantity: number }).quantity ?? 0), 0);
+      return rows.reduce((sum, row) => sum + Number(row.quantity ?? 0), 0);
     },
     enabled,
     staleTime: 60000,

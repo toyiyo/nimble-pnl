@@ -29,7 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Trash2, Calculator, ChefHat } from 'lucide-react';
+import { Plus, ChefHat } from 'lucide-react';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { Product } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';

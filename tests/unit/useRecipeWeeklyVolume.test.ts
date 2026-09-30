@@ -32,7 +32,7 @@ function createWrapper() {
 let mockFromChain: Record<string, ReturnType<typeof vi.fn>>;
 
 function setupChain(data: unknown[] | null, error: Error | null = null) {
-  mockFromChain.gte.mockResolvedValue({ data, error });
+  mockFromChain.range.mockResolvedValue({ data, error });
 }
 
 beforeEach(() => {
@@ -41,7 +41,8 @@ beforeEach(() => {
   mockFromChain = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
-    gte: vi.fn(),
+    gte: vi.fn().mockReturnThis(),
+    range: vi.fn(),
   };
 
   mockSupabase.from.mockReturnValue(mockFromChain);

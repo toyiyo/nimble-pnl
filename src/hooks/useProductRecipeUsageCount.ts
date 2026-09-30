@@ -24,15 +24,18 @@ export function useProductRecipeUsageCount(
   const { data, isLoading, isError } = useQuery({
     queryKey: ['product-recipe-usage-count', restaurantId, productId],
     queryFn: async (): Promise<number> => {
-      const { count, error } = await supabase
+      // Count distinct recipes, not ingredient lines: the same product can
+      // appear on more than one line of one recipe.
+      const { data, error } = await supabase
         .from('recipe_ingredients')
-        .select('id, recipe:recipes!inner(restaurant_id)', { count: 'exact', head: true })
+        .select('recipe_id, recipe:recipes!inner(restaurant_id)')
         .eq('product_id', productId as string)
         .eq('recipe.restaurant_id', restaurantId as string)
         .is('yield_pct_override', null);
 
       if (error) throw error;
-      return count ?? 0;
+      const distinctRecipeIds = new Set((data ?? []).map((row) => row.recipe_id));
+      return distinctRecipeIds.size;
     },
     enabled,
     staleTime: 60000,

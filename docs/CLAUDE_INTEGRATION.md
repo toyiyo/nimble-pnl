@@ -46,7 +46,7 @@ Claude ──(1) POST /functions/v1/mcp, no token──────────�
 | `get_kpis`, `get_sales_summary`, `get_daily_sales_totals` | read | Revenue, COGS, labor, prime cost. |
 | `get_inventory_status`, `get_inventory_transactions` | read | |
 | `get_recipe_analytics` | read | |
-| `get_labor_costs`, `get_schedule_overview` | read | Need `view:scheduling` or `view:payroll`. |
+| `get_labor_costs`, `get_schedule_overview`, `get_hourly_sales` | read | Need `view:scheduling` or `view:payroll`. `get_hourly_sales` gives sales by time of day, with a staff count recommendation per hour. |
 | `get_financial_intelligence`, `get_bank_transactions`, `get_financial_statement`, `generate_report` | read | Manager or owner. |
 | `get_payroll_summary`, `get_time_punches`, `get_tip_summary` | read | Manager or owner. |
 | `get_pending_outflows`, `get_operating_costs`, `get_monthly_trends`, `get_expense_health`, `get_break_even_progress` | read | Manager or owner. |

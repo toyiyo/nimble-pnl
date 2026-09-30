@@ -104,12 +104,22 @@ const WEEK_DAYS = [
   '2026-05-31',
 ];
 
-// Fake sales data: 10 sales with hourly timestamps so daySuggestions produces shiftBlocks
-const FAKE_SALES = Array.from({ length: 10 }, (_, i) => ({
-  sale_date: '2026-05-23', // a Saturday
-  sale_time: `${9 + i}:00:00`,
-  total_price: '500',
-}));
+// Fake get_hourly_sales_pattern RPC result: hourly slots on a Saturday
+// (day_of_week 6) so daySuggestions produces shiftBlocks.
+const FAKE_HOURLY_SALES_RESULT = {
+  total_sales: 5000,
+  days: [
+    {
+      day_of_week: 6,
+      has_hourly_breakdown: true,
+      slots: Array.from({ length: 10 }, (_, i) => ({
+        start_minute: (9 + i) * 60,
+        sales: 500,
+        sample_count: 1,
+      })),
+    },
+  ],
+};
 
 // Since #598 the panel defaults to collapsed (isExpanded=false), so its
 // CollapsibleContent is unmounted until opened. Tests that assert inner content
@@ -127,7 +137,7 @@ describe('<StaffingOverlay> wiring', () => {
     mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
       const key = opts.queryKey[0];
       if (key === 'hourly-sales-all') {
-        return { data: FAKE_SALES, isLoading: false, error: null };
+        return { data: FAKE_HOURLY_SALES_RESULT, isLoading: false, error: null };
       }
       if (key === 'staffing-time-punches') {
         return { data: [], isLoading: false, error: null };
@@ -178,7 +188,7 @@ describe('<StaffingOverlay> wiring', () => {
     mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
       const key = opts.queryKey[0];
       if (key === 'hourly-sales-all') {
-        return { data: [], isLoading: false, error: null }; // empty → hasSalesData=false
+        return { data: { total_sales: 0, days: [] }, isLoading: false, error: null }; // empty -> hasSalesData=false
       }
       return { data: [], isLoading: false, error: null };
     });

@@ -5,7 +5,6 @@ import { fromZonedTime } from 'date-fns-tz';
 
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useEmployees } from '@/hooks/useEmployees';
-import { aggregateHourlySales } from '@/hooks/useHourlySalesPattern';
 import { computeStaffingSuggestions } from '@/hooks/useStaffingSuggestions';
 import { computeAvgHourlyRateCents, computeMinStaffFromCrew, hasHourlyWageData } from '@/lib/staffingCalculator';
 import { dayStringToDow } from '@/lib/staffingApply';
@@ -15,23 +14,10 @@ import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcess
 import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
-import type { StaffingSettings } from '@/types/scheduling';
+import type { StaffingSettings, HourlySalesData } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 
 export type { StaffingSuggestionsResult };
-
-interface ActualSplhSaleRow {
-  total_price: number | string;
-}
-
-/** Row shape selected by the hourly-sales query. Mirrors `aggregateHourlySales`'s
- *  `RawSale` so the paginated result feeds straight into the aggregation. */
-export interface HourlySaleRow {
-  sale_date: string;
-  sale_time: string | null;
-  sold_at: string | null;
-  total_price: number;
-}
 
 /**
  * Sums total sales and divides by total worked hours to produce a rough
@@ -48,14 +34,18 @@ export interface HourlySaleRow {
  *
  * Returns `null` when there's no usable data (no sales, no punches, or no
  * worked hours across all sessions).
+ *
+ * `hasSalesData` tells apart "no sales data was fetched" from "sales data
+ * exists and totals exactly $0" (a fully refunded day) — `totalSales`
+ * alone cannot, since both cases show as 0. It defaults to `totalSales !==
+ * 0` so a caller that has no better signal keeps the old behavior.
  */
 export function computeActualSplh(
-  sales: ActualSplhSaleRow[],
+  totalSales: number,
   punches: TimePunch[],
+  hasSalesData: boolean = totalSales !== 0,
 ): number | null {
-  if (!sales.length || !punches.length) return null;
-
-  const totalSales = sales.reduce((sum, s) => sum + Number(s.total_price), 0);
+  if (!hasSalesData || !punches.length) return null;
 
   const sessions = identifyWorkSessions(normalizePunches(punches));
   const totalHours = sessions.reduce((sum, s) => sum + s.worked_minutes / 60, 0);
@@ -64,13 +54,64 @@ export function computeActualSplh(
   return Math.round(totalSales / totalHours);
 }
 
-const SALES_PAGE_SIZE = 1000;
-const SALES_MAX_PAGES = 20;
+interface HourlySalesPatternSlot {
+  start_minute: number;
+  sales: number;
+  sample_count: number;
+}
+
+interface HourlySalesPatternDay {
+  day_of_week: number;
+  has_hourly_breakdown: boolean;
+  slots: HourlySalesPatternSlot[];
+}
+
+interface HourlySalesPatternResult {
+  total_sales?: number | null;
+  days?: HourlySalesPatternDay[] | null;
+}
+
+const EMPTY_DAY_ENTRY: { data: HourlySalesData[]; hasHourlyBreakdown: boolean } = {
+  data: [],
+  hasHourlyBreakdown: false,
+};
+
 /**
- * Most rows the lookback sales query returns. A result of this size is cut
- * off: the last `sale_date` in it (rows are ordered by date) is partial.
+ * Maps `get_hourly_sales_pattern`'s jsonb result to a Map keyed by
+ * `day_of_week` (0=Sunday..6=Saturday), one entry per weekday. A weekday
+ * absent from `days[]` (no sales in the lookback window) still gets an
+ * entry, with empty data -- so callers never guard a missing Map key with
+ * their own default.
+ *
+ * `hour = start_minute / 60` -- correct only at `p_interval_minutes = 60`,
+ * the only interval this hook requests.
  */
-export const LOOKBACK_SALES_ROW_CAP = SALES_PAGE_SIZE * SALES_MAX_PAGES;
+export function mapHourlySalesPattern(
+  result: HourlySalesPatternResult | null | undefined,
+): Map<number, { data: HourlySalesData[]; hasHourlyBreakdown: boolean }> {
+  const byDow = new Map<number, HourlySalesPatternDay>();
+  for (const day of result?.days ?? []) {
+    byDow.set(day.day_of_week, day);
+  }
+
+  const mapped = new Map<number, { data: HourlySalesData[]; hasHourlyBreakdown: boolean }>();
+  for (let dow = 0; dow <= 6; dow++) {
+    const day = byDow.get(dow);
+    if (!day) {
+      mapped.set(dow, EMPTY_DAY_ENTRY);
+      continue;
+    }
+    mapped.set(dow, {
+      hasHourlyBreakdown: day.has_hourly_breakdown,
+      data: (day.slots ?? []).map((slot) => ({
+        hour: slot.start_minute / 60,
+        avgSales: slot.sales,
+        sampleCount: slot.sample_count,
+      })),
+    });
+  }
+  return mapped;
+}
 
 /**
  * The lookback window as restaurant business days. `sale_date` is a date-only
@@ -87,13 +128,29 @@ export function lookbackDateRange(lookbackWeeks: number, tz: string, now: Date =
   };
 }
 
+/** One sales total for each business day in the lookback window. */
+export interface LookbackDailySalesRow {
+  sale_date: string;
+  total_price: number;
+}
+
+interface HourlySalesByDateResult {
+  days?: { date: string; day_total: number | null }[] | null;
+}
+
 /**
- * Query options for the lookback sales history. Exported so that every caller
- * (this hook and `useDailyLaborPercent`) shares one React Query cache entry.
+ * Query options for the daily sales totals of the lookback window. Exported
+ * so that every caller (for example `useDailyLaborPercent`) shares one React
+ * Query cache entry.
  *
- * `tz` belongs in the key because the date range is derived from it --
- * without it, changing the restaurant's zone leaves this window cached
- * against the old business days.
+ * `get_hourly_sales_pattern` with `p_view: 'by_date'` returns one total for
+ * each date with sales. The SQL function is authoritative for the filters
+ * (item_type 'sale', no split children). It has no row cap, so no date is
+ * partial.
+ *
+ * The key is not 'hourly-sales-all': that key holds the weekday result of the
+ * planner query, which has a different shape. `tz` belongs in the key because
+ * the date range is derived from it.
  */
 export function lookbackSalesQueryOptions(
   restaurantId: string | null,
@@ -101,39 +158,20 @@ export function lookbackSalesQueryOptions(
   tz: string,
 ) {
   return {
-    queryKey: ['hourly-sales-all', restaurantId, lookbackWeeks, tz],
-    queryFn: async (): Promise<HourlySaleRow[]> => {
+    queryKey: ['daily-sales-by-date', restaurantId, lookbackWeeks, tz],
+    queryFn: async (): Promise<LookbackDailySalesRow[]> => {
       if (!restaurantId) return [];
       const dateRange = lookbackDateRange(lookbackWeeks, tz);
-      // Paginated (matches useSplhData.ts's fetchAllPunches / the time-punch
-      // query in useWeekStaffingSuggestions): an unbounded select is subject to PostgREST's default
-      // row cap, which a busy restaurant's multi-week lookback easily exceeds.
-      // Because the rows are ordered by `sale_date`, silent truncation drops
-      // the most-recent days first — so the current week (including today, the
-      // default-selected day) would aggregate to zero sales and the coverage
-      // chart would render every hour as "No sales history".
-      const rows: HourlySaleRow[] = [];
-      for (let page = 0; page < SALES_MAX_PAGES; page++) {
-        const from = page * SALES_PAGE_SIZE;
-        const { data, error } = await supabase
-          .from('unified_sales')
-          .select('sale_date, sale_time, sold_at, total_price')
-          .eq('restaurant_id', restaurantId)
-          .eq('item_type', 'sale')
-          // Split-sale guard (§5 S-M1): exclude split-parent/child rows so a
-          // split sale's total isn't summed twice, matching useSplhData.ts.
-          .is('parent_sale_id', null)
-          .gte('sale_date', dateRange.startStr)
-          .lte('sale_date', dateRange.endStr)
-          .order('sale_date')
-          .order('created_at')
-          .order('id')
-          .range(from, from + SALES_PAGE_SIZE - 1);
-        if (error) throw error;
-        rows.push(...((data ?? []) as unknown as HourlySaleRow[]));
-        if (!data || data.length < SALES_PAGE_SIZE) break;
-      }
-      return rows;
+      const { data, error } = await supabase.rpc('get_hourly_sales_pattern', {
+        p_restaurant_id: restaurantId,
+        p_start_date: dateRange.startStr,
+        p_end_date: dateRange.endStr,
+        p_interval_minutes: 60,
+        p_view: 'by_date',
+      });
+      if (error) throw error;
+      const days = (data as unknown as HourlySalesByDateResult | null)?.days ?? [];
+      return days.map((day) => ({ sale_date: day.date, total_price: Number(day.day_total) || 0 }));
     },
     enabled: !!restaurantId,
     staleTime: 60000,
@@ -196,9 +234,36 @@ export function useWeekStaffingSuggestions(
     [activeSettings.lookback_weeks, tz],
   );
 
-  const { data: allSales, isLoading: salesLoading, error: salesError, refetch: refetchSales } = useQuery(
-    lookbackSalesQueryOptions(restaurantId, activeSettings.lookback_weeks, tz),
-  );
+  const {
+    data: hourlySalesResult,
+    isLoading: salesLoading,
+    error: salesError,
+    refetch: refetchSales,
+  } = useQuery({
+    // `tz` belongs in the key because `dateRange` is now derived from it --
+    // without it, changing the restaurant's zone leaves this window cached
+    // against the old business days. The punch query below already keys on tz.
+    queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks, tz],
+    queryFn: async (): Promise<HourlySalesPatternResult | null> => {
+      if (!restaurantId) return null;
+      // The SQL function (supabase/migrations/20260927120000_get_hourly_sales_pattern.sql)
+      // is authoritative for the hourly-sales aggregation and the rounding --
+      // no client-side pagination or grouping needed.
+      const { data, error } = await supabase.rpc('get_hourly_sales_pattern', {
+        p_restaurant_id: restaurantId,
+        p_start_date: dateRange.startStr,
+        p_end_date: dateRange.endStr,
+        p_interval_minutes: 60,
+        p_view: 'weekday',
+      });
+      if (error) throw error;
+      return data as unknown as HourlySalesPatternResult;
+    },
+    enabled: !!restaurantId,
+    staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
 
   // Fetch time punches to compute actual labor hours for SPLH hint.
   // isLoading and refetch are joined with the sales query so callers see a
@@ -253,33 +318,32 @@ export function useWeekStaffingSuggestions(
 
   // Compute actual SPLH from historical sales and labor hours
   const actualSplh = useMemo(
-    () => computeActualSplh(allSales ?? [], timePunches ?? []),
-    [allSales, timePunches],
+    () =>
+      computeActualSplh(
+        hourlySalesResult?.total_sales ?? 0,
+        timePunches ?? [],
+        (hourlySalesResult?.days?.length ?? 0) > 0,
+      ),
+    [hourlySalesResult, timePunches],
   );
 
-  // Pre-group sales by day-of-week in a single pass (avoids 7x Date allocations)
-  const salesByDow = useMemo(() => {
-    if (!allSales?.length) return new Map<number, typeof allSales>();
-    const grouped = new Map<number, typeof allSales>();
-    for (const sale of allSales) {
-      const dow = dayStringToDow(sale.sale_date);
-      if (!grouped.has(dow)) grouped.set(dow, []);
-      grouped.get(dow)!.push(sale);
-    }
-    return grouped;
-  }, [allSales]);
+  const hourlySalesByDow = useMemo(
+    () => mapHourlySalesPattern(hourlySalesResult),
+    [hourlySalesResult],
+  );
 
   const { daySuggestions, hasHourlyBreakdown } = useMemo(() => {
-    if (!allSales?.length) return { daySuggestions: new Map<string, StaffingSuggestionsResult>(), hasHourlyBreakdown: false };
+    if (!hourlySalesResult?.days?.length) {
+      return { daySuggestions: new Map<string, StaffingSuggestionsResult>(), hasHourlyBreakdown: false };
+    }
 
     const result = new Map<string, StaffingSuggestionsResult>();
     let anyHourly = false;
     for (const day of weekDays) {
       const dayOfWeek = dayStringToDow(day);
-      const filtered = salesByDow.get(dayOfWeek) ?? [];
-      const aggregated = aggregateHourlySales(filtered, tz);
-      if (aggregated.hasHourlyBreakdown) anyHourly = true;
-      result.set(day, computeStaffingSuggestions(aggregated.data, {
+      const entry = hourlySalesByDow.get(dayOfWeek) ?? EMPTY_DAY_ENTRY;
+      if (entry.hasHourlyBreakdown) anyHourly = true;
+      result.set(day, computeStaffingSuggestions(entry.data, {
         targetSplh: activeSettings.target_splh,
         minStaff: computeMinStaffFromCrew(activeSettings.min_crew, activeSettings.min_staff),
         targetLaborPct: activeSettings.target_labor_pct,
@@ -288,7 +352,7 @@ export function useWeekStaffingSuggestions(
       }));
     }
     return { daySuggestions: result, hasHourlyBreakdown: anyHourly };
-  }, [allSales, salesByDow, weekDays, activeSettings, avgHourlyRateCents, tz]);
+  }, [hourlySalesResult, hourlySalesByDow, weekDays, activeSettings, avgHourlyRateCents]);
 
   const refetch = () => {
     void refetchSales();
@@ -300,7 +364,7 @@ export function useWeekStaffingSuggestions(
     isLoading: settingsLoading || salesLoading || punchesLoading,
     error: salesError,
     refetch,
-    hasSalesData: (allSales?.length ?? 0) > 0,
+    hasSalesData: (hourlySalesResult?.days?.length ?? 0) > 0,
     hasHourlyBreakdown,
     activeSettings,
     updateSettings,

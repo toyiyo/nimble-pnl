@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 import { DashboardTodayCard } from '@/components/dashboard/DashboardTodayCard';
 
@@ -12,6 +13,7 @@ const baseProps = {
   todayFoodCost: 1200,
   todayLaborCost: 1400,
   monthToDateSales: 62000,
+  primeCostPercentage: 53.3,
   breakEvenData: {
     dailyBreakEven: 3640,
     todayStatus: 'above' as const,
@@ -88,5 +90,18 @@ describe('DashboardTodayCard', () => {
   it('shows the break-even error text when breakEvenData is an error', () => {
     render(<DashboardTodayCard {...baseProps} breakEvenData={null} breakEvenError />);
     expect(screen.getByText('Break-even is not available right now.')).toBeInTheDocument();
+  });
+
+  it('shows the "Set operating costs" link when dailyBreakEven is 0 on a truthy breakEvenData object', () => {
+    render(
+      <MemoryRouter>
+        <DashboardTodayCard
+          {...baseProps}
+          breakEvenData={{ ...baseProps.breakEvenData, dailyBreakEven: 0, todayStatus: 'above', todayDelta: 0 }}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByText('Set your operating costs to see break-even.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Set operating costs' })).toBeInTheDocument();
   });
 });

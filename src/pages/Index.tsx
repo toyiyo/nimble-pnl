@@ -152,8 +152,6 @@ const Index = () => {
   const [laborEfficiencyOpen, setLaborEfficiencyOpen] = useState(false);
   const [laborCostOpen, setLaborCostOpen] = useState(false);
 
-  const activeSectionId = useActiveSection(DASHBOARD_SECTIONS.map((section) => section.id));
-
   const sectionOpenSetters: Partial<Record<string, (open: boolean) => void>> = {
     'dash-labor-cost': setLaborCostOpen,
     'dash-performance-overview': setMetricsOpen,
@@ -293,6 +291,31 @@ const Index = () => {
   }, [previousPeriodMetrics]);
 
   const todaysData = todaysMetrics;
+
+  // The Revenue Mix section only renders when categorized revenue data
+  // exists (see the `dash-revenue-mix` block below). Drop its rail link and
+  // chip when that is not the case, so a click never scrolls to a section
+  // with no visible content.
+  const revenueMixSectionRenders = !revenueLoading && Boolean(revenueBreakdown?.has_categorization_data);
+  const dashboardSections = useMemo(
+    () =>
+      revenueMixSectionRenders
+        ? DASHBOARD_SECTIONS
+        : DASHBOARD_SECTIONS.filter((section) => section.id !== 'dash-revenue-mix'),
+    [revenueMixSectionRenders]
+  );
+  const dashboardSectionIds = useMemo(
+    () => dashboardSections.map((section) => section.id),
+    [dashboardSections]
+  );
+  // The section elements are hidden behind DashboardSkeleton until this is
+  // false, so the observer waits for it before it starts observing.
+  const dashboardSectionsReady = !(
+    alertsLoading ||
+    (todaysLoading && !todaysData) ||
+    (periodLoading && !periodData)
+  );
+  const activeSectionId = useActiveSection(dashboardSectionIds, dashboardSectionsReady);
 
   // Fetch liquidity metrics for cash runway
   const { data: liquidityMetrics } = useLiquidityMetrics(
@@ -751,7 +774,7 @@ const Index = () => {
             <div className="h-px bg-border/40" />
             <div className="lg:hidden">
               <DashboardSectionRail
-                sections={DASHBOARD_SECTIONS}
+                sections={dashboardSections}
                 activeSectionId={activeSectionId}
                 onNavigate={handleSectionNavigate}
                 variant="compact"
@@ -774,6 +797,7 @@ const Index = () => {
                   todayFoodCost={todaysData?.foodCost || 0}
                   todayLaborCost={todaysData?.laborCost || 0}
                   monthToDateSales={breakEvenData?.monthlyProgress?.mtdSales ?? 0}
+                  primeCostPercentage={todaysData?.primeCostPercentage ?? 0}
                   breakEvenData={breakEvenData ? {
                     dailyBreakEven: breakEvenData.dailyBreakEven,
                     todayStatus: breakEvenData.todayStatus,
@@ -1367,7 +1391,7 @@ const Index = () => {
               </section>
             </div>
             <DashboardSectionRail
-              sections={DASHBOARD_SECTIONS}
+              sections={dashboardSections}
               activeSectionId={activeSectionId}
               onNavigate={handleSectionNavigate}
             />

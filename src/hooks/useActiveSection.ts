@@ -10,8 +10,14 @@ const VIEW_THRESHOLD = 0.5;
  * the first id as the active section by default. It sends one
  * `dashboard_section_viewed` event per section per mount, the first time
  * that section crosses the view threshold.
+ *
+ * Pass a stable `sectionIds` array (for example from `useMemo`) so the
+ * observer effect does not re-run every render. Pass `ready = false` while
+ * the section elements are still hidden behind a loading skeleton; the
+ * effect re-runs and re-observes once `ready` becomes true, so sections
+ * that mount after the initial render still get observed.
  */
-export function useActiveSection(sectionIds: string[]): string | null {
+export function useActiveSection(sectionIds: string[], ready = true): string | null {
   const [activeSection, setActiveSection] = useState<string | null>(
     sectionIds[0] ?? null,
   );
@@ -23,7 +29,7 @@ export function useActiveSection(sectionIds: string[]): string | null {
   useEffect(() => {
     viewedRef.current = new Set();
 
-    if (typeof IntersectionObserver === 'undefined' || sectionIds.length === 0) {
+    if (!ready || typeof IntersectionObserver === 'undefined' || sectionIds.length === 0) {
       return;
     }
 
@@ -60,8 +66,7 @@ export function useActiveSection(sectionIds: string[]): string | null {
     return () => {
       observer.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sectionIds.join(',')]);
+  }, [sectionIds, ready]);
 
   return activeSection;
 }

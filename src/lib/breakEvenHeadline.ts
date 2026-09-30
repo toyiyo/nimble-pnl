@@ -13,12 +13,15 @@ export interface BreakEvenHeadline {
   tone: BreakEvenHeadlineTone;
   sentence: string;
   progressPercent: number;
+  /** False when there is no configured break-even target to show progress against. */
+  hasTarget: boolean;
 }
 
 const NO_TARGET_HEADLINE: BreakEvenHeadline = {
   tone: 'neutral',
   sentence: 'Set your operating costs to see break-even.',
   progressPercent: 0,
+  hasTarget: false,
 };
 
 function hasTarget(dailyBreakEven: number): boolean {
@@ -51,6 +54,7 @@ export function buildBreakEvenHeadline(
       tone: 'positive',
       sentence: `Today is ${deltaAmount} above break-even.`,
       progressPercent,
+      hasTarget: true,
     };
   }
 
@@ -59,6 +63,7 @@ export function buildBreakEvenHeadline(
       tone: 'negative',
       sentence: `You need ${deltaAmount} more today to break even.`,
       progressPercent,
+      hasTarget: true,
     };
   }
 
@@ -66,5 +71,6 @@ export function buildBreakEvenHeadline(
     tone: 'neutral',
     sentence: 'Today is at break-even.',
     progressPercent,
+    hasTarget: true,
   };
 }

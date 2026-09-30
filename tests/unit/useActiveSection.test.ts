@@ -84,6 +84,22 @@ describe('useActiveSection', () => {
     expect(result.current).toBe('dash-cashflow');
   });
 
+  it('does not observe while ready is false, then observes once ready flips to true', () => {
+    clearSections();
+    const { rerender } = renderHook(
+      ({ ready }) => useActiveSection(SECTION_IDS, ready),
+      { initialProps: { ready: false } },
+    );
+
+    expect(FakeIntersectionObserver.instances).toHaveLength(0);
+
+    mountSections(SECTION_IDS);
+    rerender({ ready: true });
+
+    expect(FakeIntersectionObserver.instances).toHaveLength(1);
+    expect(FakeIntersectionObserver.instances[0].observed).toHaveLength(SECTION_IDS.length);
+  });
+
   it('disconnects the observer on unmount', () => {
     const { unmount } = renderHook(() => useActiveSection(SECTION_IDS));
     const observer = FakeIntersectionObserver.instances[0];

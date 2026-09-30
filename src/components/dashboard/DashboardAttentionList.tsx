@@ -1,5 +1,6 @@
-import { AlertTriangle, TrendingDown, Package, DollarSign } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+import { AlertTriangle, TrendingDown, Package, DollarSign } from "lucide-react";
 
 import type { CriticalAlert } from "@/types/dashboard";
 

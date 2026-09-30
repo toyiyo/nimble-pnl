@@ -1,9 +1,10 @@
-import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "react-router-dom";
+
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { formatRunway } from "@/lib/formatRunway";
 import { buildBreakEvenHeadline } from "@/lib/breakEvenHeadline";
-import { formatWholeDollarAmount } from "@/lib/formatWholeDollarAmount";
+import { formatWholeDollarAmount, formatCompactDollarAmount } from "@/lib/formatWholeDollarAmount";
 
 interface BreakEvenStatusData {
   dailyBreakEven: number;
@@ -22,21 +23,10 @@ interface DashboardTodayCardProps {
   todayFoodCost: number;
   todayLaborCost: number;
   monthToDateSales: number;
+  primeCostPercentage: number;
   breakEvenData?: BreakEvenStatusData | null;
   breakEvenLoading?: boolean;
   breakEvenError?: boolean;
-}
-
-function formatWholeDollar(value: number, abbreviated = false): string {
-  if (abbreviated && Math.abs(value) >= 1000) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(value);
-  }
-  return formatWholeDollarAmount(value);
 }
 
 export function DashboardTodayCard({
@@ -47,13 +37,11 @@ export function DashboardTodayCard({
   todayFoodCost,
   todayLaborCost,
   monthToDateSales,
+  primeCostPercentage,
   breakEvenData,
   breakEvenLoading = false,
   breakEvenError = false,
 }: DashboardTodayCardProps) {
-  const primeCost =
-    todaySales > 0 ? ((todayFoodCost + todayLaborCost) / todaySales) * 100 : 0;
-
   const headline = buildBreakEvenHeadline(
     breakEvenData
       ? {
@@ -65,12 +53,12 @@ export function DashboardTodayCard({
       : null
   );
 
-  const headlineColor =
-    headline.tone === 'positive'
-      ? 'text-foreground'
-      : headline.tone === 'negative'
-        ? 'text-destructive'
-        : 'text-muted-foreground';
+  const headlineColorByTone: Record<typeof headline.tone, string> = {
+    positive: 'text-foreground',
+    negative: 'text-destructive',
+    neutral: 'text-muted-foreground',
+  };
+  const headlineColor = headlineColorByTone[headline.tone];
 
   return (
     <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
@@ -88,7 +76,7 @@ export function DashboardTodayCard({
           <>
             <p className={`text-[22px] font-semibold ${headlineColor}`}>
               {headline.sentence}
-              {headline.tone === 'neutral' && !breakEvenData && (
+              {headline.tone === 'neutral' && !headline.hasTarget && (
                 <>
                   {' '}
                   <Link
@@ -122,7 +110,7 @@ export function DashboardTodayCard({
               Sales today
             </p>
             <p className="text-[18px] font-semibold text-foreground mt-1">
-              {formatWholeDollar(todaySales)}
+              {formatWholeDollarAmount(todaySales)}
             </p>
           </div>
           <div>
@@ -138,7 +126,7 @@ export function DashboardTodayCard({
               Food cost
             </p>
             <p className="text-[18px] font-semibold text-foreground mt-1">
-              {formatWholeDollar(todayFoodCost)}
+              {formatWholeDollarAmount(todayFoodCost)}
             </p>
           </div>
           <div>
@@ -146,7 +134,7 @@ export function DashboardTodayCard({
               Labor cost
             </p>
             <p className="text-[18px] font-semibold text-foreground mt-1">
-              {formatWholeDollar(todayLaborCost)}
+              {formatWholeDollarAmount(todayLaborCost)}
             </p>
           </div>
         </div>
@@ -166,7 +154,7 @@ export function DashboardTodayCard({
             Cash in bank
           </dt>
           <dd className="text-[17px] font-semibold text-foreground mt-1">
-            {formatWholeDollar(availableCash, true)}
+            {formatCompactDollarAmount(availableCash)}
           </dd>
         </div>
         <div className="bg-background p-4">
@@ -182,7 +170,7 @@ export function DashboardTodayCard({
             Prime cost
           </dt>
           <dd className="text-[17px] font-semibold text-foreground mt-1">
-            {primeCost.toFixed(1)}%
+            {primeCostPercentage.toFixed(1)}%
           </dd>
         </div>
         <div className="bg-background p-4">
@@ -190,7 +178,7 @@ export function DashboardTodayCard({
             Month to date
           </dt>
           <dd className="text-[17px] font-semibold text-foreground mt-1">
-            {formatWholeDollar(monthToDateSales)}
+            {formatWholeDollarAmount(monthToDateSales)}
           </dd>
         </div>
       </dl>

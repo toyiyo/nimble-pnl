@@ -22,6 +22,9 @@ export interface ProductionRunIngredient {
     cost_per_unit?: number;
     uom_purchase?: string;
     current_stock?: number;
+    size_value?: number | null;
+    size_unit?: string | null;
+    yield_pct?: number | null;
   };
 }
 
@@ -317,10 +320,10 @@ export const useProductionRuns = (restaurantId: string | null) => {
           name: ing.product.name,
           cost_per_unit: ing.product.cost_per_unit,
           uom_purchase: ing.product.uom_purchase,
-          size_value: (ing.product as any).size_value,
-          size_unit: (ing.product as any).size_unit,
+          size_value: ing.product.size_value,
+          size_unit: ing.product.size_unit,
           current_stock: ing.product.current_stock,
-          yield_pct: (ing.product as any).yield_pct,
+          yield_pct: ing.product.yield_pct,
         } : undefined,
       };
     });

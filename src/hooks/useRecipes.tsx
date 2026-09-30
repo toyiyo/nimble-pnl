@@ -97,6 +97,7 @@ interface IngredientRow {
   product_id: string;
   quantity: number;
   unit: string;
+  yield_pct_override?: number | null;
 }
 
 interface ProductRow {
@@ -129,7 +130,7 @@ interface SalesStatsRow {
  * conversion throws, so callers can unconditionally `+=` the result.
  */
 function computeIngredientCost(
-  ingredient: { quantity: number; unit: string },
+  ingredient: { quantity: number; unit: string; yield_pct_override?: number | null },
   product: { name?: string | null; cost_per_unit?: number | null; uom_purchase?: string | null; size_value?: number | null; size_unit?: string | null; yield_pct?: number | null } | null | undefined
 ): number {
   if (!product || !product.cost_per_unit) return 0;
@@ -568,7 +569,7 @@ export async function fetchRecipesData(restaurantId: string): Promise<Recipe[]> 
       fetchAllRows<IngredientRow>((from, to) =>
         supabase
           .from('recipe_ingredients')
-          .select('id, recipe_id, product_id, quantity, unit')
+          .select('id, recipe_id, product_id, quantity, unit, yield_pct_override')
           .in('recipe_id', chunk)
           .order('recipe_id')
           .order('id')

@@ -5,11 +5,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Package, Scale } from 'lucide-react';
+import { useProductRecipeUsageCount } from '@/hooks/useProductRecipeUsageCount';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 import { convertUnits, WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 import { YIELD_REVIEW_BELOW } from '@/lib/recipeYield';
-import { useProductRecipeUsageCount } from '@/hooks/useProductRecipeUsageCount';
 
 interface SizePackagingSectionProps {
   form: any;

@@ -33,11 +33,11 @@ import { Plus, Trash2, Calculator, ChefHat } from 'lucide-react';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { Product } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
+import { useRecipeWeeklyVolume } from '@/hooks/useRecipeWeeklyVolume';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
 import { MEASUREMENT_UNITS, IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
 import { computeLineCost } from '@/lib/recipeYield';
-import { useRecipeWeeklyVolume } from '@/hooks/useRecipeWeeklyVolume';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Recipe name is required'),
@@ -226,6 +226,8 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
         let totalPortionCost = 0;
         let hasValidIngredients = false;
 
+        // `any`: react-hook-form's `watch` callback gives an untyped partial
+        // payload, so each array entry has no static shape here.
         value.ingredients.forEach((ingredient: any) => {
           if (ingredient?.product_id && ingredient?.quantity && ingredient?.unit) {
             const product = products.find(p => p.id === ingredient.product_id);

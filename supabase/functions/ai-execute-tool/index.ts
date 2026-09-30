@@ -37,6 +37,7 @@ import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregate
 import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
 import { ACCOUNT_TYPES, CATEGORY_COLUMNS, filterCategories, isAccountType, normalizeAccountType, resolveCategoryRef, type CategoryRow } from "../_shared/categoryLookup.ts";
 import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
+import type { RecipeDeductionResult } from "../_shared/recipeAnalytics.ts";
 import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
 import {
   POS_SALE_PREVIEW_COLUMNS,
@@ -485,7 +486,7 @@ async function executeGetRecipeAnalytics(
     const topRecipes = summary.recipes.slice(0, 20);
     const topRecipeIds = topRecipes.map((recipe) => recipe.id);
 
-    let deductionsByRecipeId = new Map();
+    let deductionsByRecipeId = new Map<string, RecipeDeductionResult>();
     if (topRecipeIds.length > 0) {
       const { data: ingredientRows, error: ingredientsError } = await supabase
         .from('recipe_ingredients')
@@ -502,7 +503,25 @@ async function executeGetRecipeAnalytics(
         throw new Error(`Failed to fetch recipe ingredients: ${ingredientsError.message}`);
       }
 
-      const deductionRows = (ingredientRows || []).map((row: any) => ({
+      // Shape matches the select above. Typed here (not inferred from the
+      // Supabase client) because the client's generic types do not model
+      // this query's embedded `products` join.
+      interface RecipeIngredientJoinRow {
+        recipe_id: string;
+        quantity: number;
+        unit: string;
+        yield_pct_override: number | null;
+        products: {
+          name: string | null;
+          cost_per_unit: number | null;
+          uom_purchase: string | null;
+          size_value: number | null;
+          size_unit: string | null;
+          yield_pct: number | null;
+        } | null;
+      }
+
+      const deductionRows = ((ingredientRows ?? []) as RecipeIngredientJoinRow[]).map((row) => ({
         recipe_id: row.recipe_id,
         product_name: row.products?.name ?? '',
         quantity: row.quantity,

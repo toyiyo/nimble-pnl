@@ -15,6 +15,15 @@ import {
 import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
 import { buildTimePunchShifts } from '../_shared/timePunchShifts.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
+import {
+  parseHourlySalesArgs,
+  resolveWindow,
+  formatHourlySales,
+  dayKeyFor,
+  type RpcResult,
+  type ArgError,
+} from '../_shared/hourlySalesTool.ts';
+import { minStaffFromCrew, recommendForSlots, recommendStaffForHour, type HourlySlotSales } from '../_shared/hourlyStaffing.ts';
 import { corsHeaders } from "../_shared/cors.ts";
 import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
@@ -2953,6 +2962,166 @@ async function executeGetDailySalesTotals(
   };
 }
 
+const DEFAULT_STAFFING_SETTINGS = {
+  target_splh: 60,
+  min_staff: 1,
+  min_crew: null as Record<string, number> | null,
+  lookback_weeks: 4,
+};
+
+type HourlySalesRpcCall =
+  | { ok: true; value: RpcResult }
+  | { ok: false; error: ArgError };
+
+/**
+ * Call the get_hourly_sales_pattern RPC and map a bad-argument (22023)
+ * error to the tool's in-band INVALID_ARGUMENTS shape. Shared by the
+ * primary fetch and the sub-hour lookup fetch below, which differ only
+ * in interval_minutes.
+ */
+async function fetchHourlySalesPattern(
+  supabase: any, // Supabase client; typed `any` to match every other executeGetXxx handler in this file.
+  restaurantId: string,
+  window: { start_date: string; end_date: string },
+  intervalMinutes: number,
+  view: string,
+): Promise<HourlySalesRpcCall> {
+  const { data, error } = await supabase.rpc('get_hourly_sales_pattern', {
+    p_restaurant_id: restaurantId,
+    p_start_date: window.start_date,
+    p_end_date: window.end_date,
+    p_interval_minutes: intervalMinutes,
+    p_view: view,
+  });
+  if (error) {
+    if (error.code === '22023') {
+      return { ok: false, error: { code: 'INVALID_ARGUMENTS', message: error.message } };
+    }
+    throw new Error(`Failed to fetch hourly sales: ${error.message}`);
+  }
+  return { ok: true, value: data as RpcResult };
+}
+
+/**
+ * Execute get_hourly_sales tool
+ * Calls the get_hourly_sales_pattern RPC and formats the compact output of
+ * design §4.3. For a sub-hour interval_minutes, also calls the RPC at 60
+ * minutes (in parallel with the primary call) so the staff recommendation
+ * reads the containing hour's average, not the sub-hour slot's own average.
+ */
+async function executeGetHourlySales(
+  args: any, // Raw MCP tool args; typed `any` to match every other executeGetXxx handler in this file.
+  restaurantId: string,
+  supabase: any, // Supabase client; typed `any` to match every other executeGetXxx handler in this file.
+  restaurantNow: Date
+): Promise<any> {
+  const parsed = parseHourlySalesArgs(args);
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error };
+  }
+  const parsedArgs = parsed.value;
+
+  const { data: staffingRow } = await supabase
+    .from('staffing_settings')
+    .select('target_splh, min_staff, min_crew, lookback_weeks')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+
+  const settings = {
+    target_splh: staffingRow?.target_splh ?? DEFAULT_STAFFING_SETTINGS.target_splh,
+    min_staff: staffingRow?.min_staff ?? DEFAULT_STAFFING_SETTINGS.min_staff,
+    min_crew: staffingRow?.min_crew ?? DEFAULT_STAFFING_SETTINGS.min_crew,
+    lookback_weeks: staffingRow?.lookback_weeks ?? DEFAULT_STAFFING_SETTINGS.lookback_weeks,
+  };
+
+  const todayYmd = toLocalYMD(restaurantNow);
+  const windowResult = resolveWindow(parsedArgs, todayYmd, settings.lookback_weeks);
+  if (!windowResult.ok) {
+    return { ok: false, error: windowResult.error };
+  }
+  const window = windowResult.value;
+
+  // The primary fetch and the sub-hour lookup fetch (design §4.3 decision 4)
+  // do not depend on each other's result, so run them together instead of
+  // one after the other — this halves the RPC round-trip time for a
+  // sub-hour view.
+  const isSubHour = parsedArgs.interval_minutes !== 60;
+  const [primary, hourly] = await Promise.all([
+    fetchHourlySalesPattern(supabase, restaurantId, window, parsedArgs.interval_minutes, parsedArgs.view),
+    isSubHour
+      ? fetchHourlySalesPattern(supabase, restaurantId, window, 60, parsedArgs.view)
+      : Promise.resolve(null),
+  ]);
+  if (!primary.ok) return { ok: false, error: primary.error };
+  if (hourly && !hourly.ok) return { ok: false, error: hourly.error };
+
+  let rpc = primary.value;
+  if (parsedArgs.day_of_week !== undefined) {
+    rpc = { ...rpc, days: rpc.days.filter((d) => d.day_of_week === parsedArgs.day_of_week) };
+  }
+
+  // Sub-hour recommendation lookup: the containing hour's own averaged
+  // sales, keyed by the same day key formatHourlySales uses, fed to the
+  // shared, parity-tested recommendForSlots helper below.
+  const hourlySourceRpc: RpcResult = hourly ? hourly.value : rpc;
+  const hourlyByDayKey = new Map<string, HourlySlotSales[]>();
+  for (const day of hourlySourceRpc.days) {
+    const key = dayKeyFor(day, hourlySourceRpc.view);
+    hourlyByDayKey.set(
+      key,
+      day.slots.map((slot) => ({ hour: Math.floor(slot.start_minute / 60), avgSales: slot.sales })),
+    );
+  }
+
+  const effectiveMinStaff = minStaffFromCrew(settings.min_crew, settings.min_staff);
+
+  // Sub-hour recommendations, one recommendForSlots call per day (not per
+  // slot): building the hour->sales map inside recommendForSlots is O(hours)
+  // work, so calling it once per slot made day formatting O(slots x hours)
+  // instead of O(slots + hours). Precompute each day's recommendations here
+  // and have recommendStaff below do a plain map lookup.
+  const subHourRecsByDayKey = new Map<string, Map<number, number>>();
+  if (isSubHour) {
+    for (const day of rpc.days) {
+      const dayKey = dayKeyFor(day, rpc.view);
+      const recs = recommendForSlots(
+        day.slots.map((slot) => ({ startMinute: slot.start_minute, sales: slot.sales })),
+        hourlyByDayKey.get(dayKey) ?? [],
+        { targetSplh: settings.target_splh, minStaff: effectiveMinStaff, minCrew: null },
+      );
+      subHourRecsByDayKey.set(dayKey, new Map(recs.map((rec) => [rec.startMinute, rec.recommendedStaff])));
+    }
+  }
+
+  const recommendStaff = (dayKey: string, startMinute: number, slotSales: number) => {
+    if (!isSubHour) {
+      return recommendStaffForHour(slotSales, settings.target_splh, effectiveMinStaff);
+    }
+    return subHourRecsByDayKey.get(dayKey)?.get(startMinute) ?? effectiveMinStaff;
+  };
+
+  const formatted = formatHourlySales(
+    rpc,
+    { target_splh: settings.target_splh, min_staff: effectiveMinStaff },
+    recommendStaff
+  );
+
+  if (parsedArgs.view === 'weekday') {
+    (formatted.window as Record<string, unknown>).lookback_weeks = window.lookback_weeks;
+  }
+
+  return {
+    ok: true,
+    data: formatted,
+    evidence: [
+      {
+        table: 'unified_sales',
+        summary: `Hourly sales pattern (${parsedArgs.view}) from ${window.start_date} to ${window.end_date}`,
+      },
+    ],
+  };
+}
+
 /**
  * Execute get_break_even_progress tool
  * Computes daily break-even analysis with history and month-to-date progress
@@ -3671,6 +3840,9 @@ serve(async (req) => {
         break;
       case 'get_daily_sales_totals':
         result = await executeGetDailySalesTotals(args, restaurant_id, supabase, restaurantNow);
+        break;
+      case 'get_hourly_sales':
+        result = await executeGetHourlySales(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_break_even_progress':
         result = await executeGetBreakEvenProgress(args, restaurant_id, supabase, restaurantNow);

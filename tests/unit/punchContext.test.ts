@@ -351,6 +351,21 @@ describe('startPunchContext', () => {
     expect(punchContextLocation(ctx)).toEqual({ location_unavailable: true });
   });
 
+  it('does not cache a rejection when the geolocation getter throws', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      get() {
+        throw new Error('geolocation getter blocked');
+      },
+    });
+
+    const first = await startPunchContext(3000);
+    const second = await collectPunchContext(3000);
+
+    expect(first.location).toBeUndefined();
+    expect(second.location).toBeUndefined();
+  });
+
   it('returns a fresh promise after _resetPunchContextForTests', () => {
     const getCurrentPosition = vi.fn();
     Object.defineProperty(navigator, 'geolocation', {

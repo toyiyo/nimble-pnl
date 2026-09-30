@@ -62,10 +62,11 @@ export function punchContextLocation(
 
 const DEFAULT_LOCATION_TIMEOUT = 3000;
 const DEFAULT_DEVICE_INFO_MAX = 100;
-// How long a resolved geolocation result stays addressable as the "in-flight"
-// promise. A second employee within this window reuses the same fix; after
-// it, the next punch starts a fresh getCurrentPosition so we don't ship a
-// stale (potentially wrong-restaurant) location for the next shift.
+// How long a successful geolocation result stays addressable as the
+// "in-flight" promise. A second employee within this window reuses the same
+// fix; after it, the next punch starts a fresh getCurrentPosition so we don't
+// ship a stale (potentially wrong-restaurant) location for the next shift.
+// A failed result is not reused by the next punch flow (see startPunchContext).
 const PUNCH_CONTEXT_REUSE_MS = 10_000;
 
 export function getDeviceInfo(maxLength = DEFAULT_DEVICE_INFO_MAX): string {
@@ -88,20 +89,20 @@ export function getQuickLocation(timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise<
     // rejection here would lose an offline kiosk punch, so resolve undefined.
     try {
       navigator.geolocation.getCurrentPosition(
-      (position) => {
-        clearTimeout(timeoutId);
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      },
-      fail,
-      {
-        timeout: timeoutMs,
-        enableHighAccuracy: false,
-        maximumAge: 60000,
-      }
-    );
+        (position) => {
+          clearTimeout(timeoutId);
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        fail,
+        {
+          timeout: timeoutMs,
+          enableHighAccuracy: false,
+          maximumAge: 60000,
+        }
+      );
     } catch {
       fail();
     }
@@ -121,7 +122,13 @@ let inFlightTimeout: ReturnType<typeof setTimeout> | null = null;
 let inFlightFailed = false;
 
 const buildContext = async (timeoutMs: number): Promise<PunchContextResult> => {
-  const location = await getQuickLocation(timeoutMs);
+  let location: PunchContextResult['location'];
+  try {
+    location = await getQuickLocation(timeoutMs);
+  } catch {
+    // A rejected read would stay cached and lose offline kiosk punches.
+    location = undefined;
+  }
   return {
     location,
     device_info: getDeviceInfo(),

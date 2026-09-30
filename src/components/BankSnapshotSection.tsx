@@ -4,8 +4,9 @@ import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useCashFlowMetrics } from '@/hooks/useCashFlowMetrics';
 import { TrendingUp, TrendingDown } from 'lucide-react';
-import { subDays, endOfDay, startOfMonth } from 'date-fns';
+import { endOfDay, startOfMonth } from 'date-fns';
 import { formatRunwayDays } from '@/lib/formatRunway';
+import { getRunwayWindow } from '@/lib/cashRunway';
 
 interface BankSnapshotSectionProps {
   restaurantId: string;
@@ -14,16 +15,17 @@ interface BankSnapshotSectionProps {
 export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) {
   // Use fixed date ranges for current state
   const today = endOfDay(new Date());
-  const thirtyDaysAgo = subDays(today, 30);
   const monthStart = startOfMonth(today);
+  const todayKey = today.toISOString().slice(0, 10);
+  const runwayWindow = useMemo(() => getRunwayWindow(new Date()), [todayKey]);
 
   // Fetch connected banks
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(restaurantId);
 
-  // Fetch liquidity metrics for runway
+  // Fetch liquidity metrics for runway, over the last 30 days
   const { data: liquidityMetrics, isLoading: liquidityLoading } = useLiquidityMetrics(
-    thirtyDaysAgo,
-    today,
+    runwayWindow.start,
+    runwayWindow.end,
     'all'
   );
 

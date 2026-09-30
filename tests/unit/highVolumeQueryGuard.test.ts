@@ -59,6 +59,9 @@ const ALLOWLIST = new Set([
   'src/hooks/usePredictiveMetrics.tsx',
   'src/hooks/useReceiptImport.tsx',
   'src/hooks/useRecipeIntelligence.tsx',
+  // Bounded to one restaurant, one POS item name, and the last 7 days
+  // (`gte('sale_date', ...)`) — never a full-table scan.
+  'src/hooks/useRecipeWeeklyVolume.ts',
   'src/hooks/useReconcileTransactions.tsx',
   'src/hooks/useReconciliation.tsx',
   'src/hooks/useRevenueBreakdown.tsx',

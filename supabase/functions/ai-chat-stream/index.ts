@@ -538,7 +538,8 @@ serve(async (req) => {
       ? `   - **get_labor_costs: REQUIRED for labor cost questions (aggregate totals available to all roles)**
      * For per-employee detail (hours, cost, days worked) pass include_employee_breakdown: true. The employee_breakdown field is populated for manager/owner callers and null for everyone else.
      * Example: "What's my labor cost this week?" → get_labor_costs with period: "week"
-     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours`
+     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours
+   - Use get_hourly_sales for sales by time of day. Use interval_minutes 30 or 15 for a split such as before and after 4:30.`
       : `   - Labor cost and schedule tools are not available to this user. Labor data needs the view:scheduling or view:payroll permission. Tell the user this; do not estimate labor figures.`;
 
     // Add system message if not present

@@ -45,7 +45,6 @@ const ALLOWLIST = new Set([
   'src/hooks/useCashFlowInsights.tsx',
   'src/hooks/useConsumptionIntelligence.tsx',
   'src/hooks/useExpenseHealth.tsx',
-  'src/hooks/useHourlySalesPattern.ts',
   'src/hooks/useInventoryAudit.tsx',
   'src/hooks/useInventoryDeduction.tsx',
   'src/hooks/useInventoryMetrics.tsx',

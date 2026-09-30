@@ -77,11 +77,20 @@ const WEEK_DAYS = [
   '2026-05-31',
 ];
 
-const FAKE_SALES = Array.from({ length: 10 }, (_, i) => ({
-  sale_date: '2026-05-23',
-  sale_time: `${9 + i}:00:00`,
-  total_price: '500',
-}));
+const FAKE_HOURLY_SALES_RESULT = {
+  total_sales: 5000,
+  days: [
+    {
+      day_of_week: 6,
+      has_hourly_breakdown: true,
+      slots: Array.from({ length: 10 }, (_, i) => ({
+        start_minute: (9 + i) * 60,
+        sales: 500,
+        sample_count: 1,
+      })),
+    },
+  ],
+};
 
 const wrapper = ({ children }: { children: React.ReactNode }) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -105,7 +114,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
     mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
       const key = opts.queryKey[0];
       if (key === 'hourly-sales-all') {
-        return { data: FAKE_SALES, isLoading: false, error: null };
+        return { data: FAKE_HOURLY_SALES_RESULT, isLoading: false, error: null };
       }
       if (key === 'staffing-time-punches') {
         return { data: [], isLoading: false, error: null };
@@ -118,9 +127,9 @@ describe('<StaffingOverlay> dead-end fixes', () => {
   it('shows no-data empty state message when hasSalesData is false', () => {
     mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
       if (opts.queryKey[0] === 'hourly-sales-all') {
-        return { data: [], isLoading: false, error: null };
+        return { data: { total_sales: 0, days: [] }, isLoading: false, error: null };
       }
-      return { data: [], isLoading: false, error: null };
+      return { data: { total_sales: 0, days: [] }, isLoading: false, error: null };
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
@@ -135,9 +144,9 @@ describe('<StaffingOverlay> dead-end fixes', () => {
   it('shows "Connect your POS" link in empty state', () => {
     mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
       if (opts.queryKey[0] === 'hourly-sales-all') {
-        return { data: [], isLoading: false, error: null };
+        return { data: { total_sales: 0, days: [] }, isLoading: false, error: null };
       }
-      return { data: [], isLoading: false, error: null };
+      return { data: { total_sales: 0, days: [] }, isLoading: false, error: null };
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
@@ -152,9 +161,9 @@ describe('<StaffingOverlay> dead-end fixes', () => {
   it('renders the "How it works" explainer even when hasSalesData is false', () => {
     mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
       if (opts.queryKey[0] === 'hourly-sales-all') {
-        return { data: [], isLoading: false, error: null };
+        return { data: { total_sales: 0, days: [] }, isLoading: false, error: null };
       }
-      return { data: [], isLoading: false, error: null };
+      return { data: { total_sales: 0, days: [] }, isLoading: false, error: null };
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });

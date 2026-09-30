@@ -361,7 +361,10 @@ const KioskMode = () => {
         pinMatch?.employee_id,
         photoBlob
       );
-      if (!handledOffline) {
+      if (handledOffline) {
+        // Safe here: the lock is still held, so no newer punch owns the camera.
+        resetCameraState();
+      } else {
         const message = error instanceof Error ? error.message : 'Unable to record punch.';
         setErrorMessage(message);
       }
@@ -611,7 +614,9 @@ const KioskMode = () => {
     );
     setQueuedCount((c) => c + 1);
     setStatusMessage('Saved offline — will sync when online.');
-    resetCameraState();
+    // Do not reset the camera state here. The mutate onError path calls this
+    // after releaseLock(), so the next employee can already have the camera
+    // dialog open. The caller resets the camera only while it holds the lock.
     return true;
   };
 

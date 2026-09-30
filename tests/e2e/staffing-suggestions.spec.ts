@@ -130,8 +130,20 @@ test.describe('Staffing suggestions', () => {
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 10000 });
 
+    // The Planner tab mounts the staffing overlay, which fires the
+    // hourly-sales-pattern RPC right away (it does not wait for the panel to
+    // expand). Arm the wait before the tab click so it catches that request.
+    const hourlySalesResponse = page.waitForResponse(
+      (resp) => resp.url().includes('rpc/get_hourly_sales_pattern'),
+      { timeout: 15000 },
+    );
     await page.getByRole('tab', { name: /planner/i }).click();
     await expect(page.getByText('Marco Rivera')).toBeVisible({ timeout: 10000 });
+
+    // Assert the RPC that feeds the suggested shift blocks below succeeded.
+    const hourlySalesResp = await hourlySalesResponse;
+    expect(hourlySalesResp.status()).toBe(200);
+
     await expandStaffingPanel(page);
 
     // Wait for the staffing overlay to compute shift blocks and show the Suggested shifts section.
@@ -156,6 +168,12 @@ test.describe('Staffing suggestions', () => {
     const firstCheckbox = dialog.getByRole('checkbox').first();
     await expect(firstCheckbox).toBeVisible({ timeout: 5000 });
     await expect(firstCheckbox).toBeChecked();
+
+    // Seeded sales omit sale_time, so the daily-spread fallback applies
+    // (FALLBACK_OPEN_HOUR = 9am, see src/lib/splhAnalytics.ts). The first
+    // suggested block must start at that first seeded sales hour, 9AM.
+    const firstCheckboxLabel = await firstCheckbox.getAttribute('aria-label');
+    expect(firstCheckboxLabel).toMatch(/\b9AM\b/);
 
     // Confirm button shows "Create N shifts"
     const confirmBtn = dialog.getByRole('button', { name: /create \d+ shifts?/i });

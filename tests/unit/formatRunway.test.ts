@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { formatRunway } from '@/lib/formatRunway';
+import { formatRunway, formatRunwayDays } from '@/lib/formatRunway';
 
 describe('formatRunway', () => {
   it('rounds a fractional day count down to a whole day', () => {
@@ -13,5 +13,24 @@ describe('formatRunway', () => {
 
   it('shows "0" for zero days of runway', () => {
     expect(formatRunway(0)).toBe('0');
+  });
+});
+
+describe('formatRunwayDays', () => {
+  it('adds the word "days" to the whole day count', () => {
+    expect(formatRunwayDays(168.4)).toBe('168 days');
+  });
+
+  it('uses "day" for one day', () => {
+    expect(formatRunwayDays(1)).toBe('1 day');
+  });
+
+  it('shows "365+ days" above one year and for no burn (Infinity)', () => {
+    expect(formatRunwayDays(400)).toBe('365+ days');
+    expect(formatRunwayDays(Infinity)).toBe('365+ days');
+  });
+
+  it('shows "0 days" for zero days of runway', () => {
+    expect(formatRunwayDays(0)).toBe('0 days');
   });
 });

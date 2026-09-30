@@ -84,4 +84,29 @@ describe('DashboardSectionRail', () => {
     fireEvent.click(within(nav).getByRole('link', { name: 'Go to Attention' }));
     expect(onNavigate).toHaveBeenCalledWith('dash-attention');
   });
+
+  it('gives each rail link a visible keyboard focus ring', () => {
+    render(
+      <DashboardSectionRail sections={sections} activeSectionId="dash-today" onNavigate={vi.fn()} />,
+    );
+    const nav = screen.getByRole('navigation', { name: 'Dashboard sections' });
+    for (const link of within(nav).getAllByRole('link')) {
+      expect(link.className).toContain('focus-visible:ring-2');
+    }
+  });
+
+  it('gives each compact chip a visible keyboard focus ring', () => {
+    render(
+      <DashboardSectionRail
+        sections={sections}
+        activeSectionId="dash-today"
+        onNavigate={vi.fn()}
+        variant="compact"
+      />,
+    );
+    const nav = screen.getByRole('navigation', { name: 'Dashboard sections (compact)' });
+    for (const link of within(nav).getAllByRole('link')) {
+      expect(link.className).toContain('focus-visible:ring-2');
+    }
+  });
 });

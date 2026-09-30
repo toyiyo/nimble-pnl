@@ -35,6 +35,11 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
+    /* Text versions of success and warning. They pass WCAG AA (4.5:1) on
+       the background. Use them for text and icons, not for fills. */
+    --success-strong: 142 70% 27%;
+    --warning-strong: 30 90% 32%;
+
     --info: 200 80% 50%;
     --info-foreground: 0 0% 100%;
 
@@ -109,6 +114,9 @@
 
     --warning: 38 92% 55%;
     --warning-foreground: 0 0% 100%;
+
+    --success-strong: 142 60% 60%;
+    --warning-strong: 38 92% 62%;
 
     --info: 200 80% 55%;
     --info-foreground: 0 0% 100%;

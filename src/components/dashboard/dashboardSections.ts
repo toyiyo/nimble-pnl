@@ -11,8 +11,9 @@ export interface DashboardSection {
 export const DASHBOARD_SECTIONS: DashboardSection[] = [
   { id: 'dash-today', label: 'Today' },
   { id: 'dash-attention', label: 'Attention' },
-  { id: 'dash-sales-vs-break-even', label: 'Sales vs break-even' },
+  { id: 'dash-sales-vs-break-even', label: 'Sales vs Break-Even' },
   { id: 'dash-labor-cost', label: 'Labor cost' },
+  { id: 'dash-smart-alerts', label: 'Smart Alerts' },
   { id: 'dash-performance-overview', label: 'Performance Overview' },
   { id: 'dash-cashflow', label: 'Cashflow' },
   { id: 'dash-monthly-performance', label: 'Monthly Performance' },

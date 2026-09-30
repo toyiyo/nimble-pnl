@@ -110,6 +110,13 @@ Rules for every task:
     Delete the duplicate section titles. Restyle Smart Alerts and the
     monthly table to the type scale and semantic tokens.
 
+16. **Accessibility review fixes.** Add the strong text tokens for contrast.
+    Move focus to the section on a rail jump. Add focus rings and 24 px
+    targets. Make the mobile chips sticky. Add Smart Alerts to the rail. Put
+    the period selector in Performance Overview. Give the charts and the
+    attention count a name. Add the Today card caption and "Not tracked" food
+    cost. Fix the bank empty state. Add a skip link. See design 6.1.
+
 ## Not in this plan
 
 - The runway data fix (M1). It is a separate PR from `main`.

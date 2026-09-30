@@ -22,6 +22,9 @@ export function DashboardSectionRail({
   const isCompact = variant === "compact";
   const navLabel = isCompact ? "Dashboard sections (compact)" : "Dashboard sections";
 
+  const focusRingClass =
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
   function handleClick(event: React.MouseEvent<HTMLAnchorElement>, sectionId: string) {
     event.preventDefault();
     onNavigate(sectionId);
@@ -39,7 +42,7 @@ export function DashboardSectionRail({
               aria-label={`Go to ${section.label}`}
               aria-current={isActive ? "location" : undefined}
               onClick={(event) => handleClick(event, section.id)}
-              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${focusRingClass} ${
                 isActive
                   ? "border-foreground bg-foreground text-background"
                   : "border-border/40 bg-muted/30 text-muted-foreground hover:text-foreground"
@@ -64,7 +67,7 @@ export function DashboardSectionRail({
             aria-label={`Go to ${section.label}`}
             aria-current={isActive ? "location" : undefined}
             onClick={(event) => handleClick(event, section.id)}
-            className={`block rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
+            className={`block rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${focusRingClass} ${
               isActive
                 ? "text-foreground bg-muted/50"
                 : "text-muted-foreground hover:text-foreground"

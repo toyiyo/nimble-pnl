@@ -387,7 +387,7 @@ export const MonthlyBreakdownTable = ({ monthlyData, showTitle = true }: Readonl
                                   }`}>
                                     {formatCurrency(accrualNetProfit)}
                                   </span>
-                                  <span className="text-[10px] sm:text-xs text-amber-600">
+                                  <span className="text-[11px] sm:text-xs text-warning-strong">
                                     Accrual basis (matches hours worked)
                                     {month.net_revenue > 0
                                       ? ` (${((accrualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`

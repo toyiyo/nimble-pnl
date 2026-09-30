@@ -51,6 +51,7 @@ import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart'
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenStrip';
 import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
+import { focusDashboardSection } from '@/lib/focusDashboardSection';
 import { periodStatusMessage } from '@/utils/periodAnnouncement';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import {
@@ -168,12 +169,8 @@ const Index = () => {
     posthog.capture('dashboard_rail_clicked', { section_id: sectionId });
     sectionOpenSetters[sectionId]?.(true);
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    requestAnimationFrame(() => {
-      document.getElementById(sectionId)?.scrollIntoView({
-        behavior: prefersReducedMotion ? 'auto' : 'smooth',
-        block: 'start',
-      });
-    });
+    // Wait one frame so a section that the setter opens has its height.
+    requestAnimationFrame(() => focusDashboardSection(sectionId, { reducedMotion: prefersReducedMotion }));
   }
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
@@ -774,14 +771,17 @@ const Index = () => {
               </div>
             </div>
             <div className="h-px bg-border/40" />
-            <div className="lg:hidden">
-              <DashboardSectionRail
-                sections={dashboardSections}
-                activeSectionId={activeSectionId}
-                onNavigate={handleSectionNavigate}
-                variant="compact"
-              />
-            </div>
+          </div>
+
+          {/* The chip row is a direct child of the page column, so it stays
+              sticky under the app header (h-14) for the full page. */}
+          <div className="lg:hidden sticky top-14 z-40 -mx-4 px-4 bg-background/95 backdrop-blur border-b border-border/40">
+            <DashboardSectionRail
+              sections={dashboardSections}
+              activeSectionId={activeSectionId}
+              onNavigate={handleSectionNavigate}
+              variant="compact"
+            />
           </div>
 
           {alertsLoading || (todaysLoading && !todaysData) || (periodLoading && !periodData) ? (
@@ -790,7 +790,7 @@ const Index = () => {
             <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8">
             <div className="space-y-8 min-w-0">
               {/* Today card */}
-              <section id="dash-today" className="scroll-mt-24 space-y-3">
+              <section id="dash-today" className="scroll-mt-32 lg:scroll-mt-24 space-y-3">
                 <h2 className="text-[17px] font-semibold text-foreground">Today</h2>
                 <DashboardTodayCard
                   todaySales={todaysData?.netRevenue || 0}
@@ -809,21 +809,22 @@ const Index = () => {
                     todayDelta: breakEvenData.todayDelta,
                     daysAbove: breakEvenData.daysAbove,
                     daysBelow: breakEvenData.daysBelow,
-                    historyDays: 14,
                   } : null}
                   breakEvenLoading={breakEvenLoading}
                   breakEvenError={Boolean(breakEvenError)}
+                  unmappedItemCount={unmappedItems?.length || 0}
                 />
               </section>
 
               {/* Needs your attention + Month progress */}
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <section id="dash-attention" className="scroll-mt-24 space-y-3">
+                <section id="dash-attention" className="scroll-mt-32 lg:scroll-mt-24 space-y-3">
                   <h2 className="flex items-center gap-2 text-[17px] font-semibold text-foreground">
                     Needs your attention
                     {!attentionLoading && (
                       <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-                        {criticalAlerts.length}
+                        <span aria-hidden="true">{criticalAlerts.length}</span>
+                        <span className="sr-only">({criticalAlerts.length} {criticalAlerts.length === 1 ? 'item' : 'items'})</span>
                       </span>
                     )}
                   </h2>
@@ -839,7 +840,7 @@ const Index = () => {
               </div>
 
               {/* Sales vs Break-Even Chart */}
-              <section id="dash-sales-vs-break-even" className="scroll-mt-24">
+              <section id="dash-sales-vs-break-even" className="scroll-mt-32 lg:scroll-mt-24">
                 <SalesVsBreakEvenChart
                   data={breakEvenData ?? null}
                   isLoading={breakEvenLoading}
@@ -850,7 +851,7 @@ const Index = () => {
               </section>
 
               {/* Labor cost - Collapsible (financial: labor % of sales vs target, distinct from scheduling's Labor Efficiency section below) */}
-              <section id="dash-labor-cost" className="scroll-mt-24">
+              <section id="dash-labor-cost" className="scroll-mt-32 lg:scroll-mt-24">
               <Collapsible open={laborCostOpen} onOpenChange={setLaborCostOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -872,9 +873,15 @@ const Index = () => {
               </section>
 
               {/* AI Insights */}
-              <DashboardInsights insights={insights} />
+              <div id="dash-smart-alerts" className="scroll-mt-32 lg:scroll-mt-24">
+                <DashboardInsights insights={insights} />
+              </div>
 
-              {/* Period Selector - MOVED TO TOP */}
+              {/* ===== OPERATIONAL METRICS SECTION ===== */}
+
+              {/* The period selector is inside this section, so a rail jump
+                  to Performance Overview shows the period control too. */}
+              <section id="dash-performance-overview" className="scroll-mt-32 lg:scroll-mt-24 space-y-4">
               <PeriodSelector
                 selectedPeriod={selectedPeriod}
                 onPeriodChange={(period) => startTransition(() => setSelectedPeriod(period))}
@@ -882,10 +889,6 @@ const Index = () => {
               <output aria-live="polite" className="sr-only">
                 {periodStatusMessage(periodFetching, periodError, selectedPeriod.label)}
               </output>
-
-              {/* ===== OPERATIONAL METRICS SECTION ===== */}
-
-              <section id="dash-performance-overview" className="scroll-mt-24">
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
                 <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
@@ -1039,7 +1042,7 @@ const Index = () => {
               </Collapsible>
               </section>
 
-              <section id="dash-cashflow" className="scroll-mt-24">
+              <section id="dash-cashflow" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Cashflow Visualization - Collapsible */}
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
                 <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
@@ -1061,7 +1064,7 @@ const Index = () => {
               </Collapsible>
               </section>
 
-              <section id="dash-monthly-performance" className="scroll-mt-24">
+              <section id="dash-monthly-performance" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Monthly Performance Table - Collapsible */}
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
                 <div className={`space-y-4 transition-opacity ${monthlyFetching ? 'opacity-60' : ''}`} aria-busy={monthlyFetching}>
@@ -1083,7 +1086,7 @@ const Index = () => {
               </Collapsible>
               </section>
 
-              <section id="dash-revenue-mix" className="scroll-mt-24">
+              <section id="dash-revenue-mix" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
@@ -1257,7 +1260,7 @@ const Index = () => {
                 </Collapsible>
               )}
               </section>
-              <section id="dash-banking" className="scroll-mt-24">
+              <section id="dash-banking" className="scroll-mt-32 lg:scroll-mt-24">
 
               {/* ===== BANKING SECTION ===== */}
 
@@ -1300,7 +1303,7 @@ const Index = () => {
               </Collapsible>
               </section>
 
-              <section id="dash-expenses" className="scroll-mt-24">
+              <section id="dash-expenses" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Expenses Section */}
               <Collapsible open={moneyOutOpen} onOpenChange={setMoneyOutOpen}>
                 <div className="space-y-4">
@@ -1321,6 +1324,7 @@ const Index = () => {
                         startDate={selectedPeriod.from}
                         endDate={selectedPeriod.to}
                         periodLabel={selectedPeriod.label}
+                        hasConnectedBank={Boolean(connectedBanks?.length)}
                       />
                       <TopVendorsCard
                         startDate={selectedPeriod.from}
@@ -1333,7 +1337,7 @@ const Index = () => {
               </Collapsible>
               </section>
 
-              <section id="dash-labor-efficiency" className="scroll-mt-24">
+              <section id="dash-labor-efficiency" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Labor Efficiency - Collapsible */}
               <Collapsible open={laborEfficiencyOpen} onOpenChange={setLaborEfficiencyOpen}>
                 <div className="space-y-4">
@@ -1352,7 +1356,7 @@ const Index = () => {
               </Collapsible>
               </section>
 
-              <section id="dash-operations-health" className="scroll-mt-24">
+              <section id="dash-operations-health" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Operations Health */}
               <Collapsible open={operationsOpen} onOpenChange={setOperationsOpen}>
                 <div className="space-y-4">
@@ -1377,7 +1381,7 @@ const Index = () => {
               </Collapsible>
               </section>
 
-              <section id="dash-quick-actions" className="scroll-mt-24">
+              <section id="dash-quick-actions" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Quick Actions */}
               <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
                 <div className="space-y-4">

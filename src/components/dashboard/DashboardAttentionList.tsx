@@ -58,7 +58,7 @@ export function DashboardAttentionList({ alerts, isLoading = false }: Readonly<D
                 {alert.action && (
                   <button
                     onClick={() => navigate(alert.action!.path)}
-                    className="text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors whitespace-nowrap shrink-0"
+                    className="inline-flex min-h-6 items-center text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors whitespace-nowrap shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label={alert.action.label}
                   >
                     {alert.action.label} →

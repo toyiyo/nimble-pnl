@@ -20,7 +20,6 @@ const baseProps = {
     todayDelta: 1240,
     daysAbove: 9,
     daysBelow: 5,
-    historyDays: 14,
   },
   breakEvenLoading: false,
 };
@@ -72,7 +71,7 @@ describe('DashboardTodayCard', () => {
   it('shows skeletons, not fake values, while cash and runway load', () => {
     render(<DashboardTodayCard {...baseProps} cashLoading runwayLoading />);
     expect(screen.queryByText('$18,000')).not.toBeInTheDocument();
-    expect(screen.queryByText('45d')).not.toBeInTheDocument();
+    expect(screen.queryByText('45 days')).not.toBeInTheDocument();
   });
 
   it('shows the four core values', () => {
@@ -89,15 +88,42 @@ describe('DashboardTodayCard', () => {
     expect(dl).toBeInTheDocument();
     expect(screen.getByText('Cash in bank')).toBeInTheDocument();
     expect(screen.getByText('Runway')).toBeInTheDocument();
-    expect(screen.getByText('45d')).toBeInTheDocument();
+    expect(screen.getByText('45 days')).toBeInTheDocument();
     expect(screen.getByText('Prime cost')).toBeInTheDocument();
     expect(screen.getByText('Month to date')).toBeInTheDocument();
     expect(screen.getByText('$62,000')).toBeInTheDocument();
   });
 
-  it('shows the last 14 days above/below line', () => {
+  it('counts the days in the above/below line from the days it shows', () => {
     render(<DashboardTodayCard {...baseProps} />);
-    expect(screen.getByText(/Last 14d:/)).toBeInTheDocument();
+    expect(screen.getByText(/Last 14 complete days:/)).toBeInTheDocument();
+  });
+
+  it('shows the sales, the target and the percent under the progress bar', () => {
+    render(
+      <DashboardTodayCard
+        {...baseProps}
+        todaySales={556}
+        breakEvenData={{ ...baseProps.breakEvenData, dailyBreakEven: 2083, todayStatus: 'below', todayDelta: -1527 }}
+      />
+    );
+    expect(screen.getByText('$556 of $2,083 (27%)')).toBeInTheDocument();
+  });
+
+  it('shows "Not tracked" for food cost when it is 0 and POS items are not mapped', () => {
+    render(
+      <MemoryRouter>
+        <DashboardTodayCard {...baseProps} todayFoodCost={0} unmappedItemCount={71} />
+      </MemoryRouter>
+    );
+    expect(screen.getByText('Not tracked')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Map 71 POS items to recipes' });
+    expect(link).toHaveAttribute('href', '/pos-sales');
+  });
+
+  it('shows a food cost of $0 when all POS items are mapped', () => {
+    render(<DashboardTodayCard {...baseProps} todayFoodCost={0} unmappedItemCount={0} />);
+    expect(screen.queryByText('Not tracked')).not.toBeInTheDocument();
   });
 
   it('shows a skeleton while breakEvenLoading is true', () => {

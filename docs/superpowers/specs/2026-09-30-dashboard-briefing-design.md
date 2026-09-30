@@ -308,6 +308,31 @@ block for the rail.
   `aria-label`.
 - Color is never the only signal. Status also shows as text or an icon.
 
+### 6.1 Fixes from the second preview review
+
+- **Contrast.** Green and amber text on a light background was below 4.5:1.
+  New tokens `--success-strong` and `--warning-strong` are for text only.
+  The global `--success` and `--warning` do not change.
+- **Rail focus.** A rail jump moves focus to the section
+  (`focusDashboardSection`). The section gets `tabindex="-1"`. Reduced
+  motion gives an instant scroll.
+- **Focus ring.** The rail links, the chips and the small card actions show
+  a `focus-visible` ring. Small links and buttons are at least 24 px high.
+- **Mobile chips.** The chip row is sticky under the app header. Sections
+  use `scroll-mt-32` below `lg`, so the chip row does not cover a heading.
+- **Rail items.** Smart Alerts is in the rail. The period selector is in the
+  Performance Overview section.
+- **Names.** The attention count reads "(3 items)" to a screen reader. The
+  labor sparkline and the Sankey chart have a text summary. The month badge
+  is not a live region.
+- **Today card.** The card shows "$556 of $2,083 (27%)" under the bar. The
+  above/below line counts the days that it shows. Runway shows "168 days".
+  Food cost shows "Not tracked" with a link to `/pos-sales` when it is $0 and
+  POS items are not mapped.
+- **Empty states.** Outflows by category does not ask for a bank connection
+  when a bank is connected.
+- **Skip link.** The app shell has a "Skip to main content" link.
+
 ## 7. Analytics (optional, in scope if small)
 
 Add one event so that the next redesign has data:

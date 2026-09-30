@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { DASHBOARD_SECTIONS } from '@/components/dashboard/dashboardSections';
 
 describe('DASHBOARD_SECTIONS', () => {
-  it('has 13 sections', () => {
-    expect(DASHBOARD_SECTIONS).toHaveLength(13);
+  it('has 14 sections', () => {
+    expect(DASHBOARD_SECTIONS).toHaveLength(14);
   });
 
   it('has the ids and labels from the design, in order', () => {
@@ -12,6 +12,7 @@ describe('DASHBOARD_SECTIONS', () => {
       'dash-attention',
       'dash-sales-vs-break-even',
       'dash-labor-cost',
+      'dash-smart-alerts',
       'dash-performance-overview',
       'dash-cashflow',
       'dash-monthly-performance',
@@ -25,8 +26,9 @@ describe('DASHBOARD_SECTIONS', () => {
     expect(DASHBOARD_SECTIONS.map((section) => section.label)).toEqual([
       'Today',
       'Attention',
-      'Sales vs break-even',
+      'Sales vs Break-Even',
       'Labor cost',
+      'Smart Alerts',
       'Performance Overview',
       'Cashflow',
       'Monthly Performance',

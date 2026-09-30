@@ -25,27 +25,25 @@ function getStripStatusConfig(
     case 'ahead':
       return {
         Icon: CircleCheck,
-        iconClass: 'text-green-600 dark:text-green-400',
-        badgeClass:
-          'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300',
-        fillClass: 'bg-green-500 dark:bg-green-600',
+        iconClass: 'text-success-strong',
+        badgeClass: 'bg-success/10 text-success-strong',
+        fillClass: 'bg-success',
         label: 'Ahead',
       };
     case 'on_pace':
       return {
         Icon: CircleMinus,
-        iconClass: 'text-yellow-600 dark:text-yellow-400',
-        badgeClass:
-          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300',
-        fillClass: 'bg-yellow-500 dark:bg-yellow-600',
+        iconClass: 'text-warning-strong',
+        badgeClass: 'bg-warning/10 text-warning-strong',
+        fillClass: 'bg-warning',
         label: 'On pace',
       };
     case 'behind':
       return {
         Icon: CircleX,
-        iconClass: 'text-red-600 dark:text-red-400',
-        badgeClass: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
-        fillClass: 'bg-red-500 dark:bg-red-600',
+        iconClass: 'text-destructive',
+        badgeClass: 'bg-destructive/10 text-destructive',
+        fillClass: 'bg-destructive',
         label: 'Behind',
       };
   }
@@ -103,8 +101,6 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <span
-            role="status"
-            aria-live="polite"
             className={cn(
               'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium',
               badgeClass,

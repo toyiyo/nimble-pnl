@@ -12,6 +12,7 @@ import { AiChatProvider } from "@/contexts/AiChatContext";
 import { AiChatBubble } from "@/components/ai-chat/AiChatBubble";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
 import { AppHeader } from "@/components/AppHeader";
+import { SkipToContent, MAIN_CONTENT_ID } from "@/components/SkipToContent";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { InstallBanner } from "@/components/InstallBanner";
@@ -106,11 +107,12 @@ function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.Reac
   return (
     <>
       <SidebarProvider defaultOpen={true}>
+        <SkipToContent />
         <div className="min-h-screen flex w-full bg-background overflow-x-clip">
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0 overflow-x-clip">
             <AppHeader />
-            <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-clip">
+            <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-clip focus:outline-none">
               {viewMode === 'work' && (
                 <div className="mb-4">
                   <PersonalViewBanner variant="desktop" />

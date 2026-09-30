@@ -6,3 +6,14 @@ export function formatRunway(days: number): string {
   if (days > 365) return '365+';
   return Math.floor(days).toString();
 }
+
+/**
+ * Format a cash runway value with its unit, for example "168 days".
+ * The dashboard top card and the Banking section both use this, so the
+ * same value shows with the same words in both places. No burn
+ * (Infinity) shows as "365+ days".
+ */
+export function formatRunwayDays(days: number): string {
+  const value = formatRunway(days);
+  return `${value} ${value === '1' ? 'day' : 'days'}`;
+}

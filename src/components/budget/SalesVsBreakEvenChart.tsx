@@ -45,7 +45,7 @@ function classifySign(value: number): SignedDeltaSign {
 // both color a signed dollar amount the same way: green above break-even,
 // red below, neutral at exactly zero.
 const SIGNED_DELTA_COLOR_CLASS: Record<SignedDeltaSign, string> = {
-  positive: 'text-success',
+  positive: 'text-success-strong',
   negative: 'text-destructive',
   zero: 'text-foreground',
 };
@@ -86,7 +86,7 @@ export function formatCOGSVariance(actualPercentage?: number, targetPercentage?:
   const magnitude = Math.abs(variance).toFixed(1);
   return variance > 0
     ? { label: `+${magnitude} pts over target`, colorClass: 'text-destructive' }
-    : { label: `${magnitude} pts under target`, colorClass: 'text-success' };
+    : { label: `${magnitude} pts under target`, colorClass: 'text-success-strong' };
 }
 
 interface BarChartEntry {
@@ -204,7 +204,7 @@ export function BreakEvenTooltipContent({ active, payload }: BreakEvenTooltipCon
           // the same reasoning that keeps the bar itself off the
           // above/below fill (finding #2). The tooltip must not surface a
           // signed verdict for a day that hasn't finished yet.
-          <p className="text-[12px] font-medium text-warning">In progress</p>
+          <p className="text-[12px] font-medium text-warning-strong">In progress</p>
         ) : (
           <p className="text-[12px] text-muted-foreground">
             {verdictLabel}{' '}
@@ -305,20 +305,20 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border/40">
         <div>
-          <h3 className="text-[14px] font-medium text-foreground">
+          <h2 className="text-[14px] font-medium text-foreground">
             Sales vs Break-Even
-          </h3>
+          </h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">Last {chartData.length} days</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-2.5 rounded-sm bg-success" />
-              <span className="text-[11px] text-muted-foreground">Above</span>
+              <span className="text-[11px] text-muted-foreground">Above break-even line</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-2.5 rounded-sm bg-destructive" />
-              <span className="text-[11px] text-muted-foreground">Below</span>
+              <span className="text-[11px] text-muted-foreground">Below break-even line</span>
             </div>
           </div>
         </div>
@@ -448,7 +448,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
       {/* Summary stats */}
       <div className="grid grid-cols-4 gap-px bg-border/40 border-t border-border/40">
         <div className="bg-background p-3 text-center">
-          <p className="text-[16px] font-semibold text-success">{data.daysAbove}</p>
+          <p className="text-[16px] font-semibold text-success-strong">{data.daysAbove}</p>
           <p className="text-[11px] text-muted-foreground">Days above</p>
         </div>
         <div className="bg-background p-3 text-center">
@@ -456,7 +456,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
           <p className="text-[11px] text-muted-foreground">Days below</p>
         </div>
         <div className="bg-background p-3 text-center">
-          <p className="text-[14px] font-semibold text-success">
+          <p className="text-[14px] font-semibold text-success-strong">
             {data.avgSurplus > 0 ? `+${formatCurrency(data.avgSurplus)}` : '-'}
           </p>
           <p className="text-[11px] text-muted-foreground">Avg surplus</p>
@@ -483,7 +483,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
               actualCOGSPercentage === undefined || targetCOGSPercentage === undefined
                 ? 'text-foreground'
                 : actualCOGSPercentage > targetCOGSPercentage
-                  ? 'text-destructive' : 'text-success'
+                  ? 'text-destructive' : 'text-success-strong'
             }`}>
               {actualCOGSPercentage === undefined ? '-' : `${actualCOGSPercentage.toFixed(1)}%`}
             </p>

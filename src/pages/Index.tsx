@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
@@ -31,8 +32,12 @@ import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
 import { BankSnapshotSection } from '@/components/BankSnapshotSection';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
-import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
-import { OwnerSnapshotWidget } from '@/components/dashboard/OwnerSnapshotWidget';
+import { DashboardTodayCard } from '@/components/dashboard/DashboardTodayCard';
+import { DashboardAttentionList } from '@/components/dashboard/DashboardAttentionList';
+import { BreakEvenDayGrid } from '@/components/dashboard/BreakEvenDayGrid';
+import { DashboardSectionRail } from '@/components/dashboard/DashboardSectionRail';
+import { DASHBOARD_SECTIONS } from '@/components/dashboard/dashboardSections';
+import { useActiveSection } from '@/hooks/useActiveSection';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
@@ -64,6 +69,7 @@ import {
   Landmark,
   ChevronDown,
   ChevronUp,
+  MoreHorizontal,
 } from 'lucide-react';
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -145,6 +151,33 @@ const Index = () => {
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
   const [laborEfficiencyOpen, setLaborEfficiencyOpen] = useState(false);
   const [laborCostOpen, setLaborCostOpen] = useState(false);
+
+  const activeSectionId = useActiveSection(DASHBOARD_SECTIONS.map((section) => section.id));
+
+  const sectionOpenSetters: Partial<Record<string, (open: boolean) => void>> = {
+    'dash-labor-cost': setLaborCostOpen,
+    'dash-performance-overview': setMetricsOpen,
+    'dash-cashflow': setCashflowOpen,
+    'dash-monthly-performance': setMonthlyOpen,
+    'dash-revenue-mix': setRevenueOpen,
+    'dash-banking': setBankingOpen,
+    'dash-expenses': setMoneyOutOpen,
+    'dash-labor-efficiency': setLaborEfficiencyOpen,
+    'dash-operations-health': setOperationsOpen,
+    'dash-quick-actions': setQuickActionsOpen,
+  };
+
+  function handleSectionNavigate(sectionId: string): void {
+    posthog.capture('dashboard_rail_clicked', { section_id: sectionId });
+    sectionOpenSetters[sectionId]?.(true);
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    });
+  }
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'today',
@@ -644,17 +677,12 @@ const Index = () => {
           <div className="space-y-5">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div className="space-y-1.5">
+                <p className="text-[13px] text-muted-foreground">
+                  {format(new Date(), 'EEEE, MMMM d')} · Updated {format(new Date(), 'h:mm a')}
+                </p>
                 <h1 className="text-[28px] font-semibold tracking-tight text-foreground">
                   {selectedRestaurant.restaurant.name}
                 </h1>
-                <p className="text-[14px] text-muted-foreground">
-                  {new Date().toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <DataInputDialog
@@ -668,77 +696,131 @@ const Index = () => {
                   }}
                   className="w-full sm:w-auto"
                 />
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/banking')}
-                  className="h-9 rounded-lg text-[13px] font-medium border-border/40"
-                >
-                  <Landmark className="h-4 w-4 mr-2" />
-                  Banking
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/reports')}
-                  className="h-9 rounded-lg text-[13px] font-medium border-border/40"
-                >
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  Reports
-                </Button>
-                <Button
-                  onClick={() => navigate('/inventory')}
-                  className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-                >
-                  <Package className="h-4 w-4 mr-2" />
-                  Inventory
-                </Button>
+                <div className="hidden sm:flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate('/banking')}
+                    className="h-9 rounded-lg text-[13px] font-medium border-border/40"
+                  >
+                    <Landmark className="h-4 w-4 mr-2" />
+                    Banking
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate('/reports')}
+                    className="h-9 rounded-lg text-[13px] font-medium border-border/40"
+                  >
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Reports
+                  </Button>
+                  <Button
+                    onClick={() => navigate('/inventory')}
+                    className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  >
+                    <Package className="h-4 w-4 mr-2" />
+                    Inventory
+                  </Button>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="sm:hidden h-9 w-9 p-0 rounded-lg border-border/40"
+                      aria-label="More dashboard actions"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => navigate('/banking')}>
+                      <Landmark className="h-4 w-4 mr-2" />
+                      Banking
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/reports')}>
+                      <TrendingUp className="h-4 w-4 mr-2" />
+                      Reports
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/inventory')}>
+                      <Package className="h-4 w-4 mr-2" />
+                      Inventory
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
             <div className="h-px bg-border/40" />
+            <div className="lg:hidden">
+              <DashboardSectionRail
+                sections={DASHBOARD_SECTIONS}
+                activeSectionId={activeSectionId}
+                onNavigate={handleSectionNavigate}
+                variant="compact"
+              />
+            </div>
           </div>
 
           {alertsLoading || (todaysLoading && !todaysData) || (periodLoading && !periodData) ? (
             <DashboardSkeleton />
           ) : (
-            <>
-              {/* Critical Alerts Bar */}
-              <CriticalAlertsBar alerts={criticalAlerts} />
+            <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8 lg:items-start">
+            <div className="space-y-8 min-w-0">
+              {/* Today card */}
+              <section id="dash-today" className="scroll-mt-24">
+                <DashboardTodayCard
+                  todaySales={todaysData?.netRevenue || 0}
+                  profitMargin={todayProfitMargin}
+                  availableCash={availableCash}
+                  cashRunway={cashRunway}
+                  todayFoodCost={todaysData?.foodCost || 0}
+                  todayLaborCost={todaysData?.laborCost || 0}
+                  monthToDateSales={breakEvenData?.monthlyProgress?.mtdSales ?? 0}
+                  breakEvenData={breakEvenData ? {
+                    dailyBreakEven: breakEvenData.dailyBreakEven,
+                    todayStatus: breakEvenData.todayStatus,
+                    todayDelta: breakEvenData.todayDelta,
+                    daysAbove: breakEvenData.daysAbove,
+                    daysBelow: breakEvenData.daysBelow,
+                    historyDays: 14,
+                  } : null}
+                  breakEvenLoading={breakEvenLoading}
+                  breakEvenError={Boolean(breakEvenError)}
+                />
+              </section>
 
-              {/* Owner Snapshot Widget */}
-              <OwnerSnapshotWidget
-                todaySales={todaysData?.netRevenue || 0}
-                profitMargin={todayProfitMargin}
-                availableCash={availableCash}
-                cashRunway={cashRunway}
-                todayFoodCost={todaysData?.foodCost || 0}
-                todayLaborCost={todaysData?.laborCost || 0}
-                lastUpdated={format(new Date(), 'h:mm a')}
-                breakEvenData={breakEvenData ? {
-                  dailyBreakEven: breakEvenData.dailyBreakEven,
-                  todayStatus: breakEvenData.todayStatus,
-                  todayDelta: breakEvenData.todayDelta,
-                  daysAbove: breakEvenData.daysAbove,
-                  daysBelow: breakEvenData.daysBelow,
-                  historyDays: 14,
-                } : null}
-                breakEvenLoading={breakEvenLoading}
-              />
+              {/* Needs your attention + Month progress */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <section id="dash-attention" className="scroll-mt-24 space-y-3">
+                  <h2 className="text-[17px] font-semibold text-foreground">Needs your attention</h2>
+                  <DashboardAttentionList alerts={criticalAlerts} />
+                </section>
+                <div className="space-y-3">
+                  <h2 className="text-[17px] font-semibold text-foreground">Month progress</h2>
+                  <MonthlyBreakEvenStrip
+                    progress={breakEvenData?.monthlyProgress ?? null}
+                    isLoading={breakEvenLoading}
+                  />
+                </div>
+              </div>
 
-              {/* Monthly break-even progress strip */}
-              <MonthlyBreakEvenStrip
-                progress={breakEvenData?.monthlyProgress ?? null}
-                isLoading={breakEvenLoading}
-              />
+              {/* Last 14 days */}
+              <div className="space-y-3">
+                <h2 className="text-[17px] font-semibold text-foreground">Last 14 days</h2>
+                <BreakEvenDayGrid history={breakEvenData?.history ?? []} />
+              </div>
 
               {/* Sales vs Break-Even Chart */}
-              <SalesVsBreakEvenChart
-                data={breakEvenData ?? null}
-                isLoading={breakEvenLoading}
-                error={breakEvenError}
-                actualCOGSPercentage={actualCOGSPercentage}
-                targetCOGSPercentage={targetCOGSPercentage}
-              />
+              <section id="dash-sales-vs-break-even" className="scroll-mt-24">
+                <SalesVsBreakEvenChart
+                  data={breakEvenData ?? null}
+                  isLoading={breakEvenLoading}
+                  error={breakEvenError}
+                  actualCOGSPercentage={actualCOGSPercentage}
+                  targetCOGSPercentage={targetCOGSPercentage}
+                />
+              </section>
 
               {/* Labor cost - Collapsible (financial: labor % of sales vs target, distinct from scheduling's Labor Efficiency section below) */}
+              <section id="dash-labor-cost" className="scroll-mt-24">
               <Collapsible open={laborCostOpen} onOpenChange={setLaborCostOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -757,6 +839,7 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
               {/* AI Insights */}
               <DashboardInsights insights={insights} />
@@ -772,6 +855,7 @@ const Index = () => {
 
               {/* ===== OPERATIONAL METRICS SECTION ===== */}
 
+              <section id="dash-performance-overview" className="scroll-mt-24">
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
                 <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
@@ -923,7 +1007,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-cashflow" className="scroll-mt-24">
               {/* Cashflow Visualization - Collapsible */}
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
                 <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
@@ -943,7 +1029,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-monthly-performance" className="scroll-mt-24">
               {/* Monthly Performance Table - Collapsible */}
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
                 <div className={`space-y-4 transition-opacity ${monthlyFetching ? 'opacity-60' : ''}`} aria-busy={monthlyFetching}>
@@ -963,7 +1051,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-revenue-mix" className="scroll-mt-24">
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
@@ -1136,6 +1226,8 @@ const Index = () => {
                   </div>
                 </Collapsible>
               )}
+              </section>
+              <section id="dash-banking" className="scroll-mt-24">
 
               {/* ===== BANKING SECTION ===== */}
 
@@ -1176,7 +1268,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-expenses" className="scroll-mt-24">
               {/* Expenses Section */}
               <Collapsible open={moneyOutOpen} onOpenChange={setMoneyOutOpen}>
                 <div className="space-y-4">
@@ -1207,7 +1301,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-labor-efficiency" className="scroll-mt-24">
               {/* Labor Efficiency - Collapsible */}
               <Collapsible open={laborEfficiencyOpen} onOpenChange={setLaborEfficiencyOpen}>
                 <div className="space-y-4">
@@ -1224,7 +1320,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-operations-health" className="scroll-mt-24">
               {/* Operations Health */}
               <Collapsible open={operationsOpen} onOpenChange={setOperationsOpen}>
                 <div className="space-y-4">
@@ -1247,7 +1345,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-quick-actions" className="scroll-mt-24">
               {/* Quick Actions */}
               <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
                 <div className="space-y-4">
@@ -1264,7 +1364,14 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
-            </>
+              </section>
+            </div>
+            <DashboardSectionRail
+              sections={DASHBOARD_SECTIONS}
+              activeSectionId={activeSectionId}
+              onNavigate={handleSectionNavigate}
+            />
+            </div>
           )}
         </div>
       )}

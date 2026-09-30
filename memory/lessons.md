@@ -3476,3 +3476,20 @@
 - **Mistake:** The workflow ran with `scriptPath` set to the main checkout copy of `.claude/workflows/dev-build-and-ship.js`. The main checkout was on another branch, with local edits to that file. That copy had no Phase 8.5, so no browser QA ran. The PR merged with no check of the real screens. The user asked "did you qa it using the chrome tools?", and the answer was no.
 - **Correction:** None before the merge. `grep -c "PHASE 8.5"` gave 0 for the main checkout copy and 2 for `origin/main`.
 - **Rule:** Set `scriptPath` to the script in the task worktree, which is on a branch from `origin/main`. Before the launch, run `grep -c "PHASE 8.5"` on that path. If the result is 0, stop and find the correct copy.
+
+## Category: Development Workflow (off-site punch flags)
+
+### [2026-09-29] Write a stalled task in the main session after the second stall (PR #830)
+- **Mistake:** The workflow agents for task 9 (help text) and task 10 (E2E test) stalled on all 6 attempts each. Each task then waited for the full retry budget.
+- **Correction:** The main session wrote both tasks, committed them, and resumed the run with `stalledTasks` and `resolutionNotes`.
+- **Rule:** When a build agent stalls two times on the same task, stop the run. Write the task in the main session, then resume with `stalledTasks` and a `resolutionNotes` entry.
+
+### [2026-09-29] A SonarCloud item can arrive after the Phase 9d triage (PR #830)
+- **Mistake:** The Done Gate found one OPEN critical SonarCloud item (cognitive complexity 16 of 15). The item came into `review_queue.json` after the 9d triage file was complete. The gate only checks, so the run stopped.
+- **Correction:** The main session refactored `worstLocationFlag` with a rank table and an `isFarther` helper, and marked the item resolved.
+- **Rule:** Before the Done Gate, refresh the review queue and triage every new OPEN item for the PR. Keep each new function below cognitive complexity 15.
+
+### [2026-09-29] Do not rewrite `review_queue.json` with Python `json.dump` (PR #830)
+- **Mistake:** A Python `json.dump` of the queue escaped every emoji and changed 2546 lines.
+- **Correction:** A second commit wrote the file again with Node `JSON.stringify(data, null, 2)`.
+- **Rule:** Change the queue with `dev-tools/mark-task.js`. If you must write it by hand, use Node `JSON.stringify(data, null, 2)` plus a final newline.

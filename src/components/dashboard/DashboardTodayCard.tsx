@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { formatRunway } from "@/lib/formatRunway";
 import { buildBreakEvenHeadline } from "@/lib/breakEvenHeadline";
+import { formatWholeDollarAmount } from "@/lib/formatWholeDollarAmount";
 
 interface BreakEvenStatusData {
   dailyBreakEven: number;
@@ -35,12 +36,7 @@ function formatWholeDollar(value: number, abbreviated = false): string {
       maximumFractionDigits: 1,
     }).format(value);
   }
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
+  return formatWholeDollarAmount(value);
 }
 
 export function DashboardTodayCard({

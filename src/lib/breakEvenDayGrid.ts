@@ -1,4 +1,5 @@
 import type { BreakEvenData } from '@/types/operatingCosts';
+import { formatWholeDollarAmount } from '@/lib/formatWholeDollarAmount';
 
 type BreakEvenHistoryRow = BreakEvenData['history'][number];
 
@@ -30,15 +31,6 @@ const PARTIAL_FILL_CLASS = 'bg-muted-foreground/30';
 const ABOVE_FILL_CLASS = 'bg-foreground/80';
 const BELOW_FILL_CLASS = 'bg-destructive/60';
 const AT_FILL_CLASS = 'bg-muted-foreground/50';
-
-/** Format a whole-dollar amount for a cell's aria-label, for example "$1,240". */
-function formatWholeDollarAmount(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 /**
  * Read the day number and the month label from an ISO date string

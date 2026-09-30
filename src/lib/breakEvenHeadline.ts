@@ -1,3 +1,5 @@
+import { formatWholeDollarAmount } from '@/lib/formatWholeDollarAmount';
+
 export type BreakEvenHeadlineTone = 'positive' | 'negative' | 'neutral';
 
 export interface BreakEvenHeadlineInput {
@@ -27,15 +29,6 @@ function buildProgressPercent(todaySales: number, dailyBreakEven: number): numbe
   const rawPercent = (todaySales / dailyBreakEven) * 100;
   const boundedPercent = Math.min(100, Math.max(0, rawPercent));
   return Math.round(boundedPercent);
-}
-
-/** Format a whole-dollar amount for the headline sentence, for example "$1,240". */
-function formatWholeDollarAmount(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 /**

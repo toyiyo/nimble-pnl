@@ -69,6 +69,7 @@ export interface CreateRecipeData {
     quantity: number;
     unit: IngredientUnit;
     notes?: string;
+    yield_pct_override?: number | null;
   }[];
 }
 

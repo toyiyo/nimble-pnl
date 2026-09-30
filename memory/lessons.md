@@ -976,6 +976,7 @@
 - **Mistake:** During Phase 8 verify, `npm run test:e2e` (159 tests, 4 local workers) reported 27 failures right after the 5589-test unit suite + build + local Supabase stack had loaded the machine. First instinct is "27 e2e failures = regression, halt."
 - **Correction:** The failing SET shifted between runs (permissions-roles:70/113/248 failed then passed; :218 passed then failed) — the signature of load-induced flakiness, not a deterministic regression. A targeted re-run of the 27 passed 25/27; the 2 stragglers both passed when re-run serially (`--workers=1`, 2 passed in 16.9s). None of the branch's changes touched any e2e-tested flow. CI then ran e2e in 4 parallel shards and all passed.
 - **Rule:** When local full-suite e2e fails under load, before assuming regression: (1) check whether the failing set is stable across runs — a shifting set means flake; (2) re-run the failures serially with `--workers=1`; (3) map the failures to the diff — if the branch touches none of the failing flows, it's environment, not code. Treat CI's sharded e2e as the authoritative gate; don't block a PR on single-machine full-suite e2e noise. (Reinforces the pre-existing e2e-flake entries.)
+- **[2026-09-30] CONFIRMED on PR #833.** I told the user that CI does not run E2E, because I read only the job names in `.github/workflows/unit-tests.yml`. The same workflow run holds `E2E Tests (Shard 1/4)` to `(Shard 4/4)` and `Database Tests (pgTAP)`. I then spent 20 minutes on a local full-suite run that CI finished faster. Read the check runs of a pushed commit before you say what CI runs.
 - **Confirmed [2026-09-26] (PR #822):** The PR deleted a dead component. The design doc listed E2E as a justified exception, because no route mounts the component. The Verify gate still ran the full local E2E suite and stopped on 11 load failures. A rerun with 2 workers passed 10 of them. The last spec passed with 1 worker on the branch and on `origin/main`. The user then said to skip local E2E. CI's four E2E shards were the real gate. **Rule addition:** When the design doc gives an E2E exception, pass that exception to the workflow at launch. Do not let local E2E block the change.
 
 ### [2026-07-06] codex-adversarial-review.sh: macOS has no `timeout`, and a stale output file yields a phantom finding
@@ -3550,3 +3551,29 @@
 - **Mistake:** The design called the RPC twice for a sub-hour view. It named the CPU cost, but not the consistency. The review found that the 5-minute cron can write between the two calls. The workflow stopped for a design decision.
 - **Correction:** The operator accepted the risk and recorded it in design §8.
 - **Rule:** When a design reads the same table in more than one call, state in the design whether the calls must share a snapshot.
+
+## Category: Cloud Sessions (Claude Code on the web)
+
+### [2026-09-30] The cloud container can run pgTAP and E2E, with three workarounds (PR #833)
+- **Mistake:** `npm ci` failed with a 403, so I reported that E2E and pgTAP cannot run in the cloud session.
+- **Correction:** Only one package failed: `xlsx` comes from `cdn.sheetjs.com`, which the network policy blocks. Docker is installed but its daemon does not start by itself. The Supabase CLI pulls images from ECR, and the ECR blob host returns `Forbidden`.
+- **Rule:** In a cloud session, run these steps before you say a check cannot run:
+  1. Delete `xlsx` from a temporary copy of `package.json` and `package-lock.json`, run `npm ci`, then `git checkout` both files.
+  2. Run `npm i --no-save xlsx@0.18.5` from the npm registry so Vite and `tsc` can resolve the import. Check that `git status` stays clean.
+  3. Start Docker with `(dockerd > <scratch>/dockerd.log 2>&1 &)`.
+  4. Start Supabase with `SUPABASE_INTERNAL_IMAGE_REGISTRY=docker.io npx supabase start`.
+  5. Write `.env.local` from `npx supabase status -o env`, with local keys only.
+  With these steps, `npm run test:db` passed 3594 of 3594, and a Playwright spec ran against local Supabase.
+
+### [2026-09-30] A race between an optimistic punch and a late failure is testable in E2E (PR #833)
+- **Mistake:** The first plan omitted `npm run test:e2e`. A later draft said "a browser test cannot hold one mutate pending and then fail it". Codex flagged the missing E2E as P1.
+- **Correction:** `tests/e2e/kiosk-offline-queue-camera-race.spec.ts` holds the first `POST **/rest/v1/time_punches*` in `page.route`. It opens the dialog for the second employee, calls `context.setOffline(true)`, then `route.abort('internetdisconnected')`. The spec failed on the old code and passed with the fix. `PUNCH_INSERT_TIMEOUT_MS` (15 s) sets the maximum hold time.
+- **Rule:** Before you claim an E2E exception for a network race, try `page.route` to hold the request and `context.setOffline` to control `navigator.onLine`. Prove the spec is RED on the old code in a separate worktree. A worktree gets its own Playwright port, so the RED run does not touch a suite that runs in the main tree.
+
+### [2026-09-30] `pkill -f <pattern>` kills the shell that runs it
+- **Mistake:** `pkill -f "playwright test"` matched the command line of my own Bash shell and ended it with exit code 144.
+- **Rule:** Put a bracket in the pattern, as in `pgrep -af "[p]laywright test"`. Or use `pkill -x <name>` for an exact process name.
+
+### [2026-09-30] Do not push a guess for a bot finding you cannot read (PR #833)
+- **Mistake:** SonarCloud reported "1 New issue", and the network policy blocks `sonarcloud.io`. I guessed rule S4123 and pushed a type change. The next analysis still reported 1 issue, so the push cost one CI cycle and fixed nothing.
+- **Rule:** When a finding is not readable from the session, ask the user for the rule and the line, or ask them to allow the host. Push only a fix for a finding you can see. The first report of the issue also tells you which commit added it, so check that before you guess.

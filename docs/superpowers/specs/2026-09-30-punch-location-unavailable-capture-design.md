@@ -5,8 +5,7 @@ Branch: `claude/beautiful-tesla-cqgzji`
 PR: toyiyo/nimble-pnl#831
 Source: deferred Codex P2 finding on toyiyo/nimble-pnl#830
 (`src/utils/punchLocationFlag.ts:16`)
-Status: proposed (retroactive — the first cut is on the PR; this design
-corrects it)
+Status: approach B and Kiosk E2E chosen by the user after Phase 2.5 review
 
 ## Problem
 
@@ -85,96 +84,167 @@ Offline queue (`src/utils/offlineQueue.ts`):
 - The queued `location` type allows only `latitude` and `longitude` (`:13-16`).
 - The flush sends `location` unchanged (`:142`).
 
-Paths that do not read GPS:
+Paths that create punches but do not read GPS:
 
 - `MobileTimeEntry` sends no `location`
   (`src/components/time-tracking/MobileTimeEntry.tsx:108-122`).
 - `ManualTimelineEditor` creates punches with no `location`
   (`src/components/time-tracking/ManualTimelineEditor.tsx:312-340`).
-- The bulk import inserts rows from the import mapper
-  (`src/hooks/useTimePunches.tsx:426`). It does not call `punchContext`.
+- The manager Force Clock Out calls `createPunch.mutate`
+  (`src/pages/TimePunchesManager.tsx:1193`).
+- `RecordShiftClockDialog` and `TimePunchUploadSheet` use
+  `useBulkCreateTimePunches`
+  (`src/components/payroll/RecordShiftClockDialog.tsx:69`,
+  `src/components/time-tracking/TimePunchUploadSheet.tsx:158`). The bulk
+  insert is at `src/hooks/useTimePunches.tsx:426`.
+- The Sling sync inserts punches in SQL
+  (`supabase/migrations/20260223100100_sling_sync_rpc.sql:79`).
+
+None of these paths calls `punchContext`. None gets the flag.
+
+Geofence read and quick read:
+
+- On a native platform the geofence check reads GPS through the Capacitor
+  `Geolocation` plugin (`src/hooks/useGeofenceCheck.ts:66-67`). The quick
+  read uses `navigator.geolocation` (`src/utils/punchContext.ts:39-45`).
+  The two reads do not share a cache.
+- The native app is `com.easyshifthq.employee` (`capacitor.config.ts:4`).
+  It runs `EmployeeClock`.
+- A checked geofence result has the position as `userLat` and `userLng`
+  (`src/hooks/useGeofenceCheck.ts:40-41`). `EmployeeClock` keeps only
+  `distanceMeters` and `within` (`src/pages/EmployeeClock.tsx:149`, `:164`).
+- The in-flight quick read stays reusable for `PUNCH_CONTEXT_REUSE_MS`
+  (10 s) after it resolves (`src/utils/punchContext.ts:31`, `:93-99`).
+  After that, `collectPunchContext` starts a new read.
 
 ## Approaches
 
-**A. One helper, "no coordinates in the payload" means unavailable
-(recommended).** Add `punchContextLocation(context, geofenceResult?,
-geofenceUnavailable?)` to `src/utils/punchContext.ts`. It returns
-`mergePunchLocation(...)` with `location_unavailable: true` when the context
-has no coordinates, or when the geofence check failed. Only GPS capture paths
-call it. Manual and import paths do not change.
+**A. One helper; no quick-read coordinates means unavailable.** Simple. But
+in `warn` mode an employee outside the radius accepts the warning, and then
+the quick read fails. The punch shows "No location", not "off-site". On the
+native app, an on-site punch can also get a false "No location" chip.
 
-**B. A + carry the geofence coordinates.** Also keep `userLat` and `userLng`
-from the geofence check in `EmployeeClock`, and send them when the quick
-read has none. More state for a rare case: `getQuickLocation` uses
-`maximumAge: 60000` (`src/utils/punchContext.ts:60`), so after a good
-geofence read the quick read almost always returns the cached fix.
+**B. A + use the geofence position as a fallback (chosen).** `EmployeeClock`
+keeps `userLat` and `userLng` from the checked geofence result. When the
+quick read has no coordinates, the helper sends the geofence coordinates.
+The server then calculates the flag from them.
 
 **C. Add a `location_unavailable` field to `PunchContextResult`.** Every
-caller then reads two fields. The helper in A gives the same result with one
+caller then reads two fields. The helper gives the same result with one
 call and no change to the context type.
 
-Decision: **A**.
+Decision: **B** (user decision after the Phase 2.5 review).
 
 ## Design
 
 ### `punchContextLocation` (`src/utils/punchContext.ts`)
 
 ```ts
+export interface PunchGeofenceResult {
+  distanceMeters?: number;
+  within?: boolean;
+  latitude?: number;
+  longitude?: number;
+}
+
 export function punchContextLocation(
   context: { location?: { latitude: number; longitude: number } } | null | undefined,
-  geofenceResult?: { distanceMeters?: number; within?: boolean },
+  geofenceResult?: PunchGeofenceResult,
   geofenceUnavailable = false
 ): PunchLocation {
-  return mergePunchLocation(
-    context?.location,
-    geofenceResult,
-    geofenceUnavailable || context?.location == null
-  )!;
+  const base = context?.location ?? geofenceCoordinates(geofenceResult);
+  return (
+    mergePunchLocation(base, geofenceResult, geofenceUnavailable || base == null) ?? {
+      location_unavailable: true,
+    }
+  );
 }
 ```
 
-- No coordinates → `location_unavailable: true`. This matches what the
-  server stores: without coordinates the trigger cannot flag the punch
-  off-site, so "no location" is the true state.
-- The first cut on the PR counted a geofence distance as a position. That is
-  wrong: the trigger deletes the distance (`:27`), so the stored location is
-  `{}` and the punch gets no flag. This design deletes that exception and
+- `geofenceCoordinates` returns `{ latitude, longitude }` only when both
+  values are finite numbers. Otherwise it returns `undefined`.
+- The quick-read coordinates win, because the quick read is the later read.
+- No coordinates at all → `location_unavailable: true`. Without coordinates
+  the trigger cannot flag the punch off-site (`:73-111`), so "no location" is
+  the true state.
+- The first cut counted a geofence distance as a position. That is wrong:
+  the trigger deletes the distance (`:27`), so the stored location is `{}`
+  and the punch gets no flag. This design deletes that exception and
   reverts the matching `mergePunchLocation` change.
-- The return value is never `undefined`, so the type is `PunchLocation`.
+- The `?? { location_unavailable: true }` fallback replaces a non-null
+  assertion. A later change to `mergePunchLocation` cannot make the helper
+  return `undefined`.
+
+### Payload and stored row
+
+The trigger decides the stored row
+(`supabase/migrations/20260928120000_time_punch_geofence_trigger.sql`).
+
+| Client payload | Stored `location` | Flag |
+|---|---|---|
+| `{latitude, longitude}` | coordinates + server geofence keys (`:73-111`) | `null` or `offsite` |
+| `{location_unavailable: true}` | kept (`:33-37`, pgTAP case 9) | `unavailable` |
+| `{latitude, longitude, location_unavailable: true}` (geofence check failed, quick read good) | flag deleted (`:36`, pgTAP case 9b), geofence calculated | `null` or `offsite` |
+| `{distance_meters, within_geofence, location_unavailable: true}` | `{location_unavailable: true}` (`:27`) | `unavailable` |
+| `undefined` (manual, import, Sling) | `NULL` (`:22-24`) | `null` |
+
+After this change, no GPS capture path sends `undefined`.
 
 ### Capture sites
 
 | Site | Change |
 |---|---|
 | `KioskMode` online punch (`:424`) | `location: punchContextLocation(punchContextSnapshot)` |
-| `KioskMode` `queuePunchOffline` (`:603`) | `context ?? await collectPunchContext(3000)`, then `punchContextLocation(...)`. The GPS read started at `:180`, so the call reuses the in-flight promise. |
-| `EmployeeClock` (`:248`) | `punchContextLocation(context, geofenceResult, locationUnavailable)` |
+| `KioskMode` `queuePunchOffline` (`:603`) | `context ?? await collectPunchContext(3000)`, then `punchContextLocation(...)`. |
+| `EmployeeClock` geofence state (`:149`, `:164`) | Keep `latitude: userLat` and `longitude: userLng` in `pendingGeofenceResult`. |
+| `EmployeeClock` punch (`:248`) | `punchContextLocation(context, geofenceResult, locationUnavailable)` |
 | `offlineQueue.ts` type (`:13-16`) | `location?: PunchLocation` |
 
-No change to `MobileTimeEntry`, `ManualTimelineEditor`, or the import.
+In `queuePunchOffline`, `collectPunchContext` reuses the read that started
+at `KioskMode.tsx:180` when that read resolved less than 10 s before
+(`punchContext.ts:93-99`). Otherwise it starts a new read of at most 3 s.
 
-No server change. The trigger keeps `location_unavailable` when there are no
-coordinates (`:33-37`).
+No server change. No change to the paths that do not read GPS.
 
 ## Tests
 
 Unit (`tests/unit/`):
 
-- `punchContext.test.ts`: helper with coordinates, with no coordinates, with
-  a `null` or `undefined` context, with a geofence distance and no
-  coordinates (flag set), with a failed geofence check. A real
-  `collectPunchContext` GPS error resolves to a flagged location.
+- `punchContext.test.ts`:
+  - The helper with quick-read coordinates; with no coordinates; with a
+    `null` or `undefined` context.
+  - Quick read failed, geofence coordinates present → geofence coordinates,
+    no flag.
+  - Quick read failed, geofence distance but no coordinates → flag set.
+  - Geofence check failed, quick read good → coordinates and flag (the
+    server deletes the flag, pgTAP case 9b).
+  - Quick-read coordinates win over geofence coordinates.
+  - A real `collectPunchContext` GPS error resolves to a flagged location.
+  - Delete the first-cut test "keeps the geofence data when base location
+    is undefined". Add a regression test:
+    `mergePunchLocation(undefined, geo)` returns `undefined`.
 - `KioskMode.test.tsx`: online punch after a failed GPS read; offline queue
   after a failed mutate; offline queue after a failed status check
   (`context = null`); success path with coordinates.
-- `EmployeeClock.test.tsx`: GPS failure with the geofence off; the 3-second
-  timeout; success path.
+- `EmployeeClock.test.tsx`:
+  - GPS failure with the geofence off; the 3-second timeout; success path.
+  - Geofence `warn` with coordinates, then the quick read fails → the
+    payload has the geofence coordinates and no flag.
+  - Geofence check fails, the user proceeds after the warning
+    (`EmployeeClock.tsx:178-183`), and the quick read fails → the payload
+    has `location_unavailable: true`. Try Again sends the same payload.
 
-E2E: justified exception. A Playwright test cannot make the browser GPS read
-fail and then read the stored `location` without a new geolocation-denial
-harness. The unit tests cover every capture site. The pgTAP test from #830
-already covers the server side of `location_unavailable`
-(`supabase/tests/time_punch_geofence_trigger.sql`).
+E2E (`tests/e2e/kiosk-location-unavailable.spec.ts`):
+
+- The owner seeds one employee and one `employee_pins` row (SHA-256 of the
+  PIN, as `src/utils/kiosk.ts:34-41` does).
+- An init script replaces `navigator.geolocation.getCurrentPosition` with a
+  function that calls the error callback.
+- The owner launches the kiosk, enters the PIN, taps Clock In, then Skip
+  photo.
+- The test reads the punch with the owner session. It expects `location` to
+  equal `{"location_unavailable": true}`.
+- This container has no local Supabase. Only the CI E2E shards run the spec.
 
 TLA+: no trigger matches. The change adds no writer, cursor, retry, or lock.
 The offline queue retry logic does not change.
@@ -184,6 +254,20 @@ The offline queue retry logic does not change.
 - A browser with no geolocation API now sends `location_unavailable: true`
   from the Kiosk. That is correct: the punch tried to read GPS and got no
   position.
-- `queuePunchOffline` can now wait up to 3 seconds when `context` is `null`.
-  This path runs only offline, after a failed status check. The GPS read is
-  usually already done, so the wait is short.
+- `queuePunchOffline` can wait up to 3 s more when `context` is `null` and
+  the first read is older than 10 s. This path runs only offline, after a
+  failed status check. The processing lock stays on during the wait
+  (`KioskMode.tsx:368` runs after `handleOfflineQueue`), so the next
+  employee waits too.
+- Entries that the old code queued in `localStorage` have no `location`.
+  They flush as `NULL` and get no flag. A kiosk tab that runs the old bundle
+  sends `undefined` until it reloads. The server cannot tell these rows
+  from manual punches, so we accept the gap.
+- Numeric coordinates out of range get no client flag and no server flag
+  (`:73-86`). Real GPS output does not produce them. Out of scope.
+
+## Out of scope
+
+- `queuePunchOffline` calls `resetCameraState()`. On the `onError` path this
+  runs after `releaseLock()`, so it can close the next employee's camera
+  dialog. This hazard exists on `origin/main`. It gets a separate task.

@@ -88,7 +88,7 @@ report exists now (see §3.6).
 
 ### 3.5 Product UI
 - `ProductUpdateDialog` renders `SizePackagingSection`
-  (`src/components/ProductUpdateDialog.tsx:40`, schema at `:65`, save
+  (`src/components/ProductUpdateDialog.tsx:773`, import at `:40`, schema at `:65`, save
   payload at `:347`). The Recipes page opens it as a sheet.
 
 ### 3.6 Connector and reports
@@ -103,21 +103,46 @@ report exists now (see §3.6).
 
 ## 4. Data model
 
-One migration, `supabase/migrations/2026093012xxxx_recipe_yield_pct.sql`:
+Two migrations. The first adds the columns and the CHECK constraints as
+`NOT VALID`. `products` is a hot table (each POS sale updates
+`current_stock`), so the first file must not scan it under the
+`ACCESS EXCLUSIVE` lock.
+
+`supabase/migrations/2026093012xxxx_recipe_yield_pct.sql`:
 
 ```sql
 ALTER TABLE public.products
-  ADD COLUMN yield_pct numeric(5,2) NOT NULL DEFAULT 100
-    CONSTRAINT products_yield_pct_range CHECK (yield_pct >= 50 AND yield_pct <= 100),
-  ADD COLUMN waste_reason text NULL
-    CONSTRAINT products_waste_reason_len CHECK (char_length(waste_reason) <= 120);
+  ADD COLUMN yield_pct numeric(5,2) NOT NULL DEFAULT 100,
+  ADD COLUMN waste_reason text NULL;
+ALTER TABLE public.products
+  ADD CONSTRAINT products_yield_pct_range
+    CHECK (yield_pct >= 50 AND yield_pct <= 100) NOT VALID,
+  ADD CONSTRAINT products_waste_reason_len
+    CHECK (char_length(waste_reason) <= 120) NOT VALID;
 
 ALTER TABLE public.recipe_ingredients
-  ADD COLUMN yield_pct_override numeric(5,2) NULL
-    CONSTRAINT recipe_ingredients_yield_override_range
-    CHECK (yield_pct_override IS NULL OR (yield_pct_override >= 50 AND yield_pct_override <= 100));
+  ADD COLUMN yield_pct_override numeric(5,2) NULL;
+ALTER TABLE public.recipe_ingredients
+  ADD CONSTRAINT recipe_ingredients_yield_override_range
+    CHECK (yield_pct_override IS NULL
+           OR (yield_pct_override >= 50 AND yield_pct_override <= 100)) NOT VALID;
 ```
 
+`supabase/migrations/2026093012xxxy_recipe_yield_pct_validate.sql` (a
+separate file, so a separate transaction):
+
+```sql
+ALTER TABLE public.products VALIDATE CONSTRAINT products_yield_pct_range;
+ALTER TABLE public.products VALIDATE CONSTRAINT products_waste_reason_len;
+ALTER TABLE public.recipe_ingredients
+  VALIDATE CONSTRAINT recipe_ingredients_yield_override_range;
+```
+
+- A `NOT VALID` constraint still applies to each new INSERT and UPDATE.
+- `VALIDATE CONSTRAINT` takes a `SHARE UPDATE EXCLUSIVE` lock. It does not
+  block POS writes. It must be in its own file because Supabase runs each
+  migration file in one transaction, and the first file holds the
+  `ACCESS EXCLUSIVE` lock until commit.
 - `ADD COLUMN … DEFAULT <constant>` does not rewrite the table on Postgres 11+.
 - Existing rows get 100 and NULL. No recipe cost or deduction changes until a
   user sets a value.
@@ -154,9 +179,37 @@ export function computeLineCost(ingredient, product): {
   calls `computeLineCost` for each line. It keeps `portionCost`,
   `loadedCost`, and a per-line result map for the row display.
 - `calculateIngredientCost` in `prepCostCalculation.ts` applies the product
-  yield (no override for prep).
+  yield (no override for prep). Add `yield_pct` to the `IngredientInfo.product`
+  type (`src/lib/prepCostCalculation.ts:32`). Add `yield_pct` to each query
+  that fills that type, or the helper has no value to read.
 - `inventorySimulation.ts:151` applies the effective yield so the TS mirror
   keeps parity with SQL.
+
+### 5.1a Override persistence (save and copy paths)
+
+The override must reach the database on every write path. Today each path
+has a fixed four-field shape (`product_id, quantity, unit, notes`):
+
+- `updateRecipeIngredients` (`src/hooks/useRecipes.tsx:824-882`): add
+  `yield_pct_override?: number | null` to the parameter type and to the
+  insert row.
+- `RecipeDialog.tsx:284-292` (`validIngredients`): map
+  `yield_pct_override` from the form row.
+- `fetchRecipeIngredients` and the dialog form reset: read
+  `yield_pct_override` back into the form so an edit shows the saved value.
+- `src/utils/recipePrefill.ts:19-24` (`RecipePrefill.ingredients`) and
+  `buildRecipePrefill` (`:52-57`): copy `yield_pct_override`, so "Copy
+  ingredients and units" in `RecipeCreateFromExistingDialog` keeps it.
+
+### 5.1b Form field shape (empty = inherit)
+
+- Zod: `yield_pct_override: z.number().min(50).max(100).nullable().optional()`.
+- `onChange`: an empty string gives `null`. Otherwise `Number(value)`.
+  Do **not** copy the Qty pattern `parseFloat(e.target.value) || 0`
+  (`RecipeIngredientItem.tsx:155`). That pattern turns an empty box into
+  `0`, which fails the bound or stores a wrong yield.
+- The input value shows `field.value ?? ''`.
+- The save maps `undefined` to `null`, so a cleared field writes NULL.
 
 ### 5.2 SQL deduction
 
@@ -175,9 +228,12 @@ v_deduction_amount := v_ingredient_record.quantity * p_quantity_sold
   and transaction all include waste.
 - The reason text gets a suffix when yield < 100, for example
   `… [yield 90%]`. Operators can then see why 5.56 oz left for a 5 oz scoop.
-- The function body is copied in full from `20260705000000`. Only the cursor
-  and line 163 change. `CREATE OR REPLACE` with the same signature keeps
-  grants.
+- The function body is copied in full from `20260705000000`. Only the cursor,
+  line 163, and the reason text change. `CREATE OR REPLACE` with the same
+  signature keeps grants.
+- The re-created function must keep `SECURITY DEFINER` and
+  `SET search_path TO 'public'` (`20260705000000_fix_prep_shadow_recipe_costing.sql:15-16`).
+  Copy the full header, not only the body.
 - The CHECK constraints make a zero or negative divisor impossible. The
   `COALESCE(…, 100)` covers a NULL.
 
@@ -209,13 +265,20 @@ direction. The UI follows the CLAUDE.md Apple/Notion style.
   - A chip: "90% from product" (muted) or "85% override · product 90%"
     (accent tint).
   - "Uses 5.56 fl oz from inventory per sale · portion $0.33".
-  - When the effective yield < 80: "Low yield — review" in
-    `text-amber-600` style tokens that the app already uses for the
-    conversion warning.
+  - When the effective yield < 80: "Low yield — review" in the semantic
+    `warning` token (`text-warning`, `bg-warning/10`, `border-warning/30`;
+    defined at `tailwind.config.ts:47-49`). Do not copy the raw `amber-*`
+    classes of the conversion warning (`RecipeIngredientItem.tsx:94-118`).
+  - The override chip uses `bg-muted` plus `text-foreground`. The inherit
+    chip uses `text-muted-foreground`. No raw color classes.
 - At 100% with no override the caption shows only the cost text. This keeps
   the row quiet for cups, spoons, and other items with no loss.
 - Mobile: the row already uses `flex-wrap` (`RecipeIngredientItem.tsx:121`).
   Yield and Cost wrap with Qty and Unit.
+- Typography follows CLAUDE.md: new cell labels use the existing `FormLabel`
+  to match Qty and Unit in the same row. The caption uses `text-[13px]
+  text-muted-foreground`. The Cost value uses `text-[14px] font-medium
+  tabular-nums`.
 
 ### 6.2 Cost summary (`RecipeDialog`)
 
@@ -227,7 +290,16 @@ grid (4 columns at `sm:`):
 | Portion cost | Sum of portion costs |
 | Waste allowance | Loaded − portion |
 | Loaded cost | Sum of loaded costs (emphasis border) |
-| Food cost % | Loaded cost ÷ average sale price, or "—" with no sales |
+| Food cost % | Loaded cost ÷ `recipe.avg_sale_price`, or "—" with no sales |
+
+- The average sale price already comes with the `recipe` prop. `useRecipes`
+  fills `avg_sale_price` from `get_recipe_sales_stats`
+  (`src/hooks/useRecipes.tsx:176-183`). A new recipe has no prop, so the
+  tile shows "—". No new query is needed.
+- Tile labels use `text-[12px] font-medium text-muted-foreground uppercase
+  tracking-wider`. Values use `text-[17px] font-semibold tabular-nums`.
+  Tiles use `rounded-xl border border-border/40 bg-muted/30`. The Loaded
+  tile uses `border-foreground/40`.
 
 Under the grid: "Waste allowance: $0.04 per serving · $21 a week at current
 volume (530 sold in the last 7 days)."
@@ -249,8 +321,10 @@ volume (530 sold in the last 7 days)."
     text.
 - Helper text: "Share of each unit that ends up in what you sell. 100% means
   no loss."
-- A count line: "Used in N recipes." The count comes from recipe lines that
-  have no override.
+- A count line: "Used in N recipes." The count comes from
+  `recipe_ingredients` rows for this `product_id` with
+  `yield_pct_override IS NULL`, in the selected restaurant.
+  `idx_recipe_ingredients_product_id` covers the query.
 - A value under 80 shows the same "Low yield — review" hint.
 
 ### 6.4 Recipes list
@@ -265,9 +339,13 @@ volume (530 sold in the last 7 days)."
   `unit`, `yield_pct`, `yield_source`, `portion_cost`, `loaded_cost`.
 - Calculate them in `_shared/recipeAnalytics.ts` with `calculateDeduction`
   from `_shared/inventoryConversion.ts:200`.
-- Fetch ingredients in **one** query for all returned recipes (no N+1).
-  The executor already limits the response to 20 recipes
-  (`ai-execute-tool/index.ts:482`), so the ingredient payload stays small.
+- `calculateRecipeProfitability` reads every active recipe
+  (`recipeAnalytics.ts:57-60`, no `LIMIT`). The executor slices to 20 only
+  after that (`ai-execute-tool/index.ts:485`).
+- So the ingredient fetch is a separate step that runs **after** the sort
+  and the slice. It fetches ingredients in **one** query
+  (`.in('recipe_id', top20Ids)`) for the top 20 recipe ids only. No N+1, and
+  the payload does not grow with the recipe count.
 - `food_cost_percentage` keeps its current formula on `estimated_cost`
   (now loaded).
 
@@ -292,12 +370,18 @@ list view corrects each recipe on the next load.
 - Unit: `buildEnhancedRecipes` with a 90% product changes `computed_cost`.
 - Unit: `inventorySimulation` parity at 90%.
 - Unit: `RecipeIngredientItem` shows the inherit chip, the override chip, and
-  the low-yield flag at 75.
+  the low-yield flag at 75. A cleared Yield field gives `null`, not `0`.
+- Unit: `updateRecipeIngredients` sends `yield_pct_override` in the insert.
+- Unit: `buildRecipePrefill` copies `yield_pct_override`.
 - pgTAP (`supabase/tests/recipe_yield_deduction.test.sql`):
   - 100% product → deduction unchanged.
+  - A NULL `yield_pct` (column made nullable inside the test transaction)
+    deducts as 100%. This guards the `COALESCE` if a later migration
+    weakens the `NOT NULL`.
   - 90% product → deduct 5.5556 for 5 sold units of 1.
   - Line override 80% wins over product 90%.
   - CHECK rejects 49 and 101 on both columns.
+  - The function signature keeps `SECURITY DEFINER` (check `pg_proc.prosecdef`).
   - A prep production run deducts with the product yield.
 - Edge function unit test for the new connector fields.
 
@@ -313,3 +397,9 @@ list view corrects each recipe on the next load.
   deduction is authoritative for stock. Both use the same formula.
 - A yield change does not recompute stored `estimated_cost` for every recipe
   at once. The cost heal corrects each recipe on the next list load.
+- The existing conversion warning keeps its raw `amber-*` classes in this
+  PR. New code uses the `warning` token. A token cleanup of the old block
+  is out of scope.
+- `avg_sale_price` covers all time (`get_recipe_sales_stats`). The Food
+  cost % tile uses it as the current app does. A time window is a later
+  change.

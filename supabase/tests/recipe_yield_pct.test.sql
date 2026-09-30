@@ -4,7 +4,7 @@
 
 BEGIN;
 
-SELECT plan(8);
+SELECT plan(11);
 
 SET LOCAL role TO postgres;
 ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
@@ -120,6 +120,28 @@ SELECT throws_ok(
   '23514',
   NULL,
   'recipe_ingredients_yield_override_range rejects an override above 100'
+);
+
+-- ============================================
+-- Test 9-11: the three CHECK constraints are VALID (not NOT VALID)
+-- ============================================
+
+SELECT ok(
+  (SELECT convalidated FROM pg_constraint
+   WHERE conname = 'products_yield_pct_range'),
+  'products_yield_pct_range is validated'
+);
+
+SELECT ok(
+  (SELECT convalidated FROM pg_constraint
+   WHERE conname = 'products_waste_reason_len'),
+  'products_waste_reason_len is validated'
+);
+
+SELECT ok(
+  (SELECT convalidated FROM pg_constraint
+   WHERE conname = 'recipe_ingredients_yield_override_range'),
+  'recipe_ingredients_yield_override_range is validated'
 );
 
 SELECT * FROM finish();

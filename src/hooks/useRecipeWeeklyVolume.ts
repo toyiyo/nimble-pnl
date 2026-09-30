@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 export interface RecipeWeeklyVolumeResult {
   weeklyVolume: number;
@@ -26,7 +27,7 @@ export function useRecipeWeeklyVolume(
     queryFn: async (): Promise<number> => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 7);
-      const startStr = startDate.toISOString().split('T')[0];
+      const startStr = toDateOnlyString(startDate);
 
       const { data, error } = await supabase
         .from('unified_sales')

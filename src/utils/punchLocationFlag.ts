@@ -92,6 +92,23 @@ export function sessionLocationFlags(
   });
 }
 
+const FLAG_RANK: Record<NonNullable<PunchLocationFlag>, number> = {
+  unavailable: 1,
+  offsite: 2,
+};
+
+/**
+ * Returns true when the candidate distance is larger than the current one.
+ * A missing distance must never win, and must never lose to a real
+ * (even tiny) distance by comparing against a 0 default.
+ */
+function isFarther(candidate?: number | null, current?: number | null): boolean {
+  if (candidate === null || candidate === undefined) {
+    return false;
+  }
+  return current === null || current === undefined || candidate > current;
+}
+
 /**
  * Picks the one punch to show as a chip from a list of flagged punches.
  * Off-site outranks unavailable. Among off-site punches, the largest
@@ -99,41 +116,21 @@ export function sessionLocationFlags(
  */
 export function worstLocationFlag(punches: TimePunch[]): TimePunch | null {
   let worst: TimePunch | null = null;
-  let worstFlag: PunchLocationFlag = null;
+  let worstRank = 0;
 
   for (const punch of punches) {
     const flag = getPunchLocationFlag(punch.location);
+    const rank = flag ? FLAG_RANK[flag] : 0;
 
-    if (flag === null) {
-      continue;
-    }
-
-    if (flag === 'offsite' && worstFlag !== 'offsite') {
+    if (rank > worstRank) {
       worst = punch;
-      worstFlag = flag;
-      continue;
-    }
-
-    if (flag === 'offsite' && worstFlag === 'offsite') {
-      // A missing distance must never win, and must never lose to a real
-      // (even tiny) distance by comparing against a 0 default.
-      const currentDistance = worst?.location?.distance_meters;
-      const candidateDistance = punch.location?.distance_meters;
-      if (
-        candidateDistance !== null &&
-        candidateDistance !== undefined &&
-        (currentDistance === null ||
-          currentDistance === undefined ||
-          candidateDistance > currentDistance)
-      ) {
-        worst = punch;
-      }
-      continue;
-    }
-
-    if (flag === 'unavailable' && worstFlag === null) {
+      worstRank = rank;
+    } else if (
+      flag === 'offsite' &&
+      rank === worstRank &&
+      isFarther(punch.location?.distance_meters, worst?.location?.distance_meters)
+    ) {
       worst = punch;
-      worstFlag = flag;
     }
   }
 

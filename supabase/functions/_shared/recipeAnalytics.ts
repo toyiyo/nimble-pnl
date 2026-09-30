@@ -1,9 +1,10 @@
 /**
  * Recipe Analytics Shared Module
- * 
+ *
  * Shared business logic for calculating recipe profitability and analytics.
  * This version is for Edge Functions (Deno runtime).
  */
+import { calculateDeduction as calculateUnitDeduction } from './inventoryConversion.ts';
 
 export interface RecipeProfitabilityResult {
   id: string;
@@ -35,6 +36,86 @@ export interface RecipeProfitabilitySummary {
   averageMargin: number;
   totalRecipes: number;
   recipesWithSales: number;
+}
+
+export interface DeductionIngredientInput {
+  product_name: string;
+  quantity: number;
+  unit: string;
+  purchase_unit: string;
+  size_value: number | null;
+  size_unit: string | null;
+  cost_per_unit: number;
+  yield_pct: number;
+  yield_source: 'product' | 'override';
+}
+
+export interface DeductionIngredientResult {
+  product_name: string;
+  quantity: number;
+  unit: string;
+  yield_pct: number;
+  yield_source: 'product' | 'override';
+  portion_cost: number;
+  loaded_cost: number;
+}
+
+export interface RecipeDeductionResult {
+  portion_cost: number;
+  loaded_cost: number;
+  waste_cost: number;
+  ingredients: DeductionIngredientResult[];
+}
+
+/**
+ * Calculate a recipe's portion, loaded, and waste cost, with one entry per
+ * ingredient line. `loaded_cost` applies the yield percent to each line, so
+ * a 90% yield line costs more per portion than its raw unit conversion.
+ *
+ * Calls `calculateDeduction` from `_shared/inventoryConversion.ts` for the
+ * unit conversion, then scales the result by `100 / yield_pct` per line.
+ * See docs/superpowers/specs/2026-09-30-recipe-yield-waste-design.md, section 7.
+ */
+export function calculateDeduction(
+  ingredients: DeductionIngredientInput[]
+): RecipeDeductionResult {
+  const lines: DeductionIngredientResult[] = ingredients.map((ingredient) => {
+    const conversion = calculateUnitDeduction(
+      {
+        recipeQuantity: ingredient.quantity,
+        recipeUnit: ingredient.unit,
+        productName: ingredient.product_name,
+        purchaseUnit: ingredient.purchase_unit,
+        sizeValue: ingredient.size_value,
+        sizeUnit: ingredient.size_unit,
+        costPerUnit: ingredient.cost_per_unit,
+      },
+      1
+    );
+
+    const portionCost = conversion.costPerRecipeUnit * ingredient.quantity;
+    const loadedCost = portionCost * (100 / ingredient.yield_pct);
+
+    return {
+      product_name: ingredient.product_name,
+      quantity: ingredient.quantity,
+      unit: ingredient.unit,
+      yield_pct: ingredient.yield_pct,
+      yield_source: ingredient.yield_source,
+      portion_cost: portionCost,
+      loaded_cost: loadedCost,
+    };
+  });
+
+  const portionCost = lines.reduce((sum, line) => sum + line.portion_cost, 0);
+  const loadedCost = lines.reduce((sum, line) => sum + line.loaded_cost, 0);
+
+  return {
+    portion_cost: portionCost,
+    loaded_cost: loadedCost,
+    waste_cost: loadedCost - portionCost,
+    ingredients: lines,
+  };
 }
 
 /**

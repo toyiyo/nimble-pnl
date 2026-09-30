@@ -215,7 +215,7 @@ export function DashboardTodayCard({
           <p className="text-[12px] text-muted-foreground pt-1">
             Last {completeDays} complete days:{' '}
             <span className="font-medium text-foreground">{breakEvenData.daysAbove}</span> above ·{' '}
-            <span className="font-medium text-destructive">{breakEvenData.daysBelow}</span> below
+            <span className="font-medium text-destructive-strong">{breakEvenData.daysBelow}</span> below
           </p>
         )}
       </div>

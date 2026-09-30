@@ -63,7 +63,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
   const getRunwayColor = (days: number): string => {
     if (days === Infinity || days > 90) return 'text-success-strong';
     if (days > 30) return 'text-warning-strong';
-    return 'text-destructive';
+    return 'text-destructive-strong';
   };
 
   // Don't show if no banks connected
@@ -111,12 +111,12 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
             {metrics.netChange >= 0 ? (
               <TrendingUp className="h-5 w-5 text-success-strong" />
             ) : (
-              <TrendingDown className="h-5 w-5 text-destructive" />
+              <TrendingDown className="h-5 w-5 text-destructive-strong" />
             )}
             <p className={`text-2xl font-bold ${
               metrics.netChange >= 0 
                 ? 'text-success-strong'
-                : 'text-destructive'
+                : 'text-destructive-strong'
             }`}>
               {metrics.netChange >= 0 ? '+' : ''}{formatCurrency(metrics.netChange)}
             </p>

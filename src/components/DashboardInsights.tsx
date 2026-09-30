@@ -45,7 +45,7 @@ export function DashboardInsights({ insights }: Readonly<DashboardInsightsProps>
         )}
         {insights.map((insight) => {
           const Icon = INSIGHT_ICONS[insight.type] ?? Info;
-          const iconColor = insight.type === 'critical' ? 'text-destructive' : 'text-muted-foreground';
+          const iconColor = insight.type === 'critical' ? 'text-destructive-strong' : 'text-muted-foreground';
           return (
             <li key={`${insight.type}-${insight.title}`} className="flex items-start gap-3 px-4 py-3">
               <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${iconColor}`} aria-hidden="true" />

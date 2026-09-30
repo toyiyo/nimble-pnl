@@ -637,7 +637,7 @@ const Index = () => {
     monthlyPerformanceContent = (
       <div
         role="alert"
-        className="p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-[13px] text-destructive"
+        className="p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-[13px] text-destructive-strong"
       >
         The monthly data failed to load. Refresh the page.
       </div>
@@ -1142,7 +1142,7 @@ const Index = () => {
                           <p className="text-sm text-muted-foreground mb-1">
                             Discounts & Refunds
                           </p>
-                          <p className="text-[15px] font-semibold text-destructive">
+                          <p className="text-[15px] font-semibold text-destructive-strong">
                             -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
                           </p>
                           {revenueBreakdown.totals.gross_revenue > 0 && (

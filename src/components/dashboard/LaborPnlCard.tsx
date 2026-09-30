@@ -74,7 +74,7 @@ function LaborPnlCardBase({ restaurantId }: LaborPnlCardProps) {
     return (
       <div className="rounded-xl border border-border/40 bg-background p-4">
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+          <AlertCircle className="h-4 w-4 text-destructive-strong shrink-0" />
           <span>Failed to load labor cost data.</span>
           <button
             type="button"

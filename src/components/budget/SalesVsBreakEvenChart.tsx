@@ -46,7 +46,7 @@ function classifySign(value: number): SignedDeltaSign {
 // red below, neutral at exactly zero.
 const SIGNED_DELTA_COLOR_CLASS: Record<SignedDeltaSign, string> = {
   positive: 'text-success-strong',
-  negative: 'text-destructive',
+  negative: 'text-destructive-strong',
   zero: 'text-foreground',
 };
 
@@ -85,7 +85,7 @@ export function formatCOGSVariance(actualPercentage?: number, targetPercentage?:
 
   const magnitude = Math.abs(variance).toFixed(1);
   return variance > 0
-    ? { label: `+${magnitude} pts over target`, colorClass: 'text-destructive' }
+    ? { label: `+${magnitude} pts over target`, colorClass: 'text-destructive-strong' }
     : { label: `${magnitude} pts under target`, colorClass: 'text-success-strong' };
 }
 
@@ -273,7 +273,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
     return (
       <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
         <div className="flex items-center justify-center gap-2 px-5 py-12 text-center">
-          <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+          <AlertCircle className="h-4 w-4 text-destructive-strong shrink-0" />
           <p className="text-[13px] text-muted-foreground">Couldn't load break-even data. Try refreshing the page.</p>
         </div>
       </div>
@@ -452,7 +452,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
           <p className="text-[11px] text-muted-foreground">Days above</p>
         </div>
         <div className="bg-background p-3 text-center">
-          <p className="text-[16px] font-semibold text-destructive">{data.daysBelow}</p>
+          <p className="text-[16px] font-semibold text-destructive-strong">{data.daysBelow}</p>
           <p className="text-[11px] text-muted-foreground">Days below</p>
         </div>
         <div className="bg-background p-3 text-center">
@@ -462,7 +462,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
           <p className="text-[11px] text-muted-foreground">Avg surplus</p>
         </div>
         <div className="bg-background p-3 text-center">
-          <p className="text-[14px] font-semibold text-destructive">
+          <p className="text-[14px] font-semibold text-destructive-strong">
             {data.avgShortfall < 0 ? formatCurrency(data.avgShortfall) : '-'}
           </p>
           <p className="text-[11px] text-muted-foreground">Avg shortfall</p>
@@ -483,7 +483,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
               actualCOGSPercentage === undefined || targetCOGSPercentage === undefined
                 ? 'text-foreground'
                 : actualCOGSPercentage > targetCOGSPercentage
-                  ? 'text-destructive' : 'text-success-strong'
+                  ? 'text-destructive-strong' : 'text-success-strong'
             }`}>
               {actualCOGSPercentage === undefined ? '-' : `${actualCOGSPercentage.toFixed(1)}%`}
             </p>

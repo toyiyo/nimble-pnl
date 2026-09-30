@@ -367,7 +367,7 @@ export const MonthlyBreakdownTable = ({ monthlyData, showTitle = true }: Readonl
                             <div className="flex flex-col items-end gap-0.5 sm:gap-1">
                               <span className={`font-bold text-xs sm:text-sm ${
                                 actualNetProfit > 0 ? 'text-primary'
-                                  : actualNetProfit < 0 ? 'text-destructive'
+                                  : actualNetProfit < 0 ? 'text-destructive-strong'
                                   : 'text-foreground'
                               }`}>
                                 {formatCurrency(actualNetProfit)}
@@ -382,7 +382,7 @@ export const MonthlyBreakdownTable = ({ monthlyData, showTitle = true }: Readonl
                                 <>
                                   <span className={`font-semibold text-xs sm:text-sm ${
                                     accrualNetProfit > 0 ? 'text-primary'
-                                      : accrualNetProfit < 0 ? 'text-destructive'
+                                      : accrualNetProfit < 0 ? 'text-destructive-strong'
                                       : 'text-foreground'
                                   }`}>
                                     {formatCurrency(accrualNetProfit)}

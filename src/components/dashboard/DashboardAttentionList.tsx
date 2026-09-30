@@ -48,7 +48,7 @@ export function DashboardAttentionList({ alerts, isLoading = false }: Readonly<D
             return (
               <li key={alert.id} className="flex items-center gap-3 px-4 py-3">
                 <Icon
-                  className={`h-4 w-4 shrink-0 ${isCritical ? "text-destructive" : "text-muted-foreground"}`}
+                  className={`h-4 w-4 shrink-0 ${isCritical ? "text-destructive-strong" : "text-muted-foreground"}`}
                   aria-hidden="true"
                 />
                 <div className="flex-1 min-w-0">

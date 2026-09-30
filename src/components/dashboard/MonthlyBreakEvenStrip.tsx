@@ -41,8 +41,8 @@ function getStripStatusConfig(
     case 'behind':
       return {
         Icon: CircleX,
-        iconClass: 'text-destructive',
-        badgeClass: 'bg-destructive/10 text-destructive',
+        iconClass: 'text-destructive-strong',
+        badgeClass: 'bg-destructive/10 text-destructive-strong',
         fillClass: 'bg-destructive',
         label: 'Behind',
       };

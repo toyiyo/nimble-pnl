@@ -578,11 +578,11 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
             </div>
             <div className="text-right">
               <p className="text-muted-foreground text-xs">Expenses</p>
-              <p className="font-semibold text-destructive">{formatCurrency(totalExpenses)}</p>
+              <p className="font-semibold text-destructive-strong">{formatCurrency(totalExpenses)}</p>
             </div>
             <div className="text-right border-l pl-4">
               <p className="text-muted-foreground text-xs">Net</p>
-              <p className={`font-bold ${netCashFlow >= 0 ? 'text-success-strong' : 'text-destructive'}`}>
+              <p className={`font-bold ${netCashFlow >= 0 ? 'text-success-strong' : 'text-destructive-strong'}`}>
                 {formatCurrency(netCashFlow)}
               </p>
             </div>

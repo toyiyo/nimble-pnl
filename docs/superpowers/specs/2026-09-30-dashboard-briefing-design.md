@@ -313,6 +313,9 @@ block for the rail.
 - **Contrast.** Green and amber text on a light background was below 4.5:1.
   New tokens `--success-strong` and `--warning-strong` are for text only.
   The global `--success` and `--warning` do not change.
+  The preview check found red text below 4.5:1: 3.97:1 on the light
+  "Behind" badge and 2.72:1 on the dark card. The new token
+  `--destructive-strong` is for red text and icons on the dashboard.
 - **Rail focus.** A rail jump moves focus to the section
   (`focusDashboardSection`). The section gets `tabindex="-1"`. Reduced
   motion gives an instant scroll.

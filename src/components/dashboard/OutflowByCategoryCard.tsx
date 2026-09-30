@@ -56,7 +56,7 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel, hasConn
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
-              <AlertCircle className="h-4 w-4 text-destructive" />
+              <AlertCircle className="h-4 w-4 text-destructive-strong" />
             </div>
             <div>
               <CardTitle className="text-[17px] font-semibold text-foreground">Failed to Load Expense Data</CardTitle>

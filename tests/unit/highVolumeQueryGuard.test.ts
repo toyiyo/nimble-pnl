@@ -72,6 +72,9 @@ const ALLOWLIST = new Set([
   'src/hooks/useWeekStaffingSuggestions.ts',
   'src/lib/expenseDataFetcher.ts',
   'src/pages/Banking.tsx',
+  // Fetches one punch by id (`.eq('id', punchId).maybeSingle()`), for the
+  // off-site alert "View punch" action. Never a scan of the table.
+  'src/pages/TimePunchesManager.tsx',
   'src/services/inventoryTransactions.service.ts',
   'src/services/recipeAnalytics.service.ts',
   'src/utils/offlineQueue.ts',

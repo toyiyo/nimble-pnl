@@ -1,6 +1,6 @@
 export const meta = {
   name: 'dev-continue-verify-and-ship',
-  description: 'Continue /dev Phases 8-9e (Verify, QA, Ship, CI loop, Triage, Done gate) after a Review-phase needs_human gate was resolved by hand.',
+  description: 'Continue /dev Phases 8-9e (Verify, QA, Ship, CI loop, Triage, Done gate) after a Review-phase needs_human gate was resolved by hand. When only CI is pending at 9e, returns status handed_to_autofix so the main session turns on the desktop app Auto-fix monitor.',
   whenToUse:
     'When dev-build-and-ship.js halted at the Review fold gate, the human resolved the finding and committed the fix, and Phases 8 onward still need to run. Resuming the original run would replay the cached fold agent and stop at the same gate.',
   phases: [
@@ -276,8 +276,19 @@ function spent() {
 
 const stalls = []
 
+// The PR number, set after Ship. stop() copies it into every later stop payload
+// so the main session knows which PR to bind to the Auto-fix monitor.
+let shippedPr = null
+
 function stop(phase, extra = {}) {
-  return { stopped: true, phase, tokensSpent: spent(), ...(stalls.length ? { stalls } : {}), ...extra }
+  return {
+    stopped: true,
+    phase,
+    tokensSpent: spent(),
+    ...(shippedPr != null ? { prNumber: shippedPr } : {}),
+    ...(stalls.length ? { stalls } : {}),
+    ...extra,
+  }
 }
 
 function gate(result, phase, extra = {}) {
@@ -435,6 +446,7 @@ const ship = await runAgent(
 )
 { const g = gate(ship, 'Ship'); if (g.halt) return g.out }
 const PR = ship.prNumber
+shippedPr = PR
 
 // ===========================================================================
 // PHASE 9b: CI loop (max 5)
@@ -455,7 +467,7 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
   ciGreen = ci.ciGreen
   log(`CI ${it}/5: ${ciGreen ? 'green' : 'fixed + pushed, re-watching'} (run total ~${spent()} tokens)`)
 }
-if (!ciGreen) return stop('CI Loop', { reason: 'CI not green after 5 iterations — escalating to human' })
+if (!ciGreen) return stop('CI Loop', { status: 'needs_human', reason: 'CI not green after 5 iterations — escalating to human' })
 
 // ===========================================================================
 // PHASE 9d: Review-comment triage (NON-SKIPPABLE)
@@ -501,6 +513,42 @@ if (triage.pushedFix) {
   if (!reCi.ciGreen) return stop('Triage', { reason: 'CI not green after triage fix push' })
 }
 
+// 9e contract for CI that is still pending. dev-build-and-ship.js carries the
+// same text; tests/unit/workflowAutofixHandoff.test.ts checks that
+// the two copies match.
+const DONE_PENDING_CI_RULE =
+  'PENDING CI: if every item above holds except checks that are still pending (none failed), return status=completed, donePassed=false, ciPending=true, and name the pending checks in reason. ' +
+  'Do NOT return needs_human for pending CI. Do NOT wait for or poll pending checks: after this run the main session hands the PR to the desktop app Auto-fix monitor, which acts on the late results. ' +
+  'Set ciPending=true ONLY when pending checks are the sole unmet item; a failed check or any other unmet item means ciPending=false.'
+const DONE_GATE_PROPS = {
+  donePassed: { type: 'boolean' },
+  ciPending: {
+    type: 'boolean',
+    description: 'true only when every 9e item holds except CI checks that are still pending (none failed)',
+  },
+}
+
+// Maps the 9e result to the run status. 'handed_to_autofix' is not a blocker:
+// the main session turns on Auto-fix and reports. 'needs_human' stays for a
+// done gate that failed for any other reason.
+function doneOutcome(done, pr) {
+  if (done.donePassed) {
+    return { status: 'done', note: `PR #${pr} green AND all review comments triaged — ready for review/merge. Auto-fix keeps watching the PR after this run.` }
+  }
+  if (done.ciPending) {
+    return {
+      status: 'handed_to_autofix',
+      reason: done.reason || 'CI checks still pending at the done gate',
+      note: `PR #${pr}: every 9e item holds except pending CI. Main session: turn on the Auto-fix monitor (development-workflow step 9a.1); do not poll CI.`,
+    }
+  }
+  return {
+    status: 'needs_human',
+    reason: done.reason || 'done gate did not pass',
+    note: `PR #${pr} reached the done gate but did NOT fully pass — see reason; human attention needed.`,
+  }
+}
+
 // ===========================================================================
 // PHASE 9e: Done gate
 // ===========================================================================
@@ -514,16 +562,21 @@ const done = await runAgent(
       `- dev-tools/9d-triage-${ctx.branch}.md exists and every row is fixed / replied / classified-as-nit.\n` +
       '- dev-tools/review_queue.json: zero OPEN critical or major items.\n' +
       `- ${QA_REPORT}: exists and shows zero OPEN critical or major QA bugs (or a justified exception).\n` +
-      'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).',
+      'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).\n' +
+      DONE_PENDING_CI_RULE,
   ),
-  { label: 'done-gate', phase: 'Done Gate', schema: statusSchema({ donePassed: { type: 'boolean' } }, ['donePassed']) },
+  { label: 'done-gate', phase: 'Done Gate', schema: statusSchema(DONE_GATE_PROPS, ['donePassed']) },
 )
 { const g = gate(done, 'Done Gate'); if (g.halt) return g.out }
+const outcome = doneOutcome(done, PR)
 
 return {
   stopped: false,
   prNumber: PR,
   done: done.donePassed,
+  status: outcome.status,
+  ...(outcome.reason ? { reason: outcome.reason } : {}),
+  note: outcome.note,
   tokensSpent: spent(),
   ...(stalls.length ? { stalls } : {}),
   ...(PROBE ? { bundleProbeOk: verify.bundleProbeOk } : {}),

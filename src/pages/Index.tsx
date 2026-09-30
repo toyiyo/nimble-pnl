@@ -362,7 +362,7 @@ const Index = () => {
     return (todaysData.grossProfit / todaysData.netRevenue) * 100;
   }, [todaysData]);
 
-  const cashRunway = liquidityLoading ? null : liquidityMetrics?.daysOfCash ?? 0;
+  const cashRunway = liquidityLoading || !liquidityMetrics ? null : liquidityMetrics.daysOfCash;
   // The attention list reads bank balances and unmapped POS items. Show a
   // skeleton until both load, so the page never shows a false "0 alerts".
   const attentionLoading = banksLoading || unifiedSalesLoading;

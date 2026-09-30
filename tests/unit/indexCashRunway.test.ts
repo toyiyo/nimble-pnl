@@ -40,10 +40,15 @@ describe('Index.tsx wires the 30-day cash runway', () => {
     expect(indexSource).not.toContain('autoLoadAll');
   });
 
-  it('sets cashRunway to null while liquidityLoading is true', () => {
+  it('sets cashRunway to null while liquidityLoading is true, or when liquidityMetrics is missing', () => {
     expect(indexSource).toMatch(
-      /const\s+cashRunway\s*=\s*liquidityLoading\s*\?\s*null\s*:/
+      /const\s+cashRunway\s*=\s*liquidityLoading\s*\|\|\s*!liquidityMetrics\s*\?\s*null\s*:/
     );
+  });
+
+  it('does not fall back cashRunway to 0', () => {
+    expect(indexSource).not.toMatch(/const\s+cashRunway\s*=[^\n]*\|\|\s*0/);
+    expect(indexSource).not.toMatch(/const\s+cashRunway\s*=[^\n]*\?\?\s*0/);
   });
 });
 

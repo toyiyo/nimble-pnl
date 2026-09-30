@@ -302,6 +302,55 @@ describe('startPunchContext', () => {
     expect(ctx.location).toEqual({ latitude: 1, longitude: 2 });
   });
 
+  it('starts a new GPS read for the next punch flow after a failed read', async () => {
+    const getCurrentPosition = vi.fn((_success: PositionCallback, error?: PositionErrorCallback) => {
+      error?.({ code: 3, message: 'timeout' } as GeolocationPositionError);
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    const first = await startPunchContext(3000);
+    expect(first.location).toBeUndefined();
+
+    // A cached failure would flag the next employee's punch without a new read.
+    await startPunchContext(3000);
+
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+  });
+
+  it('collectPunchContext reuses a failed read of the same punch flow', async () => {
+    const getCurrentPosition = vi.fn((_success: PositionCallback, error?: PositionErrorCallback) => {
+      error?.({ code: 3, message: 'timeout' } as GeolocationPositionError);
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    await startPunchContext(3000);
+    const ctx = await collectPunchContext(3000);
+
+    expect(ctx.location).toBeUndefined();
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves with no location when getCurrentPosition throws', async () => {
+    const getCurrentPosition = vi.fn(() => {
+      throw new Error('geolocation blocked');
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    const ctx = await collectPunchContext(3000);
+
+    expect(ctx.location).toBeUndefined();
+    expect(punchContextLocation(ctx)).toEqual({ location_unavailable: true });
+  });
+
   it('returns a fresh promise after _resetPunchContextForTests', () => {
     const getCurrentPosition = vi.fn();
     Object.defineProperty(navigator, 'geolocation', {

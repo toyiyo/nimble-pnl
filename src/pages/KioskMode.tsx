@@ -596,7 +596,7 @@ const KioskMode = () => {
     // A punch that fails before handlePunch reads the context still started
     // a GPS read when the camera dialog opened. Read that result here so the
     // queued punch does not lose its location or its location_unavailable flag.
-    const punchContext = context ?? (await collectPunchContext(3000));
+    const punchContext = context ?? (await collectPunchContext());
     await addQueuedPunch(
       {
         restaurant_id: restaurantId,

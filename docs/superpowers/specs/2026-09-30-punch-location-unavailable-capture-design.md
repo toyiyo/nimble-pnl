@@ -204,6 +204,15 @@ In `queuePunchOffline`, `collectPunchContext` reuses the read that started
 at `KioskMode.tsx:180` when that read resolved less than 10 s before
 (`punchContext.ts:93-99`). Otherwise it starts a new read of at most 3 s.
 
+A failed read is not reused by the next punch flow (Phase 7b fold).
+`startPunchContext` starts a new read when the cached result has no
+location. `collectPunchContext` in the same punch flow still reuses it.
+Without this rule, one GPS timeout flags every Kiosk punch for the next
+10 s with no read of its own.
+
+`getQuickLocation` resolves `undefined` when `getCurrentPosition` throws.
+A rejection would lose an offline Kiosk punch.
+
 No server change. No change to the paths that do not read GPS.
 
 ## Tests

@@ -101,8 +101,8 @@ test.describe('Kiosk punch with a failed GPS read', () => {
               .from('time_punches')
               .select('punch_type, location')
               .eq('employee_id', employeeId);
-            if (error) throw new Error(error.message);
-            return data;
+            // Return the error as a value: a throw would stop the poll at once.
+            return error ? { error: error.message } : data;
           }, employee.id),
         { timeout: 15000 },
       )

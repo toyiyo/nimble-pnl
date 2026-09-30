@@ -14,16 +14,11 @@ import { useToast } from '@/hooks/use-toast';
 import { collectPunchContext, punchContextLocation } from '@/utils/punchContext';
 import type { PunchGeofenceResult } from '@/utils/punchContext';
 import { useGeofenceCheck } from '@/hooks/useGeofenceCheck';
+import type { GeofenceResult } from '@/hooks/useGeofenceCheck';
 
 // Keeps the geofence position, so the punch still has coordinates when the
 // quick GPS read fails (the native geofence read uses a separate provider).
-const toPunchGeofenceResult = (result: {
-  checked: boolean;
-  distanceMeters?: number;
-  within?: boolean;
-  userLat?: number;
-  userLng?: number;
-}): PunchGeofenceResult | undefined =>
+const toPunchGeofenceResult = (result: GeofenceResult): PunchGeofenceResult | undefined =>
   result.checked
     ? {
         distanceMeters: result.distanceMeters,

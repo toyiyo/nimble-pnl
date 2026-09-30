@@ -5,6 +5,7 @@ import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useCashFlowMetrics } from '@/hooks/useCashFlowMetrics';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { subDays, endOfDay, startOfMonth } from 'date-fns';
+import { formatRunwayDays } from '@/lib/formatRunway';
 
 interface BankSnapshotSectionProps {
   restaurantId: string;
@@ -58,19 +59,11 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
     }).format(amount);
   };
 
-  // Format runway display
-  const formatRunway = (days: number): string => {
-    if (days === Infinity) return 'Healthy';
-    if (days > 365) return '365+ days';
-    if (days === 0) return 'Critical';
-    return `${Math.floor(days)} days`;
-  };
-
   // Get runway color
   const getRunwayColor = (days: number): string => {
-    if (days === Infinity || days > 90) return 'text-emerald-600';
-    if (days > 30) return 'text-amber-600';
-    return 'text-destructive';
+    if (days === Infinity || days > 90) return 'text-success-strong';
+    if (days > 30) return 'text-warning-strong';
+    return 'text-destructive-strong';
   };
 
   // Don't show if no banks connected
@@ -116,14 +109,14 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
           <p className="text-sm text-muted-foreground">This Month</p>
           <div className="flex items-center gap-1.5">
             {metrics.netChange >= 0 ? (
-              <TrendingUp className="h-5 w-5 text-emerald-600" />
+              <TrendingUp className="h-5 w-5 text-success-strong" />
             ) : (
-              <TrendingDown className="h-5 w-5 text-destructive" />
+              <TrendingDown className="h-5 w-5 text-destructive-strong" />
             )}
             <p className={`text-2xl font-bold ${
               metrics.netChange >= 0 
-                ? 'text-emerald-600' 
-                : 'text-destructive'
+                ? 'text-success-strong'
+                : 'text-destructive-strong'
             }`}>
               {metrics.netChange >= 0 ? '+' : ''}{formatCurrency(metrics.netChange)}
             </p>
@@ -137,7 +130,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
         <div className="p-4 rounded-xl bg-background border border-border/40 hover:border-border transition-colors">
           <p className="text-sm text-muted-foreground">Runway</p>
           <p className={`text-2xl font-bold ${getRunwayColor(metrics.runway)}`}>
-            {formatRunway(metrics.runway)}
+            {formatRunwayDays(metrics.runway)}
           </p>
           <p className="text-xs text-muted-foreground">At current pace</p>
         </div>

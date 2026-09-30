@@ -190,7 +190,7 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
     expect(payrollTotal).toBeLessThanOrEqual(maxExpected);
 
     await page.goto('/');
-    await expect(page.getByText('Performance Overview')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('heading', { name: 'Performance Overview' })).toBeVisible({ timeout: 20000 });
     await page.getByRole('button', { name: /this month/i }).click();
 
     // The card title is now basis-aware — "Labor Cost · Accrued" or "Labor Cost · Paid"

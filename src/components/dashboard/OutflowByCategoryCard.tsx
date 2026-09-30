@@ -12,6 +12,8 @@ interface OutflowByCategoryCardProps {
   startDate: Date;
   endDate: Date;
   periodLabel: string;
+  /** False shows a "Connect Bank" call to action in the empty state. */
+  hasConnectedBank?: boolean;
 }
 
 // Using a mix of semantic chart colors and fallback colors for 12 categories
@@ -30,7 +32,7 @@ const COLORS = [
   '#64748b', // slate fallback
 ];
 
-export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: OutflowByCategoryCardProps) => {
+export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel, hasConnectedBank = false }: OutflowByCategoryCardProps) => {
   const { data, isLoading, isError, error, refetch } = useOutflowByCategory(startDate, endDate);
   const navigate = useNavigate();
 
@@ -54,7 +56,7 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
-              <AlertCircle className="h-4 w-4 text-destructive" />
+              <AlertCircle className="h-4 w-4 text-destructive-strong" />
             </div>
             <div>
               <CardTitle className="text-[17px] font-semibold text-foreground">Failed to Load Expense Data</CardTitle>
@@ -96,15 +98,26 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
         </CardHeader>
         <CardContent className="py-12 text-center">
           <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-[14px] font-medium mb-2">No outflows this period</h3>
-          <p className="text-[13px] text-muted-foreground mb-4">Connect your bank or upload transactions to see spending insights.</p>
-          <Button
-            size="sm"
-            onClick={() => navigate('/banking')}
-            className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-          >
-            Connect Bank
-          </Button>
+          {hasConnectedBank ? (
+            // A bank is connected, so the empty list is a real result for
+            // this period. Do not ask the owner to connect a bank again.
+            <>
+              <h3 className="text-[14px] font-medium mb-2">No bank outflows in this period ({periodLabel}).</h3>
+              <p className="text-[13px] text-muted-foreground">Select a longer period to see where your money went.</p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-[14px] font-medium mb-2">No outflows this period</h3>
+              <p className="text-[13px] text-muted-foreground mb-4">Connect your bank or upload transactions to see spending insights.</p>
+              <Button
+                size="sm"
+                onClick={() => navigate('/banking')}
+                className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              >
+                Connect Bank
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     );

@@ -33,6 +33,19 @@ export function buildLaborSparklineData(points: readonly FinancialPoint[]): Labo
 }
 
 /**
+ * Pure: the screen reader text for the sparkline. A chart with no values in
+ * its name tells a screen reader user nothing, so name the first and the
+ * last day with a value.
+ */
+export function buildSparklineLabel(data: readonly LaborSparklineDatum[]): string {
+  const withValues = data.filter((point) => point.laborPct !== null);
+  if (withValues.length === 0) return 'Daily labor % of sales trend. No days with sales.';
+  const first = withValues[0];
+  const last = withValues[withValues.length - 1];
+  return `Daily labor % of sales trend for ${data.length} days: ${first.laborPct}% on the first day with sales, ${last.laborPct}% on the last.`;
+}
+
+/**
  * Dashboard "Labor cost" card: hero labor-% of sales vs. target, revenue per
  * labor hour, a tone-colored verdict, a compact daily labor-% sparkline, and
  * an "Open labor detail" link to `/labor`. Composes `useLaborPnlSummary` —
@@ -61,7 +74,7 @@ function LaborPnlCardBase({ restaurantId }: LaborPnlCardProps) {
     return (
       <div className="rounded-xl border border-border/40 bg-background p-4">
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+          <AlertCircle className="h-4 w-4 text-destructive-strong shrink-0" />
           <span>Failed to load labor cost data.</span>
           <button
             type="button"
@@ -105,7 +118,7 @@ function LaborPnlCardBase({ restaurantId }: LaborPnlCardProps) {
       )}
       <p className={cn('text-[13px] font-medium text-muted-foreground', toneClass)}>{summary.verdict}</p>
       {sparklineData.length > 0 && (
-        <div className="h-12" role="img" aria-label="Daily labor % of sales trend sparkline">
+        <div className="h-12" role="img" aria-label={buildSparklineLabel(sparklineData)}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={sparklineData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
               <Line
@@ -123,7 +136,7 @@ function LaborPnlCardBase({ restaurantId }: LaborPnlCardProps) {
       )}
       <Link
         to="/labor"
-        className="text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+        className="inline-flex min-h-6 items-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         Open labor detail →
       </Link>

@@ -3372,6 +3372,7 @@
 - **Mistake:** The 2026-09-09 lesson said the `dev-build-and-ship` orchestrator is not usable in the remote container and Phases 4-9 must run inline. This session disproved the first half: the orchestrator halted only because its Preflight names `coderabbit` a hard dependency, which contradicts both the skill contract and its own Phase 7c best-effort clause.
 - **Correction:** Copy `.claude/workflows/dev-build-and-ship.js` to the scratchpad. In the copy: make `coderabbit` a warning in Preflight, and add an ENVIRONMENT NOTES line to `envelope()` (blocked hosts, gh GraphQL blocked, local-verify limits). Launch with `scriptPath` at the copy. The run completed all 8 build tasks through Phase 9e. Preflight installed `gh` v2.100.0 itself; REST routes work, GraphQL is blocked.
 - **Rule:** Keep the Preflight hard-dependency list equal to the skill contract: `gh`, `jq`, `node`. `coderabbit` and `codex` are best-effort everywhere. Fix an orchestrator-vs-contract conflict in a scratchpad copy, never by an inline retreat, and never by a repo edit inside a feature PR.
+- **Superseded in part [2026-09-30] (PR #831):** The permission classifier now blocks a Workflow launch of a changed scratchpad copy ("Self-Modification"). Do not retry it or route around it. The unchanged script still fails Preflight on `coderabbit`. Ask the user, then run Phases 4-9 inline (the 2026-09-09 pattern). The real fix is a separate repo PR that makes `coderabbit` best-effort in `dev-build-and-ship.js` Preflight.
 
 ### [2026-09-15] The container starts dockerd, but image blob pulls 403 — guard .env.local before any test
 - **Mistake:** `docker` exists and `dockerd` starts, so the plan promised local `db:reset` + `test:db`. The pull of every Supabase image failed: the proxy allows the registry manifests but 403s the CloudFront blob hosts (`production.cloudfront.docker.com`, `d2glxqk2uabbnd.cloudfront.net`). Worse: with no `.env.local`, `.env` points every client at PRODUCTION Supabase.
@@ -3577,3 +3578,25 @@
 ### [2026-09-30] Do not push a guess for a bot finding you cannot read (PR #833)
 - **Mistake:** SonarCloud reported "1 New issue", and the network policy blocks `sonarcloud.io`. I guessed rule S4123 and pushed a type change. The next analysis still reported 1 issue, so the push cost one CI cycle and fixed nothing.
 - **Rule:** When a finding is not readable from the session, ask the user for the rule and the line, or ask them to allow the host. Push only a fix for a finding you can see. The first report of the issue also tells you which commit added it, so check that before you guess.
+
+## Category: Development Workflow (punch location capture)
+
+### [2026-09-30] A precise task text is not a plan approval: run /dev first (PR #831)
+- **Mistake:** The task named files, a pattern, and tests, so I built the fix, pushed it, and opened the PR without the development-workflow skill. The user asked "where are you in the /dev workflow?"
+- **Correction:** Phases 0-3 ran afterwards. The retroactive design pass found a real bug in the pushed code (next lesson). Phases 4-9 then ran in order.
+- **Rule:** Invoke development-workflow before the first code edit, also for a small fix with a detailed task text. A task text is input to Phase 2, not a substitute for Phases 2-3.
+
+### [2026-09-30] Check the server trigger before you design a client payload (PR #831)
+- **Mistake:** The first cut counted a client `distance_meters` as a position. The trigger deletes that key (`20260928120000_time_punch_geofence_trigger.sql:27`), so the stored row was `{}` with no flag.
+- **Correction:** The design doc got a payload-to-stored-row table. Only coordinates count as a position, and EmployeeClock sends the geofence coordinates as a fallback.
+- **Rule:** When a client writes a JSONB column that a trigger rewrites, read the trigger first. Put a payload-to-stored-row table in the design, one row per client payload.
+
+### [2026-09-30] When a hidden failure becomes a visible flag, check every cache of that failure (PR #831)
+- **Mistake:** A failed GPS read used to send `undefined`, which showed nothing. After the fix it wrote `location_unavailable`. The punch-context cache reused a failed read for 10 s, so the next Kiosk punches got the flag with no GPS read of their own.
+- **Correction:** The sound-logic reviewer found it. `startPunchContext` now starts a new read after a failed result; `collectPunchContext` in the same flow still reuses it.
+- **Rule:** When a change turns a silent failure into a stored or shown value, find every cache, retry, or reuse path of that failure. A cached failure then produces false positives.
+
+### [2026-09-30] A new key on an object breaks truthy checks in its consumers (PR #831)
+- **Mistake:** `{ location_unavailable: true }` is a truthy `location`. Today's Activity in EmployeeClock showed "Location verified" for it. Five reviewers missed it; CodeRabbit found it outside the diff.
+- **Correction:** The icon now checks `typeof location.latitude === 'number'`, with a separate "Location unavailable" icon.
+- **Rule:** When a payload can take a new shape, grep every reader of that field (`punch.location &&`, `?.location`) and check each one against the new shape. Reviewers see the diff, not the readers outside it.

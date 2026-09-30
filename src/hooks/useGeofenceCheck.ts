@@ -6,7 +6,7 @@ import { haversineDistance } from '@/lib/haversine';
 type Enforcement = 'off' | 'warn' | 'block';
 type GeofenceAction = 'allow' | 'warn' | 'block';
 
-interface GeofenceResult {
+export interface GeofenceResult {
   action: GeofenceAction;
   checked: boolean;
   within?: boolean;

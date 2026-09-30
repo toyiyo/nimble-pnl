@@ -11,8 +11,8 @@
  *
  * Mocking pattern mirrors tests/unit/EmployeePin.test.tsx.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import EmployeeClock from '@/pages/EmployeeClock';
@@ -26,6 +26,8 @@ const {
   useEmployeePunchStatusMock,
   useCreateTimePunchMock,
   checkLocationMock,
+  collectPunchContextMock,
+  useTimePunchesMock,
 } = vi.hoisted(() => ({
   mutateMock: vi.fn(),
   useCurrentEmployeeMock: vi.fn(),
@@ -36,6 +38,8 @@ const {
   // override this via `useCreateTimePunchMock.mockReturnValue(...)`.
   useCreateTimePunchMock: vi.fn(() => ({ mutate: mutateMock, isPending: false })),
   checkLocationMock: vi.fn(),
+  collectPunchContextMock: vi.fn(),
+  useTimePunchesMock: vi.fn(() => ({ punches: [] as unknown[] })),
 }));
 
 // ---------------------------------------------------------------------------
@@ -62,7 +66,7 @@ vi.mock('@/hooks/useTimePunches', async () => {
     useEmployeePunchStatus: (...args: unknown[]) =>
       useEmployeePunchStatusMock(...args),
     useCreateTimePunch: () => useCreateTimePunchMock(),
-    useTimePunches: () => ({ punches: [] }),
+    useTimePunches: () => useTimePunchesMock(),
   };
 });
 
@@ -79,9 +83,10 @@ vi.mock('@/hooks/use-toast', () => ({
 
 // punchContext utilities make async calls (geolocation, device info) —
 // stub them so tests never hit real browser APIs.
-vi.mock('@/utils/punchContext', () => ({
-  collectPunchContext: vi.fn().mockResolvedValue(undefined),
-  mergePunchLocation: vi.fn().mockReturnValue(undefined),
+vi.mock('@/utils/punchContext', async (importOriginal) => ({
+  // Keep the pure location helpers real so tests check the payload shape.
+  ...(await importOriginal<typeof import('@/utils/punchContext')>()),
+  collectPunchContext: collectPunchContextMock,
 }));
 
 // ---------------------------------------------------------------------------
@@ -496,5 +501,157 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     rerender(<EmployeeClock />);
 
     expect(screen.queryByText(/recording punch/i)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Punch location when the GPS read fails. The geofence is off in these tests,
+// so the quick GPS read from collectPunchContext is the only position source.
+// ---------------------------------------------------------------------------
+describe('EmployeeClock — punch location when the GPS read fails', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mutateMock.mockReset();
+    collectPunchContextMock.mockReset();
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+    useCurrentEmployeeMock.mockReturnValue({ employee: EMPLOYEE, loading: false });
+    useEmployeePunchStatusMock.mockReturnValue({
+      status: { is_clocked_in: false, on_break: false, last_punch_time: null },
+      loading: false,
+    });
+    checkLocationMock.mockResolvedValue({ action: 'allow', checked: false });
+  });
+
+  const clockInWithoutPhoto = async () => {
+    const user = userEvent.setup();
+    render(<EmployeeClock />);
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+  };
+
+  it('sends location_unavailable when the GPS read fails and the geofence is off', async () => {
+    collectPunchContextMock.mockResolvedValue({ location: undefined, device_info: 'agent' });
+
+    await clockInWithoutPhoto();
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ location_unavailable: true });
+  });
+
+  it('sends the coordinates without location_unavailable when the GPS read succeeds', async () => {
+    collectPunchContextMock.mockResolvedValue({
+      location: { latitude: 40.7, longitude: -74.0 },
+      device_info: 'agent',
+    });
+
+    await clockInWithoutPhoto();
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ latitude: 40.7, longitude: -74.0 });
+  });
+
+  it('sends the geofence coordinates when the geofence warns and the quick read fails', async () => {
+    const user = userEvent.setup();
+    checkLocationMock.mockResolvedValue({
+      action: 'warn',
+      checked: true,
+      within: false,
+      distanceMeters: 1500,
+      userLat: 30.28,
+      userLng: -97.74,
+    });
+    collectPunchContextMock.mockResolvedValue({ location: undefined, device_info: 'agent' });
+
+    render(<EmployeeClock />);
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /continue anyway/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({
+      latitude: 30.28,
+      longitude: -97.74,
+      distance_meters: 1500,
+      within_geofence: false,
+    });
+  });
+
+  it('sends location_unavailable after a failed geofence check, and Try Again resends it', async () => {
+    const user = userEvent.setup();
+    checkLocationMock.mockResolvedValue({ action: 'allow', checked: false, locationUnavailable: true });
+    collectPunchContextMock.mockResolvedValue({ location: undefined, device_info: 'agent' });
+    mutateMock.mockImplementation((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+
+    render(<EmployeeClock />);
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /continue anyway/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    const [firstPayload] = mutateMock.mock.calls[0];
+    expect(firstPayload.location).toEqual({ location_unavailable: true });
+
+    await user.click(await screen.findByRole('button', { name: /try again/i }));
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(2));
+    const [secondPayload] = mutateMock.mock.calls[1];
+    expect(secondPayload).toBe(firstPayload);
+  });
+
+  it('sends location_unavailable when the GPS read does not finish in 3 seconds', async () => {
+    collectPunchContextMock.mockReturnValue(new Promise(() => {}));
+
+    await clockInWithoutPhoto();
+
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1), { timeout: 4500 });
+    const [payload] = mutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ location_unavailable: true });
+  }, 10_000);
+});
+
+// ---------------------------------------------------------------------------
+// Today's Activity location icon. A punch with location_unavailable has a
+// location object, but no GPS position: it must not show "Location verified".
+// ---------------------------------------------------------------------------
+describe("EmployeeClock — Today's Activity location icon", () => {
+  const punchWith = (id: string, location: unknown) => ({
+    id,
+    punch_type: 'clock_in',
+    punch_time: new Date().toISOString(),
+    photo_path: null,
+    location,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useCurrentEmployeeMock.mockReturnValue({ employee: EMPLOYEE, loading: false });
+    useEmployeePunchStatusMock.mockReturnValue({
+      status: { is_clocked_in: false, on_break: false, last_punch_time: null },
+      loading: false,
+    });
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+  });
+
+  afterEach(() => {
+    useTimePunchesMock.mockReturnValue({ punches: [] });
+  });
+
+  it('shows "Location verified" only for a punch with coordinates', () => {
+    useTimePunchesMock.mockReturnValue({
+      punches: [
+        punchWith('p1', { latitude: 40.7, longitude: -74.0 }),
+        punchWith('p2', { location_unavailable: true }),
+      ],
+    });
+
+    render(<EmployeeClock />);
+
+    expect(screen.getAllByLabelText('Location verified')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Location unavailable')).toHaveLength(1);
   });
 });

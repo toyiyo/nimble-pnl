@@ -4,6 +4,7 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, addDays, subDays, parseISO } from "date-fns";
 import { fetchAllPages } from "@/lib/paginatedBankQuery";
 import { toInclusiveDayEnd } from "@/lib/dateOnly";
+import { OPEN_OUTFLOW_STATUSES, OPEN_OUTFLOW_WINDOW_DAYS, getOpenOutflowCutoff } from "@/lib/openOutflows";
 
 interface LiquidityMetrics {
   currentBalance: number;
@@ -27,7 +28,7 @@ interface LiquidityTransactionRow {
   status: string;
 }
 
-export const OPEN_OUTFLOW_WINDOW_DAYS = 60;
+export { OPEN_OUTFLOW_WINDOW_DAYS };
 
 export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
   const { selectedRestaurant } = useRestaurantContext();
@@ -72,12 +73,12 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
       // Fetch pending outflows to calculate book balance
       // Use today, not endDate, as the cutoff. The bank balance is a current
       // balance. The subtracted outflows need a current cutoff too.
-      const outflowCutoff = format(subDays(new Date(), OPEN_OUTFLOW_WINDOW_DAYS - 1), 'yyyy-MM-dd');
+      const outflowCutoff = getOpenOutflowCutoff();
       const { data: pendingOutflows, error: pendingError } = await supabase
         .from('pending_outflows')
         .select('amount, status')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+        .in('status', [...OPEN_OUTFLOW_STATUSES])
         .gte('issue_date', outflowCutoff);
 
       if (pendingError) throw pendingError;

@@ -1,11 +1,15 @@
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { RecipeDialog } from "@/components/RecipeDialog";
+
+// vi.hoisted so the mock ref exists before the mock factory below runs
+// (vitest hoists vi.mock calls to the top of the module).
+const createRecipeMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useRecipes", () => ({
   useRecipes: () => ({
-    createRecipe: vi.fn(),
+    createRecipe: createRecipeMock,
     updateRecipe: vi.fn(),
     updateRecipeIngredients: vi.fn(),
     fetchRecipeIngredients: vi.fn(),
@@ -15,6 +19,10 @@ vi.mock("@/hooks/useRecipes", () => ({
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: [] }),
+}));
+
+vi.mock("@/hooks/useRecipeWeeklyVolume", () => ({
+  useRecipeWeeklyVolume: () => ({ weeklyVolume: 0, isLoading: false, isError: false }),
 }));
 
 vi.mock("@/hooks/usePOSItems", () => ({
@@ -30,6 +38,38 @@ vi.mock("react-router-dom", async () => {
 });
 
 describe("RecipeDialog create-from-base", () => {
+  beforeEach(() => {
+    createRecipeMock.mockClear();
+  });
+
+  it("maps yield_pct_override onto the create payload on submit", async () => {
+    render(
+      <RecipeDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        restaurantId="rest-1"
+        prefill={{
+          name: "Carne Guisada Verde",
+          serving_size: 2,
+          ingredients: [
+            { product_id: "prod-1", quantity: 2, unit: "oz", notes: "", yield_pct_override: 85 },
+          ],
+        }}
+      />
+    );
+
+    const submit = screen.getByRole("button", { name: /create recipe/i });
+    expect(submit).not.toBeDisabled();
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(createRecipeMock).toHaveBeenCalledTimes(1));
+
+    const payload = createRecipeMock.mock.calls[0][0];
+    expect(payload.ingredients).toEqual([
+      { product_id: "prod-1", quantity: 2, unit: "oz", notes: "", yield_pct_override: 85 },
+    ]);
+  });
+
   it("shows base banner and blocks submit when name matches base", () => {
     render(
       <RecipeDialog

@@ -254,4 +254,47 @@ describe('buildEnhancedRecipes -- cost + profitability parity', () => {
     expect(enhanced.profit_margin).toBeUndefined();
     expect(enhanced.profit_per_serving).toBeUndefined();
   });
+
+  it('a 90% product yield_pct raises computed_cost above the plain portion cost', () => {
+    const products = [
+      { id: 'p1', name: 'Chicken', cost_per_unit: 5, uom_purchase: 'lb', size_value: null, size_unit: null, package_qty: null, yield_pct: 90 },
+    ];
+    const ingredients = [
+      { id: 'i1', recipe_id: 'r1', product_id: 'p1', quantity: 2, unit: 'lb' },
+    ];
+    const recipes = [
+      {
+        id: 'r1',
+        restaurant_id: 'rest-1',
+        name: 'Roast Chicken',
+        description: null,
+        pos_item_name: null,
+        pos_item_id: null,
+        serving_size: 1,
+        estimated_cost: 0,
+        is_active: true,
+        created_at: '2026-01-01',
+        updated_at: '2026-01-01',
+        created_by: null,
+      },
+    ];
+
+    const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(products[0]);
+    const portionCost = calculateInventoryImpact(
+      2,
+      'lb',
+      quantityPerPurchaseUnit,
+      purchaseUnit,
+      products[0].name,
+      products[0].cost_per_unit,
+      sizeValue,
+      sizeUnit
+    ).costImpact;
+    const expectedLoadedCost = portionCost * (100 / 90);
+
+    const [enhanced] = buildEnhancedRecipes(recipes, ingredients, products, []);
+
+    expect(enhanced.computed_cost).toBeCloseTo(expectedLoadedCost, 10);
+    expect(enhanced.computed_cost).toBeGreaterThan(portionCost);
+  });
 });

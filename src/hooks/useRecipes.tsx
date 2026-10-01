@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { MEASUREMENT_UNITS, type IngredientUnit } from '@/lib/recipeUnits';
-import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
+import { computeLineCost } from '@/lib/recipeYield';
 import { fetchAllRows, type PagedResult } from '@/utils/fetchAllRows';
 import { fetchInChunks } from '@/utils/fetchInChunks';
 
@@ -45,6 +45,7 @@ export interface RecipeIngredient {
   quantity: number;
   unit: string;
   notes?: string;
+  yield_pct_override?: number | null;
   created_at: string;
   updated_at: string;
   product?: {
@@ -67,6 +68,7 @@ export interface CreateRecipeData {
     quantity: number;
     unit: IngredientUnit;
     notes?: string;
+    yield_pct_override?: number | null;
   }[];
 }
 
@@ -94,6 +96,7 @@ interface IngredientRow {
   product_id: string;
   quantity: number;
   unit: string;
+  yield_pct_override?: number | null;
 }
 
 interface ProductRow {
@@ -104,6 +107,7 @@ interface ProductRow {
   size_value: number | null;
   size_unit: string | null;
   package_qty: number | null;
+  yield_pct?: number | null;
 }
 
 interface SalesStatsRow {
@@ -112,33 +116,26 @@ interface SalesStatsRow {
 }
 
 /**
- * Cost contribution of a single ingredient line, via `calculateInventoryImpact`.
- * Shared by `buildEnhancedRecipes` (bulk path) and `calculateRecipeCost`
- * (single-recipe path still used by `RecipeDialog`) so the conversion call and
- * its failure handling exist in exactly one place.
+ * Cost contribution of a single ingredient line, via `computeLineCost`
+ * (design doc section 5.1). Shared by `buildEnhancedRecipes` (bulk path) and
+ * `calculateRecipeCost` (single-recipe path still used by `RecipeDialog`) so
+ * the conversion call and its failure handling exist in exactly one place.
+ *
+ * Returns the *loaded* cost (portion cost scaled by the waste allowance), not
+ * the plain portion cost, so a product's `yield_pct` raises the recipe's
+ * `computed_cost` when the yield is under 100%.
  *
  * Returns 0 (not skipped) when the product has no `cost_per_unit` or the
  * conversion throws, so callers can unconditionally `+=` the result.
  */
 function computeIngredientCost(
-  ingredient: { quantity: number; unit: string },
-  product: { name?: string | null; cost_per_unit?: number | null; uom_purchase?: string | null; size_value?: number | null; size_unit?: string | null } | null | undefined
+  ingredient: { quantity: number; unit: string; yield_pct_override?: number | null },
+  product: { name?: string | null; cost_per_unit?: number | null; uom_purchase?: string | null; size_value?: number | null; size_unit?: string | null; yield_pct?: number | null } | null | undefined
 ): number {
   if (!product || !product.cost_per_unit) return 0;
 
   try {
-    const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
-    const result = calculateInventoryImpact(
-      ingredient.quantity,
-      ingredient.unit,
-      quantityPerPurchaseUnit,
-      purchaseUnit,
-      product.name || '',
-      product.cost_per_unit || 0,
-      sizeValue,
-      sizeUnit
-    );
-    return result.costImpact;
+    return computeLineCost(ingredient, product).loadedCost;
   } catch (conversionError) {
     console.warn(`Conversion error for ${product.name}:`, conversionError);
     return 0;
@@ -541,7 +538,7 @@ export async function fetchRecipesData(restaurantId: string): Promise<Recipe[]> 
     fetchAllRows<ProductRow>((from, to) =>
       supabase
         .from('products')
-        .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit, package_qty')
+        .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit, package_qty, yield_pct')
         .eq('restaurant_id', restaurantId)
         .order('id')
         .range(from, to) as unknown as PromiseLike<{ data: ProductRow[] | null; error: unknown }>
@@ -571,7 +568,7 @@ export async function fetchRecipesData(restaurantId: string): Promise<Recipe[]> 
       fetchAllRows<IngredientRow>((from, to) =>
         supabase
           .from('recipe_ingredients')
-          .select('id, recipe_id, product_id, quantity, unit')
+          .select('id, recipe_id, product_id, quantity, unit, yield_pct_override')
           .in('recipe_id', chunk)
           .order('recipe_id')
           .order('id')
@@ -829,6 +826,7 @@ export const useRecipes = (restaurantId: string | null) => {
         quantity: number;
         unit: IngredientUnit;
         notes?: string;
+        yield_pct_override?: number | null;
       }[];
     }): Promise<boolean> => {
     try {
@@ -878,6 +876,7 @@ export const useRecipes = (restaurantId: string | null) => {
         quantity: number;
         unit: IngredientUnit;
         notes?: string;
+        yield_pct_override?: number | null;
       }[]
     ) => updateRecipeIngredientsMutation.mutateAsync({ recipeId, ingredients }),
     [updateRecipeIngredientsMutation]
@@ -953,7 +952,8 @@ export const useRecipes = (restaurantId: string | null) => {
             cost_per_unit,
             uom_purchase,
             size_value,
-            size_unit
+            size_unit,
+            yield_pct
           )
         `)
         .eq('recipe_id', recipeId);

@@ -70,6 +70,8 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
       const currentBalance = bankBalances?.reduce((sum, b) => sum + Number(b.current_balance), 0) || 0;
 
       // Fetch pending outflows to calculate book balance
+      // Use today, not endDate, as the cutoff. The bank balance is a current
+      // balance, so the subtracted outflows need a current cutoff too.
       const outflowCutoff = format(subDays(new Date(), OPEN_OUTFLOW_WINDOW_DAYS - 1), 'yyyy-MM-dd');
       const { data: pendingOutflows, error: pendingError } = await supabase
         .from('pending_outflows')

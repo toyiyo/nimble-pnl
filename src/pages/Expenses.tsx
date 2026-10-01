@@ -21,9 +21,9 @@ import { BankReauthBanner, toReauthBannerBanks } from "@/components/banking/Bank
 import { MetricIcon } from "@/components/MetricIcon";
 import { FeatureGate } from "@/components/subscription";
 
-import { summarizeOpenOutflows, OPEN_OUTFLOW_WINDOW_DAYS } from "@/lib/openOutflows";
-
 import type { PendingOutflow } from "@/types/pending-outflows";
+
+import { summarizeOpenOutflows, OPEN_OUTFLOW_WINDOW_DAYS } from "@/lib/openOutflows";
 
 export default function Expenses() {
   const navigate = useNavigate();

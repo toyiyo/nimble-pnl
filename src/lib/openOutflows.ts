@@ -1,8 +1,9 @@
 import { subDays } from "date-fns";
 import { toDateOnlyString } from "@/lib/dateOnly";
+import type { PendingOutflowStatus } from "@/types/pending-outflows";
 
 // Statuses that count as open (not cleared, not voided).
-export const OPEN_OUTFLOW_STATUSES = [
+export const OPEN_OUTFLOW_STATUSES: readonly PendingOutflowStatus[] = [
   "pending",
   "stale_30",
   "stale_60",
@@ -22,7 +23,7 @@ export function getOpenOutflowCutoff(now: Date = new Date()): string {
 
 interface OpenOutflowRow {
   amount: number | string;
-  status: string;
+  status: PendingOutflowStatus;
   issue_date: string;
 }
 
@@ -39,7 +40,7 @@ export function summarizeOpenOutflows(
   let older = 0;
 
   for (const row of rows) {
-    if (!OPEN_OUTFLOW_STATUSES.includes(row.status as (typeof OPEN_OUTFLOW_STATUSES)[number])) {
+    if (!OPEN_OUTFLOW_STATUSES.includes(row.status)) {
       continue;
     }
     const amount = Number(row.amount);

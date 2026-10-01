@@ -1,6 +1,6 @@
 # Expenses page book balance: the 60-day rule — design
 
-Status: draft for review. Text is STE-aligned.
+Status: approved. Text is STE-aligned.
 
 Follow-up 6.4 of `docs/superpowers/specs/2026-09-30-stale-pending-outflows-design.md`
 (PR #838).

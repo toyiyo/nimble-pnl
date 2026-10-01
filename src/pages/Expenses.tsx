@@ -138,7 +138,7 @@ export default function Expenses() {
                       Uncommitted Expenses
                       {older > 0 && (
                         <span className="block text-xs text-muted-foreground">
-                          +${older.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} older than {OPEN_OUTFLOW_WINDOW_DAYS} days, not counted
+                          +${older.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {OPEN_OUTFLOW_WINDOW_DAYS} days or older, not counted
                         </span>
                       )}
                     </div>

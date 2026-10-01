@@ -96,7 +96,7 @@ describe('Expenses page – book balance 60-day rule', () => {
     expect(screen.getByText('$500.00')).toBeInTheDocument();
     expect(screen.getByText('$9,500.00')).toBeInTheDocument();
     expect(
-      screen.getByText('+$2,000.00 older than 60 days, not counted'),
+      screen.getByText('+$2,000.00 60 days or older, not counted'),
     ).toBeInTheDocument();
   });
 
@@ -111,7 +111,7 @@ describe('Expenses page – book balance 60-day rule', () => {
     expect(screen.getByText('$500.00')).toBeInTheDocument();
     expect(screen.getByText('$9,500.00')).toBeInTheDocument();
     expect(
-      screen.queryByText(/older than 60 days, not counted/i),
+      screen.queryByText(/60 days or older, not counted/i),
     ).not.toBeInTheDocument();
   });
 });

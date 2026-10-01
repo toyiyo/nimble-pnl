@@ -25,6 +25,7 @@ import {
 } from '../_shared/hourlySalesTool.ts';
 import { minStaffFromCrew, recommendForSlots, recommendStaffForHour, type HourlySlotSales } from '../_shared/hourlyStaffing.ts';
 import { corsHeaders } from "../_shared/cors.ts";
+import { asPagedRows, fetchAllRows } from '../_shared/labor/fetchAllRows.ts';
 import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
@@ -497,22 +498,7 @@ async function executeGetRecipeAnalytics(
 
     let deductionsByRecipeId = new Map<string, RecipeDeductionResult>();
     if (topRecipeIds.length > 0) {
-      const { data: ingredientRows, error: ingredientsError } = await supabase
-        .from('recipe_ingredients')
-        .select(`
-          recipe_id,
-          quantity,
-          unit,
-          yield_pct_override,
-          products ( name, cost_per_unit, uom_purchase, size_value, size_unit, yield_pct )
-        `)
-        .in('recipe_id', topRecipeIds);
-
-      if (ingredientsError) {
-        throw new Error(`Failed to fetch recipe ingredients: ${ingredientsError.message}`);
-      }
-
-      // Shape matches the select above. Typed here (not inferred from the
+      // Shape matches the select below. Typed here (not inferred from the
       // Supabase client) because the client's generic types do not model
       // this query's embedded `products` join.
       interface RecipeIngredientJoinRow {
@@ -530,7 +516,33 @@ async function executeGetRecipeAnalytics(
         } | null;
       }
 
-      const deductionRows = ((ingredientRows ?? []) as RecipeIngredientJoinRow[]).map((row) => ({
+      // 20 recipes can still have more ingredient lines than PostgREST's
+      // 1000-row cap. Page through all rows, ordered by the unique `id` so
+      // offset pages neither skip nor repeat a row.
+      let ingredientRows: RecipeIngredientJoinRow[];
+      try {
+        ({ rows: ingredientRows } = await fetchAllRows<RecipeIngredientJoinRow>((from, to) =>
+          asPagedRows<RecipeIngredientJoinRow>(
+            supabase
+              .from('recipe_ingredients')
+              .select(`
+                recipe_id,
+                quantity,
+                unit,
+                yield_pct_override,
+                products ( name, cost_per_unit, uom_purchase, size_value, size_unit, yield_pct )
+              `)
+              .in('recipe_id', topRecipeIds)
+              .order('id', { ascending: true })
+              .range(from, to)
+          )
+        ));
+      } catch (ingredientsError) {
+        const message = (ingredientsError as { message?: string })?.message ?? String(ingredientsError);
+        throw new Error(`Failed to fetch recipe ingredients: ${message}`);
+      }
+
+      const deductionRows = ingredientRows.map((row) => ({
         recipe_id: row.recipe_id,
         product_name: row.products?.name ?? '',
         quantity: row.quantity,

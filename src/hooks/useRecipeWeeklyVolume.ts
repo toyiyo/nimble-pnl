@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
-import { toDateOnlyString } from '@/lib/dateOnly';
+import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
+import { dateOnlyInTimeZone } from '@/lib/shiftProtection';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export interface RecipeWeeklyVolumeResult {
@@ -12,7 +14,7 @@ export interface RecipeWeeklyVolumeResult {
 
 /**
  * Sums `unified_sales.quantity` for a POS item name over the last 7
- * restaurant days. Used by the RecipeDialog cost summary to show a weekly
+ * restaurant days (the restaurant timezone sets "today"). Used by the RecipeDialog cost summary to show a weekly
  * waste-allowance estimate at current sales volume.
  *
  * The query is disabled when `restaurantId` or `posItemName` is null.
@@ -21,14 +23,17 @@ export function useRecipeWeeklyVolume(
   restaurantId: string | null,
   posItemName: string | null,
 ): RecipeWeeklyVolumeResult {
+  const { selectedRestaurant } = useRestaurantContext();
+  const timeZone = selectedRestaurant?.restaurant?.timezone ?? null;
   const enabled = !!restaurantId && !!posItemName;
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['recipe-weekly-volume', restaurantId, posItemName],
+    queryKey: ['recipe-weekly-volume', restaurantId, posItemName, timeZone],
     queryFn: async (): Promise<number> => {
+      // Take "today" in the restaurant timezone, not the browser timezone.
       // `sale_date` is a calendar date and `gte` is inclusive, so 6 days
       // back plus today covers exactly 7 restaurant days.
-      const startDate = new Date();
+      const startDate = parseDateOnly(dateOnlyInTimeZone(new Date(), timeZone));
       startDate.setDate(startDate.getDate() - 6);
       const startStr = toDateOnlyString(startDate);
 

@@ -17,6 +17,14 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
 }));
 
+const mockRestaurant = vi.hoisted(() => ({ timezone: 'America/Chicago' as string | null }));
+
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { timezone: mockRestaurant.timezone } },
+  }),
+}));
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -44,6 +52,7 @@ function setupPages(...pages: unknown[][]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockRestaurant.timezone = 'America/Chicago';
 
   mockFromChain = {
     select: vi.fn().mockReturnThis(),
@@ -136,5 +145,42 @@ describe('useRecipeWeeklyVolume', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(result.current.weeklyVolume).toBe(0);
+  });
+
+  it('starts the window 6 days before today in the restaurant timezone', async () => {
+    // 2026-10-01 03:00 UTC is still 2026-09-30 in Chicago. A browser at UTC
+    // would start the window one day late, at 2026-09-25.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T03:00:00Z'));
+    try {
+      mockRestaurant.timezone = 'America/Chicago';
+      const { result } = renderHook(() => useRecipeWeeklyVolume('rest-123', 'Cheeseburger'), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockFromChain.gte).toHaveBeenCalledWith('sale_date', '2026-09-24');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses the restaurant timezone for a zone ahead of UTC', async () => {
+    // 2026-09-30 20:00 UTC is already 2026-10-01 in Auckland.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-30T20:00:00Z'));
+    try {
+      mockRestaurant.timezone = 'Pacific/Auckland';
+      const { result } = renderHook(() => useRecipeWeeklyVolume('rest-123', 'Cheeseburger'), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockFromChain.gte).toHaveBeenCalledWith('sale_date', '2026-09-25');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,4 +1,5 @@
-import { format, subDays } from "date-fns";
+import { subDays } from "date-fns";
+import { toDateOnlyString } from "@/lib/dateOnly";
 
 // Statuses that count as open (not cleared, not voided).
 export const OPEN_OUTFLOW_STATUSES = [
@@ -16,7 +17,7 @@ export const OPEN_OUTFLOW_WINDOW_DAYS = 60;
  * The window runs from (today − 59 days) through today.
  */
 export function getOpenOutflowCutoff(now: Date = new Date()): string {
-  return format(subDays(now, OPEN_OUTFLOW_WINDOW_DAYS - 1), "yyyy-MM-dd");
+  return toDateOnlyString(subDays(now, OPEN_OUTFLOW_WINDOW_DAYS - 1));
 }
 
 interface OpenOutflowRow {

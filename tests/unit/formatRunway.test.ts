@@ -25,9 +25,12 @@ describe('formatRunwayDays', () => {
     expect(formatRunwayDays(1)).toBe('1 day');
   });
 
-  it('shows "365+ days" above one year and for no burn (Infinity)', () => {
+  it('shows "365+ days" above one year', () => {
     expect(formatRunwayDays(400)).toBe('365+ days');
-    expect(formatRunwayDays(Infinity)).toBe('365+ days');
+  });
+
+  it('shows "Cash growing" for no burn (Infinity)', () => {
+    expect(formatRunwayDays(Infinity)).toBe('Cash growing');
   });
 
   it('shows "0 days" for zero days of runway', () => {

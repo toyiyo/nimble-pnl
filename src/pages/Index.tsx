@@ -16,7 +16,6 @@ import { useBankTransactions } from '@/hooks/useBankTransactions';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
-import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
 import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { PendingInvitationsCard } from '@/components/PendingInvitationsCard';
@@ -50,8 +49,8 @@ import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenStrip';
-import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
 import { focusDashboardSection } from '@/lib/focusDashboardSection';
+import { getRunwayWindow, buildCashRunwayAlert } from '@/lib/cashRunway';
 import { periodStatusMessage } from '@/utils/periodAnnouncement';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import {
@@ -89,11 +88,7 @@ const Index = () => {
     transactions: uncategorizedTransactions = [],
     totalCount: uncategorizedCount = 0,
   } = useBankTransactions('for_review', { pageSize: 100 });
-  const {
-    transactions: allTransactions = [],
-  } = useBankTransactions(undefined, { autoLoadAll: true, pageSize: 200, sortBy: 'date', sortDirection: 'desc' }); // Fetch transactions incrementally for spending calculation
   const { unmappedItems, loading: unifiedSalesLoading } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
-  const { totalPending: totalPendingOutflows } = usePendingOutflowsSummary();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -313,10 +308,14 @@ const Index = () => {
   );
   const activeSectionId = useActiveSection(dashboardSectionIds, areDashboardSectionsReady);
 
-  // Fetch liquidity metrics for cash runway
+  // Fetch liquidity metrics for cash runway, over the last 30 days
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
+  // todayKey triggers a once-per-day recompute; the callback reads the clock, not todayKey.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const runwayWindow = useMemo(() => getRunwayWindow(new Date()), [todayKey]);
   const { data: liquidityMetrics, isLoading: liquidityLoading } = useLiquidityMetrics(
-    todayStart,
-    todayEnd,
+    runwayWindow.start,
+    runwayWindow.end,
     'all'
   );
 
@@ -365,48 +364,10 @@ const Index = () => {
     return (todaysData.grossProfit / todaysData.netRevenue) * 100;
   }, [todaysData]);
 
-  const cashRunway = liquidityMetrics?.daysOfCash || 0;
+  const cashRunway = liquidityLoading || !liquidityMetrics ? null : liquidityMetrics.daysOfCash;
   // The attention list reads bank balances and unmapped POS items. Show a
   // skeleton until both load, so the page never shows a false "0 alerts".
   const attentionLoading = banksLoading || unifiedSalesLoading;
-
-  // Calculate daily average spending from actual transaction history + pending outflows
-  const dailyAvgSpending = useMemo(() => {
-    if (!allTransactions || allTransactions.length === 0) {
-      // If no transactions but have pending outflows, estimate based on those
-      if (totalPendingOutflows > 0) {
-        return totalPendingOutflows / 30; // Rough estimate
-      }
-      return 0;
-    }
-
-    // Filter for expenses: negative amounts, not transfers, not excluded, from last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const expenses = allTransactions.filter(t => {
-      const transactionDate = new Date(t.transaction_date);
-      return (
-        t.amount < 0 && // Expenses are negative
-        !t.is_transfer && // Exclude paired transfers
-        !isTransferCategoryType(t.chart_account?.account_type) && // Exclude asset/liability/equity-categorized
-        !t.excluded_reason && // Exclude transactions marked as excluded
-        transactionDate >= thirtyDaysAgo // Last 30 days only
-      );
-    });
-
-    if (expenses.length === 0) return 0;
-
-    // Calculate total spending (absolute values) including pending outflows
-    const totalSpending = expenses.reduce((sum, t) => sum + Math.abs(t.amount), 0) + totalPendingOutflows;
-
-    // Calculate actual number of days with data
-    const dates = new Set(expenses.map(t => format(new Date(t.transaction_date), 'yyyy-MM-dd')));
-    const daysWithData = dates.size;
-
-    // Return average daily spending (including pending outflows amortized over period)
-    return daysWithData > 0 ? totalSpending / daysWithData : 0;
-  }, [allTransactions, totalPendingOutflows]);
 
   // Generate Critical Alerts
   const criticalAlerts = useMemo(() => {
@@ -420,16 +381,9 @@ const Index = () => {
     }> = [];
 
     // Cash runway alert
-    const runway = dailyAvgSpending > 0 ? availableCash / dailyAvgSpending : 0;
-    if (runway < 30 && runway > 0) {
-      alerts.push({
-        id: "cash-runway",
-        type: "cash",
-        severity: runway < 14 ? "critical" : "warning",
-        title: `${Math.floor(runway)} days of cash runway`,
-        description: "Monitor cash flow closely",
-        action: { label: "View Banking", path: "/banking" },
-      });
+    const cashRunwayAlert = buildCashRunwayAlert(cashRunway);
+    if (cashRunwayAlert) {
+      alerts.push(cashRunwayAlert);
     }
 
     // Prime cost alert
@@ -470,7 +424,7 @@ const Index = () => {
     }
 
     return alerts;
-  }, [availableCash, periodData, reorderAlerts, unmappedItems]);
+  }, [cashRunway, periodData, reorderAlerts, unmappedItems]);
 
   // Monthly data from new metrics hook
   const monthlyData = monthlyMetrics || [];

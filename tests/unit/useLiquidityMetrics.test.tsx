@@ -149,4 +149,69 @@ describe('useLiquidityMetrics', () => {
     expect(txnBuilder.range).toHaveBeenCalledTimes(20);
     expect(result.current.data?.truncated).toBe(true);
   });
+
+  it('computes daysOfCash of 20 for a 30-day range, 3000 outflow, 1500 inflow, 1000 balance', async () => {
+    const rangeStart = new Date(2026, 7, 1);
+    const rangeEnd = new Date(2026, 7, 30); // 30-day period
+    const txnBuilder = createPagedTxnBuilder([
+      [
+        txnRow({ id: 'txn-out', transaction_date: '2026-08-05', amount: -3000 }),
+        txnRow({ id: 'txn-in', transaction_date: '2026-08-05', amount: 1500 }),
+      ],
+    ]);
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'connected_banks') return createResolvingBuilder({ data: [{ id: 'bank-1' }], error: null });
+      if (table === 'bank_account_balances')
+        return createResolvingBuilder({ data: [{ current_balance: 1000 }], error: null });
+      if (table === 'pending_outflows') return createResolvingBuilder({ data: [], error: null });
+      return txnBuilder;
+    });
+
+    const { result } = renderHook(() => useLiquidityMetrics(rangeStart, rangeEnd), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data?.daysOfCash).toBe(20);
+  });
+
+  it('returns Infinity when inflows are larger than outflows', async () => {
+    const rangeStart = new Date(2026, 7, 1);
+    const rangeEnd = new Date(2026, 7, 30); // 30-day period
+    const txnBuilder = createPagedTxnBuilder([
+      [
+        txnRow({ id: 'txn-out', transaction_date: '2026-08-05', amount: -1000 }),
+        txnRow({ id: 'txn-in', transaction_date: '2026-08-05', amount: 2000 }),
+      ],
+    ]);
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'connected_banks') return createResolvingBuilder({ data: [{ id: 'bank-1' }], error: null });
+      if (table === 'bank_account_balances')
+        return createResolvingBuilder({ data: [{ current_balance: 1000 }], error: null });
+      if (table === 'pending_outflows') return createResolvingBuilder({ data: [], error: null });
+      return txnBuilder;
+    });
+
+    const { result } = renderHook(() => useLiquidityMetrics(rangeStart, rangeEnd), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data?.daysOfCash).toBe(Infinity);
+  });
+
+  it('reports daysOfCash of 0 with no error when zero banks are connected', async () => {
+    const txnBuilder = createPagedTxnBuilder([[]]);
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'connected_banks') return createResolvingBuilder({ data: [], error: null });
+      if (table === 'bank_account_balances') return createResolvingBuilder({ data: [], error: null });
+      if (table === 'pending_outflows') return createResolvingBuilder({ data: [], error: null });
+      return txnBuilder;
+    });
+
+    const { result } = renderHook(() => useLiquidityMetrics(startDate, endDate), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.data?.daysOfCash).toBe(0);
+  });
 });

@@ -20,7 +20,7 @@ interface DashboardTodayCardProps {
   todaySales: number;
   profitMargin: number;
   availableCash: number;
-  cashRunway: number;
+  cashRunway: number | null;
   todayFoodCost: number;
   todayLaborCost: number;
   monthToDateSales: number;
@@ -228,7 +228,9 @@ export function DashboardTodayCard({
         </div>
         <div className="bg-background p-4">
           <dt className={KPI_LABEL_CLASS}>Runway</dt>
-          <KpiValue isLoading={runwayLoading}>{formatRunwayDays(cashRunway)}</KpiValue>
+          <KpiValue isLoading={runwayLoading} isError={cashRunway === null}>
+            {cashRunway === null ? '' : formatRunwayDays(cashRunway)}
+          </KpiValue>
         </div>
         <div className="bg-background p-4">
           <dt className={KPI_LABEL_CLASS}>Prime cost</dt>

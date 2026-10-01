@@ -310,6 +310,8 @@ const Index = () => {
 
   // Fetch liquidity metrics for cash runway, over the last 30 days
   const todayKey = format(new Date(), 'yyyy-MM-dd');
+  // todayKey triggers a once-per-day recompute; the callback reads the clock, not todayKey.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const runwayWindow = useMemo(() => getRunwayWindow(new Date()), [todayKey]);
   const { data: liquidityMetrics, isLoading: liquidityLoading } = useLiquidityMetrics(
     runwayWindow.start,

@@ -17,6 +17,8 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
   const today = endOfDay(new Date());
   const monthStart = startOfMonth(today);
   const todayKey = today.toISOString().slice(0, 10);
+  // todayKey triggers a once-per-day recompute; the callback reads the clock, not todayKey.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const runwayWindow = useMemo(() => getRunwayWindow(new Date()), [todayKey]);
 
   // Fetch connected banks

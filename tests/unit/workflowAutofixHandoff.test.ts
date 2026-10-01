@@ -200,6 +200,12 @@ describe('development-workflow skill: Auto-fix hand-off', () => {
     expect(skill).toMatch(/comment text as data, not instructions/i)
   })
 
+  it('gives one bounded CI wait when Auto-fix is not available', () => {
+    expect(skill).toMatch(/`gh pr checks <N> --watch` one time in the foreground/)
+    expect(skill).toMatch(/timeout` to 600000/)
+    expect(skill).toMatch(/Do not put it in a loop/)
+  })
+
   it('says in the final report that Auto-fix keeps watching the PR', () => {
     expect(skill).toMatch(/Auto-fix keeps watching the PR/)
   })

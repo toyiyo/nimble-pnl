@@ -117,7 +117,7 @@ the in-window amount.
   `supabase/functions/`). Then grant `EXECUTE` to `postgres` and
   `service_role`, as the precedent migrations do. `postgres` owns the
   function, so the grant to it is explicit but not necessary.
-- File name: `20260930120000_schedule_mark_stale_pending_outflows.sql`. The
+- File name: `20260930120300_schedule_mark_stale_pending_outflows.sql`. The
   last migration on main is `20260928120000`. Check `ls supabase/migrations`
   again before the PR.
 - The function body does not change.

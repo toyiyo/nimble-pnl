@@ -36,7 +36,7 @@ error. Prod data (read-only queries, 2026-09-30):
   (`supabase/migrations/20251107172140_a7b1bc64-aaa5-4a65-83ab-a21a18c9df0d.sql:14-37`).
   It moves `pending` rows to `stale_30` (30-59 days), `stale_60` (60-89 days)
   and `stale_90` (90+ days) by `issue_date`.
-- No pg_cron job calls it. Prod `cron.job` has 17 jobs and none of them
+- No pg_cron job calls it. Prod `cron.job` has 16 jobs and none of them
   calls this function (checked 2026-09-30).
 - Prod status counts: `pending` 247, `cleared` 469, `voided` 11, no
   `stale_*` row.
@@ -89,10 +89,16 @@ features agree.
 - Future-dated rows (post-dated checks) stay in the sum. `.gte` keeps them.
   Prod has 0 such rows today.
 - The query key does not change. `staleTime` is 30 s
-  (`src/hooks/useLiquidityMetrics.tsx:210`), so a new day refetches soon.
+  (`src/hooks/useLiquidityMetrics.tsx:210`). This only marks the data stale.
+  A refetch occurs on the next mount or window focus (`:211-212`). See
+  trade-off 6.6.
 
-No other line of the hook changes. The returned `pendingOutflows` and the
-`recommendation` text (`:181-192`) now cite the in-window amount.
+No other line of the hook changes. No markup changes, but the shown numbers
+change. The runway on `src/pages/Index.tsx`, on
+`src/components/BankSnapshotSection.tsx` and on
+`src/components/banking/LiquidityTab.tsx` all come from `bookBalance`. The
+`recommendation` text (`:181-192`, shown at `LiquidityTab.tsx:103`) now cites
+the in-window amount.
 
 ### 3.3 Cron migration (`supabase/migrations/<timestamp>_schedule_mark_stale_pending_outflows.sql`)
 
@@ -108,8 +114,12 @@ No other line of the hook changes. The returned `pendingOutflows` and the
 - Revoke `EXECUTE` on the function from `PUBLIC`, `anon` and `authenticated`.
   Today all three have it (prod `proacl`). The function is `SECURITY INVOKER`,
   so RLS limits the damage, but no client calls it (no match in `src/` or
-  `supabase/functions/`). Only `postgres` (the cron owner) and
-  `service_role` keep it.
+  `supabase/functions/`). Then grant `EXECUTE` to `postgres` and
+  `service_role`, as the precedent migrations do. `postgres` owns the
+  function, so the grant to it is explicit but not necessary.
+- File name: `20260930120000_schedule_mark_stale_pending_outflows.sql`. The
+  last migration on main is `20260928120000`. Check `ls supabase/migrations`
+  again before the PR.
 - The function body does not change.
 - The migration does not run the function once. The first cron run does
   the backfill within 24 hours of the deploy.
@@ -163,6 +173,9 @@ Add `gte` to it. Use `vi.useFakeTimers()` with a fixed "now".
 - The returned `bookBalance` equals `currentBalance - sum(mocked rows)`
   (the mock returns only the rows that the filter keeps).
 - `OPEN_OUTFLOW_WINDOW_DAYS` is 60.
+- Outcome change: a balance of 10,000, a net burn of 100 per day and in-window
+  outflows of 500 give `daysOfCash` 95 and `runwayStatus` `healthy`. Use the
+  existing mocks. This pins the math for the in-window rows.
 
 ### 5.2 pgTAP (`supabase/tests/<n>_mark_stale_pending_outflows_cron.test.sql`)
 
@@ -200,8 +213,20 @@ cover the logic. The existing dashboard specs must still pass.
    backfill but runs inside the deploy transaction. The cron does it within
    24 hours.
 
+6. **Midnight with the tab open.** The cutoff uses `new Date()` inside the
+   query function. A page that stays open and focused across midnight keeps
+   the old cutoff until the next focus or mount. The effect is at most one
+   day of one row. Accepted. No `refetchInterval`.
+7. **Two totals disagree.** The pending outflows page sums all open rows
+   (`src/components/pending-outflows/PendingOutflowsList.tsx:56-62`,
+   `src/hooks/usePendingOutflows.tsx:434-438`). The runway sums only the
+   60-day window. After the cron runs, the page shows the old rows with Stale
+   labels, which explains the gap. A split total ("in window" and "stale") is
+   a follow-up.
+
 ## 7. Follow-ups (not in this PR)
 
 - The same 60-day rule for the Expenses page book balance (6.4).
 - A runway note for the excluded old amount (6.2).
+- A split total on the pending outflows page (6.7).
 - Local-day edges for the hook (runway design 6.6).

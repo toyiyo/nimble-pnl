@@ -62,10 +62,17 @@ export function getOpenOutflowCutoff(now: Date = new Date()): string;
 // Splits open rows into the in-window amount and the older amount.
 // Rows with other statuses (cleared, voided) count in neither.
 export function summarizeOpenOutflows(
-  rows: ReadonlyArray<{ amount: number; status: string; issue_date: string }>,
-  now?: Date,
-): { inWindow: number; older: number };
+  rows: ReadonlyArray<{ amount: number | string; status: string; issue_date: string }>,
+  now: Date = new Date(),
+): { inWindow: number; older: number } {
+  const cutoff = getOpenOutflowCutoff(now);
+  // 1. Keep only rows whose status is in OPEN_OUTFLOW_STATUSES.
+  // 2. Add Number(row.amount) to inWindow if row.issue_date >= cutoff, else to older.
+}
 ```
+
+The function does the status filter itself. The page passes all rows
+(`expenses ?? []`) and does no filter of its own.
 
 - The cutoff math is the same as the hook today:
   `format(subDays(now, OPEN_OUTFLOW_WINDOW_DAYS - 1), 'yyyy-MM-dd')`
@@ -91,9 +98,10 @@ same. The 11 existing tests must pass with no change.
 - `bookBalance = totalBalance - inWindow`.
 - The Uncommitted Expenses card shows `inWindow`.
 - Under the card label, when `older > 0`, add one line:
-  `+$X older than 60 days, not counted`. Use
-  `text-xs text-muted-foreground`, the same style as the existing sub-line
-  "After expenses clear" (`src/pages/Expenses.tsx:150`). The text uses
+  `+$X older than 60 days, not counted`. Use a `span` with
+  `block text-xs text-muted-foreground`. The existing sub-line "After
+  expenses clear" (`src/pages/Expenses.tsx:150`) gets its muted color from
+  the parent `div`. The new line sets the color itself. The text uses
   `OPEN_OUTFLOW_WINDOW_DAYS`, not a literal 60.
 - No other markup changes. The card colors stay as they are (the existing
   `text-green-600` and `from-green-50/50` are out of scope).
@@ -148,7 +156,10 @@ component with the real helper.
    is a separate follow-up (#838 design 6.7).
 2. **Device date.** The page uses the browser's local date, as the hook
    does. Same as #838 trade-off 6.1.
-3. **Hook refactor.** The hook imports the rule from the new module. This
+3. **Card typography.** The cards use `text-3xl`, `text-sm` and
+   `text-green-600`. These do not follow the CLAUDE.md typography scale and
+   tokens. This is old debt and out of scope.
+4. **Hook refactor.** The hook imports the rule from the new module. This
    adds a small diff to a file with no behavior change, but it keeps one
    source for the rule.
 

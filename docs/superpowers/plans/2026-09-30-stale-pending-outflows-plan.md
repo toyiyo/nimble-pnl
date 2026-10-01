@@ -51,7 +51,7 @@ Rules for every task:
    Check the number again with `ls supabase/tests`. Commit the failing test.
 
 4. **Cron migration.** Run `ls supabase/migrations | tail -3`. Write
-   `supabase/migrations/20260930120000_schedule_mark_stale_pending_outflows.sql`
+   `supabase/migrations/20260930120300_schedule_mark_stale_pending_outflows.sql`
    (design 3.3). Use a later timestamp if `20260930120000` is taken.
    - `DO` block with `cron.unschedule('mark-stale-pending-outflows')` in an
      `EXCEPTION WHEN OTHERS THEN NULL` handler.

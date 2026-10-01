@@ -125,6 +125,21 @@ describe.each(SCRIPTS)('%s: 9e Auto-fix hand-off', (_name, script) => {
     expect(labelsOf(run)).not.toContain('done-gate')
   })
 
+  it('keeps needs_human with the PR number when CI is red after a triage fix push', async () => {
+    const run = await runWorkflow(script, {
+      args: BASE_ARGS,
+      onAgent: responder({
+        triage: { result: { status: 'completed', openCriticalOrMajor: 0, pushedFix: true } },
+        'ci:post-triage': { result: { status: 'completed', ciGreen: false } },
+      }),
+    })
+
+    expect(run.result.stopped).toBe(true)
+    expect(run.result.phase).toBe('Triage')
+    expect(run.result.status).toBe('needs_human')
+    expect(run.result.prNumber).toBe(PR)
+  })
+
   it('has no PR number in a stop before Ship', async () => {
     const run = await runWorkflow(script, {
       args: BASE_ARGS,

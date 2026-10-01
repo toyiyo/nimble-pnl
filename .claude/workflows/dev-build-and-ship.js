@@ -894,7 +894,7 @@ if (triage.pushedFix) {
     { label: 'ci:post-triage', phase: 'Triage', schema: statusSchema({ ciGreen: { type: 'boolean' } }, ['ciGreen']) },
   )
   const g = gate(reCi, 'Triage'); if (g.halt) return g.out
-  if (!reCi.ciGreen) return stop('Triage', { reason: 'CI not green after triage fix push' })
+  if (!reCi.ciGreen) return stop('Triage', { status: 'needs_human', reason: 'CI not green after triage fix push' })
 }
 
 // 9e contract for CI that is still pending. dev-continue-verify-and-ship.js

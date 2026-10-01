@@ -353,7 +353,7 @@ Workflow({
 - `{stopped: true, ...}` → a `needs_human`/`failed` gate fired. Report phase + reason, get the decision, fix, and **resume**: re-invoke with `{scriptPath, resumeFromRunId: "<runId>", args: {…same…}}`. Cached phases return instantly; **to force a halted phase to re-run, change its prompt** (an unchanged phase re-caches its prior result). If the stop payload has `prNumber` (the stop came after Ship), run step 9a.1 only after the human decides the blocker. Auto-fix must not act on an ambiguous comment while the human decides.
 - `{stopped: false, status: 'done', done: true, prNumber, triage}` → run step 9a.1, then relay the Phase 9e summary (PR # green + triage outcome). Auto-fix still catches late bot comments and merge conflicts.
 - `{stopped: false, status: 'handed_to_autofix', done: false, prNumber, reason}` → every 9e item holds except CI checks that are still pending. This is not a blocker. Run step 9a.1. Report the pending checks from `reason` and say that Auto-fix keeps watching the PR. Do not re-run the workflow. Do not poll CI.
-- `{stopped: false, status: 'needs_human', done: false, ...}` → the done gate failed for a reason other than pending CI; report `reason`.
+- `{stopped: false, status: 'needs_human', done: false, prNumber, ...}` → the done gate failed for a reason other than pending CI. Report `reason`. Use the same rule as a stop after Ship: run step 9a.1 only after the human decides the blocker.
 
 > The workflow returns `needs_human` only for real blockers: the CI retry limit, ambiguous review feedback, or a failure the loop cannot fix. Pending CI is `handed_to_autofix`.
 

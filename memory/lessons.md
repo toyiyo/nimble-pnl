@@ -1386,6 +1386,7 @@
 - **Mistake:** Two independent branches (#625 bulk-deduction, #628 shift-fill) both picked prefix `20260720120000`. Supabase keys `schema_migrations` on that 14-digit prefix alone, so a fresh `supabase db start` hit `schema_migrations_pkey` and aborted — turning **every open PR's** Unit/pgTAP/E2E red and breaking `main`'s Deploy Supabase. Worse, on prod the **first-merged** file recorded the version and the **second-merged** file was silently **skipped** (its schema change never applied). The single failing unit test (`migrationVersionUniqueness.test.ts`) was the tell.
 - **Correction:** Rename the **un-applied (later-merged)** file to a unique adjacent prefix (`…120001`) — keep the already-recorded one where prod has it. On fresh DBs both apply in order; on prod the renamed one applies for the first time (verify it's idempotent, since it may re-run). Determine merge order with `git merge-base --is-ancestor`, not PR number.
 - **Rule:** A duplicate migration-version prefix is a repo-wide P0, not a per-PR problem — it blocks every branch and can leave prod missing a migration. When a rebased PR is mysteriously red on db-start with a PK collision on `schema_migrations`, check `main` itself is green before touching your own branch; the fix belongs in a separate PR against `main`.
+- **[2026-10-01] CONFIRMED on PR #841, from the other side.** PR #838 and the recipe-yield PR both merged prefix `20260930120000`. PR #841 fixed the collision inside its own branch (rename to `…120001`). At the same time, #840 fixed it on `main` (rename to `…120300`). The next merge of `main` gave a rename/rename conflict, and the UI-only PR carried a migration diff for one CI cycle. **Rule:** Do not fix a collision that is already on `main` inside a feature branch. Check `gh pr list --search 'migration'` for a fix PR. Wait for it or open it against `main`, then merge `main` into the branch.
 
 ### [2026-07-21] A backfill DO block is ONE statement — the whole thing runs under one statement_timeout
 - **Mistake:** The Revel `sold_at` backfill migration ran its per-restaurant loop inside a single `DO $$ … $$;` block. A DO block is one SQL statement, so the "bounded per-restaurant loop" was still one statement covering the ENTIRE historical dataset (1353 orders + per-date re-aggregation). On the first prod deploy it exceeded the default `statement_timeout` and was cancelled (SQLSTATE 57014); because the migration runs in a transaction it fully rolled back, never recorded in `schema_migrations`, so every subsequent deploy re-ran and re-failed — halting the whole migration pipeline.
@@ -3602,6 +3603,20 @@
 - **Mistake:** `{ location_unavailable: true }` is a truthy `location`. Today's Activity in EmployeeClock showed "Location verified" for it. Five reviewers missed it; CodeRabbit found it outside the diff.
 - **Correction:** The icon now checks `typeof location.latitude === 'number'`, with a separate "Location unavailable" icon.
 - **Rule:** When a payload can take a new shape, grep every reader of that field (`punch.location &&`, `?.location`) and check each one against the new shape. Reviewers see the diff, not the readers outside it.
+
+## Category: UI Copy — Boundaries
+
+### [2026-10-01] A boundary note must use the same comparison as the code
+- **Mistake:** On PR #841 the Expenses note said "older than 60 days". The code puts a row in `older` when `issue_date < cutoff`, and the cutoff is today − 59 days. A row that is exactly 60 days old is in `older`, so "older than 60 days" was wrong at the boundary. The Codex PR review found it (P2).
+- **Correction:** Changed the text to "60 days or older, not counted". Changed the page test to assert the new text.
+- **Rule:** When UI text names a day window, write the boundary day in a test. Then read the text against that test. "Older than N" means `> N`. "N or older" means `>= N`.
+
+## Category: Dev Workflow Runs
+
+### [2026-10-01] A stalled workflow CI agent: finish Phase 9 in the main session
+- **Mistake:** Workflow `dev-build-and-ship` stopped at "CI Loop" with `Agent "ci:2" never produced a result`. The commit with the fix was already pushed, so the stall left the PR without a CI result and without the Phase 9d audit.
+- **Correction:** Did not re-run the workflow. In the main session: checked `git log origin/main` for new merges, merged `main`, ran the changed tests, pushed, ran `gh pr checks --watch` in the background, then ran 9d (`refresh-queue.sh`, three `gh api` fetches, `pr-triage.js audit`).
+- **Rule:** After a workflow stall in the CI phase, check `main` first. A new merge on `main` can change what the PR needs. Then finish Phase 9 by hand with one bounded `gh pr checks --watch`.
 
 ## Category: Time / Timezone (continued)
 

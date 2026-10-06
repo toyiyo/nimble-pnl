@@ -88,13 +88,13 @@ export function ApplyWeekTemplateDialog({
 
         <div className="px-6 py-5">
           {result ? (
-            <div role="status" className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/40">
+            <output className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/40">
               <CheckCircle2 className="h-5 w-5 text-foreground shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[14px] font-medium text-foreground">Template applied</p>
-                <p className="text-[13px] text-muted-foreground">{describeResult(result.data)}</p>
-              </div>
-            </div>
+              <span>
+                <span className="block text-[14px] font-medium text-foreground">Template applied</span>
+                <span className="block text-[13px] text-muted-foreground">{describeResult(result.data)}</span>
+              </span>
+            </output>
           ) : (
             <TemplateApplyFields
               selectedDate={selectedDate}

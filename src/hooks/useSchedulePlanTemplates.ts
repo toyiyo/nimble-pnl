@@ -71,7 +71,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
   // createTemplate and updateTemplate share the same result handling.
   const draftSaveCallbacks = {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey });
       toast({ title: 'Template saved' });
     },
     onError: (error: Error) => {
@@ -179,7 +179,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       // Drop the row from the cache now. Until the refetch returns, a stale
       // copy could otherwise be selected again by the Week Templates tab.
       queryClient.setQueryData<SchedulePlanTemplate[]>(queryKey, (old) => old?.filter((t) => t.id !== templateId));
-      queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey });
       toast({ title: 'Template deleted' });
     },
     onError: (error: Error) => {

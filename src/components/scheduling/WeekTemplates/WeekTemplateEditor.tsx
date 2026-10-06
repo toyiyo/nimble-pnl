@@ -333,7 +333,7 @@ export function WeekTemplateEditor({
           {isDirty && (
             <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-warning-strong whitespace-nowrap">
               <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
-              Unsaved changes
+              <span>Unsaved changes</span>
             </span>
           )}
         </div>
@@ -402,13 +402,10 @@ export function WeekTemplateEditor({
       </div>
 
       {changedElsewhere && (
-        <div
-          role="status"
-          className="mx-4 mt-3 flex items-start gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20 text-[13px] text-warning-strong"
-        >
+        <output className="mx-4 mt-3 flex items-start gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20 text-[13px] text-warning-strong">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           <span>This template changed in another session. Save will fail. Discard to load the new version.</span>
-        </div>
+        </output>
       )}
 
       {/* Grid */}

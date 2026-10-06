@@ -203,9 +203,9 @@ export function TemplateShiftDialog({
           </div>
 
           {!isEdit && (
-            <div className="space-y-1.5">
-              <span className={LABEL_CLASS}>Days</span>
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Days">
+            <fieldset className="space-y-1.5">
+              <legend className={cn(LABEL_CLASS, 'mb-1.5')}>Days</legend>
+              <div className="flex flex-wrap gap-2">
                 {DAY_LABELS.map((label, day) => (
                   <button
                     key={label}
@@ -225,7 +225,7 @@ export function TemplateShiftDialog({
                 ))}
               </div>
               {days.length === 0 && <p className="text-[12px] text-destructive">Select at least one day</p>}
-            </div>
+            </fieldset>
           )}
 
           <div className="space-y-1.5">

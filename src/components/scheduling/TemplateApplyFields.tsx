@@ -81,10 +81,11 @@ export function TemplateApplyFields({
                 onChange={() => onMergeModeChange(mode.value)}
                 className="accent-foreground"
               />
-              <div>
-                <p className="text-[14px] font-medium text-foreground">{mode.title}</p>
-                <p className="text-[12px] text-muted-foreground">{mode.hint}</p>
-              </div>
+              {/* Spans, not <p>: a label holds phrasing content only. */}
+              <span>
+                <span className="block text-[14px] font-medium text-foreground">{mode.title}</span>
+                <span className="block text-[12px] text-muted-foreground">{mode.hint}</span>
+              </span>
             </label>
           ))}
         </div>

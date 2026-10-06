@@ -120,9 +120,9 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
 
   useEffect(() => {
     if (!isDirty) return;
+    // preventDefault() alone asks the browser to confirm the page close.
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      e.returnValue = '';
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);

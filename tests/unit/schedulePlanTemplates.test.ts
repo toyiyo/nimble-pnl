@@ -23,6 +23,24 @@ function makeShift(overrides: Partial<Shift> & { start_time: string; end_time: s
 describe('buildTemplateSnapshot', () => {
   const weekStart = new Date(2026, 2, 30); // Monday March 30, 2026
 
+  it('drops shifts whose day_offset falls outside Monday-Sunday', () => {
+    const before = makeShift({
+      start_time: new Date(2026, 2, 29, 22, 0, 0).toISOString(), // Sun Mar 29 (offset -1)
+      end_time: new Date(2026, 2, 30, 2, 0, 0).toISOString(),
+    });
+    const after = makeShift({
+      start_time: new Date(2026, 3, 6, 9, 0, 0).toISOString(), // Mon Apr 6 (offset 7)
+      end_time: new Date(2026, 3, 6, 17, 0, 0).toISOString(),
+    });
+    const inside = makeShift({
+      start_time: new Date(2026, 3, 5, 9, 0, 0).toISOString(), // Sun Apr 5 (offset 6)
+      end_time: new Date(2026, 3, 5, 17, 0, 0).toISOString(),
+    });
+
+    const result = buildTemplateSnapshot([before, after, inside], weekStart);
+    expect(result.map((r) => r.day_offset)).toEqual([6]);
+  });
+
   it('computes correct day_offset from Monday', () => {
     const shift = makeShift({
       start_time: new Date(2026, 3, 1, 9, 0, 0).toISOString(),  // Wed Apr 1

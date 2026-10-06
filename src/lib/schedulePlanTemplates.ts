@@ -29,7 +29,10 @@ export function buildTemplateSnapshot(
         employee_id: shift.employee_id,
         employee_name: shift.employee?.name ?? 'Unknown',
         notes: shift.notes ?? null,
-    }));
+    }))
+    // A shift at the edge of the week can compute to -1 or 7. The server
+    // validator accepts only 0-6, so drop those shifts here.
+    .filter((snap) => snap.day_offset >= 0 && snap.day_offset <= 6);
 }
 
 export function buildShiftsFromTemplate(

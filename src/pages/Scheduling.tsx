@@ -2013,6 +2013,7 @@ const Scheduling = () => {
         sourceWeekEnd={weekEnd}
         shifts={shifts}
         restaurantId={restaurantId}
+        timezone={restaurantTimezone}
         onConfirm={handleCopyWeekConfirm}
         isPending={copyWeekMutation.isPending}
       />

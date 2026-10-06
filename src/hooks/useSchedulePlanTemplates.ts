@@ -2,12 +2,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { buildTemplateSnapshot, buildShiftsFromTemplate } from '@/lib/schedulePlanTemplates';
-import { getWeekEnd } from '@/hooks/useShiftPlanner';
+import { buildTemplateSnapshot, buildShiftsFromTemplate, templateWeekBounds } from '@/lib/schedulePlanTemplates';
 
 import type { Shift, SchedulePlanTemplate, ApplyTemplateResult } from '@/types/scheduling';
 
-export function useSchedulePlanTemplates(restaurantId: string | null) {
+/**
+ * `tz` is the restaurant IANA time zone. Templates store restaurant-local
+ * wall clocks, so save and apply must both convert in this zone, not in the
+ * browser zone. It is required so a new caller cannot forget it.
+ */
+export function useSchedulePlanTemplates(restaurantId: string | null, tz: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -33,7 +37,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
   const saveTemplate = useMutation({
     mutationFn: async ({ name, shifts, weekStart }: { name: string; shifts: Shift[]; weekStart: Date }) => {
       if (!restaurantId) throw new Error('No restaurant selected');
-      const snapshot = buildTemplateSnapshot(shifts, weekStart);
+      const snapshot = buildTemplateSnapshot(shifts, weekStart, tz);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.rpc as any)('save_schedule_plan_template', {
@@ -62,19 +66,21 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     }): Promise<ApplyTemplateResult> => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
-      const shiftsPayload = buildShiftsFromTemplate(template.shifts, targetMonday, restaurantId);
+      const shiftsPayload = buildShiftsFromTemplate(template.shifts, targetMonday, restaurantId, tz);
 
       if (shiftsPayload.length === 0) {
         throw new Error('No valid shifts in template. All referenced employees may be inactive.');
       }
 
-      const targetEnd = getWeekEnd(targetMonday);
+      // Restaurant-local week, so `replace` clears the same week the new
+      // shifts land in.
+      const bounds = templateWeekBounds(targetMonday, tz);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.rpc as any)('apply_schedule_plan_template', {
         p_restaurant_id: restaurantId,
-        p_target_start: targetMonday.toISOString(),
-        p_target_end: targetEnd.toISOString(),
+        p_target_start: bounds.start,
+        p_target_end: bounds.end,
         p_shifts: shiftsPayload,
         p_merge_mode: mergeMode,
       });

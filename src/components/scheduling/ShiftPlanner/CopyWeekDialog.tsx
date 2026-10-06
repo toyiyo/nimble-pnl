@@ -25,6 +25,8 @@ interface CopyWeekDialogProps {
   sourceWeekEnd: Date;
   shifts: Shift[];
   restaurantId: string | null;
+  /** Restaurant IANA time zone. Week templates save and apply in this zone. */
+  timezone: string;
   onConfirm: (targetMonday: Date) => void;
   isPending: boolean;
 }
@@ -58,6 +60,7 @@ export function CopyWeekDialog({
   sourceWeekEnd,
   shifts,
   restaurantId,
+  timezone,
   onConfirm,
   isPending,
 }: Readonly<CopyWeekDialogProps>) {
@@ -85,7 +88,7 @@ export function CopyWeekDialog({
     saveTemplate,
     applyTemplate,
     deleteTemplate,
-  } = useSchedulePlanTemplates(restaurantId);
+  } = useSchedulePlanTemplates(restaurantId, timezone);
 
   // --- Derived values (copy tab) ---
   const targetMonday = useMemo(

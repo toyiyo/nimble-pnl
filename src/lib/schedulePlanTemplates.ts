@@ -42,7 +42,9 @@ export function buildShiftsFromTemplate(
   targetMonday: Date,
   restaurantId: string,
 ): BulkShiftInsert[] {
-  return snapshots.map((snap) => {
+  // Skip offsets outside Monday-Sunday (templates saved before the server
+  // validator). They would land outside the target week.
+  return snapshots.filter((snap) => Number.isInteger(snap.day_offset) && snap.day_offset >= 0 && snap.day_offset <= 6).map((snap) => {
     const targetDate = new Date(targetMonday);
     targetDate.setDate(targetMonday.getDate() + snap.day_offset);
 

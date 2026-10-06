@@ -170,3 +170,19 @@ describe('formatWeekRange and isPastWeek', () => {
     expect(isPastWeek(null, today)).toBe(false);
   });
 });
+
+describe('buildShiftsFromTemplate day offset filter', () => {
+  it('skips offsets outside 0-6', () => {
+    const base: TemplateShiftSnapshot = {
+      day_offset: 0, start_time: '09:00:00', end_time: '17:00:00', break_duration: 0,
+      position: 'Server', employee_id: 'emp-1', employee_name: 'Alice', notes: null,
+    };
+    const out = buildShiftsFromTemplate(
+      [{ ...base, day_offset: -1 }, { ...base, day_offset: 7 }, { ...base, day_offset: 3 }],
+      new Date(2026, 9, 5),
+      'rest-1',
+    );
+    expect(out).toHaveLength(1);
+    expect(new Date(out[0].start_time).getDate()).toBe(8);
+  });
+});

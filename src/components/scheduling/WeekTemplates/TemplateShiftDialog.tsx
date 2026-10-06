@@ -44,7 +44,6 @@ const toHHMM = (time: string) => time.slice(0, 5);
  * Add or edit one template shift. The parent mounts one instance per cell or
  * shift (with a `key`), so the useState initial values below are the reset.
  */
-
 export function TemplateShiftDialog({
   open,
   onOpenChange,

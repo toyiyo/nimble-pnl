@@ -5,8 +5,8 @@ import { AlertTriangle } from 'lucide-react';
 import { getWeekEnd } from '@/hooks/useShiftPlanner';
 
 import type { TemplateMergeMode } from '@/types/scheduling';
-import { formatWeekRange } from '@/lib/schedulePlanTemplates';
 
+import { formatWeekRange } from '@/lib/schedulePlanTemplates';
 
 interface TemplateApplyFieldsProps {
   selectedDate: Date | undefined;

@@ -28,7 +28,6 @@ function itemClass(selected: boolean): string {
   );
 }
 
-
 export function WeekTemplateList({
   templates,
   selectedId,

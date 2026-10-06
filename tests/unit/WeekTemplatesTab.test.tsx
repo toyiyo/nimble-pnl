@@ -162,6 +162,27 @@ describe('WeekTemplatesTab', () => {
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
   });
 
+  it('does not put a save result on another draft the user opened during the save', async () => {
+    let resolveSave: () => void = () => {};
+    setHook([tmpl('t1', 'Lunch'), tmpl('t2', 'Dinner')], {
+      updateTemplate: mutation((v) => new Promise((resolve) => {
+        const { id, name, shifts } = v as Pick<SchedulePlanTemplate, 'id' | 'name' | 'shifts'>;
+        resolveSave = () => resolve({ ...tmpl(id, name, '2026-10-06T11:00:00+00:00'), shifts });
+      })),
+    });
+    const { onDirtyChange } = renderTab();
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Lunch v2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: /Dinner/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(screen.getByLabelText('Template name')).toHaveValue('Dinner');
+
+    resolveSave();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Dinner/, current: true })).toBeInTheDocument());
+    expect(screen.getByLabelText('Template name')).toHaveValue('Dinner');
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('ignores a second Save click while the first save runs', async () => {
     setHook([tmpl('t1', 'Lunch')], {
       updateTemplate: mutation(() => new Promise(() => {})),

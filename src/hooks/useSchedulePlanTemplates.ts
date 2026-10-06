@@ -50,11 +50,10 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       if (!restaurantId) throw new Error('No restaurant selected');
       const snapshot = buildTemplateSnapshot(shifts, weekStart);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('save_schedule_plan_template', {
+      const { data, error } = await supabase.rpc('save_schedule_plan_template', {
         p_restaurant_id: restaurantId,
         p_name: name,
-        p_shifts: snapshot,
+        p_shifts: toJson(snapshot),
       });
 
       if (error) throw error;

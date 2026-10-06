@@ -381,6 +381,7 @@ WITH cleaned AS (
   CROSS JOIN LATERAL jsonb_array_elements(t.shifts) WITH ORDINALITY AS x(elem, ord)
   WHERE CASE WHEN jsonb_typeof(elem->'day_offset') = 'number'
              THEN (elem->>'day_offset')::numeric BETWEEN 0 AND 6
+                  AND (elem->>'day_offset')::numeric = trunc((elem->>'day_offset')::numeric)
              ELSE false END
   GROUP BY t.id
 )

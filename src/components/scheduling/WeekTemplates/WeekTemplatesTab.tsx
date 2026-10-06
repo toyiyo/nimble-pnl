@@ -81,6 +81,9 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
   const isDirty = useMemo(() => (draft ? isDraftDirty(draft, baseline) : false), [draft, baseline]);
   // Blocks a second save while the first one runs (isPending updates one render later).
   const saveInFlight = useRef(false);
+  // Changes each time the editor gets a different draft (select, new, discard).
+  // A save result applies only to the draft it started from.
+  const draftGeneration = useRef(0);
 
   const serverTemplate = useMemo(
     () => (selectedId && selectedId !== NEW_DRAFT_ID ? templates.find((t) => t.id === selectedId) ?? null : null),
@@ -90,6 +93,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
     isDirty && !!serverTemplate && !!baseline && isNewer(serverTemplate.updated_at, baseline.updated_at);
 
   const loadTemplate = useCallback((t: SchedulePlanTemplate) => {
+    draftGeneration.current += 1;
     setSelectedId(t.id);
     setBaseline(t);
     setDraft(draftFromTemplate(t));
@@ -148,6 +152,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
 
   const handleNew = () =>
     guard(() => {
+      draftGeneration.current += 1;
       setSelectedId(NEW_DRAFT_ID);
       setBaseline(null);
       setDraft(emptyDraft());
@@ -157,6 +162,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
   const handleSave = async () => {
     if (!draft || saveInFlight.current) return;
     saveInFlight.current = true;
+    const generation = draftGeneration.current;
     const name = draft.name.trim();
     const shifts = toSnapshot(draft, nameById);
     try {
@@ -164,6 +170,9 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
         draft.id && draft.updatedAt
           ? await updateTemplate.mutateAsync({ id: draft.id, name, shifts, expectedUpdatedAt: draft.updatedAt })
           : await createTemplate.mutateAsync({ name, shifts });
+      // The user moved to another draft while the save ran. The list refetch
+      // shows the saved template; do not put its id on the current draft.
+      if (generation !== draftGeneration.current) return;
       setSelectedId(saved.id);
       setBaseline(saved);
       // Functional update: keep edits made while the save ran. Those edits
@@ -182,6 +191,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
       loadTemplate(serverTemplate ?? baseline);
       return;
     }
+    draftGeneration.current += 1;
     setDraft(null);
     setSelectedId(null);
     setMobileView('list');
@@ -207,6 +217,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
         const rest = templates.filter((t) => t.id !== draft.id);
         if (rest.length > 0) loadTemplate(rest[0]);
         else {
+          draftGeneration.current += 1;
           setSelectedId(null);
           setDraft(null);
           setBaseline(null);

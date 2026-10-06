@@ -131,4 +131,15 @@ describe('WeekTemplateEditor', () => {
     render(<Harness initial={emptyDraft()} overrides={{ changedElsewhere: true }} />);
     expect(screen.getByText(/This template changed in another session/)).toBeInTheDocument();
   });
+
+  it('keeps the HOURS column clear of right-edge overlays', () => {
+    const draft = addShifts(emptyDraft(), 'alice', 'Alice Moreno', {
+      start_time: '09:00', end_time: '17:00', break_duration: 0, position: 'Server', notes: null,
+    }, [0]);
+    render(<Harness initial={draft} />);
+
+    expect(screen.getByRole('columnheader', { name: 'Hours' })).toHaveClass('pr-12');
+    expect(within(screen.getByRole('row', { name: /Alice Moreno/ })).getByText('8h')).toHaveClass('pr-12');
+    expect(within(screen.getByRole('row', { name: 'Total' })).getByText('8h')).toHaveClass('pr-12');
+  });
 });

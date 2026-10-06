@@ -24,12 +24,14 @@ grid is not readable at the right edge of the window. The values
   - The PostHog survey "Feedback" tab (all environments; PostHog loads in
     `src/main.tsx:4`).
 - The 16px extra width of the page `space-y-6` wrapper comes from the
-  page header bar (`-mx-4 px-4`, full-bleed on purpose). It is not related.
+  page header bar (`-mx-4 px-4`, full-bleed on purpose,
+  `src/components/scheduling/ScheduleMetricsRibbon.tsx:198`). It is not related.
 
 ## Decision
 
 Add a right gutter of `pr-12` (48px) to the three HOURS cells: the
-header, each employee row, and the TOTAL row. Keep the class in one
+header, each employee row, and the TOTAL row. `pr-12` replaces the right
+half of `px-3`: each cell uses `pl-3 pr-12`. Keep the class in one
 constant so that the three cells stay aligned.
 
 ## Rejected options
@@ -49,4 +51,5 @@ constant so that the three cells stay aligned.
 
 - Unit: the HOURS header, a row HOURS cell and the TOTAL HOURS cell have
   the gutter class.
-- Manual: check on the Vercel preview at 1265px, 1870px and 390px.
+- Manual: check on the Vercel preview at 1265px, 1870px and 390px. At
+  1265px, also check the gap between the SUN column and the HOURS header.

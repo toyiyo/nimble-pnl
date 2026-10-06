@@ -1,6 +1,8 @@
+import { format } from 'date-fns';
+
 import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
 import type { BulkShiftInsert } from '@/lib/copyWeekShifts';
-import { formatLocalTime } from '@/hooks/useShiftPlanner';
+import { formatLocalTime, getWeekEnd } from '@/hooks/useShiftPlanner';
 
 function computeDayOffset(isoString: string, weekStart: Date): number {
   const d = new Date(isoString);
@@ -29,7 +31,10 @@ export function buildTemplateSnapshot(
         employee_id: shift.employee_id,
         employee_name: shift.employee?.name ?? 'Unknown',
         notes: shift.notes ?? null,
-    }));
+    }))
+    // A shift at the edge of the week can compute to -1 or 7. The server
+    // validator accepts only 0-6, so drop those shifts here.
+    .filter((snap) => snap.day_offset >= 0 && snap.day_offset <= 6);
 }
 
 export function buildShiftsFromTemplate(
@@ -37,7 +42,9 @@ export function buildShiftsFromTemplate(
   targetMonday: Date,
   restaurantId: string,
 ): BulkShiftInsert[] {
-  return snapshots.map((snap) => {
+  // Skip offsets outside Monday-Sunday (templates saved before the server
+  // validator). They would land outside the target week.
+  return snapshots.filter((snap) => Number.isInteger(snap.day_offset) && snap.day_offset >= 0 && snap.day_offset <= 6).map((snap) => {
     const targetDate = new Date(targetMonday);
     targetDate.setDate(targetMonday.getDate() + snap.day_offset);
 
@@ -71,4 +78,17 @@ export function buildShiftsFromTemplate(
       locked: false,
     };
   });
+}
+
+/** 'Oct 5 – Oct 11'. The dates are local calendar days (week picker values). */
+export function formatWeekRange(start: Date, end: Date): string {
+  return `${format(start, 'MMM d')} – ${format(end, 'MMM d')}`;
+}
+
+/** True when the whole week that starts on `monday` is before today. */
+export function isPastWeek(monday: Date | null, today: Date = new Date()): boolean {
+  if (!monday) return false;
+  const startOfToday = new Date(today);
+  startOfToday.setHours(0, 0, 0, 0);
+  return getWeekEnd(monday) < startOfToday;
 }

@@ -3631,3 +3631,42 @@
 - **Mistake:** E2E Shard 2 failed in two CI runs, at 00:25 and 00:34 UTC, on `offsite-punch-flag.spec.ts:95` with `element(s) not found`. The branch did not change any time-punch code. The spec comes from main (#831).
 - **Correction:** A rerun of the failed jobs at 00:51 UTC passed with no code change. The spec inserts a punch at `Date.now() - 30 min`. The CI browser runs in UTC, so before 00:30 UTC the punch falls on the previous day, and `/time-punches` does not count it for today.
 - **Rule:** When an E2E failure is in a spec that the branch does not touch, check the UTC time of the run first. If the spec seeds "now minus N minutes" and the run is near UTC midnight, rerun the failed jobs after the window. A database reset does not help in CI, because each E2E job runs `supabase start` on a new runner. Make the spec seed a time that is safe on the same day, in a separate PR.
+
+## Category: Development Workflow (editable week templates)
+
+### [2026-10-06] An edit-in-place draft needs a newer-than check against the server row (PR #842)
+- **Mistake:** The tab copied the server template into the draft on every list refetch. A refetch that started before a save finished returned the old row and put the old shifts back into the draft.
+- **Correction:** Copy a server row into the draft only when its `updated_at` is newer than the baseline (`isNewer`). Apply a save result only to the draft it started from (a `draftGeneration` ref). Block a second save while one runs (a `saveInFlight` ref).
+- **Rule:** For an editor with an explicit Save, keep a draft and a baseline. Never let a refetch overwrite the draft without a version compare.
+
+### [2026-10-06] Send the raw `updated_at` string for a compare-and-set (PR #842)
+- **Mistake:** A JS `Date` holds milliseconds. Postgres `timestamptz` holds microseconds. A round trip through `Date` makes the compare fail every time.
+- **Rule:** Keep `updated_at` as the string from the server. Send that string back to the RPC unchanged.
+
+### [2026-10-06] Radix Dialog returns focus only to its DialogTrigger (PR #842)
+- **Mistake:** A dialog opened from a grid cell with `open` state had no trigger. On close, focus went to `body`. QA found it (WT-QA-1).
+- **Correction:** Keep the opener element in a ref. In `onCloseAutoFocus`, call `preventDefault()` and focus the opener if it `isConnected`.
+- **Rule:** Every controlled dialog with no DialogTrigger needs an explicit focus target on close. Add a unit test for it.
+
+### [2026-10-06] After a delete, remove the row from the cache before the refetch (PR #842)
+- **Mistake:** After the user deleted the last template, the selection effect read the old list and selected the deleted template again. Codex and CodeRabbit both found it.
+- **Correction:** In `onSuccess`, call `setQueryData` to filter out the row, then invalidate.
+- **Rule:** When a selection effect reads a list, update the cache at once after a delete. Do not wait for the refetch.
+
+### [2026-10-06] Select a tab by name in E2E, not by position (PR #842)
+- **Mistake:** `planner-drag-mobile.spec.ts` clicked the last tab. The new "Week Templates" tab became the last tab, and E2E shard 2 failed.
+- **Rule:** Use `page.getByRole('tab', { name: '...' })`. When you add a tab, grep the E2E specs for `.last()` and `.nth(` on tab locators.
+
+### [2026-10-06] SonarCloud reliability rules for JSX (PR #842)
+- **Mistake:** SonarCloud gave a C reliability grade for 7 items: `{' '}` spacing, a floating promise, `role="status"` on a div, a radio group with no fieldset, `<p>` inside `<label>`, and `returnValue` in `beforeunload`.
+- **Correction:** Use a span with a margin, `void` on the promise, `<output>`, `<fieldset>` with `<legend>`, `<span className="block">` inside a label, and `preventDefault()` only.
+- **Rule:** Write new JSX in these forms from the start.
+
+### [2026-10-06] Cloud session: resolve review threads through the REST ccr route (PR #842)
+- **Mistake:** `dev-tools/pr-triage.js` failed to resolve threads, because the cloud proxy blocks GitHub GraphQL.
+- **Correction:** Post the reply with `gh api repos/{o}/{r}/pulls/{n}/comments/{id}/replies`. Resolve with `POST /repos/{o}/{r}/pulls/{n}/ccr/comments/{id}/resolve`.
+- **Rule:** In a cloud session, use REST for every review-thread action.
+
+### [2026-10-06] CodeRabbit does not review again by itself after its rate limit (PR #842)
+- **Mistake:** I waited for CodeRabbit after the "Review limit reached" notice. No review came after the limit reset.
+- **Rule:** After the reset time, post `@coderabbitai review` on the PR.

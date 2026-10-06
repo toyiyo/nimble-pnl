@@ -337,6 +337,31 @@ export interface SchedulePlanTemplate {
   updated_at: string;
 }
 
+/** A template shift in the Week Templates editor. `key` is local only. */
+export interface DraftShift extends TemplateShiftSnapshot {
+  key: string;
+}
+
+/** The fields the shift dialog edits. Times may be HH:MM or HH:MM:SS. */
+export type DraftShiftInput = Pick<
+  TemplateShiftSnapshot,
+  'start_time' | 'end_time' | 'break_duration' | 'position' | 'notes'
+>;
+
+export interface TemplateDraft {
+  /** null until the first save. */
+  id: string | null;
+  name: string;
+  /** Raw `updated_at` string from PostgREST. Never round-trip it through Date (microseconds). */
+  updatedAt: string | null;
+  /** Row order. Includes rows with no shifts; those rows are not saved. */
+  rowEmployeeIds: string[];
+  shifts: DraftShift[];
+}
+
+/** How apply treats shifts that already exist in the target week. */
+export type TemplateMergeMode = 'replace' | 'merge';
+
 export interface ApplyTemplateResult {
   inserted_count: number;
   skipped_count: number;

@@ -1,5 +1,5 @@
 -- Verifies the covering index backing get_recipe_sales_stats
--- (supabase/migrations/20260727120000_get_recipe_sales_stats.sql) and
+-- (supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql) and
 -- get_unmapped_sale_item_names
 -- (supabase/migrations/20260728120000_get_unmapped_sale_item_names.sql).
 -- Design: docs/superpowers/specs/2026-09-26-recipe-sales-stats-timeout-design.md
@@ -78,9 +78,12 @@ SELECT hasnt_index(
 
 -- The plan check runs EXPLAIN on the function body, not on the call: the
 -- function has `SET search_path`, so Postgres does not inline it and EXPLAIN on
--- the call shows only a Function Scan. The query is a copy of the body at
--- 20260727120000_get_recipe_sales_stats.sql:34-43. When a migration changes
--- that body, change this copy too. Seq and bitmap scans are off so the
+-- the call shows only a Function Scan. The query is a copy of the body in
+-- 20261006120000_get_recipe_sales_stats_definer.sql. When a migration changes
+-- that body, change this copy too. This test runs as postgres, so
+-- user_has_capability returns false at run time. EXPLAIN does not run the
+-- query, and the planner puts the check in a One-Time Filter above the scan,
+-- so the plan still shows the index. Seq and bitmap scans are off so the
 -- result does not depend on the table statistics of the test database. It
 -- asserts the index name and not "Index Only Scan": this transaction cannot
 -- VACUUM, so the visibility map is empty and the planner may pick an Index Scan.
@@ -97,13 +100,14 @@ BEGIN
     EXPLAIN (COSTS OFF)
     SELECT us.item_name,
            SUM(COALESCE(us.total_price, 0)) / NULLIF(SUM(COALESCE(NULLIF(us.quantity, 0), 1)), 0)
-    FROM unified_sales us
-    JOIN recipes r
+    FROM public.unified_sales us
+    JOIN public.recipes r
       ON r.restaurant_id = us.restaurant_id
      AND r.pos_item_name = us.item_name
      AND r.is_active
     WHERE us.restaurant_id = '00000000-0000-0000-0000-000000000000'::uuid
       AND us.unit_price IS NOT NULL
+      AND public.user_has_capability('00000000-0000-0000-0000-000000000000'::uuid, 'view:recipes')
     GROUP BY us.item_name
   LOOP
     INSERT INTO recipe_sales_stats_plan (line) VALUES (v_line);

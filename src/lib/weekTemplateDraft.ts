@@ -199,16 +199,20 @@ export function employeeHours(draft: TemplateDraft): Map<string, number> {
   return out;
 }
 
+function emptyWeekCells(): DraftShift[][] {
+  return Array.from({ length: 7 }, () => []);
+}
+
 /** Map<employeeId, 7 cells>. Each cell holds that day's shifts sorted by start. */
 export function buildGrid(draft: TemplateDraft): Map<string, DraftShift[][]> {
   const grid = new Map<string, DraftShift[][]>();
   for (const id of draft.rowEmployeeIds) {
-    grid.set(id, Array.from({ length: 7 }, () => []));
+    grid.set(id, emptyWeekCells());
   }
   for (const s of draft.shifts) {
     let cells = grid.get(s.employee_id);
     if (!cells) {
-      cells = Array.from({ length: 7 }, () => []);
+      cells = emptyWeekCells();
       grid.set(s.employee_id, cells);
     }
     cells[s.day_offset].push(s);

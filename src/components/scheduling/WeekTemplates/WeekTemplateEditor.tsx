@@ -40,7 +40,6 @@ import {
   removeShift,
   updateShift,
 } from '@/lib/weekTemplateDraft';
-import { cn } from '@/lib/utils';
 
 const DEFAULT_INPUT: Omit<DraftShiftInput, 'position'> = {
   start_time: '09:00:00',
@@ -110,17 +109,18 @@ const EditorRow = memo(
             <div className="flex flex-col gap-1">
               {cell.map((shift) => {
                 const overnight = shift.end_time <= shift.start_time;
-                const label = `${formatShortTime(shift.start_time)} to ${formatShortTime(shift.end_time)}`;
+                const start = formatShortTime(shift.start_time);
+                const end = formatShortTime(shift.end_time);
                 return (
                   <button
                     key={shift.key}
                     type="button"
                     onClick={() => onEdit(shift)}
-                    aria-label={`Edit shift: ${row.name}, ${DAY_NAMES[day]}, ${label}`}
+                    aria-label={`Edit shift: ${row.name}, ${DAY_NAMES[day]}, ${start} to ${end}`}
                     className="text-left rounded-lg border border-border/40 bg-muted/30 hover:border-border px-2 py-1.5 transition-colors"
                   >
                     <span className="block text-[12px] font-medium text-foreground tabular-nums whitespace-nowrap">
-                      {formatShortTime(shift.start_time)}–{formatShortTime(shift.end_time)}
+                      {start}–{end}
                       {overnight && <span aria-hidden="true"> →</span>}
                     </span>
                     <span className="block text-[11px] text-muted-foreground truncate">{shift.position}</span>
@@ -546,7 +546,7 @@ export function WeekTemplateEditor({
           <AlertDialogFooter>
             <AlertDialogCancel className="h-9 rounded-lg text-[13px]">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className={cn('h-9 rounded-lg text-[13px] bg-destructive text-destructive-foreground hover:bg-destructive/90')}
+              className="h-9 rounded-lg text-[13px] bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (pendingRemoveId) onDraftChange(removeEmployeeRow(draft, pendingRemoveId));
                 setPendingRemoveId(null);

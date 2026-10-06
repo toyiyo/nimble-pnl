@@ -29,8 +29,7 @@ interface ApplyWeekTemplateDialogProps {
 }
 
 function describeResult(r: ApplyTemplateResult): string {
-  const parts: string[] = [];
-  parts.push(`${r.inserted_count} ${r.inserted_count === 1 ? 'shift' : 'shifts'} created`);
+  const parts = [`${r.inserted_count} ${r.inserted_count === 1 ? 'shift' : 'shifts'} created`];
   if (r.deleted_count > 0) parts.push(`${r.deleted_count} replaced`);
   if (r.skipped_count > 0) parts.push(`${r.skipped_count} skipped`);
   return `${parts.join(', ')}.`;

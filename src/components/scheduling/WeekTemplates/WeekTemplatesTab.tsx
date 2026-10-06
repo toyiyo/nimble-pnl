@@ -14,15 +14,25 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useEmployees } from '@/hooks/useEmployees';
-import { MAX_SCHEDULE_PLAN_TEMPLATES, useSchedulePlanTemplates } from '@/hooks/useSchedulePlanTemplates';
+import {
+  MAX_SCHEDULE_PLAN_TEMPLATES,
+  type SavedTemplateRow,
+  useSchedulePlanTemplates,
+} from '@/hooks/useSchedulePlanTemplates';
 
-import type { SchedulePlanTemplate, TemplateDraft } from '@/types/scheduling';
+import type { SchedulePlanTemplate, TemplateDraft, TemplateShiftSnapshot } from '@/types/scheduling';
 
 import { ApplyWeekTemplateDialog } from '@/components/scheduling/WeekTemplates/ApplyWeekTemplateDialog';
 import { WeekTemplateEditor } from '@/components/scheduling/WeekTemplates/WeekTemplateEditor';
 import { WeekTemplateList } from '@/components/scheduling/WeekTemplates/WeekTemplateList';
 import type { TemplateMergeMode } from '@/components/scheduling/TemplateApplyFields';
-import { draftFromTemplate, emptyDraft, isDraftDirty, toSnapshot } from '@/lib/weekTemplateDraft';
+import {
+  DEFAULT_TEMPLATE_NAME,
+  draftFromTemplate,
+  emptyDraft,
+  isDraftDirty,
+  toSnapshot,
+} from '@/lib/weekTemplateDraft';
 import { cn } from '@/lib/utils';
 
 interface WeekTemplatesTabProps {
@@ -141,18 +151,15 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
       setMobileView('editor');
     });
 
-  const baselineFromSave = (d: TemplateDraft, id: string, updatedAt: string, name: string): SchedulePlanTemplate => {
-    const shifts = toSnapshot(d, nameById);
-    return {
-      id,
-      restaurant_id: restaurantId,
-      name,
-      shifts,
-      shift_count: shifts.length,
-      created_at: baseline?.created_at ?? updatedAt,
-      updated_at: updatedAt,
-    };
-  };
+  const toBaseline = (saved: SavedTemplateRow, shifts: TemplateShiftSnapshot[]): SchedulePlanTemplate => ({
+    id: saved.id,
+    restaurant_id: restaurantId,
+    name: saved.name,
+    shifts,
+    shift_count: shifts.length,
+    created_at: baseline?.created_at ?? saved.updated_at,
+    updated_at: saved.updated_at,
+  });
 
   const handleSave = async () => {
     if (!draft) return;
@@ -163,9 +170,8 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
         draft.id && draft.updatedAt
           ? await updateTemplate.mutateAsync({ id: draft.id, name, shifts, expectedUpdatedAt: draft.updatedAt })
           : await createTemplate.mutateAsync({ name, shifts });
-      const next = baselineFromSave({ ...draft, name: saved.name }, saved.id, saved.updated_at, saved.name);
       setSelectedId(saved.id);
-      setBaseline(next);
+      setBaseline(toBaseline(saved, shifts));
       setDraft({ ...draft, id: saved.id, name: saved.name, updatedAt: saved.updated_at });
     } catch {
       // The hook shows the error toast. Keep the draft.
@@ -189,8 +195,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
     const shifts = toSnapshot(draft, nameById);
     try {
       const saved = await createTemplate.mutateAsync({ name, shifts });
-      const copy = baselineFromSave(draft, saved.id, saved.updated_at, saved.name);
-      loadTemplate(copy);
+      loadTemplate(toBaseline(saved, shifts));
     } catch {
       // Toast from the hook.
     }
@@ -223,13 +228,44 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
 
   const showEditor = !!draft;
 
+  let editorPane: React.ReactNode;
+  if (isLoading) {
+    editorPane = <Skeleton className="h-80 w-full rounded-xl" />;
+  } else if (draft) {
+    editorPane = (
+      <WeekTemplateEditor
+        draft={draft}
+        onDraftChange={setDraft}
+        employees={employees}
+        employeesLoading={employeesLoading}
+        employeesError={!!employeesError}
+        onRetryEmployees={retryEmployees}
+        isDirty={isDirty}
+        isSaving={createTemplate.isPending || updateTemplate.isPending}
+        changedElsewhere={changedElsewhere}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+        onApply={() => setApplyOpen(true)}
+        onDuplicate={handleDuplicate}
+        onDelete={() => setConfirmDelete(true)}
+        onBack={() => setMobileView('list')}
+      />
+    );
+  } else {
+    editorPane = (
+      <div className="hidden lg:flex h-80 items-center justify-center rounded-xl border border-dashed border-border/60 text-[13px] text-muted-foreground">
+        Select a template, or create a new one.
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)] items-start">
       <div className={cn(mobileView === 'editor' && showEditor && 'hidden lg:block')}>
         <WeekTemplateList
           templates={templates}
           selectedId={selectedId}
-          newDraftName={selectedId === 'new' && draft ? draft.name || 'Untitled template' : null}
+          newDraftName={selectedId === 'new' && draft ? draft.name || DEFAULT_TEMPLATE_NAME : null}
           isLoading={isLoading}
           hasError={!!error}
           onRetry={retryTemplates}
@@ -240,31 +276,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
       </div>
 
       <div className={cn('min-w-0', mobileView === 'list' && 'hidden lg:block')}>
-        {isLoading ? (
-          <Skeleton className="h-80 w-full rounded-xl" />
-        ) : showEditor ? (
-          <WeekTemplateEditor
-            draft={draft}
-            onDraftChange={setDraft}
-            employees={employees}
-            employeesLoading={employeesLoading}
-            employeesError={!!employeesError}
-            onRetryEmployees={retryEmployees}
-            isDirty={isDirty}
-            isSaving={createTemplate.isPending || updateTemplate.isPending}
-            changedElsewhere={changedElsewhere}
-            onSave={handleSave}
-            onDiscard={handleDiscard}
-            onApply={() => setApplyOpen(true)}
-            onDuplicate={handleDuplicate}
-            onDelete={() => setConfirmDelete(true)}
-            onBack={() => setMobileView('list')}
-          />
-        ) : (
-          <div className="hidden lg:flex h-80 items-center justify-center rounded-xl border border-dashed border-border/60 text-[13px] text-muted-foreground">
-            Select a template, or create a new one.
-          </div>
-        )}
+        {editorPane}
       </div>
 
       {baseline && (

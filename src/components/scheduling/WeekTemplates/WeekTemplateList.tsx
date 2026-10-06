@@ -21,6 +21,13 @@ interface WeekTemplateListProps {
   maxTemplates: number;
 }
 
+function itemClass(selected: boolean): string {
+  return cn(
+    'w-full text-left px-3 py-2.5 rounded-lg border transition-colors',
+    selected ? 'bg-muted/50 border-border' : 'border-transparent hover:border-border/40',
+  );
+}
+
 function totalHours(t: SchedulePlanTemplate): number {
   return t.shifts.reduce((sum, s) => sum + shiftHours(s), 0);
 }
@@ -76,10 +83,7 @@ export function WeekTemplateList({
             <button
               type="button"
               aria-current={selectedId === 'new' ? 'true' : undefined}
-              className={cn(
-                'w-full text-left px-3 py-2.5 rounded-lg border transition-colors',
-                selectedId === 'new' ? 'bg-muted/50 border-border' : 'border-transparent hover:border-border/40',
-              )}
+              className={itemClass(selectedId === 'new')}
               onClick={() => onSelect('new')}
             >
               <span className="block text-[14px] font-medium text-foreground truncate">{newDraftName}</span>
@@ -92,10 +96,7 @@ export function WeekTemplateList({
             <button
               type="button"
               aria-current={selectedId === t.id ? 'true' : undefined}
-              className={cn(
-                'w-full text-left px-3 py-2.5 rounded-lg border transition-colors',
-                selectedId === t.id ? 'bg-muted/50 border-border' : 'border-transparent hover:border-border/40',
-              )}
+              className={itemClass(selectedId === t.id)}
               onClick={() => onSelect(t.id)}
             >
               <span className="block text-[14px] font-medium text-foreground truncate">{t.name}</span>

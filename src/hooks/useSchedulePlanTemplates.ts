@@ -72,6 +72,17 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     },
   });
 
+  // createTemplate and updateTemplate share the same result handling.
+  const draftSaveCallbacks = {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      toast({ title: 'Template saved' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Failed to save template', description: error.message, variant: 'destructive' });
+    },
+  };
+
   const createTemplate = useMutation({
     mutationFn: async ({ name, shifts }: { name: string; shifts: TemplateShiftSnapshot[] }): Promise<SavedTemplateRow> => {
       if (!restaurantId) throw new Error('No restaurant selected');
@@ -86,13 +97,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       if (error) throw error;
       return data as SavedTemplateRow;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
-      toast({ title: 'Template saved' });
-    },
-    onError: (error: Error) => {
-      toast({ title: 'Failed to save template', description: error.message, variant: 'destructive' });
-    },
+    ...draftSaveCallbacks,
   });
 
   const updateTemplate = useMutation({
@@ -117,13 +122,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       if (error) throw error;
       return data as SavedTemplateRow;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
-      toast({ title: 'Template saved' });
-    },
-    onError: (error: Error) => {
-      toast({ title: 'Failed to save template', description: error.message, variant: 'destructive' });
-    },
+    ...draftSaveCallbacks,
   });
 
   const applyTemplate = useMutation({

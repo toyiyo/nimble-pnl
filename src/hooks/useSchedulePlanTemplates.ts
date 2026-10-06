@@ -168,15 +168,17 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     mutationFn: async (templateId: string) => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.rpc as any)('delete_schedule_plan_template', {
+      const { error } = await supabase.rpc('delete_schedule_plan_template', {
         p_restaurant_id: restaurantId,
         p_template_id: templateId,
       });
 
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, templateId) => {
+      // Drop the row from the cache now. Until the refetch returns, a stale
+      // copy could otherwise be selected again by the Week Templates tab.
+      queryClient.setQueryData<SchedulePlanTemplate[]>(queryKey, (old) => old?.filter((t) => t.id !== templateId));
       queryClient.invalidateQueries({ queryKey });
       toast({ title: 'Template deleted' });
     },

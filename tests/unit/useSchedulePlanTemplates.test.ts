@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   select: vi.fn(),
   toast: vi.fn(),
+  /** When true, the list query never resolves (a refetch in flight). */
+  hangList: false,
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -18,7 +20,9 @@ vi.mock('@/integrations/supabase/client', () => ({
       select: (cols: string) => {
         mocks.select(cols);
         return {
-          eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
+          eq: () => ({
+            order: () => (mocks.hangList ? new Promise(() => {}) : Promise.resolve({ data: [], error: null })),
+          }),
         };
       },
     })),
@@ -51,6 +55,7 @@ const shifts: TemplateShiftSnapshot[] = [
 describe('useSchedulePlanTemplates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.hangList = false;
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
     });
@@ -136,5 +141,24 @@ describe('useSchedulePlanTemplates', () => {
         variant: 'destructive',
       }),
     );
+  });
+
+  it('deleteTemplate removes the row from the cache at once, so no stale row can be selected again', async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+    mocks.hangList = true; // the refetch after the delete stays in flight
+    queryClient.setQueryData(['schedule-plan-templates', 'rest-1'], [{ id: 't-1' }, { id: 't-2' }]);
+    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1'), { wrapper });
+
+    await act(async () => {
+      await result.current.deleteTemplate.mutateAsync('t-1');
+    });
+
+    expect(mocks.rpc).toHaveBeenCalledWith('delete_schedule_plan_template', {
+      p_restaurant_id: 'rest-1',
+      p_template_id: 't-1',
+    });
+    const cached = queryClient.getQueryData<{ id: string }[]>(['schedule-plan-templates', 'rest-1']) ?? [];
+    expect(cached.map((t) => t.id)).toEqual(['t-2']);
+    mocks.hangList = false;
   });
 });

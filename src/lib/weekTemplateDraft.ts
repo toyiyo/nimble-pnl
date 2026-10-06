@@ -74,7 +74,8 @@ export function draftFromTemplate(template: SchedulePlanTemplate): TemplateDraft
   const shifts = template.shifts.filter((s) => isValidDayOffset(s.day_offset));
   const names = new Map<string, string>();
   for (const s of shifts) {
-    if (!names.has(s.employee_id)) names.set(s.employee_id, s.employee_name);
+    // Rows saved before the server validator can hold a non-string name.
+    if (!names.has(s.employee_id)) names.set(s.employee_id, typeof s.employee_name === 'string' ? s.employee_name : '');
   }
   const rowEmployeeIds = [...names.entries()]
     .sort((a, b) => a[1].localeCompare(b[1]))

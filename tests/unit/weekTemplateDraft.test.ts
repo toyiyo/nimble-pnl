@@ -283,3 +283,13 @@ describe('templates with out-of-range day offsets', () => {
     expect(totalShiftHours([snap(), snap({ break_duration: 0 })])).toBe(15.5);
   });
 });
+
+describe('draftFromTemplate with a non-string employee_name (old rows)', () => {
+  it('does not throw when it sorts the rows', () => {
+    const bad = [
+      snap({ employee_id: 'a', employee_name: null as unknown as string }),
+      snap({ employee_id: 'b', employee_name: 42 as unknown as string, day_offset: 1 }),
+    ];
+    expect(() => draftFromTemplate(template(bad))).not.toThrow();
+  });
+});

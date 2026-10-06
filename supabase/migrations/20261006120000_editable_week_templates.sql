@@ -52,8 +52,12 @@ BEGIN
       RAISE EXCEPTION 'Invalid template shift: employee_id is required';
     END IF;
 
-    IF jsonb_typeof(v_elem->'employee_name') = 'string' AND length(v_elem->>'employee_name') > 200 THEN
-      RAISE EXCEPTION 'Invalid template shift: employee_name must be 200 characters or fewer';
+    -- The editor sorts rows by employee_name, so it must be real text.
+    IF jsonb_typeof(v_elem->'employee_name') IS DISTINCT FROM 'string' THEN
+      RAISE EXCEPTION 'Invalid template shift: employee_name must be text of 1 to 200 characters';
+    END IF;
+    IF length(btrim(v_elem->>'employee_name')) = 0 OR length(v_elem->>'employee_name') > 200 THEN
+      RAISE EXCEPTION 'Invalid template shift: employee_name must be text of 1 to 200 characters';
     END IF;
 
     -- Nested checks: SQL does not promise left-to-right OR, so the type

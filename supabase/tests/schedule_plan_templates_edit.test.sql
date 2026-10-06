@@ -5,7 +5,7 @@
 
 BEGIN;
 
-SELECT plan(34);
+SELECT plan(36);
 
 SET LOCAL role TO postgres;
 ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
@@ -383,6 +383,24 @@ SELECT throws_ok(
       '2026-06-15T00:00:00+00:00'::timestamptz, '2026-06-21T23:59:59+00:00'::timestamptz, NULL, 'merge')$$,
   'P0001', 'Invalid shifts: expected an array',
   'apply rejects a NULL shift array'
+);
+
+-- 35
+SELECT throws_ok(
+  $$SELECT update_schedule_plan_template('dddddddd-0000-0000-0000-000000000001'::uuid,
+      (SELECT id FROM _t), 'No name',
+      jsonb_build_array(pg_temp.snap('dddddddd-0000-0000-0000-000000000020'::uuid, 0) - 'employee_name'), now())$$,
+  'P0001', 'Invalid template shift: employee_name must be text of 1 to 200 characters',
+  'validator rejects a missing employee_name'
+);
+
+-- 36
+SELECT throws_ok(
+  $$SELECT update_schedule_plan_template('dddddddd-0000-0000-0000-000000000001'::uuid,
+      (SELECT id FROM _t), 'Numeric name',
+      jsonb_build_array(pg_temp.snap('dddddddd-0000-0000-0000-000000000020'::uuid, 0) || '{"employee_name": 42}'::jsonb), now())$$,
+  'P0001', 'Invalid template shift: employee_name must be text of 1 to 200 characters',
+  'validator rejects a non-string employee_name'
 );
 
 SELECT * FROM finish();

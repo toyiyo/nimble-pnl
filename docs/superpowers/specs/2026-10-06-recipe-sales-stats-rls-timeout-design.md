@@ -17,8 +17,9 @@ The failing tenant is `7c0c76e3-e770-401b-a2a9-c1edd407efed`. It has 68,276
 The RPC is one of four parallel loads in `fetchRecipes`
 (`src/hooks/useRecipes.tsx:516-549`). `fetchAllRows` throws on an error
 (`supabase/functions/_shared/labor/fetchAllRows.ts:51`, re-exported by
-`src/utils/fetchAllRows.ts:3`). Thus one failed RPC aborts the full recipe
-load (`src/hooks/useRecipes.tsx:514-516`). The
+`src/utils/fetchAllRows.ts:3`). The four loads run in one `Promise.all`
+(`src/hooks/useRecipes.tsx:516`). Thus one failed RPC rejects the
+`Promise.all` and aborts the full recipe load. The
 user sees the error toast (`src/hooks/useRecipes.tsx:660-667`) and no recipes.
 
 ## 2. Cause (production evidence)
@@ -116,13 +117,15 @@ The body is the same as the latest body
 (`supabase/migrations/20260727120000_get_recipe_sales_stats.sql:34-43`). Only
 one migration defines this function (`grep -rl` result). The changes are:
 
-1. `SECURITY DEFINER`. The owner is `postgres`, which has `rolbypassrls`. The
-   per-row RLS subplan goes away.
+1. `SECURITY DEFINER`. The owner is `postgres`, which has `rolbypassrls`
+   (production check, Section 2.3). The per-row RLS subplan goes away.
+   `rolbypassrls` is a role attribute, so it also applies when a table has
+   `FORCE ROW LEVEL SECURITY` (lesson `memory/lessons.md:2599`).
 2. `SET search_path = ''`, and every name has the `public.` schema. This
-   follows the lesson in `memory/lessons.md:1300-1311`.
+   follows the lesson in `memory/lessons.md:1317`.
 3. An explicit tenant check: `public.user_has_capability(p_restaurant_id,
    'view:recipes')`. A definer function without this check would leak sales
-   data across tenants (`memory/lessons.md:1932-1934`).
+   data across tenants (`memory/lessons.md:1945`, `:2923`).
 4. `REVOKE ... FROM PUBLIC, anon`. Postgres grants `EXECUTE` to `PUBLIC` by
    default on a new function.
 
@@ -159,7 +162,7 @@ rows. The reasons:
 
 ### 3.4 Access set: same as today
 
-The lesson in `memory/lessons.md` (2026-07-22) says: a guard must match the
+The lesson in `memory/lessons.md:1407` says: a guard must match the
 deployed policy. Today, a row comes back only if two policies pass:
 
 - `unified_sales`: the caller has a `user_restaurants` row for the restaurant.
@@ -174,8 +177,10 @@ set. No role gains access. No role loses access.
 
 - The only runtime caller is `src/hooks/useRecipes.tsx:546-549`. It uses the
   authenticated client, so `auth.uid()` is set. No edge function and no
-  service-role caller exists (`grep` of `supabase/functions`). The lesson in
-  `memory/lessons.md:903-905` does not apply.
+  service-role caller exists: `grep -rl get_recipe_sales_stats
+  supabase/functions` returns nothing. The full `grep` list is
+  `src/hooks/useRecipes.tsx`, two generated type files, two pgTAP files, one
+  unit test, and one E2E spec (lesson `memory/lessons.md:3387`).
 - No client code changes. The signature and the return type do not change, so
   `src/integrations/supabase/types.ts` and `src/types/supabase.ts` do not
   change.
@@ -195,13 +200,19 @@ Changes:
 - Test 8: `prosecdef` is `true`.
 - New test: a member of Restaurant A with the role `staff` gets zero rows.
   `staff` has no `view:recipes`. This test fails if the check uses membership
-  only (lesson `memory/lessons.md:865-868`: use a subject that only the clause
+  only (lesson `memory/lessons.md:873`: use a subject that only the clause
   under test controls).
 - New test: `proconfig` contains `search_path=""`.
 - New test: `anon` has no `EXECUTE` (`has_function_privilege`).
 - New test: `PUBLIC` has no `EXECUTE` (`aclexplode` on `proacl`).
 - New test: `authenticated` has `EXECUTE`.
-- `plan(11)` becomes `plan(16)`.
+- New test: the function owner has `rolbypassrls`. If a later change moves
+  the owner to a role without it, RLS and the timeout come back (lesson
+  `memory/lessons.md:2599`).
+- `plan(11)` becomes `plan(17)`.
+- Non-vacuity proof (lesson `memory/lessons.md:2100`): delete the capability
+  line from the migration, run `db:reset` and the suite, and check that test
+  7 and the `staff` test fail. Then put the line back.
 
 ### 4.2 pgTAP: `supabase/tests/idx_unified_sales_restaurant_item_name_cover.sql`
 
@@ -236,12 +247,16 @@ index name.
 
 ## 7. Lessons applied
 
+Line numbers refer to `memory/lessons.md` on this branch.
+
 | Lesson | Where |
 |---|---|
-| `memory/lessons.md:1300-1311` pin `search_path`, schema-qualify | 3.1 |
-| `memory/lessons.md:1932-1934` definer needs an explicit tenant check | 3.1, 3.4 |
-| `memory/lessons.md` 2026-07-22 guard set matches the deployed policy | 3.4 |
-| `memory/lessons.md:865-868` RLS test subject | 4.1 |
-| `memory/lessons.md:903-905` grep callers before an `auth.uid()` guard | 3.5 |
-| `memory/lessons.md:896` unique migration prefix | 3.1 |
-| `memory/lessons.md:860-863` run `db:reset` after a migration edit | Plan |
+| `:1317` pin `search_path` on a definer | 3.1 |
+| `:1945`, `:2923` a definer that takes `p_restaurant_id` needs a tenant check | 3.1, 3.4 |
+| `:1407` guard set matches the deployed policy | 3.4 |
+| `:2599` the definer must bypass RLS; pin it with a test | 3.1, 4.1 |
+| `:873` RLS test subject that only the clause under test controls | 4.1 |
+| `:2100` mutate the predicate to prove the tests are not vacuous | 4.1 |
+| `:3387` name every call site | 3.5 |
+| `:904` unique migration prefix | 3.1 |
+| `:868` run `db:reset` after a migration edit | Plan |

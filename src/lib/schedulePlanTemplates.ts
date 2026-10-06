@@ -24,6 +24,8 @@ const INVALID_TIME_MESSAGE = 'This template has an invalid shift time.';
  * (host-local midnight), so `formatLocalDate` reads them correctly. This is
  * the same rule as `copyWeekShifts.ts`.
  */
+
+/** Throw `INVALID_DATE` when `tz` is missing or is not a known IANA zone. */
 function requireValidTz(tz: string | null | undefined): asserts tz is string {
   requireTz(tz);
   if (!isValidTimezone(tz)) {

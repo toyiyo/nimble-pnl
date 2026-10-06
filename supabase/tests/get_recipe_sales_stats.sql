@@ -2,12 +2,18 @@
 -- Design: docs/superpowers/specs/2026-07-27-recipes-page-load-perf-design.md §3.5
 --
 -- Fixture restaurant aa000000-0000-0000-0000-000000000001 ("Recipe Stats Test
--- Restaurant A"), owned by user …a1. A second restaurant
+-- Restaurant A"), owned by user …a1. User …a3 is a `staff` member of
+-- Restaurant A. `staff` has no `view:recipes`. A second restaurant
 -- aa000000-0000-0000-0000-000000000002 ("...Restaurant B") with its own owner
--- …a2 (NOT a member of Restaurant A) exists solely to prove RLS-driven
--- cross-tenant isolation (test 6) — the function takes p_restaurant_id as a
--- plain parameter with no explicit membership check of its own (per design:
--- SECURITY INVOKER, relying entirely on unified_sales/recipes RLS).
+-- …a2 (NOT a member of Restaurant A) exists to prove cross-tenant isolation
+-- (test 7).
+--
+-- The function is SECURITY DEFINER and its owner bypasses RLS
+-- (supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql).
+-- Thus RLS does not isolate tenants here. The explicit check
+-- public.user_has_capability(p_restaurant_id, 'view:recipes') does.
+-- Tests 7 and 12 fail if a person removes that check.
+-- Design: docs/superpowers/specs/2026-10-06-recipe-sales-stats-rls-timeout-design.md
 --
 -- Denominator predicate under test: sum(total_price) / sum(coalesce(nullif(quantity,0),1))
 -- mirrors the TS it replaces (`sale.quantity || 1`) exactly — NULL and 0
@@ -22,7 +28,7 @@
 -- the live-fixture half (quantity = 0, fully constructible) is tested end-to-end
 -- through the RPC (test 3).
 BEGIN;
-SELECT plan(11);
+SELECT plan(17);
 
 -- ============================================================
 -- Setup: two restaurants, two owners, RLS enforced via role switch
@@ -31,7 +37,8 @@ SET LOCAL role TO postgres;
 
 INSERT INTO auth.users (id, email) VALUES
   ('aa000000-0000-0000-0000-0000000000a1'::uuid, 'recipe-stats-owner-a@example.com'),
-  ('aa000000-0000-0000-0000-0000000000a2'::uuid, 'recipe-stats-owner-b@example.com')
+  ('aa000000-0000-0000-0000-0000000000a2'::uuid, 'recipe-stats-owner-b@example.com'),
+  ('aa000000-0000-0000-0000-0000000000a3'::uuid, 'recipe-stats-staff-a@example.com')
 ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 INSERT INTO restaurants (id, name, address, phone) VALUES
@@ -41,7 +48,8 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('aa000000-0000-0000-0000-0000000000a1'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'owner'),
-  ('aa000000-0000-0000-0000-0000000000a2'::uuid, 'aa000000-0000-0000-0000-000000000002'::uuid, 'owner')
+  ('aa000000-0000-0000-0000-0000000000a2'::uuid, 'aa000000-0000-0000-0000-000000000002'::uuid, 'owner'),
+  ('aa000000-0000-0000-0000-0000000000a3'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'staff')
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 -- ============================================================
@@ -165,15 +173,16 @@ SELECT is(
 
 -- ============================================================
 -- Test 7 (f): a caller from another restaurant gets zero rows, even though
--- p_restaurant_id is a valid id with real data. RLS on unified_sales/recipes
--- (not an explicit check in the function body) is what enforces this.
+-- p_restaurant_id is a valid id with real data. The function is SECURITY
+-- DEFINER and bypasses RLS, so the explicit user_has_capability check in the
+-- function body gives this isolation. This test fails without that check.
 -- ============================================================
 SET LOCAL "request.jwt.claims" TO '{"sub": "aa000000-0000-0000-0000-0000000000a2", "role": "authenticated"}';
 
 SELECT is(
   (SELECT COUNT(*)::int FROM get_recipe_sales_stats('aa000000-0000-0000-0000-000000000001'::uuid)),
   0,
-  'A caller with no membership in Restaurant A gets zero rows (RLS-enforced isolation)'
+  'A caller with no membership in Restaurant A gets zero rows (explicit capability check)'
 );
 
 -- ============================================================
@@ -181,8 +190,8 @@ SELECT is(
 -- ============================================================
 SELECT is(
   (SELECT prosecdef FROM pg_proc WHERE proname = 'get_recipe_sales_stats' AND pronamespace = 'public'::regnamespace),
-  false,
-  'get_recipe_sales_stats is SECURITY INVOKER (prosecdef = false)'
+  true,
+  'get_recipe_sales_stats is SECURITY DEFINER (prosecdef = true)'
 );
 
 SELECT is(
@@ -213,6 +222,59 @@ SELECT is(
   (SELECT avg_sale_price FROM get_recipe_sales_stats('aa000000-0000-0000-0000-000000000001'::uuid) WHERE item_name = 'Nachos'),
   0::numeric,
   'an all-NULL total_price group averages to 0, not NULL (matches sale.total_price || 0)'
+);
+
+-- Test 12: a staff member of Restaurant A gets zero rows. The user has a
+-- user_restaurants row, so a membership-only check gives rows. Only the
+-- view:recipes capability stops this user (lesson memory/lessons.md:873).
+SET LOCAL "request.jwt.claims" TO '{"sub": "aa000000-0000-0000-0000-0000000000a3", "role": "authenticated"}';
+
+SELECT is(
+  (SELECT COUNT(*)::int FROM get_recipe_sales_stats('aa000000-0000-0000-0000-000000000001'::uuid)),
+  0,
+  'A staff member of Restaurant A (no view:recipes) gets zero rows'
+);
+
+-- Test 13: search_path is pinned to empty (lesson memory/lessons.md:1317).
+SELECT ok(
+  (SELECT proconfig @> ARRAY['search_path=""']
+   FROM pg_proc WHERE oid = 'public.get_recipe_sales_stats(uuid)'::regprocedure),
+  'get_recipe_sales_stats pins search_path to empty'
+);
+
+-- Test 14: anon cannot execute the function.
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.get_recipe_sales_stats(uuid)', 'EXECUTE'),
+  'anon has no EXECUTE on get_recipe_sales_stats'
+);
+
+-- Test 15: PUBLIC has no EXECUTE grant. A NULL proacl means the default ACL,
+-- and the default gives EXECUTE to PUBLIC. aclexplode(NULL) returns no rows,
+-- so the test also asserts that proacl is not NULL.
+SELECT ok(
+  (SELECT p.proacl IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM aclexplode(p.proacl) a
+        WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
+      )
+   FROM pg_proc p WHERE p.oid = 'public.get_recipe_sales_stats(uuid)'::regprocedure),
+  'PUBLIC has no EXECUTE on get_recipe_sales_stats'
+);
+
+-- Test 16: authenticated can execute the function.
+SELECT ok(
+  has_function_privilege('authenticated', 'public.get_recipe_sales_stats(uuid)', 'EXECUTE'),
+  'authenticated has EXECUTE on get_recipe_sales_stats'
+);
+
+-- Test 17: the owner bypasses RLS. If the owner changes to a role without
+-- rolbypassrls, the per-row RLS subplan and the timeout come back
+-- (lesson memory/lessons.md:2599).
+SELECT ok(
+  (SELECT r.rolbypassrls
+   FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
+   WHERE p.oid = 'public.get_recipe_sales_stats(uuid)'::regprocedure),
+  'the owner of get_recipe_sales_stats has rolbypassrls'
 );
 
 SELECT * FROM finish();

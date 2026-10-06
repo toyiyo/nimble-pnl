@@ -29,6 +29,7 @@ import {
   DAY_LABELS,
   DAY_NAMES,
   MAX_TEMPLATE_NAME_LENGTH,
+  UNKNOWN_EMPLOYEE_NAME,
   addEmployeeRow,
   addShifts,
   buildGrid,
@@ -214,7 +215,7 @@ export function WeekTemplateEditor({
         const e = employeeById.get(id);
         return {
           id,
-          name: e?.name ?? storedNames.get(id) ?? 'Unknown employee',
+          name: e?.name ?? storedNames.get(id) ?? UNKNOWN_EMPLOYEE_NAME,
           position: e?.position ?? '',
           // Only claim "inactive" once the employee list has loaded.
           inactive: !e && !employeesLoading && !employeesError,
@@ -330,12 +331,18 @@ export function WeekTemplateEditor({
             onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
             className="h-9 min-w-0 max-w-[280px] text-[15px] font-semibold bg-transparent border-transparent hover:border-border/40 focus-visible:border-border/40 focus-visible:ring-1 focus-visible:ring-border rounded-lg px-2"
           />
-          {isDirty && (
-            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-warning-strong whitespace-nowrap">
-              <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
-              <span>Unsaved changes</span>
-            </span>
-          )}
+          {/* Keep the live region mounted, so a screen reader announces the text change. */}
+          <output
+            aria-live="polite"
+            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-warning-strong whitespace-nowrap empty:hidden"
+          >
+            {isDirty && (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                <span>Unsaved changes</span>
+              </>
+            )}
+          </output>
         </div>
         <div className="flex items-center gap-2">
           {isDirty && (

@@ -17,6 +17,7 @@ export const NEW_DRAFT_ID = 'new';
 /** Mirrors the server validator. */
 export const MAX_TEMPLATE_NAME_LENGTH = 100;
 export const MAX_BREAK_MINUTES = 480;
+export const UNKNOWN_EMPLOYEE_NAME = 'Unknown employee';
 export const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
@@ -70,12 +71,19 @@ export function isValidDayOffset(day: number): boolean {
   return Number.isInteger(day) && day >= 0 && day <= 6;
 }
 
+function normalizeEmployeeName(name: unknown): string {
+  return typeof name === 'string' && name.trim() !== '' ? name : UNKNOWN_EMPLOYEE_NAME;
+}
+
 export function draftFromTemplate(template: SchedulePlanTemplate): TemplateDraft {
-  const shifts = template.shifts.filter((s) => isValidDayOffset(s.day_offset));
+  // Rows saved before the server validator can hold a null, non-string or blank
+  // name. The validator rejects those names, so replace them here, or Save fails.
+  const shifts = template.shifts
+    .filter((s) => isValidDayOffset(s.day_offset))
+    .map((s) => ({ ...s, employee_name: normalizeEmployeeName(s.employee_name) }));
   const names = new Map<string, string>();
   for (const s of shifts) {
-    // Rows saved before the server validator can hold a non-string name.
-    if (!names.has(s.employee_id)) names.set(s.employee_id, typeof s.employee_name === 'string' ? s.employee_name : '');
+    if (!names.has(s.employee_id)) names.set(s.employee_id, s.employee_name);
   }
   const rowEmployeeIds = [...names.entries()]
     .sort((a, b) => a[1].localeCompare(b[1]))

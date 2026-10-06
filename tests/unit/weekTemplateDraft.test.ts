@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   DEFAULT_TEMPLATE_NAME,
+  UNKNOWN_EMPLOYEE_NAME,
   addEmployeeRow,
   addShifts,
   buildGrid,
@@ -291,5 +292,20 @@ describe('draftFromTemplate with a non-string employee_name (old rows)', () => {
       snap({ employee_id: 'b', employee_name: 42 as unknown as string, day_offset: 1 }),
     ];
     expect(() => draftFromTemplate(template(bad))).not.toThrow();
+  });
+
+  it('replaces a null, non-string or blank name with the fallback name', () => {
+    const bad = [
+      snap({ employee_id: 'a', employee_name: null as unknown as string }),
+      snap({ employee_id: 'b', employee_name: 42 as unknown as string, day_offset: 1 }),
+      snap({ employee_id: 'c', employee_name: '   ', day_offset: 2 }),
+    ];
+    const draft = draftFromTemplate(template(bad));
+    expect(draft.shifts.map((s) => s.employee_name)).toEqual([
+      UNKNOWN_EMPLOYEE_NAME,
+      UNKNOWN_EMPLOYEE_NAME,
+      UNKNOWN_EMPLOYEE_NAME,
+    ]);
+    expect(toSnapshot(draft, new Map()).every((s) => s.employee_name === UNKNOWN_EMPLOYEE_NAME)).toBe(true);
   });
 });

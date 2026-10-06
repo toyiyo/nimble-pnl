@@ -5,7 +5,25 @@ import { useToast } from '@/hooks/use-toast';
 import { buildTemplateSnapshot, buildShiftsFromTemplate } from '@/lib/schedulePlanTemplates';
 import { getWeekEnd } from '@/hooks/useShiftPlanner';
 
-import type { Shift, SchedulePlanTemplate, ApplyTemplateResult } from '@/types/scheduling';
+import type {
+  Shift,
+  SchedulePlanTemplate,
+  ApplyTemplateResult,
+  TemplateShiftSnapshot,
+} from '@/types/scheduling';
+
+/** Mirrors the limit in save_schedule_plan_template. */
+export const MAX_SCHEDULE_PLAN_TEMPLATES = 20;
+
+const TEMPLATE_COLUMNS = 'id, restaurant_id, name, shifts, shift_count, created_at, updated_at';
+
+/** RPC return for save and update. `updated_at` is the raw PostgREST string. */
+export interface SavedTemplateRow {
+  id: string;
+  name: string;
+  shift_count: number;
+  updated_at: string;
+}
 
 export function useSchedulePlanTemplates(restaurantId: string | null) {
   const queryClient = useQueryClient();
@@ -19,7 +37,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       if (!restaurantId) return [];
       const { data, error } = await supabase
         .from('schedule_plan_templates')
-        .select('*')
+        .select(TEMPLATE_COLUMNS)
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false });
 
@@ -48,6 +66,60 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       toast({ title: 'Template saved', description: 'Schedule saved as a reusable template.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Failed to save template', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const createTemplate = useMutation({
+    mutationFn: async ({ name, shifts }: { name: string; shifts: TemplateShiftSnapshot[] }): Promise<SavedTemplateRow> => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)('save_schedule_plan_template', {
+        p_restaurant_id: restaurantId,
+        p_name: name,
+        p_shifts: shifts,
+      });
+
+      if (error) throw error;
+      return data as SavedTemplateRow;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      toast({ title: 'Template saved' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Failed to save template', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateTemplate = useMutation({
+    mutationFn: async ({
+      id, name, shifts, expectedUpdatedAt,
+    }: {
+      id: string; name: string; shifts: TemplateShiftSnapshot[]; expectedUpdatedAt: string;
+    }): Promise<SavedTemplateRow> => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      // expectedUpdatedAt must be the raw string from the server. A JS Date
+      // drops microseconds and the server compare then never matches.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)('update_schedule_plan_template', {
+        p_restaurant_id: restaurantId,
+        p_template_id: id,
+        p_name: name,
+        p_shifts: shifts,
+        p_expected_updated_at: expectedUpdatedAt,
+      });
+
+      if (error) throw error;
+      return data as SavedTemplateRow;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      toast({ title: 'Template saved' });
     },
     onError: (error: Error) => {
       toast({ title: 'Failed to save template', description: error.message, variant: 'destructive' });
@@ -124,6 +196,8 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     isLoading,
     error,
     saveTemplate,
+    createTemplate,
+    updateTemplate,
     applyTemplate,
     deleteTemplate,
   };

@@ -1,0 +1,63 @@
+# Week templates: use the restaurant time zone — plan
+
+Design: `docs/superpowers/specs/2026-10-06-week-template-restaurant-tz-design.md`
+Branch: `claude/wizardly-ramanujan-tv0d16`
+
+## Task 1: `buildTemplateSnapshot` takes `tz`
+
+1. RED: in `tests/unit/schedulePlanTemplates.test.ts`, add a
+   `describe('buildTemplateSnapshot with a restaurant zone')` block.
+   Set `process.env.TZ = 'Asia/Tokyo'` in `beforeAll`. Restore it in
+   `afterAll`. Tests:
+   - `2026-04-01T14:00:00Z`, tz `America/Chicago`, weekStart
+     `new Date(2026, 2, 30)` → `day_offset 2`, `09:00:00`.
+   - Sunday 23:30 Chicago (`2026-04-06T04:30:00Z`) → `day_offset 6`,
+     `23:30:00`.
+   - Missing tz (`''`) → throws `INVALID_DATE`.
+2. Change the existing `buildTemplateSnapshot` tests to pass a tz. Build the
+   fixtures as UTC instants, and pass `'UTC'`, so they do not depend on the
+   host zone.
+3. GREEN: add `tz: string` to `buildTemplateSnapshot`. Use `requireTz`,
+   `formatLocalDateInTz`, `daysBetweenDateStrs`, `formatLocalDate`,
+   `formatLocalTimeInTz`. Delete `computeDayOffset` and the
+   `formatLocalTime` import.
+4. Commit.
+
+## Task 2: `buildShiftsFromTemplate` takes `tz`
+
+1. RED: add tests (host `Asia/Tokyo`, tz `America/Chicago`):
+   - `09:00:00` on `day_offset 0`, Monday `new Date(2026, 3, 6)` →
+     `2026-04-06T14:00:00.000Z`.
+   - Fall-back week, Monday `new Date(2026, 9, 26)`, `09:00–17:00` on
+     offsets 0..6 → days 0..5 start `14:00Z`, day 6 (2026-11-01) starts
+     `15:00Z`; durations 8h.
+   - Spring-forward week, Monday `new Date(2026, 2, 2)`, day 6 `02:30:00` →
+     equals `wallClockToInstant('2026-03-08', '02:30', tz).toISOString()`.
+   - Overnight `22:00–02:00` on day 6 of the fall-back week → end
+     `2026-11-02T08:00:00.000Z`.
+   - `end == start` → 24h later (current behavior).
+   - Seconds kept: `09:00:30` → `2026-04-06T14:00:30.000Z`.
+   - Round trip: snapshot a week, apply to the next week, read back with
+     `formatLocalTimeInTz` → same wall clocks.
+   - Missing tz → throws `INVALID_DATE`.
+2. Change the existing `buildShiftsFromTemplate` tests to pass `'UTC'` and
+   assert ISO strings.
+3. GREEN: add `tz: string`. Use `requireTz`, `addDaysToDateStr`,
+   `formatLocalDate`, `wallClockToInstant`, plus seconds in ms.
+4. Commit.
+
+## Task 3: hook and caller pass the restaurant zone
+
+1. `useSchedulePlanTemplates(restaurantId, tz)` passes `tz` to both helpers.
+2. `CopyWeekDialog` gets a required `timezone: string` prop and passes it to
+   the hook.
+3. `Scheduling.tsx` passes `timezone={restaurantTimezone}`.
+4. Update any test that renders `CopyWeekDialog` or mocks the hook.
+5. Run `npm run typecheck`, `npm run lint`, the unit tests. Commit.
+
+## Task 4: verify in three host zones
+
+1. Run `TZ=America/Chicago`, `TZ=Pacific/Auckland`, `TZ=UTC` for the
+   changed test files (`npm run test:tz` runs the full suite).
+2. File the follow-up task for the host-local `p_target_start` /
+   `p_target_end` week bounds (design "Out of scope").

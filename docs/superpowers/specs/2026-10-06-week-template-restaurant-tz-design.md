@@ -193,7 +193,7 @@ File these as separate tasks:
   format loses this, the same as the shift longer than 24 hours.
 - The 0..6 filter drops out-of-week shifts and does not tell the user. The
   dialog count uses the unfiltered list
-  (`src/components/scheduling/ShiftPlanner/CopyWeekDialog.tsx:102-105`). The
+  (`src/components/scheduling/ShiftPlanner/CopyWeekDialog.tsx:100-103`). The
   `useShifts` fetch fix above removes the cause.
 - `formatLocalTimeInTz` and `formatLocalDateInTz`
   (`src/lib/shiftInterval.ts:207-224`) read host getters off a
@@ -266,7 +266,8 @@ isolation, and the citations. Deleted: the claim about most stored rows.
 - `logic:minor` fall-back short shift, silent 0..6 drop: deferred (above).
 - `ocr:minor` import order and `maintainability:minor` file comment and
   test cast: fixed.
-- `maintainability:minor` move `templateWeekBounds`, `requireValidTz` and
+- `maintainability:minor` move `templateWeekBounds`, `requireValidTz`,
+  `formatWallClock` (next to `toBusinessDay`) and
   the time parser to shared files: deferred. The copy-week window fix is the
   second caller, so that change moves them.
 - `maintainability:minor` `timezone` prop vs `tz` parameter: kept. The

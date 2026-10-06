@@ -58,12 +58,14 @@ function setHook(templates: SchedulePlanTemplate[], overrides: Record<string, un
     templates,
     isLoading: false,
     error: null,
-    createTemplate: mutation(() =>
-      Promise.resolve({ id: 'new-1', name: 'Untitled template', shift_count: 1, updated_at: '2026-10-06T10:00:00.5+00:00' }),
-    ),
+    // The RPCs return the full row.
+    createTemplate: mutation((v) => {
+      const { name, shifts } = v as Pick<SchedulePlanTemplate, 'name' | 'shifts'>;
+      return Promise.resolve({ ...tmpl('new-1', name, '2026-10-06T10:00:00.5+00:00'), shifts, shift_count: shifts.length });
+    }),
     updateTemplate: mutation((v) => {
-      const { id, name } = v as { id: string; name: string };
-      return Promise.resolve({ id, name, shift_count: 1, updated_at: '2026-10-06T11:00:00.654321+00:00' });
+      const { id, name, shifts } = v as Pick<SchedulePlanTemplate, 'id' | 'name' | 'shifts'>;
+      return Promise.resolve({ ...tmpl(id, name, '2026-10-06T11:00:00.654321+00:00'), shifts, shift_count: shifts.length });
     }),
     applyTemplate: mutation(),
     deleteTemplate: mutation(),
@@ -141,6 +143,36 @@ describe('WeekTemplatesTab', () => {
     await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument());
     // The list still says "Lunch" with the old updated_at; the editor keeps the saved name.
     expect(screen.getByLabelText('Template name')).toHaveValue('Lunch v2');
+  });
+
+  it('keeps edits made while a save runs', async () => {
+    let resolveSave: (v: unknown) => void = () => {};
+    setHook([tmpl('t1', 'Lunch')], {
+      updateTemplate: mutation((v) => new Promise((resolve) => {
+        const { id, name, shifts } = v as Pick<SchedulePlanTemplate, 'id' | 'name' | 'shifts'>;
+        resolveSave = () => resolve({ ...tmpl(id, name, '2026-10-06T11:00:00+00:00'), shifts });
+      })),
+    });
+    renderTab();
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Lunch v2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Lunch v3' } });
+    resolveSave(undefined);
+    await waitFor(() => expect(screen.getByLabelText('Template name')).toHaveValue('Lunch v3'));
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('ignores a second Save click while the first save runs', async () => {
+    setHook([tmpl('t1', 'Lunch')], {
+      updateTemplate: mutation(() => new Promise(() => {})),
+    });
+    renderTab();
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Lunch v2' } });
+    const save = screen.getByRole('button', { name: 'Save' });
+    fireEvent.click(save);
+    fireEvent.click(save);
+    const update = (hook.state.updateTemplate as ReturnType<typeof mutation>).mutateAsync;
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
   });
 
   it('creates a new template from a blank draft', async () => {

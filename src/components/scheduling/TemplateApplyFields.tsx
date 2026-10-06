@@ -3,9 +3,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { AlertTriangle } from 'lucide-react';
 
 import { getWeekEnd } from '@/hooks/useShiftPlanner';
+
+import type { TemplateMergeMode } from '@/types/scheduling';
 import { formatWeekRange } from '@/lib/schedulePlanTemplates';
 
-export type TemplateMergeMode = 'replace' | 'merge';
 
 interface TemplateApplyFieldsProps {
   selectedDate: Date | undefined;

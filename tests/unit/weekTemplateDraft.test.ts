@@ -5,16 +5,16 @@ import {
   addEmployeeRow,
   addShifts,
   buildGrid,
-  dayOffsetToJsDay,
   dayTotals,
   draftFromTemplate,
   emptyDraft,
   employeeHours,
   findOverlap,
+  isValidDayOffset,
+  totalShiftHours,
   formatHours,
   formatShortTime,
   isDraftDirty,
-  jsDayToDayOffset,
   normalizeTime,
   removeEmployeeRow,
   removeShift,
@@ -66,15 +66,6 @@ describe('normalizeTime', () => {
   });
   it('keeps HH:MM:SS', () => {
     expect(normalizeTime('22:30:15')).toBe('22:30:15');
-  });
-});
-
-describe('day offset mapping', () => {
-  it('maps Monday-first offsets to JS days (0 = Sunday)', () => {
-    expect([0, 1, 2, 3, 4, 5, 6].map(dayOffsetToJsDay)).toEqual([1, 2, 3, 4, 5, 6, 0]);
-  });
-  it('maps JS days back to offsets', () => {
-    expect([0, 1, 2, 3, 4, 5, 6].map(jsDayToDayOffset)).toEqual([6, 0, 1, 2, 3, 4, 5]);
   });
 });
 
@@ -271,5 +262,24 @@ describe('formatShortTime and formatHours', () => {
     expect(formatHours(7.5)).toBe('7.5h');
     expect(formatHours(8)).toBe('8h');
     expect(formatHours(2 / 3)).toBe('0.7h');
+  });
+});
+
+describe('templates with out-of-range day offsets', () => {
+  it('isValidDayOffset accepts 0-6 only', () => {
+    expect([-1, 0, 6, 7, 1.5].map(isValidDayOffset)).toEqual([false, true, true, false, false]);
+  });
+
+  it('draftFromTemplate ignores offsets outside 0-6, so the grid and totals do not throw', () => {
+    const t = template([snap({ day_offset: -1 }), snap({ day_offset: 7 }), snap({ day_offset: 2 })]);
+    const d = draftFromTemplate(t);
+    expect(d.shifts.map((s) => s.day_offset)).toEqual([2]);
+    expect(() => buildGrid(d)).not.toThrow();
+    expect(dayTotals(d)[2].count).toBe(1);
+    expect(isDraftDirty(d, t)).toBe(false);
+  });
+
+  it('totalShiftHours adds up shift hours', () => {
+    expect(totalShiftHours([snap(), snap({ break_duration: 0 })])).toBe(15.5);
   });
 });

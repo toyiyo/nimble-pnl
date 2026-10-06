@@ -14,9 +14,9 @@ import { CalendarPlus, CheckCircle2 } from 'lucide-react';
 
 import { getMondayOfWeek } from '@/hooks/useShiftPlanner';
 
-import type { ApplyTemplateResult, SchedulePlanTemplate } from '@/types/scheduling';
+import type { ApplyTemplateResult, SchedulePlanTemplate, TemplateMergeMode } from '@/types/scheduling';
 
-import { TemplateApplyFields, type TemplateMergeMode } from '@/components/scheduling/TemplateApplyFields';
+import { TemplateApplyFields } from '@/components/scheduling/TemplateApplyFields';
 import { isPastWeek } from '@/lib/schedulePlanTemplates';
 
 interface ApplyWeekTemplateDialogProps {

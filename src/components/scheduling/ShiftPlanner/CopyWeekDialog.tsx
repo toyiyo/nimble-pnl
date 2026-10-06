@@ -16,10 +16,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSchedulePlanTemplates, MAX_SCHEDULE_PLAN_TEMPLATES } from '@/hooks/useSchedulePlanTemplates';
 import { getMondayOfWeek, getWeekEnd } from '@/hooks/useShiftPlanner';
 
-import type { Shift, SchedulePlanTemplate } from '@/types/scheduling';
+import type { Shift, SchedulePlanTemplate, TemplateMergeMode } from '@/types/scheduling';
 
-import { TemplateApplyFields, type TemplateMergeMode } from '@/components/scheduling/TemplateApplyFields';
-import { formatWeekRange as formatRange, isPastWeek as checkIsPastWeek } from '@/lib/schedulePlanTemplates';
+import { TemplateApplyFields } from '@/components/scheduling/TemplateApplyFields';
+import { formatWeekRange, isPastWeek } from '@/lib/schedulePlanTemplates';
 
 interface CopyWeekDialogProps {
   open: boolean;
@@ -98,7 +98,7 @@ export function CopyWeekDialog({
       targetMonday.getMonth() === sourceWeekStart.getMonth() &&
       targetMonday.getDate() === sourceWeekStart.getDate()
     : false;
-  const isPastWeek = checkIsPastWeek(targetMonday);
+  const isTargetPastWeek = isPastWeek(targetMonday);
 
   // --- Derived values (template tab) ---
   const templateTargetMonday = useMemo(
@@ -106,7 +106,7 @@ export function CopyWeekDialog({
     [templateSelectedDate],
   );
 
-  const isTemplatePastWeek = checkIsPastWeek(templateTargetMonday);
+  const isTemplatePastWeek = isPastWeek(templateTargetMonday);
 
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === selectedTemplateId) ?? null,
@@ -120,7 +120,7 @@ export function CopyWeekDialog({
 
   // Query existing shift count in target week when selection changes
   useEffect(() => {
-    if (!targetMonday || !restaurantId || isSameWeek || isPastWeek) {
+    if (!targetMonday || !restaurantId || isSameWeek || isTargetPastWeek) {
       setTargetShiftCount(null);
       return;
     }
@@ -143,9 +143,9 @@ export function CopyWeekDialog({
     })();
 
     return () => { cancelled = true; };
-  }, [targetMonday, restaurantId, isSameWeek, isPastWeek]);
+  }, [targetMonday, restaurantId, isSameWeek, isTargetPastWeek]);
 
-  const canConfirm = targetMonday && !isSameWeek && !isPastWeek && activeShiftCount > 0;
+  const canConfirm = targetMonday && !isSameWeek && !isTargetPastWeek && activeShiftCount > 0;
 
   const handleConfirm = useCallback(() => {
     if (!targetMonday) return;
@@ -235,7 +235,7 @@ export function CopyWeekDialog({
                 Copy Schedule
               </DialogTitle>
               <p className="text-[13px] text-muted-foreground mt-0.5">
-                {formatRange(sourceWeekStart, sourceWeekEnd)}
+                {formatWeekRange(sourceWeekStart, sourceWeekEnd)}
               </p>
             </div>
           </div>
@@ -366,7 +366,7 @@ export function CopyWeekDialog({
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
                     <span className="text-[13px] text-muted-foreground">Target week</span>
                     <span className="text-[13px] font-medium text-foreground">
-                      {formatRange(targetMonday, targetEnd)}
+                      {formatWeekRange(targetMonday, targetEnd)}
                     </span>
                   </div>
 
@@ -378,7 +378,7 @@ export function CopyWeekDialog({
                   </div>
 
                   {/* Warning: existing shifts will be deleted */}
-                  {!isSameWeek && !isPastWeek && targetShiftCount !== null && targetShiftCount > 0 && (
+                  {!isSameWeek && !isTargetPastWeek && targetShiftCount !== null && targetShiftCount > 0 && (
                     <div className="flex items-start gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
                       <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
                       <p className="text-[12px] text-destructive">
@@ -387,13 +387,13 @@ export function CopyWeekDialog({
                     </div>
                   )}
 
-                  {!isSameWeek && !isPastWeek && (targetShiftCount === null || targetShiftCount === 0) && (
+                  {!isSameWeek && !isTargetPastWeek && (targetShiftCount === null || targetShiftCount === 0) && (
                     <p className="text-[12px] text-muted-foreground">
                       No existing shifts in the target week. Shifts will be created fresh.
                     </p>
                   )}
 
-                  {(isSameWeek || isPastWeek) && (
+                  {(isSameWeek || isTargetPastWeek) && (
                     <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
                       <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
                       <p className="text-[12px] text-destructive">

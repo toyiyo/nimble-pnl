@@ -5,10 +5,12 @@ import { useToast } from '@/hooks/use-toast';
 import { buildTemplateSnapshot, buildShiftsFromTemplate } from '@/lib/schedulePlanTemplates';
 import { getWeekEnd } from '@/hooks/useShiftPlanner';
 
+import type { Json } from '@/integrations/supabase/types';
 import type {
   Shift,
   SchedulePlanTemplate,
   ApplyTemplateResult,
+  TemplateMergeMode,
   TemplateShiftSnapshot,
 } from '@/types/scheduling';
 
@@ -17,13 +19,8 @@ export const MAX_SCHEDULE_PLAN_TEMPLATES = 20;
 
 const TEMPLATE_COLUMNS = 'id, restaurant_id, name, shifts, shift_count, created_at, updated_at';
 
-/** RPC return for save and update. `updated_at` is the raw PostgREST string. */
-export interface SavedTemplateRow {
-  id: string;
-  name: string;
-  shift_count: number;
-  updated_at: string;
-}
+// Interfaces have no index signature, so TypeScript does not accept them as Json.
+const toJson = (shifts: TemplateShiftSnapshot[]) => shifts as unknown as Json;
 
 export function useSchedulePlanTemplates(restaurantId: string | null) {
   const queryClient = useQueryClient();
@@ -31,7 +28,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
 
   const queryKey = ['schedule-plan-templates', restaurantId];
 
-  const { data: templates = [], isLoading, error } = useQuery({
+  const { data: templates = [], isLoading, error, refetch } = useQuery({
     queryKey,
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -84,18 +81,18 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
   };
 
   const createTemplate = useMutation({
-    mutationFn: async ({ name, shifts }: { name: string; shifts: TemplateShiftSnapshot[] }): Promise<SavedTemplateRow> => {
+    mutationFn: async ({ name, shifts }: { name: string; shifts: TemplateShiftSnapshot[] }): Promise<SchedulePlanTemplate> => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('save_schedule_plan_template', {
+      const { data, error } = await supabase.rpc('save_schedule_plan_template', {
         p_restaurant_id: restaurantId,
         p_name: name,
-        p_shifts: shifts,
+        p_shifts: toJson(shifts),
       });
 
       if (error) throw error;
-      return data as SavedTemplateRow;
+      // The RPC returns the full row, the same shape as the SELECT above.
+      return data as unknown as SchedulePlanTemplate;
     },
     ...draftSaveCallbacks,
   });
@@ -105,22 +102,21 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       id, name, shifts, expectedUpdatedAt,
     }: {
       id: string; name: string; shifts: TemplateShiftSnapshot[]; expectedUpdatedAt: string;
-    }): Promise<SavedTemplateRow> => {
+    }): Promise<SchedulePlanTemplate> => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
       // expectedUpdatedAt must be the raw string from the server. A JS Date
       // drops microseconds and the server compare then never matches.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('update_schedule_plan_template', {
+      const { data, error } = await supabase.rpc('update_schedule_plan_template', {
         p_restaurant_id: restaurantId,
         p_template_id: id,
         p_name: name,
-        p_shifts: shifts,
+        p_shifts: toJson(shifts),
         p_expected_updated_at: expectedUpdatedAt,
       });
 
       if (error) throw error;
-      return data as SavedTemplateRow;
+      return data as unknown as SchedulePlanTemplate;
     },
     ...draftSaveCallbacks,
   });
@@ -129,7 +125,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     mutationFn: async ({
       template, targetMonday, mergeMode,
     }: {
-      template: SchedulePlanTemplate; targetMonday: Date; mergeMode: 'replace' | 'merge';
+      template: SchedulePlanTemplate; targetMonday: Date; mergeMode: TemplateMergeMode;
     }): Promise<ApplyTemplateResult> => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
@@ -194,6 +190,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     templates,
     isLoading,
     error,
+    refetch,
     saveTemplate,
     createTemplate,
     updateTemplate,

@@ -28,6 +28,7 @@ import { TemplateShiftDialog } from '@/components/scheduling/WeekTemplates/Templ
 import {
   DAY_LABELS,
   DAY_NAMES,
+  MAX_TEMPLATE_NAME_LENGTH,
   addEmployeeRow,
   addShifts,
   buildGrid,
@@ -38,6 +39,7 @@ import {
   formatShortTime,
   removeEmployeeRow,
   removeShift,
+  totalShiftHours,
   updateShift,
 } from '@/lib/weekTemplateDraft';
 
@@ -86,7 +88,7 @@ const EditorRow = memo(
               <p className="text-[14px] font-medium text-foreground truncate">{row.name}</p>
               <p className="text-[12px] text-muted-foreground truncate">
                 {row.inactive ? (
-                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-warning/10 text-warning-strong">
                     Inactive
                   </span>
                 ) : (
@@ -222,10 +224,12 @@ export function WeekTemplateEditor({
   );
   const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
-  const grid = useMemo(() => buildGrid(draft), [draft]);
-  const totals = useMemo(() => dayTotals(draft), [draft]);
-  const hoursByEmployee = useMemo(() => employeeHours(draft), [draft]);
-  const totalHours = useMemo(() => totals.reduce((sum, t) => sum + t.hours, 0), [totals]);
+  // Keyed on shifts and rows, not the whole draft, so a name keystroke does not rebuild the grid.
+  const { shifts, rowEmployeeIds } = draft;
+  const grid = useMemo(() => buildGrid({ shifts, rowEmployeeIds }), [shifts, rowEmployeeIds]);
+  const totals = useMemo(() => dayTotals({ shifts }), [shifts]);
+  const hoursByEmployee = useMemo(() => employeeHours({ shifts }), [shifts]);
+  const totalHours = useMemo(() => totalShiftHours(shifts), [shifts]);
 
   const availableEmployees = useMemo(
     () => employees.filter((e) => !draft.rowEmployeeIds.includes(e.id)).sort((a, b) => a.name.localeCompare(b.name)),
@@ -317,13 +321,13 @@ export function WeekTemplateEditor({
           <Input
             aria-label="Template name"
             value={draft.name}
-            maxLength={100}
+            maxLength={MAX_TEMPLATE_NAME_LENGTH}
             onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
             className="h-9 min-w-0 max-w-[280px] text-[15px] font-semibold bg-transparent border-transparent hover:border-border/40 focus-visible:border-border/40 focus-visible:ring-1 focus-visible:ring-border rounded-lg px-2"
           />
           {isDirty && (
-            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-warning-strong whitespace-nowrap">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
               Unsaved changes
             </span>
           )}
@@ -395,7 +399,7 @@ export function WeekTemplateEditor({
       {changedElsewhere && (
         <div
           role="status"
-          className="mx-4 mt-3 flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px] text-amber-700 dark:text-amber-400"
+          className="mx-4 mt-3 flex items-start gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20 text-[13px] text-warning-strong"
         >
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           <span>This template changed in another session. Save will fail. Discard to load the new version.</span>
@@ -433,7 +437,7 @@ export function WeekTemplateEditor({
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-[13px] text-muted-foreground">
+                <td colSpan={DAY_LABELS.length + 2} className="px-4 py-10 text-center text-[13px] text-muted-foreground">
                   Add an employee to start the template.
                 </td>
               </tr>
@@ -521,6 +525,7 @@ export function WeekTemplateEditor({
 
       {dialog && dialogRow && (
         <TemplateShiftDialog
+          key={dialog.mode === 'edit' ? dialog.shift.key : `${dialog.employeeId}-${dialog.day}`}
           open
           onOpenChange={(open) => !open && setDialog(null)}
           mode={dialog.mode}

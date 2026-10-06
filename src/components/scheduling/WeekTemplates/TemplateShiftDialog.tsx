@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import {
   Dialog,
@@ -16,7 +16,7 @@ import { Clock } from 'lucide-react';
 
 import type { DraftShiftInput } from '@/types/scheduling';
 
-import { DAY_LABELS, DAY_NAMES } from '@/lib/weekTemplateDraft';
+import { DAY_LABELS, DAY_NAMES, MAX_BREAK_MINUTES } from '@/lib/weekTemplateDraft';
 import { cn } from '@/lib/utils';
 
 const INPUT_CLASS =
@@ -40,6 +40,11 @@ interface TemplateShiftDialogProps {
 
 const toHHMM = (time: string) => time.slice(0, 5);
 
+/**
+ * Add or edit one template shift. The parent mounts one instance per cell or
+ * shift (with a `key`), so the useState initial values below are the reset.
+ */
+
 export function TemplateShiftDialog({
   open,
   onOpenChange,
@@ -58,20 +63,9 @@ export function TemplateShiftDialog({
   const [notes, setNotes] = useState(initial.notes ?? '');
   const [days, setDays] = useState<number[]>([initialDay]);
 
-  // Reset the form each time the dialog opens for a new cell or shift.
-  useEffect(() => {
-    if (!open) return;
-    setStart(toHHMM(initial.start_time));
-    setEnd(toHHMM(initial.end_time));
-    setBreakMinutes(String(initial.break_duration));
-    setPosition(initial.position);
-    setNotes(initial.notes ?? '');
-    setDays([initialDay]);
-  }, [open, initial, initialDay]);
-
   const isEdit = mode === 'edit';
   const breakValue = Number(breakMinutes);
-  const breakValid = breakMinutes !== '' && Number.isInteger(breakValue) && breakValue >= 0 && breakValue <= 480;
+  const breakValid = breakMinutes !== '' && Number.isInteger(breakValue) && breakValue >= 0 && breakValue <= MAX_BREAK_MINUTES;
   const timesPresent = start !== '' && end !== '';
   const sameTimes = timesPresent && start === end;
 
@@ -175,7 +169,7 @@ export function TemplateShiftDialog({
                 type="number"
                 inputMode="numeric"
                 min={0}
-                max={480}
+                max={MAX_BREAK_MINUTES}
                 step={5}
                 value={breakMinutes}
                 onChange={(e) => setBreakMinutes(e.target.value)}

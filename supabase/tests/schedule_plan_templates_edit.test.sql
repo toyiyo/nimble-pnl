@@ -5,7 +5,7 @@
 
 BEGIN;
 
-SELECT plan(30);
+SELECT plan(34);
 
 SET LOCAL role TO postgres;
 ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
@@ -341,6 +341,48 @@ SELECT is(
   (SELECT count(*)::int FROM schedule_plan_templates WHERE id = (SELECT id FROM _t)),
   1,
   'a direct delete from schedule_plan_templates removes nothing'
+);
+
+-- ============================================
+-- review fixes
+-- ============================================
+
+SET LOCAL "request.jwt.claims" TO '{"sub": "dddddddd-0000-0000-0000-000000000010", "role": "authenticated"}';
+
+-- 31
+SELECT throws_ok(
+  $$SELECT update_schedule_plan_template('dddddddd-0000-0000-0000-000000000001'::uuid,
+      (SELECT id FROM _t), 'Extra key',
+      jsonb_build_array(pg_temp.snap('dddddddd-0000-0000-0000-000000000020'::uuid, 0) || '{"payload": "x"}'::jsonb), now())$$,
+  'P0001', 'Invalid template shift: unknown field',
+  'validator rejects unknown fields'
+);
+
+-- 32
+SELECT throws_ok(
+  $$SELECT update_schedule_plan_template('dddddddd-0000-0000-0000-000000000001'::uuid,
+      (SELECT id FROM _t), 'Bad uuid',
+      jsonb_build_array(pg_temp.snap('dddddddd-0000-0000-0000-000000000020'::uuid, 0) || '{"employee_id": "not-a-uuid"}'::jsonb), now())$$,
+  'P0001', 'Invalid template shift: employee_id is required',
+  'validator rejects a malformed employee_id'
+);
+
+-- 33: update returns the full row (same shape as a SELECT)
+SELECT ok(
+  (SELECT r ?& ARRAY['id', 'restaurant_id', 'name', 'shifts', 'shift_count', 'created_at', 'updated_at']
+   FROM (SELECT update_schedule_plan_template('dddddddd-0000-0000-0000-000000000001'::uuid,
+           (SELECT id FROM _t), 'Full row',
+           jsonb_build_array(pg_temp.snap('dddddddd-0000-0000-0000-000000000020'::uuid, 0)),
+           (SELECT updated_at FROM schedule_plan_templates WHERE id = (SELECT id FROM _t))) AS r) q),
+  'update returns the full template row'
+);
+
+-- 34
+SELECT throws_ok(
+  $$SELECT apply_schedule_plan_template('dddddddd-0000-0000-0000-000000000001'::uuid,
+      '2026-06-15T00:00:00+00:00'::timestamptz, '2026-06-21T23:59:59+00:00'::timestamptz, NULL, 'merge')$$,
+  'P0001', 'Invalid shifts: expected an array',
+  'apply rejects a NULL shift array'
 );
 
 SELECT * FROM finish();

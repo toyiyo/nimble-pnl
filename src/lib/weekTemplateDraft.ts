@@ -12,6 +12,11 @@ import type {
  */
 
 export const DEFAULT_TEMPLATE_NAME = 'Untitled template';
+/** Selection id for a draft that is not saved yet. */
+export const NEW_DRAFT_ID = 'new';
+/** Mirrors the server validator. */
+export const MAX_TEMPLATE_NAME_LENGTH = 100;
+export const MAX_BREAK_MINUTES = 480;
 export const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
@@ -26,16 +31,6 @@ function nextKey(): string {
 /** 'HH:MM' -> 'HH:MM:SS'. 'HH:MM:SS' stays as it is. */
 export function normalizeTime(time: string): string {
   return time.length === 5 ? `${time}:00` : time;
-}
-
-/** Monday-first offset (0 = Mon) -> JS day (0 = Sun). */
-export function dayOffsetToJsDay(offset: number): number {
-  return (offset + 1) % 7;
-}
-
-/** JS day (0 = Sun) -> Monday-first offset (0 = Mon). */
-export function jsDayToDayOffset(jsDay: number): number {
-  return (jsDay + 6) % 7;
 }
 
 function toMinutes(time: string): number {
@@ -67,9 +62,18 @@ export function emptyDraft(name: string = DEFAULT_TEMPLATE_NAME): TemplateDraft 
   return { id: null, name, updatedAt: null, rowEmployeeIds: [], shifts: [] };
 }
 
+/**
+ * True for a day offset the editor can show (0-6). Templates saved before the
+ * server validator existed can hold -1 or 7 for an edge-of-week shift.
+ */
+export function isValidDayOffset(day: number): boolean {
+  return Number.isInteger(day) && day >= 0 && day <= 6;
+}
+
 export function draftFromTemplate(template: SchedulePlanTemplate): TemplateDraft {
+  const shifts = template.shifts.filter((s) => isValidDayOffset(s.day_offset));
   const names = new Map<string, string>();
-  for (const s of template.shifts) {
+  for (const s of shifts) {
     if (!names.has(s.employee_id)) names.set(s.employee_id, s.employee_name);
   }
   const rowEmployeeIds = [...names.entries()]
@@ -81,7 +85,7 @@ export function draftFromTemplate(template: SchedulePlanTemplate): TemplateDraft
     name: template.name,
     updatedAt: template.updated_at,
     rowEmployeeIds,
-    shifts: template.shifts.map((s) => ({
+    shifts: shifts.map((s) => ({
       ...s,
       start_time: normalizeTime(s.start_time),
       end_time: normalizeTime(s.end_time),
@@ -182,7 +186,7 @@ export interface DayTotal {
   hours: number;
 }
 
-export function dayTotals(draft: TemplateDraft): DayTotal[] {
+export function dayTotals(draft: Pick<TemplateDraft, 'shifts'>): DayTotal[] {
   const totals: DayTotal[] = Array.from({ length: 7 }, () => ({ count: 0, hours: 0 }));
   for (const s of draft.shifts) {
     totals[s.day_offset].count += 1;
@@ -191,7 +195,11 @@ export function dayTotals(draft: TemplateDraft): DayTotal[] {
   return totals;
 }
 
-export function employeeHours(draft: TemplateDraft): Map<string, number> {
+export function totalShiftHours(shifts: Pick<TemplateShiftSnapshot, 'start_time' | 'end_time' | 'break_duration'>[]): number {
+  return shifts.reduce((sum, s) => sum + shiftHours(s), 0);
+}
+
+export function employeeHours(draft: Pick<TemplateDraft, 'shifts'>): Map<string, number> {
   const out = new Map<string, number>();
   for (const s of draft.shifts) {
     out.set(s.employee_id, (out.get(s.employee_id) ?? 0) + shiftHours(s));
@@ -204,7 +212,7 @@ function emptyWeekCells(): DraftShift[][] {
 }
 
 /** Map<employeeId, 7 cells>. Each cell holds that day's shifts sorted by start. */
-export function buildGrid(draft: TemplateDraft): Map<string, DraftShift[][]> {
+export function buildGrid(draft: Pick<TemplateDraft, 'shifts' | 'rowEmployeeIds'>): Map<string, DraftShift[][]> {
   const grid = new Map<string, DraftShift[][]>();
   for (const id of draft.rowEmployeeIds) {
     grid.set(id, emptyWeekCells());
@@ -241,6 +249,7 @@ export function toSnapshot(draft: TemplateDraft, nameById: Map<string, string>):
 function canonical(shifts: TemplateShiftSnapshot[]): string {
   return JSON.stringify(
     shifts
+      .filter((s) => isValidDayOffset(s.day_offset))
       .map((s) => ({
         d: s.day_offset,
         s: normalizeTime(s.start_time),

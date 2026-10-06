@@ -5,12 +5,12 @@ import { Layers, Plus } from 'lucide-react';
 
 import type { SchedulePlanTemplate } from '@/types/scheduling';
 
-import { formatHours, shiftHours } from '@/lib/weekTemplateDraft';
+import { NEW_DRAFT_ID, formatHours, totalShiftHours } from '@/lib/weekTemplateDraft';
 import { cn } from '@/lib/utils';
 
 interface WeekTemplateListProps {
   templates: SchedulePlanTemplate[];
-  /** Template id, 'new' for an unsaved draft, or null. */
+  /** Template id, NEW_DRAFT_ID for an unsaved draft, or null. */
   selectedId: string | null;
   newDraftName: string | null;
   isLoading: boolean;
@@ -28,9 +28,6 @@ function itemClass(selected: boolean): string {
   );
 }
 
-function totalHours(t: SchedulePlanTemplate): number {
-  return t.shifts.reduce((sum, s) => sum + shiftHours(s), 0);
-}
 
 export function WeekTemplateList({
   templates,
@@ -82,12 +79,12 @@ export function WeekTemplateList({
           <li>
             <button
               type="button"
-              aria-current={selectedId === 'new' ? 'true' : undefined}
-              className={itemClass(selectedId === 'new')}
-              onClick={() => onSelect('new')}
+              aria-current={selectedId === NEW_DRAFT_ID ? 'true' : undefined}
+              className={itemClass(selectedId === NEW_DRAFT_ID)}
+              onClick={() => onSelect(NEW_DRAFT_ID)}
             >
               <span className="block text-[14px] font-medium text-foreground truncate">{newDraftName}</span>
-              <span className="block text-[12px] text-amber-700 dark:text-amber-400">Not saved yet</span>
+              <span className="block text-[12px] text-warning-strong">Not saved yet</span>
             </button>
           </li>
         )}
@@ -101,7 +98,7 @@ export function WeekTemplateList({
             >
               <span className="block text-[14px] font-medium text-foreground truncate">{t.name}</span>
               <span className="block text-[12px] text-muted-foreground tabular-nums">
-                {t.shift_count} {t.shift_count === 1 ? 'shift' : 'shifts'} · {formatHours(totalHours(t))}
+                {t.shift_count} {t.shift_count === 1 ? 'shift' : 'shifts'} · {formatHours(totalShiftHours(t.shifts))}
               </span>
             </button>
           </li>

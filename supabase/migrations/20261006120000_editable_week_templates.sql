@@ -24,6 +24,11 @@ DECLARE
   v_elem JSONB;
   v_num NUMERIC;
   v_time_re CONSTANT TEXT := '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$';
+  v_uuid_re CONSTANT TEXT := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  v_allowed_keys CONSTANT TEXT[] := ARRAY[
+    'day_offset', 'start_time', 'end_time', 'break_duration',
+    'position', 'employee_id', 'employee_name', 'notes'
+  ];
 BEGIN
   IF p_shifts IS NULL OR jsonb_typeof(p_shifts) <> 'array' THEN
     RAISE EXCEPTION 'Invalid template shifts: expected an array';
@@ -34,9 +39,21 @@ BEGIN
   END IF;
 
   FOR v_elem IN SELECT value FROM jsonb_array_elements(p_shifts) LOOP
-    IF jsonb_typeof(v_elem) <> 'object'
-       OR jsonb_typeof(v_elem->'employee_id') IS DISTINCT FROM 'string' THEN
+    IF jsonb_typeof(v_elem) <> 'object' THEN
+      RAISE EXCEPTION 'Invalid template shift: expected an object';
+    END IF;
+
+    IF NOT (ARRAY(SELECT jsonb_object_keys(v_elem)) <@ v_allowed_keys) THEN
+      RAISE EXCEPTION 'Invalid template shift: unknown field';
+    END IF;
+
+    IF jsonb_typeof(v_elem->'employee_id') IS DISTINCT FROM 'string'
+       OR (v_elem->>'employee_id') !~ v_uuid_re THEN
       RAISE EXCEPTION 'Invalid template shift: employee_id is required';
+    END IF;
+
+    IF jsonb_typeof(v_elem->'employee_name') = 'string' AND length(v_elem->>'employee_name') > 200 THEN
+      RAISE EXCEPTION 'Invalid template shift: employee_name must be 200 characters or fewer';
     END IF;
 
     -- Nested checks: SQL does not promise left-to-right OR, so the type
@@ -88,7 +105,7 @@ BEGIN
     FROM jsonb_array_elements(p_shifts) AS elem
     WHERE NOT EXISTS (
       SELECT 1 FROM employees e
-      WHERE e.id::text = elem->>'employee_id'
+      WHERE e.id = (elem->>'employee_id')::uuid
         AND e.restaurant_id = p_restaurant_id
     )
   ) THEN
@@ -153,13 +170,9 @@ BEGIN
   VALUES (p_restaurant_id, v_name, p_shifts, v_shift_count)
   RETURNING * INTO v_result;
 
-  RETURN jsonb_build_object(
-    'id', v_result.id,
-    'name', v_result.name,
-    'shift_count', v_result.shift_count,
-    'created_at', v_result.created_at,
-    'updated_at', v_result.updated_at
-  );
+  -- The full row, the same shape as a SELECT. The client uses updated_at
+  -- as the next expected value for update_schedule_plan_template.
+  RETURN to_jsonb(v_result);
 END;
 $$;
 
@@ -222,12 +235,7 @@ BEGIN
     RAISE EXCEPTION 'Template not found';
   END IF;
 
-  RETURN jsonb_build_object(
-    'id', v_result.id,
-    'name', v_result.name,
-    'shift_count', v_result.shift_count,
-    'updated_at', v_result.updated_at
-  );
+  RETURN to_jsonb(v_result);
 END;
 $$;
 
@@ -260,6 +268,9 @@ BEGIN
     RAISE EXCEPTION 'Invalid merge_mode: %. Use replace or merge.', p_merge_mode;
   END IF;
 
+  IF p_shifts IS NULL OR jsonb_typeof(p_shifts) <> 'array' THEN
+    RAISE EXCEPTION 'Invalid shifts: expected an array';
+  END IF;
   v_total := jsonb_array_length(p_shifts);
 
   IF p_merge_mode = 'replace' THEN
@@ -355,3 +366,27 @@ GRANT EXECUTE ON FUNCTION public.delete_schedule_plan_template(UUID, UUID) TO au
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Users can insert their restaurant templates" ON public.schedule_plan_templates;
 DROP POLICY IF EXISTS "Users can delete their restaurant templates" ON public.schedule_plan_templates;
+
+-- ---------------------------------------------------------------------------
+-- 8. Clean existing rows. The old save path did not check day_offset, and an
+--    edge-of-week shift can compute to -1 or 7. The editor reads day_offset as
+--    an index 0-6, so delete those elements. A row with only bad elements
+--    stays as it is (an empty array is not a valid template); the client
+--    ignores bad offsets on read.
+-- ---------------------------------------------------------------------------
+WITH cleaned AS (
+  SELECT t.id,
+         jsonb_agg(elem ORDER BY ord) AS shifts
+  FROM schedule_plan_templates t
+  CROSS JOIN LATERAL jsonb_array_elements(t.shifts) WITH ORDINALITY AS x(elem, ord)
+  WHERE CASE WHEN jsonb_typeof(elem->'day_offset') = 'number'
+             THEN (elem->>'day_offset')::numeric BETWEEN 0 AND 6
+             ELSE false END
+  GROUP BY t.id
+)
+UPDATE schedule_plan_templates t
+SET shifts = c.shifts,
+    shift_count = jsonb_array_length(c.shifts)
+FROM cleaned c
+WHERE c.id = t.id
+  AND jsonb_array_length(c.shifts) < jsonb_array_length(t.shifts);

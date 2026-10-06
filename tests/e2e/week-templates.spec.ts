@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any -- the e2e helpers are untyped globals on window, as in copy-week-shifts.spec.ts */
 
 /** Click one in-month day cell in a react-day-picker calendar (see copy-week-shifts.spec.ts). */
 async function clickCalendarDay(scope: Locator, day: number) {

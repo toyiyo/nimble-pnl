@@ -359,6 +359,9 @@ export interface TemplateDraft {
   shifts: DraftShift[];
 }
 
+/** How apply treats shifts that already exist in the target week. */
+export type TemplateMergeMode = 'replace' | 'merge';
+
 export interface ApplyTemplateResult {
   inserted_count: number;
   skipped_count: number;

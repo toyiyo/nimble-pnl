@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   AlertDialog,
@@ -14,20 +13,17 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useEmployees } from '@/hooks/useEmployees';
-import {
-  MAX_SCHEDULE_PLAN_TEMPLATES,
-  type SavedTemplateRow,
-  useSchedulePlanTemplates,
-} from '@/hooks/useSchedulePlanTemplates';
+import { MAX_SCHEDULE_PLAN_TEMPLATES, useSchedulePlanTemplates } from '@/hooks/useSchedulePlanTemplates';
 
-import type { SchedulePlanTemplate, TemplateDraft, TemplateShiftSnapshot } from '@/types/scheduling';
+import type { SchedulePlanTemplate, TemplateDraft, TemplateMergeMode } from '@/types/scheduling';
 
 import { ApplyWeekTemplateDialog } from '@/components/scheduling/WeekTemplates/ApplyWeekTemplateDialog';
 import { WeekTemplateEditor } from '@/components/scheduling/WeekTemplates/WeekTemplateEditor';
 import { WeekTemplateList } from '@/components/scheduling/WeekTemplates/WeekTemplateList';
-import type { TemplateMergeMode } from '@/components/scheduling/TemplateApplyFields';
 import {
   DEFAULT_TEMPLATE_NAME,
+  MAX_TEMPLATE_NAME_LENGTH,
+  NEW_DRAFT_ID,
   draftFromTemplate,
   emptyDraft,
   isDraftDirty,
@@ -55,19 +51,24 @@ function isNewer(server: string, base: string): boolean {
 type PendingAction = { run: () => void } | null;
 
 export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Readonly<WeekTemplatesTabProps>) {
-  const queryClient = useQueryClient();
   const {
     templates,
     isLoading,
     error,
+    refetch: refetchTemplates,
     createTemplate,
     updateTemplate,
     applyTemplate,
     deleteTemplate,
   } = useSchedulePlanTemplates(restaurantId);
-  const { employees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId);
+  const {
+    employees,
+    loading: employeesLoading,
+    error: employeesError,
+    refetch: refetchEmployees,
+  } = useEmployees(restaurantId);
 
-  /** Template id, 'new' for an unsaved draft, or null. */
+  /** Template id, NEW_DRAFT_ID for an unsaved draft, or null. */
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
   /** The saved version the draft compares against. null for a new draft. */
@@ -77,10 +78,12 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
 
-  const isDirty = draft ? isDraftDirty(draft, baseline) : false;
+  const isDirty = useMemo(() => (draft ? isDraftDirty(draft, baseline) : false), [draft, baseline]);
+  // Blocks a second save while the first one runs (isPending updates one render later).
+  const saveInFlight = useRef(false);
 
   const serverTemplate = useMemo(
-    () => (selectedId && selectedId !== 'new' ? templates.find((t) => t.id === selectedId) ?? null : null),
+    () => (selectedId && selectedId !== NEW_DRAFT_ID ? templates.find((t) => t.id === selectedId) ?? null : null),
     [templates, selectedId],
   );
   const changedElsewhere =
@@ -145,24 +148,15 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
 
   const handleNew = () =>
     guard(() => {
-      setSelectedId('new');
+      setSelectedId(NEW_DRAFT_ID);
       setBaseline(null);
       setDraft(emptyDraft());
       setMobileView('editor');
     });
 
-  const toBaseline = (saved: SavedTemplateRow, shifts: TemplateShiftSnapshot[]): SchedulePlanTemplate => ({
-    id: saved.id,
-    restaurant_id: restaurantId,
-    name: saved.name,
-    shifts,
-    shift_count: shifts.length,
-    created_at: baseline?.created_at ?? saved.updated_at,
-    updated_at: saved.updated_at,
-  });
-
   const handleSave = async () => {
-    if (!draft) return;
+    if (!draft || saveInFlight.current) return;
+    saveInFlight.current = true;
     const name = draft.name.trim();
     const shifts = toSnapshot(draft, nameById);
     try {
@@ -171,10 +165,14 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
           ? await updateTemplate.mutateAsync({ id: draft.id, name, shifts, expectedUpdatedAt: draft.updatedAt })
           : await createTemplate.mutateAsync({ name, shifts });
       setSelectedId(saved.id);
-      setBaseline(toBaseline(saved, shifts));
-      setDraft({ ...draft, id: saved.id, name: saved.name, updatedAt: saved.updated_at });
+      setBaseline(saved);
+      // Functional update: keep edits made while the save ran. Those edits
+      // differ from the new baseline, so the draft stays dirty.
+      setDraft((current) => current && { ...current, id: saved.id, updatedAt: saved.updated_at });
     } catch {
       // The hook shows the error toast. Keep the draft.
+    } finally {
+      saveInFlight.current = false;
     }
   };
 
@@ -191,11 +189,11 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
 
   const handleDuplicate = async () => {
     if (!draft || !baseline) return;
-    const name = `${baseline.name} (copy)`.slice(0, 100);
+    const name = `${baseline.name} (copy)`.slice(0, MAX_TEMPLATE_NAME_LENGTH);
     const shifts = toSnapshot(draft, nameById);
     try {
       const saved = await createTemplate.mutateAsync({ name, shifts });
-      loadTemplate(toBaseline(saved, shifts));
+      loadTemplate(saved);
     } catch {
       // Toast from the hook.
     }
@@ -223,8 +221,8 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
     return applyTemplate.mutateAsync({ template: baseline, targetMonday, mergeMode });
   };
 
-  const retryTemplates = () => queryClient.invalidateQueries({ queryKey: ['schedule-plan-templates', restaurantId] });
-  const retryEmployees = () => queryClient.invalidateQueries({ queryKey: ['employees', restaurantId] });
+  const retryTemplates = () => void refetchTemplates();
+  const retryEmployees = () => void refetchEmployees();
 
   const showEditor = !!draft;
 
@@ -265,7 +263,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
         <WeekTemplateList
           templates={templates}
           selectedId={selectedId}
-          newDraftName={selectedId === 'new' && draft ? draft.name || DEFAULT_TEMPLATE_NAME : null}
+          newDraftName={selectedId === NEW_DRAFT_ID && draft ? draft.name || DEFAULT_TEMPLATE_NAME : null}
           isLoading={isLoading}
           hasError={!!error}
           onRetry={retryTemplates}

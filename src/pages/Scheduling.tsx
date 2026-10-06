@@ -336,8 +336,8 @@ const Scheduling = () => {
     }
   }, [activeTab, canManageSchedule]);
 
-  // Week Templates: leave the tab only after permissions resolve. Before that,
-  // canManageSchedule is false for everyone, and a manager would lose a draft.
+  // Week Templates: leave the tab when the user cannot manage the schedule.
+  // Wait for isResolved, so the check does not act on the first-paint false.
   useEffect(() => {
     if (activeTab === 'templates' && isResolved && !canManageSchedule) {
       setActiveTab('schedule');
@@ -1799,6 +1799,9 @@ const Scheduling = () => {
           <TabsContent value="templates">
             {restaurantId && (
               <WeekTemplatesTab
+                // A restaurant switch remounts the tab, so no draft or
+                // selection from the previous restaurant stays.
+                key={restaurantId}
                 restaurantId={restaurantId}
                 onDirtyChange={setTemplatesDirty}
                 onViewWeek={handleViewTemplateWeek}

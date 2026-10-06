@@ -78,13 +78,19 @@ Out of scope:
   Trades and Planner (`src/pages/Scheduling.tsx:926-972`). The Shift Trades tab
   shows only when `canManageSchedule` is true
   (`src/pages/Scheduling.tsx:950-963`). `canManageSchedule` is
-  `hasCapability('edit:scheduling')` (`src/pages/Scheduling.tsx:239`).
+  `isResolved && hasCapability('edit:scheduling')`
+  (`src/pages/Scheduling.tsx:239`). The value is false until permissions
+  resolve.
 - An effect moves the user back to the Schedule tab when the trades tab is
   active and the capability is false (`src/pages/Scheduling.tsx:319-323`).
 - SQL code checks the same capability with
   `user_has_capability(p_restaurant_id, 'edit:scheduling')`
   (`supabase/migrations/20260903034800_shift_protection_trade_functions.sql:62`,
-  definition in `supabase/migrations/20260730140000_user_has_capability_from_areas.sql:54-60`).
+  first definition in `supabase/migrations/20260730140000_user_has_capability_from_areas.sql:54-60`).
+  The newest definition grants `edit:scheduling` to owner, manager,
+  operations_manager and collaborator_operations_manager. Chef gets only
+  `view:scheduling`
+  (`supabase/migrations/20260806140000_legacy_role_sensitive_flags.sql:129-130`).
 
 ### 3.4 Name conflict
 
@@ -313,22 +319,29 @@ never does that, so the check holds for the client path.
   `p_restaurant_id` (`employees.is_active`), and counts them in
   `skipped_count`. This closes the cross-tenant insert in section 3.2.
 - `delete_schedule_plan_template`: capability check instead of membership.
-- Add `SET search_path = public` to all four functions.
+- Add `SET search_path = public` to all five functions.
 - `REVOKE EXECUTE … FROM PUBLIC, anon; GRANT EXECUTE … TO authenticated` on
-  all five functions.
+  the four RPCs. On the validator: `REVOKE EXECUTE … FROM PUBLIC, anon,
+  authenticated`. Only the definer RPCs call it.
 
 Role impact: today any member, staff included, can call these RPCs. After the
 change, only users with `edit:scheduling` can. The Copy Week button has no
-capability gate (`src/pages/Scheduling.tsx:1197`). So the Copy Week dialog gets
+capability gate (`src/pages/Scheduling.tsx:1193-1199`). So the Copy Week dialog gets
 a `canManageTemplates` prop. When the prop is false, the dialog hides the
 Templates tab and the "Save as template" form. Copy Week itself does not
 change.
 
 ### 7.4 RLS
 
-No change. Writes go through the `SECURITY DEFINER` RPCs. The INSERT and
-DELETE policies stay as they are. No UPDATE policy is added, so a direct
-`UPDATE` from the client stays blocked.
+Delete the INSERT and DELETE policies
+(`supabase/migrations/20260328100000_schedule_plan_templates.sql:35-53`).
+They check membership only, so a direct `insert` or `delete` from the client
+skips the capability check, the limit and the validator. No client code
+writes to the table directly; the only `.from('schedule_plan_templates')` is
+the SELECT at `src/hooks/useSchedulePlanTemplates.ts:20-24`. All writes go
+through the `SECURITY DEFINER` RPCs. The SELECT policy stays. No UPDATE
+policy is added. A pgTAP test proves that a direct insert and a direct
+delete fail.
 
 ## 8. Client changes
 
@@ -375,3 +388,102 @@ Row components are `React.memo` with stable callbacks.
   creates a template, adds an employee, adds a shift on Mon–Wed, saves,
   reloads, edits a shift, saves, applies the template to next week, and sees
   the shifts on the Schedule tab.
+
+## 11. Changes from design review
+
+The Supabase and frontend reviewers found no problem with the approach. This
+section lists the changes. Where it conflicts with an earlier section, this
+section wins.
+
+### 11.1 Database
+
+1. **Time format.** The validator uses
+   `^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$` for `start_time` and `end_time`.
+   It compares the two values as `::time`, not as text.
+2. **`day_offset` type.** The validator checks `jsonb_typeof = 'number'` and
+   that the value is a whole number before the cast.
+3. **Update RPC.** A NULL `p_expected_updated_at` raises
+   `Expected updated_at is required`. The existence check in step 6 filters by
+   `id` and `restaurant_id`, so it does not tell a caller that another
+   tenant's template exists.
+4. **Precision of `updated_at`.** The client sends the raw `updated_at`
+   string that PostgREST returns. It never converts it through a JS `Date`,
+   because a `Date` drops microseconds and the compare then always fails.
+   After each save, the draft takes `updated_at` from the RPC return value.
+   A unit test covers this round trip.
+5. **Apply filter.** The active-employee filter (`employees.restaurant_id =
+   p_restaurant_id AND employees.is_active`) applies to the replace INSERT
+   and to the merge INSERT. `skipped_count` stays `v_total -
+   v_inserted_count`. Deleted rows are not part of it.
+6. **Existing pgTAP file.** Rewrite every save payload in
+   `supabase/tests/schedule_plan_templates.test.sql` to the
+   `TemplateShiftSnapshot` shape (`day_offset`, `HH:MM:SS` times,
+   `employee_name`). The old payloads send ISO timestamps, and the validator
+   rejects them. Change the limit test to 20.
+7. **Copy Week save.** `computeDayOffset`
+   (`src/lib/schedulePlanTemplates.ts:5-10`) can return -1 or 7 for a shift
+   at the edge of the week. `buildTemplateSnapshot` drops shifts with an
+   offset outside 0–6. A unit test covers this.
+
+### 11.2 Page and tab
+
+1. **Fallback effect.** The effect that leaves the Week Templates tab runs
+   only when `isResolved` is true and `canManageSchedule` is false. Before
+   resolve, the tab stays, so a manager does not lose a draft.
+2. **Dirty guard at page level.** `WeekTemplatesTab` reports its dirty state
+   through an `onDirtyChange(dirty)` prop. `Scheduling.tsx` keeps the flag and
+   wraps the `Tabs` `onValueChange` (`src/pages/Scheduling.tsx:926`). When the
+   flag is true and the user leaves the tab, an `AlertDialog` asks first.
+3. **Accepted limits.** The app uses `BrowserRouter` (`src/App.tsx:353`), so
+   `useBlocker` is not available. A click on an in-app link, or a restaurant
+   switch, drops the draft without a prompt. `beforeunload` covers a page
+   close or reload. The tab choice is local state
+   (`src/pages/Scheduling.tsx:267`), so a reload opens the Schedule tab.
+4. **Tab trigger.** The trigger has `aria-label="Week Templates"`, the same
+   as the Planner trigger (`src/pages/Scheduling.tsx:964-971`), because the
+   label text is `hidden sm:inline`.
+5. **Copy Week link.** `CopyWeekDialog` gets `onEditTemplates()`. The page
+   closes the dialog and sets the tab.
+
+### 11.3 Editor
+
+1. **Server refetch.** The query refetches on focus and after 30s
+   (`src/hooks/useSchedulePlanTemplates.ts:30`). The editor builds the draft
+   with `draftFromTemplate` only when the selected id changes. When the server
+   `updated_at` changes and the draft is clean, the editor loads the new
+   version. When the draft is dirty, the editor shows a notice: "This template
+   changed in another session. Save will fail. Discard to load the new
+   version."
+2. **Touch.** Below `lg`, the `+` button shows all the time. Above `lg`, it
+   shows on row hover and on focus.
+3. **Mobile grid.** The employee column is `w-36 sticky left-0 z-10
+   bg-background`. Each day column is `min-w-[96px]`. The hours column is
+   `w-16`. The shift dialog has a sticky footer, so Save stays visible at
+   375×667.
+4. **Grid a11y.** The grid is a native `<table>` with `<th scope="col">` and
+   `<th scope="row">`. The Hours header is a full word. The name input has
+   `aria-label="Template name"`. The `⋯` button has
+   `aria-label="Template actions"`. The selected list card has
+   `aria-current="true"`. The overlap error has `role="alert"` and is linked
+   to the Start input with `aria-describedby`.
+5. **Reuse.** Start and End use `TimeInput`
+   (`src/components/scheduling/TimeInput.tsx:5-19`). The Days toggle copies
+   the `aria-pressed` button pattern from
+   `src/components/scheduling/ShiftPlanner/TemplateFormDialog.tsx:326-350`.
+   Warning: that dialog uses index 0 = Sunday, and `day_offset` uses
+   0 = Monday. A helper `dayOffsetToJsDay` maps the two, with a unit test.
+6. **Replace / Merge.** The radio block lives in `src/components/scheduling/ShiftPlanner/CopyWeekDialog.tsx:557-592`.
+   Move it to a shared `MergeModeField` component. Both dialogs use it, so
+   the text stays the same.
+7. **After apply.** The apply dialog shows the result counts and a
+   **View week** button. The button calls `onViewWeek(monday)`. The page sets
+   `currentWeekStart` and the Schedule tab. The hook toast stays as it is.
+8. **Employee list states.** **Add employee** shows a disabled select with
+   "Loading employees…" while loading, and an inline error with **Retry** on
+   failure.
+9. **Memo rows.** Rows are `React.memo` with a compare of the row's shift
+   keys and values. `buildGrid` reuses the previous row array when the row did
+   not change.
+10. **Inactive badge.** `bg-amber-500/10 text-amber-700 dark:text-amber-400`.
+11. **Query columns.** The templates query selects explicit columns:
+    `id, restaurant_id, name, shifts, shift_count, created_at, updated_at`.

@@ -36,6 +36,11 @@ interface TemplateShiftDialogProps {
   findOverlapDays: (days: number[], start: string, end: string) => number[];
   onSubmit: (input: DraftShiftInput, days: number[]) => void;
   onDelete?: () => void;
+  /**
+   * The control that opened the dialog. Radix returns focus only to a
+   * DialogTrigger, and this dialog has none, so focus goes back here on close.
+   */
+  returnFocusTo?: HTMLElement | null;
 }
 
 const toHHMM = (time: string) => time.slice(0, 5);
@@ -54,6 +59,7 @@ export function TemplateShiftDialog({
   findOverlapDays,
   onSubmit,
   onDelete,
+  returnFocusTo,
 }: Readonly<TemplateShiftDialogProps>) {
   const [start, setStart] = useState(toHHMM(initial.start_time));
   const [end, setEnd] = useState(toHHMM(initial.end_time));
@@ -107,7 +113,15 @@ export function TemplateShiftDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto p-0 gap-0 border-border/40">
+      <DialogContent
+        className="max-w-md max-h-[85vh] overflow-y-auto p-0 gap-0 border-border/40"
+        onCloseAutoFocus={(e) => {
+          if (returnFocusTo?.isConnected) {
+            e.preventDefault();
+            returnFocusTo.focus();
+          }
+        }}
+      >
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">

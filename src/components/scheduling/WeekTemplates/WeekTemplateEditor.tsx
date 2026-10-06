@@ -236,11 +236,16 @@ export function WeekTemplateEditor({
     [employees, draft.rowEmployeeIds],
   );
 
-  const handleAdd = useCallback((employeeId: string, day: number) => setDialog({ mode: 'add', employeeId, day }), []);
-  const handleEdit = useCallback(
-    (shift: DraftShift) => setDialog({ mode: 'edit', employeeId: shift.employee_id, day: shift.day_offset, shift }),
-    [],
-  );
+  // The control that opened the shift dialog; focus returns to it on close.
+  const dialogOpener = useRef<HTMLElement | null>(null);
+  const handleAdd = useCallback((employeeId: string, day: number) => {
+    dialogOpener.current = document.activeElement as HTMLElement | null;
+    setDialog({ mode: 'add', employeeId, day });
+  }, []);
+  const handleEdit = useCallback((shift: DraftShift) => {
+    dialogOpener.current = document.activeElement as HTMLElement | null;
+    setDialog({ mode: 'edit', employeeId: shift.employee_id, day: shift.day_offset, shift });
+  }, []);
   // A ref keeps handleRemove stable, so memoized rows do not render again on each edit.
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -535,6 +540,7 @@ export function WeekTemplateEditor({
           findOverlapDays={findOverlapDays}
           onSubmit={handleDialogSubmit}
           onDelete={handleDialogDelete}
+          returnFocusTo={dialogOpener.current}
         />
       )}
 

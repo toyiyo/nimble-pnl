@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import React, { useState } from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 
 import { WeekTemplateEditor } from '@/components/scheduling/WeekTemplates/WeekTemplateEditor';
 import { addShifts, emptyDraft } from '@/lib/weekTemplateDraft';
@@ -52,6 +52,20 @@ describe('WeekTemplateEditor', () => {
 
     expect(screen.getAllByRole('button', { name: /^Edit shift: Alice Moreno/ })).toHaveLength(2);
     expect(within(screen.getByRole('row', { name: /Alice Moreno/ })).getByText('15h')).toBeInTheDocument();
+  });
+
+  it('returns focus to the add button when the shift dialog closes with Escape (QA bug WT-QA-1)', async () => {
+    const draft = addShifts(emptyDraft(), 'alice', 'Alice Moreno', {
+      start_time: '09:00', end_time: '17:00', break_duration: 0, position: 'Server', notes: null,
+    }, [0]);
+    render(<Harness initial={draft} />);
+    const add = screen.getByRole('button', { name: 'Add shift for Alice Moreno on Tuesday' });
+    add.focus();
+    fireEvent.click(add);
+    const dialog = screen.getByRole('dialog', { name: 'Add shift' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(add).toHaveFocus());
   });
 
   it('edits a shift from its chip', () => {

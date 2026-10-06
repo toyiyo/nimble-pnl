@@ -147,10 +147,10 @@ rows. The reasons:
   `MapPOSItemDialog` (`src/components/MapPOSItemDialog.tsx:36`).
 - A custom collaborator role can have the `sales` area without the `recipes`
   area (`src/lib/permissions/areaData.ts:43`, `:54`;
-  `src/lib/permissions/routeAreas.ts:80-119`). Also, `StaffRoleChecker` has no
-  area gate for owner, manager, chef, or staff (`src/App.tsx:274-345`). A
-  `staff` user can open `/pos-sales` by URL and has no `view:recipes`. Today,
-  these users get zero recipes from RLS and no error. With `42501`, `fetchAllRows` throws, and the
+  `src/lib/permissions/routeAreas.ts:80-119`). Today, that user gets zero
+  recipes from RLS and no error. (`StaffRoleChecker` sends a `staff` user away
+  from `/pos-sales`, `src/App.tsx:335-342`, so `staff` does not reach this
+  page.) With `42501`, `fetchAllRows` throws, and the
   `/pos-sales` page shows an error toast. That is a regression.
 - Zero rows is the current contract. pgTAP test 7 asserts it
   (`supabase/tests/get_recipe_sales_stats.sql:165-180`).

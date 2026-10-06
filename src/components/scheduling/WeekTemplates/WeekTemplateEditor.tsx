@@ -80,7 +80,7 @@ const EditorRow = memo(
       <tr className="group border-b border-border/40 last:border-b-0">
         <th
           scope="row"
-          className="sticky left-0 z-10 w-36 min-w-[9rem] bg-background px-3 py-2 text-left align-top font-normal"
+          className="sticky left-0 z-10 w-32 min-w-[8rem] bg-background px-3 py-2 text-left align-top font-normal"
         >
           <div className="flex items-start justify-between gap-1">
             <div className="min-w-0">
@@ -106,7 +106,7 @@ const EditorRow = memo(
           </div>
         </th>
         {cells.map((cell, day) => (
-          <td key={DAY_LABELS[day]} className="min-w-[96px] px-1.5 py-2 align-top">
+          <td key={DAY_LABELS[day]} className="min-w-[76px] px-1 py-2 align-top">
             <div className="flex flex-col gap-1">
               {cell.map((shift) => {
                 const overnight = shift.end_time <= shift.start_time;
@@ -138,7 +138,7 @@ const EditorRow = memo(
             </div>
           </td>
         ))}
-        <td className="w-16 px-3 py-2 align-top text-right text-[13px] font-medium text-foreground tabular-nums">
+        <td className="w-14 px-3 py-2 align-top text-right text-[13px] font-medium text-foreground tabular-nums">
           {formatHours(hours)}
         </td>
       </tr>
@@ -301,7 +301,7 @@ export function WeekTemplateEditor({
     <section aria-label="Template editor" className="rounded-xl border border-border/40 bg-background min-w-0">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border/40">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0 flex-[1_1_14rem]">
           {onBack && (
             <Button
               type="button"
@@ -319,7 +319,7 @@ export function WeekTemplateEditor({
             value={draft.name}
             maxLength={100}
             onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
-            className="h-9 max-w-[280px] text-[15px] font-semibold bg-transparent border-transparent hover:border-border/40 focus-visible:border-border/40 focus-visible:ring-1 focus-visible:ring-border rounded-lg px-2"
+            className="h-9 min-w-0 max-w-[280px] text-[15px] font-semibold bg-transparent border-transparent hover:border-border/40 focus-visible:border-border/40 focus-visible:ring-1 focus-visible:ring-border rounded-lg px-2"
           />
           {isDirty && (
             <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">
@@ -354,7 +354,7 @@ export function WeekTemplateEditor({
             onClick={onApply}
             disabled={!canApply}
             aria-label="Apply to week"
-            className="h-9 px-3 rounded-lg text-[13px] font-medium border-border/40"
+            className="h-9 px-3 rounded-lg text-[13px] font-medium border-border/40 hover:bg-muted/50 hover:text-foreground"
           >
             <CalendarPlus className="h-4 w-4 mr-1.5" />
             Apply to week…
@@ -404,12 +404,12 @@ export function WeekTemplateEditor({
 
       {/* Grid */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] border-collapse">
+        <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="border-b border-border/40">
               <th
                 scope="col"
-                className="sticky left-0 z-10 w-36 bg-background px-3 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                className="sticky left-0 z-10 w-32 bg-background px-3 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
               >
                 Employee
               </th>
@@ -417,14 +417,14 @@ export function WeekTemplateEditor({
                 <th
                   key={label}
                   scope="col"
-                  className="px-1.5 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  className="px-1 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
                 >
                   <abbr title={DAY_NAMES[day]} className="no-underline">{label}</abbr>
                 </th>
               ))}
               <th
                 scope="col"
-                className="w-16 px-3 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                className="w-14 px-3 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
               >
                 Hours
               </th>
@@ -460,7 +460,7 @@ export function WeekTemplateEditor({
                   Total
                 </th>
                 {totals.map((t, day) => (
-                  <td key={DAY_LABELS[day]} className="px-1.5 py-2 text-[12px] text-muted-foreground tabular-nums">
+                  <td key={DAY_LABELS[day]} className="px-1 py-2 text-[12px] text-muted-foreground tabular-nums whitespace-nowrap">
                     {t.count > 0 ? `${t.count} · ${formatHours(t.hours)}` : '—'}
                   </td>
                 ))}

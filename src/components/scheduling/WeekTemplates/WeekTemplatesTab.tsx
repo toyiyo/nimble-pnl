@@ -224,7 +224,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
   const showEditor = !!draft;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] items-start">
+    <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)] items-start">
       <div className={cn(mobileView === 'editor' && showEditor && 'hidden lg:block')}>
         <WeekTemplateList
           templates={templates}

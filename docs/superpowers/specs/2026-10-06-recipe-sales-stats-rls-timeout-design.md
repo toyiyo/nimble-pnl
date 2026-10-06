@@ -15,8 +15,10 @@ The failing tenant is `7c0c76e3-e770-401b-a2a9-c1edd407efed`. It has 68,276
 `unified_sales` rows and 17 active recipes.
 
 The RPC is one of four parallel loads in `fetchRecipes`
-(`src/hooks/useRecipes.tsx:516-549`). `fetchAllRows` throws on an error, so one
-failed RPC aborts the full recipe load (`src/hooks/useRecipes.tsx:514`). The
+(`src/hooks/useRecipes.tsx:516-549`). `fetchAllRows` throws on an error
+(`supabase/functions/_shared/labor/fetchAllRows.ts:51`, re-exported by
+`src/utils/fetchAllRows.ts:3`). Thus one failed RPC aborts the full recipe
+load (`src/hooks/useRecipes.tsx:514-516`). The
 user sees the error toast (`src/hooks/useRecipes.tsx:660-667`) and no recipes.
 
 ## 2. Cause (production evidence)
@@ -143,9 +145,12 @@ rows. The reasons:
 - `useRecipes` is also used on `/pos-sales` (`src/pages/POSSales.tsx:145`),
   `POSSaleDialog` (`src/components/POSSaleDialog.tsx:85`), and
   `MapPOSItemDialog` (`src/components/MapPOSItemDialog.tsx:36`).
-- A custom role can have the `sales` area without the `recipes` area
-  (`src/lib/permissions/areaData.ts:43`). Today, that user gets zero recipes
-  from RLS and no error. With `42501`, `fetchAllRows` throws, and the
+- A custom collaborator role can have the `sales` area without the `recipes`
+  area (`src/lib/permissions/areaData.ts:43`, `:54`;
+  `src/lib/permissions/routeAreas.ts:80-119`). Also, `StaffRoleChecker` has no
+  area gate for owner, manager, chef, or staff (`src/App.tsx:274-345`). A
+  `staff` user can open `/pos-sales` by URL and has no `view:recipes`. Today,
+  these users get zero recipes from RLS and no error. With `42501`, `fetchAllRows` throws, and the
   `/pos-sales` page shows an error toast. That is a regression.
 - Zero rows is the current contract. pgTAP test 7 asserts it
   (`supabase/tests/get_recipe_sales_stats.sql:165-180`).

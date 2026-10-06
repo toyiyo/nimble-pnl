@@ -9,6 +9,8 @@
  * the same rule as `copyWeekShifts.ts`.
  */
 
+import { format } from 'date-fns';
+
 import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
 import type { BulkShiftInsert } from '@/lib/copyWeekShifts';
 
@@ -20,11 +22,11 @@ import {
   toBusinessDay,
 } from '@/lib/restaurantClock';
 import { formatLocalDate, requireTz, wallClockToInstant } from '@/lib/shiftInterval';
+import { getWeekEnd } from '@/hooks/useShiftPlanner';
 
 const DAYS_PER_WEEK = 7;
 const TIME_RE = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
 const INVALID_TIME_MESSAGE = 'This template has an invalid shift time.';
-const INVALID_DAY_MESSAGE = 'This template has an invalid shift day.';
 
 /** Throw `INVALID_DATE` when `tz` is missing or is not a known IANA zone. */
 function requireValidTz(tz: string | null | undefined): asserts tz is string {
@@ -69,6 +71,10 @@ function formatWallClock(iso: string, tz: string): string {
   return `${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
+function isValidDayOffset(snap: TemplateShiftSnapshot): boolean {
+  return Number.isInteger(snap.day_offset) && snap.day_offset >= 0 && snap.day_offset < DAYS_PER_WEEK;
+}
+
 /** Resolve a restaurant-local wall clock to an instant, keeping the seconds. */
 function toInstant(dateStr: string, time: { hhmm: string; seconds: number }, tz: string): Date {
   // The UTC offset is constant inside one minute, so adding the seconds after
@@ -111,11 +117,9 @@ export function buildShiftsFromTemplate(
   requireValidTz(tz);
   const mondayStr = formatLocalDate(targetMonday);
 
-  return snapshots.map((snap) => {
-    // The save RPC stores the JSON with no check, so check the day here.
-    if (!Number.isInteger(snap.day_offset) || snap.day_offset < 0 || snap.day_offset >= DAYS_PER_WEEK) {
-      throw new Error(INVALID_DAY_MESSAGE);
-    }
+  // Skip offsets outside Monday-Sunday (templates saved before the server
+  // validator). They would land outside the target week.
+  return snapshots.filter(isValidDayOffset).map((snap) => {
     const dateStr = addDaysToDateStr(mondayStr, snap.day_offset);
     const start = parseTime(snap.start_time);
     const end = parseTime(snap.end_time);
@@ -163,4 +167,17 @@ export function templateWeekBounds(targetMonday: Date, tz: string): { start: str
     start: firstInstantOfDay(mondayStr, tz).toISOString(),
     end: new Date(firstInstantOfDay(nextMondayStr, tz).getTime() - 1).toISOString(),
   };
+}
+
+/** 'Oct 5 – Oct 11'. The dates are local calendar days (week picker values). */
+export function formatWeekRange(start: Date, end: Date): string {
+  return `${format(start, 'MMM d')} – ${format(end, 'MMM d')}`;
+}
+
+/** True when the whole week that starts on `monday` is before today. */
+export function isPastWeek(monday: Date | null, today: Date = new Date()): boolean {
+  if (!monday) return false;
+  const startOfToday = new Date(today);
+  startOfToday.setHours(0, 0, 0, 0);
+  return getWeekEnd(monday) < startOfToday;
 }

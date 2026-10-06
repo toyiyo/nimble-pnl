@@ -40,12 +40,19 @@ accident only. A Chicago manager who then applies the same template gets
 
 ## Note on the Week Templates tab
 
-The task names `src/components/scheduling/WeekTemplates/` and the branch
-`feature/editable-week-templates`. Neither exists on `origin` on 2026-10-06
-(`git ls-remote origin` shows no such branch). This change fixes the helpers,
-the hook, and the one current caller (`CopyWeekDialog`). The hook signature
-change makes the zone mandatory, so the Week Templates tab must pass it when
-that branch merges. TypeScript shows an error there if it does not.
+`feature/editable-week-templates` merged into `main` as toyiyo/nimble-pnl#842
+after this design. The merge of `main` into this branch changes these:
+
+- `WeekTemplatesTab` gets a required `timezone` prop and passes it to the
+  hook. `Scheduling.tsx` passes `restaurantTimezone`.
+- `buildShiftsFromTemplate` keeps the #842 rule: it skips a `day_offset`
+  outside 0..6, and does not throw.
+- `tests/e2e/week-templates.spec.ts` pins the restaurant to
+  `America/Chicago` and runs the browser in `Asia/Tokyo`. It reads the
+  applied shifts in the restaurant zone.
+
+The editor stores `HH:MM:SS` wall clocks directly, so it needs no
+conversion.
 
 ## Approach (chosen)
 

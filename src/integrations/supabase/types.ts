@@ -12345,6 +12345,16 @@ export type Database = {
         Args: { p_ingredients?: Json; p_prep_recipe_id: string }
         Returns: undefined
       }
+      update_schedule_plan_template: {
+        Args: {
+          p_expected_updated_at: string
+          p_name: string
+          p_restaurant_id: string
+          p_shifts: Json
+          p_template_id: string
+        }
+        Returns: Json
+      }
       update_shift_series: {
         Args: {
           p_end_time_delta?: string

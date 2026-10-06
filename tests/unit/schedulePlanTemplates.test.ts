@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   buildTemplateSnapshot,
   buildShiftsFromTemplate,
+  formatWeekRange,
+  isPastWeek,
   templateWeekBounds,
 } from '@/lib/schedulePlanTemplates';
 import { formatLocalTimeInTz, wallClockToInstant } from '@/lib/shiftInterval';
@@ -46,6 +48,24 @@ function makeSnap(overrides: Partial<TemplateShiftSnapshot>): TemplateShiftSnaps
 // result in every host zone (`npm run test:tz`).
 describe('buildTemplateSnapshot', () => {
   const weekStart = new Date(2026, 2, 30); // Monday March 30, 2026
+
+  it('drops shifts whose day_offset falls outside Monday-Sunday', () => {
+    const before = makeShift({
+      start_time: '2026-03-29T22:00:00Z', // Sun Mar 29 (offset -1)
+      end_time: '2026-03-30T02:00:00Z',
+    });
+    const after = makeShift({
+      start_time: '2026-04-06T09:00:00Z', // Mon Apr 6 (offset 7)
+      end_time: '2026-04-06T17:00:00Z',
+    });
+    const inside = makeShift({
+      start_time: '2026-04-05T09:00:00Z', // Sun Apr 5 (offset 6)
+      end_time: '2026-04-05T17:00:00Z',
+    });
+
+    const result = buildTemplateSnapshot([before, after, inside], weekStart, 'UTC');
+    expect(result.map((r) => r.day_offset)).toEqual([6]);
+  });
 
   it('computes correct day_offset from Monday', () => {
     const shift = makeShift({
@@ -315,13 +335,11 @@ describe('with a browser zone that is not the restaurant zone', () => {
       }
     });
 
-    it('throws a clear error for a day_offset outside 0..6', () => {
-      for (const bad of [-1, 7, 1.5, undefined as unknown as number]) {
-        const snap = makeSnap({ day_offset: bad });
-        expect(() => buildShiftsFromTemplate([snap], new Date(2026, 3, 6), 'rest-1', CHICAGO)).toThrow(
-          'This template has an invalid shift day.',
-        );
-      }
+    it('skips a day_offset outside 0..6', () => {
+      const snaps = [-1, 7, 1.5, undefined as unknown as number, 3].map((day_offset) => makeSnap({ day_offset }));
+      const out = buildShiftsFromTemplate(snaps, new Date(2026, 3, 6), 'rest-1', CHICAGO);
+      expect(out).toHaveLength(1);
+      expect(out[0].start_time).toBe('2026-04-09T14:00:00.000Z');
     });
 
     it('throws INVALID_DATE for a missing zone', () => {
@@ -391,5 +409,17 @@ describe('with a restaurant wall clock in a browser DST gap', () => {
     expect(snap.day_offset).toBe(6);
     expect(snap.start_time).toBe('02:30:00');
     expect(snap.end_time).toBe('07:00:00');
+  });
+});
+
+describe('formatWeekRange and isPastWeek', () => {
+  it('formats a Monday-Sunday range', () => {
+    expect(formatWeekRange(new Date(2026, 9, 5), new Date(2026, 9, 11))).toBe('Oct 5 – Oct 11');
+  });
+  it('marks a week as past only when its Sunday is before today', () => {
+    const today = new Date(2026, 9, 7); // Wed Oct 7
+    expect(isPastWeek(new Date(2026, 8, 28), today)).toBe(true);
+    expect(isPastWeek(new Date(2026, 9, 5), today)).toBe(false);
+    expect(isPastWeek(null, today)).toBe(false);
   });
 });

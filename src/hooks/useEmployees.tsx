@@ -32,7 +32,7 @@ export const useEmployees = (
 ) => {
   const { status = 'active', employeeId } = options;
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['employees', restaurantId, status, employeeId],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -76,6 +76,7 @@ export const useEmployees = (
     employees: data ?? EMPTY_EMPLOYEES,
     loading: isLoading,
     error,
+    refetch,
   };
 };
 

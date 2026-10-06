@@ -84,7 +84,7 @@ check one time for each call, not for each row. The scan uses
 
 ### 3.1 New migration
 
-File: `supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql`.
+File: `supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql`.
 The prefix is unique and sorts after the latest migration
 (`20260930120300_schedule_mark_stale_pending_outflows.sql`).
 

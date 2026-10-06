@@ -9,7 +9,7 @@
 -- (test 7).
 --
 -- The function is SECURITY DEFINER and its owner bypasses RLS
--- (supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql).
+-- (supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql).
 -- Thus RLS does not isolate tenants here. The explicit check
 -- public.user_has_capability(p_restaurant_id, 'view:recipes') does.
 -- Tests 7 and 12 fail if a person removes that check.

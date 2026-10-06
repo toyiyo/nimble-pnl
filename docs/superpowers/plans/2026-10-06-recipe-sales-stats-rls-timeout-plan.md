@@ -14,7 +14,7 @@ Text style: STE-aligned (ASD-STE100).
 
 ## Global Constraints
 
-- New migration file name: `supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql`. Do not edit `supabase/migrations/20260727120000_get_recipe_sales_stats.sql`.
+- New migration file name: `supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql`. Do not edit `supabase/migrations/20260727120000_get_recipe_sales_stats.sql`.
 - Function attributes: `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `SET search_path = ''`.
 - Every name in the body has the `public.` schema.
 - Signature and return type do not change: `get_recipe_sales_stats(p_restaurant_id UUID) RETURNS TABLE (item_name TEXT, avg_sale_price NUMERIC)`.
@@ -61,7 +61,7 @@ Replace lines 4-10 (the paragraph that starts `-- Fixture restaurant aa000000-..
 -- (test 7).
 --
 -- The function is SECURITY DEFINER and its owner bypasses RLS
--- (supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql).
+-- (supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql).
 -- Thus RLS does not isolate tenants here. The explicit check
 -- public.user_has_capability(p_restaurant_id, 'view:recipes') does.
 -- Tests 7 and 12 fail if a person removes that check.
@@ -196,7 +196,7 @@ The failing test file goes into the Task 2 commit with the migration, so each co
 ### Task 2: The definer migration
 
 **Files:**
-- Create: `supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql`
+- Create: `supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql`
 - Test: `supabase/tests/get_recipe_sales_stats.sql` (from Task 1)
 
 **Interfaces:**
@@ -297,7 +297,7 @@ Write the output lines of the failed tests 7 and 12 into `progress.md` as eviden
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql supabase/tests/get_recipe_sales_stats.sql
+git add supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql supabase/tests/get_recipe_sales_stats.sql
 git commit -m "fix(recipes): make get_recipe_sales_stats a definer with a tenant check
 
 The RLS subplan on unified_sales ran one time for each sales row in the
@@ -324,7 +324,7 @@ Replace lines 1-2 with:
 
 ```sql
 -- Verifies the covering index backing get_recipe_sales_stats
--- (supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql) and
+-- (supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql) and
 ```
 
 - [ ] **Step 2: Update the comment and the copied body**
@@ -335,7 +335,7 @@ Replace lines 79-86 (the comment above `SET LOCAL enable_seqscan = off;`) with:
 -- The plan check runs EXPLAIN on the function body, not on the call: the
 -- function has `SET search_path`, so Postgres does not inline it and EXPLAIN on
 -- the call shows only a Function Scan. The query is a copy of the body in
--- 20261006120000_get_recipe_sales_stats_definer.sql. When a migration changes
+-- 20261006130000_get_recipe_sales_stats_definer.sql. When a migration changes
 -- that body, change this copy too. This test runs as postgres, so
 -- user_has_capability returns false at run time. EXPLAIN does not run the
 -- query, and the planner puts the check in a One-Time Filter above the scan,

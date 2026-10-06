@@ -1,5 +1,5 @@
 -- Verifies the covering index backing get_recipe_sales_stats
--- (supabase/migrations/20261006120000_get_recipe_sales_stats_definer.sql) and
+-- (supabase/migrations/20261006130000_get_recipe_sales_stats_definer.sql) and
 -- get_unmapped_sale_item_names
 -- (supabase/migrations/20260728120000_get_unmapped_sale_item_names.sql).
 -- Design: docs/superpowers/specs/2026-09-26-recipe-sales-stats-timeout-design.md
@@ -79,7 +79,7 @@ SELECT hasnt_index(
 -- The plan check runs EXPLAIN on the function body, not on the call: the
 -- function has `SET search_path`, so Postgres does not inline it and EXPLAIN on
 -- the call shows only a Function Scan. The query is a copy of the body in
--- 20261006120000_get_recipe_sales_stats_definer.sql. When a migration changes
+-- 20261006130000_get_recipe_sales_stats_definer.sql. When a migration changes
 -- that body, change this copy too. This test runs as postgres, so
 -- user_has_capability returns false at run time. EXPLAIN does not run the
 -- query, and the planner puts the check in a One-Time Filter above the scan,

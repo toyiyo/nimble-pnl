@@ -44,6 +44,11 @@ import {
   updateShift,
 } from '@/lib/weekTemplateDraft';
 
+// Extra right padding on the HOURS column. Third-party overlays (Vercel
+// toolbar, PostHog Feedback tab) sit over the page's right edge, so this
+// gutter keeps the hours text clear of them.
+const HOURS_CELL_GUTTER = 'pr-12';
+
 const DEFAULT_INPUT: Omit<DraftShiftInput, 'position'> = {
   start_time: '09:00:00',
   end_time: '17:00:00',
@@ -141,7 +146,7 @@ const EditorRow = memo(
             </div>
           </td>
         ))}
-        <td className="w-14 px-3 py-2 align-top text-right text-[13px] font-medium text-foreground tabular-nums">
+        <td className={`w-14 pl-3 ${HOURS_CELL_GUTTER} py-2 align-top text-right text-[13px] font-medium text-foreground tabular-nums`}>
           {formatHours(hours)}
         </td>
       </tr>
@@ -437,7 +442,7 @@ export function WeekTemplateEditor({
               ))}
               <th
                 scope="col"
-                className="w-14 px-3 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                className={`w-14 pl-3 ${HOURS_CELL_GUTTER} py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider`}
               >
                 Hours
               </th>
@@ -477,7 +482,7 @@ export function WeekTemplateEditor({
                     {t.count > 0 ? `${t.count} · ${formatHours(t.hours)}` : '—'}
                   </td>
                 ))}
-                <td className="px-3 py-2 text-right text-[13px] font-semibold text-foreground tabular-nums">
+                <td className={`pl-3 ${HOURS_CELL_GUTTER} py-2 text-right text-[13px] font-semibold text-foreground tabular-nums`}>
                   {formatHours(totalHours)}
                 </td>
               </tr>

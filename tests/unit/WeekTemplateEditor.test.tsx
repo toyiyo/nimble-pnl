@@ -140,6 +140,6 @@ describe('WeekTemplateEditor', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Hours' })).toHaveClass('pr-12');
     expect(within(screen.getByRole('row', { name: /Alice Moreno/ })).getByText('8h')).toHaveClass('pr-12');
-    expect(within(screen.getByRole('row', { name: 'Total' })).getByText('8h')).toHaveClass('pr-12');
+    expect(within(screen.getByRole('row', { name: /Total/ })).getByText('8h')).toHaveClass('pr-12');
   });
 });

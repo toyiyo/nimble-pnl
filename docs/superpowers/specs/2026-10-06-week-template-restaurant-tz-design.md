@@ -188,6 +188,18 @@ File these as separate tasks:
   not rewrite them.
 - A shift longer than 24 hours loses its end day in the snapshot format.
   This is a current limit of the `HH:MM:SS` format.
+- A shift that crosses the fall-back hour and ends at an earlier wall clock
+  (01:30 CDT to 01:15 CST) applies as a 23.75-hour shift. The `HH:MM:SS`
+  format loses this, the same as the shift longer than 24 hours.
+- The 0..6 filter drops out-of-week shifts and does not tell the user. The
+  dialog count uses the unfiltered list
+  (`src/components/scheduling/ShiftPlanner/CopyWeekDialog.tsx:102-105`). The
+  `useShifts` fetch fix above removes the cause.
+- `formatLocalTimeInTz` and `formatLocalDateInTz`
+  (`src/lib/shiftInterval.ts:207-224`) read host getters off a
+  `toZonedTime` Date. A restaurant wall clock in a DST gap of the browser
+  zone moves by one hour. This change does not use them in the snapshot.
+  Other callers keep the bug.
 
 ## Tests
 
@@ -243,3 +255,19 @@ Both Phase 2.5 reviewers ran. Folded into this doc: the 0..6 filter, the
 string overnight rule, the DST-collapse error, the clear bad-time error,
 the zone check on save, the restaurant-zone replace window, the test env
 isolation, and the citations. Deleted: the claim about most stored rows.
+
+## Code review outcome (Phase 7a/7b)
+
+- `logic:minor` host DST gap in the snapshot: fixed. The snapshot uses
+  `toBusinessDay` and an `Intl.DateTimeFormat` wall clock, not
+  `formatLocalTimeInTz`.
+- `logic:minor` no `day_offset` check on apply: fixed. A bad value throws
+  `This template has an invalid shift day.`
+- `logic:minor` fall-back short shift, silent 0..6 drop: deferred (above).
+- `ocr:minor` import order and `maintainability:minor` file comment and
+  test cast: fixed.
+- `maintainability:minor` move `templateWeekBounds`, `requireValidTz` and
+  the time parser to shared files: deferred. The copy-week window fix is the
+  second caller, so that change moves them.
+- `maintainability:minor` `timezone` prop vs `tz` parameter: kept. The
+  sibling dialogs in `src/pages/Scheduling.tsx` use the `timezone` prop.

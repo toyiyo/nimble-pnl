@@ -315,6 +315,15 @@ describe('with a browser zone that is not the restaurant zone', () => {
       }
     });
 
+    it('throws a clear error for a day_offset outside 0..6', () => {
+      for (const bad of [-1, 7, 1.5, undefined as unknown as number]) {
+        const snap = makeSnap({ day_offset: bad });
+        expect(() => buildShiftsFromTemplate([snap], new Date(2026, 3, 6), 'rest-1', CHICAGO)).toThrow(
+          'This template has an invalid shift day.',
+        );
+      }
+    });
+
     it('throws INVALID_DATE for a missing zone', () => {
       expect(() => buildShiftsFromTemplate([makeSnap({})], new Date(2026, 3, 6), 'rest-1', '')).toThrow(
         'INVALID_DATE',
@@ -357,5 +366,30 @@ describe('with a browser zone that is not the restaurant zone', () => {
       expect(() => templateWeekBounds(new Date(2026, 3, 6), '')).toThrow('INVALID_DATE');
       expect(() => templateWeekBounds(new Date(2026, 3, 6), 'Not/AZone')).toThrow('INVALID_DATE');
     });
+  });
+});
+
+// The restaurant wall clock falls in a DST gap of the browser zone. Berlin
+// springs forward on 2026-03-29 at 02:00; the US changed on 2026-03-08.
+describe('with a restaurant wall clock in a browser DST gap', () => {
+  beforeEach(() => {
+    vi.stubEnv('TZ', 'Europe/Berlin');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('saves the restaurant wall clock, not the host-shifted one', () => {
+    // Sun 2026-03-29 02:30 CDT = 07:30Z. 02:30 does not exist in Berlin that day.
+    const shift = makeShift({
+      start_time: '2026-03-29T07:30:00Z',
+      end_time: '2026-03-29T12:00:00Z',
+    });
+
+    const [snap] = buildTemplateSnapshot([shift], new Date(2026, 2, 23), CHICAGO);
+    expect(snap.day_offset).toBe(6);
+    expect(snap.start_time).toBe('02:30:00');
+    expect(snap.end_time).toBe('07:00:00');
   });
 });

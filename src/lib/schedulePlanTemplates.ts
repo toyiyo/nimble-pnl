@@ -1,19 +1,3 @@
-import { addDaysToDateStr, daysBetweenDateStrs, firstInstantOfDay, isValidTimezone } from '@/lib/restaurantClock';
-import {
-  formatLocalDate,
-  formatLocalDateInTz,
-  formatLocalTimeInTz,
-  requireTz,
-  wallClockToInstant,
-} from '@/lib/shiftInterval';
-
-import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
-import type { BulkShiftInsert } from '@/lib/copyWeekShifts';
-
-const DAYS_PER_WEEK = 7;
-const TIME_RE = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
-const INVALID_TIME_MESSAGE = 'This template has an invalid shift time.';
-
 /**
  * Template snapshots store restaurant-local wall clocks. Every conversion in
  * this file uses the restaurant zone `tz`, never the browser zone: a manager
@@ -24,6 +8,23 @@ const INVALID_TIME_MESSAGE = 'This template has an invalid shift time.';
  * (host-local midnight), so `formatLocalDate` reads them correctly. This is
  * the same rule as `copyWeekShifts.ts`.
  */
+
+import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
+import type { BulkShiftInsert } from '@/lib/copyWeekShifts';
+
+import {
+  addDaysToDateStr,
+  daysBetweenDateStrs,
+  firstInstantOfDay,
+  isValidTimezone,
+  toBusinessDay,
+} from '@/lib/restaurantClock';
+import { formatLocalDate, requireTz, wallClockToInstant } from '@/lib/shiftInterval';
+
+const DAYS_PER_WEEK = 7;
+const TIME_RE = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
+const INVALID_TIME_MESSAGE = 'This template has an invalid shift time.';
+const INVALID_DAY_MESSAGE = 'This template has an invalid shift day.';
 
 /** Throw `INVALID_DATE` when `tz` is missing or is not a known IANA zone. */
 function requireValidTz(tz: string | null | undefined): asserts tz is string {
@@ -45,6 +46,29 @@ function parseTime(time: string): { hhmm: string; seconds: number; sortKey: stri
   return { hhmm: `${hh}:${mm}`, seconds: Number(ss), sortKey: `${hh}:${mm}:${ss}` };
 }
 
+// One `HH:MM:SS` formatter per zone. `formatLocalTimeInTz` and date-fns-tz
+// `formatInTimeZone` read host getters off a shifted `Date`, so they move a
+// wall clock that falls in a DST gap of the browser zone by one hour.
+// `Intl.DateTimeFormat` with `timeZone` reads no host getters.
+const wallClockFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+/** The restaurant-local `HH:MM:SS` wall clock of an instant. */
+function formatWallClock(iso: string, tz: string): string {
+  let dtf = wallClockFormatterCache.get(tz);
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hourCycle: 'h23',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    wallClockFormatterCache.set(tz, dtf);
+  }
+  const parts = Object.fromEntries(dtf.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  return `${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 /** Resolve a restaurant-local wall clock to an instant, keeping the seconds. */
 function toInstant(dateStr: string, time: { hhmm: string; seconds: number }, tz: string): Date {
   // The UTC offset is constant inside one minute, so adding the seconds after
@@ -63,9 +87,9 @@ export function buildTemplateSnapshot(
   return shifts
     .filter((s) => s.status !== 'cancelled')
     .map((shift) => ({
-      day_offset: daysBetweenDateStrs(weekStartStr, formatLocalDateInTz(new Date(shift.start_time), tz)),
-      start_time: formatLocalTimeInTz(shift.start_time, tz),
-      end_time: formatLocalTimeInTz(shift.end_time, tz),
+      day_offset: daysBetweenDateStrs(weekStartStr, toBusinessDay(shift.start_time, tz)),
+      start_time: formatWallClock(shift.start_time, tz),
+      end_time: formatWallClock(shift.end_time, tz),
       break_duration: shift.break_duration,
       position: shift.position,
       employee_id: shift.employee_id,
@@ -88,6 +112,10 @@ export function buildShiftsFromTemplate(
   const mondayStr = formatLocalDate(targetMonday);
 
   return snapshots.map((snap) => {
+    // The save RPC stores the JSON with no check, so check the day here.
+    if (!Number.isInteger(snap.day_offset) || snap.day_offset < 0 || snap.day_offset >= DAYS_PER_WEEK) {
+      throw new Error(INVALID_DAY_MESSAGE);
+    }
     const dateStr = addDaysToDateStr(mondayStr, snap.day_offset);
     const start = parseTime(snap.start_time);
     const end = parseTime(snap.end_time);

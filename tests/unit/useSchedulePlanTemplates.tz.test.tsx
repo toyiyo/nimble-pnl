@@ -51,7 +51,7 @@ function makeTemplate(): SchedulePlanTemplate {
     shift_count: 1,
     created_at: '2026-04-01T00:00:00Z',
     updated_at: '2026-04-01T00:00:00Z',
-  } as SchedulePlanTemplate;
+  } satisfies SchedulePlanTemplate;
 }
 
 // The browser zone (Asia/Tokyo) is not the restaurant zone (America/Chicago).

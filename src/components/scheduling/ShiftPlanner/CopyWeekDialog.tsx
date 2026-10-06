@@ -13,10 +13,13 @@ import { Input } from '@/components/ui/input';
 import { Copy, AlertTriangle, Save, Trash2, Layers } from 'lucide-react';
 
 import { supabase } from '@/integrations/supabase/client';
-import { useSchedulePlanTemplates } from '@/hooks/useSchedulePlanTemplates';
+import { useSchedulePlanTemplates, MAX_SCHEDULE_PLAN_TEMPLATES } from '@/hooks/useSchedulePlanTemplates';
 import { getMondayOfWeek, getWeekEnd } from '@/hooks/useShiftPlanner';
 
 import type { Shift, SchedulePlanTemplate } from '@/types/scheduling';
+
+import { TemplateApplyFields, type TemplateMergeMode } from '@/components/scheduling/TemplateApplyFields';
+import { formatWeekRange as formatRange, isPastWeek as checkIsPastWeek } from '@/lib/schedulePlanTemplates';
 
 interface CopyWeekDialogProps {
   open: boolean;
@@ -27,28 +30,16 @@ interface CopyWeekDialogProps {
   restaurantId: string | null;
   onConfirm: (targetMonday: Date) => void;
   isPending: boolean;
+  /** edit:scheduling. When false, the dialog hides template save and the Templates tab. */
+  canManageTemplates: boolean;
+  /** Opens the Week Templates tab on the page. */
+  onEditTemplates?: () => void;
 }
 
 type TabId = 'copy' | 'templates';
-type MergeMode = 'replace' | 'merge';
-
-const MAX_TEMPLATES = 5;
-
-function formatRange(start: Date, end: Date): string {
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  return `${start.toLocaleDateString('en-US', opts)} – ${end.toLocaleDateString('en-US', opts)}`;
-}
-
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function checkIsPastWeek(monday: Date | null): boolean {
-  if (!monday) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return getWeekEnd(monday) < today;
 }
 
 export function CopyWeekDialog({
@@ -60,6 +51,8 @@ export function CopyWeekDialog({
   restaurantId,
   onConfirm,
   isPending,
+  canManageTemplates,
+  onEditTemplates,
 }: Readonly<CopyWeekDialogProps>) {
   // --- Tab state ---
   const [activeTab, setActiveTab] = useState<TabId>('copy');
@@ -71,7 +64,7 @@ export function CopyWeekDialog({
   // --- Template tab state ---
   const [templateSelectedDate, setTemplateSelectedDate] = useState<Date | undefined>();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [mergeMode, setMergeMode] = useState<MergeMode>('replace');
+  const [mergeMode, setMergeMode] = useState<TemplateMergeMode>('replace');
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
 
   // --- Save as template state ---
@@ -113,7 +106,6 @@ export function CopyWeekDialog({
     [templateSelectedDate],
   );
 
-  const templateTargetEnd = templateTargetMonday ? getWeekEnd(templateTargetMonday) : null;
   const isTemplatePastWeek = checkIsPastWeek(templateTargetMonday);
 
   const selectedTemplate = useMemo(
@@ -123,7 +115,7 @@ export function CopyWeekDialog({
 
   const canApplyTemplate = selectedTemplate && templateTargetMonday && !isTemplatePastWeek;
 
-  const atTemplateLimit = templates.length >= MAX_TEMPLATES;
+  const atTemplateLimit = templates.length >= MAX_SCHEDULE_PLAN_TEMPLATES;
   const canSaveTemplate = activeShiftCount > 0 && !atTemplateLimit;
 
   // Query existing shift count in target week when selection changes
@@ -250,63 +242,65 @@ export function CopyWeekDialog({
         </DialogHeader>
 
         {/* Save as Template (shared between tabs) */}
-        <div className="px-6 pt-4">
-          {!showSaveForm ? (
-            <button
-              type="button"
-              onClick={() => setShowSaveForm(true)}
-              disabled={!canSaveTemplate || saveTemplate.isPending}
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-border/60 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Save current week as template"
-            >
-              <Save className="h-4 w-4" />
-              Save current week as template
-            </button>
-          ) : (
-            <div className="flex items-center gap-2 p-3 rounded-lg border border-border/40 bg-muted/30">
-              <Input
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                placeholder="Template name"
-                className="h-9 text-[14px] bg-background border-border/40 rounded-lg flex-1"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveTemplate();
-                  if (e.key === 'Escape') {
+        {canManageTemplates && (
+          <div className="px-6 pt-4">
+            {!showSaveForm ? (
+              <button
+                type="button"
+                onClick={() => setShowSaveForm(true)}
+                disabled={!canSaveTemplate || saveTemplate.isPending}
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-border/60 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Save current week as template"
+              >
+                <Save className="h-4 w-4" />
+                Save current week as template
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 p-3 rounded-lg border border-border/40 bg-muted/30">
+                <Input
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="Template name"
+                  className="h-9 text-[14px] bg-background border-border/40 rounded-lg flex-1"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveTemplate();
+                    if (e.key === 'Escape') {
+                      setShowSaveForm(false);
+                      setTemplateName('');
+                    }
+                  }}
+                  aria-label="Template name"
+                />
+                <Button
+                  size="sm"
+                  className="h-9 px-3 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  onClick={handleSaveTemplate}
+                  disabled={!templateName.trim() || saveTemplate.isPending}
+                >
+                  {saveTemplate.isPending ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                  onClick={() => {
                     setShowSaveForm(false);
                     setTemplateName('');
-                  }
-                }}
-                aria-label="Template name"
-              />
-              <Button
-                size="sm"
-                className="h-9 px-3 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-                onClick={handleSaveTemplate}
-                disabled={!templateName.trim() || saveTemplate.isPending}
-              >
-                {saveTemplate.isPending ? 'Saving...' : 'Save'}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  setShowSaveForm(false);
-                  setTemplateName('');
-                }}
-                disabled={saveTemplate.isPending}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-          {atTemplateLimit && !showSaveForm && (
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              Maximum {MAX_TEMPLATES} templates reached. Delete one to save a new template.
-            </p>
-          )}
-        </div>
+                  }}
+                  disabled={saveTemplate.isPending}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+            {atTemplateLimit && !showSaveForm && (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Maximum {MAX_SCHEDULE_PLAN_TEMPLATES} templates reached. Delete one to save a new template.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Apple-style underline tabs */}
         <div className="px-6 pt-3 border-b border-border/40" role="tablist" aria-label="Schedule options">
@@ -325,26 +319,28 @@ export function CopyWeekDialog({
               <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
             )}
           </button>
-          <button
-            id="tab-templates"
-            role="tab"
-            aria-selected={activeTab === 'templates'}
-            aria-controls="panel-templates"
-            onClick={() => setActiveTab('templates')}
-            className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
-              activeTab === 'templates' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Templates
-            {templates.length > 0 && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted ml-1.5">
-                {templates.length}
-              </span>
-            )}
-            {activeTab === 'templates' && (
-              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
-            )}
-          </button>
+          {canManageTemplates && (
+            <button
+              id="tab-templates"
+              role="tab"
+              aria-selected={activeTab === 'templates'}
+              aria-controls="panel-templates"
+              onClick={() => setActiveTab('templates')}
+              className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
+                activeTab === 'templates' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Templates
+              {templates.length > 0 && (
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted ml-1.5">
+                  {templates.length}
+                </span>
+              )}
+              {activeTab === 'templates' && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+              )}
+            </button>
+          )}
         </div>
 
         {/* ===== Copy from Week tab ===== */}
@@ -434,9 +430,26 @@ export function CopyWeekDialog({
         )}
 
         {/* ===== Templates tab ===== */}
-        {activeTab === 'templates' && (
+        {canManageTemplates && activeTab === 'templates' && (
           <div id="panel-templates" role="tabpanel" aria-labelledby="tab-templates">
             <div className="px-6 py-5 space-y-4">
+              {onEditTemplates && (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[13px] text-muted-foreground">Build and change templates without a live week.</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      handleOpenChange(false);
+                      onEditTemplates();
+                    }}
+                    className="h-8 px-2 rounded-lg text-[13px] font-medium text-foreground underline-offset-4 hover:underline shrink-0"
+                  >
+                    Edit templates
+                  </Button>
+                </div>
+              )}
               {/* Template list */}
               {templatesLoading ? (
                 <div className="flex items-center justify-center py-8">
@@ -522,74 +535,15 @@ export function CopyWeekDialog({
 
               {/* Apply options (only when a template is selected) */}
               {selectedTemplate && (
-                <div className="space-y-4 pt-2">
-                  {/* Target week picker */}
-                  <div>
-                    <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                      Apply to week
-                    </p>
-                    <div className="flex justify-center">
-                      <Calendar
-                        mode="single"
-                        selected={templateSelectedDate}
-                        onSelect={setTemplateSelectedDate}
-                        className="rounded-lg border border-border/40"
-                      />
-                    </div>
-                  </div>
-
-                  {templateTargetMonday && templateTargetEnd && (
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
-                      <span className="text-[13px] text-muted-foreground">Target week</span>
-                      <span className="text-[13px] font-medium text-foreground">
-                        {formatRange(templateTargetMonday, templateTargetEnd)}
-                      </span>
-                    </div>
-                  )}
-
-                  {isTemplatePastWeek && templateTargetMonday && (
-                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
-                      <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
-                      <p className="text-[12px] text-destructive">Cannot apply to a past week.</p>
-                    </div>
-                  )}
-
-                  {/* Merge mode */}
-                  <div>
-                    <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      Mode
-                    </p>
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-3 p-3 rounded-lg border border-border/40 cursor-pointer hover:border-border transition-colors">
-                        <input
-                          type="radio"
-                          name="mergeMode"
-                          value="replace"
-                          checked={mergeMode === 'replace'}
-                          onChange={() => setMergeMode('replace')}
-                          className="accent-foreground"
-                        />
-                        <div>
-                          <p className="text-[14px] font-medium text-foreground">Replace existing</p>
-                          <p className="text-[12px] text-muted-foreground">Remove all unlocked shifts in the target week first</p>
-                        </div>
-                      </label>
-                      <label className="flex items-center gap-3 p-3 rounded-lg border border-border/40 cursor-pointer hover:border-border transition-colors">
-                        <input
-                          type="radio"
-                          name="mergeMode"
-                          value="merge"
-                          checked={mergeMode === 'merge'}
-                          onChange={() => setMergeMode('merge')}
-                          className="accent-foreground"
-                        />
-                        <div>
-                          <p className="text-[14px] font-medium text-foreground">Merge with existing</p>
-                          <p className="text-[12px] text-muted-foreground">Add template shifts alongside existing ones</p>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
+                <div className="pt-2">
+                  <TemplateApplyFields
+                    selectedDate={templateSelectedDate}
+                    onSelectDate={setTemplateSelectedDate}
+                    targetMonday={templateTargetMonday}
+                    isPastWeek={isTemplatePastWeek}
+                    mergeMode={mergeMode}
+                    onMergeModeChange={setMergeMode}
+                  />
                 </div>
               )}
             </div>

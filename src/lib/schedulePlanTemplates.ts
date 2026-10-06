@@ -1,6 +1,8 @@
+import { format } from 'date-fns';
+
 import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
 import type { BulkShiftInsert } from '@/lib/copyWeekShifts';
-import { formatLocalTime } from '@/hooks/useShiftPlanner';
+import { formatLocalTime, getWeekEnd } from '@/hooks/useShiftPlanner';
 
 function computeDayOffset(isoString: string, weekStart: Date): number {
   const d = new Date(isoString);
@@ -74,4 +76,17 @@ export function buildShiftsFromTemplate(
       locked: false,
     };
   });
+}
+
+/** 'Oct 5 – Oct 11'. The dates are local calendar days (week picker values). */
+export function formatWeekRange(start: Date, end: Date): string {
+  return `${format(start, 'MMM d')} – ${format(end, 'MMM d')}`;
+}
+
+/** True when the whole week that starts on `monday` is before today. */
+export function isPastWeek(monday: Date | null, today: Date = new Date()): boolean {
+  if (!monday) return false;
+  const startOfToday = new Date(today);
+  startOfToday.setHours(0, 0, 0, 0);
+  return getWeekEnd(monday) < startOfToday;
 }

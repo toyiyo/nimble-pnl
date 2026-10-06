@@ -61,6 +61,7 @@ import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDial
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
+import { WeekTemplatesTab } from '@/components/scheduling/WeekTemplates/WeekTemplatesTab';
 import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
 import { DeleteAvailabilityDialog } from '@/components/scheduling/DeleteAvailabilityDialog';
@@ -265,6 +266,19 @@ const Scheduling = () => {
   const { guardShiftChange, notifyAfterDeferredCommit, dialog: publishedShiftChangeDialog } =
     usePublishedShiftGuard();
   const [activeTab, setActiveTab] = useState('schedule');
+  // Week Templates keeps an unsaved draft. The page asks before it leaves that tab.
+  const [templatesDirty, setTemplatesDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const handleTabChange = useCallback(
+    (next: string) => {
+      if (activeTab === 'templates' && next !== 'templates' && templatesDirty) {
+        setPendingTab(next);
+        return;
+      }
+      setActiveTab(next);
+    },
+    [activeTab, templatesDirty],
+  );
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
@@ -321,6 +335,23 @@ const Scheduling = () => {
       setActiveTab('schedule');
     }
   }, [activeTab, canManageSchedule]);
+
+  // Week Templates: leave the tab only after permissions resolve. Before that,
+  // canManageSchedule is false for everyone, and a manager would lose a draft.
+  useEffect(() => {
+    if (activeTab === 'templates' && isResolved && !canManageSchedule) {
+      setActiveTab('schedule');
+    }
+  }, [activeTab, isResolved, canManageSchedule]);
+
+  const handleEditTemplates = useCallback(() => setActiveTab('templates'), []);
+  const handleViewTemplateWeek = useCallback(
+    (monday: Date) => {
+      setCurrentWeekStart(getMondayOfWeek(monday));
+      setActiveTab('schedule');
+    },
+    [setCurrentWeekStart],
+  );
 
   // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
   // and weekDayKeys/weekTimeOff memos are stable across drag/hover/selection re-renders.
@@ -923,7 +954,7 @@ const Scheduling = () => {
       />
 
       {/* Tabs for Schedule, Time-Off, and Availability */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList className="bg-muted/50 p-1 h-auto gap-1">
           <TabsTrigger
             value="schedule"
@@ -969,6 +1000,16 @@ const Scheduling = () => {
             <LayoutGrid className="h-4 w-4" />
             <span className="hidden sm:inline">Planner</span>
           </TabsTrigger>
+          {canManageSchedule && (
+            <TabsTrigger
+              value="templates"
+              aria-label="Week Templates"
+              className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2"
+            >
+              <Layers className="h-4 w-4" />
+              <span className="hidden sm:inline">Week Templates</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="schedule">
@@ -1753,7 +1794,43 @@ const Scheduling = () => {
             />
           )}
         </TabsContent>
+
+        {canManageSchedule && (
+          <TabsContent value="templates">
+            {restaurantId && (
+              <WeekTemplatesTab
+                restaurantId={restaurantId}
+                onDirtyChange={setTemplatesDirty}
+                onViewWeek={handleViewTemplateWeek}
+              />
+            )}
+          </TabsContent>
+        )}
       </Tabs>
+
+      <AlertDialog open={pendingTab !== null} onOpenChange={(open) => !open && setPendingTab(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved template changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes in Week Templates. Leave the tab and discard them?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const next = pendingTab;
+                setPendingTab(null);
+                setTemplatesDirty(false);
+                if (next) setActiveTab(next);
+              }}
+            >
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialogs */}
       {restaurantId && (
@@ -2015,6 +2092,8 @@ const Scheduling = () => {
         restaurantId={restaurantId}
         onConfirm={handleCopyWeekConfirm}
         isPending={copyWeekMutation.isPending}
+        canManageTemplates={canManageSchedule}
+        onEditTemplates={handleEditTemplates}
       />
 
       {/* Bulk Delete Confirmation Dialog */}

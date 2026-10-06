@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTemplateSnapshot, buildShiftsFromTemplate } from '@/lib/schedulePlanTemplates';
+import { buildTemplateSnapshot, buildShiftsFromTemplate, formatWeekRange, isPastWeek } from '@/lib/schedulePlanTemplates';
 import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
 
 function makeShift(overrides: Partial<Shift> & { start_time: string; end_time: string }): Shift {
@@ -156,5 +156,17 @@ describe('buildShiftsFromTemplate', () => {
   it('preserves notes', () => {
     const result = buildShiftsFromTemplate(snapshot, targetMonday, 'rest-1');
     expect(result[1].notes).toBe('Evening shift');
+  });
+});
+
+describe('formatWeekRange and isPastWeek', () => {
+  it('formats a Monday-Sunday range', () => {
+    expect(formatWeekRange(new Date(2026, 9, 5), new Date(2026, 9, 11))).toBe('Oct 5 – Oct 11');
+  });
+  it('marks a week as past only when its Sunday is before today', () => {
+    const today = new Date(2026, 9, 7); // Wed Oct 7
+    expect(isPastWeek(new Date(2026, 8, 28), today)).toBe(true);
+    expect(isPastWeek(new Date(2026, 9, 5), today)).toBe(false);
+    expect(isPastWeek(null, today)).toBe(false);
   });
 });

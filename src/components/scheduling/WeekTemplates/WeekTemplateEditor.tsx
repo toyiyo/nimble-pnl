@@ -34,23 +34,13 @@ import {
   dayTotals,
   employeeHours,
   findOverlap,
+  formatHours,
+  formatShortTime,
   removeEmployeeRow,
   removeShift,
   updateShift,
 } from '@/lib/weekTemplateDraft';
 import { cn } from '@/lib/utils';
-
-/** '09:00:00' -> '9a', '13:30:00' -> '1:30p' */
-export function formatShortTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const suffix = h < 12 ? 'a' : 'p';
-  const hour12 = h % 12 || 12;
-  return m ? `${hour12}:${String(m).padStart(2, '0')}${suffix}` : `${hour12}${suffix}`;
-}
-
-export function formatHours(hours: number): string {
-  return `${Math.round(hours * 10) / 10}h`;
-}
 
 const DEFAULT_INPUT: Omit<DraftShiftInput, 'position'> = {
   start_time: '09:00:00',

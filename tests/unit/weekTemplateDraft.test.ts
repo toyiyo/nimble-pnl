@@ -11,6 +11,8 @@ import {
   emptyDraft,
   employeeHours,
   findOverlap,
+  formatHours,
+  formatShortTime,
   isDraftDirty,
   jsDayToDayOffset,
   normalizeTime,
@@ -258,5 +260,16 @@ describe('isDraftDirty', () => {
     expect(isDraftDirty(emptyDraft(), null)).toBe(false);
     expect(isDraftDirty(addEmployeeRow(emptyDraft(), ALICE), null)).toBe(false);
     expect(isDraftDirty(addShifts(emptyDraft(), ALICE, 'Alice', input(), [0]), null)).toBe(true);
+  });
+});
+
+describe('formatShortTime and formatHours', () => {
+  it('formats times in 12-hour short form', () => {
+    expect(['00:00:00', '09:00:00', '12:00:00', '13:30:00', '23:05'].map(formatShortTime)).toEqual(['12a', '9a', '12p', '1:30p', '11:05p']);
+  });
+  it('rounds hours to one decimal', () => {
+    expect(formatHours(7.5)).toBe('7.5h');
+    expect(formatHours(8)).toBe('8h');
+    expect(formatHours(2 / 3)).toBe('0.7h');
   });
 });

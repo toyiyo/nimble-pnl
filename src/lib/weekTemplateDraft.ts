@@ -51,6 +51,18 @@ function absoluteSpan(day: number, start: string, end: string): [number, number]
   return [s, e];
 }
 
+/** '09:00:00' -> '9a', '13:30:00' -> '1:30p' */
+export function formatShortTime(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const suffix = h < 12 ? 'a' : 'p';
+  const hour12 = h % 12 || 12;
+  return m ? `${hour12}:${String(m).padStart(2, '0')}${suffix}` : `${hour12}${suffix}`;
+}
+
+export function formatHours(hours: number): string {
+  return `${Math.round(hours * 10) / 10}h`;
+}
+
 export function emptyDraft(name: string = DEFAULT_TEMPLATE_NAME): TemplateDraft {
   return { id: null, name, updatedAt: null, rowEmployeeIds: [], shifts: [] };
 }

@@ -1803,6 +1803,7 @@ const Scheduling = () => {
                 // selection from the previous restaurant stays.
                 key={restaurantId}
                 restaurantId={restaurantId}
+                timezone={restaurantTimezone}
                 onDirtyChange={setTemplatesDirty}
                 onViewWeek={handleViewTemplateWeek}
               />
@@ -2093,6 +2094,7 @@ const Scheduling = () => {
         sourceWeekEnd={weekEnd}
         shifts={shifts}
         restaurantId={restaurantId}
+        timezone={restaurantTimezone}
         onConfirm={handleCopyWeekConfirm}
         isPending={copyWeekMutation.isPending}
         canManageTemplates={canManageSchedule}

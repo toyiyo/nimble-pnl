@@ -77,7 +77,7 @@ function renderTab(onDirtyChange = vi.fn()) {
   const qc = new QueryClient();
   const utils = render(
     <QueryClientProvider client={qc}>
-      <WeekTemplatesTab restaurantId="r1" onDirtyChange={onDirtyChange} onViewWeek={vi.fn()} />
+      <WeekTemplatesTab restaurantId="r1" timezone="UTC" onDirtyChange={onDirtyChange} onViewWeek={vi.fn()} />
     </QueryClientProvider>,
   );
   return { ...utils, qc, onDirtyChange };
@@ -224,7 +224,7 @@ describe('WeekTemplatesTab', () => {
     setHook([tmpl('t1', 'Theirs', '2026-10-02T10:00:00+00:00')]);
     rerender(
       <QueryClientProvider client={qc}>
-        <WeekTemplatesTab restaurantId="r1" onDirtyChange={vi.fn()} onViewWeek={vi.fn()} />
+        <WeekTemplatesTab restaurantId="r1" timezone="UTC" onDirtyChange={vi.fn()} onViewWeek={vi.fn()} />
       </QueryClientProvider>,
     );
     expect(screen.getByText(/This template changed in another session/)).toBeInTheDocument();
@@ -238,7 +238,7 @@ describe('WeekTemplatesTab', () => {
     setHook([tmpl('t1', 'Theirs', '2026-10-02T10:00:00+00:00')]);
     rerender(
       <QueryClientProvider client={qc}>
-        <WeekTemplatesTab restaurantId="r1" onDirtyChange={vi.fn()} onViewWeek={vi.fn()} />
+        <WeekTemplatesTab restaurantId="r1" timezone="UTC" onDirtyChange={vi.fn()} onViewWeek={vi.fn()} />
       </QueryClientProvider>,
     );
     expect(screen.getByLabelText('Template name')).toHaveValue('Theirs');

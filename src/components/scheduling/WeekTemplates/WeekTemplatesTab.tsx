@@ -33,6 +33,8 @@ import { cn } from '@/lib/utils';
 
 interface WeekTemplatesTabProps {
   restaurantId: string;
+  /** Restaurant IANA time zone. Templates apply in this zone, not the browser zone. */
+  timezone: string;
   /** Reports unsaved changes so the page can guard a tab change. */
   onDirtyChange: (dirty: boolean) => void;
   /** Opens the Schedule tab on the given week. */
@@ -50,7 +52,7 @@ function isNewer(server: string, base: string): boolean {
 
 type PendingAction = { run: () => void } | null;
 
-export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Readonly<WeekTemplatesTabProps>) {
+export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onViewWeek }: Readonly<WeekTemplatesTabProps>) {
   const {
     templates,
     isLoading,
@@ -60,7 +62,7 @@ export function WeekTemplatesTab({ restaurantId, onDirtyChange, onViewWeek }: Re
     updateTemplate,
     applyTemplate,
     deleteTemplate,
-  } = useSchedulePlanTemplates(restaurantId);
+  } = useSchedulePlanTemplates(restaurantId, timezone);
   const {
     employees,
     loading: employeesLoading,

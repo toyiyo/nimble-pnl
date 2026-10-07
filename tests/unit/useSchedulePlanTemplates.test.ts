@@ -66,7 +66,7 @@ describe('useSchedulePlanTemplates', () => {
   });
 
   it('selects explicit columns, not *', async () => {
-    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1'), { wrapper });
+    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1', 'UTC'), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(mocks.select).toHaveBeenCalledWith('id, restaurant_id, name, shifts, shift_count, created_at, updated_at');
   });
@@ -77,7 +77,7 @@ describe('useSchedulePlanTemplates', () => {
       error: null,
     });
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
-    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1'), { wrapper });
+    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1', 'UTC'), { wrapper });
 
     let out: unknown;
     await act(async () => {
@@ -99,7 +99,7 @@ describe('useSchedulePlanTemplates', () => {
       data: { id: 't-1', name: 'Lunch', shift_count: 1, updated_at: '2026-10-06T11:00:00.654321+00:00' },
       error: null,
     });
-    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1'), { wrapper });
+    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1', 'UTC'), { wrapper });
 
     let out: unknown;
     await act(async () => {
@@ -126,7 +126,7 @@ describe('useSchedulePlanTemplates', () => {
       data: null,
       error: { message: 'Template was changed by another user. Reload and try again.' },
     });
-    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1'), { wrapper });
+    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1', 'UTC'), { wrapper });
 
     await act(async () => {
       await expect(
@@ -147,7 +147,7 @@ describe('useSchedulePlanTemplates', () => {
     mocks.rpc.mockResolvedValueOnce({ data: null, error: null });
     mocks.hangList = true; // the refetch after the delete stays in flight
     queryClient.setQueryData(['schedule-plan-templates', 'rest-1'], [{ id: 't-1' }, { id: 't-2' }]);
-    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1'), { wrapper });
+    const { result } = renderHook(() => useSchedulePlanTemplates('rest-1', 'UTC'), { wrapper });
 
     await act(async () => {
       await result.current.deleteTemplate.mutateAsync('t-1');

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTemplateSnapshot, buildShiftsFromTemplate } from '@/lib/schedulePlanTemplates';
+import { buildTemplateSnapshot, buildShiftsFromTemplate, formatWeekRange, isPastWeek } from '@/lib/schedulePlanTemplates';
 import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
 
 function makeShift(overrides: Partial<Shift> & { start_time: string; end_time: string }): Shift {
@@ -22,6 +22,24 @@ function makeShift(overrides: Partial<Shift> & { start_time: string; end_time: s
 
 describe('buildTemplateSnapshot', () => {
   const weekStart = new Date(2026, 2, 30); // Monday March 30, 2026
+
+  it('drops shifts whose day_offset falls outside Monday-Sunday', () => {
+    const before = makeShift({
+      start_time: new Date(2026, 2, 29, 22, 0, 0).toISOString(), // Sun Mar 29 (offset -1)
+      end_time: new Date(2026, 2, 30, 2, 0, 0).toISOString(),
+    });
+    const after = makeShift({
+      start_time: new Date(2026, 3, 6, 9, 0, 0).toISOString(), // Mon Apr 6 (offset 7)
+      end_time: new Date(2026, 3, 6, 17, 0, 0).toISOString(),
+    });
+    const inside = makeShift({
+      start_time: new Date(2026, 3, 5, 9, 0, 0).toISOString(), // Sun Apr 5 (offset 6)
+      end_time: new Date(2026, 3, 5, 17, 0, 0).toISOString(),
+    });
+
+    const result = buildTemplateSnapshot([before, after, inside], weekStart);
+    expect(result.map((r) => r.day_offset)).toEqual([6]);
+  });
 
   it('computes correct day_offset from Monday', () => {
     const shift = makeShift({
@@ -138,5 +156,33 @@ describe('buildShiftsFromTemplate', () => {
   it('preserves notes', () => {
     const result = buildShiftsFromTemplate(snapshot, targetMonday, 'rest-1');
     expect(result[1].notes).toBe('Evening shift');
+  });
+});
+
+describe('formatWeekRange and isPastWeek', () => {
+  it('formats a Monday-Sunday range', () => {
+    expect(formatWeekRange(new Date(2026, 9, 5), new Date(2026, 9, 11))).toBe('Oct 5 – Oct 11');
+  });
+  it('marks a week as past only when its Sunday is before today', () => {
+    const today = new Date(2026, 9, 7); // Wed Oct 7
+    expect(isPastWeek(new Date(2026, 8, 28), today)).toBe(true);
+    expect(isPastWeek(new Date(2026, 9, 5), today)).toBe(false);
+    expect(isPastWeek(null, today)).toBe(false);
+  });
+});
+
+describe('buildShiftsFromTemplate day offset filter', () => {
+  it('skips offsets outside 0-6', () => {
+    const base: TemplateShiftSnapshot = {
+      day_offset: 0, start_time: '09:00:00', end_time: '17:00:00', break_duration: 0,
+      position: 'Server', employee_id: 'emp-1', employee_name: 'Alice', notes: null,
+    };
+    const out = buildShiftsFromTemplate(
+      [{ ...base, day_offset: -1 }, { ...base, day_offset: 7 }, { ...base, day_offset: 3 }],
+      new Date(2026, 9, 5),
+      'rest-1',
+    );
+    expect(out).toHaveLength(1);
+    expect(new Date(out[0].start_time).getDate()).toBe(8);
   });
 });

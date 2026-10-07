@@ -5,7 +5,22 @@ import { useToast } from '@/hooks/use-toast';
 import { buildTemplateSnapshot, buildShiftsFromTemplate } from '@/lib/schedulePlanTemplates';
 import { getWeekEnd } from '@/hooks/useShiftPlanner';
 
-import type { Shift, SchedulePlanTemplate, ApplyTemplateResult } from '@/types/scheduling';
+import type { Json } from '@/integrations/supabase/types';
+import type {
+  Shift,
+  SchedulePlanTemplate,
+  ApplyTemplateResult,
+  TemplateMergeMode,
+  TemplateShiftSnapshot,
+} from '@/types/scheduling';
+
+/** Mirrors the limit in save_schedule_plan_template. */
+export const MAX_SCHEDULE_PLAN_TEMPLATES = 20;
+
+const TEMPLATE_COLUMNS = 'id, restaurant_id, name, shifts, shift_count, created_at, updated_at';
+
+// Interfaces have no index signature, so TypeScript does not accept them as Json.
+const toJson = (shifts: TemplateShiftSnapshot[]) => shifts as unknown as Json;
 
 export function useSchedulePlanTemplates(restaurantId: string | null) {
   const queryClient = useQueryClient();
@@ -13,13 +28,13 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
 
   const queryKey = ['schedule-plan-templates', restaurantId];
 
-  const { data: templates = [], isLoading, error } = useQuery({
+  const { data: templates = [], isLoading, error, refetch } = useQuery({
     queryKey,
     queryFn: async () => {
       if (!restaurantId) return [];
       const { data, error } = await supabase
         .from('schedule_plan_templates')
-        .select('*')
+        .select(TEMPLATE_COLUMNS)
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false });
 
@@ -35,11 +50,10 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       if (!restaurantId) throw new Error('No restaurant selected');
       const snapshot = buildTemplateSnapshot(shifts, weekStart);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)('save_schedule_plan_template', {
+      const { data, error } = await supabase.rpc('save_schedule_plan_template', {
         p_restaurant_id: restaurantId,
         p_name: name,
-        p_shifts: snapshot,
+        p_shifts: toJson(snapshot),
       });
 
       if (error) throw error;
@@ -54,11 +68,63 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     },
   });
 
+  // createTemplate and updateTemplate share the same result handling.
+  const draftSaveCallbacks = {
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey });
+      toast({ title: 'Template saved' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Failed to save template', description: error.message, variant: 'destructive' });
+    },
+  };
+
+  const createTemplate = useMutation({
+    mutationFn: async ({ name, shifts }: { name: string; shifts: TemplateShiftSnapshot[] }): Promise<SchedulePlanTemplate> => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      const { data, error } = await supabase.rpc('save_schedule_plan_template', {
+        p_restaurant_id: restaurantId,
+        p_name: name,
+        p_shifts: toJson(shifts),
+      });
+
+      if (error) throw error;
+      // The RPC returns the full row, the same shape as the SELECT above.
+      return data as unknown as SchedulePlanTemplate;
+    },
+    ...draftSaveCallbacks,
+  });
+
+  const updateTemplate = useMutation({
+    mutationFn: async ({
+      id, name, shifts, expectedUpdatedAt,
+    }: {
+      id: string; name: string; shifts: TemplateShiftSnapshot[]; expectedUpdatedAt: string;
+    }): Promise<SchedulePlanTemplate> => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      // expectedUpdatedAt must be the raw string from the server. A JS Date
+      // drops microseconds and the server compare then never matches.
+      const { data, error } = await supabase.rpc('update_schedule_plan_template', {
+        p_restaurant_id: restaurantId,
+        p_template_id: id,
+        p_name: name,
+        p_shifts: toJson(shifts),
+        p_expected_updated_at: expectedUpdatedAt,
+      });
+
+      if (error) throw error;
+      return data as unknown as SchedulePlanTemplate;
+    },
+    ...draftSaveCallbacks,
+  });
+
   const applyTemplate = useMutation({
     mutationFn: async ({
       template, targetMonday, mergeMode,
     }: {
-      template: SchedulePlanTemplate; targetMonday: Date; mergeMode: 'replace' | 'merge';
+      template: SchedulePlanTemplate; targetMonday: Date; mergeMode: TemplateMergeMode;
     }): Promise<ApplyTemplateResult> => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
@@ -102,16 +168,18 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     mutationFn: async (templateId: string) => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.rpc as any)('delete_schedule_plan_template', {
+      const { error } = await supabase.rpc('delete_schedule_plan_template', {
         p_restaurant_id: restaurantId,
         p_template_id: templateId,
       });
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
+    onSuccess: (_data, templateId) => {
+      // Drop the row from the cache now. Until the refetch returns, a stale
+      // copy could otherwise be selected again by the Week Templates tab.
+      queryClient.setQueryData<SchedulePlanTemplate[]>(queryKey, (old) => old?.filter((t) => t.id !== templateId));
+      void queryClient.invalidateQueries({ queryKey });
       toast({ title: 'Template deleted' });
     },
     onError: (error: Error) => {
@@ -123,7 +191,10 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
     templates,
     isLoading,
     error,
+    refetch,
     saveTemplate,
+    createTemplate,
+    updateTemplate,
     applyTemplate,
     deleteTemplate,
   };

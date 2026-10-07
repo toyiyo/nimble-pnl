@@ -3670,3 +3670,28 @@
 ### [2026-10-06] CodeRabbit does not review again by itself after its rate limit (PR #842)
 - **Mistake:** I waited for CodeRabbit after the "Review limit reached" notice. No review came after the limit reset.
 - **Rule:** After the reset time, post `@coderabbitai review` on the PR.
+
+## Category: Database Performance (recipe sales stats RLS timeout)
+
+### [2026-10-06] A non-inlined SQL function gets a generic plan, and RLS subplans become per-row (PR #844)
+- **Mistake:** `get_recipe_sales_stats` was `LANGUAGE sql` with `SET search_path`. The `SET` clause stops inlining, so Postgres plans `p_restaurant_id` as `$1`. In the generic plan, the `unified_sales` RLS EXISTS subplan was correlated and ran 21,670 times (546k buffers, 3.2 s warm, 57014 under load).
+- **Correction:** Make the function `SECURITY DEFINER` with an owner that has `rolbypassrls`. Add an explicit `public.user_has_capability(p_restaurant_id, ...)` check. The planner runs it as a One-Time Filter. The production probe went to about 21 ms per call.
+- **Rule:** To prove the cause of a slow RPC, compare three plans: the real call, the body with a literal, and the body with `$1` under `plan_cache_mode = force_generic_plan`. If the generic plan matches the real call, look for a correlated RLS subplan.
+
+### [2026-10-06] Two PRs can each pass CI with the same migration version (PR #844)
+- **Mistake:** Main merged `20261006120000_editable_week_templates.sql` while this branch had `20261006120000_get_recipe_sales_stats_definer.sql`. Every CI database job failed with `duplicate key value violates unique constraint "schema_migrations_pkey"`.
+- **Rule:** Before the push that opens a PR, fetch `origin/main` and compare the migration prefixes. Use a prefix later than every migration on main.
+
+### [2026-10-06] "Supabase Preview" fails when the branch is behind main on migrations (PR #844)
+- **Mistake:** The check failed with `Remote migration versions not found in local migrations directory.` The preview branch had a migration from main that the PR branch did not have.
+- **Correction:** Merge `origin/main` into the branch and push.
+- **Rule:** When this check fails, run `git diff --name-status HEAD origin/main -- supabase/migrations` first. Do not change the migration.
+
+### [2026-10-06] Local Supabase when Docker cannot pull new images (PR #844)
+- **Mistake:** `npx supabase start` hung on image pulls from public.ecr.aws in the sandbox. A start without kong failed with `HealthCheckTimeoutError`.
+- **Correction:** Write version pin files in `supabase/.temp/` (gitignored) for the images that are already local: `postgres-version`, `rest-version`, `gotrue-version`, `realtime-version`, `storage-version`, `pgmeta-version`, `edge-runtime-version`, `studio-version`. Start with `-x` for the services you do not need. Keep kong, because the health check uses it.
+- **Rule:** When a pull hangs, run `docker images` and pin each service to a local tag. Never exclude kong.
+
+### [2026-10-06] Give the full E2E run its own time in Verify (PR #844)
+- **Mistake:** Verify stopped before the full local E2E run finished. The one failure (`accountless-employee-invite.spec.ts:126`, strict mode violation on "Add Employee") was in a spec the branch does not touch.
+- **Rule:** In Verify, run the specs that cover the change first, then the full run in the background with a bound. Check a failure in an untouched spec against main CI before you act on it.

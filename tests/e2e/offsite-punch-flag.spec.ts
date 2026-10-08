@@ -60,7 +60,15 @@ test.describe('Off-site punch flags', () => {
     );
     expect(employee?.id).toBeTruthy();
 
-    const punchTime = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    // `/time-punches` opens on today, from `startOfDay` in the browser time zone.
+    // Before 00:30, `now - 30 min` is yesterday and the page does not count it.
+    // Use the later of the two times. Compute it in the browser for the same zone.
+    const punchTime: string = await page.evaluate(() => {
+      const now = new Date();
+      const startOfToday = new Date(now);
+      startOfToday.setHours(0, 0, 0, 0);
+      return new Date(Math.max(now.getTime() - 30 * 60 * 1000, startOfToday.getTime())).toISOString();
+    });
     const [punch] = await page.evaluate(
       ({ restId, employeeId, time, center }: { restId: string; employeeId: string; time: string; center: typeof CENTER }) =>
         (window as any).__insertTimePunches(

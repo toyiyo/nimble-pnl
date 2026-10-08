@@ -21,9 +21,10 @@ Design: `docs/superpowers/specs/2026-10-07-offsite-punch-midnight-flake-design.m
 
 1. Run the full Phase 8 set: `npm run test`, `npm run test:db`,
    `npm run test:e2e`, `npm run typecheck`, `npm run lint`, `npm run build`.
-2. The diff changes only `tests/e2e/offsite-punch-flag.spec.ts`. `typecheck`
-   and `build` read only `src`, and `test` and `test:db` do not load this file.
-   The E2E run is the check that matters.
+2. The only code change is `tests/e2e/offsite-punch-flag.spec.ts`. The other
+   changed files are this plan, the design doc, and `memory/lessons.md`.
+   `typecheck` and `build` read only `src`, and `test` and `test:db` do not
+   load the spec. The E2E run is the check that matters.
 3. If the local host cannot run E2E, record the cause in the PR. Do not
    merge until the CI E2E shards pass on this branch.
 4. Push, open the PR, hand it to Auto-fix, triage comments.

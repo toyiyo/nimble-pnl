@@ -13,6 +13,7 @@ import {
   restaurantDayBounds,
 } from '../_shared/restaurantDate.ts';
 import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
+import { runGetSchedulingContext } from '../_shared/schedulingContextTool.ts';
 import { findShiftWarnings } from '../_shared/shiftWarnings.ts';
 import { buildConflictIndex, attachConflicts, loadShiftConflicts } from '../_shared/shiftConflictFlags.ts';
 import { buildTimePunchShifts } from '../_shared/timePunchShifts.ts';
@@ -3909,6 +3910,9 @@ serve(async (req) => {
         break;
       case 'get_schedule_overview':
         result = await executeGetScheduleOverview(args, restaurant_id, supabase, restaurantTimeZone, restaurantNow);
+        break;
+      case 'get_scheduling_context':
+        result = await runGetSchedulingContext(args, restaurant_id, supabase, restaurantTimeZone, restaurantNow);
         break;
       case 'get_payroll_summary':
         result = await executeGetPayrollSummary(args, restaurant_id, supabase);

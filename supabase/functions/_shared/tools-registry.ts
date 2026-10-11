@@ -309,6 +309,31 @@ export function getTools(
       }
     },
 
+    {
+      name: 'get_scheduling_context',
+      description: 'Everything the Scheduling page shows for a period: roster, availability, time off, conflicts, coverage, pending requests, publish state, and labor targets. It helps plan or change a schedule.',
+      parameters: {
+        type: 'object',
+        properties: {
+          restaurant_id: {
+            type: 'string',
+            description: 'The restaurant id from list_restaurants'
+          },
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'First day of the period (YYYY-MM-DD). Default: Monday of the current restaurant week.'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Last day of the period (YYYY-MM-DD). The period is 31 days at most.'
+          }
+        },
+        required: ['restaurant_id']
+      }
+    },
+
     // Daily sales totals - available to all users
     {
       name: 'get_daily_sales_totals',
@@ -1062,7 +1087,7 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
  * dispatcher gate must match that RLS predicate instead of a second,
  * independently-maintained role list.
  */
-export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview', 'get_hourly_sales'] as const;
+export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview', 'get_hourly_sales', 'get_scheduling_context'] as const;
 
 type CapabilityRpcResult = { data: boolean | null; error: unknown };
 

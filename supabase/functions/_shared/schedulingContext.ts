@@ -46,6 +46,7 @@ export interface ShiftRow {
   status: string;
   position?: string | null;
   shift_template_id?: string | null;
+  is_published?: boolean | null;
 }
 
 export interface RosterEntry {
@@ -115,7 +116,8 @@ export interface ExceptionRow extends RawExceptionAvail {
 type Window = { start: string; end: string };
 export interface AvailabilityEntry {
   employee_id: string;
-  weekly: Record<number, Window | "unavailable"> | "not_set";
+  // A weekday with split availability holds a list of windows, not one merged window.
+  weekly: Record<number, Window | Window[] | "unavailable"> | "not_set";
   notes?: string;
   exceptions: {
     date: string;
@@ -126,7 +128,33 @@ export interface AvailabilityEntry {
   }[];
 }
 
+function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    const list = m.get(k);
+    if (list) list.push(r);
+    else m.set(k, [r]);
+  }
+  return m;
+}
+
 const hhmm = (t: string | null): string => (t ?? "").slice(0, 5);
+
+/** Sort the windows and join the ones that overlap or touch. A gap stays a gap. */
+function mergeWindows(list: Window[]): Window[] {
+  const sorted = [...list].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  const out: Window[] = [];
+  for (const w of sorted) {
+    const last = out[out.length - 1];
+    if (last && w.start <= last.end) {
+      if (w.end > last.end) last.end = w.end;
+    } else {
+      out.push({ ...w });
+    }
+  }
+  return out;
+}
 
 function toWindow(a: LocalAvail): Window | "unavailable" {
   if (!a.is_available) return "unavailable";
@@ -141,16 +169,15 @@ export function buildAvailability(
   recurringRows: RecurringRow[],
   exceptionRows: ExceptionRow[],
   tz: string,
-  period: Period = { start: "", end: "" },
+  period: Period,
 ): AvailabilityEntry[] {
-  const refWeek = period.start || new Date().toISOString().slice(0, 10);
-  const inPeriod = (d: string) =>
-    (!period.start || d >= period.start) && (!period.end || d <= period.end);
+  const refWeek = period.start;
+  const inPeriod = (d: string) => d >= period.start && d <= period.end;
+  const recByEmployee = groupBy(recurringRows, (r) => r.employee_id);
+  const excByEmployee = groupBy(exceptionRows, (r) => r.employee_id);
   return employees.map((emp) => {
-    const rec = recurringRows.filter((r) => r.employee_id === emp.id);
-    const exc = exceptionRows.filter(
-      (r) => r.employee_id === emp.id && inPeriod(r.date),
-    );
+    const rec = recByEmployee.get(emp.id) ?? [];
+    const exc = (excByEmployee.get(emp.id) ?? []).filter((r) => inPeriod(r.date));
     const exceptions = exc.map((r) => {
       const [local] = convertExceptionsToLocal([r], tz);
       const out: AvailabilityEntry["exceptions"][number] = {
@@ -167,18 +194,20 @@ export function buildAvailability(
     if (rec.length === 0 && exceptions.length === 0) {
       return { employee_id: emp.id, weekly: "not_set" as const, exceptions };
     }
-    const weekly: Record<number, Window | "unavailable"> = {};
+    const windowsByDay = new Map<number, Window[]>();
+    const dayRows = new Set<number>();
     for (const a of convertRecurringToLocal(rec, tz, refWeek)) {
+      dayRows.add(a.day_of_week);
       const next = toWindow(a);
-      const prev = weekly[a.day_of_week];
-      if (prev && prev !== "unavailable" && next !== "unavailable") {
-        weekly[a.day_of_week] = {
-          start: prev.start < next.start ? prev.start : next.start,
-          end: prev.end > next.end ? prev.end : next.end,
-        };
-      } else if (!prev || prev === "unavailable") {
-        weekly[a.day_of_week] = next;
-      }
+      if (next === "unavailable") continue;
+      const list = windowsByDay.get(a.day_of_week) ?? [];
+      list.push(next);
+      windowsByDay.set(a.day_of_week, list);
+    }
+    const weekly: Record<number, Window | Window[] | "unavailable"> = {};
+    for (const day of dayRows) {
+      const merged = mergeWindows(windowsByDay.get(day) ?? []);
+      weekly[day] = merged.length === 0 ? "unavailable" : merged.length === 1 ? merged[0] : merged;
     }
     const entry: AvailabilityEntry = {
       employee_id: emp.id,
@@ -202,10 +231,20 @@ export interface ConflictListEntry {
 }
 
 /** The restaurant-local YYYY-MM-DD date of an ISO timestamp. */
+const LOCAL_DATE_CACHE_MAX = 10_000;
+const localDateCache = new Map<string, string>();
+
 export function localDate(iso: string, tz: string): string {
+  // toZonedTime uses Intl and is slow. The builders ask for the same shift many times.
+  const key = `${tz}|${iso}`;
+  const hit = localDateCache.get(key);
+  if (hit !== undefined) return hit;
   const z = toZonedTime(new Date(iso), tz);
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${z.getFullYear()}-${p(z.getMonth() + 1)}-${p(z.getDate())}`;
+  const out = `${z.getFullYear()}-${p(z.getMonth() + 1)}-${p(z.getDate())}`;
+  if (localDateCache.size >= LOCAL_DATE_CACHE_MAX) localDateCache.clear();
+  localDateCache.set(key, out);
+  return out;
 }
 
 export function buildConflictList(
@@ -272,7 +311,7 @@ export interface TemplateRow {
 }
 export interface StaffingSettingsRow {
   min_staff?: number | null;
-  min_crew?: number | null;
+  min_crew?: Record<string, number> | null;
   open_shifts_enabled?: boolean | null;
 }
 export interface Coverage {
@@ -292,7 +331,10 @@ export interface Coverage {
     open: number;
   }[];
   total_open_spots: number;
-  staffing_minimums: { min_staff: number | null; min_crew: number | null };
+  staffing_minimums: {
+    min_staff: number | null;
+    min_crew: Record<string, number> | null;
+  };
   open_shifts_enabled: boolean;
   can_broadcast_open_shifts: boolean;
 }
@@ -418,6 +460,9 @@ export const DROPPABLE_SECTIONS = [
   "publish_state",
   "coverage",
   "pending",
+  // Last resorts. The roster stays, so Claude can still name each employee.
+  "availability",
+  "time_off",
 ] as const;
 
 export interface SchedulingContext {
@@ -452,6 +497,17 @@ export function fitToLimit(
       delete out[name];
     }
     omitted.push(name);
+    out.truncated = true;
+    out.omitted_sections = [...omitted];
+  }
+  // Still over the limit: cut the conflict list, so the JSON stays valid and the flag is true.
+  if (JSON.stringify(out).length >= limit && Array.isArray(out.conflicts)) {
+    let kept = out.conflicts as unknown[];
+    while (kept.length > 0 && JSON.stringify({ ...out, conflicts: kept }).length >= limit) {
+      kept = kept.slice(0, Math.floor(kept.length / 2));
+    }
+    out.conflicts = kept;
+    omitted.push("conflicts (partial)");
     out.truncated = true;
     out.omitted_sections = [...omitted];
   }

@@ -87,6 +87,21 @@ describe('buildAvailability', () => {
     expect(out[0].notes).toBe('No Mondays after 5');
     expect(out[0].exceptions).toEqual([{ date: '2026-10-07', available: false, reason: 'Exam' }]);
   });
+  it('keeps split availability as separate windows', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [
+        rec('a', 1, { start_time: '17:00:00', end_time: '21:00:00' }),
+        rec('a', 1, { start_time: '09:00:00', end_time: '12:00:00' }),
+      ],
+      [],
+      'UTC',
+      period,
+    );
+    expect(out[0].weekly).toEqual({
+      1: [{ start: '09:00', end: '12:00' }, { start: '17:00', end: '21:00' }],
+    });
+  });
   it('returns not_set for an employee with no rows', () => {
     const out = buildAvailability([{ id: 'a' }], [], [], 'UTC', period);
     expect(out[0].weekly).toBe('not_set');
@@ -204,8 +219,18 @@ describe('fitToLimit', () => {
     expect(() => JSON.parse(text)).not.toThrow();
     for (const k of ['roster', 'availability', 'time_off', 'conflicts']) expect(out).toHaveProperty(k);
     expect(out.truncated).toBe(true);
-    const expected = DROPPABLE_SECTIONS.filter((s) => s !== 'publish_state').slice(0, out.omitted_sections!.length);
-    expect(out.omitted_sections!.filter((s) => s !== 'publish_state')).toEqual(expected);
+    const dropped = out.omitted_sections!.filter((s) => s !== 'publish_state');
+    const expected = DROPPABLE_SECTIONS.filter((s) => s !== 'publish_state').slice(0, dropped.length);
+    expect(dropped).toEqual(expected);
+  });
+  it('cuts the conflict list when the droppable sections are not enough', () => {
+    const conflicts = Array.from({ length: 400 }, (_, i) => ({ shift_id: `s${i}`, message: 'm'.repeat(80) }));
+    const out = fitToLimit({ roster: [], availability: [], time_off: [], conflicts }, 5_000);
+    const text = JSON.stringify(out);
+    expect(text.length).toBeLessThan(5_000);
+    expect(() => JSON.parse(text)).not.toThrow();
+    expect(out.truncated).toBe(true);
+    expect(out.omitted_sections).toContain('conflicts (partial)');
   });
   it('does not set truncated when nothing is deleted', () => {
     const out = fitToLimit({ roster: [], availability: [], time_off: [], conflicts: [] }, 40_000);

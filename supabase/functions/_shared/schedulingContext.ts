@@ -143,12 +143,14 @@ const hhmm = (t: string | null): string => (t ?? "").slice(0, 5);
 
 /** Sort the windows and join the ones that overlap or touch. A gap stays a gap. */
 function mergeWindows(list: Window[]): Window[] {
-  const sorted = [...list].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  const sorted = [...list].sort((a, b) => a.start.localeCompare(b.start));
   const out: Window[] = [];
+  // A close time of 00:00 means midnight at the end of the day, so it compares as 24:00.
+  const endKey = (t: string) => (t === "00:00" ? "24:00" : t);
   for (const w of sorted) {
     const last = out[out.length - 1];
-    if (last && w.start <= last.end) {
-      if (w.end > last.end) last.end = w.end;
+    if (last && w.start <= endKey(last.end)) {
+      if (endKey(w.end) > endKey(last.end)) last.end = w.end;
     } else {
       out.push({ ...w });
     }
@@ -207,7 +209,9 @@ export function buildAvailability(
     const weekly: Record<number, Window | Window[] | "unavailable"> = {};
     for (const day of dayRows) {
       const merged = mergeWindows(windowsByDay.get(day) ?? []);
-      weekly[day] = merged.length === 0 ? "unavailable" : merged.length === 1 ? merged[0] : merged;
+      if (merged.length === 0) weekly[day] = "unavailable";
+      else if (merged.length === 1) weekly[day] = merged[0];
+      else weekly[day] = merged;
     }
     const entry: AvailabilityEntry = {
       employee_id: emp.id,
@@ -230,10 +234,11 @@ export interface ConflictListEntry {
   message: string;
 }
 
-/** The restaurant-local YYYY-MM-DD date of an ISO timestamp. */
+// The cache lives for one isolate. It clears when full, so memory stays bounded.
 const LOCAL_DATE_CACHE_MAX = 10_000;
 const localDateCache = new Map<string, string>();
 
+/** The restaurant-local YYYY-MM-DD date of an ISO timestamp. */
 export function localDate(iso: string, tz: string): string {
   // toZonedTime uses Intl and is slow. The builders ask for the same shift many times.
   const key = `${tz}|${iso}`;

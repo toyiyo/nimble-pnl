@@ -87,6 +87,19 @@ describe('buildAvailability', () => {
     expect(out[0].notes).toBe('No Mondays after 5');
     expect(out[0].exceptions).toEqual([{ date: '2026-10-07', available: false, reason: 'Exam' }]);
   });
+  it('merges a window that ends at midnight with a later window', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [
+        rec('a', 1, { start_time: '09:00:00', end_time: '00:00:00' }),
+        rec('a', 1, { start_time: '18:00:00', end_time: '23:00:00' }),
+      ],
+      [],
+      'UTC',
+      period,
+    );
+    expect(out[0].weekly).toEqual({ 1: { start: '09:00', end: '00:00' } });
+  });
   it('keeps split availability as separate windows', () => {
     const out = buildAvailability(
       [{ id: 'a' }],

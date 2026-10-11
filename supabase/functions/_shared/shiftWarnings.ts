@@ -17,6 +17,8 @@ export interface ShiftWarning {
   rest_hours?: number;
 }
 
+const MS_PER_HOUR = 3_600_000;
+
 export function intervalsOverlap(
   aStartMs: number,
   aEndMs: number,
@@ -52,7 +54,8 @@ export function findShiftWarnings(shifts: WarnShift[]): ShiftWarning[] {
         const lStart = Date.parse(later.start_time);
         const lEnd = Date.parse(later.end_time);
         // The list is sorted by start. A later shift this far out cannot overlap or clopen.
-        if (lStart - eEnd >= MIN_REST_HOURS * 3_600_000 && lStart >= eStart) break;
+        // The lStart >= eStart guard keeps the break valid if the sort order ever changes.
+        if (lStart - eEnd >= MIN_REST_HOURS * MS_PER_HOUR && lStart >= eStart) break;
         if (intervalsOverlap(eStart, eEnd, lStart, lEnd)) {
           warnings.push({ shift_id: earlier.id, type: 'overlap', rule: 'editor', other_shift_id: later.id });
           warnings.push({ shift_id: later.id, type: 'overlap', rule: 'editor', other_shift_id: earlier.id });

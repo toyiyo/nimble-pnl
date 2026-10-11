@@ -13,6 +13,8 @@ import {
   restaurantDayBounds,
 } from '../_shared/restaurantDate.ts';
 import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
+import { findShiftWarnings } from '../_shared/shiftWarnings.ts';
+import { buildConflictIndex, attachConflicts, loadShiftConflicts } from '../_shared/shiftConflictFlags.ts';
 import { buildTimePunchShifts } from '../_shared/timePunchShifts.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import {
@@ -2285,10 +2287,10 @@ async function executeGetScheduleOverview(
   // Fetch shifts and employees in parallel. The shift embed names only
   // granted employee columns: the caller cannot read hourly_rate on
   // public.employees (20260806110000).
-  const [shiftsResult, employees, hasPayRates] = await Promise.all([
+  const [shiftsResult, employees, hasPayRates, conflictRows] = await Promise.all([
     supabase
       .from('shifts')
-      .select('*, employee:employees(id, name, position)')
+      .select('id, employee_id, start_time, end_time, break_duration, position, status, is_published, locked, shift_template_id, employee:employees(id, name, position)')
       .eq('restaurant_id', restaurantId)
       .gte('start_time', bounds.start.toISOString())
       .lte('start_time', bounds.end.toISOString())
@@ -2296,23 +2298,28 @@ async function executeGetScheduleOverview(
     // Only the cost projection reads employees and the pay flag.
     include_projected_costs ? fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }) : Promise.resolve([]),
     include_projected_costs ? hasPayRatesCapability(restaurantId, supabase) : Promise.resolve(true),
+    loadShiftConflicts(supabase, restaurantId, bounds.start.toISOString(), new Date(bounds.end.getTime() + 1).toISOString()),
   ]);
 
   if (shiftsResult.error) throw new Error(`Failed to fetch shifts: ${shiftsResult.error.message}`);
 
-  const shifts = shiftsResult.data || [];
+  const rawShifts = shiftsResult.data || [];
+  const conflictIndex = buildConflictIndex(conflictRows, findShiftWarnings(rawShifts));
+  const { shifts, conflictedShiftCount } = attachConflicts(rawShifts, conflictIndex);
 
   // Calculate projected costs if requested and there are shifts. Without
   // view:pay_rates every rate is a masked NULL, so the projection is skipped.
   let projectedCosts = null;
   if (include_projected_costs && hasPayRates && shifts.length > 0) {
     const costInputs = scheduledCostInputs(
-      shifts.map((s: any) => ({
-        employee_id: s.employee_id,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        break_duration: s.break_duration || 0,
-      })),
+      shifts
+        .filter((s: any) => s.status !== 'cancelled')
+        .map((s: any) => ({
+          employee_id: s.employee_id,
+          start_time: s.start_time,
+          end_time: s.end_time,
+          break_duration: s.break_duration || 0,
+        })),
       startDateStr,
       endDateStr,
       restaurantTimeZone
@@ -2338,11 +2345,13 @@ async function executeGetScheduleOverview(
       end_date: endDateStr,
       total_shifts: shifts.length,
       shifts_by_date: shiftsByDate,
+      conflicted_shift_count: conflictedShiftCount,
       projected_labor_costs: projectedCosts,
       pay_hidden: include_projected_costs && !hasPayRates ? payHidden() : undefined,
     },
     evidence: [
       { table: 'shifts', summary: `${shifts.length} scheduled shifts from ${startDateStr} to ${endDateStr}` },
+      { table: 'shifts', summary: `${conflictedShiftCount} shifts with conflicts` },
     ],
   };
 }

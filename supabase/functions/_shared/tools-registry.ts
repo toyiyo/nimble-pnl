@@ -280,7 +280,7 @@ export function getTools(
     // Schedule overview - available to all users
     {
       name: 'get_schedule_overview',
-      description: `Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts, conflicts, and estimated labor cost based on scheduled hours. ${PAY_HIDDEN_TOOL_HINT}`,
+      description: `Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts and estimated labor cost based on scheduled hours. Each shift lists its conflicts: time off and availability (shown on the schedule grid), and overlap and short rest (checked in the shift editor). ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {

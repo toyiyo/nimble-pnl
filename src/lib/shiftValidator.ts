@@ -13,6 +13,7 @@
  */
 import { ShiftInterval } from './shiftInterval';
 import type { Shift } from '@/types/scheduling';
+import { MIN_REST_HOURS } from '../../supabase/functions/_shared/shiftWarnings';
 
 export interface ValidationIssue {
   code: string;
@@ -28,8 +29,6 @@ export interface ValidationResult {
 export interface ValidateOptions {
   excludeShiftId?: string;
 }
-
-const MIN_REST_HOURS = 8;
 
 /** Check if rest gap triggers a clopen warning. */
 function checkRestGap(

@@ -1,6 +1,5 @@
 // Loader for the get_scheduling_context connector tool.
 // It loads the rows, then calls the pure builders. The edge entry file only dispatches here.
-import { toZonedTime } from "date-fns-tz";
 import { MAX_TOOL_TEXT_CHARS } from "./mcpHandler.ts";
 import { restaurantDayBounds, ymdInTimeZone } from "./restaurantDate.ts";
 import { addDaysToDateStr } from "./labor/restaurantClock.ts";
@@ -20,6 +19,7 @@ import {
   buildRoster,
   buildTimeOff,
   fitToLimit,
+  localDate,
   NEEDS_EDIT_SCHEDULING,
   type Period,
 } from "./schedulingContext.ts";
@@ -77,12 +77,6 @@ function weeksIn(period: Period): string[] {
   const weeks: string[] = [];
   for (let w = mondayOf(period.start); w <= period.end; w = addDaysToDateStr(w, 7)) weeks.push(w);
   return weeks;
-}
-
-function localYmd(iso: string, tz: string): string {
-  const z = toZonedTime(new Date(iso), tz);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${z.getFullYear()}-${p(z.getMonth() + 1)}-${p(z.getDate())}`;
 }
 
 function must<T>(res: { data: T | null; error: { message: string } | null }, label: string): T {
@@ -166,7 +160,7 @@ export async function runGetSchedulingContext(
   const publishedShiftWeeks = new Set<string>();
   for (const w of weeks) {
     const inWeek = shifts.filter((s) =>
-      s.status !== "cancelled" && mondayOf(localYmd(s.start_time, tz)) === w);
+      s.status !== "cancelled" && mondayOf(localDate(s.start_time, tz)) === w);
     if (inWeek.length > 0 && inWeek.every((s) => s.is_published)) publishedShiftWeeks.add(w);
   }
   const publishState = buildPublishState(weeks, publishedShiftWeeks, publicationWeeks);

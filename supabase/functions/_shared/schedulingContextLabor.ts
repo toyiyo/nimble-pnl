@@ -77,6 +77,7 @@ export interface LaborSection {
     variance: number;
     tier: "ok" | "warning" | "over";
     source: string | null;
+    cost_basis: string;
   }>;
   staffing_suggestions: Item<{
     hours: { date: string; hour: number; recommended_staff: number }[];
@@ -310,7 +311,9 @@ export async function loadLaborSection(
         if (!posSales) return NEEDS_SALES;
         breakEven = await loadBreakEven(supabase, restaurantId, costs, period.today);
       }
-      const b = calculateLaborBudget(cost.totalCost, costs, breakEven);
+      // The target is weekly. Scale the period cost to a 7-day week so the variance is valid.
+      const weeklyCost = weekDays.length === 7 ? cost.totalCost : (cost.totalCost / weekDays.length) * 7;
+      const b = calculateLaborBudget(weeklyCost, costs, breakEven);
       return {
         has_budget: b.hasBudget,
         weekly_target: b.weeklyTarget,
@@ -318,6 +321,10 @@ export async function loadLaborSection(
         variance: b.variance,
         tier: TIER_NAME[b.tier],
         source: b.source,
+        cost_basis:
+          weekDays.length === 7
+            ? "scheduled cost for the 7-day period"
+            : `scheduled cost for ${weekDays.length} days, scaled to a 7-day week`,
       };
     });
   };

@@ -45,6 +45,7 @@ function makeSupabase() {
         neq: () => chain,
         order: () => chain,
         limit: () => chain,
+        range: () => chain,
         maybeSingle: async () => ({ data: (state.rows[table] ?? [])[0] ?? null, error: null }),
         then: (res: (v: unknown) => unknown) => Promise.resolve(result()).then(res),
       };

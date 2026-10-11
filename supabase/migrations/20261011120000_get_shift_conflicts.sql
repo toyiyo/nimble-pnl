@@ -15,7 +15,8 @@ AS $$
       AND start_time >= p_start AND start_time < p_end
       AND employee_id IS NOT NULL
       AND status NOT IN ('cancelled', 'completed')
-      AND p_end - p_start <= interval '32 days'
+      -- 32 days plus one day of slack. A DST change adds one hour to a real interval.
+      AND p_end - p_start <= interval '33 days'
   )
   SELECT s.id, 'time_off'::text, NULL::text, t.status,
          format('Time off %s (%s to %s)', t.status, t.start_date, t.end_date)

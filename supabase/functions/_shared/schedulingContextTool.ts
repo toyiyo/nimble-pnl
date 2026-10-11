@@ -21,11 +21,31 @@ import {
   fitToLimit,
   localDate,
   NEEDS_EDIT_SCHEDULING,
+  type EmployeeRow,
+  type ExceptionRow,
   type Period,
+  type RecurringRow,
+  type ShiftRow,
+  type StaffingSettingsRow,
+  type TemplateRow,
+  type TimeOffRow,
 } from "./schedulingContext.ts";
-import { loadLaborSection } from "./schedulingContextLabor.ts";
+import { loadLaborSection, type StaffingSettings } from "./schedulingContextLabor.ts";
 
 const MAX_DAYS = 31;
+// Row caps for each source. A source that returns this many rows can hold more.
+// The result lists such a source in data_limits, so Claude never reads a cut list as a full list.
+const CAPS = {
+  employees: 500,
+  availability: 2000,
+  availability_exceptions: 2000,
+  time_off: 1000,
+  pending_time_off: 1000,
+  trades: 200,
+  claims: 200,
+} as const;
+const SHIFT_PAGE = 1000;
+const SHIFT_PAGE_MAX = 10;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 const SHIFT_COLUMNS =
@@ -58,8 +78,8 @@ function resolvePeriod(
   tz: string,
 ): Period | { error: string } {
   const { start_date, end_date } = args;
-  if (start_date != null && !isRealDate(start_date)) return { error: "start_date must be YYYY-MM-DD." };
-  if (end_date != null && !isRealDate(end_date)) return { error: "end_date must be YYYY-MM-DD." };
+  if (start_date !== undefined && start_date !== null && !isRealDate(start_date)) return { error: "start_date must be YYYY-MM-DD." };
+  if (end_date !== undefined && end_date !== null && !isRealDate(end_date)) return { error: "end_date must be YYYY-MM-DD." };
   let start = start_date as string | undefined;
   let end = end_date as string | undefined;
   if (!start && !end) return restaurantWeek(now, tz);
@@ -82,6 +102,27 @@ function weeksIn(period: Period): string[] {
 function must<T>(res: { data: T | null; error: { message: string } | null }, label: string): T {
   if (res.error) throw new Error(`Failed to fetch ${label}: ${res.error.message}`);
   return (res.data ?? []) as T;
+}
+
+/** Page through the shifts of the period. PostgREST cuts one response at max_rows. */
+async function fetchShifts(
+  // deno-lint-ignore no-explicit-any
+  table: (name: string, columns: string) => any,
+  startIso: string,
+  endIso: string,
+): Promise<{ data: ShiftRow[]; error: { message: string } | null; truncated: boolean }> {
+  const rows: ShiftRow[] = [];
+  for (let page = 0; page < SHIFT_PAGE_MAX; page++) {
+    const res = await table("shifts", SHIFT_COLUMNS)
+      .gte("start_time", startIso).lte("start_time", endIso)
+      .order("start_time", { ascending: true }).order("id", { ascending: true })
+      .range(page * SHIFT_PAGE, (page + 1) * SHIFT_PAGE - 1);
+    if (res.error) return { data: [], error: res.error, truncated: false };
+    const batch = (res.data ?? []) as ShiftRow[];
+    rows.push(...batch);
+    if (batch.length < SHIFT_PAGE) return { data: rows, error: null, truncated: false };
+  }
+  return { data: rows, error: null, truncated: true };
 }
 
 export async function runGetSchedulingContext(
@@ -110,57 +151,88 @@ export async function runGetSchedulingContext(
   const table = (name: string, columns: string) =>
     supabase.from(name).select(columns).eq("restaurant_id", restaurantId);
 
+  // The labor section needs only the settings row and the gates. Start it now, so the
+  // sales and cost loads run at the same time as the table fetches.
+  const settingsP = table("staffing_settings",
+    "min_staff, min_crew, open_shifts_enabled, target_splh, lookback_weeks, target_labor_pct")
+    .maybeSingle();
+  const laborP = Promise.resolve(settingsP).then((res: unknown) =>
+    loadLaborSection(
+      supabase, restaurantId,
+      { start: period.start, end: period.end, today: ymdInTimeZone(now, tz), tz },
+      { payRates, posSales },
+      must(res as never, "staffing settings") as StaffingSettingsRow & StaffingSettings | null,
+    )
+  );
+
   const [
     employeesRes, shiftsRes, conflictRows, recurringRes, exceptionsRes, timeOffRes,
     pendingTimeOffRes, templatesRes, settingsRes, publicationsRes, tradesRes, claimsRes,
+    labor,
   ] = await Promise.all([
     table("employees", "id, name, position, area, employment_type, is_minor, date_of_birth, status, is_active")
-      .eq("is_active", true).limit(500),
-    table("shifts", SHIFT_COLUMNS).gte("start_time", startIso).lte("start_time", endIso)
-      .order("start_time", { ascending: true }),
+      .eq("is_active", true).order("id").limit(CAPS.employees),
+    fetchShifts(table, startIso, endIso),
     loadShiftConflicts(supabase, restaurantId, startIso, new Date(bounds.end.getTime() + 1).toISOString()),
-    table("employee_availability", "employee_id, day_of_week, is_available, start_time, end_time, notes").limit(2000),
+    table("employee_availability", "employee_id, day_of_week, is_available, start_time, end_time, notes").limit(CAPS.availability),
     table("availability_exceptions", "employee_id, date, is_available, start_time, end_time, reason")
-      .gte("date", period.start).lte("date", period.end).limit(2000),
+      .gte("date", period.start).lte("date", period.end).limit(CAPS.availability_exceptions),
     table("time_off_requests", "employee_id, start_date, end_date, status, reason")
       .lte("start_date", period.end).gte("end_date", period.start)
-      .in("status", ["approved", "pending"]).limit(1000),
+      .in("status", ["approved", "pending"]).limit(CAPS.time_off),
     table("time_off_requests", "employee_id, start_date, end_date, status, reason")
-      .eq("status", "pending").limit(1000),
+      .eq("status", "pending").limit(CAPS.pending_time_off),
     table("shift_templates", "id, name, days, start_time, end_time, capacity, position, is_active")
       .eq("is_active", true),
-    table("staffing_settings",
-      "min_staff, min_crew, open_shifts_enabled, target_splh, lookback_weeks, target_labor_pct")
-      .maybeSingle(),
+    settingsP,
     table("schedule_publications", "week_start_date, published_at").in("week_start_date", weeks),
     canEdit
       ? table("shift_trades", "id, offered_shift_id, offered_by_employee_id, target_employee_id, status, reason, created_at")
-        .eq("status", "pending_approval").limit(200)
+        .eq("status", "pending_approval").limit(CAPS.trades)
       : Promise.resolve(null),
     canEdit
       ? table("open_shift_claims", "id, shift_template_id, shift_date, claimed_by_employee_id, status, created_at")
-        .eq("status", "pending_approval").limit(200)
+        .eq("status", "pending_approval").limit(CAPS.claims)
       : Promise.resolve(null),
+    laborP,
   ]);
 
-  const employees = must(employeesRes, "employees") as any[];
-  const shifts = must(shiftsRes, "shifts") as any[];
-  const recurring = must(recurringRes, "availability") as any[];
-  const exceptions = must(exceptionsRes, "availability exceptions") as any[];
-  const timeOff = must(timeOffRes, "time off") as any[];
-  const pendingTimeOff = must(pendingTimeOffRes, "pending time off") as any[];
-  const templates = must(templatesRes, "shift templates") as any[];
-  const settings = must(settingsRes, "staffing settings") as any;
-  const publications = must(publicationsRes, "schedule publications") as any[];
+  const employees = must<EmployeeRow[]>(employeesRes, "employees");
+  const shifts = must<ShiftRow[]>(shiftsRes, "shifts");
+  const recurring = must<RecurringRow[]>(recurringRes, "availability");
+  const exceptions = must<ExceptionRow[]>(exceptionsRes, "availability exceptions");
+  const timeOff = must<TimeOffRow[]>(timeOffRes, "time off");
+  const pendingTimeOff = must<TimeOffRow[]>(pendingTimeOffRes, "pending time off");
+  const templates = must<TemplateRow[]>(templatesRes, "shift templates");
+  const settings = must<StaffingSettingsRow | null>(settingsRes, "staffing settings");
+  const publications = must<{ week_start_date: string }[]>(publicationsRes, "schedule publications");
+
+  // A source with as many rows as its cap can hold more. Name it, so nobody reads a cut list as full.
+  const dataLimits: string[] = [];
+  const atCap = (name: string, n: number, cap: number) => { if (n >= cap) dataLimits.push(name); };
+  atCap("employees", employees.length, CAPS.employees);
+  atCap("employee_availability", recurring.length, CAPS.availability);
+  atCap("availability_exceptions", exceptions.length, CAPS.availability_exceptions);
+  atCap("time_off", timeOff.length, CAPS.time_off);
+  atCap("pending_time_off", pendingTimeOff.length, CAPS.pending_time_off);
+  if ((shiftsRes as { truncated?: boolean }).truncated) dataLimits.push("shifts");
 
   const conflictIndex = buildConflictIndex(conflictRows, findShiftWarnings(shifts));
   const { conflictedShiftCount } = attachConflicts(shifts, conflictIndex);
 
   const publicationWeeks = new Set<string>(publications.map((p) => p.week_start_date));
   const publishedShiftWeeks = new Set<string>();
+  // One pass: group the live shifts by restaurant week, then check each week.
+  const liveByWeek = new Map<string, ShiftRow[]>();
+  for (const s of shifts) {
+    if (s.status === "cancelled") continue;
+    const w = mondayOf(localDate(s.start_time, tz));
+    const list = liveByWeek.get(w);
+    if (list) list.push(s);
+    else liveByWeek.set(w, [s]);
+  }
   for (const w of weeks) {
-    const inWeek = shifts.filter((s) =>
-      s.status !== "cancelled" && mondayOf(localDate(s.start_time, tz)) === w);
+    const inWeek = liveByWeek.get(w) ?? [];
     if (inWeek.length > 0 && inWeek.every((s) => s.is_published)) publishedShiftWeeks.add(w);
   }
   const publishState = buildPublishState(weeks, publishedShiftWeeks, publicationWeeks);
@@ -168,15 +240,10 @@ export async function runGetSchedulingContext(
   for (const p of publishState) weekPublished[p.week_start] = p.state === "published";
 
   const hidden = NEEDS_EDIT_SCHEDULING;
-  const trades = canEdit ? must(tradesRes, "shift trades") as unknown[] : hidden;
-  const claims = canEdit ? must(claimsRes, "open shift claims") as unknown[] : hidden;
-
-  const labor = await loadLaborSection(
-    supabase, restaurantId,
-    { start: period.start, end: period.end, today: ymdInTimeZone(now, tz), tz },
-    { payRates, posSales },
-    settings,
-  );
+  const trades = canEdit ? must<unknown[]>(tradesRes, "shift trades") : hidden;
+  const claims = canEdit ? must<unknown[]>(claimsRes, "open shift claims") : hidden;
+  if (Array.isArray(trades)) atCap("pending_trades", trades.length, CAPS.trades);
+  if (Array.isArray(claims)) atCap("pending_claims", claims.length, CAPS.claims);
 
   const ctx = {
     period: { start: period.start, end: period.end, timezone: tz },
@@ -189,6 +256,14 @@ export async function runGetSchedulingContext(
     pending: buildPending(trades, claims, buildTimeOff(pendingTimeOff)),
     publish_state: publishState,
     labor: labor as unknown as Record<string, unknown>,
+    ...(dataLimits.length > 0
+      ? {
+        data_limits: {
+          sources: dataLimits,
+          note: "These sources hit their row limit. The lists can be incomplete. Do not treat them as full.",
+        },
+      }
+      : {}),
   };
   const data = fitToLimit(ctx, MAX_TOOL_TEXT_CHARS - 2000);
 

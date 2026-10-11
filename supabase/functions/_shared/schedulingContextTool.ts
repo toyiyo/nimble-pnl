@@ -68,6 +68,11 @@ function isRealDate(s: unknown): s is string {
     new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 }
 
+// An absent date is fine. A present date must be a real YYYY-MM-DD date.
+function isBadDate(v: unknown): boolean {
+  return v != null && !isRealDate(v);
+}
+
 function invalid(message: string) {
   return { ok: false, error: { code: "INVALID_ARGUMENTS", message } };
 }
@@ -78,8 +83,8 @@ function resolvePeriod(
   tz: string,
 ): Period | { error: string } {
   const { start_date, end_date } = args;
-  if (start_date !== undefined && start_date !== null && !isRealDate(start_date)) return { error: "start_date must be YYYY-MM-DD." };
-  if (end_date !== undefined && end_date !== null && !isRealDate(end_date)) return { error: "end_date must be YYYY-MM-DD." };
+  if (isBadDate(start_date)) return { error: "start_date must be YYYY-MM-DD." };
+  if (isBadDate(end_date)) return { error: "end_date must be YYYY-MM-DD." };
   let start = start_date as string | undefined;
   let end = end_date as string | undefined;
   if (!start && !end) return restaurantWeek(now, tz);
@@ -153,15 +158,20 @@ export async function runGetSchedulingContext(
 
   // The labor section needs only the settings row and the gates. Start it now, so the
   // sales and cost loads run at the same time as the table fetches.
-  const settingsP = table("staffing_settings",
-    "min_staff, min_crew, open_shifts_enabled, target_splh, lookback_weeks, target_labor_pct")
-    .maybeSingle();
-  const laborP = Promise.resolve(settingsP).then((res: unknown) =>
+  // A PostgREST builder sends one request for each then(). Promise.resolve calls then() once,
+  // so the labor load and the coverage load share one request.
+  const settingsP: Promise<{ data: (StaffingSettingsRow & StaffingSettings) | null; error: { message: string } | null }> =
+    Promise.resolve(
+      table("staffing_settings",
+        "min_staff, min_crew, open_shifts_enabled, target_splh, lookback_weeks, target_labor_pct")
+        .maybeSingle(),
+    );
+  const laborP = settingsP.then((res) =>
     loadLaborSection(
       supabase, restaurantId,
       { start: period.start, end: period.end, today: ymdInTimeZone(now, tz), tz },
       { payRates, posSales },
-      must(res as never, "staffing settings") as StaffingSettingsRow & StaffingSettings | null,
+      res.error ? must(res, "staffing settings") : res.data,
     )
   );
 
@@ -215,7 +225,7 @@ export async function runGetSchedulingContext(
   atCap("availability_exceptions", exceptions.length, CAPS.availability_exceptions);
   atCap("time_off", timeOff.length, CAPS.time_off);
   atCap("pending_time_off", pendingTimeOff.length, CAPS.pending_time_off);
-  if ((shiftsRes as { truncated?: boolean }).truncated) dataLimits.push("shifts");
+  if (shiftsRes.truncated) dataLimits.push("shifts");
 
   const conflictIndex = buildConflictIndex(conflictRows, findShiftWarnings(shifts));
   const { conflictedShiftCount } = attachConflicts(shifts, conflictIndex);

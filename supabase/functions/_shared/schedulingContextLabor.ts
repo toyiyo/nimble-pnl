@@ -312,7 +312,8 @@ export async function loadLaborSection(
         breakEven = await loadBreakEven(supabase, restaurantId, costs, period.today);
       }
       // The target is weekly. Scale the period cost to a 7-day week so the variance is valid.
-      const weeklyCost = weekDays.length === 7 ? cost.totalCost : (cost.totalCost / weekDays.length) * 7;
+      const isFullWeek = weekDays.length === 7;
+      const weeklyCost = isFullWeek ? cost.totalCost : (cost.totalCost / weekDays.length) * 7;
       const b = calculateLaborBudget(weeklyCost, costs, breakEven);
       return {
         has_budget: b.hasBudget,
@@ -322,7 +323,7 @@ export async function loadLaborSection(
         tier: TIER_NAME[b.tier],
         source: b.source,
         cost_basis:
-          weekDays.length === 7
+          isFullWeek
             ? "scheduled cost for the 7-day period"
             : `scheduled cost for ${weekDays.length} days, scaled to a 7-day week`,
       };

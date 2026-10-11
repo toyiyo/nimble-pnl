@@ -1162,6 +1162,44 @@ export async function hasPayRatesCapability(
 }
 
 /**
+ * Resolves view:pos_sales for the calling user. Fails closed and logs an RPC failure, as hasPayRatesCapability does.
+ */
+export async function hasPosSalesCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  const result = await callCapabilityRpc(supabase, restaurantId, 'view:pos_sales');
+
+  if (result.error) {
+    console.error('hasPosSalesCapability: view:pos_sales RPC failed', {
+      restaurantId,
+      error: result.error,
+    });
+  }
+
+  return Boolean(result.data);
+}
+
+/**
+ * Resolves edit:scheduling for the calling user. Fails closed and logs an RPC failure, as hasPayRatesCapability does.
+ */
+export async function hasEditSchedulingCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  const result = await callCapabilityRpc(supabase, restaurantId, 'edit:scheduling');
+
+  if (result.error) {
+    console.error('hasEditSchedulingCapability: edit:scheduling RPC failed', {
+      restaurantId,
+      error: result.error,
+    });
+  }
+
+  return Boolean(result.data);
+}
+
+/**
  * Type guard for CAPABILITY_GATED_TOOLS membership. Shared by
  * canUseCapabilityGatedTool and by the ai-execute-tool dispatcher, which
  * needs the same check to decide whether to call canUseTool or this file's

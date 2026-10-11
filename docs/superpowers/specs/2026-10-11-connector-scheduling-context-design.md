@@ -53,32 +53,99 @@ staffing suggestions, with the same capability gates as the UI.
 
 RLS check on production: every restaurant member can SELECT
 `employee_availability`, `availability_exceptions`, `time_off_requests`,
-`shift_templates`, and `staffing_settings`. This design needs no RLS change.
-All data tools run with the user JWT, so RLS applies.
+`shift_templates`, `staffing_settings`, and `schedule_publications`. This
+design needs no RLS change. All data tools run with the user JWT, so RLS
+applies.
+
+Two exceptions:
+
+- `shift_trades`: a user with edit:scheduling sees all trades. Other members
+  see only the trades that target them or that have no target.
+- `open_shift_claims`: a user with edit:scheduling sees all claims. Other
+  members see only their own claims.
+
+For these two tables, a user without edit:scheduling gets a partial list. The
+tool must not show a partial list as a full list (see 4.2, item 6).
 
 ## 3. Part 1 — conflict flags in `get_schedule_overview`
 
 ### 3.1 New SQL RPC `get_shift_conflicts`
 
+Return types on production (checked 2026-10-11):
+
+- `check_timeoff_conflict` → `TABLE(has_conflict boolean, time_off_id uuid,
+  start_date date, end_date date, status text)`. It can return one row for each
+  overlapping request. It returns no message.
+- `check_availability_conflict` → `TABLE(has_conflict boolean, conflict_type
+  text, message text, available_start time, available_end time)`.
+  `conflict_type` is `exception` or `recurring`.
+- Both are plpgsql, STABLE, SECURITY INVOKER, `search_path = public,
+  pg_catalog`.
+
 ```sql
-get_shift_conflicts(p_restaurant_id uuid, p_start timestamptz, p_end timestamptz)
-RETURNS TABLE (shift_id uuid, conflict_type text, status text, message text)
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public
+CREATE OR REPLACE FUNCTION public.get_shift_conflicts(
+  p_restaurant_id uuid, p_start timestamptz, p_end timestamptz)
+RETURNS TABLE (shift_id uuid, conflict_type text, source text,
+               status text, message text)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public, pg_catalog
+AS $$
+  WITH s AS (
+    SELECT id, employee_id, restaurant_id, start_time, end_time
+    FROM shifts
+    WHERE restaurant_id = p_restaurant_id
+      AND start_time >= p_start AND start_time < p_end
+      AND employee_id IS NOT NULL                       -- open shifts have no person
+      AND status NOT IN ('cancelled', 'completed')      -- usePlannerShiftConflicts.ts:125
+      AND p_end - p_start <= interval '32 days'         -- hard window limit
+  )
+  SELECT s.id, 'time_off', NULL, t.status,
+         format('Time off %s (%s to %s)', t.status, t.start_date, t.end_date)
+  FROM s CROSS JOIN LATERAL
+       check_timeoff_conflict(s.employee_id, s.start_time, s.end_time) t
+  WHERE t.has_conflict
+  UNION ALL
+  SELECT s.id, 'availability', a.conflict_type, NULL, a.message
+  FROM s CROSS JOIN LATERAL
+       check_availability_conflict(s.employee_id, s.restaurant_id,
+                                   s.start_time, s.end_time) a
+  WHERE a.has_conflict;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_shift_conflicts(uuid, timestamptz, timestamptz)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_shift_conflicts(uuid, timestamptz, timestamptz)
+  TO authenticated;
 ```
 
-- The RPC selects the shifts of the restaurant in the window. It skips
-  `status IN ('cancelled','completed')`, as `usePlannerShiftConflicts.ts:125`
-  does.
-- For each shift, it calls `check_timeoff_conflict` and
-  `check_availability_conflict` through `LEFT JOIN LATERAL`. The rules stay in
-  one place: the two existing RPCs.
+- The rules stay in one place: the two existing functions.
+- The RPC passes `s.restaurant_id` from the shift row. It does not pass a
+  value from the caller.
+- Type mapping: the result `type` is `time_off` or `availability`. The
+  availability `source` is `exception` or `recurring`.
+- Several time-off requests give several `time_off` rows for one shift. The
+  tool keeps all of them.
 - SECURITY INVOKER: RLS on `shifts` and on the source tables applies to the
-  caller.
-- The tool calls one RPC for the full window. It does not call one RPC for each
-  shift. This prevents an N+1 pattern on the edge function.
-- Grant EXECUTE to `authenticated` only. Revoke it from `anon` and `public`.
+  caller. The `shifts` SELECT policy needs view:scheduling or view:payroll.
+- The tool calls one RPC for the full window. This prevents an N+1 pattern
+  between the edge function and the database.
+
+Cost inside the database: the LATERAL calls run once for each shift. Postgres
+cannot inline a plpgsql function. Measurement on production, with
+`EXPLAIN ANALYZE`, on the restaurant with the most shifts in the last 31 days:
+171 live shifts, 48.9 ms in total, about 0.18 ms for each shift. The maximum
+for one restaurant in 31 days is 2,553 shifts. At the same rate, that is about
+0.5 s. This cost is acceptable. Fallback: if a later measurement is above 2 s,
+write one set-based query that joins `shifts` to the source tables once.
+No new index is necessary. The plan uses a `BitmapAnd` of
+`idx_shifts_restaurant_position_status` and `idx_shifts_start_time`.
 
 ### 3.2 Result shape
+
+Review note: the frontend reviewer asked for one set-based query in place of
+the LATERAL calls. The measurement in 3.1 shows about 0.5 s at the largest
+restaurant. The design keeps the LATERAL form, so the rules stay in one place.
+The fallback in 3.1 applies if the cost grows.
+
 
 Each shift in `shifts_by_date` gets:
 
@@ -94,12 +161,23 @@ Each shift in `shifts_by_date` gets:
 The top level gets `conflicted_shift_count`. A shift with no conflict has no
 `conflicts` key. This keeps the text short.
 
-### 3.3 Overlap and clopen warnings
+### 3.3 Overlap and clopen warnings (editor rules)
 
-The UI computes these rules on the client in `src/lib/shiftValidator.ts`. The
-design adds a pure Deno helper `supabase/functions/_shared/shiftWarnings.ts`
-with the same constants (`MIN_REST_HOURS = 8`). A unit test runs the same
-fixtures through both copies (parity test). The helper skips cancelled shifts.
+The planner grid does not show these two rules. `validateShift`
+(`src/lib/shiftValidator.ts:49-92`) runs only in the shift editor
+(`TimelineShiftEditor.tsx:144`). The editor shows a warning when a manager
+saves a shift with an overlap or with less than 8 h of rest. A schedule that
+Claude proposes goes through the same editor rules, so Claude needs them.
+
+- Each item has `"rule": "editor"`. The time-off and availability items have
+  `"rule": "grid"`. The connector text says that the grid does not show
+  editor rules.
+- Move the pure pair check of `validateShift` to
+  `supabase/functions/_shared/shiftWarnings.ts`. `src/lib/shiftValidator.ts`
+  imports it from there. One copy, no port.
+- The check skips cancelled shifts and uses `MIN_REST_HOURS = 8`
+  (`shiftValidator.ts:32`). Fixtures: a shift that ends at midnight, a
+  cancelled shift, 7.9 h and 8.0 h of rest.
 
 ## 4. Part 2 — new tool `get_scheduling_context`
 
@@ -111,67 +189,128 @@ fixtures through both copies (parity test). The helper skips cancelled shifts.
   view:payroll), as `get_schedule_overview`.
 - Read-only. Not on `MCP_EXCLUDED_TOOLS`.
 - One parallel fetch (`Promise.all`) of all sources. Explicit columns, no `*`.
+- Every query filters by `restaurant_id` and by the period in SQL, not in
+  JavaScript. Row caps: employees 500, time off 1,000, exceptions 2,000.
+- The period dates are restaurant-local. The tool converts them to UTC bounds
+  with the restaurant time zone, as `scheduleOverview.ts` does.
 
 ### 4.2 Sections
 
 1. `roster`: active employees. Fields: id, name, position, area,
-   employment_type, is_minor, max_weekly_hours (from `computeHourBudget`),
-   scheduled_hours, shift_count, missing_availability (true when the employee
-   has no recurring row and no exception in the period).
-2. `availability`: for each employee and date, the effective local window.
-   `source` is `exception`, `recurring`, or `not_set`. An exception overrides
-   the recurring row. Overnight windows from the previous day count, as in
-   `check_availability_conflict`. Use `availability-tz.ts` for the conversion.
-   Include the `reason` or `notes` text.
-3. `time_off`: requests that overlap the period. Fields: employee_id, dates,
+   employment_type, is_minor, scheduled_hours, shift_count,
+   missing_availability, and max_weekly_hours.
+   - `missing_availability` uses the predicate of
+     `src/hooks/useEmployeesMissingAvailability.ts`: active, with no recurring
+     row. An employee with only exceptions is still missing.
+   - `max_weekly_hours` comes from `computeHourBudget`. The page applies no
+     weekly-cap rule. The connector text says that the value is stored but
+     not enforced.
+   - `scheduled_hours` excludes cancelled shifts, as `costedShifts` in
+     `Scheduling.tsx` does.
+2. `availability`: for each employee, the weekly recurring pattern one time
+   (7 weekdays, local windows, `notes`). Then the exceptions with a date in the
+   period (date, window or unavailable, `reason`). An exception overrides the
+   recurring row for its date. Overnight windows from the previous day count,
+   as in `check_availability_conflict`. Use `availability-tz.ts` for the
+   conversion. An employee with no recurring row and no exception has
+   `"not_set"`.
+3. `conflicts`: a summary of Part 1 for the period. Shape:
+   `[{ shift_id, employee_id, date, type, source, status, message }]`. It uses
+   the same RPC and the same Deno helper as `get_schedule_overview`.
+4. `time_off`: requests that overlap the period. Fields: employee_id, dates,
    status, reason. `blocks_scheduling: true` for `approved` and `pending`
    (`CONFLICTABLE_TIME_OFF`, `usePlannerShiftConflicts.ts:29`). `denied` and
    `cancelled` are not returned.
-4. `coverage`: active templates with capacity and days, the open spots for each
-   template and date (`computeOpenShiftCount` rule), and the
-   `staffing_settings` minimums (min_staff, min_crew).
-5. `pending`: shift trades and open-shift claims with status
-   `pending_approval`, and time-off requests with status `pending`.
-6. `publish_state`: for each week in the period, `published`, `draft`, or
-   `partial`, from `shifts.is_published` and `schedule_publications`.
-7. `labor` (see 4.3).
+5. `coverage`: active templates with capacity and days, the open spots for each
+   template and date (`computeOpenShiftCount` rule, `Scheduling.tsx:177`), and
+   the `staffing_settings` minimums (min_staff, min_crew). The open-spot count
+   is always present. `can_broadcast_open_shifts` is true only when the week is
+   published and `open_shifts_enabled` is true (`Scheduling.tsx:1177`).
+6. `pending`: shift trades and open-shift claims with status
+   `pending_approval`, and time-off requests with status `pending`. The page
+   counts all pending time-off requests, not only the visible week
+   (`Scheduling.tsx:373`). The tool does the same and labels the scope. The tool
+   checks edit:scheduling. If the check fails, `trades` and `claims` are
+   `{ "hidden": true, "reason": "needs edit:scheduling" }`. The time-off
+   list does not need this check.
+7. `publish_state`: for each week in the period, `published` or `draft`. Use
+   the binary rule of `useWeekPublicationStatus`
+   (`src/hooks/useSchedulePublish.tsx:526`): a week is published when it has
+   published shifts AND a `schedule_publications` row.
+8. `labor` (see 4.3).
 
 ### 4.3 Labor items and gates
 
-| Item | Rule source | Gate |
-|------|-------------|------|
-| `daily_labor_percent` | `computeDailyLaborPercent` and `projectDailySales` (`dailyLaborPercent.ts:45,80`). Projected sales exclude today. `over_target` when `Math.round(percent) > target_labor_pct`. Cap 999. | view:pay_rates AND view:pos_sales |
-| `labor_budget` | `calculateLaborBudget` (`useScheduleLaborBudget.ts:27`). Fixed entry: monthly/100/30×7. Percent entry: avgDailySales×pct×7, else dailyBreakEven×pct×7. Tiers: <80 ok, ≤100 warning, else over. | view:pay_rates (plus view:pos_sales for a percent entry) |
-| `staffing_suggestions` | `recommendForSlots` (`hourlyStaffing.ts:75`) with `get_hourly_sales_pattern` over `lookback_weeks`. | view:pos_sales |
+Rule: one copy of each labor rule. Move the pure page code to
+`supabase/functions/_shared/labor/`. The `src/` files import from there, as
+`src/hooks/useScheduledLaborCosts.tsx` already imports
+`_shared/labor/scheduledLaborCost.ts`. Deno already maps `date-fns`
+(`supabase/functions/deno.json`). The moved code uses relative imports only.
 
-- The server has no `view:pos_sales` check now. Add
+| New `_shared/labor/` file | Moved from | `src/` file after the move |
+|---------------------------|------------|----------------------------|
+| `breakEven.ts` (`calculateBreakEven`, `calculateMonthlyProgress`, `parseLocalDate`, needed types) | `src/lib/breakEvenCalculator.ts`, `monthlyBreakEvenProgress.ts`, `parseLocalDate.ts` | re-export, same names |
+| `laborBudget.ts` (`calculateLaborBudget`) | `src/hooks/useScheduleLaborBudget.ts:27-90` | hook imports it |
+| `dailyLaborPercent.ts` (`computeDailyLaborPercent`, `projectDailySales`, cap 999, `dayStringToDow`) | `src/lib/dailyLaborPercent.ts`, `staffingApply.ts:52` | re-export |
+| `staffingGuardrail.ts` (`computeAvgHourlyRateCents`, `hasHourlyWageData`, `checkLaborGuardrail`, default 1500 cents) | `src/lib/staffingCalculator.ts:4-39,124-134` | re-export |
+
+Items:
+
+| Item | Rule | Gate |
+|------|------|------|
+| `scheduled_labor` | `loadScheduledLaborCost` (`_shared/labor/scheduledLaborCost.ts:143`). Excludes cancelled shifts. Returns `total`, `hidden_cost_count` ("N hidden" on the ribbon, `ScheduleMetricsRibbon.tsx:55`), and `is_average_high` (`:186`). | view:pay_rates |
+| `daily_labor_percent` | `computeDailyLaborPercent` and `projectDailySales`. Projection excludes today and weekdays with total ≤ 0. `null` when projected sales are 0. `over_target` when `Math.round(percent) > target_labor_pct`. Cap 999. | view:pay_rates AND view:pos_sales |
+| `labor_budget` | `calculateLaborBudget`. Fixed entry: monthly/100/30×7. Percent entry: avgDailySales×pct×7, else dailyBreakEven×pct×7. Tiers: <80 ok, ≤100 warning, else over. | view:pay_rates; a percent entry also needs view:pos_sales |
+| `staffing_suggestions` | `recommendForSlots` (`hourlyStaffing.ts:75`) with `get_hourly_sales_pattern` over `lookback_weeks`. Headcount only. | view:pos_sales |
+| `staffing_suggestions.labor` | `avg_hourly_rate`, `labor_pct`, `estimated_cost`, `over_target` (strict `>`, `checkLaborGuardrail`), `has_wage_data`. When `has_wage_data` is false, the rate is the 1500-cent fallback, and the tool says so. | view:pay_rates AND view:pos_sales |
+
+Break-even inputs: the Deno loader does the same two loads as
+`useBreakEvenAnalysis`. It does not reuse `executeGetBreakEvenProgress`,
+because that helper averages only days with sales, has no contribution-margin
+step, and has no utility costs.
+
+- Daily sales: `get_daily_sales_totals` from
+  `min(today − 13 days, start of month)` to today (`useBreakEvenAnalysis.ts:118`).
+  `calculateBreakEven` fills missing dates with 0.
+- Utility costs: the same `bank_transactions` query as
+  `useBreakEvenAnalysis.ts:71-94`. RLS applies to it, as on the page.
+
+Gates:
+
+- The server has no `view:pos_sales` check now. Add and export
   `hasPosSalesCapability(restaurantId, supabase)` next to
-  `hasPayRatesCapability` (`tools-registry.ts:1148`), with the same
-  `callCapabilityRpc` call and the same fail-closed log.
+  `hasPayRatesCapability` (`tools-registry.ts:1148`). Use the exact string
+  `view:pos_sales`, the same `callCapabilityRpc` call, and the same
+  fail-closed log.
+- The tool resolves the gates first. It starts a sales or pay query only when
+  the gate passes.
 - When a gate fails, the item is `{ "hidden": true, "reason": "..." }`, in the
   same form as `payHidden()`. The tool never returns a masked $0 as a real
   value.
-- The Deno side cannot import `src/`. The design ports
-  `computeDailyLaborPercent`, `projectDailySales`, and `calculateLaborBudget` to
-  `supabase/functions/_shared/laborTargets.ts`. A parity test runs the same
-  fixtures through the `src/` and the Deno copies, as the
-  `hourlyStaffing.ts` port does.
-- The break-even inputs come from a helper that is extracted from
-  `executeGetBreakEvenProgress` (L3254–3300). Both callers use the helper, so
-  the numbers stay equal.
+- When `staffing_settings` has no row, or a load fails, the item is
+  `{ "unavailable": true, "reason": "..." }`. The tool does not omit the
+  field.
 
 ### 4.4 Size limit
 
 The tool text must stay below `MAX_TOOL_TEXT_CHARS` (40 000). For a 31-day
 period with many employees, the `availability` section is the largest. Rules:
 
-- Group availability by employee, then by run of equal days
-  (`"2026-10-12..2026-10-16": "09:00-17:00"`).
+- The availability section uses the weekly pattern plus dated exceptions
+  (4.2, item 2). It does not list each date. For 40 employees this is about
+  280 pattern cells, not 1,240 date cells.
 - Omit `staffing_suggestions` hours with no sales.
-- If the text is still too long, return `truncated: true` and the sections in
-  a fixed order of priority: roster, time_off, availability, conflicts summary,
-  coverage, pending, publish_state, labor. A unit test proves the limit for 40
-  employees and 31 days.
+- The tool computes the final JSON length itself. It does not rely on
+  `capText` (`mcpHandler.ts:272-274`), because a cut there makes invalid JSON.
+- If the text is too long, the tool deletes whole sections in this order until
+  the text fits: `labor.staffing_suggestions`, `publish_state`, `coverage`,
+  `pending`. It then sets `truncated: true` and `omitted_sections: [...]`.
+- The tool never deletes `roster`, `availability`, `time_off`, or `conflicts`.
+  These sections answer the user report in section 1.
+- A unit test proves the limit for 40 employees and 31 days. The fixture uses
+  a different window on each weekday and one exception per employee per week.
+- The new `conflicts` keys in `get_schedule_overview` count against the same
+  cap. A unit test checks a 31-day overview with conflicts on 20% of shifts.
 
 ## 5. Part 3 — connector text
 
@@ -183,7 +322,13 @@ period with many employees, the `availability` section is the largest. Rules:
 
 ## 6. Security
 
-- Every query runs with the user JWT. RLS and the capability RPC apply.
+- Every query runs with the user JWT. RLS applies.
+- RLS does not protect sales data. `unified_sales` and
+  `restaurant_operating_costs` allow SELECT for every member.
+  `get_hourly_sales_pattern` checks membership only. `get_daily_sales_totals`
+  has no check. So `hasPosSalesCapability` is the only boundary for sales.
+  The tool checks the gate before it starts a sales query. A unit test proves
+  that no sales query runs when the gate fails.
 - The new RPC is SECURITY INVOKER and filters by `p_restaurant_id`.
 - Staff and kiosk roles cannot use the connector (`connectorRoles.ts`).
 - Pay and sales values stay behind the same gates as the UI.
@@ -194,10 +339,13 @@ period with many employees, the `availability` section is the largest. Rules:
 
 | Test | Type |
 |------|------|
-| `supabase/tests/get_shift_conflicts.sql`: time off approved and pending, denied ignored, exception overrides recurring, overnight window, cancelled shift skipped, other restaurant not visible | pgTAP |
-| `tests/unit/shiftWarnings.test.ts`: overlap, clopen < 8 h, parity with `shiftValidator.ts` | Vitest |
-| `tests/unit/laborTargets.test.ts`: parity with `dailyLaborPercent.ts` and `calculateLaborBudget` | Vitest |
-| `tests/unit/schedulingContext.test.ts`: section builders, gates hidden, size limit | Vitest |
+| `supabase/tests/get_shift_conflicts.sql`: time off approved and pending, denied ignored, two overlapping requests give two rows, exception overrides recurring (`source` mapping), overnight window, cancelled and completed shifts skipped, open shift (null employee) skipped, window above 32 days returns no rows, member of restaurant A who calls with restaurant B id gets no rows, role without view:scheduling and view:payroll gets no rows, `has_function_privilege('anon', ...)` is false | pgTAP |
+| `tests/unit/shiftConflictFixtures.test.ts`: the same fixture list as the pgTAP test, run through `usePlannerShiftConflicts` rules, so SQL and client rules stay equal | Vitest |
+| `tests/unit/shiftWarnings.test.ts`: overlap, clopen at 7.9 h and 8.0 h, cancelled shift skipped, midnight end | Vitest |
+| Existing tests of `breakEvenCalculator`, `dailyLaborPercent`, `staffingCalculator`, `useScheduleLaborBudget`, `shiftValidator`: they must pass with no change after the move | Vitest |
+| `tests/unit/laborEdgeCases.test.ts`: sales 0, today excluded, rate 0, no wage data, cancelled shifts, 999 cap, zero-fill of missing sales dates | Vitest |
+| `tests/unit/schedulingContext.test.ts`: section builders, gates hidden, size limit with weekday-varying data, section drop order, trades and claims hidden without edit:scheduling | Vitest |
+| `tests/unit/schedulingContextGates.test.ts`: for `daily_labor_percent`, percent-entry `labor_budget`, and `staffing_suggestions`, the sales RPC mock is not called when the gate fails; `hasPosSalesCapability` fails closed on an RPC error | Vitest |
 | `tests/unit/mcpHandler.test.ts`: tool title, instructions, gate list | Vitest |
 | `tests/e2e/ai-chat.spec.ts`: no UI change. The connector has no browser surface. E2E exception: the pgTAP and unit tests cover the change. | Exception |
 
@@ -208,5 +356,5 @@ period with many employees, the `availability` section is the largest. Rules:
   gap. A follow-up task tracks it.
 - Write tools for schedules. The connector stays read-only for scheduling.
 - The consecutive-day and weekly-cap rules of
-  `_shared/schedule-validator.ts`. The Scheduling page does not show them, so
-  they are not in "what the UI shows".
+  `_shared/schedule-validator.ts`. The Scheduling page applies neither rule.
+  The roster returns `max_weekly_hours` as stored data only.

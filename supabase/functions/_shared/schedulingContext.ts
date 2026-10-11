@@ -201,7 +201,8 @@ export interface ConflictListEntry {
   message: string;
 }
 
-function localDate(iso: string, tz: string): string {
+/** The restaurant-local YYYY-MM-DD date of an ISO timestamp. */
+export function localDate(iso: string, tz: string): string {
   const z = toZonedTime(new Date(iso), tz);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${z.getFullYear()}-${p(z.getMonth() + 1)}-${p(z.getDate())}`;

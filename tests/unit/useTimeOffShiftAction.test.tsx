@@ -93,7 +93,7 @@ describe('timeOffShiftToastText', () => {
   });
   it('names a skipped delete', () => {
     expect(timeOffShiftToastText({ kind: 'delete' }, { done: 0, skipped: 2, failed: 0 })).toEqual({
-      title: 'Shifts deleted',
+      title: 'No shifts changed',
       description: '0 shifts deleted. 2 shifts are already gone.',
     });
   });

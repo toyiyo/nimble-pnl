@@ -194,8 +194,19 @@ describe('buildConflictList', () => {
     ]);
     const out = buildConflictList([shift('s1', 'a')], idx, 'UTC');
     expect(out).toEqual([
-      { shift_id: 's1', employee_id: 'a', date: '2026-10-05', type: 'time_off', source: 'request', status: 'approved', message: 'off' },
+      { shift_id: 's1', employee_id: 'a', date: '2026-10-05', type: 'time_off', rule: 'grid', source: 'request', status: 'approved', message: 'off' },
     ]);
+  });
+
+  // QA on the preview branch: the list put the rule into source when the flag
+  // had no source, so one key held two meanings. Keep the overview shape.
+  it('keeps rule and source apart', () => {
+    const idx = new Map([
+      ['s1', [{ type: 'clopen' as const, rule: 'editor' as const, message: 'rest' }]],
+    ]);
+    const [e] = buildConflictList([shift('s1', 'a')], idx, 'UTC');
+    expect(e.rule).toBe('editor');
+    expect(e).not.toHaveProperty('source');
   });
 });
 

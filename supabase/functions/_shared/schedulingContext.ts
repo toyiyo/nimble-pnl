@@ -229,7 +229,8 @@ export interface ConflictListEntry {
   employee_id: string;
   date: string;
   type: ShiftConflict["type"];
-  source: string;
+  rule: ShiftConflict["rule"];
+  source?: string;
   status?: string;
   message: string;
 }
@@ -265,9 +266,10 @@ export function buildConflictList(
         employee_id: s.employee_id,
         date: localDate(s.start_time, tz),
         type: c.type,
-        source: c.source ?? c.rule,
+        rule: c.rule,
         message: c.message,
       };
+      if (c.source) e.source = c.source;
       if (c.status) e.status = c.status;
       out.push(e);
     }

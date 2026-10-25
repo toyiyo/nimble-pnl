@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,10 +11,18 @@ import {
   useRejectTimeOffRequest,
   useDeleteTimeOffRequest,
 } from '@/hooks/useTimeOffRequests';
-import { useTimeoffCoverageImpact } from '@/hooks/useShiftProtection';
+import { useToast } from '@/hooks/use-toast';
+import {
+  fetchTimeoffCoverageImpact,
+  timeoffCoverageImpactKey,
+  useTimeoffCoverageImpact,
+  type CoverageImpactShift,
+} from '@/hooks/useShiftProtection';
+import { useApplyTimeOffShiftAction, type TimeOffShiftAction } from '@/hooks/useTimeOffShiftAction';
 import { PolicyWarningError, type PolicyFinding } from '@/lib/shiftProtection';
 import { ShiftProtectionWarning } from './scheduling/ShiftProtectionWarning';
 import { TimeOffRequestDialog } from './TimeOffRequestDialog';
+import { TimeOffShiftsDialog } from './timeoff/TimeOffShiftsDialog';
 import { PendingQueue } from './timeoff/PendingQueue';
 import { DecidedHistory } from './timeoff/DecidedHistory';
 import { partitionByStatus } from '@/lib/timeOffUtils';
@@ -43,12 +52,21 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [requestToDelete, setRequestToDelete] = useState<TimeOffRequest | null>(null);
 
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const applyShiftAction = useApplyTimeOffShiftAction();
+
+  // A shift choice made in TimeOffShiftsDialog. It travels into the
+  // policy dialog, so "Approve anyway" still applies it.
+  type PendingShiftAction = { shifts: CoverageImpactShift[]; action: TimeOffShiftAction };
+
   // Shift Protection: an approve that answers policy_warning lands here.
   // The dialog shows the findings plus the coverage impact (fetched
   // lazily, only for this one request) and offers "Approve anyway".
   const [policyTarget, setPolicyTarget] = useState<{
     request: TimeOffRequest;
     warnings: PolicyFinding[];
+    shiftAction: PendingShiftAction | null;
   } | null>(null);
   const coverageImpact = useTimeoffCoverageImpact(policyTarget?.request.id ?? null);
 
@@ -56,25 +74,121 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
     setEditingRequest(request);
     setDialogOpen(true);
   }
-  function handleApprove(request: TimeOffRequest) {
-    approveRequest.mutate(
-      { id: request.id, restaurantId },
-      {
-        onError: (error) => {
-          if (error instanceof PolicyWarningError) {
-            setPolicyTarget({ request, warnings: error.warnings });
-          }
-        },
+  // The employee's shifts in the request dates, shown before the approval.
+  const [shiftsTarget, setShiftsTarget] = useState<{
+    request: TimeOffRequest;
+    shifts: CoverageImpactShift[];
+  } | null>(null);
+
+  // True while an async step runs (shift fetch, approval, shift action).
+  // The ref blocks a second click before React re-renders.
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  function lock() {
+    if (submittingRef.current) return false;
+    submittingRef.current = true;
+    setSubmitting(true);
+    return true;
+  }
+  function unlock() {
+    submittingRef.current = false;
+    setSubmitting(false);
+  }
+
+  // Approve, then apply the shift choice. Returns false if the approval
+  // did not go through. A policy warning moves the choice into the
+  // policy dialog: both state updates run in one handler, so React
+  // batches the dialog swap.
+  async function approveThenApply(
+    request: TimeOffRequest,
+    shiftAction: PendingShiftAction | null,
+    override: boolean
+  ) {
+    try {
+      await approveRequest.mutateAsync({ id: request.id, restaurantId, override });
+    } catch (error) {
+      if (error instanceof PolicyWarningError && !override) {
+        setShiftsTarget(null);
+        setPolicyTarget({ request, warnings: error.warnings, shiftAction });
       }
-    );
+      return false;
+    }
+    if (shiftAction) {
+      await applyShiftAction.mutateAsync({
+        restaurantId,
+        employeeId: request.employee_id,
+        shiftIds: shiftAction.shifts.map((shift) => shift.shift_id),
+        action: shiftAction.action,
+      });
+    }
+    setShiftsTarget(null);
+    setPolicyTarget(null);
+    return true;
   }
-  function handleApproveAnyway() {
-    if (!policyTarget) return;
-    approveRequest.mutate(
-      { id: policyTarget.request.id, restaurantId, override: true },
-      { onSuccess: () => setPolicyTarget(null) }
-    );
+
+  async function handleApprove(request: TimeOffRequest) {
+    if (!lock()) return;
+    try {
+      let shifts: CoverageImpactShift[];
+      try {
+        const impact = await queryClient.fetchQuery({
+          queryKey: timeoffCoverageImpactKey(request.id),
+          queryFn: () => fetchTimeoffCoverageImpact(request.id),
+          staleTime: 30000,
+        });
+        shifts = impact.shifts;
+      } catch {
+        // A failed check does not block the approval.
+        const approved = await approveThenApply(request, null, false);
+        if (approved) {
+          toast({
+            title: 'Could not check shifts',
+            description: 'The request is approved without a shift action.',
+          });
+        }
+        return;
+      }
+      if (shifts.length === 0) {
+        await approveThenApply(request, null, false);
+        return;
+      }
+      setShiftsTarget({ request, shifts });
+    } finally {
+      unlock();
+    }
   }
+
+  async function handleConfirmShifts(action: TimeOffShiftAction) {
+    if (!shiftsTarget || !lock()) return;
+    try {
+      await approveThenApply(shiftsTarget.request, { shifts: shiftsTarget.shifts, action }, false);
+    } finally {
+      unlock();
+    }
+  }
+
+  async function handleApproveAnyway() {
+    if (!policyTarget || !lock()) return;
+    try {
+      await approveThenApply(policyTarget.request, policyTarget.shiftAction, true);
+    } finally {
+      unlock();
+    }
+  }
+
+  function handleCancelPolicy() {
+    if (submittingRef.current) return;
+    if (policyTarget?.shiftAction) toast({ title: 'Nothing changed' });
+    setPolicyTarget(null);
+  }
+
+  function policyActionText(shiftAction: PendingShiftAction) {
+    const n = shiftAction.shifts.length;
+    const verb = shiftAction.action.kind === 'trade' ? 'post' : 'delete';
+    const suffix = shiftAction.action.kind === 'trade' ? ' for trade' : '';
+    return `${verb} ${n} ${n === 1 ? 'shift' : 'shifts'}${suffix}`;
+  }
+
   function handleReject(request: TimeOffRequest) {
     rejectRequest.mutate({ id: request.id, restaurantId });
   }
@@ -130,7 +244,7 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
           onReject={handleReject}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          isApproving={approveRequest.isPending}
+          isApproving={approveRequest.isPending || submitting}
           isRejecting={rejectRequest.isPending}
         />
         <DecidedHistory
@@ -149,7 +263,20 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
         request={editingRequest}
       />
 
-      <AlertDialog open={!!policyTarget} onOpenChange={(open) => { if (!open) setPolicyTarget(null); }}>
+      {/* Mount only while open: an unmount in the same commit as the policy
+          dialog open keeps Radix from leaving body pointer-events on none. */}
+      {shiftsTarget && (
+        <TimeOffShiftsDialog
+          key={shiftsTarget.request.id}
+          request={shiftsTarget.request}
+          shifts={shiftsTarget.shifts}
+          submitting={submitting}
+          onCancel={() => setShiftsTarget(null)}
+          onConfirm={handleConfirmShifts}
+        />
+      )}
+
+      <AlertDialog open={!!policyTarget} onOpenChange={(open) => { if (!open) handleCancelPolicy(); }}>
         <AlertDialogContent className="max-h-[80vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -166,6 +293,11 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
               <ShiftProtectionWarning
                 messages={policyTarget.warnings.map((warning) => warning.message)}
               />
+              {policyTarget.shiftAction && (
+                <p className="text-[13px] font-medium text-foreground">
+                  After approval: {policyActionText(policyTarget.shiftAction)}.
+                </p>
+              )}
 
               {coverageImpact.isLoading && (
                 <Skeleton className="h-14 w-full rounded-lg" />
@@ -214,16 +346,20 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
           )}
 
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={approveRequest.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
                 handleApproveAnyway();
               }}
-              disabled={approveRequest.isPending}
+              disabled={submitting}
               className="bg-warning text-warning-foreground hover:bg-warning/90"
             >
-              {approveRequest.isPending ? 'Approving…' : 'Approve anyway'}
+              {submitting
+                ? 'Approving…'
+                : policyTarget?.shiftAction
+                  ? `Approve anyway and ${policyTarget.shiftAction.action.kind === 'trade' ? 'post' : 'delete'} ${policyTarget.shiftAction.shifts.length} ${policyTarget.shiftAction.shifts.length === 1 ? 'shift' : 'shifts'}`
+                  : 'Approve anyway'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

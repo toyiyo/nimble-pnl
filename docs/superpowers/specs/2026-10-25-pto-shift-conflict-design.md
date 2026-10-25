@@ -112,7 +112,7 @@ Manager clicks Approve (pending row only)
                                    └─ PolicyWarningError → in one handler:
                                       shiftsTarget = null and
                                       policyTarget = {request, warnings,
-                                      shiftAction}. submitting stays true.
+                                      shiftAction}.
                                       "Approve anyway" continues at step 2.
                                       Cancel → toast "Nothing changed."
                               2. apply the choice to all N shifts
@@ -134,11 +134,11 @@ This is accepted (see "Decided trade-offs").
 
 - `TimeOffList` keeps one `submitting` state and one `submittingRef`.
   `handleApprove` returns at once if `submittingRef.current` is true.
-- `submitting` is true from the Approve click until the flow ends, also
-  across the hand-off to the policy dialog.
+- `submitting` is true while an async step runs: the shift fetch, the
+  approval, or the shift action. While the dialog waits for a choice,
+  `submitting` is false. The modal covers the row, so the row cannot get
+  a second click.
 - The row `isApproving` prop gets `approveRequest.isPending || submitting`.
-  While the shift fetch runs, the row button shows a `Loader2` spinner
-  (`aria-hidden`).
 - In the dialog, `submitting` disables the confirm button, the radio
   group, the note input, and Cancel. `onOpenChange` ignores a close
   (Esc, overlay click) while `submitting` is true.

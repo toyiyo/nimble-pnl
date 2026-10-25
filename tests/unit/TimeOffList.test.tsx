@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TimeOffList } from '../../src/components/TimeOffList';
 import type { TimeOffRequest } from '../../src/types/scheduling';
@@ -190,7 +190,6 @@ describe('TimeOffList', () => {
 
     expect(await screen.findByText('After approval: delete 2 shifts.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Approve time off' })).not.toBeInTheDocument();
-    expect(document.body.style.pointerEvents).not.toBe('none');
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve anyway and delete 2 shifts' }));
     await waitFor(() =>
@@ -199,6 +198,9 @@ describe('TimeOffList', () => {
     await waitFor(() =>
       expect(mockApplyAsync).toHaveBeenCalledWith(expect.objectContaining({ action: { kind: 'delete' } }))
     );
+    // Both dialogs are closed: Radix must not leave the page blocked.
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(document.body.style.pointerEvents).not.toBe('none');
   });
 
   it('changes nothing when the manager cancels the policy dialog', async () => {
@@ -209,7 +211,9 @@ describe('TimeOffList', () => {
     renderPending();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Approve and post 1 shift' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    // Wait for the policy dialog: the shift dialog also has a Cancel button.
+    const policy = await screen.findByRole('alertdialog');
+    fireEvent.click(within(policy).getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => expect(mockToast).toHaveBeenCalledWith({ title: 'Nothing changed' }));
     expect(mockApplyAsync).not.toHaveBeenCalled();

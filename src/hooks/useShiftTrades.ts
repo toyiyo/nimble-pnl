@@ -84,7 +84,7 @@ type ShiftTradeNotificationAction =
   | 'rejected'
   | 'cancelled';
 
-const sendShiftTradeNotification = async (
+export const sendShiftTradeNotification = async (
   tradeId: string,
   action: ShiftTradeNotificationAction
 ) => {

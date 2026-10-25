@@ -17,11 +17,14 @@ import type { CoverageImpactShift } from '@/hooks/useShiftProtection';
 import { DEFAULT_TRADE_NOTE, shiftCount, type TimeOffShiftAction } from '@/hooks/useTimeOffShiftAction';
 import type { TimeOffRequest } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
+import { formatInstant, safeTz } from '@/lib/restaurantClock';
 
 interface TimeOffShiftsDialogProps {
   request: TimeOffRequest;
   shifts: CoverageImpactShift[];
   submitting: boolean;
+  /** IANA zone of the restaurant. Shift times show in this zone. */
+  timezone?: string | null;
   onCancel: () => void;
   onConfirm: (action: TimeOffShiftAction) => void;
 }
@@ -35,6 +38,7 @@ export function TimeOffShiftsDialog({
   request,
   shifts,
   submitting,
+  timezone,
   onCancel,
   onConfirm,
 }: Readonly<TimeOffShiftsDialogProps>) {
@@ -43,6 +47,7 @@ export function TimeOffShiftsDialog({
 
   const name = request.employee?.name ?? 'This employee';
   const count = shifts.length;
+  const tz = safeTz(timezone);
   const isDelete = kind === 'delete';
   const description = [
     name,
@@ -104,7 +109,7 @@ export function TimeOffShiftsDialog({
                     <span className="text-muted-foreground font-normal"> · {shift.position}</span>
                   </span>
                   <span className="text-[13px] text-muted-foreground">
-                    {format(new Date(shift.start_time), 'h:mm a')} – {format(new Date(shift.end_time), 'h:mm a')}
+                    {formatInstant(shift.start_time, tz, 'h:mm a')} – {formatInstant(shift.end_time, tz, 'h:mm a')}
                   </span>
                 </li>
               ))}

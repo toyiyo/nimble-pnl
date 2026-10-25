@@ -46,6 +46,12 @@ function setup(props: Partial<React.ComponentProps<typeof TimeOffShiftsDialog>> 
 }
 
 describe('TimeOffShiftsDialog', () => {
+  it('shows shift times in the restaurant timezone', () => {
+    setup({ timezone: 'America/Chicago' });
+    // 16:00Z to 23:00Z on 2026-11-02 is 10:00 AM to 5:00 PM in Chicago (CST).
+    expect(screen.getAllByText('10:00 AM – 5:00 PM')).toHaveLength(3);
+  });
+
   it('names the employee and the shift count', () => {
     setup();
     expect(screen.getByRole('heading', { name: 'Approve time off' })).toBeInTheDocument();

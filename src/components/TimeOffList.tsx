@@ -45,13 +45,15 @@ import {
 
 interface TimeOffListProps {
   restaurantId: string;
+  /** IANA zone of the restaurant, for shift times in dialogs. */
+  timezone?: string | null;
 }
 
 // A shift choice made in TimeOffShiftsDialog. It travels into the
 // policy dialog, so "Approve anyway" still applies it.
 type PendingShiftAction = { shifts: CoverageImpactShift[]; action: TimeOffShiftAction };
 
-export function TimeOffList({ restaurantId }: TimeOffListProps) {
+export function TimeOffList({ restaurantId, timezone }: TimeOffListProps) {
   const { timeOffRequests, loading } = useTimeOffRequests(restaurantId);
   const approveRequest = useApproveTimeOffRequest();
   const rejectRequest = useRejectTimeOffRequest();
@@ -287,6 +289,7 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
           request={shiftsTarget.request}
           shifts={shiftsTarget.shifts}
           submitting={submitting}
+          timezone={timezone}
           onCancel={() => setShiftsTarget(null)}
           onConfirm={handleConfirmShifts}
         />

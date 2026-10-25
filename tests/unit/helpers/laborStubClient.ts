@@ -5,7 +5,7 @@
  *   select, the filters, the `or` filter (the keyset cursor), the order and
  *   the range, so a test can check what each query asked for.
  * - A table is served from a fixed row list. The stub applies the simple
- *   filters on flat columns (eq, in, gt, gte, lte, lt), the keyset `or` filter,
+ *   filters on flat columns (eq, neq, in, gt, gte, lte, lt), the keyset `or` filter,
  *   the order and the range, so the loader's page loop runs as it does
  *   against PostgREST. A filter on a dotted (embedded) column is recorded,
  *   not applied.
@@ -47,6 +47,8 @@ function applyRecord(rows: Row[], record: QueryRecord): Row[] {
       switch (op) {
         case 'eq':
           return v === value;
+        case 'neq':
+          return v !== value;
         case 'in':
           return (value as unknown[]).includes(v);
         case 'gt':
@@ -130,6 +132,7 @@ export function makeLaborStubClient(
       return chain;
     };
     chain.eq = filter('eq');
+    chain.neq = filter('neq');
     chain.in = filter('in');
     chain.gt = filter('gt');
     chain.gte = filter('gte');

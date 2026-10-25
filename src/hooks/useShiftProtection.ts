@@ -115,7 +115,10 @@ export async function fetchTimeoffCoverageImpact(requestId: string): Promise<Cov
 export function useTimeoffCoverageImpact(requestId: string | null) {
   return useQuery({
     queryKey: timeoffCoverageImpactKey(requestId),
-    queryFn: () => fetchTimeoffCoverageImpact(requestId as string),
+    queryFn: () => {
+      if (!requestId) throw new Error('Missing request id');
+      return fetchTimeoffCoverageImpact(requestId);
+    },
     enabled: !!requestId,
     staleTime: 30000,
   });

@@ -66,14 +66,16 @@ export function timeOffShiftToastText(
       `${shiftCount(summary.failed)} failed. ${isTrade ? 'Post' : 'Delete'} ${pronoun} from the schedule.`
     );
   }
+  const description = parts.join(' ');
   if (summary.failed > 0) {
     return {
       title: isTrade ? 'Some shifts were not posted' : 'Some shifts were not deleted',
-      description: parts.join(' '),
+      description,
       variant: 'destructive',
     };
   }
-  return { title: isTrade ? 'Shifts posted for trade' : 'Shifts deleted', description: parts.join(' ') };
+  if (summary.done === 0) return { title: 'No shifts changed', description };
+  return { title: isTrade ? 'Shifts posted for trade' : 'Shifts deleted', description };
 }
 
 async function postShiftForTrade(

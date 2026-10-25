@@ -42,6 +42,10 @@ interface TimeOffListProps {
   restaurantId: string;
 }
 
+// A shift choice made in TimeOffShiftsDialog. It travels into the
+// policy dialog, so "Approve anyway" still applies it.
+type PendingShiftAction = { shifts: CoverageImpactShift[]; action: TimeOffShiftAction };
+
 export function TimeOffList({ restaurantId }: TimeOffListProps) {
   const { timeOffRequests, loading } = useTimeOffRequests(restaurantId);
   const approveRequest = useApproveTimeOffRequest();
@@ -55,10 +59,6 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const applyShiftAction = useApplyTimeOffShiftAction();
-
-  // A shift choice made in TimeOffShiftsDialog. It travels into the
-  // policy dialog, so "Approve anyway" still applies it.
-  type PendingShiftAction = { shifts: CoverageImpactShift[]; action: TimeOffShiftAction };
 
   // Shift Protection: an approve that answers policy_warning lands here.
   // The dialog shows the findings plus the coverage impact (fetched
@@ -114,12 +114,21 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
       return false;
     }
     if (shiftAction) {
-      await applyShiftAction.mutateAsync({
-        restaurantId,
-        employeeId: request.employee_id,
-        shiftIds: shiftAction.shifts.map((shift) => shift.shift_id),
-        action: shiftAction.action,
-      });
+      try {
+        await applyShiftAction.mutateAsync({
+          restaurantId,
+          employeeId: request.employee_id,
+          shiftIds: shiftAction.shifts.map((shift) => shift.shift_id),
+          action: shiftAction.action,
+        });
+      } catch {
+        // The request is approved. Close the dialogs so a retry cannot run.
+        toast({
+          title: 'Shifts not changed',
+          description: 'The request is approved. Change the shifts from the schedule.',
+          variant: 'destructive',
+        });
+      }
     }
     setShiftsTarget(null);
     setPolicyTarget(null);
@@ -134,7 +143,8 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
         const impact = await queryClient.fetchQuery({
           queryKey: timeoffCoverageImpactKey(request.id),
           queryFn: () => fetchTimeoffCoverageImpact(request.id),
-          staleTime: 30000,
+          // Always fresh: a stale empty list would skip the shift choice.
+          staleTime: 0,
         });
         shifts = impact.shifts;
       } catch {
@@ -188,6 +198,7 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
   }
 
   function handleReject(request: TimeOffRequest) {
+    if (submittingRef.current) return;
     rejectRequest.mutate({ id: request.id, restaurantId });
   }
   function handleDelete(request: TimeOffRequest) {
@@ -233,6 +244,12 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
 
   const { pending, decided } = partitionByStatus(timeOffRequests);
 
+  let approveAnywayLabel = 'Approve anyway';
+  if (submitting) approveAnywayLabel = 'Approving…';
+  else if (policyTarget?.shiftAction) {
+    approveAnywayLabel = `Approve anyway and ${policyActionLabel(policyTarget.shiftAction)}`;
+  }
+
   return (
     <>
       <div className="space-y-4 p-4">
@@ -243,7 +260,7 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
           onEdit={handleEdit}
           onDelete={handleDelete}
           isApproving={approveRequest.isPending || submitting}
-          isRejecting={rejectRequest.isPending}
+          isRejecting={rejectRequest.isPending || submitting}
         />
         <DecidedHistory
           requests={decided}
@@ -349,16 +366,12 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
-                handleApproveAnyway();
+                void handleApproveAnyway();
               }}
               disabled={submitting}
               className="bg-warning text-warning-foreground hover:bg-warning/90"
             >
-              {submitting
-                ? 'Approving…'
-                : policyTarget?.shiftAction
-                  ? `Approve anyway and ${policyActionLabel(policyTarget.shiftAction)}`
-                  : 'Approve anyway'}
+              {approveAnywayLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

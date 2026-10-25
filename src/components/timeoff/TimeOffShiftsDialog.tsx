@@ -19,7 +19,7 @@ import type { TimeOffRequest } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
 
 interface TimeOffShiftsDialogProps {
-  request: TimeOffRequest | null;
+  request: TimeOffRequest;
   shifts: CoverageImpactShift[];
   submitting: boolean;
   onCancel: () => void;
@@ -41,9 +41,17 @@ export function TimeOffShiftsDialog({
   const [kind, setKind] = useState<TimeOffShiftAction['kind']>('trade');
   const [note, setNote] = useState(DEFAULT_TRADE_NOTE);
 
-  const name = request?.employee?.name ?? 'This employee';
+  const name = request.employee?.name ?? 'This employee';
   const count = shifts.length;
   const isDelete = kind === 'delete';
+  const description = [
+    name,
+    formatDateRange(request.start_date, request.end_date),
+    request.reason,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const submitLabel = `Approve and ${isDelete ? 'delete' : 'post'} ${shiftCount(count)}`;
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -53,7 +61,7 @@ export function TimeOffShiftsDialog({
 
   return (
     <Dialog
-      open={!!request}
+      open
       onOpenChange={(open) => {
         // Esc and the overlay click must not close the dialog mid-flow.
         if (!open && !submitting) onCancel();
@@ -68,11 +76,7 @@ export function TimeOffShiftsDialog({
             <div>
               <DialogTitle className="text-[17px] font-semibold text-foreground">Approve time off</DialogTitle>
               <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
-                {request
-                  ? `${name} · ${formatDateRange(request.start_date, request.end_date)}${
-                      request.reason ? ` · ${request.reason}` : ''
-                    }`
-                  : ''}
+                {description}
               </DialogDescription>
             </div>
           </div>
@@ -184,7 +188,7 @@ export function TimeOffShiftsDialog({
                   Approving…
                 </>
               ) : (
-                `Approve and ${isDelete ? 'delete' : 'post'} ${shiftCount(count)}`
+                submitLabel
               )}
             </Button>
           </DialogFooter>

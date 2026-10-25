@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { CalendarX, Loader2 } from 'lucide-react';
 import type { CoverageImpactShift } from '@/hooks/useShiftProtection';
-import { DEFAULT_TRADE_NOTE, type TimeOffShiftAction } from '@/hooks/useTimeOffShiftAction';
+import { DEFAULT_TRADE_NOTE, shiftCount, type TimeOffShiftAction } from '@/hooks/useTimeOffShiftAction';
 import type { TimeOffRequest } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
 
@@ -25,8 +25,6 @@ interface TimeOffShiftsDialogProps {
   onCancel: () => void;
   onConfirm: (action: TimeOffShiftAction) => void;
 }
-
-const shiftWord = (n: number) => (n === 1 ? 'shift' : 'shifts');
 
 function formatDateRange(start: string, end: string) {
   const from = format(parseISO(start), 'MMM d');
@@ -86,7 +84,7 @@ export function TimeOffShiftsDialog({
               role="status"
               className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px] text-foreground"
             >
-              {name} is scheduled for {count} {shiftWord(count)} in these dates.
+              {name} is scheduled for {shiftCount(count)} in these dates.
             </p>
 
             <ul
@@ -186,7 +184,7 @@ export function TimeOffShiftsDialog({
                   Approving…
                 </>
               ) : (
-                `Approve and ${isDelete ? 'delete' : 'post'} ${count} ${shiftWord(count)}`
+                `Approve and ${isDelete ? 'delete' : 'post'} ${shiftCount(count)}`
               )}
             </Button>
           </DialogFooter>

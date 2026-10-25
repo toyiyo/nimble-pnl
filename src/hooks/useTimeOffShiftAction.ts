@@ -44,7 +44,7 @@ export function summarizeShiftResults(
   return summary;
 }
 
-const shiftCount = (n: number) => `${n} ${n === 1 ? 'shift' : 'shifts'}`;
+export const shiftCount = (n: number) => `${n} ${n === 1 ? 'shift' : 'shifts'}`;
 
 export function timeOffShiftToastText(
   action: TimeOffShiftAction,

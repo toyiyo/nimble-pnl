@@ -18,7 +18,7 @@ import {
   useTimeoffCoverageImpact,
   type CoverageImpactShift,
 } from '@/hooks/useShiftProtection';
-import { useApplyTimeOffShiftAction, type TimeOffShiftAction } from '@/hooks/useTimeOffShiftAction';
+import { shiftCount, useApplyTimeOffShiftAction, type TimeOffShiftAction } from '@/hooks/useTimeOffShiftAction';
 import { PolicyWarningError, type PolicyFinding } from '@/lib/shiftProtection';
 import { ShiftProtectionWarning } from './scheduling/ShiftProtectionWarning';
 import { TimeOffRequestDialog } from './TimeOffRequestDialog';
@@ -182,11 +182,9 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
     setPolicyTarget(null);
   }
 
-  function policyActionText(shiftAction: PendingShiftAction) {
-    const n = shiftAction.shifts.length;
+  function policyActionLabel(shiftAction: PendingShiftAction) {
     const verb = shiftAction.action.kind === 'trade' ? 'post' : 'delete';
-    const suffix = shiftAction.action.kind === 'trade' ? ' for trade' : '';
-    return `${verb} ${n} ${n === 1 ? 'shift' : 'shifts'}${suffix}`;
+    return `${verb} ${shiftCount(shiftAction.shifts.length)}`;
   }
 
   function handleReject(request: TimeOffRequest) {
@@ -295,7 +293,8 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
               />
               {policyTarget.shiftAction && (
                 <p className="text-[13px] font-medium text-foreground">
-                  After approval: {policyActionText(policyTarget.shiftAction)}.
+                  After approval: {policyActionLabel(policyTarget.shiftAction)}
+                  {policyTarget.shiftAction.action.kind === 'trade' ? ' for trade' : ''}.
                 </p>
               )}
 
@@ -358,7 +357,7 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
               {submitting
                 ? 'Approving…'
                 : policyTarget?.shiftAction
-                  ? `Approve anyway and ${policyTarget.shiftAction.action.kind === 'trade' ? 'post' : 'delete'} ${policyTarget.shiftAction.shifts.length} ${policyTarget.shiftAction.shifts.length === 1 ? 'shift' : 'shifts'}`
+                  ? `Approve anyway and ${policyActionLabel(policyTarget.shiftAction)}`
                   : 'Approve anyway'}
             </AlertDialogAction>
           </AlertDialogFooter>

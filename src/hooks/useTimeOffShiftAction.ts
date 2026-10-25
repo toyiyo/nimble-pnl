@@ -46,6 +46,13 @@ export function summarizeShiftResults(
 
 export const shiftCount = (n: number) => `${n} ${n === 1 ? 'shift' : 'shifts'}`;
 
+/** Toast for a shift action that threw after the approval was saved. */
+export const TIME_OFF_SHIFT_ERROR_TOAST = {
+  title: 'Shifts not changed',
+  description: 'The request is approved. Change the shifts from the schedule.',
+  variant: 'destructive' as const,
+};
+
 export function timeOffShiftToastText(
   action: TimeOffShiftAction,
   summary: ShiftActionSummary

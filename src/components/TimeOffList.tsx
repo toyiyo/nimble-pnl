@@ -18,7 +18,12 @@ import {
   useTimeoffCoverageImpact,
   type CoverageImpactShift,
 } from '@/hooks/useShiftProtection';
-import { shiftCount, useApplyTimeOffShiftAction, type TimeOffShiftAction } from '@/hooks/useTimeOffShiftAction';
+import {
+  shiftCount,
+  TIME_OFF_SHIFT_ERROR_TOAST,
+  useApplyTimeOffShiftAction,
+  type TimeOffShiftAction,
+} from '@/hooks/useTimeOffShiftAction';
 import { PolicyWarningError, type PolicyFinding } from '@/lib/shiftProtection';
 import { ShiftProtectionWarning } from './scheduling/ShiftProtectionWarning';
 import { TimeOffRequestDialog } from './TimeOffRequestDialog';
@@ -123,11 +128,7 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
         });
       } catch {
         // The request is approved. Close the dialogs so a retry cannot run.
-        toast({
-          title: 'Shifts not changed',
-          description: 'The request is approved. Change the shifts from the schedule.',
-          variant: 'destructive',
-        });
+        toast(TIME_OFF_SHIFT_ERROR_TOAST);
       }
     }
     setShiftsTarget(null);
@@ -244,11 +245,11 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
 
   const { pending, decided } = partitionByStatus(timeOffRequests);
 
-  let approveAnywayLabel = 'Approve anyway';
-  if (submitting) approveAnywayLabel = 'Approving…';
-  else if (policyTarget?.shiftAction) {
-    approveAnywayLabel = `Approve anyway and ${policyActionLabel(policyTarget.shiftAction)}`;
-  }
+  const approveAnywayLabel = submitting
+    ? 'Approving…'
+    : policyTarget?.shiftAction
+      ? `Approve anyway and ${policyActionLabel(policyTarget.shiftAction)}`
+      : 'Approve anyway';
 
   return (
     <>

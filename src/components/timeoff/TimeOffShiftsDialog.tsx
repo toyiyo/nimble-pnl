@@ -60,6 +60,7 @@ export function TimeOffShiftsDialog({
   }
 
   return (
+    // The parent mounts this dialog only while a request is chosen, so open is always true.
     <Dialog
       open
       onOpenChange={(open) => {

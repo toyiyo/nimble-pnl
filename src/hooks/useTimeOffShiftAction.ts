@@ -53,26 +53,26 @@ export const TIME_OFF_SHIFT_ERROR_TOAST = {
   variant: 'destructive' as const,
 };
 
+function skippedText(isTrade: boolean, count: number): string {
+  const verb = count === 1 ? 'is' : 'are';
+  const tail = isTrade ? 'already on the trade board.' : 'already gone.';
+  return `${shiftCount(count)} ${verb} ${tail}`;
+}
+
+function failedText(isTrade: boolean, count: number): string {
+  const pronoun = count === 1 ? 'it' : 'them';
+  const verb = isTrade ? 'Post' : 'Delete';
+  return `${shiftCount(count)} failed. ${verb} ${pronoun} from the schedule.`;
+}
+
 export function timeOffShiftToastText(
   action: TimeOffShiftAction,
   summary: ShiftActionSummary
 ): { title: string; description: string; variant?: 'destructive' } {
   const isTrade = action.kind === 'trade';
   const parts = [`${shiftCount(summary.done)} ${isTrade ? 'posted for trade' : 'deleted'}.`];
-  if (summary.skipped > 0) {
-    const verb = summary.skipped === 1 ? 'is' : 'are';
-    parts.push(
-      isTrade
-        ? `${shiftCount(summary.skipped)} ${verb} already on the trade board.`
-        : `${shiftCount(summary.skipped)} ${verb} already gone.`
-    );
-  }
-  if (summary.failed > 0) {
-    const pronoun = summary.failed === 1 ? 'it' : 'them';
-    parts.push(
-      `${shiftCount(summary.failed)} failed. ${isTrade ? 'Post' : 'Delete'} ${pronoun} from the schedule.`
-    );
-  }
+  if (summary.skipped > 0) parts.push(skippedText(isTrade, summary.skipped));
+  if (summary.failed > 0) parts.push(failedText(isTrade, summary.failed));
   const description = parts.join(' ');
   if (summary.failed > 0) {
     return {
@@ -150,8 +150,8 @@ export function useApplyTimeOffShiftAction() {
       return summarizeShiftResults(results);
     },
     onSuccess: (summary, { restaurantId, action }) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
-      queryClient.invalidateQueries({ queryKey: ['timeoff-coverage-impact'] });
+      void queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+      void queryClient.invalidateQueries({ queryKey: ['timeoff-coverage-impact'] });
       invalidateShiftTradeQueries(queryClient);
       toast(timeOffShiftToastText(action, summary));
     },

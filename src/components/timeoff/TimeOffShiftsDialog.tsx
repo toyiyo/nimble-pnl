@@ -37,7 +37,7 @@ export function TimeOffShiftsDialog({
   submitting,
   onCancel,
   onConfirm,
-}: TimeOffShiftsDialogProps) {
+}: Readonly<TimeOffShiftsDialogProps>) {
   const [kind, setKind] = useState<TimeOffShiftAction['kind']>('trade');
   const [note, setNote] = useState(DEFAULT_TRADE_NOTE);
 
@@ -85,12 +85,9 @@ export function TimeOffShiftsDialog({
 
         <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
           <div className="px-6 py-5 space-y-5 overflow-y-auto">
-            <p
-              role="status"
-              className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px] text-foreground"
-            >
+            <output className="block p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px] text-foreground">
               {name} is scheduled for {shiftCount(count)} in these dates.
-            </p>
+            </output>
 
             <ul
               data-testid="timeoff-shift-list"

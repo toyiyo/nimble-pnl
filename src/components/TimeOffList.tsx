@@ -245,11 +245,11 @@ export function TimeOffList({ restaurantId }: TimeOffListProps) {
 
   const { pending, decided } = partitionByStatus(timeOffRequests);
 
-  const approveAnywayLabel = submitting
-    ? 'Approving…'
-    : policyTarget?.shiftAction
-      ? `Approve anyway and ${policyActionLabel(policyTarget.shiftAction)}`
-      : 'Approve anyway';
+  let approveAnywayLabel = 'Approve anyway';
+  if (submitting) approveAnywayLabel = 'Approving…';
+  else if (policyTarget?.shiftAction) {
+    approveAnywayLabel = `Approve anyway and ${policyActionLabel(policyTarget.shiftAction)}`;
+  }
 
   return (
     <>

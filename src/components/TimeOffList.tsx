@@ -53,6 +53,11 @@ interface TimeOffListProps {
 // policy dialog, so "Approve anyway" still applies it.
 type PendingShiftAction = { shifts: CoverageImpactShift[]; action: TimeOffShiftAction };
 
+const CHECK_FAILED_TOAST = {
+  title: 'Could not check shifts',
+  description: 'The request is approved without a shift action.',
+};
+
 export function TimeOffList({ restaurantId, timezone }: TimeOffListProps) {
   const { timeOffRequests, loading } = useTimeOffRequests(restaurantId);
   const approveRequest = useApproveTimeOffRequest();
@@ -74,6 +79,7 @@ export function TimeOffList({ restaurantId, timezone }: TimeOffListProps) {
     request: TimeOffRequest;
     warnings: PolicyFinding[];
     shiftAction: PendingShiftAction | null;
+    checkFailed: boolean;
   } | null>(null);
   const coverageImpact = useTimeoffCoverageImpact(policyTarget?.request.id ?? null);
 
@@ -109,14 +115,15 @@ export function TimeOffList({ restaurantId, timezone }: TimeOffListProps) {
   async function approveThenApply(
     request: TimeOffRequest,
     shiftAction: PendingShiftAction | null,
-    override: boolean
+    override: boolean,
+    checkFailed = false
   ) {
     try {
       await approveRequest.mutateAsync({ id: request.id, restaurantId, override });
     } catch (error) {
       if (error instanceof PolicyWarningError && !override) {
         setShiftsTarget(null);
-        setPolicyTarget({ request, warnings: error.warnings, shiftAction });
+        setPolicyTarget({ request, warnings: error.warnings, shiftAction, checkFailed });
       }
       return false;
     }
@@ -152,13 +159,8 @@ export function TimeOffList({ restaurantId, timezone }: TimeOffListProps) {
         shifts = impact.shifts;
       } catch {
         // A failed check does not block the approval.
-        const approved = await approveThenApply(request, null, false);
-        if (approved) {
-          toast({
-            title: 'Could not check shifts',
-            description: 'The request is approved without a shift action.',
-          });
-        }
+        const approved = await approveThenApply(request, null, false, true);
+        if (approved) toast(CHECK_FAILED_TOAST);
         return;
       }
       if (shifts.length === 0) {
@@ -183,7 +185,13 @@ export function TimeOffList({ restaurantId, timezone }: TimeOffListProps) {
   async function handleApproveAnyway() {
     if (!policyTarget || !lock()) return;
     try {
-      await approveThenApply(policyTarget.request, policyTarget.shiftAction, true);
+      const approved = await approveThenApply(
+        policyTarget.request,
+        policyTarget.shiftAction,
+        true,
+        policyTarget.checkFailed
+      );
+      if (approved && policyTarget.checkFailed) toast(CHECK_FAILED_TOAST);
     } finally {
       unlock();
     }

@@ -55,7 +55,7 @@ export const TIME_OFF_SHIFT_ERROR_TOAST = {
 
 function skippedText(isTrade: boolean, count: number): string {
   const verb = count === 1 ? 'is' : 'are';
-  const tail = isTrade ? 'already on the trade board.' : 'already gone.';
+  const tail = isTrade ? 'already on the trade board.' : 'not deleted. Check the schedule.';
   return `${shiftCount(count)} ${verb} ${tail}`;
 }
 

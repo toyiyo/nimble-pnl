@@ -100,7 +100,7 @@ No database change. The design reuses two existing RPCs.
 ```text
 Manager clicks Approve (pending row only)
   └─ submitting = true (state + ref guard)
-  └─ fetch get_timeoff_coverage_impact(request.id)   (fetchQuery, staleTime 30000)
+  └─ fetch get_timeoff_coverage_impact(request.id)   (fetchQuery, staleTime 0)
        ├─ 0 shifts   → approve as today, submitting = false
        ├─ fetch fails → approve as today, then show the toast
        │                "Could not check shifts. The request is approved
@@ -235,7 +235,7 @@ File: `src/components/timeoff/TimeOffShiftsDialog.tsx`.
 ### Changes to `TimeOffList`
 
 - `handleApprove` fetches the shifts with `queryClient.fetchQuery` on the
-  `['timeoff-coverage-impact', id]` key, with `staleTime: 30000`. The
+  `['timeoff-coverage-impact', id]` key, with `staleTime: 0`, so a cached empty list cannot skip the shift choice. Only `useTimeoffCoverageImpact` keeps `staleTime: 30000`. The
   fetch uses the same query function as `useTimeoffCoverageImpact`.
   Export that query function so both use one copy.
 - New state: `shiftsTarget: { request, shifts } | null`, `submitting`,

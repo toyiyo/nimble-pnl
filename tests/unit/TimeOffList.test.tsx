@@ -137,6 +137,27 @@ describe('TimeOffList', () => {
     );
   });
 
+  it('names the gap after a policy override when the shift fetch fails', async () => {
+    mockFetchImpact.mockRejectedValue(new Error('network'));
+    mockApproveAsync
+      .mockRejectedValueOnce(
+        new PolicyWarningError([{ rule: 'min_staffing', message: 'Staffing drops below 2.' } as never])
+      )
+      .mockResolvedValueOnce({ id: 'p1' });
+    renderPending();
+
+    const policy = await screen.findByRole('alertdialog');
+    expect(mockToast).not.toHaveBeenCalled();
+    fireEvent.click(within(policy).getByRole('button', { name: /Approve anyway/ }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Could not check shifts',
+        description: 'The request is approved without a shift action.',
+      })
+    );
+  });
+
   it('opens the dialog, approves first, then posts the shifts', async () => {
     mockFetchImpact.mockResolvedValue({ shifts: [impactShift('s1'), impactShift('s2')], overlapping_approved: 0 });
     mockApproveAsync.mockResolvedValue({ id: 'p1' });

@@ -23,7 +23,7 @@ RadioGroup, AlertDialog), Supabase JS, Vitest, Testing Library.
 - The default trade note is exactly `Approved PTO`. The note has `maxLength={200}`.
 - The exact skip error text is `This shift already has an active trade`.
 - Every delete filters on `id`, `restaurant_id`, and `employee_id`, and ends with `.select('id')`.
-- The shift fetch uses `staleTime: 30000` and the key `['timeoff-coverage-impact', requestId]`.
+- The approval fetch uses `staleTime: 0`, so a cached empty list cannot skip the shift choice. Only `useTimeoffCoverageImpact` keeps `staleTime: 30000`. The key is `['timeoff-coverage-impact', requestId]`.
 - Use semantic tokens only. The amber notice uses `bg-amber-500/10 border-amber-500/20`.
 - Every user-visible string is STE-aligned (short sentences, active voice).
 - Run tests with `npx vitest run <file>`. Stage explicit paths only. Never `git add -A`.
@@ -1134,7 +1134,7 @@ Delete the old `import { useState } from 'react';` and the old
         const impact = await queryClient.fetchQuery({
           queryKey: timeoffCoverageImpactKey(request.id),
           queryFn: () => fetchTimeoffCoverageImpact(request.id),
-          staleTime: 30000,
+          staleTime: 0,
         });
         shifts = impact.shifts;
       } catch {

@@ -3,6 +3,7 @@
 import { MAX_TOOL_TEXT_CHARS } from "./mcpHandler.ts";
 import { restaurantDayBounds, ymdInTimeZone } from "./restaurantDate.ts";
 import { addDaysToDateStr } from "./labor/restaurantClock.ts";
+import { EMPLOYEE_LABOR_SOURCE } from "./employeeLaborColumns.ts";
 import { findShiftWarnings } from "./shiftWarnings.ts";
 import { attachConflicts, buildConflictIndex, loadShiftConflicts } from "./shiftConflictFlags.ts";
 import {
@@ -180,7 +181,7 @@ export async function runGetSchedulingContext(
     pendingTimeOffRes, templatesRes, settingsRes, publicationsRes, tradesRes, claimsRes,
     labor,
   ] = await Promise.all([
-    table("employees", "id, name, position, area, employment_type, is_minor, date_of_birth, status, is_active")
+    table(EMPLOYEE_LABOR_SOURCE, "id, name, position, area, employment_type, is_minor, date_of_birth, status, is_active")
       .eq("is_active", true).order("id").limit(CAPS.employees),
     fetchShifts(table, startIso, endIso),
     loadShiftConflicts(supabase, restaurantId, startIso, new Date(bounds.end.getTime() + 1).toISOString()),

@@ -142,6 +142,15 @@ describe('runGetSchedulingContext gates and queries', () => {
       expect(c.select).not.toContain('*');
     }
   });
+
+  // QA on the preview branch: the base table has no is_minor column, and it
+  // shows date_of_birth to every member. The masking view has both rules.
+  it('reads employees through the employees_secure view', async () => {
+    await runGetSchedulingContext({}, 'r1', makeSupabase(), TZ, NOW);
+    const tables = state.fromCalls.map((c) => c.table);
+    expect(tables).toContain('employees_secure');
+    expect(tables).not.toContain('employees');
+  });
 });
 
 describe('runGetSchedulingContext size', () => {
@@ -156,7 +165,7 @@ describe('runGetSchedulingContext size', () => {
         start_time: `2026-10-${d}T15:00:00Z`, end_time: `2026-10-${d}T23:00:00Z`,
         break_duration: 30, status: 'scheduled', position: 'Server', is_published: false, shift_template_id: null,
       })));
-    state.rows = { employees, shifts };
+    state.rows = { employees_secure: employees, shifts };
     const r = await runGetSchedulingContext({}, 'r1', makeSupabase(), TZ, NOW);
     expect(JSON.stringify(r.data).length).toBeLessThan(40_000);
   });

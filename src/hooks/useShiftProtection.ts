@@ -93,24 +93,29 @@ export interface CoverageImpact {
   overlapping_approved: number;
 }
 
+export const timeoffCoverageImpactKey = (requestId: string | null) =>
+  ['timeoff-coverage-impact', requestId] as const;
+
+export async function fetchTimeoffCoverageImpact(requestId: string): Promise<CoverageImpact> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types yet
+  const { data, error } = await (supabase.rpc as any)('get_timeoff_coverage_impact', {
+    p_request_id: requestId,
+  });
+  if (error) throw error;
+  return {
+    shifts: (data?.shifts ?? []) as CoverageImpactShift[],
+    overlapping_approved: (data?.overlapping_approved ?? 0) as number,
+  };
+}
+
 /**
  * Coverage impact of a time-off approval, for the manager queue.
  * Fetch lazily — pass null until the approve action needs it.
  */
 export function useTimeoffCoverageImpact(requestId: string | null) {
   return useQuery({
-    queryKey: ['timeoff-coverage-impact', requestId],
-    queryFn: async (): Promise<CoverageImpact> => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types yet
-      const { data, error } = await (supabase.rpc as any)('get_timeoff_coverage_impact', {
-        p_request_id: requestId,
-      });
-      if (error) throw error;
-      return {
-        shifts: (data?.shifts ?? []) as CoverageImpactShift[],
-        overlapping_approved: (data?.overlapping_approved ?? 0) as number,
-      };
-    },
+    queryKey: timeoffCoverageImpactKey(requestId),
+    queryFn: () => fetchTimeoffCoverageImpact(requestId as string),
     enabled: !!requestId,
     staleTime: 30000,
   });

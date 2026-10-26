@@ -5,7 +5,9 @@ import { restaurantDayBounds, ymdInTimeZone } from "./restaurantDate.ts";
 import { addDaysToDateStr } from "./labor/restaurantClock.ts";
 import { EMPLOYEE_LABOR_SOURCE } from "./employeeLaborColumns.ts";
 import { findShiftWarnings } from "./shiftWarnings.ts";
-import { attachConflicts, buildConflictIndex, loadShiftConflicts } from "./shiftConflictFlags.ts";
+import {
+  attachConflicts, buildConflictIndex, loadNeighborShifts, loadShiftConflicts, withNeighbors,
+} from "./shiftConflictFlags.ts";
 import {
   hasEditSchedulingCapability,
   hasPayRatesCapability,
@@ -113,6 +115,7 @@ function must<T>(res: { data: T | null; error: { message: string } | null }, lab
 /** Page through the shifts of the period. PostgREST cuts one response at max_rows. */
 async function fetchShifts(
   // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table: (name: string, columns: string) => any,
   startIso: string,
   endIso: string,
@@ -135,10 +138,12 @@ export async function runGetSchedulingContext(
   args: { start_date?: unknown; end_date?: unknown },
   restaurantId: string,
   // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   tz: string,
   now: Date,
   // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   const resolved = resolvePeriod(args ?? {}, now, tz);
   if ("error" in resolved) return invalid(resolved.error);
@@ -177,7 +182,7 @@ export async function runGetSchedulingContext(
   );
 
   const [
-    employeesRes, shiftsRes, conflictRows, recurringRes, exceptionsRes, timeOffRes,
+    employeesRes, shiftsRes, conflictRows, neighborShifts, recurringRes, exceptionsRes, timeOffRes,
     pendingTimeOffRes, templatesRes, settingsRes, publicationsRes, tradesRes, claimsRes,
     labor,
   ] = await Promise.all([
@@ -185,6 +190,7 @@ export async function runGetSchedulingContext(
       .eq("is_active", true).order("id").limit(CAPS.employees),
     fetchShifts(table, startIso, endIso),
     loadShiftConflicts(supabase, restaurantId, startIso, new Date(bounds.end.getTime() + 1).toISOString()),
+    loadNeighborShifts(supabase, restaurantId, startIso, endIso),
     table("employee_availability", "employee_id, day_of_week, is_available, start_time, end_time, notes").limit(CAPS.availability),
     table("availability_exceptions", "employee_id, date, is_available, start_time, end_time, reason")
       .gte("date", period.start).lte("date", period.end).limit(CAPS.availability_exceptions),
@@ -228,7 +234,7 @@ export async function runGetSchedulingContext(
   atCap("pending_time_off", pendingTimeOff.length, CAPS.pending_time_off);
   if (shiftsRes.truncated) dataLimits.push("shifts");
 
-  const conflictIndex = buildConflictIndex(conflictRows, findShiftWarnings(shifts));
+  const conflictIndex = buildConflictIndex(conflictRows, findShiftWarnings(withNeighbors(shifts, neighborShifts)));
   const { conflictedShiftCount } = attachConflicts(shifts, conflictIndex);
 
   const publicationWeeks = new Set<string>(publications.map((p) => p.week_start_date));

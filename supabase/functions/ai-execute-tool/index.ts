@@ -13,9 +13,12 @@ import {
   restaurantDayBounds,
 } from '../_shared/restaurantDate.ts';
 import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
+import { MAX_TOOL_TEXT_CHARS } from '../_shared/mcpHandler.ts';
 import { runGetSchedulingContext } from '../_shared/schedulingContextTool.ts';
 import { findShiftWarnings } from '../_shared/shiftWarnings.ts';
-import { buildConflictIndex, attachConflicts, loadShiftConflicts } from '../_shared/shiftConflictFlags.ts';
+import {
+  buildConflictIndex, attachConflicts, compactConflictsToFit, loadNeighborShifts, loadShiftConflicts, withNeighbors,
+} from '../_shared/shiftConflictFlags.ts';
 import { buildTimePunchShifts } from '../_shared/timePunchShifts.ts';
 import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
 import {
@@ -2260,6 +2263,9 @@ async function executeGetTimePunches(
   };
 }
 
+// The overview data stays below the connector text cap. The margin holds the evidence.
+const OVERVIEW_TEXT_LIMIT = MAX_TOOL_TEXT_CHARS - 2000;
+
 /**
  * Execute get_schedule_overview tool
  * Shows scheduled shifts and projected labor costs
@@ -2288,7 +2294,7 @@ async function executeGetScheduleOverview(
   // Fetch shifts and employees in parallel. The shift embed names only
   // granted employee columns: the caller cannot read hourly_rate on
   // public.employees (20260806110000).
-  const [shiftsResult, employees, hasPayRates, conflictRows] = await Promise.all([
+  const [shiftsResult, employees, hasPayRates, conflictRows, neighborShifts] = await Promise.all([
     supabase
       .from('shifts')
       .select('id, employee_id, start_time, end_time, break_duration, position, status, is_published, locked, shift_template_id, employee:employees(id, name, position)')
@@ -2300,12 +2306,14 @@ async function executeGetScheduleOverview(
     include_projected_costs ? fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }) : Promise.resolve([]),
     include_projected_costs ? hasPayRatesCapability(restaurantId, supabase) : Promise.resolve(true),
     loadShiftConflicts(supabase, restaurantId, bounds.start.toISOString(), new Date(bounds.end.getTime() + 1).toISOString()),
+    // A shift next to the period edge can flag a shift inside it (clopen, overlap).
+    loadNeighborShifts(supabase, restaurantId, bounds.start.toISOString(), bounds.end.toISOString()),
   ]);
 
   if (shiftsResult.error) throw new Error(`Failed to fetch shifts: ${shiftsResult.error.message}`);
 
   const rawShifts = shiftsResult.data || [];
-  const conflictIndex = buildConflictIndex(conflictRows, findShiftWarnings(rawShifts));
+  const conflictIndex = buildConflictIndex(conflictRows, findShiftWarnings(withNeighbors(rawShifts, neighborShifts)));
   const { shifts, conflictedShiftCount } = attachConflicts(rawShifts, conflictIndex);
 
   // Calculate projected costs if requested and there are shifts. Without
@@ -2313,14 +2321,14 @@ async function executeGetScheduleOverview(
   let projectedCosts = null;
   if (include_projected_costs && hasPayRates && shifts.length > 0) {
     const costInputs = scheduledCostInputs(
-      shifts
-        .filter((s: any) => s.status !== 'cancelled')
-        .map((s: any) => ({
-          employee_id: s.employee_id,
-          start_time: s.start_time,
-          end_time: s.end_time,
-          break_duration: s.break_duration || 0,
-        })),
+      // deno-lint-ignore no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      shifts.flatMap((s: any) => s.status === 'cancelled' ? [] : [{
+        employee_id: s.employee_id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        break_duration: s.break_duration || 0,
+      }]),
       startDateStr,
       endDateStr,
       restaurantTimeZone
@@ -2340,7 +2348,7 @@ async function executeGetScheduleOverview(
 
   return {
     ok: true,
-    data: {
+    data: compactConflictsToFit({
       period,
       start_date: startDateStr,
       end_date: endDateStr,
@@ -2349,7 +2357,7 @@ async function executeGetScheduleOverview(
       conflicted_shift_count: conflictedShiftCount,
       projected_labor_costs: projectedCosts,
       pay_hidden: include_projected_costs && !hasPayRates ? payHidden() : undefined,
-    },
+    }, OVERVIEW_TEXT_LIMIT),
     evidence: [
       { table: 'shifts', summary: `${shifts.length} scheduled shifts from ${startDateStr} to ${endDateStr}` },
       { table: 'shifts', summary: `${conflictedShiftCount} shifts with conflicts` },

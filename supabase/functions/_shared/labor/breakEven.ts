@@ -1,6 +1,7 @@
 // Pure break-even rules. Shared by the app and the edge functions.
 // Keep this file free of React and browser code.
 import { startOfMonth, format, getDaysInMonth } from 'date-fns';
+import { addDaysToDateStr } from './restaurantClock.ts';
 
 export type CostType = 'fixed' | 'semi_variable' | 'variable' | 'custom';
 export type EntryType = 'value' | 'percentage';
@@ -260,10 +261,7 @@ export function calculateBreakEven(
   // legacy fields we restrict to the rolling-N-day slice so the chart, COGS%,
   // daysAbove/Below counters stay anchored to the historyDays window.
   const today = parseLocalDate(todayStr);
-  const rollingStart = format(
-    new Date(today.getFullYear(), today.getMonth(), today.getDate() - (historyDays - 1)),
-    'yyyy-MM-dd',
-  );
+  const rollingStart = addDaysToDateStr(todayStr, -(historyDays - 1));
   const rollingSales = salesData.filter((d) => d.date >= rollingStart && d.date <= todayStr);
 
   // A date with no sales row counts as 0. The divisor is the window length.

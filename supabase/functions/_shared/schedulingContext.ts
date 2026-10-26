@@ -484,6 +484,9 @@ export interface SchedulingContext {
   [key: string]: unknown;
 }
 
+/** The core lists that fitToLimit cuts last, in this order. */
+const CUTTABLE_LISTS = ["conflicts", "availability", "time_off", "roster"] as const;
+
 export function fitToLimit(
   ctx: SchedulingContext,
   limit: number,
@@ -507,16 +510,20 @@ export function fitToLimit(
     out.truncated = true;
     out.omitted_sections = [...omitted];
   }
-  // Still over the limit: cut the conflict list, so the JSON stays valid and the flag is true.
-  if (JSON.stringify(out).length >= limit && Array.isArray(out.conflicts)) {
-    let kept = out.conflicts as unknown[];
-    while (kept.length > 0 && JSON.stringify({ ...out, conflicts: kept }).length >= limit) {
-      kept = kept.slice(0, Math.floor(kept.length / 2));
-    }
-    out.conflicts = kept;
-    omitted.push("conflicts (partial)");
+  // Still over the limit: cut the core lists in this order, so the JSON stays valid and the
+  // flag is true. The roster alone can pass the limit (CAPS.employees is 500).
+  for (const name of CUTTABLE_LISTS) {
+    if (JSON.stringify(out).length < limit) break;
+    const list = out[name];
+    if (!Array.isArray(list) || list.length === 0) continue;
+    omitted.push(`${name} (partial)`);
     out.truncated = true;
     out.omitted_sections = [...omitted];
+    let kept = list as unknown[];
+    while (kept.length > 0 && JSON.stringify({ ...out, [name]: kept }).length >= limit) {
+      kept = kept.slice(0, Math.floor(kept.length / 2));
+    }
+    out[name] = kept;
   }
   return out;
 }

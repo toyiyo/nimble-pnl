@@ -315,10 +315,6 @@ export function getTools(
       parameters: {
         type: 'object',
         properties: {
-          restaurant_id: {
-            type: 'string',
-            description: 'The restaurant id from list_restaurants'
-          },
           start_date: {
             type: 'string',
             format: 'date',
@@ -329,8 +325,7 @@ export function getTools(
             format: 'date',
             description: 'Last day of the period (YYYY-MM-DD). The period is 31 days at most.'
           }
-        },
-        required: ['restaurant_id']
+        }
       }
     },
 

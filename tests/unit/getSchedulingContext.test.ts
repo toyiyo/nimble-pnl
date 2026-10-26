@@ -34,7 +34,7 @@ function makeSupabase() {
       const call = { table, select: '', eqs: [] as [string, unknown][] };
       state.fromCalls.push(call);
       const result = () => ({ data: state.rows[table] ?? [], error: null });
-      const chain: any = {
+      const chain: Record<string, unknown> = {
         select: (s: string) => ((call.select = s), chain),
         eq: (c: string, v: unknown) => (call.eqs.push([c, v]), chain),
         in: () => chain,
@@ -150,6 +150,22 @@ describe('runGetSchedulingContext gates and queries', () => {
     const tables = state.fromCalls.map((c) => c.table);
     expect(tables).toContain('employees_secure');
     expect(tables).not.toContain('employees');
+  });
+});
+
+describe('runGetSchedulingContext neighbor shifts', () => {
+  // Review on PR 846: a Sunday shift before the period gives the Monday shift a clopen.
+  it('flags a clopen against a shift before the period', async () => {
+    state.rows = {
+      employees_secure: [{ id: 'a', name: 'A', status: 'active', is_active: true }],
+      shifts: [
+        { id: 'prev', employee_id: 'a', start_time: '2026-10-11T23:00:00Z', end_time: '2026-10-12T07:00:00Z', status: 'scheduled' },
+        { id: 'mon', employee_id: 'a', start_time: '2026-10-12T12:00:00Z', end_time: '2026-10-12T20:00:00Z', status: 'scheduled' },
+      ],
+    };
+    const r = await runGetSchedulingContext({}, 'r1', makeSupabase(), TZ, NOW);
+    const conflicts = r.data.conflicts as { shift_id: string; type: string }[];
+    expect(conflicts).toContainEqual(expect.objectContaining({ shift_id: 'mon', type: 'clopen' }));
   });
 });
 

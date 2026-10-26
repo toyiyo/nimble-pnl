@@ -3,10 +3,18 @@ import {
   buildConflictIndex,
   attachConflicts,
   loadShiftConflicts,
+  loadNeighborShifts,
+  withNeighbors,
+  compactConflictsToFit,
   type ConflictRow,
 } from '../../supabase/functions/_shared/shiftConflictFlags';
 import { groupShiftsByRestaurantDay } from '../../supabase/functions/_shared/scheduleOverview';
-import type { ShiftWarning } from '../../supabase/functions/_shared/shiftWarnings';
+import { findShiftWarnings, type ShiftWarning, type WarnShift } from '../../supabase/functions/_shared/shiftWarnings';
+
+interface FixtureShift extends WarnShift {
+  position: string;
+  employee: { name: string; position: string };
+}
 
 const row = (shift_id: string, conflict_type: 'time_off' | 'availability'): ConflictRow => ({
   shift_id,
@@ -67,7 +75,7 @@ describe('loadShiftConflicts', () => {
 
 describe('overview size', () => {
   it('stays below 40,000 chars for 31 days, 25 employees, 2 shifts a day, 20% conflicted', () => {
-    const shifts: any[] = [];
+    const shifts: FixtureShift[] = [];
     const rows: ConflictRow[] = [];
     let n = 0;
     for (let d = 1; d <= 31; d++) {
@@ -98,5 +106,70 @@ describe('overview size', () => {
     const overhead = JSON.stringify(data).length - JSON.stringify(base).length;
     expect(overhead).toBeLessThan(50000);
     expect(JSON.stringify(data)).not.toContain('"notes"');
+  });
+});
+
+// Review on PR 846: a shift next to the period edge can flag a shift inside it.
+describe('neighbor shifts', () => {
+  const ws = (id: string, start: string, end: string): WarnShift => ({
+    id, employee_id: 'a', start_time: start, end_time: end, status: 'scheduled',
+  });
+
+  it('flags a clopen on the first period shift after a shift before the period', () => {
+    const before = ws('prev', '2026-10-11T18:00:00Z', '2026-10-12T02:00:00Z');
+    const first = ws('first', '2026-10-12T07:00:00Z', '2026-10-12T15:00:00Z');
+    expect(findShiftWarnings([first])).toEqual([]);
+    const index = buildConflictIndex([], findShiftWarnings(withNeighbors([first], [before])));
+    const { shifts, conflictedShiftCount } = attachConflicts([first], index);
+    expect(conflictedShiftCount).toBe(1);
+    expect(shifts[0].conflicts?.[0]).toMatchObject({ type: 'clopen', rule: 'editor' });
+  });
+
+  it('does not add a neighbor that is already in the period list', () => {
+    const s = ws('s1', '2026-10-12T07:00:00Z', '2026-10-12T15:00:00Z');
+    expect(withNeighbors([s], [s])).toEqual([s]);
+  });
+
+  it('reads the rest window before the start and the day after the end', async () => {
+    const calls: { filters: [string, string, unknown][] }[] = [];
+    const supabase = {
+      from: () => {
+        const call = { filters: [] as [string, string, unknown][] };
+        calls.push(call);
+        const chain: Record<string, unknown> = {};
+        for (const op of ['select', 'eq', 'neq', 'lt', 'gt', 'lte', 'limit']) {
+          chain[op] = (c: string, v: unknown) => (call.filters.push([op, c, v]), chain);
+        }
+        chain.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(res);
+        return chain;
+      },
+    };
+    await loadNeighborShifts(supabase, 'r1', '2026-10-12T05:00:00.000Z', '2026-10-19T04:59:59.999Z');
+    const [before, after] = calls.map((c) => c.filters);
+    expect(before).toContainEqual(['eq', 'restaurant_id', 'r1']);
+    expect(before).toContainEqual(['neq', 'status', 'cancelled']);
+    expect(before).toContainEqual(['lt', 'start_time', '2026-10-12T05:00:00.000Z']);
+    expect(before).toContainEqual(['gt', 'end_time', '2026-10-11T21:00:00.000Z']);
+    expect(after).toContainEqual(['gt', 'start_time', '2026-10-19T04:59:59.999Z']);
+    expect(after).toContainEqual(['lte', 'start_time', '2026-10-20T04:59:59.999Z']);
+  });
+});
+
+describe('compactConflictsToFit', () => {
+  const data = {
+    total_shifts: 1,
+    shifts_by_date: {
+      '2026-10-12': [{ id: 's1', conflicts: [{ type: 'clopen' as const, rule: 'editor' as const, message: 'm'.repeat(200) }] }],
+    },
+  };
+
+  it('keeps the data when it fits', () => {
+    expect(compactConflictsToFit(data, 40_000)).toBe(data);
+  });
+
+  it('deletes the conflict messages when the data is over the limit', () => {
+    const out = compactConflictsToFit(data, 100);
+    expect(out.conflict_messages_omitted).toBe(true);
+    expect(out.shifts_by_date['2026-10-12'][0]).toEqual({ id: 's1', conflicts: [{ type: 'clopen', rule: 'editor' }] });
   });
 });

@@ -256,6 +256,15 @@ describe('fitToLimit', () => {
     expect(out.truncated).toBe(true);
     expect(out.omitted_sections).toContain('conflicts (partial)');
   });
+  // Review on PR 846: CAPS.employees is 500, so the roster alone can pass the limit.
+  it('cuts the roster when the roster alone is over the limit', () => {
+    const roster = buildRoster(Array.from({ length: 300 }, (_, i) => emp(`e${i}`)), [], new Map(), period);
+    const out = fitToLimit({ roster, availability: [], time_off: [], conflicts: [] }, 20_000);
+    const text = JSON.stringify(out);
+    expect(text.length).toBeLessThan(20_000);
+    expect(out.omitted_sections).toContain('roster (partial)');
+    expect((out.roster as unknown[]).length).toBeGreaterThan(0);
+  });
   it('does not set truncated when nothing is deleted', () => {
     const out = fitToLimit({ roster: [], availability: [], time_off: [], conflicts: [] }, 40_000);
     expect(out.truncated).toBeUndefined();

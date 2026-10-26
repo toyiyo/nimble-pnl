@@ -162,7 +162,7 @@ export async function authorizeDocumentRequest<TRecord extends { restaurant_id: 
 
 // ── Supabase-backed dependencies ─────────────────────────────────────────────
 
-type QueryResult<T> = Promise<{ data: T | null; error: unknown }>;
+type QueryResult<T> = PromiseLike<{ data: T | null; error: unknown }>;
 
 interface FilterBuilder<T> {
   eq(column: string, value: string): FilterBuilder<T>;

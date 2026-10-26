@@ -70,7 +70,10 @@ The fix adds `supabase/functions/_shared/receiptStoragePath.ts`. The proxy
 calls it before the download. It returns the path only when the first folder
 equals `receipt_imports.restaurant_id`, and it refuses `.`, `..` and empty
 segments. Otherwise the proxy returns 404. `tests/unit/receiptStoragePath.test.ts`
-covers it.
+covers it. The helper also refuses `%`, `\` and control characters, because
+the URL parser in `fetch()` turns `%2e%2e` into `..` and `\` into `/`. An old
+full-URL row with a percent-encoded name thus gets 404 from the proxy. Deploy
+check D counts the full-URL rows.
 
 No caller in `src/` or `supabase/functions/` writes a path that does not start
 with the restaurant id. The policy change does not need a caller change.
@@ -220,6 +223,9 @@ SELECT 'expense_invoice_uploads', count(*) FROM public.expense_invoice_uploads W
 
 - The pgTAP catalog check covers the local schema. It cannot see a policy that
   exists only in production. Deploy checks A and C cover production.
+- Check C and pgTAP test 3 match text only. A permissive policy such as
+  `bucket_id IS NOT NULL OR auth.uid() IS NOT NULL` passes them. Read the
+  `qual` of each policy in the output of check A by eye.
 - The fix does not change the UI capability gaps for `chef`,
   `collaborator_inventory` and `collaborator_accountant`. The table policies
   already block those flows, so a change belongs in a separate fix.

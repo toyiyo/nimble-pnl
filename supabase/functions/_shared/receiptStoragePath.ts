@@ -17,7 +17,7 @@ export function receiptStoragePath(rawFileUrl: string, restaurantId: string): st
   if (!rawFileUrl || !restaurantId) return null;
 
   let path = rawFileUrl;
-  if (path.includes('http')) {
+  if (/^https?:\/\//i.test(path)) {
     const match = BUCKET_PATH.exec(path);
     if (!match) return null;
     path = match[1];
@@ -32,7 +32,8 @@ export function receiptStoragePath(rawFileUrl: string, restaurantId: string): st
   const segments = path.split('/');
   if (segments.length < 2) return null;
   if (segments.some((s) => s === '' || s === '.' || s === '..')) return null;
-  if (segments[0].toLowerCase() !== restaurantId.toLowerCase()) return null;
+  // Exact match, as the storage RLS compares `restaurant_id::text` with case.
+  if (segments[0] !== restaurantId) return null;
 
   return path;
 }

@@ -23,8 +23,12 @@ describe('receiptStoragePath', () => {
     expect(receiptStoragePath(url, RID)).toBe(`${RID}/a.png`);
   });
 
-  it('accepts an upper-case restaurant id in the path', () => {
-    expect(receiptStoragePath(`${RID.toUpperCase()}/a.pdf`, RID)).toBe(`${RID.toUpperCase()}/a.pdf`);
+  it('refuses an upper-case restaurant id, as the storage RLS does', () => {
+    expect(receiptStoragePath(`${RID.toUpperCase()}/a.pdf`, RID)).toBeNull();
+  });
+
+  it('keeps a plain path whose file name contains "http"', () => {
+    expect(receiptStoragePath(`${RID}/1700000000-https_invoice.pdf`, RID)).toBe(`${RID}/1700000000-https_invoice.pdf`);
   });
 
   it('refuses a path in the folder of another restaurant', () => {

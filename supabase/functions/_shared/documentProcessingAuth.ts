@@ -1,0 +1,161 @@
+/**
+ * documentProcessingAuth.ts
+ *
+ * Caller check and document-source rules for the `process-receipt` and
+ * `process-bank-statement` edge functions. Both functions use the service
+ * role, so this module is the only tenant boundary they have.
+ *
+ * All functions are pure or take injected dependencies, so Vitest can load
+ * this file without the Deno runtime.
+ *
+ * Design: docs/superpowers/specs/2026-10-26-document-processing-auth-design.md
+ */
+
+/**
+ * Roles that can create a `receipt_imports` row. Matches the INSERT policy in
+ * 20260723120000_add_collaborator_operations_manager_role.sql.
+ */
+export const RECEIPT_PROCESS_ROLES: readonly string[] = [
+  'owner',
+  'manager',
+  'operations_manager',
+  'collaborator_operations_manager',
+];
+
+/**
+ * Roles that can manage `bank_statement_uploads` rows. Matches the FOR ALL
+ * policy in 20251118100000_add_bank_statement_uploads.sql.
+ */
+export const BANK_STATEMENT_PROCESS_ROLES: readonly string[] = ['owner', 'manager'];
+
+/** The bucket that holds receipt and bank statement uploads. */
+export const DOCUMENT_BUCKET = 'receipt-images';
+
+/** Largest receipt file the server encodes for the AI call. */
+export const MAX_RECEIPT_BYTES = 20 * 1024 * 1024;
+
+/** Largest bank statement file. Matches the limit in useBankStatementImport. */
+export const MAX_BANK_STATEMENT_BYTES = 5 * 1024 * 1024;
+
+/**
+ * True only for an https URL on the project's own host and port, with no
+ * user info, whose path is under `/storage/v1/`. The functions use this
+ * check to reject a foreign URL. They never fetch the URL.
+ */
+export function isAllowedStorageUrl(rawUrl: string, supabaseUrl: string): boolean {
+  let url: URL;
+  let project: URL;
+  try {
+    url = new URL(rawUrl);
+    project = new URL(supabaseUrl);
+  } catch {
+    return false;
+  }
+  return (
+    project.protocol === 'https:' &&
+    url.protocol === 'https:' &&
+    url.username === '' &&
+    url.password === '' &&
+    url.hostname === project.hostname &&
+    url.port === project.port &&
+    url.pathname.startsWith('/storage/v1/')
+  );
+}
+
+/** True only for `data:<mime>;base64,...` where the MIME type has an allowed prefix. */
+export function isInlineDataUrl(value: unknown, allowedMimePrefixes: readonly string[]): boolean {
+  if (typeof value !== 'string') return false;
+  const match = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,/i.exec(value);
+  if (!match) return false;
+  const mime = match[1].toLowerCase();
+  return allowedMimePrefixes.some((prefix) => mime.startsWith(prefix));
+}
+
+const STORAGE_PATH_CHARS = /^[A-Za-z0-9._/-]+$/;
+
+/**
+ * True only for a storage path inside the restaurant's own folder. The row's
+ * `raw_file_url` comes from the client, and the service role can read every
+ * tenant's files, so the server must check the path before a download.
+ */
+export function isRestaurantStoragePath(path: unknown, restaurantId: string): boolean {
+  if (typeof path !== 'string' || !restaurantId) return false;
+  if (!STORAGE_PATH_CHARS.test(path)) return false;
+  const segments = path.split('/');
+  if (segments[0] !== restaurantId || segments.length < 2) return false;
+  return segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+}
+
+/** Encode bytes as a base64 data URL. The loop works in chunks to keep the call stack small. */
+export function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
+  const chunkSize = 32768;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
+export interface DocumentAuthDeps<TRecord extends { restaurant_id: string }> {
+  /** Return the user for a JWT, or null when the token has no user. */
+  getUser(token: string): Promise<{ id: string } | null>;
+  /** Return the document row, or null when it does not exist. */
+  loadRecord(recordId: string): Promise<TRecord | null>;
+  /** Return the user's role in the restaurant, or null when there is no membership. */
+  getMembershipRole(userId: string, restaurantId: string): Promise<string | null>;
+}
+
+export interface DocumentAuthInput {
+  authHeader: string | null;
+  recordId: string;
+  allowedRoles: readonly string[];
+}
+
+export type DocumentAuthResult<TRecord> =
+  | { ok: true; userId: string; record: TRecord }
+  | { ok: false; status: 400 | 401 | 403 | 404 | 500; error: string };
+
+const NOT_FOUND = 'Document not found';
+
+/**
+ * Check that the caller is a signed-in user who can upload documents for the
+ * restaurant that owns the row. A missing row and a missing membership get the
+ * same 404, so a caller cannot find out if a row of a different tenant exists.
+ */
+export async function authorizeDocumentRequest<TRecord extends { restaurant_id: string }>(
+  input: DocumentAuthInput,
+  deps: DocumentAuthDeps<TRecord>,
+): Promise<DocumentAuthResult<TRecord>> {
+  const token = /^Bearer\s+(\S+)$/i.exec(input.authHeader ?? '')?.[1];
+  if (!token) {
+    return { ok: false, status: 401, error: 'Authentication required' };
+  }
+  if (!input.recordId) {
+    return { ok: false, status: 400, error: 'Document ID is required' };
+  }
+
+  try {
+    const user = await deps.getUser(token);
+    if (!user) {
+      return { ok: false, status: 401, error: 'Authentication required' };
+    }
+
+    const record = await deps.loadRecord(input.recordId);
+    if (!record) {
+      return { ok: false, status: 404, error: NOT_FOUND };
+    }
+
+    const role = await deps.getMembershipRole(user.id, record.restaurant_id);
+    if (!role) {
+      return { ok: false, status: 404, error: NOT_FOUND };
+    }
+    if (!input.allowedRoles.includes(role)) {
+      return { ok: false, status: 403, error: 'You do not have permission to process this document' };
+    }
+
+    return { ok: true, userId: user.id, record };
+  } catch (error) {
+    console.error('Document authorization check failed:', error);
+    return { ok: false, status: 500, error: 'Authorization check failed' };
+  }
+}

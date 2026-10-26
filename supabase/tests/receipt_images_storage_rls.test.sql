@@ -14,17 +14,17 @@
 -- and UPDATE policies.
 --
 -- Run as the real `authenticated` role with JWT claims so that RLS applies.
--- As superuser, RLS does not apply.
+-- The `postgres` role has BYPASSRLS, so RLS does not apply to it.
 --
 -- All fixture data (restaurant and user ids, emails, object names) is
 -- fictional and exists only for the duration of this transaction (ROLLBACK).
 -- ============================================================================
 BEGIN;
 
-SELECT plan(17);
+SELECT plan(21);
 
 -- ----------------------------------------------------------------------------
--- Fixtures: 2 restaurants, 5 users. The ids use the prefix `e3000000-` so
+-- Fixtures: 2 restaurants, 7 users. The ids use the prefix `e3000000-` so
 -- that they do not collide with ids in other test files. USER_B makes
 -- restaurant B a real tenant with its own member.
 --
@@ -35,13 +35,17 @@ SELECT plan(17);
 --   OPS_A   (...03): operations_manager of restaurant A
 --   CHEF_A  (...04): chef of restaurant A
 --   STAFF_A (...05): staff of restaurant A
+--   COPS_A  (...06): collaborator_operations_manager of restaurant A
+--   DUAL    (...07): owner of restaurant A and staff of restaurant B
 -- ----------------------------------------------------------------------------
 INSERT INTO auth.users (id, email) VALUES
   ('e3000000-0000-0000-0000-000000000001', 'rcpt-rls-a@example.test'),
   ('e3000000-0000-0000-0000-000000000002', 'rcpt-rls-b@example.test'),
   ('e3000000-0000-0000-0000-000000000003', 'rcpt-rls-ops-a@example.test'),
   ('e3000000-0000-0000-0000-000000000004', 'rcpt-rls-chef-a@example.test'),
-  ('e3000000-0000-0000-0000-000000000005', 'rcpt-rls-staff-a@example.test')
+  ('e3000000-0000-0000-0000-000000000005', 'rcpt-rls-staff-a@example.test'),
+  ('e3000000-0000-0000-0000-000000000006', 'rcpt-rls-cops-a@example.test'),
+  ('e3000000-0000-0000-0000-000000000007', 'rcpt-rls-dual@example.test')
 ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 INSERT INTO public.restaurants (id, name) VALUES
@@ -54,18 +58,23 @@ INSERT INTO public.user_restaurants (user_id, restaurant_id, role) VALUES
   ('e3000000-0000-0000-0000-000000000002', 'e3000000-0000-0000-0000-0000000000b1', 'owner'),
   ('e3000000-0000-0000-0000-000000000003', 'e3000000-0000-0000-0000-0000000000a1', 'operations_manager'),
   ('e3000000-0000-0000-0000-000000000004', 'e3000000-0000-0000-0000-0000000000a1', 'chef'),
-  ('e3000000-0000-0000-0000-000000000005', 'e3000000-0000-0000-0000-0000000000a1', 'staff')
+  ('e3000000-0000-0000-0000-000000000005', 'e3000000-0000-0000-0000-0000000000a1', 'staff'),
+  ('e3000000-0000-0000-0000-000000000006', 'e3000000-0000-0000-0000-0000000000a1', 'collaborator_operations_manager'),
+  ('e3000000-0000-0000-0000-000000000007', 'e3000000-0000-0000-0000-0000000000a1', 'owner'),
+  ('e3000000-0000-0000-0000-000000000007', 'e3000000-0000-0000-0000-0000000000b1', 'staff')
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 INSERT INTO storage.buckets (id, name, public) VALUES
   ('receipt-images', 'receipt-images', false)
 ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
 
--- One receipt in each restaurant folder, written as superuser. move-me.pdf
--- exists only for the move test, so that test cannot change receipt-a.pdf.
+-- One receipt in each restaurant folder, written as `postgres`. move-me.pdf
+-- and dual-move.pdf exist only for the move tests, so those tests cannot
+-- change receipt-a.pdf.
 INSERT INTO storage.objects (bucket_id, name) VALUES
   ('receipt-images', 'e3000000-0000-0000-0000-0000000000a1/receipt-a.pdf'),
   ('receipt-images', 'e3000000-0000-0000-0000-0000000000a1/move-me.pdf'),
+  ('receipt-images', 'e3000000-0000-0000-0000-0000000000a1/dual-move.pdf'),
   ('receipt-images', 'e3000000-0000-0000-0000-0000000000b1/receipt-b.pdf')
 ON CONFLICT (bucket_id, name) DO UPDATE SET name = EXCLUDED.name;
 
@@ -88,7 +97,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- 2. Only the 4 folder policies refer to the receipt-images bucket. A
+-- 2-3. Only the 4 folder policies refer to the receipt-images bucket. A
 --    permissive policy with another name would open the bucket again.
 -- ============================================================================
 SELECT set_eq(
@@ -105,8 +114,20 @@ SELECT set_eq(
   'only the 4 folder policies refer to the receipt-images bucket'
 );
 
+-- A permissive policy without a bucket clause applies to every bucket, so it
+-- also opens receipt-images.
+SELECT is(
+  (SELECT count(*)::int FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND permissive = 'PERMISSIVE'
+      AND (coalesce(qual, '') || coalesce(with_check, '')) NOT LIKE '%bucket_id%'),
+  0,
+  'every permissive storage.objects policy has a bucket clause'
+);
+
 -- ============================================================================
--- 3-8. USER_A against the folder of restaurant B: no access.
+-- 4-9. USER_A against the folder of restaurant B: no access.
 -- ============================================================================
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"e3000000-0000-0000-0000-000000000001","role":"authenticated"}';
@@ -167,7 +188,7 @@ SELECT throws_ok(
 );
 
 -- ============================================================================
--- 9-11. USER_A in its own folder: read, upload and update still work.
+-- 10-12. USER_A in its own folder: read, upload and update still work.
 -- ============================================================================
 SELECT is(
   (SELECT count(*)::int FROM storage.objects
@@ -194,7 +215,7 @@ SELECT is(count(*)::int, 1, 'user A can update a receipt in its own folder')
   FROM changed;
 
 -- ============================================================================
--- 12-13. OPS_A: receipt_imports admits operations_manager, so storage must
+-- 13-15. OPS_A: receipt_imports admits operations_manager, so storage must
 --        admit the receipt upload too.
 -- ============================================================================
 SET LOCAL request.jwt.claims = '{"sub":"e3000000-0000-0000-0000-000000000003","role":"authenticated"}';
@@ -213,8 +234,20 @@ SELECT throws_ok(
   'an operations_manager cannot upload into the folder of another restaurant'
 );
 
+WITH changed AS (
+  UPDATE storage.objects
+     SET metadata = '{"size":2}'::jsonb
+   WHERE bucket_id = 'receipt-images'
+     AND name = 'e3000000-0000-0000-0000-0000000000a1/ops-receipt.pdf'
+   RETURNING 1
+)
+SELECT is(count(*)::int, 1, 'an operations_manager can update a receipt in its own restaurant folder')
+  FROM changed;
+
 -- ============================================================================
--- 14-15. CHEF_A keeps its upload. STAFF_A cannot upload.
+-- 16-19. CHEF_A and COPS_A can upload. STAFF_A cannot upload. DUAL can see
+--        the folder of restaurant B (staff), so only the UPDATE WITH CHECK
+--        stops a move of its own receipt into that folder.
 -- ============================================================================
 SET LOCAL request.jwt.claims = '{"sub":"e3000000-0000-0000-0000-000000000004","role":"authenticated"}';
 
@@ -234,8 +267,28 @@ SELECT throws_ok(
   'a staff member cannot upload a receipt'
 );
 
+SET LOCAL request.jwt.claims = '{"sub":"e3000000-0000-0000-0000-000000000006","role":"authenticated"}';
+
+SELECT lives_ok(
+  $$ INSERT INTO storage.objects (bucket_id, name)
+     VALUES ('receipt-images', 'e3000000-0000-0000-0000-0000000000a1/cops-receipt.pdf') $$,
+  'a collaborator_operations_manager can upload a receipt into its own restaurant folder'
+);
+
+SET LOCAL request.jwt.claims = '{"sub":"e3000000-0000-0000-0000-000000000007","role":"authenticated"}';
+
+SELECT throws_ok(
+  $$ UPDATE storage.objects
+        SET name = 'e3000000-0000-0000-0000-0000000000b1/dual-moved.pdf'
+      WHERE bucket_id = 'receipt-images'
+        AND name = 'e3000000-0000-0000-0000-0000000000a1/dual-move.pdf' $$,
+  '42501',
+  NULL,
+  'a staff member of restaurant B cannot move a receipt into the folder of restaurant B'
+);
+
 -- ============================================================================
--- 16-17. As superuser: the receipt of restaurant B did not change.
+-- 20-21. As `postgres`: the receipt of restaurant B did not change.
 -- ============================================================================
 RESET ROLE;
 RESET request.jwt.claims;

@@ -60,8 +60,21 @@ connection to that restaurant with the service role.
   `{ action: 'callback', code, state }`
   (`src/pages/SquareCallback.tsx:77-83`, `src/pages/CloverCallback.tsx:47-53`,
   `src/pages/ToastCallback.tsx:77-83`). The callback pages are not inside
-  `ProtectedRoute` (`src/App.tsx:433-435`), but the user starts the flow
-  signed in, so `supabase.functions.invoke` sends the session JWT.
+  `ProtectedRoute` (`src/App.tsx:433-435`). The app client keeps the session
+  in `localStorage` (`src/integrations/supabase/client.ts:18-24`). supabase-js
+  `functions.invoke` sends the session `access_token` as `Bearer`. With no
+  session, it sends the anon key as `Bearer`, and `auth.getUser` rejects it.
+- The callback pages show a generic message on any error
+  (`src/pages/SquareCallback.tsx:102-112`, `src/pages/ToastCallback.tsx:102-112`).
+  The Clover page shows the raw error text (`src/pages/CloverCallback.tsx:68-77`).
+- The Square and Toast callback pages log the full URL with the `code` and
+  the raw `state` to the console (`src/pages/SquareCallback.tsx:27-36`,
+  `src/pages/ToastCallback.tsx:27-36`).
+- `logSecurityEvent` takes an optional user id
+  (`supabase/functions/_shared/encryption.ts:91-96`). The callbacks pass
+  `undefined` (`supabase/functions/square-oauth/index.ts:297`).
+- Clover reads `region` from the request body with no check
+  (`supabase/functions/clover-oauth/index.ts:29`).
 - `_shared/hmacToken.ts` has the `<payload>.<signature>` HMAC-SHA256
   primitives (`supabase/functions/_shared/hmacToken.ts:62-77`).
   `_shared/reviewToken.ts` shows the sign and verify pattern with an expiry
@@ -80,52 +93,75 @@ Pure functions. No Deno globals, so Vitest can import them.
    - `uid`: the user id of the caller of `authorize`.
    - `n`: a random nonce (16 bytes, base64url).
    - `exp`: now + 600 seconds (`OAUTH_STATE_TTL_SECONDS`).
-   - `r` (optional): the Clover region.
+   - `o`: the app origin from the allowlist. The callback builds the
+     redirect URI and picks sandbox or production from this value only.
+   - `r` (optional): the Clover region, one of `na`, `eu`, `latam`, `apac`.
 2. `verifyOAuthState(token, secret, provider, nowSeconds?)` returns the
-   payload or `null`. It checks the shape, then the signature, then the
-   provider, then the expiry. It uses the helpers in `hmacToken.ts`.
+   payload or `null`. It checks the shape (including the region set), then
+   the signature, then the provider, then the expiry. It uses the helpers in
+   `hmacToken.ts`.
 3. `parseAllowedOrigins(envValue)` returns a list of exact origins. The list
    always holds `https://app.easyshifthq.com`. The env var
    `OAUTH_ALLOWED_ORIGINS` adds more origins (comma-separated, exact match).
+   Each entry goes through `new URL(x).origin`. The function drops an entry
+   that has `*`, a path, or a scheme other than `https:`. It keeps
+   `http://localhost:<port>` and `http://127.0.0.1:<port>` for local work.
 4. `resolveAppOrigin(headers, allowedOrigins)` reads `Origin`, then the origin
    of `Referer`. It returns `{ origin, isProduction }`. An origin that is not
    in the list gives the production origin. The function never puts a raw
    header value into a redirect.
 5. `isOwnerOrManager(supabase, userId, restaurantId)` queries
-   `user_restaurants` for role `owner` or `manager`.
+   `user_restaurants` for role `owner` or `manager` with `.maybeSingle()`.
+   A query error gives `false` and a log line.
 6. `checkOAuthCallback({ state, authHeader, provider, secret, getUserId, isOwnerOrManager })`
    returns `{ ok: true, restaurantId, userId, region? }` or
    `{ ok: false, status, error }`. The steps:
    1. Verify the state (signature, provider, expiry). Fail: 403.
-   2. Get the user from the `Authorization` JWT. Fail: 401.
-   3. The JWT user must equal `uid` in the state. Fail: 403. This blocks a
-      login-CSRF attack: an attacker cannot make a victim finish a flow that
-      the attacker started.
-   4. Check owner or manager again for `uid` and `rid`. Fail: 403. A user who
+   2. Get the user from the `Authorization` JWT. A missing header, or a
+      token that `auth.getUser` rejects (the anon key), gives 401.
+   3. The JWT user must equal `uid` in the state. Fail: 403. A victim who
+      is signed in cannot finish a flow that an attacker started. This does
+      not bind the flow to one browser of the same user.
+   4. Check that `o` is still in the allowlist. Fail: 403.
+   5. Check owner or manager again for `uid` and `rid`. Fail: 403. A user who
       lost the role in the last 10 minutes cannot finish the flow.
 
 ### Changes to the three functions
 
 For `square-oauth`, `clover-oauth` and `toast-oauth`:
 
-- Read `OAUTH_STATE_SECRET`. If it is missing, return 500 before any work.
+- Read `OAUTH_STATE_SECRET`. If it is missing or shorter than 32
+  characters, return 500 before any work.
 - `authorize`: keep the user check and the role check. Use
   `isOwnerOrManager`. Set `state` to `signOAuthState(...)`.
 - `callback`: call `checkOAuthCallback` first. Return its status on a fail.
   No token exchange, no upsert, no sync call happens before this check.
-  Use the `restaurantId` (and the Clover `region`) from the verified state.
+  Use the `restaurantId`, the origin and the Clover `region` from the
+  verified state. Pass the verified user id to `logSecurityEvent`.
 - Delete the log lines with the full authorization URL, the client id and
   the application id prefix. Delete the log of the raw `state`.
-- Build `REDIRECT_URI` from `resolveAppOrigin`. A non-production allowlisted
-  origin selects the sandbox credentials for Square and Clover, as the
-  preview hosts do today. Toast uses the origin only for the redirect.
+- `authorize` builds `REDIRECT_URI` from `resolveAppOrigin` and signs the
+  origin into the state. `callback` builds `REDIRECT_URI` from the signed
+  origin. A non-production allowlisted origin selects the sandbox credentials
+  for Square and Clover, as the preview hosts do today. Toast uses the origin
+  only for the redirect.
+- Clover `authorize` rejects a `region` outside `na`, `eu`, `latam`, `apac`.
 
 ### Frontend
 
 The request shapes do not change. `authorize` still sends `restaurantId`.
-`callback` still sends `code` and `state`. The callback pages already send
-the session JWT through `supabase.functions.invoke`. No frontend change is
-necessary.
+`callback` still sends `code` and `state`.
+
+- New helper `src/lib/oauthCallbackError.ts`:
+  `describeOAuthCallbackError(error, providerName)` reads
+  `error.context.status`. On 401 it returns "Sign in, then connect
+  <provider> again." On 403 it returns "This connection link expired or
+  belongs to a different account. Start the connection again." Other
+  errors give "Failed to complete the <provider> connection."
+- The three callback pages show this message.
+- Delete the console logs of the full URL, the `code` and the raw `state`
+  in `SquareCallback.tsx` and `ToastCallback.tsx`. Delete the unused
+  `const restaurantId = state`.
 
 ### Env vars (document in the PR, do not add values)
 
@@ -133,6 +169,11 @@ necessary.
   Set it before the deploy. Without it, the three OAuth flows return 500.
 - `OAUTH_ALLOWED_ORIGINS` (optional): extra exact app origins for preview or
   local work, for example `http://localhost:8080`.
+
+### Rollout note
+
+A user who is in an OAuth flow at deploy time has an unsigned `state`. The
+callback rejects it with 403. The user clicks Connect again.
 
 ## Tests
 
@@ -148,8 +189,16 @@ necessary.
   different user gives 403, a user who is not owner or manager gives 403, a
   good call returns the restaurant id from the state. The reject cases
   assert that the role check does not run when an earlier check fails.
+- `checkOAuthCallback`: the anon key (rejected by `getUser`) gives 401. A
+  signed origin that left the allowlist gives 403.
+- A Clover region outside the set fails.
 - `resolveAppOrigin`: production origin, allowlisted preview origin, unknown
   origin, `Referer` fallback, malformed header.
+- `parseAllowedOrigins`: drops wildcards, paths and `http:` hosts other than
+  localhost.
+
+`tests/unit/oauthCallbackError.test.ts`: 401, 403, other status, plain
+`Error`.
 
 E2E: a justified exception. The flow needs live Square, Clover or Toast
 OAuth servers. CI has no credentials for them. The unit tests cover every

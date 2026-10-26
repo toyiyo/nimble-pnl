@@ -45,6 +45,21 @@ describe('receiptStoragePath', () => {
     expect(receiptStoragePath(`${RID}/./a.pdf`, RID)).toBeNull();
   });
 
+  // The URL parser in fetch() turns these forms into a `..` segment or a `/`.
+  it('refuses a percent-encoded dot segment', () => {
+    expect(receiptStoragePath(`${RID}/%2e%2e/${OTHER}/a.pdf`, RID)).toBeNull();
+    expect(receiptStoragePath(`${RID}/.%2E/${OTHER}/a.pdf`, RID)).toBeNull();
+  });
+
+  it('refuses a backslash', () => {
+    expect(receiptStoragePath(`${RID}/..\\${OTHER}\\a.pdf`, RID)).toBeNull();
+  });
+
+  it('refuses a tab or a newline in a segment', () => {
+    expect(receiptStoragePath(`${RID}/.\t./${OTHER}/a.pdf`, RID)).toBeNull();
+    expect(receiptStoragePath(`${RID}/.\n./${OTHER}/a.pdf`, RID)).toBeNull();
+  });
+
   it('refuses a path with an empty segment', () => {
     expect(receiptStoragePath(`${RID}//a.pdf`, RID)).toBeNull();
   });

@@ -8,12 +8,16 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   authorizeDocumentRequest,
   bytesToDataUrl,
+  createDocumentAuthDeps,
+  downloadDocumentAsDataUrl,
   isAllowedStorageUrl,
   isInlineDataUrl,
   isRestaurantStoragePath,
   BANK_STATEMENT_PROCESS_ROLES,
+  DOCUMENT_BUCKET,
   RECEIPT_PROCESS_ROLES,
   type DocumentAuthDeps,
+  type DocumentServiceClient,
 } from '../../supabase/functions/_shared/documentProcessingAuth';
 
 const SUPABASE_URL = 'https://abc123.supabase.co';
@@ -238,5 +242,147 @@ describe('role lists', () => {
       ['collaborator_operations_manager', 'manager', 'operations_manager', 'owner'],
     );
     expect([...BANK_STATEMENT_PROCESS_ROLES].sort()).toEqual(['manager', 'owner']);
+  });
+});
+
+// ── Supabase-backed dependencies and the storage download ───────────────────
+
+interface FakeOptions {
+  user?: { id: string } | null;
+  authError?: unknown;
+  rows?: Record<string, unknown>;
+  rowError?: unknown;
+  download?: { data: Blob | null; error: unknown } | Error;
+}
+
+function makeClient(opts: FakeOptions = {}) {
+  const calls: Array<{ table: string; columns: string; filters: Array<[string, string]> }> = [];
+  const downloads: Array<{ bucket: string; path: string }> = [];
+  const client: DocumentServiceClient = {
+    auth: {
+      getUser: vi.fn(async () => ({
+        data: { user: opts.user === undefined ? { id: 'user-1' } : opts.user },
+        error: opts.authError ?? null,
+      })),
+    },
+    from(table: string) {
+      return {
+        select(columns: string) {
+          const call = { table, columns, filters: [] as Array<[string, string]> };
+          calls.push(call);
+          const builder = {
+            eq(column: string, value: string) {
+              call.filters.push([column, value]);
+              return builder;
+            },
+            async maybeSingle() {
+              if (opts.rowError) return { data: null, error: opts.rowError };
+              return { data: opts.rows?.[table] ?? null, error: null };
+            },
+          };
+          return builder;
+        },
+      };
+    },
+    storage: {
+      from(bucket: string) {
+        return {
+          async download(path: string) {
+            downloads.push({ bucket, path });
+            if (opts.download instanceof Error) throw opts.download;
+            return opts.download ?? { data: null, error: { message: 'not found' } };
+          },
+        };
+      },
+    },
+  };
+  return { client, calls, downloads };
+}
+
+describe('createDocumentAuthDeps', () => {
+  it('reads the user, the row, and the membership role', async () => {
+    const { client, calls } = makeClient({
+      rows: {
+        receipt_imports: { restaurant_id: RESTAURANT_ID, raw_file_url: 'x' },
+        user_restaurants: { role: 'owner' },
+      },
+    });
+    const deps = createDocumentAuthDeps<Row>(client, 'receipt_imports', 'restaurant_id, raw_file_url');
+    expect(await deps.getUser('jwt')).toEqual({ id: 'user-1' });
+    expect(client.auth.getUser).toHaveBeenCalledWith('jwt');
+    expect(await deps.loadRecord('r-1')).toEqual({ restaurant_id: RESTAURANT_ID, raw_file_url: 'x' });
+    expect(await deps.getMembershipRole('user-1', RESTAURANT_ID)).toBe('owner');
+    expect(calls).toEqual([
+      { table: 'receipt_imports', columns: 'restaurant_id, raw_file_url', filters: [['id', 'r-1']] },
+      {
+        table: 'user_restaurants',
+        columns: 'role',
+        filters: [['user_id', 'user-1'], ['restaurant_id', RESTAURANT_ID]],
+      },
+    ]);
+  });
+
+  it('returns null for an auth error, a missing user, a missing row, and no membership', async () => {
+    expect(await createDocumentAuthDeps(makeClient({ authError: { message: 'bad jwt' } }).client, 't', 'c').getUser('x')).toBeNull();
+    const deps = createDocumentAuthDeps(makeClient({ user: null }).client, 't', 'c');
+    expect(await deps.getUser('x')).toBeNull();
+    expect(await deps.loadRecord('r-1')).toBeNull();
+    expect(await deps.getMembershipRole('u', RESTAURANT_ID)).toBeNull();
+  });
+
+  it('throws on a query error', async () => {
+    const deps = createDocumentAuthDeps(makeClient({ rowError: { message: 'boom' } }).client, 't', 'c');
+    await expect(deps.loadRecord('r-1')).rejects.toEqual({ message: 'boom' });
+    await expect(deps.getMembershipRole('u', RESTAURANT_ID)).rejects.toEqual({ message: 'boom' });
+  });
+});
+
+describe('downloadDocumentAsDataUrl', () => {
+  const path = `${RESTAURANT_ID}/1700000000-inv.pdf`;
+  const pdf = () => new Blob([new TextEncoder().encode('%PDF-1.4')], { type: 'application/pdf' });
+
+  it('downloads the row path from the document bucket', async () => {
+    const { client, downloads } = makeClient({ download: { data: pdf(), error: null } });
+    const result = await downloadDocumentAsDataUrl(client, path, RESTAURANT_ID, 1024, 'application/pdf');
+    expect(result).toEqual({ ok: true, dataUrl: 'data:application/pdf;base64,JVBERi0xLjQ=', byteLength: 8 });
+    expect(downloads).toEqual([{ bucket: DOCUMENT_BUCKET, path }]);
+  });
+
+  it('does not download a path of a different tenant', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, downloads } = makeClient({ download: { data: pdf(), error: null } });
+    const result = await downloadDocumentAsDataUrl(
+      client,
+      `${OTHER_RESTAURANT_ID}/a.pdf`,
+      RESTAURANT_ID,
+      1024,
+      'application/pdf',
+    );
+    expect(result).toEqual({ ok: false, reason: 'invalid_path' });
+    expect(downloads).toHaveLength(0);
+    errorSpy.mockRestore();
+  });
+
+  it('rejects a file above the size limit', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client } = makeClient({ download: { data: pdf(), error: null } });
+    const result = await downloadDocumentAsDataUrl(client, path, RESTAURANT_ID, 4, 'application/pdf');
+    expect(result).toEqual({ ok: false, reason: 'too_large' });
+    errorSpy.mockRestore();
+  });
+
+  it('returns download_failed for a storage error and for a throw', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errored = await downloadDocumentAsDataUrl(makeClient().client, path, RESTAURANT_ID, 1024, 'application/pdf');
+    const thrown = await downloadDocumentAsDataUrl(
+      makeClient({ download: new Error('socket hang up') }).client,
+      path,
+      RESTAURANT_ID,
+      1024,
+      'application/pdf',
+    );
+    expect(errored).toEqual({ ok: false, reason: 'download_failed' });
+    expect(thrown).toEqual({ ok: false, reason: 'download_failed' });
+    errorSpy.mockRestore();
   });
 });

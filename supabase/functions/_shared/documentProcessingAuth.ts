@@ -159,3 +159,96 @@ export async function authorizeDocumentRequest<TRecord extends { restaurant_id: 
     return { ok: false, status: 500, error: 'Authorization check failed' };
   }
 }
+
+// ── Supabase-backed dependencies ─────────────────────────────────────────────
+
+type QueryResult<T> = Promise<{ data: T | null; error: unknown }>;
+
+interface FilterBuilder<T> {
+  eq(column: string, value: string): FilterBuilder<T>;
+  maybeSingle(): QueryResult<T>;
+}
+
+/** The part of the service-role Supabase client that this module uses. */
+export interface DocumentServiceClient {
+  auth: {
+    getUser(token: string): Promise<{ data: { user: { id: string } | null }; error: unknown }>;
+  };
+  from(table: string): { select(columns: string): FilterBuilder<unknown> };
+  storage: {
+    from(bucket: string): {
+      download(path: string): Promise<{ data: Blob | null; error: unknown }>;
+    };
+  };
+}
+
+/**
+ * Build `DocumentAuthDeps` on the service-role client. A query error throws,
+ * so `authorizeDocumentRequest` returns its generic 500.
+ */
+export function createDocumentAuthDeps<TRecord extends { restaurant_id: string }>(
+  supabase: DocumentServiceClient,
+  table: string,
+  columns: string,
+): DocumentAuthDeps<TRecord> {
+  return {
+    async getUser(token) {
+      const { data, error } = await supabase.auth.getUser(token);
+      if (error || !data?.user) return null;
+      return { id: data.user.id };
+    },
+    async loadRecord(recordId) {
+      const { data, error } = await supabase.from(table).select(columns).eq('id', recordId).maybeSingle();
+      if (error) throw error;
+      return (data as TRecord | null) ?? null;
+    },
+    async getMembershipRole(userId, restaurantId) {
+      const { data, error } = await supabase
+        .from('user_restaurants')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as { role?: string } | null)?.role ?? null;
+    },
+  };
+}
+
+export type DownloadResult =
+  | { ok: true; dataUrl: string; byteLength: number }
+  | { ok: false; reason: 'invalid_path' | 'download_failed' | 'too_large' };
+
+/**
+ * Download the row's file from the document bucket and return it as a data
+ * URL. The path must be inside the restaurant's folder. The caller logs no
+ * storage detail to the client: the result holds only a reason code.
+ */
+export async function downloadDocumentAsDataUrl(
+  supabase: DocumentServiceClient,
+  path: unknown,
+  restaurantId: string,
+  maxBytes: number,
+  mime: string,
+): Promise<DownloadResult> {
+  if (!isRestaurantStoragePath(path, restaurantId)) {
+    console.error('Document path is outside the restaurant folder:', { restaurantId });
+    return { ok: false, reason: 'invalid_path' };
+  }
+  try {
+    const { data, error } = await supabase.storage.from(DOCUMENT_BUCKET).download(path as string);
+    if (error || !data) {
+      console.error('Document download failed:', error);
+      return { ok: false, reason: 'download_failed' };
+    }
+    if (data.size > maxBytes) {
+      console.error(`Document is too large: ${data.size} bytes, limit ${maxBytes}`);
+      return { ok: false, reason: 'too_large' };
+    }
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    return { ok: true, dataUrl: bytesToDataUrl(bytes, mime), byteLength: bytes.byteLength };
+  } catch (error) {
+    console.error('Document download failed:', error);
+    return { ok: false, reason: 'download_failed' };
+  }
+}

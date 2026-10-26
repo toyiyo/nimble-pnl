@@ -5,11 +5,33 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { normalizePrices, hasValidPriceData, normalizeConfidenceScore } from "../_shared/priceNormalization.ts";
 import { toDateOnlyString } from "../_shared/dateOnly.ts";
+import {
+  authorizeDocumentRequest,
+  createDocumentAuthDeps,
+  downloadDocumentAsDataUrl,
+  isAllowedStorageUrl,
+  isInlineDataUrl,
+  MAX_RECEIPT_BYTES,
+  RECEIPT_PROCESS_ROLES,
+} from "../_shared/documentProcessingAuth.ts";
 
 interface ReceiptProcessRequest {
   receiptId: string;
-  imageData: string; // base64 encoded image OR URL for PDF
+  imageData?: string; // base64 data URL. For a PDF the server loads the row's file instead.
   isPDF?: boolean; // Flag to indicate if it's a PDF
+}
+
+interface ReceiptRecord {
+  restaurant_id: string;
+  raw_file_url: string | null;
+  file_name: string | null;
+}
+
+function jsonResponse(body: Record<string, unknown>, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status,
+  });
 }
 
 interface ParsedLineItem {
@@ -598,108 +620,64 @@ serve(async (req) => {
   try {
     const { receiptId, imageData, isPDF }: ReceiptProcessRequest = await req.json();
 
-    if (!receiptId || !imageData) {
-      return new Response(JSON.stringify({ error: "Receipt ID and image data are required" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      });
-    }
-
-    // Initialize Supabase client early to get restaurant_id
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get receipt info to find restaurant_id (needed for tracing)
-    const { data: receiptInfo, error: receiptInfoError } = await supabase
-      .from("receipt_imports")
-      .select("restaurant_id")
-      .eq("id", receiptId)
-      .single();
-
-    if (receiptInfoError || !receiptInfo) {
-      console.error("Error fetching receipt info:", receiptInfoError);
-      return new Response(JSON.stringify({ error: "Failed to fetch receipt info" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      });
+    // The service role bypasses RLS, so check the caller before any read or write.
+    const auth = await authorizeDocumentRequest<ReceiptRecord>(
+      {
+        authHeader: req.headers.get("Authorization"),
+        recordId: receiptId,
+        allowedRoles: RECEIPT_PROCESS_ROLES,
+      },
+      createDocumentAuthDeps<ReceiptRecord>(supabase, "receipt_imports", "restaurant_id, raw_file_url, file_name"),
+    );
+    if (!auth.ok) {
+      return jsonResponse({ error: auth.error }, auth.status);
     }
 
-    const restaurantId = receiptInfo.restaurant_id;
+    const restaurantId = auth.record.restaurant_id;
 
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
     if (!openRouterApiKey) {
-      return new Response(JSON.stringify({ error: "OpenRouter API key not configured" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      });
+      return jsonResponse({ error: "OpenRouter API key not configured" }, 500);
+    }
+
+    // Pick the document source. The server never fetches a URL from the caller.
+    let isProcessingPDF = isPDF === true;
+    let mediaData: string;
+    if (isInlineDataUrl(imageData, ["image/", "application/pdf"])) {
+      mediaData = imageData as string;
+      isProcessingPDF = isInlineDataUrl(imageData, ["application/pdf"]);
+    } else if (isProcessingPDF) {
+      // Old clients send a signed storage URL. Reject any other URL, then load the row's own file.
+      if (imageData && !isAllowedStorageUrl(imageData, supabaseUrl)) {
+        console.error("📄 Rejected PDF source that is not a project storage URL");
+        return jsonResponse({ error: "Unsupported document source" }, 400);
+      }
+
+      const download = await downloadDocumentAsDataUrl(
+        supabase,
+        auth.record.raw_file_url,
+        restaurantId,
+        MAX_RECEIPT_BYTES,
+        "application/pdf",
+      );
+      if (!download.ok) {
+        if (download.reason === "too_large") {
+          return jsonResponse({ error: "The receipt file is too large to process" }, 413);
+        }
+        return jsonResponse({ error: "Failed to load the receipt file" }, 400);
+      }
+      mediaData = download.dataUrl;
+      console.log("✅ PDF loaded from storage, size:", download.byteLength);
+    } else {
+      return jsonResponse({ error: "Unsupported document source" }, 400);
     }
 
     console.log("🧾 Processing receipt with multi-model fallback (Gemini -> Llama -> Gemma -> GPT -> Llama Paid)...");
-    console.log("📸 Image data type:", isPDF ? "PDF" : "Base64 image", "size:", imageData.length, "characters");
-
-    // Check if the data is a PDF
-    const isProcessingPDF = isPDF || false;
-    let pdfBase64Data = imageData;
-
-    if (isProcessingPDF && !imageData.startsWith("data:application/pdf;base64,")) {
-      console.log("📄 PDF URL detected, converting to base64...");
-
-      // Set up abort controller with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
-
-      try {
-        const pdfResponse = await fetch(imageData, { signal: controller.signal });
-        clearTimeout(timeoutId); // Clear timeout on successful fetch
-
-        if (!pdfResponse.ok) {
-          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
-        }
-
-        const pdfBlob = await pdfResponse.arrayBuffer();
-
-        // Safe chunked base64 conversion for large PDFs
-        const uint8Array = new Uint8Array(pdfBlob);
-        const chunkSize = 32768; // 32KB chunks
-
-        // Step 1: Convert all bytes to binary string (chunked to avoid stack overflow)
-        let binaryString = "";
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-          binaryString += String.fromCharCode(...chunk);
-        }
-
-        // Step 2: Encode the COMPLETE binary string to base64 (only once!)
-        const base64 = btoa(binaryString);
-
-        pdfBase64Data = `data:application/pdf;base64,${base64}`;
-        console.log("✅ PDF converted to base64, size:", base64.length);
-      } catch (fetchError: unknown) {
-        clearTimeout(timeoutId); // Ensure timeout is cleared
-
-        // Check if error was due to abort/timeout
-        if (fetchError instanceof Error && fetchError.name === "AbortError") {
-          console.error("📄 PDF fetch timeout");
-          return new Response(
-            JSON.stringify({
-              error: "PDF download timeout",
-              details: "The PDF took too long to download (>20s)",
-            }),
-            { status: 408, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-          );
-        }
-
-        console.error("📄 Failed to fetch and convert PDF:", fetchError);
-        return new Response(
-          JSON.stringify({
-            error: "Failed to fetch PDF for processing",
-            details: fetchError instanceof Error ? fetchError.message : String(fetchError),
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-    }
+    console.log("📸 Document type:", isProcessingPDF ? "PDF" : "Base64 image", "size:", mediaData.length, "characters");
 
     let finalResponse: Response | undefined;
 
@@ -707,7 +685,7 @@ serve(async (req) => {
     for (const modelConfig of MODELS) {
       console.log(`🚀 Trying ${modelConfig.name}...`);
 
-      const response = await callModel(modelConfig, isProcessingPDF, pdfBase64Data, openRouterApiKey, restaurantId);
+      const response = await callModel(modelConfig, isProcessingPDF, mediaData, openRouterApiKey, restaurantId);
 
       if (response) {
         finalResponse = response;
@@ -842,7 +820,6 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: "Failed to parse receipt data. Using fallback parsing.",
-          details: parseError instanceof Error ? parseError.message : String(parseError),
           fallbackData: fallbackData,
         }),
         {
@@ -883,13 +860,6 @@ serve(async (req) => {
       }
     }
 
-    // Get the receipt filename for date extraction fallback
-    const { data: receiptData } = await supabase
-      .from("receipt_imports")
-      .select("file_name")
-      .eq("id", receiptId)
-      .single();
-
     // Determine purchase date: prioritize AI extraction, fallback to filename extraction
     let purchaseDate: string | null = null;
     
@@ -902,8 +872,8 @@ serve(async (req) => {
     }
     
     // Fallback to filename extraction if AI didn't find a date
-    if (!purchaseDate && receiptData?.file_name) {
-      purchaseDate = extractDateFromFilename(receiptData.file_name);
+    if (!purchaseDate && auth.record.file_name) {
+      purchaseDate = extractDateFromFilename(auth.record.file_name);
       if (purchaseDate) {
         console.log(`✅ Purchase date from filename: ${purchaseDate}`);
       }
@@ -989,7 +959,6 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         error: "An unexpected error occurred while processing the receipt",
-        details: error instanceof Error ? error.message : String(error),
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

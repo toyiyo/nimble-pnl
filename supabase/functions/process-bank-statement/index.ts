@@ -221,8 +221,8 @@ const MODEL_TOKEN_LIMITS: Record<string, number> = {
 const DEFAULT_MAX_TOKENS = 4096;
 
 // File size limits to prevent resource exhaustion
-const MAX_FILE_SIZE_MB = 5; // 5MB limit for PDFs
 const MAX_FILE_SIZE_BYTES = MAX_BANK_STATEMENT_BYTES;
+const MAX_FILE_SIZE_MB = MAX_FILE_SIZE_BYTES / (1024 * 1024);
 
 function buildRequestBody(modelId: string, systemPrompt: string, pdfData: string, isBase64: boolean = false): any {
   const requestedMax = 8000; // Increased from 2500 to 8000 for large statements
@@ -552,13 +552,12 @@ serve(async (req) => {
     // Load the row's own file from storage. The download checks the real size,
     // because the client writes file_size.
     const startTime = Date.now();
-    const download = await downloadDocumentAsDataUrl(
-      supabase,
-      statementInfo.raw_file_url,
+    const download = await downloadDocumentAsDataUrl(supabase, {
+      path: statementInfo.raw_file_url,
       restaurantId,
-      MAX_FILE_SIZE_BYTES,
-      "application/pdf",
-    );
+      maxBytes: MAX_FILE_SIZE_BYTES,
+      mime: "application/pdf",
+    });
     if (!download.ok) {
       const tooLarge = download.reason === "too_large";
       const message = tooLarge

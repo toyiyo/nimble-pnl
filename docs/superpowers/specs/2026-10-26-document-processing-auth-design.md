@@ -94,7 +94,7 @@ follows the split-handler lesson in `memory/lessons.md` (2026-05-07).
   starts with `${restaurantId}/`, uses only the characters `[A-Za-z0-9._/-]`,
   and has no `.` or `..` segment and no empty segment. This rejects `%`,
   `?`, `#`, a backslash, and a leading `/`.
-- `MAX_RECEIPT_BYTES` (20 MB) and `MAX_BANK_STATEMENT_BYTES` (5 MB): the
+- `MAX_RECEIPT_BYTES` (10 MB) and `MAX_BANK_STATEMENT_BYTES` (5 MB): the
   server checks the size of the downloaded bytes before it encodes them. The
   `file_size` column comes from the client, so the server does not trust it
   alone. The bank limit matches `useBankStatementImport.tsx:108`.
@@ -209,6 +209,16 @@ no concurrent writer, cron, retry, cursor, lock, or state machine.
   forbids a production query, so the PR asks the owner to run a read-only
   count before deploy.
 
-- The storage download has no explicit timeout. The old code had a 20 s or
-  30 s fetch abort. The download is now from the project's own storage, and
-  the edge runtime wall clock bounds it.
+- The storage download has a 30 s time limit, the same as the old bank
+  fetch.
+- The size check runs after the download, not before it. storage-js 2.12
+  has no `info()` call. The bucket limit (50 MB) bounds the download. The
+  old code had no limit at all on the receipt path.
+- An inline `data:` URL also has the `MAX_RECEIPT_BYTES` limit.
+- Deferred from code review: a shared `jsonResponse` helper (each function
+  keeps a local copy, and other functions are out of scope); a status
+  update on a receipt row after a load failure (old behavior); the bank
+  hook does not show the server error text (old behavior); per-folder
+  limits inside the tenant folder (no extra access: the storage read policy
+  already lets every member read the folder); the `*` CORS origin (old
+  behavior, bearer auth).

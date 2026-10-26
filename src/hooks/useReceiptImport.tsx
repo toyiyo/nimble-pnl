@@ -279,9 +279,10 @@ export const useReceiptImport = () => {
       const isPDF = imageBlob.type === 'application/pdf';
       const imageData = isPDF
         ? undefined
-        : await new Promise<string>((resolve) => {
+        : await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error ?? new Error('Failed to read the receipt image'));
             reader.readAsDataURL(imageBlob);
           });
 

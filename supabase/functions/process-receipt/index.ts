@@ -9,9 +9,11 @@ import {
   authorizeDocumentRequest,
   createDocumentAuthDeps,
   downloadDocumentAsDataUrl,
+  inlineDataUrlBytes,
   isAllowedStorageUrl,
   isInlineDataUrl,
   MAX_RECEIPT_BYTES,
+  RECEIPT_INLINE_MIME_PREFIXES,
   RECEIPT_PROCESS_ROLES,
 } from "../_shared/documentProcessingAuth.ts";
 
@@ -647,8 +649,11 @@ serve(async (req) => {
     // Pick the document source. The server never fetches a URL from the caller.
     let isProcessingPDF = isPDF === true;
     let mediaData: string;
-    if (isInlineDataUrl(imageData, ["image/", "application/pdf"])) {
-      mediaData = imageData as string;
+    if (isInlineDataUrl(imageData, RECEIPT_INLINE_MIME_PREFIXES)) {
+      if (inlineDataUrlBytes(imageData) > MAX_RECEIPT_BYTES) {
+        return jsonResponse({ error: "The receipt file is too large to process" }, 413);
+      }
+      mediaData = imageData;
       isProcessingPDF = isInlineDataUrl(imageData, ["application/pdf"]);
     } else if (isProcessingPDF) {
       // Old clients send a signed storage URL. Reject any other URL, then load the row's own file.
@@ -657,13 +662,12 @@ serve(async (req) => {
         return jsonResponse({ error: "Unsupported document source" }, 400);
       }
 
-      const download = await downloadDocumentAsDataUrl(
-        supabase,
-        auth.record.raw_file_url,
+      const download = await downloadDocumentAsDataUrl(supabase, {
+        path: auth.record.raw_file_url,
         restaurantId,
-        MAX_RECEIPT_BYTES,
-        "application/pdf",
-      );
+        maxBytes: MAX_RECEIPT_BYTES,
+        mime: "application/pdf",
+      });
       if (!download.ok) {
         if (download.reason === "too_large") {
           return jsonResponse({ error: "The receipt file is too large to process" }, 413);

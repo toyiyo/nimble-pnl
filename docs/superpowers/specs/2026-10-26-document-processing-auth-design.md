@@ -91,8 +91,13 @@ follows the split-handler lesson in `memory/lessons.md` (2026-05-07).
 - `isInlineDataUrl(value, allowedMimePrefixes)`: `true` only for
   `data:<mime>;base64,` where the MIME type starts with an allowed prefix.
 - `isRestaurantStoragePath(path, restaurantId)`: `true` only when the path
-  starts with `${restaurantId}/`, has no `..` segment, no empty segment, no
-  backslash, and no leading `/`.
+  starts with `${restaurantId}/`, uses only the characters `[A-Za-z0-9._/-]`,
+  and has no `.` or `..` segment and no empty segment. This rejects `%`,
+  `?`, `#`, a backslash, and a leading `/`.
+- `MAX_RECEIPT_BYTES` (20 MB) and `MAX_BANK_STATEMENT_BYTES` (5 MB): the
+  server checks the size of the downloaded bytes before it encodes them. The
+  `file_size` column comes from the client, so the server does not trust it
+  alone. The bank limit matches `useBankStatementImport.tsx:108`.
 - `authorizeDocumentRequest({ authHeader, recordId, allowedRoles }, deps)`:
   1. No `Bearer` token → 401 `Authentication required`.
   2. `deps.getUser(token)` returns no user → 401 `Authentication required`.
@@ -123,8 +128,9 @@ follows the split-handler lesson in `memory/lessons.md` (2026-05-07).
      `isRestaurantStoragePath` passes.
    - Else → 400 `Unsupported document source`.
 4. A download failure returns 400 `Failed to load the receipt file` and
-   logs the detail.
-5. The outer `catch` returns a generic message with no `details`.
+   logs the detail. A file above `MAX_RECEIPT_BYTES` returns 413.
+5. The outer `catch` and the 422 parse failure return no `details`
+   (`process-receipt/index.ts:845`, `process-receipt/index.ts:992`).
 
 ### `process-bank-statement/index.ts`
 
@@ -140,14 +146,22 @@ follows the split-handler lesson in `memory/lessons.md` (2026-05-07).
 5. On a download failure, write the fixed text
    `Failed to download the bank statement file. Please upload it again.`
    to `error_message`. Return the same generic text. Log the detail.
-6. The outer `catch` and the line insert failure return no `details`.
+6. A file above `MAX_BANK_STATEMENT_BYTES` returns 413.
+7. The outer `catch`, the 422 parse failure, and the line insert failure
+   return no `details` (`process-bank-statement/index.ts:834`,
+   `process-bank-statement/index.ts:940`,
+   `process-bank-statement/index.ts:1005`). The parse failure text in
+   `error_message` becomes fixed text too
+   (`process-bank-statement/index.ts:827`).
 
 ### Frontend
 
 - `useReceiptImport.tsx`: for a PDF, send `{ receiptId, isPDF: true }`.
   Delete the signed URL step. Images still send the `data:` URL.
 - `useBankStatementImport.tsx`: send `{ statementUploadId }`. Delete the
-  signed URL step and the `raw_file_url` read.
+  signed URL step and the `raw_file_url` read. Clean the file extension
+  with the same rule as receipts (`useReceiptImport.tsx:218`), so the
+  strict path check accepts every new upload.
 
 Old clients that still send a signed URL keep working in production: the
 URL host is the project host, so the allowlist passes, and the server
@@ -169,10 +183,13 @@ ignores the URL value.
   - `isInlineDataUrl`, `isRestaurantStoragePath`, `bytesToDataUrl`.
   - `authorizeDocumentRequest`: no header, bad header, no user, no row,
     no membership, wrong role, allowed role, dependency throw.
-- `tests/e2e/`: a spec that calls both functions over HTTP on local
-  Supabase. It checks: anon key → 401; a user of a different restaurant
-  → 404; a `staff` member → 403. The success path needs OpenRouter, so
-  the spec does not cover it.
+- `isRestaurantStoragePath` has a case for a path of a different tenant
+  (`<other-restaurant>/x.pdf`). This is the cross-tenant file read test.
+- E2E: the CI E2E stack does not serve edge functions
+  (`tests/e2e/review-stars.spec.ts:13`). An E2E test cannot call the real
+  function. The auth and path rules have unit tests. A browser E2E with a
+  stubbed function adds little value for this server-side fix, so the
+  change uses a justified E2E exception.
 
 ## TLA+ check
 
@@ -180,6 +197,17 @@ No trigger from `.claude/skills/run-tla/SKILL.md` matches. The change has
 no concurrent writer, cron, retry, cursor, lock, or state machine.
 
 ## Decided trade-offs
+
+- The functions still check `imageData` or `pdfUrl` with
+  `isAllowedStorageUrl` when a caller sends a URL, and do not use the
+  value. The task asks to reject other URLs. A stale local tab that sends
+  `http://127.0.0.1` gets a 400 and must reload. That is a local-dev cost
+  only.
+- Old rows whose `raw_file_url` is not a bare path fail the path check and
+  return 400. All current upload code writes a bare path
+  (`useReceiptImport.tsx:237`, `useBankStatementImport.tsx:143`). The task
+  forbids a production query, so the PR asks the owner to run a read-only
+  count before deploy.
 
 - The storage download has no explicit timeout. The old code had a 20 s or
   30 s fetch abort. The download is now from the project's own storage, and

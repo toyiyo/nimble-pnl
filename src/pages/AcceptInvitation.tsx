@@ -124,14 +124,8 @@ export function AcceptInvitation() {
       });
 
       if (error) {
-        let errorMessage = error?.message || '';
-        if (error?.context) {
-          try {
-            const body = await error.context.json();
-            errorMessage = body?.error || errorMessage;
-          } catch {}
-        }
-        throw new Error(errorMessage);
+        const body = await readFunctionErrorBody(error);
+        throw new Error(body?.error || error.message || '');
       }
 
       if (data.success) {
@@ -319,11 +313,11 @@ export function AcceptInvitation() {
       } else {
         throw new Error(data.error || 'Failed to create account');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign up error:', error);
       toast({
-        title: "Error creating account", 
-        description: error.message || "Please try again.",
+        title: "Error creating account",
+        description: (error instanceof Error && error.message) || "Please try again.",
         variant: "destructive",
       });
     } finally {

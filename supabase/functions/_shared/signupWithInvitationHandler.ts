@@ -25,12 +25,20 @@ interface AuthErrorLike {
   status?: number;
 }
 
+interface QueryResult {
+  data: Record<string, unknown> | null;
+  error: { message: string } | null;
+}
+
+/** A PostgREST filter chain: .eq(...) any number of times, then .single(). */
+interface FilterChain {
+  eq(column: string, value: string): FilterChain;
+  single(): PromiseLike<QueryResult>;
+}
+
 /** The part of the service-role client that the handler uses. */
 export interface SignupWithInvitationAdmin {
-  from(table: string): {
-    // deno-lint-ignore no-explicit-any
-    select(columns: string): any;
-  };
+  from(table: string): { select(columns: string): FilterChain };
   auth: {
     admin: {
       createUser(attributes: {
@@ -102,7 +110,7 @@ export async function handleSignupWithInvitation(
     return failure(400, 'Invalid or expired invitation');
   }
 
-  if (new Date(invitation.expires_at) < new Date()) {
+  if (new Date(invitation.expires_at as string) < new Date()) {
     console.error('Invitation expired:', invitation.id);
     return failure(400, 'Invitation has expired');
   }
@@ -128,7 +136,7 @@ export async function handleSignupWithInvitation(
   const { data: restaurant } = await admin
     .from('restaurants')
     .select('*')
-    .eq('id', invitation.restaurant_id)
+    .eq('id', invitation.restaurant_id as string)
     .single();
 
   return {

@@ -81,7 +81,17 @@ test.describe('invitation role guard', () => {
         (await w.__supabase.from('invitations').delete().eq('id', row?.id ?? '')).error,
       );
 
-      return { staff, forged, kiosk, roleChange, roleAfter: after?.role ?? null, cancel };
+      // A DELETE that RLS filters to 0 rows returns no error, so read the row back.
+      const { data: gone } = await w.__supabase
+        .from('invitations')
+        .select('id')
+        .eq('id', row?.id ?? '')
+        .maybeSingle();
+
+      return {
+        staff, forged, kiosk, roleChange, roleAfter: after?.role ?? null, cancel,
+        rowFound: Boolean(row?.id), rowAfterCancel: gone,
+      };
     }, { restId: restaurantId });
 
     expect(results.staff).toEqual({ ok: true, code: null, message: null });
@@ -92,6 +102,8 @@ test.describe('invitation role guard', () => {
     expect(results.roleChange.ok).toBe(false);
     expect(results.roleChange.code).toBe('42501');
     expect(results.roleAfter).toBe('staff');
+    expect(results.rowFound).toBe(true);
     expect(results.cancel.ok).toBe(true);
+    expect(results.rowAfterCancel).toBeNull();
   });
 });

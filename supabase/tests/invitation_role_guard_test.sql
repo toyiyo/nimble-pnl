@@ -15,7 +15,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(27);
+SELECT plan(28);
 
 -- ---------------------------------------------------------------- fixtures
 INSERT INTO auth.users (id, email) VALUES
@@ -128,6 +128,18 @@ SELECT is(
   '42501',
   'a manager cannot insert an invitation with another invited_by'
 );
+
+-- The INSERT policy also checks invited_by. Turn RLS off for one statement
+-- so this row proves the trigger check on its own. ROLLBACK at the end
+-- undoes the ALTER.
+ALTER TABLE public.invitations DISABLE ROW LEVEL SECURITY;
+SELECT is(
+  pg_temp.as_user('f2000000-0000-0000-0000-000000000002', 'guard-manager@example.test',
+    pg_temp.invite_sql('f2000000-0000-0000-0000-000000000001', 'spoof-trigger@example.test', 'staff')),
+  '42501',
+  'the trigger alone rejects another invited_by'
+);
+ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
 
 SELECT is(
   pg_temp.as_user('f2000000-0000-0000-0000-000000000002', 'guard-manager@example.test',

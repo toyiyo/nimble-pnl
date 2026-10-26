@@ -1,5 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
+import {
+  checkOAuthCallback,
+  getUserIdFromAuthHeader,
+  isOwnerOrManager,
+  isValidOAuthStateSecret,
+  parseAllowedOrigins,
+  resolveAppOrigin,
+  signOAuthState,
+  type AppOrigin,
+} from '../_shared/oauthState.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +21,13 @@ interface ToastOAuthRequest {
   restaurantId?: string;
   code?: string;
   state?: string;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -25,82 +42,76 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const OAUTH_STATE_SECRET = Deno.env.get('OAUTH_STATE_SECRET');
+    if (!isValidOAuthStateSecret(OAUTH_STATE_SECRET)) {
+      console.error('OAUTH_STATE_SECRET is missing or shorter than 32 characters');
+      return jsonResponse({ error: 'OAuth is not configured' }, 500);
+    }
+    const allowedOrigins = parseAllowedOrigins(Deno.env.get('OAUTH_ALLOWED_ORIGINS'));
+
     const body: ToastOAuthRequest = await req.json();
     const { action, restaurantId, code, state } = body;
-
     const authHeader = req.headers.get('Authorization');
-    let user = null;
-    
-    // For 'authorize' action, we need authentication
+
+    // Every check runs before any credential use or write.
+    let appOrigin: AppOrigin;
+    let userId: string;
+    let targetRestaurantId: string;
+    let authCode = '';
+
     if (action === 'authorize') {
-      if (!authHeader) {
-        throw new Error('No authorization header');
+      const callerId = await getUserIdFromAuthHeader(supabase, authHeader);
+      if (!callerId) {
+        return jsonResponse({ error: 'Authentication required' }, 401);
       }
-      
-      // Get user from auth header
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !authUser) {
-        throw new Error('Invalid authentication');
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is required for authorization');
       }
-      user = authUser;
+      if (!(await isOwnerOrManager(supabase, callerId, restaurantId))) {
+        return jsonResponse({ error: 'Access denied to restaurant' }, 403);
+      }
+      userId = callerId;
+      targetRestaurantId = restaurantId;
+      appOrigin = resolveAppOrigin(req.headers, allowedOrigins);
+    } else if (action === 'callback') {
+      if (!code || !state) {
+        throw new Error('Authorization code and state are required for callback');
+      }
+      const check = await checkOAuthCallback({
+        state,
+        provider: 'toast',
+        secret: OAUTH_STATE_SECRET,
+        allowedOrigins,
+        getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
+        isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
+      });
+      if (!check.ok) {
+        console.warn('Toast OAuth callback rejected:', check.error);
+        return jsonResponse({ error: check.error }, check.status);
+      }
+      userId = check.userId;
+      targetRestaurantId = check.restaurantId;
+      appOrigin = check;
+      authCode = code;
+    } else {
+      throw new Error('Invalid action');
     }
 
-    // Determine environment based on request origin
-    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
-    let isPreview = false;
-    
-    // Securely check if origin is from lovableproject.com
-    if (origin) {
-      try {
-        const originUrl = new URL(origin);
-        const hostname = originUrl.hostname.toLowerCase();
-        // Only match if hostname is exactly lovableproject.com or a subdomain
-        isPreview = hostname === 'lovableproject.com' || hostname.endsWith('.lovableproject.com');
-      } catch (e) {
-        // Invalid URL, default to production
-        console.warn('Invalid origin URL:', origin);
-        isPreview = false;
-      }
-    }
-    
     // Toast POS OAuth configuration
     const TOAST_CLIENT_ID = Deno.env.get('TOAST_CLIENT_ID');
     const TOAST_CLIENT_SECRET = Deno.env.get('TOAST_CLIENT_SECRET');
     const TOAST_BASE_URL = 'https://ws-api.toasttab.com';
     
-    // Set redirect URI based on environment
-    const REDIRECT_URI = isPreview
-      ? `${origin}/toast/callback`
-      : 'https://app.easyshifthq.com/toast/callback';
+    const REDIRECT_URI = `${appOrigin.origin}/toast/callback`;
     
-    console.log('Toast OAuth - Action:', action, 'Origin:', origin, 'Redirect URI:', REDIRECT_URI);
+    console.log('Toast OAuth - Action:', action, 'Redirect URI:', REDIRECT_URI);
 
     if (!TOAST_CLIENT_ID || !TOAST_CLIENT_SECRET) {
       console.error('Toast credentials missing');
       throw new Error('Toast credentials not configured');
     }
 
-    console.log('Toast OAuth action:', action, 'Restaurant ID:', restaurantId);
-
     if (action === 'authorize') {
-      if (!restaurantId) {
-        throw new Error('Restaurant ID is required for authorization');
-      }
-
-      // Verify user has access to this restaurant
-      const { data: userRestaurant, error: accessError } = await supabase
-        .from('user_restaurants')
-        .select('role')
-        .eq('user_id', user?.id)
-        .eq('restaurant_id', restaurantId)
-        .in('role', ['owner', 'manager'])
-        .single();
-
-      if (accessError || !userRestaurant) {
-        throw new Error('Access denied to restaurant');
-      }
-
       // Generate authorization URL for Toast POS
       // Note: Toast uses OAuth 2.0 with partner-specific scopes
       const scopes = [
@@ -110,29 +121,23 @@ Deno.serve(async (req) => {
         'restaurant:read'
       ].join(' ');
 
+      const signedState = await signOAuthState(
+        { provider: 'toast', restaurantId: targetRestaurantId, userId, origin: appOrigin.origin },
+        OAUTH_STATE_SECRET
+      );
+
       const authUrl = new URL(`${TOAST_BASE_URL}/authentication/v1/authorize`);
       authUrl.searchParams.set('client_id', TOAST_CLIENT_ID);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('scope', scopes);
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-      authUrl.searchParams.set('state', restaurantId); // Use restaurant ID as state
+      authUrl.searchParams.set('state', signedState);
 
-      console.log('Generated Toast OAuth URL:', authUrl.toString());
-      console.log('Client ID:', TOAST_CLIENT_ID);
-      console.log('Redirect URI:', REDIRECT_URI);
+      return jsonResponse({ authorizationUrl: authUrl.toString() });
 
-      return new Response(JSON.stringify({
-        authorizationUrl: authUrl.toString()
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-
-    } else if (action === 'callback') {
-      if (!code || !state) {
-        throw new Error('Authorization code and state are required for callback');
-      }
-
-      const restaurantId = state; // State is the restaurant ID
+    } else {
+      // The restaurant comes only from the verified state.
+      const restaurantId = targetRestaurantId;
 
       // Exchange authorization code for access token
       const tokenResponse = await fetch(`${TOAST_BASE_URL}/authentication/v1/token`, {
@@ -143,7 +148,7 @@ Deno.serve(async (req) => {
         body: new URLSearchParams({
           client_id: TOAST_CLIENT_ID,
           client_secret: TOAST_CLIENT_SECRET,
-          code: code,
+          code: authCode,
           grant_type: 'authorization_code',
           redirect_uri: REDIRECT_URI,
         }).toString(),
@@ -204,7 +209,7 @@ Deno.serve(async (req) => {
       }
 
       // Log security event
-      await logSecurityEvent(supabase, 'TOAST_CONNECTED', undefined, restaurantId, {
+      await logSecurityEvent(supabase, 'TOAST_CONNECTED', userId, restaurantId, {
         toast_restaurant_guid: toastRestaurantGuid,
         scopes: tokenData.scope?.split(' ') || [],
       });
@@ -219,12 +224,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    throw new Error('Invalid action');
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('Toast OAuth error:', error);
     return new Response(JSON.stringify({
-      error: error.message || 'An error occurred during Toast OAuth'
+      error: (error instanceof Error ? error.message : String(error)) || 'An error occurred during Toast OAuth'
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

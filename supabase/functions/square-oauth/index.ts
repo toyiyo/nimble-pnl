@@ -1,5 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
+import {
+  checkOAuthCallback,
+  getUserIdFromAuthHeader,
+  isOwnerOrManager,
+  isValidOAuthStateSecret,
+  parseAllowedOrigins,
+  resolveAppOrigin,
+  signOAuthState,
+  type AppOrigin,
+} from '../_shared/oauthState.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +21,13 @@ interface SquareOAuthRequest {
   restaurantId?: string;
   code?: string;
   state?: string;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -25,46 +42,63 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const OAUTH_STATE_SECRET = Deno.env.get('OAUTH_STATE_SECRET');
+    if (!isValidOAuthStateSecret(OAUTH_STATE_SECRET)) {
+      console.error('OAUTH_STATE_SECRET is missing or shorter than 32 characters');
+      return jsonResponse({ error: 'OAuth is not configured' }, 500);
+    }
+    const allowedOrigins = parseAllowedOrigins(Deno.env.get('OAUTH_ALLOWED_ORIGINS'));
+
     const body: SquareOAuthRequest = await req.json();
     const { action, restaurantId, code, state } = body;
-
     const authHeader = req.headers.get('Authorization');
-    let user = null;
-    
-    // For 'authorize' action, we need authentication
+
+    // Every check runs before any credential use or write.
+    let appOrigin: AppOrigin;
+    let userId: string;
+    let targetRestaurantId: string;
+    let authCode = '';
+
     if (action === 'authorize') {
-      if (!authHeader) {
-        throw new Error('No authorization header');
+      const callerId = await getUserIdFromAuthHeader(supabase, authHeader);
+      if (!callerId) {
+        return jsonResponse({ error: 'Authentication required' }, 401);
       }
-      
-      // Get user from auth header
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !authUser) {
-        throw new Error('Invalid authentication');
+      if (!restaurantId) {
+        throw new Error('Restaurant ID is required for authorization');
       }
-      user = authUser;
+      if (!(await isOwnerOrManager(supabase, callerId, restaurantId))) {
+        return jsonResponse({ error: 'Access denied to restaurant' }, 403);
+      }
+      userId = callerId;
+      targetRestaurantId = restaurantId;
+      appOrigin = resolveAppOrigin(req.headers, allowedOrigins);
+    } else if (action === 'callback') {
+      if (!code || !state) {
+        throw new Error('Missing authorization code or state');
+      }
+      const check = await checkOAuthCallback({
+        state,
+        provider: 'square',
+        secret: OAUTH_STATE_SECRET,
+        allowedOrigins,
+        getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
+        isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
+      });
+      if (!check.ok) {
+        console.warn('Square OAuth callback rejected:', check.error);
+        return jsonResponse({ error: check.error }, check.status);
+      }
+      userId = check.userId;
+      targetRestaurantId = check.restaurantId;
+      appOrigin = check;
+      authCode = code;
+    } else {
+      throw new Error('Invalid action');
     }
 
-    // Determine environment based on request origin  
-    const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
-    let isPreview = false;
-    
-    // Securely check if origin is from lovableproject.com
-    if (origin) {
-      try {
-        const originUrl = new URL(origin);
-        const hostname = originUrl.hostname.toLowerCase();
-        // Only match if hostname is exactly lovableproject.com or a subdomain
-        isPreview = hostname === 'lovableproject.com' || hostname.endsWith('.lovableproject.com');
-      } catch (e) {
-        // Invalid URL, default to production
-        console.warn('Invalid origin URL:', origin);
-        isPreview = false;
-      }
-    }
-    
-    // Use sandbox for preview/development, production for app.easyshifthq.com
+    // An allowlisted preview origin uses the Square sandbox.
+    const isPreview = !appOrigin.isProduction;
     const SQUARE_ENVIRONMENT = isPreview ? 'sandbox' : 'production';
     const SQUARE_APPLICATION_ID = isPreview 
       ? Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID')
@@ -78,22 +112,9 @@ Deno.serve(async (req) => {
       ? 'https://connect.squareupsandbox.com' 
       : 'https://connect.squareup.com';
     
-    // Set redirect URI based on environment
-    const REDIRECT_URI = isPreview
-      ? `${origin}/square/callback`
-      : 'https://app.easyshifthq.com/square/callback';
-    
-    console.log('Square OAuth - Action:', action, 'Environment:', SQUARE_ENVIRONMENT, 'Origin:', origin, 'Redirect URI:', REDIRECT_URI);
-    console.log('Square credentials check:', {
-      hasProductionAppId: !!Deno.env.get('SQUARE_APPLICATION_ID'),
-      hasProductionSecret: !!Deno.env.get('SQUARE_APPLICATION_SECRET'),
-      hasSandboxAppId: !!Deno.env.get('SQUARE_SANDBOX_APPLICATION_ID'),
-      hasSandboxSecret: !!Deno.env.get('SQUARE_SANDBOX_APPLICATION_SECRET'),
-      usingCredentials: {
-        appId: SQUARE_APPLICATION_ID?.substring(0, 10) + '...',
-        hasSecret: !!SQUARE_APPLICATION_SECRET
-      }
-    });
+    const REDIRECT_URI = `${appOrigin.origin}/square/callback`;
+
+    console.log('Square OAuth - Action:', action, 'Environment:', SQUARE_ENVIRONMENT, 'Redirect URI:', REDIRECT_URI);
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
       console.error('Square credentials missing:', {
@@ -104,26 +125,7 @@ Deno.serve(async (req) => {
       throw new Error(`Square credentials not configured for ${SQUARE_ENVIRONMENT} environment`);
     }
 
-    console.log('Square OAuth action:', action, 'Restaurant ID:', restaurantId);
-
     if (action === 'authorize') {
-      if (!restaurantId) {
-        throw new Error('Restaurant ID is required for authorization');
-      }
-
-      // Verify user has access to this restaurant
-      const { data: userRestaurant, error: accessError } = await supabase
-        .from('user_restaurants')
-        .select('role')
-        .eq('user_id', user?.id)
-        .eq('restaurant_id', restaurantId)
-        .in('role', ['owner', 'manager'])
-        .single();
-
-      if (accessError || !userRestaurant) {
-        throw new Error('Access denied to restaurant');
-      }
-
       // Generate authorization URL
       const scopes = [
         'ORDERS_READ',
@@ -135,46 +137,36 @@ Deno.serve(async (req) => {
         'TIMECARDS_READ'
       ].join(' ');
 
+      const signedState = await signOAuthState(
+        { provider: 'square', restaurantId: targetRestaurantId, userId, origin: appOrigin.origin },
+        OAUTH_STATE_SECRET
+      );
+
       const authUrl = new URL(`${SQUARE_BASE_URL}/oauth2/authorize`);
       authUrl.searchParams.set('client_id', SQUARE_APPLICATION_ID);
       authUrl.searchParams.set('scope', scopes);
       authUrl.searchParams.set('session', 'false');
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-      authUrl.searchParams.set('state', restaurantId); // Use restaurant ID as state
+      authUrl.searchParams.set('state', signedState);
 
-        console.log('Generated Square OAuth URL:', authUrl.toString());
-        console.log('Using environment:', SQUARE_ENVIRONMENT);
-        console.log('Client ID:', SQUARE_APPLICATION_ID);
-        console.log('Redirect URI:', REDIRECT_URI);
+      return jsonResponse({ authorizationUrl: authUrl.toString() });
 
-        return new Response(JSON.stringify({
-          authorizationUrl: authUrl.toString()
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-
-    } else if (action === 'callback') {
-      if (!code || !state) {
-        console.error('Missing callback parameters:', { code: !!code, state: !!state });
-        throw new Error('Missing authorization code or state');
-      }
-
-      const restaurantId = state; // Restaurant ID passed as state
-      console.log('Square callback processing:', { code: code.substring(0, 20) + '...', state, restaurantId });
+    } else {
+      // The restaurant comes only from the verified state.
+      const restaurantId = targetRestaurantId;
+      console.log('Square callback processing for restaurant:', restaurantId);
 
       // Exchange authorization code for access token
       const tokenRequestBody = {
         client_id: SQUARE_APPLICATION_ID,
         client_secret: SQUARE_APPLICATION_SECRET,
-        code: code,
+        code: authCode,
         grant_type: 'authorization_code',
         redirect_uri: REDIRECT_URI, // Must match exactly what's in Square app settings
       };
 
       console.log('Square token exchange request details:', {
-        client_id: SQUARE_APPLICATION_ID?.substring(0, 15) + '...',
         redirect_uri: REDIRECT_URI,
-        code_length: code.length,
         baseUrl: SQUARE_BASE_URL,
         environment: SQUARE_ENVIRONMENT,
         hasClientSecret: !!SQUARE_APPLICATION_SECRET
@@ -294,7 +286,7 @@ Deno.serve(async (req) => {
         .single();
 
       // Log security event
-      await logSecurityEvent(supabase, 'SQUARE_OAUTH_TOKEN_STORED', undefined, restaurantId, {
+      await logSecurityEvent(supabase, 'SQUARE_OAUTH_TOKEN_STORED', userId, restaurantId, {
         merchantId: merchantId,
         scopes: tokenData.scope?.split(' ') || []
       });
@@ -376,13 +368,10 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    throw new Error('Invalid action');
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('Square OAuth error:', error);
     return new Response(JSON.stringify({
-      error: error.message
+      error: error instanceof Error ? error.message : String(error)
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -182,19 +182,13 @@ export function resolveAppOrigin(headers: HeaderReader, allowedOrigins: string[]
   return { origin: PRODUCTION_APP_ORIGIN, isProduction: true };
 }
 
-// Structural types, so this module does not import supabase-js.
+// Structural types, so this module does not import supabase-js. The query
+// builder stays `any`: matching the supabase-js generics structurally makes
+// tsc fail with "Type instantiation is excessively deep" (encryption.ts uses
+// `supabase: any` for the same reason).
 interface RoleQueryClient {
-  from(table: string): {
-    select(columns: string): {
-      eq(column: string, value: string): {
-        eq(column: string, value: string): {
-          in(column: string, values: string[]): {
-            maybeSingle(): PromiseLike<{ data: unknown; error: unknown }>;
-          };
-        };
-      };
-    };
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  from(table: string): any;
 }
 
 interface AuthClient {

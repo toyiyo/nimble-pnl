@@ -1,27 +1,17 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 import {
-  checkOAuthCallback,
   getUserIdFromAuthHeader,
   isOwnerOrManager,
-  isValidOAuthStateSecret,
-  parseAllowedOrigins,
-  resolveAppOrigin,
+  resolveOAuthRequest,
   signOAuthState,
-  type AppOrigin,
+  type OAuthRequestBody,
 } from '../_shared/oauthState.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-interface ToastOAuthRequest {
-  action: 'authorize' | 'callback';
-  restaurantId?: string;
-  code?: string;
-  state?: string;
-}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -42,60 +32,23 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const OAUTH_STATE_SECRET = Deno.env.get('OAUTH_STATE_SECRET');
-    if (!isValidOAuthStateSecret(OAUTH_STATE_SECRET)) {
-      console.error('OAUTH_STATE_SECRET is missing or shorter than 32 characters');
-      return jsonResponse({ error: 'OAuth is not configured' }, 500);
-    }
-    const allowedOrigins = parseAllowedOrigins(Deno.env.get('OAUTH_ALLOWED_ORIGINS'));
-
-    const body: ToastOAuthRequest = await req.json();
-    const { action, restaurantId, code, state } = body;
+    const body: OAuthRequestBody = await req.json();
     const authHeader = req.headers.get('Authorization');
 
     // Every check runs before any credential use or write.
-    let appOrigin: AppOrigin;
-    let userId: string;
-    let targetRestaurantId: string;
-    let authCode = '';
-
-    if (action === 'authorize') {
-      const callerId = await getUserIdFromAuthHeader(supabase, authHeader);
-      if (!callerId) {
-        return jsonResponse({ error: 'Authentication required' }, 401);
-      }
-      if (!restaurantId) {
-        throw new Error('Restaurant ID is required for authorization');
-      }
-      if (!(await isOwnerOrManager(supabase, callerId, restaurantId))) {
-        return jsonResponse({ error: 'Access denied to restaurant' }, 403);
-      }
-      userId = callerId;
-      targetRestaurantId = restaurantId;
-      appOrigin = resolveAppOrigin(req.headers, allowedOrigins);
-    } else if (action === 'callback') {
-      if (!code || !state) {
-        throw new Error('Authorization code and state are required for callback');
-      }
-      const check = await checkOAuthCallback({
-        state,
-        provider: 'toast',
-        secret: OAUTH_STATE_SECRET,
-        allowedOrigins,
-        getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
-        isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
-      });
-      if (!check.ok) {
-        console.warn('Toast OAuth callback rejected:', check.error);
-        return jsonResponse({ error: check.error }, check.status);
-      }
-      userId = check.userId;
-      targetRestaurantId = check.restaurantId;
-      appOrigin = check;
-      authCode = code;
-    } else {
-      throw new Error('Invalid action');
+    const gate = await resolveOAuthRequest({
+      provider: 'toast',
+      body,
+      headers: req.headers,
+      secret: Deno.env.get('OAUTH_STATE_SECRET'),
+      allowedOriginsEnv: Deno.env.get('OAUTH_ALLOWED_ORIGINS'),
+      getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
+      isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
+    });
+    if (!gate.ok) {
+      return jsonResponse({ error: gate.error }, gate.status);
     }
+    const { appOrigin, userId, restaurantId } = gate;
 
     // Toast POS OAuth configuration
     const TOAST_CLIENT_ID = Deno.env.get('TOAST_CLIENT_ID');
@@ -104,14 +57,14 @@ Deno.serve(async (req) => {
     
     const REDIRECT_URI = `${appOrigin.origin}/toast/callback`;
     
-    console.log('Toast OAuth - Action:', action, 'Redirect URI:', REDIRECT_URI);
+    console.log('Toast OAuth - Action:', gate.action, 'Redirect URI:', REDIRECT_URI);
 
     if (!TOAST_CLIENT_ID || !TOAST_CLIENT_SECRET) {
       console.error('Toast credentials missing');
       throw new Error('Toast credentials not configured');
     }
 
-    if (action === 'authorize') {
+    if (gate.action === 'authorize') {
       // Generate authorization URL for Toast POS
       // Note: Toast uses OAuth 2.0 with partner-specific scopes
       const scopes = [
@@ -122,8 +75,8 @@ Deno.serve(async (req) => {
       ].join(' ');
 
       const signedState = await signOAuthState(
-        { provider: 'toast', restaurantId: targetRestaurantId, userId, origin: appOrigin.origin },
-        OAUTH_STATE_SECRET
+        { provider: 'toast', restaurantId, userId, origin: appOrigin.origin },
+        gate.stateSecret
       );
 
       const authUrl = new URL(`${TOAST_BASE_URL}/authentication/v1/authorize`);
@@ -136,8 +89,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ authorizationUrl: authUrl.toString() });
 
     } else {
-      // The restaurant comes only from the verified state.
-      const restaurantId = targetRestaurantId;
+      // The restaurant (and the Clover region) come only from the verified state.
 
       // Exchange authorization code for access token
       const tokenResponse = await fetch(`${TOAST_BASE_URL}/authentication/v1/token`, {
@@ -148,7 +100,7 @@ Deno.serve(async (req) => {
         body: new URLSearchParams({
           client_id: TOAST_CLIENT_ID,
           client_secret: TOAST_CLIENT_SECRET,
-          code: authCode,
+          code: gate.code,
           grant_type: 'authorization_code',
           redirect_uri: REDIRECT_URI,
         }).toString(),

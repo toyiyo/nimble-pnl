@@ -13,7 +13,9 @@ function httpStatusOf(error: unknown): number | null {
   return typeof status === 'number' ? status : null;
 }
 
-export function describeOAuthCallbackError(error: unknown, providerName: string): string {
+export type PosOAuthProviderName = 'Square' | 'Clover' | 'Toast';
+
+export function describeOAuthCallbackError(error: unknown, providerName: PosOAuthProviderName): string {
   const status = httpStatusOf(error);
   if (status === 401) {
     return `Sign in, then connect ${providerName} again.`;

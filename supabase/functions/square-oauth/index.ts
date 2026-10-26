@@ -1,27 +1,17 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 import {
-  checkOAuthCallback,
   getUserIdFromAuthHeader,
   isOwnerOrManager,
-  isValidOAuthStateSecret,
-  parseAllowedOrigins,
-  resolveAppOrigin,
+  resolveOAuthRequest,
   signOAuthState,
-  type AppOrigin,
+  type OAuthRequestBody,
 } from '../_shared/oauthState.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-interface SquareOAuthRequest {
-  action: 'authorize' | 'callback';
-  restaurantId?: string;
-  code?: string;
-  state?: string;
-}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -42,60 +32,23 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const OAUTH_STATE_SECRET = Deno.env.get('OAUTH_STATE_SECRET');
-    if (!isValidOAuthStateSecret(OAUTH_STATE_SECRET)) {
-      console.error('OAUTH_STATE_SECRET is missing or shorter than 32 characters');
-      return jsonResponse({ error: 'OAuth is not configured' }, 500);
-    }
-    const allowedOrigins = parseAllowedOrigins(Deno.env.get('OAUTH_ALLOWED_ORIGINS'));
-
-    const body: SquareOAuthRequest = await req.json();
-    const { action, restaurantId, code, state } = body;
+    const body: OAuthRequestBody = await req.json();
     const authHeader = req.headers.get('Authorization');
 
     // Every check runs before any credential use or write.
-    let appOrigin: AppOrigin;
-    let userId: string;
-    let targetRestaurantId: string;
-    let authCode = '';
-
-    if (action === 'authorize') {
-      const callerId = await getUserIdFromAuthHeader(supabase, authHeader);
-      if (!callerId) {
-        return jsonResponse({ error: 'Authentication required' }, 401);
-      }
-      if (!restaurantId) {
-        throw new Error('Restaurant ID is required for authorization');
-      }
-      if (!(await isOwnerOrManager(supabase, callerId, restaurantId))) {
-        return jsonResponse({ error: 'Access denied to restaurant' }, 403);
-      }
-      userId = callerId;
-      targetRestaurantId = restaurantId;
-      appOrigin = resolveAppOrigin(req.headers, allowedOrigins);
-    } else if (action === 'callback') {
-      if (!code || !state) {
-        throw new Error('Missing authorization code or state');
-      }
-      const check = await checkOAuthCallback({
-        state,
-        provider: 'square',
-        secret: OAUTH_STATE_SECRET,
-        allowedOrigins,
-        getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
-        isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
-      });
-      if (!check.ok) {
-        console.warn('Square OAuth callback rejected:', check.error);
-        return jsonResponse({ error: check.error }, check.status);
-      }
-      userId = check.userId;
-      targetRestaurantId = check.restaurantId;
-      appOrigin = check;
-      authCode = code;
-    } else {
-      throw new Error('Invalid action');
+    const gate = await resolveOAuthRequest({
+      provider: 'square',
+      body,
+      headers: req.headers,
+      secret: Deno.env.get('OAUTH_STATE_SECRET'),
+      allowedOriginsEnv: Deno.env.get('OAUTH_ALLOWED_ORIGINS'),
+      getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
+      isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
+    });
+    if (!gate.ok) {
+      return jsonResponse({ error: gate.error }, gate.status);
     }
+    const { appOrigin, userId, restaurantId } = gate;
 
     // An allowlisted preview origin uses the Square sandbox.
     const isPreview = !appOrigin.isProduction;
@@ -114,7 +67,7 @@ Deno.serve(async (req) => {
     
     const REDIRECT_URI = `${appOrigin.origin}/square/callback`;
 
-    console.log('Square OAuth - Action:', action, 'Environment:', SQUARE_ENVIRONMENT, 'Redirect URI:', REDIRECT_URI);
+    console.log('Square OAuth - Action:', gate.action, 'Environment:', SQUARE_ENVIRONMENT, 'Redirect URI:', REDIRECT_URI);
 
     if (!SQUARE_APPLICATION_ID || !SQUARE_APPLICATION_SECRET) {
       console.error('Square credentials missing:', {
@@ -125,7 +78,7 @@ Deno.serve(async (req) => {
       throw new Error(`Square credentials not configured for ${SQUARE_ENVIRONMENT} environment`);
     }
 
-    if (action === 'authorize') {
+    if (gate.action === 'authorize') {
       // Generate authorization URL
       const scopes = [
         'ORDERS_READ',
@@ -138,8 +91,8 @@ Deno.serve(async (req) => {
       ].join(' ');
 
       const signedState = await signOAuthState(
-        { provider: 'square', restaurantId: targetRestaurantId, userId, origin: appOrigin.origin },
-        OAUTH_STATE_SECRET
+        { provider: 'square', restaurantId, userId, origin: appOrigin.origin },
+        gate.stateSecret
       );
 
       const authUrl = new URL(`${SQUARE_BASE_URL}/oauth2/authorize`);
@@ -152,15 +105,14 @@ Deno.serve(async (req) => {
       return jsonResponse({ authorizationUrl: authUrl.toString() });
 
     } else {
-      // The restaurant comes only from the verified state.
-      const restaurantId = targetRestaurantId;
+      // The restaurant (and the Clover region) come only from the verified state.
       console.log('Square callback processing for restaurant:', restaurantId);
 
       // Exchange authorization code for access token
       const tokenRequestBody = {
         client_id: SQUARE_APPLICATION_ID,
         client_secret: SQUARE_APPLICATION_SECRET,
-        code: authCode,
+        code: gate.code,
         grant_type: 'authorization_code',
         redirect_uri: REDIRECT_URI, // Must match exactly what's in Square app settings
       };

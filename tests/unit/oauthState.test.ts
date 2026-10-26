@@ -8,7 +8,9 @@ import {
   isOwnerOrManager,
   getUserIdFromAuthHeader,
   checkOAuthCallback,
+  resolveOAuthRequest,
   OAUTH_STATE_TTL_SECONDS,
+  OAUTH_STATE_MAX_LENGTH,
   PRODUCTION_APP_ORIGIN,
   type SignOAuthStateInput,
 } from '../../supabase/functions/_shared/oauthState';
@@ -112,8 +114,13 @@ describe('signOAuthState / verifyOAuthState', () => {
     ['the old Clover JSON state', JSON.stringify({ restaurantId: RESTAURANT_A, region: 'na' })],
     ['three parts', 'a.b.c'],
     ['bad base64', '!!!.???'],
+    ['too long', `${'a'.repeat(OAUTH_STATE_MAX_LENGTH)}.b`],
   ])('rejects a malformed token: %s', async (_label, token) => {
     expect(await verifyOAuthState(token, SECRET, 'square', NOW)).toBeNull();
+  });
+
+  it('rejects a value that is not a string', async () => {
+    expect(await verifyOAuthState({} as unknown as string, SECRET, 'square', NOW)).toBeNull();
   });
 
   it('keeps the Clover region in the payload', async () => {
@@ -382,5 +389,166 @@ describe('checkOAuthCallback', () => {
   it('rejects a user who is not owner or manager of the restaurant with 403', async () => {
     const { result } = await run({ hasRole: false });
     expect(result).toMatchObject({ ok: false, status: 403 });
+  });
+});
+
+describe('resolveOAuthRequest', () => {
+  const allowedOriginsEnv = 'https://preview.example.com';
+
+  async function gate(
+    body: Record<string, unknown>,
+    overrides: {
+      provider?: 'square' | 'clover' | 'toast';
+      secret?: string;
+      callerId?: string | null;
+      hasRole?: boolean;
+      origin?: string;
+    } = {}
+  ) {
+    const getUserId = vi.fn(async () => (overrides.callerId === undefined ? USER : overrides.callerId));
+    const hasRole = vi.fn(async () => overrides.hasRole ?? true);
+    const result = await resolveOAuthRequest({
+      provider: overrides.provider ?? 'square',
+      body,
+      headers: headers(overrides.origin ? { origin: overrides.origin } : {}),
+      secret: overrides.secret ?? SECRET,
+      allowedOriginsEnv,
+      getUserId,
+      isOwnerOrManager: hasRole,
+      nowSeconds: NOW,
+    });
+    return { result, getUserId, hasRole };
+  }
+
+  it('returns 500 with no other work when the secret is missing or short', async () => {
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const secret of ['', 'short']) {
+      const { result, getUserId } = await gate({ action: 'authorize', restaurantId: RESTAURANT_A }, { secret });
+      expect(result).toMatchObject({ ok: false, status: 500 });
+      expect(getUserId).not.toHaveBeenCalled();
+    }
+    warn.mockRestore();
+  });
+
+  it('returns 400 for an unknown action', async () => {
+    const { result } = await gate({ action: 'delete' });
+    expect(result).toMatchObject({ ok: false, status: 400, error: 'Invalid action' });
+  });
+
+  describe('authorize', () => {
+    it('returns the checked values for an owner or manager', async () => {
+      const { result, hasRole } = await gate(
+        { action: 'authorize', restaurantId: RESTAURANT_A },
+        { origin: 'https://preview.example.com' }
+      );
+      expect(result).toEqual({
+        ok: true,
+        action: 'authorize',
+        userId: USER,
+        restaurantId: RESTAURANT_A,
+        appOrigin: { origin: 'https://preview.example.com', isProduction: false },
+        region: undefined,
+        stateSecret: SECRET,
+      });
+      expect(hasRole).toHaveBeenCalledWith(USER, RESTAURANT_A);
+    });
+
+    it('returns 401 with no valid JWT', async () => {
+      const { result, hasRole } = await gate({ action: 'authorize', restaurantId: RESTAURANT_A }, { callerId: null });
+      expect(result).toMatchObject({ ok: false, status: 401 });
+      expect(hasRole).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 with no restaurant id', async () => {
+      const { result } = await gate({ action: 'authorize' });
+      expect(result).toMatchObject({ ok: false, status: 400 });
+    });
+
+    it('returns 403 for a user who is not owner or manager', async () => {
+      const { result } = await gate({ action: 'authorize', restaurantId: RESTAURANT_A }, { hasRole: false });
+      expect(result).toMatchObject({ ok: false, status: 403 });
+    });
+
+    it('uses the default Clover region and accepts a valid one', async () => {
+      const a = await gate({ action: 'authorize', restaurantId: RESTAURANT_A }, { provider: 'clover' });
+      expect(a.result).toMatchObject({ ok: true, region: 'na' });
+      const b = await gate({ action: 'authorize', restaurantId: RESTAURANT_A, region: 'eu' }, { provider: 'clover' });
+      expect(b.result).toMatchObject({ ok: true, region: 'eu' });
+    });
+
+    it('returns 400 for a Clover region outside the set, before the role check', async () => {
+      const { result, hasRole } = await gate(
+        { action: 'authorize', restaurantId: RESTAURANT_A, region: 'mars' },
+        { provider: 'clover' }
+      );
+      expect(result).toMatchObject({ ok: false, status: 400, error: 'Invalid Clover region' });
+      expect(hasRole).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('callback', () => {
+    it('returns the values from a good state, not from the body', async () => {
+      const state = await signOAuthState(input({ origin: 'https://preview.example.com' }), SECRET, NOW);
+      const { result } = await gate({ action: 'callback', code: 'c0de', state, restaurantId: RESTAURANT_B });
+      expect(result).toEqual({
+        ok: true,
+        action: 'callback',
+        code: 'c0de',
+        userId: USER,
+        restaurantId: RESTAURANT_A,
+        appOrigin: { origin: 'https://preview.example.com', isProduction: false },
+        region: undefined,
+        stateSecret: SECRET,
+      });
+    });
+
+    it('returns the Clover region from the state', async () => {
+      const state = await signOAuthState(input({ provider: 'clover', region: 'apac' }), SECRET, NOW);
+      const { result } = await gate({ action: 'callback', code: 'c0de', state, region: 'eu' }, { provider: 'clover' });
+      expect(result).toMatchObject({ ok: true, region: 'apac' });
+    });
+
+    it.each([
+      ['no code', { state: 'x' }],
+      ['no state', { code: 'c0de' }],
+      ['a state that is not a string', { code: 'c0de', state: { rid: RESTAURANT_A } }],
+      ['a code that is not a string', { code: 42, state: 'x' }],
+    ])('returns 400 for %s', async (_label, fields) => {
+      const { result, getUserId } = await gate({ action: 'callback', ...fields });
+      expect(result).toMatchObject({ ok: false, status: 400 });
+      expect(getUserId).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 for an unsigned state (the bare restaurant id)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { result, hasRole } = await gate({ action: 'callback', code: 'c0de', state: RESTAURANT_B });
+      expect(result).toMatchObject({ ok: false, status: 403 });
+      expect(hasRole).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('returns 401 when the caller has no valid JWT', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const state = await signOAuthState(input(), SECRET, NOW);
+      const { result } = await gate({ action: 'callback', code: 'c0de', state }, { callerId: null });
+      expect(result).toMatchObject({ ok: false, status: 401 });
+      warn.mockRestore();
+    });
+
+    it('returns 403 when the caller is a different user', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const state = await signOAuthState(input(), SECRET, NOW);
+      const { result } = await gate({ action: 'callback', code: 'c0de', state }, { callerId: OTHER_USER });
+      expect(result).toMatchObject({ ok: false, status: 403 });
+      warn.mockRestore();
+    });
+
+    it('returns 403 when the user lost the owner or manager role', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const state = await signOAuthState(input(), SECRET, NOW);
+      const { result } = await gate({ action: 'callback', code: 'c0de', state }, { hasRole: false });
+      expect(result).toMatchObject({ ok: false, status: 403 });
+      warn.mockRestore();
+    });
   });
 });

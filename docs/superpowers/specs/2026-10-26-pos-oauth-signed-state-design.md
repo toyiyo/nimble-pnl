@@ -126,6 +126,15 @@ Pure functions. No Deno globals, so Vitest can import them.
    5. Check owner or manager again for `uid` and `rid`. Fail: 403. A user who
       lost the role in the last 10 minutes cannot finish the flow.
 
+7. `resolveOAuthRequest(...)` is the one gate for all three functions
+   (added after the Phase 7a review, to stop three copies of the checks).
+   It checks the secret, the action, the body field types, the JWT, the
+   role, the Clover region, and calls `checkOAuthCallback` for a callback.
+   It returns `{ ok: false, status, error }` or the checked values.
+8. `verifyOAuthState` rejects a `state` longer than 2048 characters before
+   it decodes it. `resolveAppOrigin` logs a warning for an origin that is
+   not in the allowlist.
+
 ### Changes to the three functions
 
 For `square-oauth`, `clover-oauth` and `toast-oauth`:

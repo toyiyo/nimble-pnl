@@ -11,16 +11,23 @@
 
 import { signPayloadBytes, splitToken, toBase64Url, verifySignature } from './hmacToken.ts';
 
-export type OAuthProvider = 'square' | 'clover' | 'toast';
+export const OAUTH_PROVIDERS = ['square', 'clover', 'toast'] as const;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 export const CLOVER_REGIONS = ['na', 'eu', 'latam', 'apac'] as const;
 export type CloverRegion = (typeof CLOVER_REGIONS)[number];
+export const DEFAULT_CLOVER_REGION: CloverRegion = 'na';
 
 /** 10 minutes: long enough to sign in at the POS, short enough to be worthless later. */
 export const OAUTH_STATE_TTL_SECONDS = 600;
 
 export const OAUTH_STATE_MIN_SECRET_LENGTH = 32;
 
+/** A real state is about 300 characters. A longer one is not ours, so it is not parsed. */
+export const OAUTH_STATE_MAX_LENGTH = 2048;
+
+// Same value as APP_URL in notificationHelpers.ts. That module imports Deno
+// code, so this pure module keeps its own copy for Vitest.
 export const PRODUCTION_APP_ORIGIN = 'https://app.easyshifthq.com';
 
 export interface OAuthStatePayload {
@@ -48,8 +55,6 @@ export interface SignOAuthStateInput {
   region?: CloverRegion;
 }
 
-const PROVIDERS: readonly string[] = ['square', 'clover', 'toast'];
-
 export function isCloverRegion(value: unknown): value is CloverRegion {
   return typeof value === 'string' && (CLOVER_REGIONS as readonly string[]).includes(value);
 }
@@ -58,19 +63,19 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-function isValidPayload(p: unknown): p is OAuthStatePayload {
-  if (!p || typeof p !== 'object') return false;
-  const o = p as Record<string, unknown>;
+function isValidPayload(value: unknown): value is OAuthStatePayload {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
   return (
-    typeof o.p === 'string' &&
-    PROVIDERS.includes(o.p) &&
-    nonEmptyString(o.rid) &&
-    nonEmptyString(o.uid) &&
-    nonEmptyString(o.o) &&
-    nonEmptyString(o.n) &&
-    typeof o.exp === 'number' &&
-    Number.isFinite(o.exp) &&
-    (o.r === undefined || isCloverRegion(o.r))
+    typeof candidate.p === 'string' &&
+    (OAUTH_PROVIDERS as readonly string[]).includes(candidate.p) &&
+    nonEmptyString(candidate.rid) &&
+    nonEmptyString(candidate.uid) &&
+    nonEmptyString(candidate.o) &&
+    nonEmptyString(candidate.n) &&
+    typeof candidate.exp === 'number' &&
+    Number.isFinite(candidate.exp) &&
+    (candidate.r === undefined || isCloverRegion(candidate.r))
   );
 }
 
@@ -104,6 +109,7 @@ export async function verifyOAuthState(
   provider: OAuthProvider,
   nowSeconds: number = Math.floor(Date.now() / 1000)
 ): Promise<OAuthStatePayload | null> {
+  if (typeof token !== 'string' || token.length > OAUTH_STATE_MAX_LENGTH) return null;
   const split = splitToken(token);
   if (!split) return null;
   const { payloadBytes, sigBytes } = split;
@@ -179,6 +185,10 @@ export function resolveAppOrigin(headers: HeaderReader, allowedOrigins: string[]
   if (candidate && allowedOrigins.includes(candidate)) {
     return { origin: candidate, isProduction: candidate === PRODUCTION_APP_ORIGIN };
   }
+  if (candidate) {
+    // A preview host must be in OAUTH_ALLOWED_ORIGINS to use the sandbox.
+    console.warn('OAuth origin is not in the allowlist, so production is used:', candidate);
+  }
   return { origin: PRODUCTION_APP_ORIGIN, isProduction: true };
 }
 
@@ -188,7 +198,7 @@ export function resolveAppOrigin(headers: HeaderReader, allowedOrigins: string[]
 // `supabase: any` for the same reason).
 interface RoleQueryClient {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  from(table: string): any;
+  from(table: string): any; // any: supabase-js generics are too deep for tsc
 }
 
 interface AuthClient {
@@ -285,4 +295,114 @@ export async function checkOAuthCallback(params: CheckOAuthCallbackParams): Prom
     isProduction: payload.o === PRODUCTION_APP_ORIGIN,
     region: payload.r,
   };
+}
+
+export interface OAuthRequestBody {
+  action?: unknown;
+  restaurantId?: unknown;
+  code?: unknown;
+  state?: unknown;
+  region?: unknown;
+}
+
+interface OAuthRequestBase {
+  userId: string;
+  restaurantId: string;
+  appOrigin: AppOrigin;
+  /** Clover only. */
+  region: CloverRegion | undefined;
+  /** The checked secret, for signOAuthState. */
+  stateSecret: string;
+}
+
+export type OAuthRequestGate =
+  | (OAuthRequestBase & { ok: true; action: 'authorize' })
+  | (OAuthRequestBase & { ok: true; action: 'callback'; code: string })
+  | { ok: false; status: 400 | 401 | 403 | 500; error: string };
+
+export interface ResolveOAuthRequestParams {
+  provider: OAuthProvider;
+  body: OAuthRequestBody;
+  headers: HeaderReader;
+  secret: string | undefined;
+  allowedOriginsEnv: string | undefined;
+  getUserId: () => Promise<string | null>;
+  isOwnerOrManager: (userId: string, restaurantId: string) => Promise<boolean>;
+  nowSeconds?: number;
+}
+
+/**
+ * The one gate in front of every POS OAuth function. Each function calls it
+ * first and returns the error on `ok: false`. On `ok: true`, every value in
+ * the result is checked: the function may use credentials and write.
+ */
+export async function resolveOAuthRequest(params: ResolveOAuthRequestParams): Promise<OAuthRequestGate> {
+  const { provider, body } = params;
+  if (!isValidOAuthStateSecret(params.secret)) {
+    console.error(`OAUTH_STATE_SECRET is missing or shorter than ${OAUTH_STATE_MIN_SECRET_LENGTH} characters`);
+    return { ok: false, status: 500, error: 'OAuth is not configured' };
+  }
+  const stateSecret = params.secret;
+  const allowedOrigins = parseAllowedOrigins(params.allowedOriginsEnv);
+
+  if (body.action === 'authorize') {
+    const userId = await params.getUserId();
+    if (!userId) {
+      return { ok: false, status: 401, error: 'Authentication required' };
+    }
+    if (!nonEmptyString(body.restaurantId)) {
+      return { ok: false, status: 400, error: 'Restaurant ID is required for authorization' };
+    }
+    let region: CloverRegion | undefined;
+    if (provider === 'clover') {
+      const requested = body.region ?? DEFAULT_CLOVER_REGION;
+      if (!isCloverRegion(requested)) {
+        return { ok: false, status: 400, error: 'Invalid Clover region' };
+      }
+      region = requested;
+    }
+    if (!(await params.isOwnerOrManager(userId, body.restaurantId))) {
+      return { ok: false, status: 403, error: 'Access denied to restaurant' };
+    }
+    return {
+      ok: true,
+      action: 'authorize',
+      userId,
+      restaurantId: body.restaurantId,
+      appOrigin: resolveAppOrigin(params.headers, allowedOrigins),
+      region,
+      stateSecret,
+    };
+  }
+
+  if (body.action === 'callback') {
+    if (!nonEmptyString(body.code) || !nonEmptyString(body.state)) {
+      return { ok: false, status: 400, error: 'Missing authorization code or state' };
+    }
+    const check = await checkOAuthCallback({
+      state: body.state,
+      provider,
+      secret: stateSecret,
+      allowedOrigins,
+      getUserId: params.getUserId,
+      isOwnerOrManager: params.isOwnerOrManager,
+      nowSeconds: params.nowSeconds,
+    });
+    if (!check.ok) {
+      console.warn(`${provider} OAuth callback rejected:`, check.error);
+      return check;
+    }
+    return {
+      ok: true,
+      action: 'callback',
+      code: body.code,
+      userId: check.userId,
+      restaurantId: check.restaurantId,
+      appOrigin: { origin: check.origin, isProduction: check.isProduction },
+      region: provider === 'clover' ? (check.region ?? DEFAULT_CLOVER_REGION) : undefined,
+      stateSecret,
+    };
+  }
+
+  return { ok: false, status: 400, error: 'Invalid action' };
 }

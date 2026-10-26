@@ -1,30 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
 import {
-  checkOAuthCallback,
+  DEFAULT_CLOVER_REGION,
   getUserIdFromAuthHeader,
-  isCloverRegion,
   isOwnerOrManager,
-  isValidOAuthStateSecret,
-  parseAllowedOrigins,
-  resolveAppOrigin,
+  resolveOAuthRequest,
   signOAuthState,
-  type AppOrigin,
-  type CloverRegion,
+  type OAuthRequestBody,
 } from '../_shared/oauthState.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-interface CloverOAuthRequest {
-  action: 'authorize' | 'callback';
-  restaurantId?: string;
-  code?: string;
-  state?: string;
-  region?: string;
-}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -44,66 +32,24 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const OAUTH_STATE_SECRET = Deno.env.get('OAUTH_STATE_SECRET');
-    if (!isValidOAuthStateSecret(OAUTH_STATE_SECRET)) {
-      console.error('OAUTH_STATE_SECRET is missing or shorter than 32 characters');
-      return jsonResponse({ error: 'OAuth is not configured' }, 500);
-    }
-    const allowedOrigins = parseAllowedOrigins(Deno.env.get('OAUTH_ALLOWED_ORIGINS'));
-
-    const body: CloverOAuthRequest = await req.json();
-    const { action, restaurantId, code, state, region = 'na' } = body;
+    const body: OAuthRequestBody = await req.json();
     const authHeader = req.headers.get('Authorization');
 
     // Every check runs before any credential use or write.
-    let appOrigin: AppOrigin;
-    let userId: string;
-    let targetRestaurantId: string;
-    let cloverRegion: CloverRegion;
-    let authCode = '';
-
-    if (action === 'authorize') {
-      const callerId = await getUserIdFromAuthHeader(supabase, authHeader);
-      if (!callerId) {
-        return jsonResponse({ error: 'Authentication required' }, 401);
-      }
-      if (!restaurantId) {
-        throw new Error('Restaurant ID is required for authorization');
-      }
-      if (!isCloverRegion(region)) {
-        throw new Error('Invalid Clover region');
-      }
-      if (!(await isOwnerOrManager(supabase, callerId, restaurantId))) {
-        return jsonResponse({ error: 'Access denied to restaurant' }, 403);
-      }
-      userId = callerId;
-      targetRestaurantId = restaurantId;
-      cloverRegion = region;
-      appOrigin = resolveAppOrigin(req.headers, allowedOrigins);
-    } else if (action === 'callback') {
-      if (!code || !state) {
-        throw new Error('Missing authorization code or state');
-      }
-      const check = await checkOAuthCallback({
-        state,
-        provider: 'clover',
-        secret: OAUTH_STATE_SECRET,
-        allowedOrigins,
-        getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
-        isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
-      });
-      if (!check.ok) {
-        console.warn('Clover OAuth callback rejected:', check.error);
-        return jsonResponse({ error: check.error }, check.status);
-      }
-      userId = check.userId;
-      targetRestaurantId = check.restaurantId;
-      cloverRegion = check.region ?? 'na';
-      appOrigin = check;
-      authCode = code;
-    } else {
-      throw new Error('Invalid action');
+    const gate = await resolveOAuthRequest({
+      provider: 'clover',
+      body,
+      headers: req.headers,
+      secret: Deno.env.get('OAUTH_STATE_SECRET'),
+      allowedOriginsEnv: Deno.env.get('OAUTH_ALLOWED_ORIGINS'),
+      getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
+      isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
+    });
+    if (!gate.ok) {
+      return jsonResponse({ error: gate.error }, gate.status);
     }
+    const { appOrigin, userId, restaurantId } = gate;
+    const cloverRegion = gate.region ?? DEFAULT_CLOVER_REGION;
 
     // An allowlisted preview origin uses the Clover sandbox.
     const isSandbox = !appOrigin.isProduction;
@@ -134,14 +80,14 @@ Deno.serve(async (req) => {
 
     const REDIRECT_URI = `${appOrigin.origin}/clover/callback`;
 
-    console.log('Clover OAuth - Action:', action, 'Region:', cloverRegion, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Redirect URI:', REDIRECT_URI);
+    console.log('Clover OAuth - Action:', gate.action, 'Region:', cloverRegion, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Redirect URI:', REDIRECT_URI);
 
     if (!CLOVER_APP_ID || !CLOVER_APP_SECRET) {
       console.error('Clover credentials missing for environment:', isSandbox ? 'sandbox' : 'production');
       throw new Error(`Clover credentials not configured for ${isSandbox ? 'sandbox' : 'production'} environment`);
     }
 
-    if (action === 'authorize') {
+    if (gate.action === 'authorize') {
       // Clover OAuth scopes
       const permissions = [
         'ORDERS_R',
@@ -154,12 +100,12 @@ Deno.serve(async (req) => {
       const signedState = await signOAuthState(
         {
           provider: 'clover',
-          restaurantId: targetRestaurantId,
+          restaurantId,
           userId,
           origin: appOrigin.origin,
           region: cloverRegion,
         },
-        OAUTH_STATE_SECRET
+        gate.stateSecret
       );
 
       const authUrl = new URL(`https://${CLOVER_DOMAIN}/oauth/v2/authorize`);
@@ -171,24 +117,22 @@ Deno.serve(async (req) => {
       return jsonResponse({ authorizationUrl: authUrl.toString() });
 
     } else {
-      // The restaurant and the region come only from the verified state.
-      const restaurantId = targetRestaurantId;
-      const callbackRegion = cloverRegion;
+      // The restaurant (and the Clover region) come only from the verified state.
 
-      console.log('Clover callback processing:', { restaurantId, region: callbackRegion });
+      console.log('Clover callback processing:', { restaurantId, region: cloverRegion });
 
       // Exchange authorization code for access token
       const tokenRequestBody = {
         client_id: CLOVER_APP_ID,
         client_secret: CLOVER_APP_SECRET,
-        code: authCode,
+        code: gate.code,
         redirect_uri: REDIRECT_URI,
       };
 
-      const callbackAPIDomain = regionAPIDomains[callbackRegion];
+      const callbackAPIDomain = regionAPIDomains[cloverRegion];
       const tokenUrl = `https://${callbackAPIDomain}/oauth/v2/token`;
       console.log('Token exchange URL:', tokenUrl);
-      console.log('Callback region:', callbackRegion, 'Using API domain:', callbackAPIDomain);
+      console.log('Callback region:', cloverRegion, 'Using API domain:', callbackAPIDomain);
 
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
@@ -313,7 +257,7 @@ Deno.serve(async (req) => {
         access_token: encryptedAccessToken,
         refresh_token: encryptedRefreshToken,
         expires_at: expiresAt,
-        region: callbackRegion,
+        region: cloverRegion,
         environment: isSandbox ? 'sandbox' : 'production',
         scopes: ['ORDERS_R', 'PAYMENTS_R', 'INVENTORY_R', 'MERCHANT_R', 'EMPLOYEES_R'],
         connected_at: new Date().toISOString(),
@@ -329,7 +273,7 @@ Deno.serve(async (req) => {
 
       await logSecurityEvent(supabase, 'CLOVER_OAUTH_TOKEN_STORED', userId, restaurantId, {
         merchantId: merchantId,
-        region: callbackRegion
+        region: cloverRegion
       });
 
       if (connectionError) {

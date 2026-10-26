@@ -14,17 +14,17 @@ function source(name: string): string {
 describe.each(FUNCTIONS)('%s', (name) => {
   const src = source(name);
 
-  it('checks the callback before the first fetch, upsert or function call', () => {
-    const check = src.indexOf('checkOAuthCallback({');
-    expect(check).toBeGreaterThan(-1);
-    for (const sideEffect of ['await fetch(', '.upsert(', 'functions.invoke(']) {
+  it('runs the shared gate before the first fetch, upsert or function call', () => {
+    const gate = src.indexOf('resolveOAuthRequest({');
+    expect(gate).toBeGreaterThan(-1);
+    for (const sideEffect of ['await fetch(', '.upsert(', 'functions.invoke(', 'getEncryptionService(']) {
       const first = src.indexOf(sideEffect);
-      if (first !== -1) expect(first, sideEffect).toBeGreaterThan(check);
+      if (first !== -1) expect(first, sideEffect).toBeGreaterThan(gate);
     }
   });
 
-  it('returns the status of a failed check with no further work', () => {
-    expect(src).toMatch(/if \(!check\.ok\) \{[^}]*return jsonResponse\(\{ error: check\.error \}, check\.status\);/);
+  it('returns at once when the gate fails', () => {
+    expect(src).toMatch(/if \(!gate\.ok\) \{\s*return jsonResponse\(\{ error: gate\.error \}, gate\.status\);\s*\}/);
   });
 
   it('sets the state only to the signed token', () => {
@@ -32,7 +32,8 @@ describe.each(FUNCTIONS)('%s', (name) => {
     expect(stateSets).toEqual(["searchParams.set('state', signedState)"]);
   });
 
-  it('takes the restaurant in the callback only from the verified state', () => {
+  it('takes the restaurant in the callback only from the gate', () => {
+    expect(src).toMatch(/const \{ appOrigin, userId, restaurantId \} = gate;/);
     expect(src).not.toMatch(/restaurantId = state/);
     expect(src).not.toMatch(/JSON\.parse\(state\)/);
   });
@@ -45,8 +46,7 @@ describe.each(FUNCTIONS)('%s', (name) => {
     }
   });
 
-  it('builds the redirect from the allowlisted app origin', () => {
-    expect(src).toMatch(/const REDIRECT_URI = `\$\{appOrigin\.origin\}\/[a-z]+\/callback`;/);
-    expect(src).not.toMatch(/headers\.get\('origin'\)/);
+  it('does not read the raw Origin or Referer header', () => {
+    expect(src).not.toMatch(/headers\.get\('(origin|referer)'\)/i);
   });
 });

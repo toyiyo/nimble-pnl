@@ -20,14 +20,22 @@ export function receiptStoragePath(rawFileUrl: string, restaurantId: string): st
   if (/^https?:\/\//i.test(path)) {
     const match = BUCKET_PATH.exec(path);
     if (!match) return null;
-    path = match[1];
+    // A storage URL encodes the object name (a space is `%20`). Decode it one
+    // time. The checks below then run on the real name, so a double-encoded
+    // `%252e` still fails on `%`.
+    try {
+      path = decodeURIComponent(match[1]);
+    } catch {
+      return null;
+    }
   }
 
   // The URL parser in fetch() turns `%2e%2e` into `..`, turns `\` into `/`,
-  // and deletes tab and newline characters. Any of these can move the
-  // download out of the restaurant folder, so refuse them all.
+  // and deletes tab and newline characters. `?` and `#` end the object path.
+  // Any of these can move the download out of the restaurant folder, so
+  // refuse them all.
   // eslint-disable-next-line no-control-regex
-  if (/[%\\\u0000-\u001f\u007f]/.test(path)) return null;
+  if (/[%\\?#\u0000-\u001f\u007f]/.test(path)) return null;
 
   const segments = path.split('/');
   if (segments.length < 2) return null;

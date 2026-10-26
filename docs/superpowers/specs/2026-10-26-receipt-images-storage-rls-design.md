@@ -145,7 +145,11 @@ One new migration, `supabase/migrations/20261026120300_receipt_images_storage_rl
   (`supabase/migrations/20250927204537_9b1632c6-d265-4043-99b6-688f9d715ace.sql:7-29`)
   for about 1 hour. After that, the permissive INSERT let any signed-in user
   write any path for about 13 months. No current caller writes such a path.
-  The receipt proxy uses the service role, so it can still read such a file.
+  The receipt proxy does not read such a file either: `receiptStoragePath()`
+  refuses the path before the service-role download, and the proxy returns
+  404. If such rows must stay readable, move the storage objects into the
+  restaurant folder and change `raw_file_url` to match. Deploy check B counts
+  these objects.
 - Another permissive policy with an unknown name can exist in production. The
   migration deletes policies by name only.
 - Storage DELETE goes back to `owner` and `manager` only

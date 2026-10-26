@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateTestUser } from '../helpers/e2e-supabase';
-import { getServiceRoleClient } from '../helpers/e2e-service-role';
+import { getServiceRoleClient, readEnv } from '../helpers/e2e-service-role';
 
 /**
  * Tenant isolation of the private `receipt-images` bucket, through the real
@@ -18,15 +18,24 @@ import { getServiceRoleClient } from '../helpers/e2e-service-role';
 const BUCKET = 'receipt-images';
 const PDF = Buffer.from('%PDF-1.4\n%receipt\n');
 
+/**
+ * A supabase-js client with the anon key, for one signed-in test user.
+ * It reads the env like the service-role helper: process env first, then
+ * `.env.local`.
+ */
 function userClient(): SupabaseClient {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  const url = readEnv('SUPABASE_URL') || readEnv('VITE_SUPABASE_URL');
+  const anonKey = readEnv('VITE_SUPABASE_ANON_KEY');
   if (!url || !anonKey) {
     throw new Error('SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required for this spec.');
   }
   return createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
+/**
+ * Create a user, a restaurant and an owner membership with the service role.
+ * Return the ids and a client signed in as that user.
+ */
 async function seedOwner(prefix: string) {
   const admin = getServiceRoleClient();
   const user = generateTestUser(prefix);

@@ -68,6 +68,27 @@ describe('receiptStoragePath', () => {
     expect(receiptStoragePath(`${RID}//a.pdf`, RID)).toBeNull();
   });
 
+  it('decodes the object name of a full storage URL', () => {
+    const url = `https://x.supabase.co/storage/v1/object/public/receipt-images/${RID}/my%20receipt.pdf`;
+    expect(receiptStoragePath(url, RID)).toBe(`${RID}/my receipt.pdf`);
+  });
+
+  it('refuses a double-encoded dot segment in a full storage URL', () => {
+    const url = `https://x.supabase.co/storage/v1/object/public/receipt-images/${RID}/%252e%252e/${OTHER}/a.pdf`;
+    expect(receiptStoragePath(url, RID)).toBeNull();
+  });
+
+  it('refuses an encoded "?" or "#" in a full storage URL', () => {
+    const base = `https://x.supabase.co/storage/v1/object/public/receipt-images/${RID}`;
+    expect(receiptStoragePath(`${base}/a%3F.pdf`, RID)).toBeNull();
+    expect(receiptStoragePath(`${base}/a%23.pdf`, RID)).toBeNull();
+  });
+
+  it('refuses a full storage URL that does not decode', () => {
+    const url = `https://x.supabase.co/storage/v1/object/public/receipt-images/${RID}/a%E0%A4%A.pdf`;
+    expect(receiptStoragePath(url, RID)).toBeNull();
+  });
+
   it('refuses a full URL for another bucket', () => {
     const url = `https://x.supabase.co/storage/v1/object/public/other-bucket/${RID}/a.pdf`;
     expect(receiptStoragePath(url, RID)).toBeNull();
@@ -76,5 +97,13 @@ describe('receiptStoragePath', () => {
   it('refuses an empty value or an empty restaurant id', () => {
     expect(receiptStoragePath('', RID)).toBeNull();
     expect(receiptStoragePath(`${RID}/a.pdf`, '')).toBeNull();
+  });
+
+  // The proxy passes database values, which can be null.
+  it('refuses a null or undefined value or restaurant id', () => {
+    expect(receiptStoragePath(null as unknown as string, RID)).toBeNull();
+    expect(receiptStoragePath(undefined as unknown as string, RID)).toBeNull();
+    expect(receiptStoragePath(`${RID}/a.pdf`, null as unknown as string)).toBeNull();
+    expect(receiptStoragePath(`${RID}/a.pdf`, undefined as unknown as string)).toBeNull();
   });
 });

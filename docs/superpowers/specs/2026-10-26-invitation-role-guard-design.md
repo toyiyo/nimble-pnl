@@ -103,6 +103,11 @@ The function is `SECURITY INVOKER`, so `current_user` is the real caller.
   `invited_by` would make the accept-time check use the wrong inviter.
 - Else, if `caller_may_invite(NEW.restaurant_id, NEW.role)` is false, raise
   `42501`.
+- On INSERT, replace `NEW.token` with a random SHA-256 hex value. The token
+  is the accept secret, and `signup-with-invitation` trusts whoever knows
+  it. A browser must not choose it. Only `send-team-invitation` issues a
+  usable token. The E2E specs that seed rows from the browser do not use
+  the token.
 
 ### 3. Policies
 
@@ -120,16 +125,19 @@ invitations (no tokens)"
 It has the same condition, so a new SELECT policy adds nothing. Postgres
 does not allow `WITH CHECK` on SELECT or DELETE, or `USING` on INSERT.
 
-### 4. Column grants
+### 4. Grants
 
 `REVOKE INSERT, UPDATE ON public.invitations FROM anon`.
-`REVOKE UPDATE ON public.invitations FROM authenticated`, then
-`GRANT UPDATE (status, accepted_at, accepted_by, updated_at) ON public.invitations TO authenticated`.
+`REVOKE UPDATE ON public.invitations FROM authenticated`.
 
-After this, no browser session can change `role`, `role_id`, `token`,
-`email`, `restaurant_id`, `invited_by`, `employee_id` or `expires_at`.
-This fixes the invitee path (item 3). The app sends no such UPDATE (item 7).
-`SECURITY DEFINER` functions and the service role are not affected.
+After this, no browser session can UPDATE an invitation. This fixes the
+invitee path (item 3). The app sends no UPDATE (item 7). The invitee
+accepts through `accept_my_invitation` (postgres) or `accept-invitation`
+(service role), which the REVOKE does not affect.
+
+A column grant on `status` is not safe. A manager could set a cancelled or
+accepted owner invitation back to `pending`, and the trigger does not fire
+for `status`. The security review in Phase 7 found this path.
 
 ### 5. Accept paths check the inviter
 

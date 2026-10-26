@@ -77,9 +77,8 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log('Invitation found:', { 
-      id: invitation.id, 
-      email: invitation.email, 
-      role: invitation.role, 
+      id: invitation.id,
+      role: invitation.role,
       employee_id: invitation.employee_id,
       restaurant_id: invitation.restaurant_id
     });

@@ -28,8 +28,8 @@
 --    same matrix before its service-role INSERT.
 -- 3. The FOR ALL policy becomes INSERT, UPDATE and DELETE policies, each
 --    with the clauses that Postgres allows for that command.
--- 4. Column grants: a browser session can UPDATE only status, accepted_at,
---    accepted_by and updated_at.
+-- 4. A browser session cannot UPDATE invitations at all. A browser INSERT
+--    gets a random token that the browser never sees.
 -- 5. accept_my_invitation refuses a row whose inviter may not invite its
 --    role. get_my_pending_invitations hides such a row.
 --
@@ -127,12 +127,22 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
+  -- The token is the accept secret. signup-with-invitation and
+  -- accept-invitation trust whoever knows it, so a browser must not choose
+  -- it. Replace it with a random hash that nobody holds. Only
+  -- send-team-invitation (service role) issues a usable token.
+  IF TG_OP = 'INSERT' THEN
+    NEW.token := encode(
+      sha256(convert_to(gen_random_uuid()::text || gen_random_uuid()::text, 'UTF8')),
+      'hex');
+  END IF;
+
   RETURN NEW;
 END;
 $$;
 
 COMMENT ON FUNCTION public.invitations_enforce_invitable_role IS
-'BEFORE INSERT OR UPDATE OF role, restaurant_id, invited_by on invitations. For anon/authenticated callers: rejects a NULL auth.uid(), an invited_by other than auth.uid(), and a role that caller_may_invite refuses. Server roles (service_role, postgres) skip the check.';
+'BEFORE INSERT OR UPDATE OF role, restaurant_id, invited_by on invitations. For anon/authenticated callers: rejects a NULL auth.uid(), an invited_by other than auth.uid(), and a role that caller_may_invite refuses, and replaces the token of an INSERT with a random hash. Server roles (service_role, postgres) skip the check.';
 
 DROP TRIGGER IF EXISTS invitations_enforce_invitable_role ON public.invitations;
 CREATE TRIGGER invitations_enforce_invitable_role
@@ -198,14 +208,21 @@ USING (
 );
 
 -- ----------------------------------------------------------------------------
--- 4. Column grants. A browser session can change only the accept columns.
--- This closes the invitee path of "Users can accept their own invitations":
--- that policy limits rows, and this grant limits columns. The app sends no
--- other UPDATE on invitations from the browser.
+-- 4. Grants. A browser session cannot UPDATE invitations.
+--
+-- The app sends no UPDATE on invitations from the browser: it reads and
+-- deletes only (src/components/TeamInvitations.tsx, src/hooks/useCollaborators.ts).
+-- The invitee accepts through accept_my_invitation or accept-invitation,
+-- which run as postgres and the service role. A column grant on status is
+-- not safe: a manager could set a cancelled or accepted owner invitation
+-- back to 'pending', and the trigger does not fire for status.
+--
+-- This also closes the invitee path of "Users can accept their own
+-- invitations", which limits rows but not columns. The UPDATE policies stay
+-- as a second layer for a future grant.
 -- ----------------------------------------------------------------------------
 REVOKE INSERT, UPDATE ON public.invitations FROM anon;
 REVOKE UPDATE ON public.invitations FROM authenticated;
-GRANT UPDATE (status, accepted_at, accepted_by, updated_at) ON public.invitations TO authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 5. Accept paths. Same bodies as 20260908230000, plus the inviter check.

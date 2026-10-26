@@ -15,7 +15,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(26);
+SELECT plan(27);
 
 -- ---------------------------------------------------------------- fixtures
 INSERT INTO auth.users (id, email) VALUES
@@ -158,6 +158,30 @@ SELECT is(
   'the delete removed the row'
 );
 
+-- b4: an owner invitation that the owner cancelled. A manager must not be
+-- able to reopen it: the trigger does not fire for status.
+INSERT INTO public.invitations (id, restaurant_id, invited_by, email, role, status, token, expires_at) VALUES
+  ('f2000000-0000-0000-0000-0000000000b4', 'f2000000-0000-0000-0000-0000000000a1',
+   'f2000000-0000-0000-0000-000000000001', 'guard-cancelled@example.test', 'owner', 'cancelled',
+   'guard-hash-b4', now() + interval '1 day');
+
+SELECT is(
+  pg_temp.as_user('f2000000-0000-0000-0000-000000000002', 'guard-manager@example.test',
+    $$ UPDATE public.invitations SET status = 'pending'
+       WHERE id = 'f2000000-0000-0000-0000-0000000000b4' $$),
+  '42501',
+  'a manager cannot reopen a cancelled owner invitation'
+);
+
+-- A browser INSERT must not keep a token that the browser chose.
+SELECT is(
+  (SELECT count(*)::int FROM public.invitations
+   WHERE email = 'mgr-staff@example.test' AND token <> 'tok-mgr-staff@example.test'
+     AND token ~ '^[0-9a-f]{64}$'),
+  1,
+  'a browser INSERT gets a random token, not the one it sent'
+);
+
 -- ============================================================================
 -- Owner
 -- ============================================================================
@@ -239,20 +263,14 @@ SELECT is(
 -- Grants
 -- ============================================================================
 SELECT ok(
-  has_column_privilege('authenticated', 'public.invitations', 'status', 'UPDATE')
-  AND has_column_privilege('authenticated', 'public.invitations', 'accepted_at', 'UPDATE')
-  AND has_column_privilege('authenticated', 'public.invitations', 'accepted_by', 'UPDATE'),
-  'authenticated can UPDATE the accept columns'
-);
-
-SELECT ok(
-  NOT has_column_privilege('authenticated', 'public.invitations', 'role', 'UPDATE')
+  NOT has_column_privilege('authenticated', 'public.invitations', 'status', 'UPDATE')
+  AND NOT has_column_privilege('authenticated', 'public.invitations', 'role', 'UPDATE')
   AND NOT has_column_privilege('authenticated', 'public.invitations', 'role_id', 'UPDATE')
   AND NOT has_column_privilege('authenticated', 'public.invitations', 'token', 'UPDATE')
   AND NOT has_column_privilege('authenticated', 'public.invitations', 'email', 'UPDATE')
   AND NOT has_column_privilege('authenticated', 'public.invitations', 'restaurant_id', 'UPDATE')
   AND NOT has_column_privilege('authenticated', 'public.invitations', 'invited_by', 'UPDATE'),
-  'authenticated cannot UPDATE role, role_id, token, email, restaurant_id or invited_by'
+  'authenticated cannot UPDATE status, role, role_id, token, email, restaurant_id or invited_by'
 );
 
 -- CASE, not AND: a missing function must fail this row, not abort the file.

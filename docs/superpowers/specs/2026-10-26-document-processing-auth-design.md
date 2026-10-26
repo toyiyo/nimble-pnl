@@ -45,9 +45,9 @@ Two edge functions parse uploaded documents with AI:
   `raw_file_url`, makes a signed URL on bucket `receipt-images`, and sends
   it as `pdfUrl`.
 - Upload paths: receipts go to `${restaurant_id}/${file}`
-  (`useReceiptImport.tsx:222`). Bank statements go to
+  (`useReceiptImport.tsx:223`). Bank statements go to
   `${restaurant_id}/bank-statements/${file}`
-  (`useBankStatementImport.tsx:127`). Both store the path in
+  (`useBankStatementImport.tsx:128`). Both store the path in
   `raw_file_url` (`useReceiptImport.tsx:237`,
   `useBankStatementImport.tsx:143`).
 
@@ -106,7 +106,7 @@ follows the split-handler lesson in `memory/lessons.md` (2026-05-07).
   the detail in the server log only.
 - `bytesToDataUrl(bytes, mime)`: chunked base64 encoder. Both functions
   already have this loop inline (`process-receipt/index.ts:662-676`,
-  `process-bank-statement/index.ts:572-584`).
+  `process-bank-statement/index.ts:574-586`).
 
 ### `process-receipt/index.ts`
 

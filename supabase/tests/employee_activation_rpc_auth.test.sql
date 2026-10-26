@@ -8,19 +8,21 @@
 -- What makes this suite non-vacuous:
 --   * The manager of restaurant A is a real manager. The capability exists for
 --     A, so only the employee -> restaurant lookup stops the cross-tenant call.
---   * Each denied call is followed by a read of the row and the shift. A
---     denied call that wrote first and raised later would fail those reads.
+--   * After each denied call, the suite reads the row or the shift. A denied
+--     call that wrote first and raised later fails those reads.
 --   * The custom role holds employees:manage with no view:pay_rates flag. It
 --     passes the manage:employees gate, so only the pay-rate gate stops it.
---   * The success path passes a spoofed p_deactivated_by. The audit column must
+--   * The success calls send a spoofed actor parameter. The audit column must
 --     hold auth.uid(), not the parameter.
+--   * The custom role has no sensitive flag. The row that the RPC returns to
+--     it must hide pay and PII, as employees_secure does.
 --
 -- Auth context: user_has_capability reads auth.uid(), which reads
 -- request.jwt.claims. The suite stays as postgres and changes only the claims.
 
 BEGIN;
 
-SELECT plan(25);
+SELECT plan(34);
 
 -- ============================================
 -- Setup
@@ -41,11 +43,11 @@ INSERT INTO restaurants (id, name) VALUES
   ('ea000000-0000-0000-0000-00000000000b', 'Activation Auth B')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO employees (id, restaurant_id, name, position, hourly_rate, status, is_active, compensation_type)
+INSERT INTO employees (id, restaurant_id, name, email, position, hourly_rate, status, is_active, compensation_type)
 VALUES
-  ('ea000000-0000-0000-0000-0000000000e1', 'ea000000-0000-0000-0000-00000000000b', 'Bea Target', 'Server', 1500, 'active', true, 'hourly')
+  ('ea000000-0000-0000-0000-0000000000e1', 'ea000000-0000-0000-0000-00000000000b', 'Bea Target', 'bea@example.com', 'Server', 1500, 'active', true, 'hourly')
 ON CONFLICT (id) DO UPDATE SET
-  restaurant_id = EXCLUDED.restaurant_id, hourly_rate = 1500, status = 'active', is_active = true,
+  restaurant_id = EXCLUDED.restaurant_id, email = EXCLUDED.email, hourly_rate = 1500, status = 'active', is_active = true,
   termination_date = NULL, deactivated_at = NULL, deactivated_by = NULL, deactivation_reason = NULL;
 
 -- A future scheduled shift. deactivate_employee cancels it on success only.
@@ -55,9 +57,9 @@ VALUES
    now() + interval '2 days', now() + interval '2 days 8 hours', 'Server', 'scheduled')
 ON CONFLICT (id) DO UPDATE SET status = 'scheduled';
 
--- Custom role: employees at manage level, no view:pay_rates flag.
+-- Custom collaborator role: employees at manage level, no sensitive flags.
 INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin) VALUES
-  ('ea000000-0000-0000-0000-0000000000c1', 'ea000000-0000-0000-0000-00000000000b', 'Roster No Pay', 'pgTAP fixture: employees:manage, no pay rates', 'platform', false)
+  ('ea000000-0000-0000-0000-0000000000c1', 'ea000000-0000-0000-0000-00000000000b', 'Roster No Pay', 'pgTAP fixture: employees:manage, no sensitive flags', 'collaborator', false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.role_areas (role_id, area_key, level) VALUES
@@ -73,7 +75,7 @@ INSERT INTO user_restaurants (user_id, restaurant_id, role, role_id) VALUES
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id;
 
 -- ============================================
--- 1-6: grants and function attributes
+-- Grants and function attributes
 -- ============================================
 
 SELECT ok(
@@ -121,8 +123,18 @@ SELECT is(
   'both functions are SECURITY DEFINER with a fixed search_path'
 );
 
+-- An old overload keeps its own grants and has no check. Only two may exist.
+SELECT is(
+  (SELECT count(*)::int
+     FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND p.proname IN ('deactivate_employee', 'reactivate_employee')),
+  2,
+  'no other overload of deactivate_employee or reactivate_employee exists'
+);
+
 -- ============================================
--- 7-12: denied calls do not write
+-- Denied calls do not write
 -- ============================================
 
 -- No JWT: auth.uid() is NULL.
@@ -133,6 +145,23 @@ SELECT throws_ok(
   '42501',
   'Access denied: you cannot manage employees for this restaurant',
   'a caller with no JWT cannot deactivate an employee'
+);
+
+SELECT throws_ok(
+  $$SELECT reactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000a1'::uuid, NULL)$$,
+  '42501',
+  'Access denied: you cannot manage employees for this restaurant',
+  'a caller with no JWT cannot reactivate an employee'
+);
+
+-- A service-role JWT has no sub, so it has no membership. No bypass exists.
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+SELECT throws_ok(
+  $$SELECT deactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000a1'::uuid, 'x', true, CURRENT_DATE)$$,
+  '42501',
+  'Access denied: you cannot manage employees for this restaurant',
+  'a service-role JWT with no sub cannot deactivate an employee'
 );
 
 -- Manager of restaurant A targets the employee of restaurant B.
@@ -167,21 +196,36 @@ SELECT throws_ok(
   'a staff member of restaurant B cannot deactivate an employee'
 );
 
--- Unknown employee id: same error as a foreign one, so ids cannot be probed.
+SELECT ok(
+  (SELECT is_active AND termination_date IS NULL
+     FROM employees WHERE id = 'ea000000-0000-0000-0000-0000000000e1'),
+  'the denied staff call does not change the employee row'
+);
+
+-- Unknown employee id: same error as a foreign one. Thus a caller cannot
+-- probe for ids.
 SELECT set_config('request.jwt.claims', '{"sub":"ea000000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);
 
 SELECT throws_ok(
   $$SELECT deactivate_employee('ea000000-0000-0000-0000-0000000000ff'::uuid, 'ea000000-0000-0000-0000-0000000000b1'::uuid, 'x', true, CURRENT_DATE)$$,
   '42501',
   'Access denied: you cannot manage employees for this restaurant',
-  'an unknown employee id gives the same access-denied error'
+  'deactivate with an unknown employee id gives the same access-denied error'
+);
+
+SELECT throws_ok(
+  $$SELECT reactivate_employee('ea000000-0000-0000-0000-0000000000ff'::uuid, 'ea000000-0000-0000-0000-0000000000b1'::uuid, NULL)$$,
+  '42501',
+  'Access denied: you cannot manage employees for this restaurant',
+  'reactivate with an unknown employee id gives the same access-denied error'
 );
 
 -- ============================================
--- 13-16: manager of restaurant B deactivates
+-- Manager of restaurant B deactivates
 -- ============================================
 
--- p_deactivated_by is spoofed to manager A. The audit column must hold B.
+-- The call sends manager A as a spoofed p_deactivated_by. The audit column
+-- must hold manager B.
 SELECT lives_ok(
   $$SELECT deactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000a1'::uuid, 'seasonal', true, CURRENT_DATE)$$,
   'a manager of restaurant B can deactivate the employee of restaurant B'
@@ -206,7 +250,7 @@ SELECT is(
 );
 
 -- ============================================
--- 17-18: manager of restaurant A cannot reactivate
+-- Other callers cannot reactivate
 -- ============================================
 
 SELECT set_config('request.jwt.claims', '{"sub":"ea000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
@@ -218,13 +262,22 @@ SELECT throws_ok(
   'a manager of restaurant A cannot reactivate an employee of restaurant B'
 );
 
+SELECT set_config('request.jwt.claims', '{"sub":"ea000000-0000-0000-0000-0000000000b2","role":"authenticated"}', true);
+
+SELECT throws_ok(
+  $$SELECT reactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000b2'::uuid, NULL)$$,
+  '42501',
+  'Access denied: you cannot manage employees for this restaurant',
+  'a staff member of restaurant B cannot reactivate an employee'
+);
+
 SELECT ok(
   (SELECT NOT is_active FROM employees WHERE id = 'ea000000-0000-0000-0000-0000000000e1'),
-  'the denied cross-tenant reactivate does not change the employee row'
+  'the denied reactivate calls do not change the employee row'
 );
 
 -- ============================================
--- 19-23: custom role with employees:manage and no pay-rate flag
+-- Custom role with employees:manage and no sensitive flags
 -- ============================================
 
 SELECT set_config('request.jwt.claims', '{"sub":"ea000000-0000-0000-0000-0000000000b3","role":"authenticated"}', true);
@@ -241,8 +294,11 @@ SELECT ok(
   'the denied rate change does not reactivate or change the rate'
 );
 
+-- The call sends manager A as a spoofed p_reactivated_by. The temp table
+-- keeps the row that the RPC returns.
 SELECT lives_ok(
-  $$SELECT reactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000a1'::uuid, NULL)$$,
+  $$CREATE TEMP TABLE ea_custom_reactivate AS
+    SELECT * FROM reactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000a1'::uuid, NULL)$$,
   'a caller with employees:manage can reactivate with no rate'
 );
 
@@ -253,25 +309,46 @@ SELECT ok(
   'reactivate sets the row active and reactivated_by holds auth.uid()'
 );
 
+SELECT ok(
+  (SELECT id = 'ea000000-0000-0000-0000-0000000000e1'::uuid AND is_active
+          AND hourly_rate IS NULL AND email IS NULL
+     FROM ea_custom_reactivate),
+  'reactivate hides pay and PII in the returned row from a caller with no flags'
+);
+
+-- Deactivate again, so that the next section can reactivate with a rate.
 SELECT lives_ok(
-  $$SELECT deactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000b3'::uuid, NULL, false, CURRENT_DATE)$$,
+  $$CREATE TEMP TABLE ea_custom_deactivate AS
+    SELECT * FROM deactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000b3'::uuid, NULL, false, CURRENT_DATE)$$,
   'a caller with employees:manage can deactivate'
 );
 
+SELECT ok(
+  (SELECT NOT is_active AND hourly_rate IS NULL AND email IS NULL
+     FROM ea_custom_deactivate),
+  'deactivate hides pay and PII in the returned row from a caller with no flags'
+);
+
 -- ============================================
--- 24-25: manager of restaurant B reactivates with a new rate
+-- Manager of restaurant B reactivates with a new rate
 -- ============================================
 
 SELECT set_config('request.jwt.claims', '{"sub":"ea000000-0000-0000-0000-0000000000b1","role":"authenticated"}', true);
 
 SELECT lives_ok(
-  $$SELECT reactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000b1'::uuid, 2000)$$,
+  $$CREATE TEMP TABLE ea_manager_reactivate AS
+    SELECT * FROM reactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000b1'::uuid, 2000)$$,
   'a manager of restaurant B can reactivate with a new rate'
 );
 
 SELECT ok(
   (SELECT is_active AND hourly_rate = 2000 FROM employees WHERE id = 'ea000000-0000-0000-0000-0000000000e1'),
   'reactivate with a rate sets the new rate'
+);
+
+SELECT ok(
+  (SELECT hourly_rate = 2000 AND email = 'bea@example.com' FROM ea_manager_reactivate),
+  'a manager with the flags gets pay and PII in the returned row'
 );
 
 SELECT * FROM finish();

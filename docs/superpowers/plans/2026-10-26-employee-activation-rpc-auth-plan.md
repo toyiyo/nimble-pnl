@@ -22,5 +22,6 @@ Design: `docs/superpowers/specs/2026-10-26-employee-activation-rpc-auth-design.m
 
 ## Task 4: Verify
 
+- Run the three pgTAP suites on local PostgreSQL 16 with the stub schema.
 - Run `npm run typecheck`, `npm run lint`, `npm run test`.
 - Push. CI runs the full pgTAP suite on real Supabase.

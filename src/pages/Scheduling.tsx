@@ -1696,7 +1696,7 @@ const Scheduling = () => {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {restaurantId && <TimeOffList restaurantId={restaurantId} />}
+              {restaurantId && <TimeOffList restaurantId={restaurantId} timezone={restaurantTimezone} />}
             </CardContent>
           </Card>
         </TabsContent>

@@ -22,7 +22,7 @@
 
 BEGIN;
 
-SELECT plan(34);
+SELECT plan(38);
 
 -- ============================================
 -- Setup
@@ -35,7 +35,8 @@ VALUES
   ('ea000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ea-mgr-a@example.com',    crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
   ('ea000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ea-mgr-b@example.com',    crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
   ('ea000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ea-staff-b@example.com',  crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
-  ('ea000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ea-custom-b@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+  ('ea000000-0000-0000-0000-0000000000b3', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ea-custom-b@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+  ('ea000000-0000-0000-0000-0000000000b4', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ea-payonly-b@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO restaurants (id, name) VALUES
@@ -59,19 +60,28 @@ ON CONFLICT (id) DO UPDATE SET status = 'scheduled';
 
 -- Custom collaborator role: employees at manage level, no sensitive flags.
 INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin) VALUES
-  ('ea000000-0000-0000-0000-0000000000c1', 'ea000000-0000-0000-0000-00000000000b', 'Roster No Pay', 'pgTAP fixture: employees:manage, no sensitive flags', 'collaborator', false)
+  ('ea000000-0000-0000-0000-0000000000c1', 'ea000000-0000-0000-0000-00000000000b', 'Roster No Pay', 'pgTAP fixture: employees:manage, no sensitive flags', 'collaborator', false),
+  ('ea000000-0000-0000-0000-0000000000c2', 'ea000000-0000-0000-0000-00000000000b', 'Roster Pay Only', 'pgTAP fixture: employees:manage, view:pay_rates only', 'collaborator', false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.role_areas (role_id, area_key, level) VALUES
-  ('ea000000-0000-0000-0000-0000000000c1', 'employees', 'manage')
+  ('ea000000-0000-0000-0000-0000000000c1', 'employees', 'manage'),
+  ('ea000000-0000-0000-0000-0000000000c2', 'employees', 'manage')
 ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
+
+-- The second role holds the pay flag and not the PII flag. Thus the suite can
+-- tell the two masks apart.
+INSERT INTO public.role_flags (role_id, flag) VALUES
+  ('ea000000-0000-0000-0000-0000000000c2', 'view:pay_rates')
+ON CONFLICT (role_id, flag) DO NOTHING;
 
 -- Manager A is a member of A only. Legacy roles keep role_id NULL.
 INSERT INTO user_restaurants (user_id, restaurant_id, role, role_id) VALUES
   ('ea000000-0000-0000-0000-0000000000a1', 'ea000000-0000-0000-0000-00000000000a', 'manager',             NULL),
   ('ea000000-0000-0000-0000-0000000000b1', 'ea000000-0000-0000-0000-00000000000b', 'manager',             NULL),
   ('ea000000-0000-0000-0000-0000000000b2', 'ea000000-0000-0000-0000-00000000000b', 'staff',               NULL),
-  ('ea000000-0000-0000-0000-0000000000b3', 'ea000000-0000-0000-0000-00000000000b', 'collaborator_custom', 'ea000000-0000-0000-0000-0000000000c1')
+  ('ea000000-0000-0000-0000-0000000000b3', 'ea000000-0000-0000-0000-00000000000b', 'collaborator_custom', 'ea000000-0000-0000-0000-0000000000c1'),
+  ('ea000000-0000-0000-0000-0000000000b4', 'ea000000-0000-0000-0000-00000000000b', 'collaborator_custom', 'ea000000-0000-0000-0000-0000000000c2')
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id;
 
 -- ============================================
@@ -349,6 +359,41 @@ SELECT ok(
 SELECT ok(
   (SELECT hourly_rate = 2000 AND email = 'bea@example.com' FROM ea_manager_reactivate),
   'a manager with the flags gets pay and PII in the returned row'
+);
+
+-- ============================================
+-- Pay flag only, and the own row
+-- ============================================
+
+SELECT set_config('request.jwt.claims', '{"sub":"ea000000-0000-0000-0000-0000000000b4","role":"authenticated"}', true);
+
+SELECT lives_ok(
+  $$CREATE TEMP TABLE ea_pay_only_deactivate AS
+    SELECT * FROM deactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000b4'::uuid, NULL, false, CURRENT_DATE)$$,
+  'a caller with employees:manage and view:pay_rates can deactivate'
+);
+
+SELECT ok(
+  (SELECT hourly_rate = 2000 AND email IS NULL FROM ea_pay_only_deactivate),
+  'a caller with only view:pay_rates gets pay but not PII in the returned row'
+);
+
+-- Link the employee to the custom-role caller with no flags. The view shows
+-- the own row unmasked, so the RPC must too.
+UPDATE employees SET user_id = 'ea000000-0000-0000-0000-0000000000b3'
+WHERE id = 'ea000000-0000-0000-0000-0000000000e1';
+
+SELECT set_config('request.jwt.claims', '{"sub":"ea000000-0000-0000-0000-0000000000b3","role":"authenticated"}', true);
+
+SELECT lives_ok(
+  $$CREATE TEMP TABLE ea_self_reactivate AS
+    SELECT * FROM reactivate_employee('ea000000-0000-0000-0000-0000000000e1'::uuid, 'ea000000-0000-0000-0000-0000000000b3'::uuid, NULL)$$,
+  'a caller with no flags can reactivate the own employee row'
+);
+
+SELECT ok(
+  (SELECT hourly_rate = 2000 AND email = 'bea@example.com' FROM ea_self_reactivate),
+  'the own employee row is not masked in the returned row'
 );
 
 SELECT * FROM finish();

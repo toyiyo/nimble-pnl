@@ -4,7 +4,6 @@ import {
   getUserIdFromAuthHeader,
   isOwnerOrManager,
   resolveOAuthRequest,
-  signOAuthState,
   type OAuthRequestBody,
 } from '../_shared/oauthState.ts';
 
@@ -90,22 +89,17 @@ Deno.serve(async (req) => {
         'TIMECARDS_READ'
       ].join(' ');
 
-      const signedState = await signOAuthState(
-        { provider: 'square', restaurantId, userId, origin: appOrigin.origin },
-        gate.stateSecret
-      );
-
       const authUrl = new URL(`${SQUARE_BASE_URL}/oauth2/authorize`);
       authUrl.searchParams.set('client_id', SQUARE_APPLICATION_ID);
       authUrl.searchParams.set('scope', scopes);
       authUrl.searchParams.set('session', 'false');
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-      authUrl.searchParams.set('state', signedState);
+      authUrl.searchParams.set('state', gate.signedState);
 
       return jsonResponse({ authorizationUrl: authUrl.toString() });
 
     } else {
-      // The restaurant (and the Clover region) come only from the verified state.
+      // The restaurant comes only from the verified state.
       console.log('Square callback processing for restaurant:', restaurantId);
 
       // Exchange authorization code for access token

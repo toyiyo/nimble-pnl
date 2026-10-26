@@ -5,7 +5,6 @@ import {
   getUserIdFromAuthHeader,
   isOwnerOrManager,
   resolveOAuthRequest,
-  signOAuthState,
   type OAuthRequestBody,
 } from '../_shared/oauthState.ts';
 
@@ -97,27 +96,16 @@ Deno.serve(async (req) => {
         'EMPLOYEES_R'
       ].join(',');
 
-      const signedState = await signOAuthState(
-        {
-          provider: 'clover',
-          restaurantId,
-          userId,
-          origin: appOrigin.origin,
-          region: cloverRegion,
-        },
-        gate.stateSecret
-      );
-
       const authUrl = new URL(`https://${CLOVER_DOMAIN}/oauth/v2/authorize`);
       authUrl.searchParams.set('client_id', CLOVER_APP_ID);
       authUrl.searchParams.set('scope', permissions);
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-      authUrl.searchParams.set('state', signedState);
+      authUrl.searchParams.set('state', gate.signedState);
 
       return jsonResponse({ authorizationUrl: authUrl.toString() });
 
     } else {
-      // The restaurant (and the Clover region) come only from the verified state.
+      // The restaurant and the region come only from the verified state.
 
       console.log('Clover callback processing:', { restaurantId, region: cloverRegion });
 

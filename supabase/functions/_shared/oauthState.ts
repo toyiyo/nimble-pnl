@@ -11,7 +11,7 @@
 
 import { signPayloadBytes, splitToken, toBase64Url, verifySignature } from './hmacToken.ts';
 
-export const OAUTH_PROVIDERS = ['square', 'clover', 'toast'] as const;
+const OAUTH_PROVIDERS = ['square', 'clover', 'toast'] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 export const CLOVER_REGIONS = ['na', 'eu', 'latam', 'apac'] as const;
@@ -311,16 +311,15 @@ interface OAuthRequestBase {
   appOrigin: AppOrigin;
   /** Clover only. */
   region: CloverRegion | undefined;
-  /** The checked secret, for signOAuthState. */
-  stateSecret: string;
 }
 
-export type OAuthRequestGate =
-  | (OAuthRequestBase & { ok: true; action: 'authorize' })
+type OAuthRequestGate =
+  // The gate signs the state itself, so the secret never leaves this module.
+  | (OAuthRequestBase & { ok: true; action: 'authorize'; signedState: string })
   | (OAuthRequestBase & { ok: true; action: 'callback'; code: string })
   | { ok: false; status: 400 | 401 | 403 | 500; error: string };
 
-export interface ResolveOAuthRequestParams {
+interface ResolveOAuthRequestParams {
   provider: OAuthProvider;
   body: OAuthRequestBody;
   headers: HeaderReader;
@@ -355,7 +354,7 @@ export async function resolveOAuthRequest(params: ResolveOAuthRequestParams): Pr
     }
     let region: CloverRegion | undefined;
     if (provider === 'clover') {
-      const requested = body.region ?? DEFAULT_CLOVER_REGION;
+      const requested = body.region === undefined ? DEFAULT_CLOVER_REGION : body.region;
       if (!isCloverRegion(requested)) {
         return { ok: false, status: 400, error: 'Invalid Clover region' };
       }
@@ -364,15 +363,14 @@ export async function resolveOAuthRequest(params: ResolveOAuthRequestParams): Pr
     if (!(await params.isOwnerOrManager(userId, body.restaurantId))) {
       return { ok: false, status: 403, error: 'Access denied to restaurant' };
     }
-    return {
-      ok: true,
-      action: 'authorize',
-      userId,
-      restaurantId: body.restaurantId,
-      appOrigin: resolveAppOrigin(params.headers, allowedOrigins),
-      region,
+    const restaurantId = body.restaurantId;
+    const appOrigin = resolveAppOrigin(params.headers, allowedOrigins);
+    const signedState = await signOAuthState(
+      { provider, restaurantId, userId, origin: appOrigin.origin, region },
       stateSecret,
-    };
+      params.nowSeconds
+    );
+    return { ok: true, action: 'authorize', userId, restaurantId, appOrigin, region, signedState };
   }
 
   if (body.action === 'callback') {
@@ -400,7 +398,6 @@ export async function resolveOAuthRequest(params: ResolveOAuthRequestParams): Pr
       restaurantId: check.restaurantId,
       appOrigin: { origin: check.origin, isProduction: check.isProduction },
       region: provider === 'clover' ? (check.region ?? DEFAULT_CLOVER_REGION) : undefined,
-      stateSecret,
     };
   }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   signOAuthState,
   verifyOAuthState,
@@ -12,6 +12,7 @@ import {
   OAUTH_STATE_TTL_SECONDS,
   OAUTH_STATE_MAX_LENGTH,
   PRODUCTION_APP_ORIGIN,
+  type OAuthProvider,
   type SignOAuthStateInput,
 } from '../../supabase/functions/_shared/oauthState';
 import { fromBase64Url, toBase64Url } from '../../supabase/functions/_shared/hmacToken';
@@ -395,10 +396,19 @@ describe('checkOAuthCallback', () => {
 describe('resolveOAuthRequest', () => {
   const allowedOriginsEnv = 'https://preview.example.com';
 
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   async function gate(
     body: Record<string, unknown>,
     overrides: {
-      provider?: 'square' | 'clover' | 'toast';
+      provider?: OAuthProvider;
       secret?: string;
       callerId?: string | null;
       hasRole?: boolean;
@@ -421,13 +431,11 @@ describe('resolveOAuthRequest', () => {
   }
 
   it('returns 500 with no other work when the secret is missing or short', async () => {
-    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (const secret of ['', 'short']) {
       const { result, getUserId } = await gate({ action: 'authorize', restaurantId: RESTAURANT_A }, { secret });
       expect(result).toMatchObject({ ok: false, status: 500 });
       expect(getUserId).not.toHaveBeenCalled();
     }
-    warn.mockRestore();
   });
 
   it('returns 400 for an unknown action', async () => {
@@ -436,21 +444,37 @@ describe('resolveOAuthRequest', () => {
   });
 
   describe('authorize', () => {
-    it('returns the checked values for an owner or manager', async () => {
+    it('returns the checked values and a signed state for an owner or manager', async () => {
       const { result, hasRole } = await gate(
         { action: 'authorize', restaurantId: RESTAURANT_A },
         { origin: 'https://preview.example.com' }
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         ok: true,
         action: 'authorize',
         userId: USER,
         restaurantId: RESTAURANT_A,
         appOrigin: { origin: 'https://preview.example.com', isProduction: false },
         region: undefined,
-        stateSecret: SECRET,
       });
+      expect(result).not.toHaveProperty('stateSecret');
       expect(hasRole).toHaveBeenCalledWith(USER, RESTAURANT_A);
+
+      const signedState = (result as { signedState: string }).signedState;
+      expect(await verifyOAuthState(signedState, SECRET, 'square', NOW)).toMatchObject({
+        rid: RESTAURANT_A,
+        uid: USER,
+        o: 'https://preview.example.com',
+      });
+    });
+
+    it('signs the Clover region into the state', async () => {
+      const { result } = await gate(
+        { action: 'authorize', restaurantId: RESTAURANT_A, region: 'latam' },
+        { provider: 'clover' }
+      );
+      const signedState = (result as { signedState: string }).signedState;
+      expect((await verifyOAuthState(signedState, SECRET, 'clover', NOW))?.r).toBe('latam');
     });
 
     it('returns 401 with no valid JWT', async () => {
@@ -470,15 +494,18 @@ describe('resolveOAuthRequest', () => {
     });
 
     it('uses the default Clover region and accepts a valid one', async () => {
-      const a = await gate({ action: 'authorize', restaurantId: RESTAURANT_A }, { provider: 'clover' });
-      expect(a.result).toMatchObject({ ok: true, region: 'na' });
-      const b = await gate({ action: 'authorize', restaurantId: RESTAURANT_A, region: 'eu' }, { provider: 'clover' });
-      expect(b.result).toMatchObject({ ok: true, region: 'eu' });
+      const defaultRegion = await gate({ action: 'authorize', restaurantId: RESTAURANT_A }, { provider: 'clover' });
+      expect(defaultRegion.result).toMatchObject({ ok: true, region: 'na' });
+      const explicitRegion = await gate(
+        { action: 'authorize', restaurantId: RESTAURANT_A, region: 'eu' },
+        { provider: 'clover' }
+      );
+      expect(explicitRegion.result).toMatchObject({ ok: true, region: 'eu' });
     });
 
-    it('returns 400 for a Clover region outside the set, before the role check', async () => {
+    it.each(['mars', null, ''])('returns 400 for the Clover region %s, before the role check', async (region) => {
       const { result, hasRole } = await gate(
-        { action: 'authorize', restaurantId: RESTAURANT_A, region: 'mars' },
+        { action: 'authorize', restaurantId: RESTAURANT_A, region },
         { provider: 'clover' }
       );
       expect(result).toMatchObject({ ok: false, status: 400, error: 'Invalid Clover region' });
@@ -498,7 +525,6 @@ describe('resolveOAuthRequest', () => {
         restaurantId: RESTAURANT_A,
         appOrigin: { origin: 'https://preview.example.com', isProduction: false },
         region: undefined,
-        stateSecret: SECRET,
       });
     });
 
@@ -520,35 +546,27 @@ describe('resolveOAuthRequest', () => {
     });
 
     it('returns 403 for an unsigned state (the bare restaurant id)', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result, hasRole } = await gate({ action: 'callback', code: 'c0de', state: RESTAURANT_B });
       expect(result).toMatchObject({ ok: false, status: 403 });
       expect(hasRole).not.toHaveBeenCalled();
-      warn.mockRestore();
-    });
+      });
 
     it('returns 401 when the caller has no valid JWT', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const state = await signOAuthState(input(), SECRET, NOW);
       const { result } = await gate({ action: 'callback', code: 'c0de', state }, { callerId: null });
       expect(result).toMatchObject({ ok: false, status: 401 });
-      warn.mockRestore();
-    });
+      });
 
     it('returns 403 when the caller is a different user', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const state = await signOAuthState(input(), SECRET, NOW);
       const { result } = await gate({ action: 'callback', code: 'c0de', state }, { callerId: OTHER_USER });
       expect(result).toMatchObject({ ok: false, status: 403 });
-      warn.mockRestore();
-    });
+      });
 
     it('returns 403 when the user lost the owner or manager role', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const state = await signOAuthState(input(), SECRET, NOW);
       const { result } = await gate({ action: 'callback', code: 'c0de', state }, { hasRole: false });
       expect(result).toMatchObject({ ok: false, status: 403 });
-      warn.mockRestore();
-    });
+      });
   });
 });

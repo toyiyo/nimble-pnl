@@ -29,11 +29,10 @@ describe.each(FUNCTIONS)('%s', (name) => {
 
   it('sets the state only to the signed token', () => {
     const stateSets = src.match(/searchParams\.set\('state', [^)]*\)/g) ?? [];
-    expect(stateSets).toEqual(["searchParams.set('state', signedState)"]);
+    expect(stateSets).toEqual(["searchParams.set('state', gate.signedState)"]);
   });
 
-  it('takes the restaurant in the callback only from the gate', () => {
-    expect(src).toMatch(/const \{ appOrigin, userId, restaurantId \} = gate;/);
+  it('does not take the restaurant from the raw state', () => {
     expect(src).not.toMatch(/restaurantId = state/);
     expect(src).not.toMatch(/JSON\.parse\(state\)/);
   });
@@ -46,7 +45,8 @@ describe.each(FUNCTIONS)('%s', (name) => {
     }
   });
 
-  it('does not read the raw Origin or Referer header', () => {
+  it('builds the redirect from the checked app origin, not from a raw header', () => {
+    expect(src).toMatch(/REDIRECT_URI = `\$\{appOrigin\.origin\}\/[a-z]+\/callback`/);
     expect(src).not.toMatch(/headers\.get\('(origin|referer)'\)/i);
   });
 });

@@ -130,7 +130,9 @@ Pure functions. No Deno globals, so Vitest can import them.
    (added after the Phase 7a review, to stop three copies of the checks).
    It checks the secret, the action, the body field types, the JWT, the
    role, the Clover region, and calls `checkOAuthCallback` for a callback.
-   It returns `{ ok: false, status, error }` or the checked values.
+   It returns `{ ok: false, status, error }` or the checked values. For
+   `authorize`, it also returns the signed state, so the secret does not
+   leave the module.
 8. `verifyOAuthState` rejects a `state` longer than 2048 characters before
    it decodes it. `resolveAppOrigin` logs a warning for an origin that is
    not in the allowlist.

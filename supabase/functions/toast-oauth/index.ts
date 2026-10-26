@@ -4,7 +4,6 @@ import {
   getUserIdFromAuthHeader,
   isOwnerOrManager,
   resolveOAuthRequest,
-  signOAuthState,
   type OAuthRequestBody,
 } from '../_shared/oauthState.ts';
 
@@ -74,22 +73,17 @@ Deno.serve(async (req) => {
         'restaurant:read'
       ].join(' ');
 
-      const signedState = await signOAuthState(
-        { provider: 'toast', restaurantId, userId, origin: appOrigin.origin },
-        gate.stateSecret
-      );
-
       const authUrl = new URL(`${TOAST_BASE_URL}/authentication/v1/authorize`);
       authUrl.searchParams.set('client_id', TOAST_CLIENT_ID);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('scope', scopes);
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-      authUrl.searchParams.set('state', signedState);
+      authUrl.searchParams.set('state', gate.signedState);
 
       return jsonResponse({ authorizationUrl: authUrl.toString() });
 
     } else {
-      // The restaurant (and the Clover region) come only from the verified state.
+      // The restaurant comes only from the verified state.
 
       // Exchange authorization code for access token
       const tokenResponse = await fetch(`${TOAST_BASE_URL}/authentication/v1/token`, {

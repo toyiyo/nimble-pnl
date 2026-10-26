@@ -7,9 +7,11 @@
 -- The problem: 4 PERMISSIVE policies on storage.objects
 -- (supabase/migrations/20250927214536_f9d9e0f9-0f8d-4ffb-93c9-f2667b19b4e9.sql)
 -- check only `bucket_id = 'receipt-images' AND auth.uid() IS NOT NULL`.
--- Permissive policies are ORed, so any signed-in user can read, replace or
--- delete the receipts of any restaurant. The fix deletes the 4 policies and
--- keeps the folder policies that check user_restaurants.
+-- Postgres ORs permissive policies, so any signed-in user can read, replace
+-- or delete the receipts of any restaurant. The fix deletes the 4 policies and
+-- keeps the folder policies that check user_restaurants. It also adds
+-- operations_manager and collaborator_operations_manager to the folder INSERT
+-- and UPDATE policies.
 --
 -- Run as the real `authenticated` role with JWT claims so that RLS applies.
 -- As superuser, RLS does not apply.
@@ -22,16 +24,17 @@ BEGIN;
 SELECT plan(17);
 
 -- ----------------------------------------------------------------------------
--- Fixtures: two restaurants, five users. `e3000000-…` prefix so the ids do
--- not collide with any other test file.
+-- Fixtures: 2 restaurants, 5 users. The ids use the prefix `e3000000-` so
+-- that they do not collide with ids in other test files. USER_B makes
+-- restaurant B a real tenant with its own member.
 --
 --   restaurant A (e3000000-...-0000000000a1)
 --   restaurant B (e3000000-...-0000000000b1)
---   USER_A  (...01) — owner of restaurant A
---   USER_B  (...02) — owner of restaurant B
---   OPS_A   (...03) — operations_manager of restaurant A
---   CHEF_A  (...04) — chef of restaurant A
---   STAFF_A (...05) — staff of restaurant A
+--   USER_A  (...01): owner of restaurant A
+--   USER_B  (...02): owner of restaurant B
+--   OPS_A   (...03): operations_manager of restaurant A
+--   CHEF_A  (...04): chef of restaurant A
+--   STAFF_A (...05): staff of restaurant A
 -- ----------------------------------------------------------------------------
 INSERT INTO auth.users (id, email) VALUES
   ('e3000000-0000-0000-0000-000000000001', 'rcpt-rls-a@example.test'),
@@ -241,7 +244,7 @@ SELECT is(
   (SELECT count(*)::int FROM storage.objects
    WHERE bucket_id = 'receipt-images'
      AND name = 'e3000000-0000-0000-0000-0000000000b1/receipt-b.pdf'
-      AND (metadata IS NULL OR NOT metadata ? 'tampered')),
+     AND (metadata IS NULL OR NOT metadata ? 'tampered')),
   1,
   'the receipt of restaurant B still exists and has no change'
 );
@@ -249,9 +252,9 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM storage.objects
    WHERE bucket_id = 'receipt-images'
-      AND name LIKE 'e3000000-0000-0000-0000-0000000000b1/%'),
+     AND name LIKE 'e3000000-0000-0000-0000-0000000000b1/%'),
   1,
-  'no object was planted in the folder of restaurant B'
+  'the folder of restaurant B contains only receipt-b.pdf'
 );
 
 SELECT * FROM finish();

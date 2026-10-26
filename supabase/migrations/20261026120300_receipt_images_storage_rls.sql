@@ -33,12 +33,13 @@
 -- change.
 -- ============================================================================
 
--- DROP POLICY and CREATE POLICY lock storage.objects for every bucket. Fail
--- fast if a long transaction holds the table.
+-- DROP POLICY and CREATE POLICY lock storage.objects for every bucket. Stop
+-- the migration after 5 seconds if a long transaction holds a lock on the table.
 SET LOCAL lock_timeout = '5s';
 
--- 1. Delete the permissive policies. The INSERT policy has two names: the
---    name in the migration, and the name in the audit report.
+-- 1. Delete the permissive policies. Production can carry the INSERT policy
+--    under a second name. DROP POLICY IF EXISTS does nothing when a name is
+--    absent.
 DROP POLICY IF EXISTS "Allow authenticated users to upload receipt images" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated users to upload their receipt images" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated users to view their receipt images" ON storage.objects;
@@ -46,7 +47,7 @@ DROP POLICY IF EXISTS "Allow authenticated users to update their receipt images"
 DROP POLICY IF EXISTS "Allow authenticated users to delete their receipt images" ON storage.objects;
 
 -- 2. Recreate the folder INSERT and UPDATE policies with the receipt_imports
---    writer roles.
+--    writer roles. Keep the 3 role arrays below the same.
 DROP POLICY IF EXISTS "Users can upload receipt images for their restaurants" ON storage.objects;
 CREATE POLICY "Users can upload receipt images for their restaurants"
 ON storage.objects

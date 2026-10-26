@@ -20,7 +20,6 @@ signed in
 | "Allow authenticated users to update their receipt images" | UPDATE | same |
 | "Allow authenticated users to delete their receipt images" | DELETE | same |
 
-
 Postgres ORs permissive policies for the same command. Thus these 4 policies
 cancel the folder policies that check `user_restaurants`
 (`20250928000424_...sql:21-77`).
@@ -194,7 +193,6 @@ SELECT 'expense_invoice_uploads', count(*) FROM public.expense_invoice_uploads W
 - The fix does not change the UI capability gaps for `chef`,
   `collaborator_inventory` and `collaborator_accountant`. The table policies
   already block those flows, so a change belongs in a separate fix.
-
 
 ## TLA+
 

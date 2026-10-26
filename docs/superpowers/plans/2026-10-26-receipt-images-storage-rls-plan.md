@@ -15,6 +15,9 @@ Design: `docs/superpowers/specs/2026-10-26-receipt-images-storage-rls-design.md`
 - As the `operations_manager`: check that an INSERT in the folder of A
   succeeds.
 - Check in `pg_policies` that the 4 permissive policies do not exist.
+- Add the other cases from the "Tests" section of the design doc: chef,
+  staff, move into another folder, path without a folder, and the catalog
+  check.
 - Expected result before Task 2: the cross-tenant tests and the
   `operations_manager` test fail.
 

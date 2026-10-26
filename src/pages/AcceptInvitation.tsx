@@ -12,7 +12,7 @@ import { signInWithOAuthNative } from '@/utils/nativeRedirect';
 import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-react';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
-import { classifyInvitationError } from '@/lib/invitationUtils';
+import { classifyInvitationError, readFunctionErrorBody } from '@/lib/invitationUtils';
 import { storeSignupPath, recordTeamMemberJoined } from '@/lib/analytics';
 
 interface InvitationDetails {
@@ -274,7 +274,21 @@ export function AcceptInvitation() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        const body = await readFunctionErrorBody(error);
+        // The email already has an account. The server does not change it.
+        // Open the sign-in form; the token stays in the URL for the accept.
+        if (body?.code === 'account_exists') {
+          setPassword('');
+          setShowSignIn(true);
+          toast({
+            title: 'You already have an account',
+            description: body.error || 'Sign in to accept this invitation.',
+          });
+          return;
+        }
+        throw new Error(body?.error || error.message);
+      }
 
       if (data.success) {
         // Sign in with the password already in state — a second manual

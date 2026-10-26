@@ -191,6 +191,41 @@ describe('handleSignupWithInvitation', () => {
   });
 });
 
+describe('handleSignupWithInvitation input and response edges', () => {
+  it('returns 400 for a null body', async () => {
+    const { admin, mocks } = makeAdmin();
+
+    const result = await handleSignupWithInvitation(
+      admin,
+      null as unknown as Parameters<typeof handleSignupWithInvitation>[1],
+    );
+
+    expect(result.status).toBe(400);
+    expect(mocks.createUser).not.toHaveBeenCalled();
+  });
+
+  it('treats an expires_at that does not parse as expired', async () => {
+    const { admin, mocks } = makeAdmin({
+      invitation: { id: 'inv-1', restaurant_id: 'r-1', email: BODY.email, expires_at: 'not-a-date' },
+    });
+
+    const result = await handleSignupWithInvitation(admin, BODY);
+
+    expect(result.status).toBe(400);
+    expect(result.body.error).toBe('Invitation has expired');
+    expect(mocks.createUser).not.toHaveBeenCalled();
+  });
+
+  it('does not send the restaurant row to the caller', async () => {
+    const { admin } = makeAdmin();
+
+    const result = await handleSignupWithInvitation(admin, BODY);
+
+    expect(result.status).toBe(200);
+    expect(result.body).not.toHaveProperty('restaurant');
+  });
+});
+
 describe('isEmailAlreadyRegisteredError', () => {
   it.each([
     [{ message: 'x', code: 'email_exists' }, true],

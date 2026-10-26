@@ -58,7 +58,6 @@ export interface SignupResult {
     code?: string;
     error?: string;
     message?: string;
-    restaurant?: unknown;
   };
 }
 
@@ -87,9 +86,9 @@ function failure(status: number, error: string, code?: string): SignupResult {
 
 export async function handleSignupWithInvitation(
   admin: SignupWithInvitationAdmin,
-  request: Partial<SignupRequest>,
+  request: Partial<SignupRequest> | null,
 ): Promise<SignupResult> {
-  const { email, password, fullName, token } = request;
+  const { email, password, fullName, token } = request ?? {};
   if (!email || !password || !token) {
     return failure(400, 'Email, password, and invitation token are required');
   }
@@ -110,7 +109,9 @@ export async function handleSignupWithInvitation(
     return failure(400, 'Invalid or expired invitation');
   }
 
-  if (new Date(invitation.expires_at as string) < new Date()) {
+  // A value that does not parse counts as expired.
+  const expiresAt = new Date(invitation.expires_at as string).getTime();
+  if (Number.isNaN(expiresAt) || expiresAt < Date.now()) {
     console.error('Invitation expired:', invitation.id);
     return failure(400, 'Invitation has expired');
   }
@@ -135,7 +136,7 @@ export async function handleSignupWithInvitation(
 
   const { data: restaurant } = await admin
     .from('restaurants')
-    .select('*')
+    .select('name')
     .eq('id', invitation.restaurant_id as string)
     .single();
 
@@ -144,7 +145,6 @@ export async function handleSignupWithInvitation(
     body: {
       success: true,
       message: `Welcome to ${restaurant?.name || 'the team'}! Please sign in with your new account.`,
-      restaurant,
     },
   };
 }

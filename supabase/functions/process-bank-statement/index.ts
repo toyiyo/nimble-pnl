@@ -2,6 +2,14 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
+import {
+  authorizeDocumentRequest,
+  BANK_STATEMENT_PROCESS_ROLES,
+  createDocumentAuthDeps,
+  downloadDocumentAsDataUrl,
+  isAllowedStorageUrl,
+  MAX_BANK_STATEMENT_BYTES,
+} from "../_shared/documentProcessingAuth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,7 +18,22 @@ const corsHeaders = {
 
 interface BankStatementProcessRequest {
   statementUploadId: string;
-  pdfUrl: string; // Signed URL to the PDF
+  pdfUrl?: string; // Old clients only. The server loads the row's file and never fetches this URL.
+}
+
+interface StatementRecord {
+  restaurant_id: string;
+  file_size: number | null;
+  raw_file_url: string | null;
+}
+
+const DOWNLOAD_FAILED_MESSAGE = "Failed to download the bank statement file. Please upload it again.";
+
+function jsonResponse(body: Record<string, unknown>, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status,
+  });
 }
 
 interface ParsedTransaction {
@@ -199,7 +222,7 @@ const DEFAULT_MAX_TOKENS = 4096;
 
 // File size limits to prevent resource exhaustion
 const MAX_FILE_SIZE_MB = 5; // 5MB limit for PDFs
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = MAX_BANK_STATEMENT_BYTES;
 
 function buildRequestBody(modelId: string, systemPrompt: string, pdfData: string, isBase64: boolean = false): any {
   const requestedMax = 8000; // Increased from 2500 to 8000 for large statements
@@ -469,34 +492,32 @@ serve(async (req) => {
   try {
     const { statementUploadId, pdfUrl }: BankStatementProcessRequest = await req.json();
 
-    if (!statementUploadId || !pdfUrl) {
-      return new Response(JSON.stringify({ error: "Statement upload ID and PDF URL are required" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      });
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get statement info to find restaurant_id and file_size
-    const { data: statementInfo, error: statementInfoError } = await supabase
-      .from("bank_statement_uploads")
-      .select("restaurant_id, file_size")
-      .eq("id", statementUploadId)
-      .single();
-
-    if (statementInfoError || !statementInfo) {
-      console.error("Error fetching statement info:", statementInfoError);
-      return new Response(JSON.stringify({ error: "Failed to fetch statement info" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      });
+    // The service role bypasses RLS, so check the caller before any read or write.
+    const auth = await authorizeDocumentRequest<StatementRecord>(
+      {
+        authHeader: req.headers.get("Authorization"),
+        recordId: statementUploadId,
+        allowedRoles: BANK_STATEMENT_PROCESS_ROLES,
+      },
+      createDocumentAuthDeps<StatementRecord>(supabase, "bank_statement_uploads", "restaurant_id, file_size, raw_file_url"),
+    );
+    if (!auth.ok) {
+      return jsonResponse({ error: auth.error }, auth.status);
     }
 
+    const statementInfo = auth.record;
     const restaurantId = statementInfo.restaurant_id;
-    
+
+    // Old clients send a signed storage URL. Reject any other URL. The server never fetches it.
+    if (pdfUrl && !isAllowedStorageUrl(pdfUrl, supabaseUrl)) {
+      console.error("📄 Rejected PDF source that is not a project storage URL");
+      return jsonResponse({ error: "Unsupported document source" }, 400);
+    }
+
     // Validate file size to prevent resource exhaustion
     if (statementInfo.file_size && statementInfo.file_size > MAX_FILE_SIZE_BYTES) {
       const fileSizeMB = (statementInfo.file_size / (1024 * 1024)).toFixed(2);
@@ -523,97 +544,36 @@ serve(async (req) => {
       );
     }
 
-    console.log(`📄 Processing file: ${(statementInfo.file_size / (1024 * 1024)).toFixed(2)}MB`);
-    console.log("🔄 Starting PDF download and conversion to base64...");
-
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
     if (!openRouterApiKey) {
-      return new Response(JSON.stringify({ error: "OpenRouter API key not configured" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      });
+      return jsonResponse({ error: "OpenRouter API key not configured" }, 500);
     }
 
-    // Download PDF from signed URL and convert to base64
-    // This ensures OpenRouter can access the file regardless of URL expiry
-    let pdfBase64Data: string;
-    try {
-      const startTime = Date.now();
-      console.log("📥 Fetching PDF from signed URL...");
+    // Load the row's own file from storage. The download checks the real size,
+    // because the client writes file_size.
+    const startTime = Date.now();
+    const download = await downloadDocumentAsDataUrl(
+      supabase,
+      statementInfo.raw_file_url,
+      restaurantId,
+      MAX_FILE_SIZE_BYTES,
+      "application/pdf",
+    );
+    if (!download.ok) {
+      const tooLarge = download.reason === "too_large";
+      const message = tooLarge
+        ? `File is too large. Maximum file size is ${MAX_FILE_SIZE_MB}MB. Please split your statement into smaller PDFs.`
+        : DOWNLOAD_FAILED_MESSAGE;
 
-      // Fix Docker networking: replace localhost/127.0.0.1 with host.docker.internal
-      // Edge functions run in Docker and can't reach the host via localhost
-      let fetchUrl = pdfUrl;
-      try {
-        const url = new URL(pdfUrl);
-        if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
-          url.hostname = 'host.docker.internal';
-          fetchUrl = url.toString();
-          if (Deno.env.get('DEBUG') === 'true') {
-            console.log("🔄 Replaced localhost with host.docker.internal for Docker networking");
-          }
-        }
-      } catch {
-        // Keep original pdfUrl if it isn't a valid absolute URL
-      }
-
-      // Set up abort controller with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      const pdfResponse = await fetch(fetchUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (!pdfResponse.ok) {
-        throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
-      }
-
-      const pdfBlob = await pdfResponse.arrayBuffer();
-      const downloadTime = Date.now() - startTime;
-      console.log(`✅ PDF downloaded: ${(pdfBlob.byteLength / (1024 * 1024)).toFixed(2)}MB in ${downloadTime}ms`);
-
-      // Convert to base64 in chunks to avoid stack overflow on large files
-      console.log("🔄 Converting PDF to base64...");
-      const conversionStartTime = Date.now();
-      const uint8Array = new Uint8Array(pdfBlob);
-      const chunkSize = 32768; // 32KB chunks
-
-      // Step 1: Convert all bytes to binary string (chunked to avoid stack overflow)
-      let binaryString = "";
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-        binaryString += String.fromCharCode(...chunk);
-      }
-
-      // Step 2: Encode the complete binary string to base64
-      const base64 = btoa(binaryString);
-      pdfBase64Data = `data:application/pdf;base64,${base64}`;
-      
-      const conversionTime = Date.now() - conversionStartTime;
-      console.log(`✅ PDF converted to base64: ${(base64.length / 1024).toFixed(2)}KB in ${conversionTime}ms`);
-    } catch (fetchError) {
-      console.error("❌ Failed to fetch and convert PDF:", fetchError);
-      
-      // Update statement with error
       await supabase
         .from("bank_statement_uploads")
-        .update({
-          status: "error",
-          error_message: `Failed to download PDF: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`
-        })
+        .update({ status: "error", error_message: message })
         .eq("id", statementUploadId);
-      
-      return new Response(
-        JSON.stringify({
-          error: "Failed to fetch PDF for processing",
-          details: fetchError instanceof Error ? fetchError.message : String(fetchError),
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 400,
-        },
-      );
+
+      return jsonResponse({ error: message }, tooLarge ? 413 : 400);
     }
+    const pdfBase64Data = download.dataUrl;
+    console.log(`✅ PDF loaded from storage: ${(download.byteLength / (1024 * 1024)).toFixed(2)}MB in ${Date.now() - startTime}ms`);
 
     console.log("🏦 Processing bank statement with multi-model fallback...");
 
@@ -824,14 +784,13 @@ serve(async (req) => {
         .from("bank_statement_uploads")
         .update({
           status: "error",
-          error_message: `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`
+          error_message: "Failed to read the bank statement. Please try again or upload a clearer PDF."
         })
         .eq("id", statementUploadId);
 
       return new Response(
         JSON.stringify({
           error: "Failed to parse bank statement data",
-          details: parseError instanceof Error ? parseError.message : String(parseError),
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -937,7 +896,6 @@ serve(async (req) => {
         
         return new Response(JSON.stringify({ 
           error: "Failed to insert transaction lines",
-          details: linesError,
           insertedCount,
           totalValidTransactions,
           totalTransactions: validationResult.transactions.length,
@@ -1002,7 +960,6 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         error: "An unexpected error occurred while processing the bank statement",
-        details: error instanceof Error ? error.message : String(error),
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

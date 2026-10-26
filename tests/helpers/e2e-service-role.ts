@@ -85,7 +85,7 @@ function requireEnv(key: string): string {
  * The build is lazy on purpose. An import of this module must not throw in a
  * spec that never calls `setSubscriptionTier`.
  */
-function getServiceRoleClient(): SupabaseClient<Database> {
+export function getServiceRoleClient(): SupabaseClient<Database> {
   if (cachedClient) {
     return cachedClient;
   }

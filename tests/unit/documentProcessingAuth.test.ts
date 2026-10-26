@@ -10,6 +10,7 @@ import {
   bytesToDataUrl,
   createDocumentAuthDeps,
   downloadDocumentAsDataUrl,
+  inlineDataUrlBytes,
   isAllowedStorageUrl,
   isInlineDataUrl,
   isRestaurantStoragePath,
@@ -85,6 +86,14 @@ describe('isInlineDataUrl', () => {
   it('rejects a value that is not a string', () => {
     expect(isInlineDataUrl(undefined, ['image/'])).toBe(false);
     expect(isInlineDataUrl(42, ['image/'])).toBe(false);
+  });
+});
+
+describe('inlineDataUrlBytes', () => {
+  it('returns the decoded size of a base64 data URL', () => {
+    expect(inlineDataUrlBytes('data:application/pdf;base64,JVBERi0xLjQ=')).toBe(8);
+    expect(inlineDataUrlBytes('data:image/png;base64,QUFB')).toBe(3);
+    expect(inlineDataUrlBytes('data:image/png;base64,QQ==')).toBe(1);
   });
 });
 
@@ -343,7 +352,7 @@ describe('downloadDocumentAsDataUrl', () => {
 
   it('downloads the row path from the document bucket', async () => {
     const { client, downloads } = makeClient({ download: { data: pdf(), error: null } });
-    const result = await downloadDocumentAsDataUrl(client, path, RESTAURANT_ID, 1024, 'application/pdf');
+    const result = await downloadDocumentAsDataUrl(client, { path, restaurantId: RESTAURANT_ID, maxBytes: 1024, mime: 'application/pdf' });
     expect(result).toEqual({ ok: true, dataUrl: 'data:application/pdf;base64,JVBERi0xLjQ=', byteLength: 8 });
     expect(downloads).toEqual([{ bucket: DOCUMENT_BUCKET, path }]);
   });
@@ -351,13 +360,7 @@ describe('downloadDocumentAsDataUrl', () => {
   it('does not download a path of a different tenant', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { client, downloads } = makeClient({ download: { data: pdf(), error: null } });
-    const result = await downloadDocumentAsDataUrl(
-      client,
-      `${OTHER_RESTAURANT_ID}/a.pdf`,
-      RESTAURANT_ID,
-      1024,
-      'application/pdf',
-    );
+    const result = await downloadDocumentAsDataUrl(client, { path: `${OTHER_RESTAURANT_ID}/a.pdf`, restaurantId: RESTAURANT_ID, maxBytes: 1024, mime: 'application/pdf' });
     expect(result).toEqual({ ok: false, reason: 'invalid_path' });
     expect(downloads).toHaveLength(0);
     errorSpy.mockRestore();
@@ -366,21 +369,30 @@ describe('downloadDocumentAsDataUrl', () => {
   it('rejects a file above the size limit', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { client } = makeClient({ download: { data: pdf(), error: null } });
-    const result = await downloadDocumentAsDataUrl(client, path, RESTAURANT_ID, 4, 'application/pdf');
+    const result = await downloadDocumentAsDataUrl(client, { path, restaurantId: RESTAURANT_ID, maxBytes: 4, mime: 'application/pdf' });
     expect(result).toEqual({ ok: false, reason: 'too_large' });
+    errorSpy.mockRestore();
+  });
+
+  it('returns download_failed when storage does not answer in time', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client } = makeClient();
+    client.storage.from = () => ({ download: () => new Promise(() => {}) });
+    const result = await downloadDocumentAsDataUrl(client, {
+      path,
+      restaurantId: RESTAURANT_ID,
+      maxBytes: 1024,
+      mime: 'application/pdf',
+      timeoutMs: 5,
+    });
+    expect(result).toEqual({ ok: false, reason: 'download_failed' });
     errorSpy.mockRestore();
   });
 
   it('returns download_failed for a storage error and for a throw', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const errored = await downloadDocumentAsDataUrl(makeClient().client, path, RESTAURANT_ID, 1024, 'application/pdf');
-    const thrown = await downloadDocumentAsDataUrl(
-      makeClient({ download: new Error('socket hang up') }).client,
-      path,
-      RESTAURANT_ID,
-      1024,
-      'application/pdf',
-    );
+    const errored = await downloadDocumentAsDataUrl(makeClient().client, { path, restaurantId: RESTAURANT_ID, maxBytes: 1024, mime: 'application/pdf' });
+    const thrown = await downloadDocumentAsDataUrl(makeClient({ download: new Error('socket hang up') }).client, { path, restaurantId: RESTAURANT_ID, maxBytes: 1024, mime: 'application/pdf' });
     expect(errored).toEqual({ ok: false, reason: 'download_failed' });
     expect(thrown).toEqual({ ok: false, reason: 'download_failed' });
     errorSpy.mockRestore();

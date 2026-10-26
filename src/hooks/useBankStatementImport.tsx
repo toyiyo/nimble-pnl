@@ -119,7 +119,6 @@ export function useBankStatementImport() {
 
     setIsUploading(true);
     try {
-      // Sanitize filename
       // Keep the storage path to [A-Za-z0-9._/-]. The edge function rejects other characters.
       const rawExt = file.name.split('.').pop();
       const fileExt = (rawExt ?? '').replace(/[^a-zA-Z0-9]/g, '') || 'pdf';

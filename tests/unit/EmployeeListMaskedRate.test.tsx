@@ -26,6 +26,12 @@ vi.mock('@/hooks/useEmployees', () => ({
   },
 }));
 
+// EmployeeList reads permissions for its activation actions. This test has
+// no RestaurantContext, so it gets a role with no capabilities.
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasCapability: () => false, isResolved: true }),
+}));
+
 const renderList = () =>
   render(
     <MemoryRouter>

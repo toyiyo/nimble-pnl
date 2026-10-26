@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useEmployees, EmployeeStatusFilter } from '@/hooks/useEmployees';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Employee } from '@/types/scheduling';
 import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -37,6 +38,14 @@ export const EmployeeList = ({
 }: EmployeeListProps) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<EmployeeStatusFilter>('active');
+  const { hasCapability, isResolved } = usePermissions();
+
+  // deactivate_employee and reactivate_employee require manage:employees on
+  // the server. Hide the two actions from a role without it, and while the
+  // role loads, so that the button does not lead to "Access denied".
+  const canManageEmployees = isResolved && hasCapability('manage:employees');
+  const handleDeactivate = canManageEmployees ? onEmployeeDeactivate : undefined;
+  const handleReactivate = canManageEmployees ? onEmployeeReactivate : undefined;
 
   // Fetch employees based on active tab
   const { employees, loading, error } = useEmployees(restaurantId, { status: activeTab });
@@ -144,7 +153,7 @@ export const EmployeeList = ({
                     key={employee.id}
                     employee={employee}
                     onEdit={onEmployeeEdit}
-                    onDeactivate={onEmployeeDeactivate}
+                    onDeactivate={handleDeactivate}
                     variant="active"
                   />
                 ))}
@@ -168,7 +177,7 @@ export const EmployeeList = ({
                     key={employee.id}
                     employee={employee}
                     onEdit={onEmployeeEdit}
-                    onReactivate={onEmployeeReactivate}
+                    onReactivate={handleReactivate}
                     variant="inactive"
                   />
                 ))}
@@ -194,8 +203,8 @@ export const EmployeeList = ({
                     key={employee.id}
                     employee={employee}
                     onEdit={onEmployeeEdit}
-                    onDeactivate={employee.is_active ? onEmployeeDeactivate : undefined}
-                    onReactivate={!employee.is_active ? onEmployeeReactivate : undefined}
+                    onDeactivate={employee.is_active ? handleDeactivate : undefined}
+                    onReactivate={!employee.is_active ? handleReactivate : undefined}
                     variant={employee.is_active ? 'active' : 'inactive'}
                   />
                 ))}

@@ -75,7 +75,7 @@ export function isAllowedStorageUrl(rawUrl: string, supabaseUrl: string): boolea
 }
 
 /** True only for `data:<mime>;base64,...` where the MIME type has an allowed prefix. */
-export function isInlineDataUrl(value: unknown, allowedMimePrefixes: readonly string[]): value is string {
+export function isInlineDataUrl(value: unknown, allowedMimePrefixes: readonly string[]): value is `data:${string}` {
   if (typeof value !== 'string') return false;
   const match = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,/i.exec(value);
   if (!match) return false;

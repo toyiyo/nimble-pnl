@@ -27,7 +27,8 @@
 -- Every app upload path starts with the restaurant id folder
 -- (useReceiptImport, useBankStatementImport, useExpenseInvoiceUpload,
 -- useAttachments). proxy-receipt-file reads with the service role, so RLS
--- does not apply to it.
+-- does not apply to it. That function checks the path against the restaurant
+-- of the row (supabase/functions/_shared/receiptStoragePath.ts).
 --
 -- The folder SELECT and DELETE policies do not change. Other buckets do not
 -- change.

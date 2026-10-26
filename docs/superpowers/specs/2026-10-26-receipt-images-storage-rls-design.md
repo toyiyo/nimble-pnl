@@ -60,7 +60,17 @@ that case (`supabase/functions/proxy-receipt-file/index.ts:64-80`). Callers:
 - `remove`: `src/hooks/useAttachments.ts:299`.
 
 `supabase/functions/proxy-receipt-file/index.ts:83-86` downloads with a
-service-role client. RLS does not apply to it, so the fix does not change it.
+service-role client, so storage RLS does not apply to it. The function reads
+`raw_file_url` from a `receipt_imports` row, and the row writer controls that
+value (`20260723120000_add_collaborator_operations_manager_role.sql:721-745`).
+Thus a user can point a row of restaurant A at a file of restaurant B, and the
+proxy returns that file. The Phase 7a security review found this path.
+
+The fix adds `supabase/functions/_shared/receiptStoragePath.ts`. The proxy
+calls it before the download. It returns the path only when the first folder
+equals `receipt_imports.restaurant_id`, and it refuses `.`, `..` and empty
+segments. Otherwise the proxy returns 404. `tests/unit/receiptStoragePath.test.ts`
+covers it.
 
 No caller in `src/` or `supabase/functions/` writes a path that does not start
 with the restaurant id. The policy change does not need a caller change.
@@ -135,6 +145,13 @@ One new migration, `supabase/migrations/20261026120300_receipt_images_storage_rl
   The receipt proxy uses the service role, so it can still read such a file.
 - Another permissive policy with an unknown name can exist in production. The
   migration deletes policies by name only.
+- Storage DELETE goes back to `owner` and `manager` only
+  (`20250928000424_...sql:64-77`). Before the fix, any signed-in user could
+  delete. `src/hooks/useAttachments.ts:299` ignores the result of `remove()`,
+  so for other roles a remove leaves the file and shows no error. The row
+  delete on `expense_invoice_uploads` already needs `owner` or `manager`
+  (`supabase/migrations/20260115000000_add_expense_invoice_uploads.sql:41-48`),
+  so the two checks agree.
 - A `staff` or `kiosk` member still can read the receipts, bank statements
   and expense invoices of its own restaurant through the folder SELECT policy
   (`20250928000424_...sql:36-47`). The table SELECT on
@@ -163,7 +180,15 @@ SELECT count(*)
      SELECT 1 FROM public.restaurants r
       WHERE r.id::text = (storage.foldername(o.name))[1]);
 
--- C. Rows that store a full URL instead of a path.
+-- C. Permissive policies on storage.objects without a bucket clause. Postgres
+--    ORs such a policy with the folder policies, so it opens every bucket.
+SELECT policyname, cmd
+  FROM pg_policies
+ WHERE schemaname = 'storage' AND tablename = 'objects'
+   AND permissive = 'PERMISSIVE'
+   AND (coalesce(qual, '') || coalesce(with_check, '')) NOT LIKE '%bucket_id%';
+
+-- D. Rows that store a full URL instead of a path.
 SELECT 'receipt_imports' AS t, count(*) FROM public.receipt_imports WHERE raw_file_url LIKE 'http%'
 UNION ALL
 SELECT 'bank_statement_uploads', count(*) FROM public.bank_statement_uploads WHERE raw_file_url LIKE 'http%'
@@ -181,15 +206,20 @@ SELECT 'expense_invoice_uploads', count(*) FROM public.expense_invoice_uploads W
   restaurant B, or outside a restaurant folder.
 - User A cannot move its own object into the folder of restaurant B.
 - User A can read, upload and update in its own folder.
-- An `operations_manager` and a `chef` of restaurant A can upload in the
-  folder of restaurant A. A `staff` member cannot upload.
+- An `operations_manager`, a `collaborator_operations_manager` and a `chef` of
+  restaurant A can upload in the folder of restaurant A. The
+  `operations_manager` can also update. A `staff` member cannot upload.
+- A user who is owner of A and `staff` of B cannot move an object of A into
+  the folder of B. Only the UPDATE check stops this move, because the SELECT
+  policy lets this user see the folder of B.
+- No permissive policy on `storage.objects` omits a `bucket_id` clause.
 - The 4 permissive policies do not exist. Only the 4 folder policies refer to
   the bucket.
 
 ## Decided trade-offs (Phase 2.5 review)
 
 - The pgTAP catalog check covers the local schema. It cannot see a policy that
-  exists only in production. Deploy check A covers production.
+  exists only in production. Deploy checks A and C cover production.
 - The fix does not change the UI capability gaps for `chef`,
   `collaborator_inventory` and `collaborator_accountant`. The table policies
   already block those flows, so a change belongs in a separate fix.

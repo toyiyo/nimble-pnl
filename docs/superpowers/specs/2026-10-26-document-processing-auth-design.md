@@ -210,15 +210,17 @@ no concurrent writer, cron, retry, cursor, lock, or state machine.
   count before deploy.
 
 - The storage download has a 30 s time limit, the same as the old bank
-  fetch. The limit stops the wait. It does not cancel the download, because
-  `download()` takes no abort signal.
+  fetch. `download(path, options, { signal })` gets `AbortSignal.timeout`, so
+  the limit cancels the request itself (storage-js 2.118.0,
+  `StorageFileApi.download`, the `parameters?: FetchParameters` argument).
 - The receipt hook has no client-side size check before the upload. A
   receipt above 10 MB uploads, then gets a 413. The old code sent such a
   file to the AI call with no limit. The request body limit of the gateway
   bounds the `req.json()` parse.
-- The size check runs after the download, not before it. storage-js 2.12
-  has no `info()` call. The bucket limit (50 MB) bounds the download. The
-  old code had no limit at all on the receipt path.
+- The size check runs after the download, not before it. An `info()` call
+  before the download would add one more storage request per document. The
+  bucket limit (50 MB) bounds the download. The old code had no limit at all
+  on the receipt path.
 - An inline `data:` URL also has the `MAX_RECEIPT_BYTES` limit.
 - Deferred from code review: a shared `jsonResponse` helper (each function
   keeps a local copy, and other functions are out of scope); a status

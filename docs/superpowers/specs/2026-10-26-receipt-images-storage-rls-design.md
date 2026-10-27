@@ -177,12 +177,17 @@ Run these checks before and after the deploy. The owner runs them. This
 session does not query production.
 
 ```sql
--- A. Every policy that refers to the bucket. After the deploy, expect only
---    the 4 "Users can ... receipt images for their restaurants" policies.
-SELECT policyname, permissive, cmd
+-- A. Every policy on storage.objects, for every bucket, with its full text.
+--    The query has no text filter, so a broad policy cannot hide from it.
+--    Read the qual and with_check of each PERMISSIVE row by eye. Before the
+--    deploy, confirm that no INSERT, UPDATE, DELETE or ALL policy lets a user
+--    reach the receipt-images folder of another restaurant. After the
+--    deploy, only the 4 "Users can ... receipt images for their restaurants"
+--    policies must name receipt-images.
+SELECT policyname, permissive, cmd, roles, qual, with_check
   FROM pg_policies
  WHERE schemaname = 'storage' AND tablename = 'objects'
-   AND (coalesce(qual, '') || coalesce(with_check, '')) LIKE '%receipt-images%';
+ ORDER BY cmd, policyname;
 
 -- B. Objects outside a restaurant folder. App users cannot read these after the fix.
 SELECT count(*)
@@ -210,7 +215,17 @@ SELECT 'expense_invoice_uploads', count(*) FROM public.expense_invoice_uploads W
 -- E. Cross-tenant read as a real user. This check fails closed: any policy,
 --    with any name or text, that opens the bucket makes the count above 0.
 --    Replace <user_id> with a user who is a member of 1 restaurant only.
---    The transaction changes no data and ends with ROLLBACK. Expect 0.
+--    The transaction changes no data and ends with ROLLBACK. Expect 0 from
+--    the last SELECT.
+--    A 0 proves isolation only when files of other restaurants exist. The
+--    first SELECT counts them as superuser. It must return more than 0.
+SELECT count(*) AS other_restaurant_files
+  FROM storage.objects o
+ WHERE o.bucket_id = 'receipt-images'
+   AND NOT EXISTS (
+     SELECT 1 FROM public.user_restaurants ur
+      WHERE ur.user_id = '<user_id>'::uuid
+        AND ur.restaurant_id::text = (storage.foldername(o.name))[1]);
 BEGIN;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims',
@@ -265,7 +280,9 @@ SELECT ri.id, ri.restaurant_id, ri.raw_file_url
 - Check C and pgTAP test 3 match text only. A permissive policy such as
   `bucket_id IS NOT NULL OR auth.uid() IS NOT NULL` passes them. Check E
   covers this gap for reads: it measures access, not policy text. For writes,
-  read the `qual` and `with_check` of each policy in the output of check A.
+  check A lists every policy on `storage.objects` with its `qual` and
+  `with_check`, without a text filter. Read each permissive INSERT, UPDATE,
+  DELETE and ALL policy by eye before the deploy.
 - The fix does not change the UI capability gaps for `chef`,
   `collaborator_inventory` and `collaborator_accountant`. The table policies
   already block those flows, so a change belongs in a separate fix.

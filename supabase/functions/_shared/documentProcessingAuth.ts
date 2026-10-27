@@ -43,7 +43,10 @@ export const MAX_BANK_STATEMENT_BYTES = 5 * 1024 * 1024;
 /** MIME prefixes that a receipt can send inline as a data URL. */
 export const RECEIPT_INLINE_MIME_PREFIXES: readonly string[] = ['image/', 'application/pdf'];
 
-/** Time limit for one storage download. The old URL fetch used the same limit. */
+/**
+ * Time limit for one storage download. The old URL fetch used the same limit.
+ * The abort signal cancels the request itself, not only the wait.
+ */
 export const DOWNLOAD_TIMEOUT_MS = 30_000;
 
 /** A document row. Every row belongs to one restaurant. */
@@ -193,7 +196,11 @@ interface SelectQuery {
 }
 
 interface StorageBucket {
-  download(path: string): Promise<{ data: Blob | null; error: unknown }>;
+  download(
+    path: string,
+    options?: Record<string, unknown>,
+    parameters?: { signal?: AbortSignal },
+  ): PromiseLike<{ data: Blob | null; error: unknown }>;
 }
 
 /**
@@ -272,15 +279,12 @@ export async function downloadDocumentAsDataUrl(
     console.error('Document path is outside the restaurant folder:', { restaurantId });
     return { ok: false, reason: 'invalid_path' };
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Download timed out after ${timeoutMs}ms`)), timeoutMs);
-    });
-    const { data, error } = await Promise.race([
-      (supabase.storage.from(DOCUMENT_BUCKET) as StorageBucket).download(path as string),
-      timeout,
-    ]);
+    const { data, error } = await (supabase.storage.from(DOCUMENT_BUCKET) as StorageBucket).download(
+      path as string,
+      undefined,
+      { signal: AbortSignal.timeout(timeoutMs) },
+    );
     if (error || !data) {
       console.error('Document download failed:', error);
       return { ok: false, reason: 'download_failed' };
@@ -294,7 +298,5 @@ export async function downloadDocumentAsDataUrl(
   } catch (error) {
     console.error('Document download failed:', error);
     return { ok: false, reason: 'download_failed' };
-  } finally {
-    clearTimeout(timer);
   }
 }

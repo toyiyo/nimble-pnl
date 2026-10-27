@@ -4,7 +4,7 @@
  *
  * Design: docs/superpowers/specs/2026-10-26-document-processing-auth-design.md
  */
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   authorizeDocumentRequest,
   bytesToDataUrl,
@@ -20,6 +20,12 @@ import {
   type DocumentAuthDeps,
   type DocumentServiceClient,
 } from '../../supabase/functions/_shared/documentProcessingAuth';
+
+// Restore every spy even when an assertion fails, so a silenced
+// console.error cannot leak into the next test.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const SUPABASE_URL = 'https://abc123.supabase.co';
 const RESTAURANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -377,7 +383,16 @@ describe('downloadDocumentAsDataUrl', () => {
   it('returns download_failed when storage does not answer in time', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { client } = makeClient();
-    client.storage.from = () => ({ download: () => new Promise(() => {}) });
+    // A storage call that never answers on its own. It stops only when the signal aborts.
+    let received: AbortSignal | undefined;
+    client.storage.from = () => ({
+      download: (_path: string, _options?: unknown, parameters?: { signal?: AbortSignal }) => {
+        received = parameters?.signal;
+        return new Promise((_resolve, reject) => {
+          received?.addEventListener('abort', () => reject(received?.reason));
+        });
+      },
+    });
     const result = await downloadDocumentAsDataUrl(client, {
       path,
       restaurantId: RESTAURANT_ID,
@@ -386,6 +401,8 @@ describe('downloadDocumentAsDataUrl', () => {
       timeoutMs: 5,
     });
     expect(result).toEqual({ ok: false, reason: 'download_failed' });
+    // The request itself is cancelled, not only the wait.
+    expect(received?.aborted).toBe(true);
     errorSpy.mockRestore();
   });
 

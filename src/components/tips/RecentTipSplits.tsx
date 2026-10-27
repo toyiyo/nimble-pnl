@@ -82,10 +82,10 @@ export function RecentTipSplits({ restaurantId, onEditSplit, currentDate }: Rece
               return (
                 <div
                   key={split.id}
-                  className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+                  className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
                 >
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
                       {isDraft && (
                         <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
                           <FileText className="h-3 w-3 mr-1" />
@@ -104,7 +104,7 @@ export function RecentTipSplits({ restaurantId, onEditSplit, currentDate }: Rece
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <div className="flex items-center gap-1">
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                         <span className="font-semibold">{formatCurrencyFromCents(split.total_amount)}</span>
@@ -118,7 +118,7 @@ export function RecentTipSplits({ restaurantId, onEditSplit, currentDate }: Rece
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 sm:shrink-0">
                     {isDraft && (
                       <Button
                         variant="outline"

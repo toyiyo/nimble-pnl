@@ -188,17 +188,26 @@ interface FilterBuilder<T> {
   maybeSingle(): QueryResult<T>;
 }
 
-/** The part of the service-role Supabase client that this module uses. */
+interface SelectQuery {
+  select(columns: string): FilterBuilder<unknown>;
+}
+
+interface StorageBucket {
+  download(path: string): Promise<{ data: Blob | null; error: unknown }>;
+}
+
+/**
+ * The part of the service-role Supabase client that this module uses.
+ * `from` returns `unknown` on purpose: a full structural check of the real
+ * client's query builders fails with TS2589 under `deno check`. The module
+ * narrows the result to `SelectQuery` or `StorageBucket` where it uses it.
+ */
 export interface DocumentServiceClient {
   auth: {
     getUser(token: string): Promise<{ data: { user: { id: string } | null }; error: unknown }>;
   };
-  from(table: string): { select(columns: string): FilterBuilder<unknown> };
-  storage: {
-    from(bucket: string): {
-      download(path: string): Promise<{ data: Blob | null; error: unknown }>;
-    };
-  };
+  from(table: string): unknown;
+  storage: { from(bucket: string): unknown };
 }
 
 /**
@@ -218,13 +227,15 @@ export function createDocumentAuthDeps<TRecord extends TenantRecord>(
       return { id: data.user.id };
     },
     async loadRecord(recordId) {
-      const { data, error } = await supabase.from(table).select(columns).eq('id', recordId).maybeSingle();
+      const { data, error } = await (supabase.from(table) as SelectQuery)
+        .select(columns)
+        .eq('id', recordId)
+        .maybeSingle();
       if (error) throw error;
       return (data as TRecord | null) ?? null;
     },
     async getMembershipRole(userId, restaurantId) {
-      const { data, error } = await supabase
-        .from('user_restaurants')
+      const { data, error } = await (supabase.from('user_restaurants') as SelectQuery)
         .select('role')
         .eq('user_id', userId)
         .eq('restaurant_id', restaurantId)
@@ -267,7 +278,7 @@ export async function downloadDocumentAsDataUrl(
       timer = setTimeout(() => reject(new Error(`Download timed out after ${timeoutMs}ms`)), timeoutMs);
     });
     const { data, error } = await Promise.race([
-      supabase.storage.from(DOCUMENT_BUCKET).download(path as string),
+      (supabase.storage.from(DOCUMENT_BUCKET) as StorageBucket).download(path as string),
       timeout,
     ]);
     if (error || !data) {

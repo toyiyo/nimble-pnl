@@ -53,6 +53,12 @@ ON CONFLICT (id) DO UPDATE SET
   aud = EXCLUDED.aud,
   role = EXCLUDED.role;
 
+-- The inviter of the invitee's rows owns the restaurant. accept_my_invitation
+-- checks that the inviter may invite the role (20261026120200).
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('b1111111-1111-1111-1111-111111111102', 'b0000000-0000-0000-0000-000000000001', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
+
 -- An accountless active employee whose email matches the invitee.
 INSERT INTO employees (id, restaurant_id, name, email, position, status, user_id) VALUES
   ('b2222222-2222-2222-2222-222222222201', 'b0000000-0000-0000-0000-000000000001', 'Invitee Employee', 'invitee@test.com', 'Server', 'active', NULL)

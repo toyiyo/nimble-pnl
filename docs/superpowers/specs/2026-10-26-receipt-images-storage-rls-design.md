@@ -151,7 +151,12 @@ One new migration, `supabase/migrations/20261026120300_receipt_images_storage_rl
   restaurant folder and change `raw_file_url` to match. Deploy check B counts
   these objects.
 - Another permissive policy with an unknown name can exist in production. The
-  migration deletes policies by name only.
+  migration deletes policies by name only. Check E does not depend on policy
+  names or policy text: it reads the bucket as a real user and fails when that
+  user sees a file of another restaurant.
+- A `receipt_imports` row can point at the folder of another restaurant. After
+  the deploy, the proxy returns 404 for such a row. Check F lists these rows.
+  Fix each one before the deploy.
 - Storage DELETE goes back to `owner` and `manager` only
   (`20250928000424_...sql:64-77`). Before the fix, any signed-in user could
   delete. `src/hooks/useAttachments.ts:299` ignores the result of `remove()`,
@@ -201,6 +206,36 @@ UNION ALL
 SELECT 'bank_statement_uploads', count(*) FROM public.bank_statement_uploads WHERE raw_file_url LIKE 'http%'
 UNION ALL
 SELECT 'expense_invoice_uploads', count(*) FROM public.expense_invoice_uploads WHERE raw_file_url LIKE 'http%';
+
+-- E. Cross-tenant read as a real user. This check fails closed: any policy,
+--    with any name or text, that opens the bucket makes the count above 0.
+--    Replace <user_id> with a user who is a member of 1 restaurant only.
+--    The transaction changes no data and ends with ROLLBACK. Expect 0.
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub', '<user_id>', 'role', 'authenticated')::text, true);
+SELECT count(*)
+  FROM storage.objects o
+ WHERE o.bucket_id = 'receipt-images'
+   AND NOT EXISTS (
+     SELECT 1 FROM public.user_restaurants ur
+      WHERE ur.user_id = '<user_id>'::uuid
+        AND ur.restaurant_id::text = (storage.foldername(o.name))[1]);
+ROLLBACK;
+
+-- F. Receipt rows whose file is not in the folder of the row's restaurant.
+--    The query reads the path from a bare path or from a full storage URL.
+--    receiptStoragePath() refuses these rows, so the proxy returns 404.
+--    Expect 0 rows.
+SELECT ri.id, ri.restaurant_id, ri.raw_file_url
+  FROM public.receipt_imports ri
+ WHERE ri.raw_file_url IS NOT NULL
+   AND split_part(
+         CASE WHEN ri.raw_file_url ~* '^https?://'
+              THEN substring(ri.raw_file_url FROM '/receipt-images/([^?#]+)')
+              ELSE ri.raw_file_url
+         END, '/', 1) IS DISTINCT FROM ri.restaurant_id::text;
 ```
 
 ## Tests
@@ -228,8 +263,9 @@ SELECT 'expense_invoice_uploads', count(*) FROM public.expense_invoice_uploads W
 - The pgTAP catalog check covers the local schema. It cannot see a policy that
   exists only in production. Deploy checks A and C cover production.
 - Check C and pgTAP test 3 match text only. A permissive policy such as
-  `bucket_id IS NOT NULL OR auth.uid() IS NOT NULL` passes them. Read the
-  `qual` of each policy in the output of check A by eye.
+  `bucket_id IS NOT NULL OR auth.uid() IS NOT NULL` passes them. Check E
+  covers this gap for reads: it measures access, not policy text. For writes,
+  read the `qual` and `with_check` of each policy in the output of check A.
 - The fix does not change the UI capability gaps for `chef`,
   `collaborator_inventory` and `collaborator_accountant`. The table policies
   already block those flows, so a change belongs in a separate fix.

@@ -3569,6 +3569,15 @@
   5. Write `.env.local` from `npx supabase status -o env`, with local keys only.
   With these steps, `npm run test:db` passed 3594 of 3594, and a Playwright spec ran against local Supabase.
 
+### [2026-10-27] Read this category before you say QA cannot run in the cloud (PR #850)
+- **Mistake:** I reported QA as blocked after ECR and GHCR returned 403. The recipe above was already here. I tried `ghcr.io` (the CI value), not `docker.io`.
+- **Correction:** Four more details made the recipe work on 2026-10-27:
+  1. Docker Hub can return `429 Too Many Requests` when sibling sessions pull at the same time. Pull each image with a short backoff, then run `supabase start` again.
+  2. CLI 2.65.5 fails at "Initialising schema": its realtime image needs IPv6 (`listen_error ... :eafnosupport`), and this kernel has none. `-x realtime` does not help, because the schema step still runs that image. Use the current CLI (`npx supabase@2.122.0`).
+  3. The local edge runtime cannot load `deno.land` or `esm.sh` (DNS blocked). Run the function on the host with `npx deno@2.1.4 run` and a QA-only import map in the scratchpad. Map `std/http/server.ts` to a `Deno.serve` stand-in and `esm.sh/@supabase/supabase-js@x` to `npm:@supabase/supabase-js@x`. Route the app call with `page.route`. Delete the `supabase/functions/deno.lock` that the run creates.
+  4. Launch Chromium with `executablePath: '/opt/pw-browsers/chromium'` in the scratch spec, because the pinned Playwright build is not installed.
+- **Rule:** Before you report that a check cannot run in a cloud session, read "Cloud Sessions" in this file and try each step.
+
 ### [2026-09-30] A race between an optimistic punch and a late failure is testable in E2E (PR #833)
 - **Mistake:** The first plan omitted `npm run test:e2e`. A later draft said "a browser test cannot hold one mutate pending and then fail it". Codex flagged the missing E2E as P1.
 - **Correction:** `tests/e2e/kiosk-offline-queue-camera-race.spec.ts` holds the first `POST **/rest/v1/time_punches*` in `page.route`. It opens the dialog for the second employee, calls `context.setOffline(true)`, then `route.abort('internetdisconnected')`. The spec failed on the old code and passed with the fix. `PUNCH_INSERT_TIMEOUT_MS` (15 s) sets the maximum hold time.

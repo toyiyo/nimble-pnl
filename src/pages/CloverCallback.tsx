@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { recordPosIntegrationCompleted } from '@/lib/analytics';
 import { describeOAuthCallbackError } from '@/lib/oauthCallbackError';
+import { redirectToSignInIfSignedOut } from '@/lib/posCallbackSignIn';
 
 export default function CloverCallback() {
   const [searchParams] = useSearchParams();
@@ -39,6 +40,19 @@ export default function CloverCallback() {
         setStatus('error');
         setMessage('Missing authorization data');
         setTimeout(() => navigate('/integrations'), 3000);
+        return;
+      }
+
+      if (
+        await redirectToSignInIfSignedOut({
+          provider: 'clover',
+          code,
+          state,
+          getSession: () => supabase.auth.getSession(),
+          navigate,
+        })
+      ) {
+        toast({ title: "Sign in to continue", description: "Sign in to finish the Clover connection." });
         return;
       }
 

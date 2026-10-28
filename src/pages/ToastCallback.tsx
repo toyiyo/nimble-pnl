@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { recordPosIntegrationCompleted } from '@/lib/analytics';
 import { describeOAuthCallbackError } from '@/lib/oauthCallbackError';
+import { redirectToSignInIfSignedOut } from '@/lib/posCallbackSignIn';
 
 const ToastCallback = () => {
   const [searchParams] = useSearchParams();
@@ -19,11 +20,9 @@ const ToastCallback = () => {
 
   useEffect(() => {
     const handleCallback = async () => {
-      // Get search params from URL
-      const urlSearchParams = new URLSearchParams(window.location.search);
-      const code = urlSearchParams.get('code');
-      const state = urlSearchParams.get('state'); 
-      const error = urlSearchParams.get('error');
+      const code = searchParams.get('code');
+      const state = searchParams.get('state');
+      const error = searchParams.get('error');
 
       if (error) {
         setStatus('error');
@@ -49,6 +48,19 @@ const ToastCallback = () => {
         });
         
         setTimeout(() => navigate('/integrations'), 3000);
+        return;
+      }
+
+      if (
+        await redirectToSignInIfSignedOut({
+          provider: 'toast',
+          code,
+          state,
+          getSession: () => supabase.auth.getSession(),
+          navigate,
+        })
+      ) {
+        toast({ title: "Sign in to continue", description: "Sign in to finish the Toast connection." });
         return;
       }
 

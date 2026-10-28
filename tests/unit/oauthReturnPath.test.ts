@@ -4,9 +4,12 @@ import {
   CONSENT_RETURN_TTL_MS,
   consentPathFor,
   peekConsentReturnPath,
+  posCallbackPathFor,
   postAuthRedirectPath,
   sanitizeConsentPath,
+  sanitizeReturnPath,
   saveConsentReturnPath,
+  savePosCallbackReturnPath,
   takeConsentReturnPath,
 } from '@/lib/oauthReturnPath';
 
@@ -108,5 +111,88 @@ describe('return path storage', () => {
     expect(postAuthRedirectPath(1_000)).toBe('/');
     saveConsentReturnPath(GOOD, 1_000);
     expect(postAuthRedirectPath(2_000)).toBe(GOOD);
+  });
+});
+
+// A real signed state is `<base64url payload>.<base64url signature>`.
+const STATE = 'eyJwIjoic3F1YXJlIn0.c2lnbmF0dXJlLWJ5dGVz';
+const CODE = 'sq0cgp-AbC_123-xyz';
+const SQUARE_PATH = `/square/callback?code=${CODE}&state=${STATE}`;
+
+describe('posCallbackPathFor', () => {
+  it.each([
+    ['square', '/square/callback'],
+    ['clover', '/clover/callback'],
+    ['toast', '/toast/callback'],
+  ] as const)('should build the %s callback path when the code and state are safe', (provider, path) => {
+    expect(posCallbackPathFor(provider, CODE, STATE)).toBe(`${path}?code=${CODE}&state=${STATE}`);
+  });
+
+  it.each([
+    ['an empty code', '', STATE],
+    ['a code with a slash and a dot segment', '../admin', STATE],
+    ['a code with spaces', 'a b', STATE],
+    ['a code longer than 1024 characters', 'a'.repeat(1025), STATE],
+    ['a state with no signature part', CODE, 'eyJwIjoic3F1YXJlIn0'],
+    ['a state with three parts', CODE, 'a.b.c'],
+    ['a state with a URL', CODE, 'https://evil.com'],
+    ['a state longer than 2048 characters', CODE, `${'a'.repeat(2048)}.b`],
+  ])('should return null when it gets %s', (_label, code, state) => {
+    expect(posCallbackPathFor('square', code, state)).toBeNull();
+  });
+});
+
+describe('sanitizeReturnPath', () => {
+  it('should accept the consent path', () => {
+    expect(sanitizeReturnPath(GOOD, ORIGIN)).toBe(GOOD);
+  });
+
+  it('should rebuild a POS callback path and drop extra parameters', () => {
+    expect(sanitizeReturnPath(`${SQUARE_PATH}&next=https://evil.com#x`, ORIGIN)).toBe(SQUARE_PATH);
+  });
+
+  it('should keep only code and state on a Clover callback', () => {
+    expect(sanitizeReturnPath(`/clover/callback?merchant_id=M1&code=${CODE}&state=${STATE}`, ORIGIN)).toBe(
+      `/clover/callback?code=${CODE}&state=${STATE}`
+    );
+  });
+
+  it.each([
+    ['another path', `/integrations?code=${CODE}&state=${STATE}`],
+    ['a callback with no state', `/square/callback?code=${CODE}`],
+    ['a callback on another origin', `https://evil.com${SQUARE_PATH}`],
+    ['a protocol-relative URL', `//evil.com${SQUARE_PATH}`],
+    ['a backslash', `/\\evil.com${SQUARE_PATH}`],
+    ['a dot segment', `/square/../square/callback?code=${CODE}&state=${STATE}`],
+    ['null', null],
+  ])('should return null for %s', (_label, value) => {
+    expect(sanitizeReturnPath(value, ORIGIN)).toBeNull();
+  });
+
+  it('should keep sanitizeConsentPath consent-only', () => {
+    expect(sanitizeConsentPath(SQUARE_PATH, ORIGIN)).toBeNull();
+  });
+});
+
+describe('POS callback return path storage', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('should save the callback path and give it back once after sign-in', () => {
+    savePosCallbackReturnPath('square', CODE, STATE, 1_000);
+    expect(postAuthRedirectPath(2_000)).toBe(SQUARE_PATH);
+    expect(takeConsentReturnPath(2_000)).toBe(SQUARE_PATH);
+    expect(takeConsentReturnPath(3_000)).toBeNull();
+  });
+
+  it('should not save anything when the code or state is not safe', () => {
+    savePosCallbackReturnPath('square', '../x', STATE, 1_000);
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('should drop the saved callback path after the TTL', () => {
+    savePosCallbackReturnPath('toast', CODE, STATE, 1_000);
+    expect(takeConsentReturnPath(1_000 + CONSENT_RETURN_TTL_MS + 1)).toBeNull();
   });
 });

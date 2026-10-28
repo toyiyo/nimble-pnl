@@ -174,6 +174,29 @@ The request shapes do not change. `authorize` still sends `restaurantId`.
   in `SquareCallback.tsx` and `ToastCallback.tsx`. Delete the unused
   `const restaurantId = state`.
 
+### Sign in, then come back (added after review: QA-1)
+
+The callback needs the session of the user who started the connect. On a
+phone, the native app (`capacitor.config.ts` bundles `dist`) has its session
+under its own origin. The provider returns to
+`https://app.easyshifthq.com/<pos>/callback` in the phone browser, where the
+user is often signed out. The old flow passed there only because the callback
+had no auth check.
+
+- `src/lib/oauthReturnPath.ts` already keeps a safe return path for the
+  consent page (`saveConsentReturnPath` / `takeConsentReturnPath`, `src/lib/oauthReturnPath.ts:133-172`), and `Auth.tsx` sends a
+  signed-in user to it (`src/pages/Auth.tsx:54-59`). The module now also
+  accepts the three POS callback paths. It rebuilds each path from a checked
+  `code` and a checked signed `state`, and drops every other parameter.
+- New `src/lib/posCallbackSignIn.ts`: `redirectToSignInIfSignedOut` saves the
+  callback URL and opens `/auth` when the page has no session.
+- Each callback page calls it before the edge function. After sign-in, the
+  Auth page returns the user to the callback URL, and the page finishes the
+  connect. The user must sign in as the user who started the connect, or the
+  callback gives 403.
+- Limit: the provider `code` expires after a few minutes. A slow sign-in gives
+  the generic error, and the user taps Connect again.
+
 ### Env vars (document in the PR, do not add values)
 
 - `OAUTH_STATE_SECRET` (required): the HMAC key. Use 32 or more random bytes.

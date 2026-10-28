@@ -11,31 +11,38 @@ function httpError(status: number) {
 }
 
 describe('describeOAuthCallbackError', () => {
-  it('asks the user to sign in on 401', () => {
+  it('should ask the user to sign in when the status is 401', () => {
     expect(describeOAuthCallbackError(httpError(401), 'Square')).toBe(
       'Sign in, then connect Square again.'
     );
   });
 
-  it('asks the user to start again on 403', () => {
+  it('should ask the user to start again when the status is 403', () => {
     expect(describeOAuthCallbackError(httpError(403), 'Clover')).toBe(
       'This connection link expired or belongs to a different account. Start the Clover connection again.'
     );
   });
 
-  it('gives a generic message for other statuses', () => {
+  it('should give the generic message when the status is another error', () => {
     expect(describeOAuthCallbackError(httpError(400), 'Toast')).toBe(
       'Failed to complete the Toast connection.'
     );
   });
 
-  it('gives a generic message for a plain error', () => {
+  it('should give the generic message when the error has no HTTP context', () => {
     expect(describeOAuthCallbackError(new Error('network'), 'Square')).toBe(
       'Failed to complete the Square connection.'
     );
   });
 
-  it.each([null, undefined, 'text', { context: null }])('gives a generic message for %s', (value) => {
-    expect(describeOAuthCallbackError(value, 'Square')).toBe('Failed to complete the Square connection.');
+  it.each([null, undefined, '', 'text', 0, -1, { context: null }])(
+    'should give the generic message when the error is %s',
+    (value) => {
+      expect(describeOAuthCallbackError(value, 'Square')).toBe('Failed to complete the Square connection.');
+    }
+  );
+
+  it.each([0, -1, 401.5, Number.NaN])('should give the generic message when the status is %s', (status) => {
+    expect(describeOAuthCallbackError(httpError(status), 'Square')).toBe('Failed to complete the Square connection.');
   });
 });

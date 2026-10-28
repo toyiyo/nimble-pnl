@@ -186,8 +186,12 @@ describe('POS callback return path storage', () => {
     expect(takeConsentReturnPath(3_000)).toBeNull();
   });
 
-  it('should not save anything when the code or state is not safe', () => {
-    savePosCallbackReturnPath('square', '../x', STATE, 1_000);
+  it('should report true when it saves the callback path', () => {
+    expect(savePosCallbackReturnPath('square', CODE, STATE, 1_000)).toBe(true);
+  });
+
+  it('should not save anything and report false when the code or state is not safe', () => {
+    expect(savePosCallbackReturnPath('square', '../x', STATE, 1_000)).toBe(false);
     expect(localStorage.length).toBe(0);
   });
 

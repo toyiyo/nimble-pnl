@@ -122,28 +122,34 @@ function readStored(now: number): string | null {
   return null;
 }
 
-function writeStored(path: string, now: number): void {
+/** Returns false when storage refuses the write (for example, private mode). */
+function writeStored(path: string, now: number): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ path, savedAt: now }));
+    return true;
   } catch {
-    // Storage can be blocked (private mode). The user then starts the flow again.
+    return false;
   }
 }
 
 export function saveConsentReturnPath(path: string, now: number = Date.now()): void {
   const safe = sanitizeConsentPath(path, currentOrigin());
+  // When storage is blocked, the user starts again in Claude.
   if (safe) writeStored(safe, now);
 }
 
-/** Saves the POS callback URL, so sign-in returns the user to finish the connect. */
+/**
+ * Saves the POS callback URL, so sign-in returns the user to finish the connect.
+ * Returns false when the URL is not safe or storage refuses the write.
+ */
 export function savePosCallbackReturnPath(
   provider: PosCallbackProvider,
   code: string,
   state: string,
   now: number = Date.now()
-): void {
+): boolean {
   const safe = posCallbackPathFor(provider, code, state);
-  if (safe) writeStored(safe, now);
+  return safe !== null && writeStored(safe, now);
 }
 
 export function clearConsentReturnPath(): void {

@@ -14,7 +14,12 @@ interface RedirectToSignInParams {
   navigate: (to: string, options: { replace: boolean }) => void;
 }
 
-/** Returns true when it sent the user to sign in, so the page must stop. */
+/**
+ * Returns true when it sent the user to sign in, so the page must stop.
+ * Returns false when a session exists, or when the return path cannot be saved.
+ * In the second case the page continues, and the callback answers 401 or 403
+ * with a clear message, so sign-in never strands the user on the home page.
+ */
 export async function redirectToSignInIfSignedOut(params: RedirectToSignInParams): Promise<boolean> {
   let session: unknown = null;
   try {
@@ -24,7 +29,7 @@ export async function redirectToSignInIfSignedOut(params: RedirectToSignInParams
   }
   if (session) return false;
 
-  savePosCallbackReturnPath(params.provider, params.code, params.state);
+  if (!savePosCallbackReturnPath(params.provider, params.code, params.state)) return false;
   params.navigate('/auth', { replace: true });
   return true;
 }

@@ -74,6 +74,10 @@ describe.each(PAGES)('%s callback page', (slug, name, Page) => {
 describe('redirectToSignInIfSignedOut', () => {
   const navigate = vi.fn();
 
+  beforeEach(() => {
+    navigate.mockClear();
+  });
+
   it('should return false and do nothing when a session exists', async () => {
     const result = await redirectToSignInIfSignedOut({
       provider: 'square',
@@ -87,7 +91,7 @@ describe('redirectToSignInIfSignedOut', () => {
     expect(peekConsentReturnPath()).toBeNull();
   });
 
-  it('should open sign-in with no saved path when the state is not safe', async () => {
+  it('should not open sign-in when the state is not safe, so the callback can reject it', async () => {
     const result = await redirectToSignInIfSignedOut({
       provider: 'square',
       code: CODE,
@@ -95,9 +99,28 @@ describe('redirectToSignInIfSignedOut', () => {
       getSession: async () => ({ data: { session: null } }),
       navigate,
     });
-    expect(result).toBe(true);
-    expect(navigate).toHaveBeenCalledWith('/auth', { replace: true });
+    expect(result).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
     expect(peekConsentReturnPath()).toBeNull();
+  });
+
+  it('should not open sign-in when storage refuses the return path', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    try {
+      const result = await redirectToSignInIfSignedOut({
+        provider: 'square',
+        code: CODE,
+        state: STATE,
+        getSession: async () => ({ data: { session: null } }),
+        navigate,
+      });
+      expect(result).toBe(false);
+      expect(navigate).not.toHaveBeenCalled();
+    } finally {
+      setItem.mockRestore();
+    }
   });
 
   it('should treat a getSession failure as signed out', async () => {

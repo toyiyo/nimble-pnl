@@ -36,7 +36,9 @@ export const useFinancialSettings = (
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const fetchSettings = async () => {
+  // isCancelled is true once restaurantId changes or the component unmounts.
+  // A late result for the old restaurant must not overwrite the new one.
+  const fetchSettings = async (isCancelled: () => boolean) => {
     if (!restaurantId) {
       setIsLoading(false);
       return;
@@ -48,6 +50,8 @@ export const useFinancialSettings = (
         .select('*')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
+
+      if (isCancelled()) return;
 
       if (error) {
         console.error('Error fetching financial settings:', error);
@@ -82,6 +86,8 @@ export const useFinancialSettings = (
           return;
         }
 
+        if (isCancelled()) return;
+
         if (inserted?.length) {
           setSettings(normalizeRow(inserted[0]));
           return;
@@ -94,6 +100,8 @@ export const useFinancialSettings = (
           .eq('restaurant_id', restaurantId)
           .maybeSingle();
 
+        if (isCancelled()) return;
+
         if (refetchError) {
           console.error('Error fetching financial settings:', refetchError);
         } else if (existing) {
@@ -103,7 +111,7 @@ export const useFinancialSettings = (
     } catch (error) {
       console.error('Error in fetchSettings:', error);
     } finally {
-      setIsLoading(false);
+      if (!isCancelled()) setIsLoading(false);
     }
   };
 
@@ -141,7 +149,11 @@ export const useFinancialSettings = (
   };
 
   useEffect(() => {
-    fetchSettings();
+    let cancelled = false;
+    fetchSettings(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [restaurantId]);
 
   return {

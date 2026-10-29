@@ -116,6 +116,52 @@ describe('useFinancialSettings', () => {
     consoleError.mockRestore();
   });
 
+  it('keeps settings empty and stops loading when the re-read fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const readError = { message: 'Read failed' };
+    mockFromChain.maybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: readError });
+    mockUpsertSelect.mockResolvedValue({ data: [], error: null });
+
+    const { result } = renderHook(() => useFinancialSettings('rest-123'));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings).toBeNull();
+    expect(consoleError).toHaveBeenCalledWith('Error fetching financial settings:', readError);
+    consoleError.mockRestore();
+  });
+
+  it('ignores a late result for a restaurant that is no longer selected', async () => {
+    const rowA = { id: 'set-a', restaurant_id: 'rest-a', cogs_calculation_method: 'financials' };
+    const rowB = { id: 'set-b', restaurant_id: 'rest-b', cogs_calculation_method: 'inventory' };
+    let resolveA!: (value: { data: unknown; error: unknown }) => void;
+    mockFromChain.maybeSingle
+      .mockReturnValueOnce(new Promise((resolve) => { resolveA = resolve; }))
+      .mockResolvedValueOnce({ data: rowB, error: null });
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useFinancialSettings(id),
+      { initialProps: { id: 'rest-a' } },
+    );
+
+    rerender({ id: 'rest-b' });
+    await waitFor(() => {
+      expect(result.current.settings).toEqual(rowB);
+    });
+
+    // The read for rest-a finishes after the switch. Its row must not win.
+    await act(async () => {
+      resolveA({ data: rowA, error: null });
+    });
+
+    expect(result.current.settings).toEqual(rowB);
+    expect(result.current.cogsMethod).toBe('inventory');
+  });
+
   it('returns stored method when settings exist', async () => {
     const existingRow = {
       id: 'set-1',

@@ -3743,3 +3743,27 @@
 ### [2026-10-25] Write plan code that passes the ocr rules and SonarCloud (PR #847)
 - **Mistake:** The plan code had a nested ternary in the policy button text, a toast helper with high cognitive complexity, and props that were not read-only. Reviewers and SonarCloud sent the code back three times.
 - **Rule:** In plan code, use no nested ternaries. Split a text helper with more than 3 branches. Mark component props `Readonly<>`. Use `void` on a promise that the code does not await.
+
+## Category: Development Workflow (remote container, PR #853)
+
+### [2026-10-27] A cloud session can start local Supabase through the Docker Hub mirror (PR #853)
+- **Amends:** [2026-09-15] "The container starts dockerd, but image blob pulls 403". The pulls fail only from the default hosts. A mirror works.
+- **Mistake:** `supabase start` failed in the cloud container. The proxy blocks the blob hosts of `public.ecr.aws` (CloudFront, "Data limit exceeded" / `Forbidden`) and of `ghcr.io` (`pkg-containers.githubusercontent.com`, 403). I reported QA as blocked and asked the user to change the network policy. The user said that another session did it.
+- **Correction:**
+  - Start `dockerd` with `HTTPS_PROXY`.
+  - Pull each image from `mirror.gcr.io/<image>`, for example `mirror.gcr.io/supabase/postgres:17.6.1.059`. Tag it as `public.ecr.aws/supabase/<name>:<tag>`.
+  - Get the image list with `strings $(which supabase) | grep -oE 'FROM [a-z0-9./_-]+:[A-Za-z0-9._-]+'`.
+  - Realtime fails with `:eafnosupport`, because the kernel has no IPv6. Rebuild it locally with `socket_opts: [:inet6]` changed to `[:inet]` in `/app/releases/<ver>/runtime.exs`.
+  - Exclude `edge-runtime`, because it cannot reach `deno.land`.
+  - Install `xlsx@0.18.5` with `npm i --no-save`, because `cdn.sheetjs.com` is blocked.
+  - Create `.env.local` from the local demo keys in `.env.test`.
+  - Use `executablePath: '/opt/pw-browsers/chromium'` in a gitignored Playwright config.
+  - The full QA run then passed (9 of 9 rows).
+- **Rule:** Before you report a cloud session as blocked on Supabase images, try `mirror.gcr.io`. Look at sibling sessions (`list_sessions`, `list_events`) for a working setup. Do not report "blocked" while another session in the same environment has the stack up.
+
+## Category: Security (continued, PR #853)
+
+### [2026-10-26] A SECURITY DEFINER function that returns a table row skips the column grants (PR #853)
+- **Mistake:** The first fix for `deactivate_employee` / `reactivate_employee` added the tenant check but kept `RETURNS public.employees` with `RETURNING *`. The column grants of `20260806110000_employee_column_gating.sql` hide 8 pay and PII columns from `authenticated`. A definer function runs as the owner, so the grants do not apply to it. A caller with `manage:employees` and no `view:pay_rates` got the hourly rate and the email in the RPC response. The security reviewer found it.
+- **Correction:** Keep the return type. Apply the `employees_secure` mask to the row before `RETURN`: null the pay columns without `view:pay_rates`, null the PII columns without `view:employee_pii`, and skip the mask for the caller's own row. pgTAP checks the returned row for no flags, the pay flag only, both flags, and the own row.
+- **Rule:** When a SECURITY DEFINER function returns a row of a table with column-level REVOKEs or a masking view, the return value is a read path. Mask the row as the view does, or return only the columns that the caller can see. Test the returned value, not only the stored row.

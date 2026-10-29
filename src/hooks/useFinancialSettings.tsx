@@ -68,16 +68,36 @@ export const useFinancialSettings = (
           cogs_calculation_method: 'inventory' as COGSMethod,
         };
 
-        const { data: newSettings, error: createError } = await supabase
+        // Several components mount this hook at the same time. ON CONFLICT DO
+        // NOTHING stops the losers from failing with 23505 on restaurant_id.
+        // Read the result as an array: on a POST, maybeSingle() asks for one
+        // object, and PostgREST answers 406 when the insert skips the row.
+        const { data: inserted, error: createError } = await supabase
           .from('restaurant_financial_settings')
-          .insert(defaultSettings)
-          .select()
-          .single();
+          .upsert(defaultSettings, { onConflict: 'restaurant_id', ignoreDuplicates: true })
+          .select();
 
         if (createError) {
           console.error('Error creating default financial settings:', createError);
-        } else {
-          setSettings(normalizeRow(newSettings));
+          return;
+        }
+
+        if (inserted?.length) {
+          setSettings(normalizeRow(inserted[0]));
+          return;
+        }
+
+        // Another hook inserted the row first. Read that row.
+        const { data: existing, error: refetchError } = await supabase
+          .from('restaurant_financial_settings')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .maybeSingle();
+
+        if (refetchError) {
+          console.error('Error fetching financial settings:', refetchError);
+        } else if (existing) {
+          setSettings(normalizeRow(existing));
         }
       }
     } catch (error) {

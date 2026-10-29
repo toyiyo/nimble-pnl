@@ -7,6 +7,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { recordPosIntegrationCompleted } from '@/lib/analytics';
+import { describeOAuthCallbackError } from '@/lib/oauthCallbackError';
+import { redirectToSignInIfSignedOut } from '@/lib/posCallbackSignIn';
 
 const SquareCallback = () => {
   const [searchParams] = useSearchParams();
@@ -18,22 +20,9 @@ const SquareCallback = () => {
 
   useEffect(() => {
     const handleCallback = async () => {
-      // Get search params from URL
-      const urlSearchParams = new URLSearchParams(window.location.search);
-      const code = urlSearchParams.get('code');
-      const state = urlSearchParams.get('state'); 
-      const error = urlSearchParams.get('error');
-
-      console.log('Square callback - URL search params:', {
-        fullUrl: window.location.href,
-        search: window.location.search,
-        hash: window.location.hash,
-        code: code?.substring(0, 20) + '...',
-        state, 
-        error,
-        allParams: Object.fromEntries(urlSearchParams.entries()),
-        origin: window.location.origin
-      });
+      const code = searchParams.get('code');
+      const state = searchParams.get('state');
+      const error = searchParams.get('error');
 
       if (error) {
         setStatus('error');
@@ -62,27 +51,28 @@ const SquareCallback = () => {
         return;
       }
 
+      if (
+        await redirectToSignInIfSignedOut({
+          provider: 'square',
+          code,
+          state,
+          getSession: () => supabase.auth.getSession(),
+          navigate,
+        })
+      ) {
+        toast({ title: "Sign in to continue", description: "Sign in to finish the Square connection." });
+        return;
+      }
+
       try {
-        // Extract restaurant ID from state parameter
-        const restaurantId = state;
-
-        console.log('Square callback processing:', { 
-          code: code?.substring(0, 20) + '...', 
-          state, 
-          restaurantId,
-          callingFrom: window.location.origin 
-        });
-
         // Call the square-oauth edge function to exchange code for tokens
-        const { data, error: callbackError } = await supabase.functions.invoke('square-oauth', {
+        const { error: callbackError } = await supabase.functions.invoke('square-oauth', {
           body: {
             action: 'callback',
             code: code,
             state: state
           }
         });
-
-        console.log('Edge function response:', { data, error: callbackError });
 
         if (callbackError) {
           console.error('Edge function error details:', callbackError);
@@ -102,10 +92,11 @@ const SquareCallback = () => {
       } catch (error) {
         console.error('Square callback error:', error);
         setStatus('error');
-        setMessage('Failed to complete Square connection');
+        const description = describeOAuthCallbackError(error, 'Square');
+        setMessage(description);
         toast({
           title: "Connection Failed",
-          description: "An error occurred while connecting to Square",
+          description,
           variant: "destructive",
         });
         

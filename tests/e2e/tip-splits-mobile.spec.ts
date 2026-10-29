@@ -55,7 +55,7 @@ test.describe('Recent Tip Splits on mobile', () => {
       await dailyEntry.click();
     }
 
-    await expect(page.getByText('Recent Tip Splits')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'Recent Tip Splits' })).toBeVisible({ timeout: 15000 });
 
     const reopen = page.getByRole('button', { name: 'Reopen split for editing' });
     const viewDetails = page.getByRole('button', { name: 'View audit trail' });
@@ -77,6 +77,6 @@ test.describe('Recent Tip Splits on mobile', () => {
 
     // A normal pointer click. Playwright fails it if the target is outside the viewport.
     await viewDetails.click();
-    await expect(page.getByRole('dialog').getByText('Tip Split Details')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('dialog', { name: 'Tip Split Details' })).toBeVisible({ timeout: 5000 });
   });
 });

@@ -18,6 +18,16 @@ VALUES
   ('00000000-0000-0000-0000-000000000303'::uuid, 'user-activation@test.com')
 ON CONFLICT (id) DO NOTHING;
 
+-- deactivate_employee and reactivate_employee require manage:employees in the
+-- employee's restaurant, and they record auth.uid() as the actor
+-- (20261026120500_secure_employee_activation_rpcs.sql). The manager is the
+-- JWT caller and an owner of the test restaurant.
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('00000000-0000-0000-0000-000000000302'::uuid, '00000000-0000-0000-0000-000000000301'::uuid, 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner', role_id = NULL;
+
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000302","role":"authenticated"}', true);
+
 -- Test 1: Check that is_active column exists and defaults to true
 SELECT has_column('employees', 'is_active', 'employees table should have is_active column');
 

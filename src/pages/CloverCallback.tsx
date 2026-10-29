@@ -7,6 +7,8 @@ import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { recordPosIntegrationCompleted } from '@/lib/analytics';
+import { describeOAuthCallbackError } from '@/lib/oauthCallbackError';
+import { redirectToSignInIfSignedOut } from '@/lib/posCallbackSignIn';
 
 export default function CloverCallback() {
   const [searchParams] = useSearchParams();
@@ -41,10 +43,23 @@ export default function CloverCallback() {
         return;
       }
 
+      if (
+        await redirectToSignInIfSignedOut({
+          provider: 'clover',
+          code,
+          state,
+          getSession: () => supabase.auth.getSession(),
+          navigate,
+        })
+      ) {
+        toast({ title: "Sign in to continue", description: "Sign in to finish the Clover connection." });
+        return;
+      }
+
       try {
         setMessage('Exchanging authorization code...');
 
-        const { data, error: callbackError } = await supabase.functions.invoke('clover-oauth', {
+        const { error: callbackError } = await supabase.functions.invoke('clover-oauth', {
           body: {
             action: 'callback',
             code,
@@ -65,14 +80,15 @@ export default function CloverCallback() {
         });
 
         setTimeout(() => navigate('/integrations'), 2000);
-      } catch (error: any) {
+      } catch (error) {
         console.error('Clover callback error:', error);
+        const description = describeOAuthCallbackError(error, 'Clover');
         setStatus('error');
-        setMessage(error.message || 'Failed to complete connection');
-        
+        setMessage(description);
+
         toast({
           title: "Connection Failed",
-          description: error.message || 'Failed to complete Clover connection',
+          description,
           variant: "destructive",
         });
 

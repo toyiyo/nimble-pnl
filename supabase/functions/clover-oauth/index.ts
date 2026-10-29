@@ -1,17 +1,23 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { getEncryptionService, logSecurityEvent } from '../_shared/encryption.ts';
+import {
+  DEFAULT_CLOVER_REGION,
+  getUserIdFromAuthHeader,
+  isOwnerOrManager,
+  resolveOAuthRequest,
+  type OAuthRequestBody,
+} from '../_shared/oauthState.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface CloverOAuthRequest {
-  action: 'authorize' | 'callback';
-  restaurantId?: string;
-  code?: string;
-  state?: string;
-  region?: 'na' | 'eu' | 'latam' | 'apac';
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -25,78 +31,27 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const body: CloverOAuthRequest = await req.json();
-    const { action, restaurantId, code, state, region = 'na' } = body;
-
+    const body: OAuthRequestBody = await req.json();
     const authHeader = req.headers.get('Authorization');
-    let user = null;
 
-    if (action === 'authorize') {
-      if (!authHeader) {
-        throw new Error('No authorization header');
-      }
-
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
-      if (authError || !authUser) {
-        throw new Error('Invalid authentication');
-      }
-      user = authUser;
+    // Every check runs before any credential use or write.
+    const gate = await resolveOAuthRequest({
+      provider: 'clover',
+      body,
+      headers: req.headers,
+      secret: Deno.env.get('OAUTH_STATE_SECRET'),
+      allowedOriginsEnv: Deno.env.get('OAUTH_ALLOWED_ORIGINS'),
+      getUserId: () => getUserIdFromAuthHeader(supabase, authHeader),
+      isOwnerOrManager: (uid, rid) => isOwnerOrManager(supabase, uid, rid),
+    });
+    if (!gate.ok) {
+      return jsonResponse({ error: gate.error }, gate.status);
     }
+    const { appOrigin, userId, restaurantId } = gate;
+    const cloverRegion = gate.region ?? DEFAULT_CLOVER_REGION;
 
-    // Determine environment based on request origin
-    let candidateOrigin: string | null = null;
-    let isSandbox = false;
-
-    // Safely extract origin from headers
-    try {
-      candidateOrigin = req.headers.get('origin');
-      
-      // If no origin header, try to extract from referer
-      if (!candidateOrigin) {
-        const referer = req.headers.get('referer');
-        if (referer && typeof referer === 'string' && referer.includes('://')) {
-          const parts = referer.split('/');
-          if (parts.length >= 3) {
-            candidateOrigin = parts.slice(0, 3).join('/');
-          }
-        }
-      }
-      
-      // Trim and validate candidate origin
-      if (candidateOrigin) {
-        candidateOrigin = candidateOrigin.trim();
-        if (!candidateOrigin.includes('://')) {
-          console.warn('Invalid origin format (missing protocol):', candidateOrigin);
-          candidateOrigin = null;
-        }
-      }
-    } catch (e) {
-      console.error('Error parsing origin/referer headers:', e, {
-        origin: req.headers.get('origin'),
-        referer: req.headers.get('referer')
-      });
-      candidateOrigin = null;
-    }
-
-    // Parse origin URL to determine environment
-    if (candidateOrigin) {
-      try {
-        const originUrl = new URL(candidateOrigin);
-        const hostname = originUrl.hostname.toLowerCase();
-        isSandbox = hostname === 'lovableproject.com' || 
-                   hostname.endsWith('.lovableproject.com') ||
-                   hostname.endsWith('.lovable.app') ||
-                   hostname.includes('vercel.app') ||
-                   hostname === 'localhost';
-      } catch (e) {
-        console.error('Invalid origin URL:', candidateOrigin, e);
-        isSandbox = false;
-      }
-    } else {
-      console.warn('No valid origin found, defaulting to production environment');
-      isSandbox = false;
-    }
+    // An allowlisted preview origin uses the Clover sandbox.
+    const isSandbox = !appOrigin.isProduction;
 
     const CLOVER_APP_ID = isSandbox
       ? Deno.env.get('CLOVER_SANDBOX_APP_ID')
@@ -120,48 +75,18 @@ Deno.serve(async (req) => {
       apac: isSandbox ? 'apisandbox.dev.clover.com' : 'api.clover.com'
     };
 
-    const CLOVER_DOMAIN = regionDomains[region];
-    const CLOVER_API_DOMAIN = regionAPIDomains[region];
+    const CLOVER_DOMAIN = regionDomains[cloverRegion];
 
-    const REDIRECT_URI = isSandbox && candidateOrigin
-      ? `${candidateOrigin}/clover/callback`
-      : 'https://app.easyshifthq.com/clover/callback';
+    const REDIRECT_URI = `${appOrigin.origin}/clover/callback`;
 
-    console.log('Clover OAuth - Action:', action, 'Region:', region, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Origin:', candidateOrigin);
-    console.log('App ID being used:', CLOVER_APP_ID);
-    console.log('Domain being used:', CLOVER_DOMAIN);
-    console.log('Redirect URI:', REDIRECT_URI);
-    if (candidateOrigin) {
-      try {
-        console.log('Full hostname:', new URL(candidateOrigin).hostname);
-      } catch (e) {
-        console.log('Could not parse hostname from origin');
-      }
-    }
+    console.log('Clover OAuth - Action:', gate.action, 'Region:', cloverRegion, 'Environment:', isSandbox ? 'sandbox' : 'production', 'Redirect URI:', REDIRECT_URI);
 
     if (!CLOVER_APP_ID || !CLOVER_APP_SECRET) {
       console.error('Clover credentials missing for environment:', isSandbox ? 'sandbox' : 'production');
       throw new Error(`Clover credentials not configured for ${isSandbox ? 'sandbox' : 'production'} environment`);
     }
 
-    if (action === 'authorize') {
-      if (!restaurantId) {
-        throw new Error('Restaurant ID is required for authorization');
-      }
-
-      // Verify user has access to this restaurant
-      const { data: userRestaurant, error: accessError } = await supabase
-        .from('user_restaurants')
-        .select('role')
-        .eq('user_id', user?.id)
-        .eq('restaurant_id', restaurantId)
-        .in('role', ['owner', 'manager'])
-        .single();
-
-      if (accessError || !userRestaurant) {
-        throw new Error('Access denied to restaurant');
-      }
-
+    if (gate.action === 'authorize') {
       // Clover OAuth scopes
       const permissions = [
         'ORDERS_R',
@@ -175,41 +100,27 @@ Deno.serve(async (req) => {
       authUrl.searchParams.set('client_id', CLOVER_APP_ID);
       authUrl.searchParams.set('scope', permissions);
       authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-      authUrl.searchParams.set('state', JSON.stringify({ restaurantId, region }));
+      authUrl.searchParams.set('state', gate.signedState);
 
-      console.log('Generated Clover OAuth URL:', authUrl.toString());
-      console.log('Using environment:', isSandbox ? 'sandbox' : 'production');
+      return jsonResponse({ authorizationUrl: authUrl.toString() });
 
-      return new Response(JSON.stringify({
-        authorizationUrl: authUrl.toString()
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    } else {
+      // The restaurant and the region come only from the verified state.
 
-    } else if (action === 'callback') {
-      if (!code || !state) {
-        console.error('Missing callback parameters:', { code: !!code, state: !!state });
-        throw new Error('Missing authorization code or state');
-      }
-
-      const stateData = JSON.parse(state);
-      const restaurantId = stateData.restaurantId;
-      const callbackRegion = stateData.region || 'na';
-
-      console.log('Clover callback processing:', { code: code.substring(0, 20) + '...', state, restaurantId, region: callbackRegion });
+      console.log('Clover callback processing:', { restaurantId, region: cloverRegion });
 
       // Exchange authorization code for access token
       const tokenRequestBody = {
         client_id: CLOVER_APP_ID,
         client_secret: CLOVER_APP_SECRET,
-        code: code,
+        code: gate.code,
         redirect_uri: REDIRECT_URI,
       };
 
-      const callbackAPIDomain = regionAPIDomains[callbackRegion as keyof typeof regionAPIDomains] || regionAPIDomains.na;
+      const callbackAPIDomain = regionAPIDomains[cloverRegion];
       const tokenUrl = `https://${callbackAPIDomain}/oauth/v2/token`;
       console.log('Token exchange URL:', tokenUrl);
-      console.log('Callback region:', callbackRegion, 'Using API domain:', callbackAPIDomain);
+      console.log('Callback region:', cloverRegion, 'Using API domain:', callbackAPIDomain);
 
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
@@ -334,7 +245,7 @@ Deno.serve(async (req) => {
         access_token: encryptedAccessToken,
         refresh_token: encryptedRefreshToken,
         expires_at: expiresAt,
-        region: callbackRegion,
+        region: cloverRegion,
         environment: isSandbox ? 'sandbox' : 'production',
         scopes: ['ORDERS_R', 'PAYMENTS_R', 'INVENTORY_R', 'MERCHANT_R', 'EMPLOYEES_R'],
         connected_at: new Date().toISOString(),
@@ -348,9 +259,9 @@ Deno.serve(async (req) => {
         .select()
         .single();
 
-      await logSecurityEvent(supabase, 'CLOVER_OAUTH_TOKEN_STORED', undefined, restaurantId, {
+      await logSecurityEvent(supabase, 'CLOVER_OAUTH_TOKEN_STORED', userId, restaurantId, {
         merchantId: merchantId,
-        region: callbackRegion
+        region: cloverRegion
       });
 
       if (connectionError) {
@@ -404,13 +315,10 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    throw new Error('Invalid action');
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('Clover OAuth error:', error);
     return new Response(JSON.stringify({
-      error: error.message
+      error: error instanceof Error ? error.message : String(error)
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

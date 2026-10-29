@@ -67,9 +67,17 @@ function readEnvLocal(key: string): string | undefined {
   }
 }
 
-/** Prefer the process env, so the CI job env always wins. */
+/**
+ * Read one key from the process env, then from `.env.local`.
+ * Prefer the process env, so the CI job env always wins.
+ */
+export function readEnv(key: string): string | undefined {
+  return process.env[key] || readEnvLocal(key);
+}
+
+/** Read one key with `readEnv`, and throw when it is absent. */
 function requireEnv(key: string): string {
-  const value = process.env[key] || readEnvLocal(key);
+  const value = readEnv(key);
   if (!value) {
     throw new Error(
       `${key} environment variable is required for the E2E service-role helper. ` +
@@ -85,7 +93,7 @@ function requireEnv(key: string): string {
  * The build is lazy on purpose. An import of this module must not throw in a
  * spec that never calls `setSubscriptionTier`.
  */
-function getServiceRoleClient(): SupabaseClient<Database> {
+export function getServiceRoleClient(): SupabaseClient<Database> {
   if (cachedClient) {
     return cachedClient;
   }

@@ -21,13 +21,20 @@ Design: `docs/superpowers/specs/2026-10-31-kiosk-punch-returning-rls-design.md`
 - Apply it to the local database. Run the new test and
   `supabase/tests/rls_employee_self_scope.sql`. Expect both to pass.
 
-## Task 3 — E2E (blocked in this session)
+## Task 3 — E2E
 
-- Extend `tests/e2e/kiosk-basic-punch.spec.ts` with a kiosk service account
-  case: create the account, sign in on the kiosk, punch, and check the
-  success state.
-- This session cannot run Playwright: `npm install` fails because the proxy
-  blocks `cdn.sheetjs.com`. Write the spec, and let CI run it.
+- Add `tests/e2e/kiosk-service-account-punch.spec.ts`. Seed an employee and a
+  PIN as the owner, change the role to `kiosk`, punch, and check the stored row.
+- Move `setUserRole` and a new `seedEmployeeWithPin` into
+  `tests/helpers/e2e-supabase.ts`.
+
+## Task 3b — Review fixes
+
+- Add `supabase/migrations/20261031120100_employee_tips_kiosk_insert.sql` and
+  `supabase/tests/employee_tips_kiosk_insert.sql`.
+- Add `supabase/functions/_shared/kioskAccountRetire.ts`, its unit test, and
+  use it in `create-kiosk-service-account`.
+- Extend the E2E spec with a clock-out and a tip.
 
 ## Task 4 — Verify and ship
 
@@ -37,6 +44,6 @@ Design: `docs/superpowers/specs/2026-10-31-kiosk-punch-returning-rls-design.md`
   compare it with local.
 - After merge, apply the migration to production. The kiosk then works with
   no app deploy.
-- File follow-up issues: `created_by` trigger, kiosk rotation FK, and the
-  `get_employee_punch_status` search path.
-- Tell the restaurant that punches which failed are lost and need manual entry.
+- File follow-up issues for each item in the design "Decided trade-offs".
+- Follow the "Data recovery" steps in the design. Let each kiosk queue flush
+  before a manager enters missing punches by hand.

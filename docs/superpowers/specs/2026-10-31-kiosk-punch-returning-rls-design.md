@@ -169,12 +169,19 @@ places:
 - No SELECT policy admits the returned row.
 
 Migration `supabase/migrations/20261031120100_employee_tips_kiosk_insert.sql`
-adds two policies:
+adds a function and two policies:
 
-- `"Kiosk can create employee tips"` (INSERT). The caller must be a `kiosk`
-  member of the restaurant. The employee must belong to the same restaurant.
-  `created_by` must be the caller. The kiosk can already insert punches for
-  these employees, so the trust level is the same.
+- `caller_is_kiosk_service_account(restaurant_id)`, `SECURITY DEFINER`. It is
+  true only for the user in `kiosk_service_accounts` for that restaurant, with
+  a `kiosk` membership. Any member can change their own role to `kiosk`
+  (restrictive guard on `user_restaurants`), so the role string alone is not
+  enough. Only an owner or manager can write `kiosk_service_accounts`.
+- `"Kiosk can create employee tips"` (INSERT). The caller must be the kiosk
+  service account. The employee must belong to the same restaurant.
+  `created_by` must be the caller. `tip_source` must be `cash` or `credit`,
+  `shift_id` must be null, and `recorded_at` must be within 1 day of the
+  database clock. These match what the kiosk dialog sends
+  (`src/pages/KioskMode.tsx:529-535`).
 - `"Creators can view tips they just created"` (SELECT). The same bounded
   creator policy as `time_punches`.
 
@@ -223,6 +230,15 @@ insert.
   `ON DELETE SET NULL` and adds
   `CREATE INDEX CONCURRENTLY idx_time_punches_created_by ON public.time_punches (created_by) WHERE created_by IS NOT NULL;`.
   Today each `deleteUser` checks the FK with a full scan of `time_punches`.
+- **Self-assigned `kiosk` role on `time_punches`.** The punch INSERT policy
+  admits the literal role `kiosk`
+  (`20260730150000_rewrite_collaborator_policies.sql:526-538`). Any member can
+  set their own role to `kiosk`, then insert punches for coworkers. This gap
+  is older than this branch. Follow-up: use
+  `caller_is_kiosk_service_account()` there too.
+- **Two rotations at the same time.** Both requests can create a new user.
+  `kiosk_service_accounts` keeps only the last one. Follow-up: serialize the
+  rotation with a row lock.
 - **`get_employee_punch_status` has no pinned `search_path`.** Out of scope.
   Follow-up issue.
 - **Offline queue `punch_time`.** `queuePunchOffline` sets `punch_time` when
@@ -266,8 +282,25 @@ Steps:
    group by ur.restaurant_id;
    ```
 
-4. Enter the missing punches by hand on the Time Punches page.
-5. Run this read-only query to find duplicates:
+4. Find kiosk logins that old rotations left alive. Before this branch, a
+   failed `deleteUser` was ignored, and the membership stayed. Run this
+   read-only query:
+
+   ```sql
+   select ur.restaurant_id, ur.user_id
+   from user_restaurants ur
+   join auth.users u on u.id = ur.user_id
+   where ur.role = 'kiosk'
+     and u.raw_user_meta_data->>'type' = 'kiosk-service-account'
+     and not exists (
+       select 1 from kiosk_service_accounts k where k.user_id = ur.user_id
+     );
+   ```
+
+   For each row, delete the membership and ban the user. This is a
+   production write, so it needs explicit approval.
+5. Enter the missing punches by hand on the Time Punches page.
+6. Run this read-only query to find duplicates:
 
    ```sql
    select restaurant_id, employee_id, punch_type, punch_time, count(*)
@@ -293,10 +326,11 @@ pgTAP `supabase/tests/time_punches_kiosk_insert_returning.sql` (12 cases):
 - kiosk member of restaurant R1 cannot insert into restaurant R2.
 - manager bulk `INSERT ... RETURNING` of 2 rows returns 2 rows.
 
-pgTAP `supabase/tests/employee_tips_kiosk_insert.sql` (7 cases): the kiosk tip
-insert with `RETURNING`, the window, another-restaurant employee, a
-non-member restaurant, a spoofed `created_by`, and a staff insert for another
-employee.
+pgTAP `supabase/tests/employee_tips_kiosk_insert.sql` (12 cases): the kiosk
+tip insert with `RETURNING`, the window, a tip by another user, another
+restaurant's employee, a non-member restaurant, a spoofed `created_by`, a
+`pool` tip, a backdated tip, a self-assigned `kiosk` role, a staff insert for
+another employee, and a former member.
 
 Unit `tests/unit/kioskAccountRetire.test.ts`: the delete path, the ban path,
 the double failure, and a failed membership delete.

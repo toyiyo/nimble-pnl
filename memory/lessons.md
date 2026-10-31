@@ -3704,6 +3704,7 @@
 ### [2026-10-06] Give the full E2E run its own time in Verify (PR #844)
 - **Mistake:** Verify stopped before the full local E2E run finished. The one failure (`accountless-employee-invite.spec.ts:126`, strict mode violation on "Add Employee") was in a spec the branch does not touch.
 - **Rule:** In Verify, run the specs that cover the change first, then the full run in the background with a bound. Check a failure in an untouched spec against main CI before you act on it.
+- **Confirmed [2026-10-25] (PR #847):** The Verify agent ran the full `npx playwright test` in the foreground. It passed the 600s tool limit and ran more than 25 minutes with no result. The workflow stopped. The 4 related specs ran in 1.0m (11 passed). A resume with `verifyNotes` that limited E2E to those specs shipped the PR, and CI ran the full suite green. The Phase 8 prompt in `.claude/workflows/dev-build-and-ship.js` still says to run the full `npm run test:e2e`. Change that prompt to match this rule.
 
 ## Category: E2E / Flaky Tests (continued)
 
@@ -3713,3 +3714,32 @@
 - **Correction:** Compute the seed in `page.evaluate` as the later of `now - 30 min` and the local start of today. A per-minute simulation over one day in 4 zones gave 30 failures before the fix and 0 after.
 - **Rule:** When a spec seeds a time relative to now for a "today" view, clamp the seed to the page's range. Compute it in the browser, because the page uses the browser zone and Playwright has no `timezoneId` here. Check the fix with a per-minute simulation, not one CI run.
 - **Remaining risk:** The seed and `page.goto('/time-punches')` occur a few seconds apart. If local midnight falls between them, the page opens on the next day and the test fails. We accept that window of a few seconds. If the flake comes back, add `page.clock.setFixedTime` before the seed, so the seed and the page use one date.
+
+## Category: Development Workflow (time-off shift choice)
+
+### [2026-10-25] Check the UI gate before a design claims a second path (PR #847)
+- **Mistake:** The first design said a manager can re-approve a decided request from `DecidedHistory`. `TimeOffRow.tsx:98` shows Approve only for a pending row. The Supabase design reviewer found the false claim.
+- **Rule:** Before a design names an entry point, open the component and find the condition that shows the control. Cite the line.
+
+### [2026-10-25] Fetch fresh data before a bulk write (PR #847)
+- **Mistake:** The plan used `fetchQuery` with `staleTime: 30000` for the shift list before the approval. A cached list can miss a shift that a manager added in the last 30 seconds. That shift then stays on the schedule with no action.
+- **Correction:** CodeRabbit flagged it. The approval fetch now uses `staleTime: 0`.
+- **Rule:** When a fetch selects the rows for a write (delete, post, update), fetch with `staleTime: 0`. Keep the 30s staleTime for display only.
+
+### [2026-10-25] Catch the second step after an irreversible first step (PR #847)
+- **Mistake:** The plan approved the request, then awaited the shift action with no `catch`. If the shift action threw, the request stayed approved, the dialog stayed open, and the manager got no clear message.
+- **Correction:** The sound-logic reviewer flagged it. The flow now catches the failure, closes the dialogs, and shows a toast that says the request is approved and the shifts did not change.
+- **Rule:** In a flow that is not atomic, put a `try`/`catch` around each step after the first write. The message must name the state that remains.
+
+### [2026-10-25] Lock every action on the row during a multi-step flow (PR #847)
+- **Mistake:** The plan locked Approve during the flow but not Reject. A manager could reject the request while the approval and the shift action ran.
+- **Rule:** When a flow locks one action on a record, lock every action that changes the same record.
+
+### [2026-10-25] Show shift times in the restaurant timezone, also in a dialog (PR #847)
+- **Mistake:** The design accepted the browser timezone for the shift times as a trade-off. The plan used `format(new Date(shift.start_time), 'h:mm a')`. A manager in a different timezone saw the wrong clock times.
+- **Correction:** The review changed the dialog to take the restaurant timezone as a prop and to use `formatInstant` from `src/lib/restaurantClock.ts`.
+- **Rule:** Never accept the browser timezone for a shift time. Use `formatInstant` with the restaurant timezone in every view.
+
+### [2026-10-25] Write plan code that passes the ocr rules and SonarCloud (PR #847)
+- **Mistake:** The plan code had a nested ternary in the policy button text, a toast helper with high cognitive complexity, and props that were not read-only. Reviewers and SonarCloud sent the code back three times.
+- **Rule:** In plan code, use no nested ternaries. Split a text helper with more than 3 branches. Mark component props `Readonly<>`. Use `void` on a promise that the code does not await.

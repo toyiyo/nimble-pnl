@@ -104,7 +104,7 @@ Rejected.
 New migration `supabase/migrations/20261031120000_time_punches_creator_select.sql`:
 
 ```sql
-SET lock_timeout = '3s';
+SET LOCAL lock_timeout = '3s';
 
 DROP POLICY IF EXISTS "Creators can view punches they just created" ON public.time_punches;
 CREATE POLICY "Creators can view punches they just created"

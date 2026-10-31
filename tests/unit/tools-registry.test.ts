@@ -207,9 +207,9 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
   // view:payroll` (see the self-scoped-employee-data migration), so the
   // dispatcher must gate the tools on the same capability rather than a
   // second hard-coded role list that could drift from RLS.
-  it('lists exactly get_labor_costs, get_schedule_overview and get_hourly_sales as capability-gated', () => {
+  it('lists exactly the four labor and schedule tools as capability-gated', () => {
     expect([...CAPABILITY_GATED_TOOLS].sort()).toEqual(
-      ['get_hourly_sales', 'get_labor_costs', 'get_schedule_overview'].sort(),
+      ['get_hourly_sales', 'get_labor_costs', 'get_schedule_overview', 'get_scheduling_context'].sort(),
     );
   });
 

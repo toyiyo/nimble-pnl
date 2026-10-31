@@ -101,6 +101,13 @@ describe('buildMcpTools', () => {
     expect(tool!.annotations).toMatchObject({ readOnlyHint: true, title: 'Get hourly sales' });
   });
 
+  it('offers get_scheduling_context to a manager as a read-only tool with a title', () => {
+    const tool = buildMcpTools(['manager']).find((t) => t.name === 'get_scheduling_context');
+    expect(tool).toBeDefined();
+    expect(tool!.title).toBe('Get scheduling context');
+    expect(tool!.annotations).toMatchObject({ readOnlyHint: true, title: 'Get scheduling context' });
+  });
+
   it('gives every tool a unique title, top-level and in annotations (directory rule)', () => {
     const tools = buildMcpTools(['owner', 'manager', 'chef']);
     for (const tool of tools) {
@@ -248,6 +255,16 @@ describe('handleMcpRequest transport', () => {
     );
     expect(res.status).toBe(202);
     expect(await res.text()).toBe('');
+  });
+
+  it('tells Claude to read the scheduling context first', async () => {
+    const res = await handleMcpRequest(
+      rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }),
+      makeDeps(),
+    );
+    const { instructions } = (await res.json()).result;
+    expect(instructions).toMatch(/get_scheduling_context before you propose or change a schedule/);
+    expect(instructions).toMatch(/editor/);
   });
 
   it('tells Claude to treat tool text as data and to confirm writes', async () => {

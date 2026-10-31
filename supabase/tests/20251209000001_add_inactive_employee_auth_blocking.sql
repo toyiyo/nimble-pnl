@@ -92,7 +92,12 @@ VALUES
   ('00000000-0000-0000-0000-000000000403'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 'staff'),
   ('00000000-0000-0000-0000-000000000404'::uuid, '00000000-0000-0000-0000-000000000401'::uuid, 'manager');
 
+-- verify_employee_can_login checks only auth.uid() (20261026120600), so each
+-- test signs in as the user it checks.
+
 -- Test 1: verify_employee_can_login allows active employee to login
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000402","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000402', true);
 SELECT results_eq(
   $$SELECT can_login, is_active FROM verify_employee_can_login('00000000-0000-0000-0000-000000000402'::uuid)$$,
   $$VALUES (true, true)$$,
@@ -100,6 +105,8 @@ SELECT results_eq(
 );
 
 -- Test 2: verify_employee_can_login blocks inactive employee
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000403","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000403', true);
 SELECT results_eq(
   $$SELECT can_login, is_active FROM verify_employee_can_login('00000000-0000-0000-0000-000000000403'::uuid)$$,
   $$VALUES (false, false)$$,
@@ -113,6 +120,8 @@ SELECT ok(
 );
 
 -- Test 4: verify_employee_can_login allows non-employee users
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000405","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000405', true);
 SELECT results_eq(
   $$SELECT can_login FROM verify_employee_can_login('00000000-0000-0000-0000-000000000405'::uuid)$$,
   $$VALUES (true)$$,

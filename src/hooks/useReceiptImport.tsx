@@ -274,44 +274,17 @@ export const useReceiptImport = () => {
     try {
       console.log('Processing receipt, file type:', imageBlob.type, 'size:', imageBlob.size);
 
-      // For PDFs, we'll send the storage URL instead of base64
-      // For images, we'll continue using base64
-      let dataToSend: string;
+      // For a PDF, the edge function loads the stored file itself.
+      // For an image, send the image as a base64 data URL.
       const isPDF = imageBlob.type === 'application/pdf';
-
-      if (isPDF) {
-        // Get the receipt import record to fetch the storage URL
-        const { data: receiptData, error: receiptError } = await supabase
-          .from('receipt_imports')
-          .select('raw_file_url')
-          .eq('id', receiptId)
-          .single();
-
-        if (receiptError || !receiptData?.raw_file_url) {
-          throw new Error('Failed to get PDF storage URL');
-        }
-
-        // Generate a signed URL for the PDF (path is already properly formatted)
-        const { data: signedUrlData, error: signedUrlError } = await supabase
-          .storage
-          .from('receipt-images')
-          .createSignedUrl(receiptData.raw_file_url, 3600);
-
-        if (signedUrlError || !signedUrlData?.signedUrl) {
-          console.error('Failed to create signed URL:', signedUrlError);
-          throw new Error('Failed to generate signed URL for PDF');
-        }
-
-        dataToSend = signedUrlData.signedUrl;
-        console.log('Generated PDF signed URL for processing:', dataToSend.substring(0, 100) + '...');
-      } else {
-        // Convert image blob to base64
-        dataToSend = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(imageBlob);
-        });
-      }
+      const imageData = isPDF
+        ? undefined
+        : await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error ?? new Error('Failed to read the receipt image'));
+            reader.readAsDataURL(imageBlob);
+          });
 
       // Create AbortController to properly cancel the request on timeout
       const controller = new AbortController();
@@ -327,7 +300,7 @@ export const useReceiptImport = () => {
         const { data, error } = await supabase.functions.invoke('process-receipt', {
           body: {
             receiptId,
-            imageData: dataToSend,
+            imageData,
             isPDF
           },
           // @ts-ignore - signal option is supported but not in types yet

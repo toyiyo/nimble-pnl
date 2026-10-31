@@ -119,10 +119,11 @@ export function useBankStatementImport() {
 
     setIsUploading(true);
     try {
-      // Sanitize filename
-      const fileExt = file.name.split('.').pop();
+      // Keep the storage path to [A-Za-z0-9._/-]. The edge function rejects other characters.
+      const rawExt = file.name.split('.').pop();
+      const fileExt = (rawExt ?? '').replace(/[^a-zA-Z0-9]/g, '') || 'pdf';
       const sanitizedBaseName = file.name
-        .replace(`.${fileExt}`, '')
+        .replace(`.${rawExt}`, '')
         .replace(/[^a-zA-Z0-9_-]/g, '_');
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/bank-statements/${finalFileName}`;
@@ -178,30 +179,6 @@ export function useBankStatementImport() {
     try {
       console.log('Processing bank statement...');
 
-      // Get the statement upload record to fetch the storage URL
-      const { data: statementData, error: statementError } = await supabase
-        .from('bank_statement_uploads')
-        .select('raw_file_url')
-        .eq('id', statementUploadId)
-        .single();
-
-      if (statementError || !statementData?.raw_file_url) {
-        throw new Error('Failed to get PDF storage URL');
-      }
-
-      // Generate a signed URL for the PDF
-      const { data: signedUrlData, error: signedUrlError } = await supabase
-        .storage
-        .from('receipt-images')
-        .createSignedUrl(statementData.raw_file_url, 3600);
-
-      if (signedUrlError || !signedUrlData?.signedUrl) {
-        console.error('Failed to create signed URL:', signedUrlError);
-        throw new Error('Failed to generate signed URL for PDF');
-      }
-
-      console.log('Generated PDF signed URL for processing');
-
       // Create AbortController for timeout
       const controller = new AbortController();
       let timeoutId: number | undefined;
@@ -213,9 +190,9 @@ export function useBankStatementImport() {
 
         // Call the edge function
         const { data, error } = await supabase.functions.invoke('process-bank-statement', {
+          // The edge function loads the stored PDF itself.
           body: {
             statementUploadId,
-            pdfUrl: signedUrlData.signedUrl,
           },
           // @ts-expect-error - signal option is supported but not in types yet
           signal: controller.signal

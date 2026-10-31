@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { retireKioskAccount, type KioskRetireClient } from "../_shared/kioskAccountRetire.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,7 +97,21 @@ serve(async (req) => {
         );
       }
 
-      await supabase.auth.admin.deleteUser(existingAccount.user_id);
+      // Stop the rotation if the old login keeps access. A new credential
+      // must not hide an old login that can still insert punches.
+      try {
+        await retireKioskAccount(
+          supabase as unknown as KioskRetireClient,
+          existingAccount.user_id,
+          restaurantId,
+        );
+      } catch (retireError) {
+        console.error("create-kiosk-service-account retire error", retireError);
+        return new Response(JSON.stringify({ error: "Failed to retire the old kiosk account. Try again." }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       await supabase.from("kiosk_service_accounts").delete().eq("restaurant_id", restaurantId);
     }
 

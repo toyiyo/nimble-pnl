@@ -1,31 +1,6 @@
-import { test, expect, Page } from '@playwright/test';
-import { generateTestUser, signUpAndCreateRestaurant, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+import { test, expect } from '@playwright/test';
+import { generateTestUser, signUpAndCreateRestaurant, setUserRole } from '../helpers/e2e-supabase';
 import { navigateInApp } from '../helpers/e2e-navigation';
-
-// Helper to update a user's role via the database and reload
-async function setUserRole(page: Page, role: string): Promise<void> {
-  await exposeSupabaseHelpers(page);
-  await page.evaluate(
-    async ({ role }) => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    },
-    { role }
-  );
-  await page.reload();
-  await page.waitForLoadState('networkidle');
-}
 
 // ============================================================
 // COLLABORATOR ROLE ROUTING AND ACCESS TESTS

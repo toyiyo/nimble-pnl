@@ -3,9 +3,10 @@
 --
 -- useCreateTimePunch sends `.insert(...).select().single()`, which is
 -- INSERT ... RETURNING. Postgres applies the SELECT policies to the returned
--- row. The kiosk role has no view:scheduling / view:payroll capability and no
--- employees row, so no SELECT policy admitted the row and the insert failed
--- with "new row violates row-level security policy for table time_punches".
+-- row. The kiosk role has no view:scheduling or view:payroll capability.
+-- It has no employees row. Thus no SELECT policy admitted the row, and the
+-- insert failed with "new row violates row-level security policy for table
+-- time_punches".
 --
 -- The fix is a bounded SELECT policy: a current member can read a punch that
 -- the member created in the last 5 minutes.
@@ -18,7 +19,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(9);
+SELECT plan(12);
 
 SET LOCAL role TO postgres;
 
@@ -53,10 +54,15 @@ INSERT INTO employees (id, restaurant_id, user_id, name, email, position, is_act
 -- ...031: kiosk punch from 1 day ago (outside the 5-minute window).
 -- ...032: CW punch that the manager created now.
 -- ...033: punch that the former member X created now, before removal.
+-- ...034, ...035: kiosk punches 4 and 6 minutes old (the window edges).
+-- ...036: R2 punch with created_by = K. K is not a member of R2.
 INSERT INTO time_punches (id, restaurant_id, employee_id, punch_type, punch_time, created_by, created_at) VALUES
   ('7a000000-0000-0000-0000-000000000031', '7a000000-0000-0000-0000-000000000001', '7a000000-0000-0000-0000-000000000022', 'clock_in', now() - interval '1 day', '7a000000-0000-0000-0000-000000000011', now() - interval '1 day'),
   ('7a000000-0000-0000-0000-000000000032', '7a000000-0000-0000-0000-000000000001', '7a000000-0000-0000-0000-000000000022', 'clock_in', now(), '7a000000-0000-0000-0000-000000000014', now()),
-  ('7a000000-0000-0000-0000-000000000033', '7a000000-0000-0000-0000-000000000001', '7a000000-0000-0000-0000-000000000022', 'clock_out', now(), '7a000000-0000-0000-0000-000000000015', now());
+  ('7a000000-0000-0000-0000-000000000033', '7a000000-0000-0000-0000-000000000001', '7a000000-0000-0000-0000-000000000022', 'clock_out', now(), '7a000000-0000-0000-0000-000000000015', now()),
+  ('7a000000-0000-0000-0000-000000000034', '7a000000-0000-0000-0000-000000000001', '7a000000-0000-0000-0000-000000000022', 'clock_in', now() - interval '4 minutes', '7a000000-0000-0000-0000-000000000011', now() - interval '4 minutes'),
+  ('7a000000-0000-0000-0000-000000000035', '7a000000-0000-0000-0000-000000000001', '7a000000-0000-0000-0000-000000000022', 'clock_in', now() - interval '6 minutes', '7a000000-0000-0000-0000-000000000011', now() - interval '6 minutes'),
+  ('7a000000-0000-0000-0000-000000000036', '7a000000-0000-0000-0000-000000000002', '7a000000-0000-0000-0000-000000000023', 'clock_in', now(), '7a000000-0000-0000-0000-000000000011', now());
 
 ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_restaurants ENABLE ROW LEVEL SECURITY;
@@ -96,6 +102,24 @@ SELECT is(
   (SELECT COUNT(*) FROM time_punches WHERE id = '7a000000-0000-0000-0000-000000000032'),
   0::bigint,
   'kiosk: does NOT see a punch that another user created'
+);
+
+SELECT is(
+  (SELECT COUNT(*) FROM time_punches WHERE id = '7a000000-0000-0000-0000-000000000034'),
+  1::bigint,
+  'kiosk: sees a punch it created 4 minutes ago (inside the window)'
+);
+
+SELECT is(
+  (SELECT COUNT(*) FROM time_punches WHERE id = '7a000000-0000-0000-0000-000000000035'),
+  0::bigint,
+  'kiosk: does NOT see a punch it created 6 minutes ago (outside the window)'
+);
+
+SELECT is(
+  (SELECT COUNT(*) FROM time_punches WHERE id = '7a000000-0000-0000-0000-000000000036'),
+  0::bigint,
+  'kiosk: does NOT see its own punch in a restaurant it is not a member of'
 );
 
 SELECT throws_ok(

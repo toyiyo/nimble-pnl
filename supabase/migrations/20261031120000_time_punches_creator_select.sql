@@ -1,16 +1,16 @@
 -- Let a member read a punch that the member created in the last 5 minutes.
 --
 -- useCreateTimePunch sends INSERT ... RETURNING (src/hooks/useTimePunches.tsx).
--- Postgres applies the SELECT policies to the returned row. A kiosk service
--- account (role 'kiosk') passes the INSERT policy, but since
--- 20260805130000_self_scope_employee_reads.sql no SELECT policy admits it:
--- it has no view:scheduling / view:payroll capability and no employees row.
--- The kiosk then fails every punch with
+-- Postgres applies the SELECT policies to the returned row.
+-- A kiosk service account (role 'kiosk') passes the INSERT policy.
+-- Since 20260805130000_self_scope_employee_reads.sql, no SELECT policy admits it.
+-- It has no view:scheduling or view:payroll capability. It has no employees row.
+-- Every kiosk punch then fails with
 -- "new row violates row-level security policy for table "time_punches"".
 --
--- The 5-minute window keeps a shared kiosk tablet from reading the punch
--- history of the restaurant. The membership check keeps a removed member from
--- reading rows that they created before removal.
+-- The 5-minute window prevents access to the punch history from a shared
+-- kiosk tablet. The membership check prevents access by a removed member to
+-- rows that they created.
 --
 -- Design: docs/superpowers/specs/2026-10-31-kiosk-punch-returning-rls-design.md
 -- Rollback: DROP POLICY "Creators can view punches they just created" ON public.time_punches;

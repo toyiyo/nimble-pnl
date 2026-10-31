@@ -107,7 +107,9 @@ serve(async (req) => {
         );
       } catch (retireError) {
         console.error("create-kiosk-service-account retire error", retireError);
-        return new Response(JSON.stringify({ error: "Failed to retire the old kiosk account. Try again." }), {
+        return new Response(JSON.stringify({
+            error: "The kiosk account rotation did not finish. The old kiosk tablet can be signed out of data. Try again.",
+          }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

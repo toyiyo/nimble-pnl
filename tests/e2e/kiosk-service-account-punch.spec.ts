@@ -51,6 +51,21 @@ test.describe('Kiosk service account punch', () => {
       PIN,
     );
 
+    // Register this user as the kiosk service account, as the owner. The tip
+    // INSERT policy checks this row, not only the role string.
+    await page.evaluate(
+      async ({ restId, email }: { restId: string; email: string }) => {
+        const w = window as unknown as E2EHelperWindow;
+        const user = await w.__getAuthUser();
+        if (!user?.id) throw new Error('No user session');
+        const { error } = await w.__supabase
+          .from('kiosk_service_accounts')
+          .insert({ restaurant_id: restId, user_id: user.id, email });
+        if (error) throw new Error(error.message);
+      },
+      { restId: restaurantId!, email: testUser.email },
+    );
+
     await setUserRole(page, 'kiosk');
     await expect(page).toHaveURL(/\/kiosk/, { timeout: 15000 });
 

@@ -8,15 +8,16 @@ Design: `docs/superpowers/specs/2026-10-31-kiosk-punch-returning-rls-design.md`
 - Seed restaurants R1 and R2, a kiosk user K (role `kiosk` in R1), a staff
   user S with an employee row, a coworker employee CW, and one punch for CW
   created by a different user.
-- Assert, as K: `INSERT ... RETURNING` lives; K sees its own punch; K sees 0
-  rows created by someone else; K cannot insert into R2.
-- Assert, as S: S sees 0 coworker punches.
+- Assert every case in the design "Tests" section: RETURNING lives, the
+  5-minute window, the membership check, staff self-scope, the R2 insert
+  block, and a manager bulk RETURNING.
 - Run it. Expect the RETURNING assertion to fail.
 
 ## Task 2 — GREEN: migration
 
 - Add `supabase/migrations/20261031120000_time_punches_creator_select.sql`
-  with the policy from the design.
+  with the bounded policy from the design (5-minute window, membership check,
+  `lock_timeout`).
 - Apply it to the local database. Run the new test and
   `supabase/tests/rls_employee_self_scope.sql`. Expect both to pass.
 
@@ -32,5 +33,10 @@ Design: `docs/superpowers/specs/2026-10-31-kiosk-punch-returning-rls-design.md`
 
 - Run the full pgTAP suite against the local database.
 - Push the branch and open the PR. CI runs unit, E2E, and SonarCloud.
+- Before the production apply, run the `pg_policies` query from the design and
+  compare it with local.
 - After merge, apply the migration to production. The kiosk then works with
   no app deploy.
+- File follow-up issues: `created_by` trigger, kiosk rotation FK, and the
+  `get_employee_punch_status` search path.
+- Tell the restaurant that punches which failed are lost and need manual entry.

@@ -23,7 +23,7 @@ Do each task with TDD. Run the tasks in this order.
 - Write failing tests in `tests/unit/importedSaleDate.test.ts`. Run them under
   `TZ=America/Chicago` and `TZ=Pacific/Auckland`.
 - Add `toImportedSaleDate` to `src/lib/timezone.ts`.
-- Add a test for an impossible calendar day, such as `2026-13-45`.
+- Add tests for impossible days: `2026-13-45` and `2026-02-31` both give `''`.
 - Use it at `src/components/POSSalesFileUpload.tsx:132-138`.
 - Use `toDateOnlyString` at `src/components/POSSalesFileUpload.tsx:349`.
 

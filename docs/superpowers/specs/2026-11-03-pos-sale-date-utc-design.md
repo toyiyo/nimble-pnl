@@ -72,7 +72,8 @@ The sale date goes to P&L, so a wrong day puts revenue on the wrong day.
   from mount time goes stale on a page that stays open past midnight.
 - Add `toImportedSaleDate(text)` to `src/lib/timezone.ts`. It returns valid text
   in `YYYY-MM-DD` form with no change. It rejects an impossible calendar day,
-  such as `2026-13-45`. For other text, it parses with `new Date()` and formats
+  such as `2026-02-31`, which `new Date()` rolls to March 3. For other text, it
+  parses with `new Date()` and formats
   the local fields. For text that it cannot parse, it returns `''`. This keeps
   the current behavior of `src/components/POSSalesFileUpload.tsx:132-138`.
 - Change `src/components/POSSalesFileUpload.tsx:349` to use `toDateOnlyString`

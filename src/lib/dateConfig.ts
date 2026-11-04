@@ -1,8 +1,3 @@
-/** 
- * Week starts on Monday (1) for all date calculations
- * Sunday = 0, Monday = 1, Tuesday = 2, etc.
- * 
- * This constant ensures consistency across Scheduling, Payroll, 
- * Timecards, and all employee-facing pages.
- */
-export const WEEK_STARTS_ON = 1;
+// Moved to supabase/functions/_shared/labor/dateConfig.ts so the edge functions
+// share one copy. This shim keeps the old import path.
+export * from '../../supabase/functions/_shared/labor/dateConfig';

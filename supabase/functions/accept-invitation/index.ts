@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { inviterMayInvite } from '../_shared/invitePermissions.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -76,9 +77,8 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log('Invitation found:', { 
-      id: invitation.id, 
-      email: invitation.email, 
-      role: invitation.role, 
+      id: invitation.id,
+      role: invitation.role,
       employee_id: invitation.employee_id,
       restaurant_id: invitation.restaurant_id
     });
@@ -100,9 +100,39 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Invitation has expired');
     }
 
-    // Check if the user's email matches
-    if (user.email !== invitation.email) {
+    // Check if the user's email matches. Lowercase both sides: historical
+    // invitation rows carry mixed case, and GoTrue lowercases the account
+    // email — an exact compare would reject a legitimate invitee. The
+    // client (AcceptInvitation.tsx emailsMatch) and accept_my_invitation
+    // use the same case-insensitive rule.
+    if (!user.email || user.email.toLowerCase() !== invitation.email.toLowerCase()) {
       throw new Error(`This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`);
+    }
+
+    // The inviter must hold a role that may invite this role. A row can carry
+    // a role its inviter could not grant: a manager could write an owner
+    // invitation through PostgREST before 20261026120200, and an inviter can
+    // lose the right after the send. This client is the service role, so no
+    // RLS or trigger checks the copy into user_restaurants below.
+    const { data: inviterMembership, error: inviterError } = await supabase
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', invitation.invited_by)
+      .eq('restaurant_id', invitation.restaurant_id)
+      .maybeSingle();
+
+    if (inviterError) {
+      console.error('Error loading the inviter membership:', inviterError);
+      throw new Error('Could not verify the invitation');
+    }
+
+    if (!inviterMayInvite(inviterMembership?.role, invitation.role)) {
+      console.warn('Rejected invitation: inviter may not invite this role', {
+        id: invitation.id,
+        role: invitation.role,
+        inviterRole: inviterMembership?.role ?? null,
+      });
+      throw new Error('This invitation is no longer valid. Ask the restaurant for a new invitation.');
     }
 
     // Check if user is already a member of this restaurant
@@ -163,13 +193,18 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations
+    // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations.
+    // neq(id): a concurrent accept_my_invitation call can have flipped THIS
+    // row to accepted already — without the exclusion, this delete would
+    // remove the row the update below targets and lose the accepted_at/
+    // accepted_by audit record (mirror of the RPC's own guard).
     await supabase
       .from('invitations')
       .delete()
       .eq('restaurant_id', invitation.restaurant_id)
       .eq('email', invitation.email)
-      .eq('status', 'accepted');
+      .eq('status', 'accepted')
+      .neq('id', invitation.id);
 
     // Update invitation status
     const { error: updateError } = await supabase

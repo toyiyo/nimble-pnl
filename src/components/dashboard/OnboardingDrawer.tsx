@@ -66,6 +66,12 @@ export const OnboardingDrawer = () => {
   // Don't show onboarding for staff/employees (after all hooks)
   if (isStaff) return null;
 
+  // No selected restaurant, nothing to onboard: every step configures a
+  // restaurant. The modal Sheet would also cover the empty dashboard —
+  // including the pending-invitation accept card — and steer an invitee
+  // toward owner-style setup, the exact wrong path the invite flow fixes.
+  if (!selectedRestaurant) return null;
+
   const handleOpen = () => {
     setIsOpen(true);
     localStorage.setItem('onboarding_drawer_dismissed', 'false');

@@ -41,6 +41,10 @@ import type {
   CreateAtTimeOutcome,
   CreateAtTimeInput,
 } from '@/hooks/useValidatedShiftMutations';
+import type {
+  GuardShiftChangeOptions,
+  NotifyAfterDeferredCommitArgs,
+} from '@/hooks/usePublishedShiftGuard';
 
 /** Minimal shape needed to anchor the Radix popper to an arbitrary rect. */
 interface VirtualAnchor {
@@ -82,6 +86,7 @@ interface TimelineShiftPopoverProps {
     startIso: string;
     endIso: string;
     businessDate: string;
+    allowPublished?: boolean;
   }) => Promise<UpdateTimeOutcome>;
   /** Force-apply a time change after the user confirms the conflict dialog. Used by the DRAG path (time-only). */
   readonly forceUpdateTime: (input: {
@@ -89,6 +94,7 @@ interface TimelineShiftPopoverProps {
     startIso: string;
     endIso: string;
     businessDate: string;
+    allowPublished?: boolean;
   }) => Promise<boolean>;
   /**
    * Validate a full-field edit (time + employee + break + notes); returns
@@ -103,6 +109,7 @@ interface TimelineShiftPopoverProps {
     employeeId: string;
     breakDuration: number;
     notes: string;
+    allowPublished?: boolean;
   }) => Promise<UpdateShiftOutcome>;
   /** Force-apply a full-field edit after the user confirms the conflict dialog. */
   readonly forceUpdateShift: (input: {
@@ -113,6 +120,7 @@ interface TimelineShiftPopoverProps {
     employeeId: string;
     breakDuration: number;
     notes: string;
+    allowPublished?: boolean;
   }) => Promise<UpdateShiftOutcome>;
   /** Validate a create-at-time (quick-add) request; returns pending issues instead of throwing. */
   readonly validateAndCreateAtTime?: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
@@ -143,6 +151,21 @@ interface TimelineShiftPopoverProps {
   readonly anchorRect?: DOMRect | null;
   /** The scrollable plot container, used as the Radix collision boundary. */
   readonly collisionBoundary?: Element | null;
+  /**
+   * The page's single `usePublishedShiftGuard` instance. Save (edit mode)
+   * routes every change through this so a published shift asks for
+   * confirmation before it applies.
+   */
+  readonly guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
+  /**
+   * Same guard instance's deferred-notify step. Save (edit mode) can surface
+   * a conflict dialog instead of committing right away; once that conflict
+   * is confirmed and the write actually lands, this fires the notify the
+   * guard itself skipped.
+   */
+  readonly notifyAfterDeferredCommit: (
+    args: NotifyAfterDeferredCommitArgs,
+  ) => void | Promise<void>;
 }
 
 /** Build the initial editor values from a shift + the day's timezone. */
@@ -205,6 +228,8 @@ export function TimelineShiftPopover({
   clearValidation,
   anchorRect,
   collisionBoundary,
+  guardShiftChange,
+  notifyAfterDeferredCommit,
 }: TimelineShiftPopoverProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [editValues, setEditValues] = useState<TimelineShiftEditorValues | null>(null);
@@ -212,7 +237,24 @@ export function TimelineShiftPopover({
     createDraft?.values ?? null,
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Edit-mode's own pending-conflict slot. Carries the guard's `notify`
+  // choice and the employee name(s) so the deferred-commit notify below can
+  // fire the manager's actual checkbox choice, not a guess, once the forced
+  // write lands. A new shift (create mode, below) has no lock to guard
+  // against and no guard-issued `notify`, so it keeps its own separate slot
+  // instead of widening this one.
   const [pendingIssues, setPendingIssues] = useState<{
+    conflicts: ConflictCheck[];
+    warnings: ValidationIssue[];
+    allowPublished?: boolean;
+    notify: boolean;
+    employeeName: string;
+    secondEmployeeName?: string;
+  } | null>(null);
+  // Create-mode's pending-conflict slot (`TimelineCreateDialog` below) — a
+  // brand-new shift has no lock and no guard `run`, so this stays the plain
+  // conflicts/warnings shape rather than sharing `pendingIssues` above.
+  const [createPendingIssues, setCreatePendingIssues] = useState<{
     conflicts: ConflictCheck[];
     warnings: ValidationIssue[];
   } | null>(null);
@@ -232,6 +274,7 @@ export function TimelineShiftPopover({
     setEditValues(null);
     setShowDeleteConfirm(false);
     setPendingIssues(null);
+    setCreatePendingIssues(null);
     setSaving(false);
     clearValidation();
   }, [clearValidation]);
@@ -247,7 +290,7 @@ export function TimelineShiftPopover({
   // draft replaces the old one while the popover is open.
   useEffect(() => {
     setCreateValues(createDraft?.values ?? null);
-    setPendingIssues(null);
+    setCreatePendingIssues(null);
   }, [createDraft]);
 
   const isCreateMode = !activeShift && Boolean(createDraft);
@@ -266,8 +309,8 @@ export function TimelineShiftPopover({
         existingShifts={existingShifts}
         validateAndCreateAtTime={validateAndCreateAtTime}
         forceCreateAtTime={forceCreateAtTime}
-        pendingIssues={pendingIssues}
-        setPendingIssues={setPendingIssues}
+        pendingIssues={createPendingIssues}
+        setPendingIssues={setCreatePendingIssues}
         saving={saving}
         setSaving={setSaving}
         onClose={handleClose}
@@ -327,43 +370,67 @@ export function TimelineShiftPopover({
 
     const startIso = minutesToIso(dateStr, startMin, tz);
     const endIso = minutesToIso(dateStr, endMinValue, tz);
+    const employeeName = employees.find((e) => e.id === activeShift.employee_id)?.name ?? '';
+    const isReassignment = editValues.employeeId !== activeShift.employee_id;
+    const secondEmployeeName = isReassignment
+      ? employees.find((e) => e.id === editValues.employeeId)?.name
+      : undefined;
 
     setSaving(true);
     try {
-      const outcome = await validateAndUpdateShift({
-        shift: activeShift,
-        startIso,
-        endIso,
-        businessDate: dateStr,
-        employeeId: editValues.employeeId,
-        breakDuration: Number(editValues.breakDuration) || 0,
-        notes: editValues.notes,
+      await guardShiftChange({
+        shiftId: activeShift.id,
+        restaurantId,
+        employeeName,
+        secondEmployeeName,
+        run: async ({ allowPublished, notify }) => {
+          const outcome = await validateAndUpdateShift({
+            shift: activeShift,
+            startIso,
+            endIso,
+            businessDate: dateStr,
+            employeeId: editValues.employeeId,
+            breakDuration: Number(editValues.breakDuration) || 0,
+            notes: editValues.notes,
+            allowPublished,
+          });
+
+          if (outcome.updated) {
+            onSaved?.(activeShift);
+            handleClose();
+            return;
+          }
+
+          if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
+            setPendingIssues({
+              conflicts: outcome.pendingConflicts ?? [],
+              warnings: outcome.pendingWarnings ?? [],
+              allowPublished,
+              notify,
+              employeeName,
+              secondEmployeeName,
+            });
+            // Nothing has committed yet — the conflict dialog still needs a
+            // confirm. Tell the guard to skip its own notify step;
+            // handleConfirmConflicts below fires `notifyAfterDeferredCommit`
+            // once the forced write actually lands.
+            return { deferred: true };
+          }
+        },
       });
-
-      if (outcome.updated) {
-        onSaved?.(activeShift);
-        handleClose();
-        return;
-      }
-
-      if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
-        setPendingIssues({
-          conflicts: outcome.pendingConflicts ?? [],
-          warnings: outcome.pendingWarnings ?? [],
-        });
-      }
     } finally {
       setSaving(false);
     }
   };
 
   const handleConfirmConflicts = async () => {
-    if (!editValues) return;
+    if (!editValues || !pendingIssues) return;
 
     const { startMin, endMin: endMinValue } = resolveOvernightMinutes(editValues.startTime, editValues.endTime);
 
     const startIso = minutesToIso(dateStr, startMin, tz);
     const endIso = minutesToIso(dateStr, endMinValue, tz);
+    const startedAt = new Date().toISOString();
 
     setSaving(true);
     try {
@@ -375,12 +442,21 @@ export function TimelineShiftPopover({
         employeeId: editValues.employeeId,
         breakDuration: Number(editValues.breakDuration) || 0,
         notes: editValues.notes,
+        allowPublished: pendingIssues.allowPublished ?? false,
       });
 
       if (outcome.updated) {
         setPendingIssues(null);
         onSaved?.(activeShift);
         handleClose();
+        if (pendingIssues.notify) {
+          await notifyAfterDeferredCommit({
+            shiftId: activeShift.id,
+            employeeName: pendingIssues.employeeName,
+            secondEmployeeName: pendingIssues.secondEmployeeName,
+            startedAt,
+          });
+        }
       }
     } finally {
       setSaving(false);
@@ -480,7 +556,6 @@ export function TimelineShiftPopover({
                   Delete
                 </Button>
                 <Button
-                  disabled={isLocked}
                   onClick={handleEditClick}
                   className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
                 >

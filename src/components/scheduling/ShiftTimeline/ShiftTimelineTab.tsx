@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -41,6 +41,10 @@ import type { GroupByMode } from '@/lib/scheduleGrouping';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
 import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
+import type {
+  GuardShiftChangeOptions,
+  NotifyAfterDeferredCommitArgs,
+} from '@/hooks/usePublishedShiftGuard';
 
 // ─── Constants (Fix 2 — visible "Add shift" button) ────────────────────────────
 
@@ -103,6 +107,26 @@ interface ShiftTimelineTabProps {
   readonly loading: boolean;
   /** Forwarded from the parent's error state; renders an inline message. */
   readonly error: Error | null;
+  /**
+   * The page's single `usePublishedShiftGuard` instance. Every change to an
+   * existing shift — drag-move, drag-resize, and the popover's edit-save —
+   * must run through this so a published shift asks for confirmation first.
+   */
+  readonly guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
+  /**
+   * Same guard instance's deferred-notify step. A drag-commit or the
+   * popover's edit-save can surface a conflict dialog instead of committing
+   * right away; once that conflict is confirmed and the write actually
+   * lands, this fires the notify the guard itself skipped.
+   */
+  readonly notifyAfterDeferredCommit: (
+    args: NotifyAfterDeferredCommitArgs,
+  ) => void | Promise<void>;
+  /**
+   * Optional line under each day selector label (e.g., the daily labor cost
+   * %). It renders inside the day button, so it must not be focusable.
+   */
+  readonly renderDayFooter?: (day: string, selected: boolean) => ReactNode;
 }
 
 /**
@@ -265,6 +289,9 @@ export function ShiftTimelineTab({
   availabilityByEmployee,
   loading,
   error,
+  guardShiftChange,
+  notifyAfterDeferredCommit,
+  renderDayFooter,
 }: ShiftTimelineTabProps) {
   // ── Local state ────────────────────────────────────────────────────────────
   const [selectedDayState, setSelectedDay] = useState<string>(() => defaultDay(weekDays));
@@ -310,6 +337,11 @@ export function ShiftTimelineTab({
     endIso: string;
     conflicts: ConflictDialogData['conflicts'];
     warnings: ConflictDialogData['warnings'];
+    allowPublished: boolean;
+    // Carried from the guard's `run` call so the deferred-commit notify
+    // below can fire the manager's actual checkbox choice, not a guess.
+    notify: boolean;
+    employeeName: string;
   } | null>(null);
 
   // ── Transient change highlight (Fix 3) ─────────────────────────────────────
@@ -672,7 +704,9 @@ export function ShiftTimelineTab({
 
   /**
    * Drag/resize release (Stage D3): builds ISO instants via `minutesToIso`
-   * and routes through the same `validateAndUpdateTime` pipeline the edit
+   * and routes through `guardShiftChange`. A published shift shows the
+   * confirm dialog first; an unpublished shift runs straight away. Either
+   * way `run` calls the same `validateAndUpdateTime` pipeline the edit
    * popover's Save uses. On success the draft is cleared (the mutation's own
    * optimistic `setQueriesData` update means the bar never jumps waiting for
    * a refetch). On pending conflicts/warnings, the draft is KEPT (so the bar
@@ -690,37 +724,62 @@ export function ShiftTimelineTab({
 
       const startIso = minutesToIso(selectedDay, range.startMin, tz);
       const endIso = minutesToIso(selectedDay, range.endMin, tz);
+      const employeeName = employees.find((e) => e.id === shift.employee_id)?.name ?? '';
 
-      const outcome = await validateAndUpdateTime({
-        shift,
-        startIso,
-        endIso,
-        businessDate: selectedDay,
+      await guardShiftChange({
+        shiftId: shift.id,
+        restaurantId,
+        employeeName,
+        run: async ({ allowPublished, notify }) => {
+          const outcome = await validateAndUpdateTime({
+            shift,
+            startIso,
+            endIso,
+            businessDate: selectedDay,
+            allowPublished,
+          });
+
+          if (outcome.updated) {
+            setDragDraft(null);
+            flashHighlight(shiftId);
+            return;
+          }
+
+          if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
+            setDragConflict({
+              shift,
+              startIso,
+              endIso,
+              conflicts: outcome.pendingConflicts ?? [],
+              warnings: outcome.pendingWarnings ?? [],
+              allowPublished,
+              notify,
+              employeeName,
+            });
+            // Nothing has committed yet — the conflict dialog still needs a
+            // confirm. Tell the guard to skip its own notify step; the
+            // confirm path below fires `notifyAfterDeferredCommit` once the
+            // forced write actually lands.
+            return { deferred: true };
+          }
+
+          // Validation failed outright (e.g. an interval-construction error)
+          // with no pending issues to confirm — snap back rather than leave
+          // a dangling draft.
+          setDragDraft(null);
+        },
       });
-
-      if (outcome.updated) {
-        setDragDraft(null);
-        flashHighlight(shiftId);
-        return;
-      }
-
-      if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
-        setDragConflict({
-          shift,
-          startIso,
-          endIso,
-          conflicts: outcome.pendingConflicts ?? [],
-          warnings: outcome.pendingWarnings ?? [],
-        });
-        return;
-      }
-
-      // Validation failed outright (e.g. a locked shift returns `updated:
-      // false`, or an interval-construction error) with no pending issues to
-      // confirm — snap back rather than leave a dangling draft.
-      setDragDraft(null);
     },
-    [dayShifts, selectedDay, tz, validateAndUpdateTime, flashHighlight],
+    [
+      dayShifts,
+      selectedDay,
+      tz,
+      validateAndUpdateTime,
+      flashHighlight,
+      guardShiftChange,
+      employees,
+      restaurantId,
+    ],
   );
 
   const handleDragConflictCancel = useCallback(() => {
@@ -730,14 +789,18 @@ export function ShiftTimelineTab({
 
   const handleDragConflictConfirm = useCallback(async () => {
     if (!dragConflict) return;
-    const { shift, startIso, endIso } = dragConflict;
-    const ok = await forceUpdateTime({ shift, startIso, endIso, businessDate: selectedDay });
+    const { shift, startIso, endIso, allowPublished, notify, employeeName } = dragConflict;
+    const startedAt = new Date().toISOString();
+    const ok = await forceUpdateTime({ shift, startIso, endIso, businessDate: selectedDay, allowPublished });
     if (ok) {
       setDragConflict(null);
       setDragDraft(null);
       flashHighlight(shift.id);
+      if (notify) {
+        await notifyAfterDeferredCommit({ shiftId: shift.id, employeeName, startedAt });
+      }
     }
-  }, [dragConflict, forceUpdateTime, selectedDay, flashHighlight]);
+  }, [dragConflict, forceUpdateTime, selectedDay, flashHighlight, notifyAfterDeferredCommit]);
 
   const dragConflictData: ConflictDialogData | null = dragConflict
     ? {
@@ -862,7 +925,7 @@ export function ShiftTimelineTab({
             onClick={() => setSelectedDay(day)}
             aria-pressed={day === selectedDay}
             className={`
-              shrink-0 px-3 h-8 rounded-lg text-[12px] font-medium transition-colors
+              shrink-0 px-3 min-h-8 py-1 flex flex-col items-center justify-center rounded-lg text-[12px] font-medium transition-colors
               ${day === selectedDay
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -870,6 +933,7 @@ export function ShiftTimelineTab({
             `}
           >
             {formatDayLabel(day).split(',')[0]}
+            {renderDayFooter?.(day, day === selectedDay)}
           </button>
         ))}
       </fieldset>
@@ -1077,6 +1141,8 @@ export function ShiftTimelineTab({
         onSaved={handleShiftSaved}
         validationResult={validationResult}
         clearValidation={clearValidation}
+        guardShiftChange={guardShiftChange}
+        notifyAfterDeferredCommit={notifyAfterDeferredCommit}
       />
 
       {/* Drag-commit conflict dialog (Stage D3) — the same AvailabilityConflictDialog

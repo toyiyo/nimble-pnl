@@ -18,6 +18,17 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { formatInstant } from '@/lib/restaurantClock';
+
+// The page reads the restaurant's time zone through useRestaurantClock and
+// passes it to TradeCard. Fix it to a zone that differs from UTC and from
+// most host machines, so a test that renders in the host zone instead of
+// the restaurant zone fails.
+const RESTAURANT_TZ = 'America/Los_Angeles';
+
+vi.mock('@/hooks/useRestaurantClock', () => ({
+  useRestaurantClock: vi.fn(() => ({ tz: RESTAURANT_TZ })),
+}));
 
 // ---------------------------------------------------------------------------
 // Hoisted mock — date-fns/parseISO would work without mocking because we only
@@ -119,6 +130,7 @@ vi.mock('@/hooks/useAvailableShifts', () => ({
             end_time: `${DAY_A}T20:00:00Z`,
             position: 'Bartender',
             break_duration: 0,
+            is_published: true,
           },
           offered_by: {
             id: 'emp-poster',
@@ -144,6 +156,7 @@ vi.mock('@/hooks/useAvailableShifts', () => ({
             end_time: `${DAY_B}T20:00:00Z`,
             position: 'Server',
             break_duration: 0,
+            is_published: true,
           },
           offered_by: {
             id: 'emp-poster2',
@@ -184,6 +197,11 @@ vi.mock('@/hooks/useShiftTrades', () => ({
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
+
+// The page reads the shift protection rules through React Query. This
+// test renders without a QueryClientProvider, so stub the hook family
+// with the everything-off defaults.
+vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'));
 
 vi.mock('@/components/employee', () => ({
   EmployeePageHeader: ({ title }: { title: string }) =>
@@ -249,6 +267,8 @@ vi.mock('react-router-dom', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) =>
     React.createElement('a', { href: to }, children),
   useNavigate: vi.fn(() => vi.fn()),
+  // The page reads the deep link params. These tests use no link.
+  useSearchParams: vi.fn(() => [new URLSearchParams(), vi.fn()]),
 }));
 
 import AvailableShiftsPage from '@/pages/AvailableShiftsPage';
@@ -301,6 +321,8 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
     renderPage();
     // The same-area trade should have an Accept button
     expect(screen.getByRole('button', { name: /Accept trade from Carol Poster/i })).toBeInTheDocument();
+    // The same-area fixture has is_published: true, so no tentative badge.
+    expect(screen.queryByText('Tentative — draft')).not.toBeInTheDocument();
   });
 
   it('(7) Accept button has no aria-describedby for same-area trade', () => {
@@ -333,5 +355,191 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
     renderPage();
     const panel = document.getElementById('area-mismatch-trade-mismatch');
     expect(panel).not.toBeNull();
+  });
+
+  it('shows the date and time in the restaurant zone, not the host zone', async () => {
+    // 2026-10-03T01:00Z–2026-10-03T07:00Z is 2026-10-02 18:00–2026-10-03
+    // 00:00 in America/Los_Angeles (the mocked restaurant zone). A card that
+    // formats in the host zone instead shows a different date or hour.
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: [
+        {
+          key: 'trade-tz',
+          type: 'trade',
+          date: new Date('2026-10-03T01:00:00Z'),
+          trade: {
+            id: 'trade-tz',
+            status: 'open',
+            offered_shift: {
+              id: 'shift-tz',
+              start_time: '2026-10-03T01:00:00Z',
+              end_time: '2026-10-03T07:00:00Z',
+              position: 'Server',
+              break_duration: 0,
+              is_published: true,
+            },
+            offered_by: {
+              id: 'emp-poster',
+              name: 'Bob Poster',
+              position: 'Server',
+              area: 'FOH',
+            },
+            reason: null,
+            target_employee_id: null,
+          },
+          openShift: undefined,
+        },
+      ],
+      loading: false,
+    });
+
+    renderPage();
+
+    expect(screen.getByText('Fri, Oct 2')).toBeInTheDocument();
+    expect(screen.getByText('6:00 PM - 12:00 AM')).toBeInTheDocument();
+  });
+
+  it('marks a draft offered shift as tentative', async () => {
+    // Same fixture builder as the other tests, with is_published: false.
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: [
+        {
+          key: 'trade-draft',
+          type: 'trade',
+          date: new Date(DAY_A),
+          trade: {
+            id: 'trade-draft',
+            status: 'open',
+            offered_shift: {
+              id: 'shift-draft',
+              start_time: `${DAY_A}T14:00:00Z`,
+              end_time: `${DAY_A}T20:00:00Z`,
+              position: 'Bartender',
+              break_duration: 0,
+              is_published: false,
+            },
+            offered_by: {
+              id: 'emp-poster',
+              name: 'Bob Poster',
+              position: 'Bartender',
+              area: 'FOH',
+            },
+            reason: null,
+            target_employee_id: null,
+          },
+          openShift: undefined,
+        },
+      ],
+      loading: false,
+    });
+    renderPage();
+    expect(screen.getByText('Tentative — draft')).toBeInTheDocument();
+  });
+
+  it('re-renders the card when a manager edits the offered shift position', async () => {
+    // Regression test for the memo comparator gap: the comparator once checked
+    // only id/status/is_published, so a position edit on the same trade id did
+    // not re-render the card. The claimer would see stale shift details.
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    const buildItems = (position: string) => [
+      {
+        key: 'trade-edited',
+        type: 'trade',
+        date: new Date(DAY_A),
+        trade: {
+          id: 'trade-edited',
+          status: 'open',
+          offered_shift: {
+            id: 'shift-edited',
+            start_time: `${DAY_A}T14:00:00Z`,
+            end_time: `${DAY_A}T20:00:00Z`,
+            position,
+            break_duration: 0,
+            is_published: true,
+          },
+          offered_by: {
+            id: 'emp-poster',
+            name: 'Bob Poster',
+            position,
+            area: 'FOH',
+          },
+          reason: null,
+          target_employee_id: null,
+        },
+        openShift: undefined,
+      },
+    ];
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('Bartender'),
+      loading: false,
+    });
+    const { rerender } = renderPage();
+    expect(screen.getByText('Bartender')).toBeInTheDocument();
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('Server'),
+      loading: false,
+    });
+    rerender(React.createElement(AvailableShiftsPage));
+
+    expect(screen.getByText('Server')).toBeInTheDocument();
+    expect(screen.queryByText('Bartender')).not.toBeInTheDocument();
+  });
+
+  it('re-renders the card when a manager edits the offered shift time', async () => {
+    const { useAvailableShifts } = await import('@/hooks/useAvailableShifts');
+    const buildItems = (startHour: string) => [
+      {
+        key: 'trade-time-edited',
+        type: 'trade',
+        date: new Date(DAY_A),
+        trade: {
+          id: 'trade-time-edited',
+          status: 'open',
+          offered_shift: {
+            id: 'shift-time-edited',
+            start_time: `${DAY_A}T${startHour}:00:00Z`,
+            end_time: `${DAY_A}T20:00:00Z`,
+            position: 'Server',
+            break_duration: 0,
+            is_published: true,
+          },
+          offered_by: {
+            id: 'emp-poster',
+            name: 'Bob Poster',
+            position: 'Server',
+            area: 'FOH',
+          },
+          reason: null,
+          target_employee_id: null,
+        },
+        openShift: undefined,
+      },
+    ];
+
+    // Build the expected label the same way the component does — in the
+    // restaurant time zone, not the host machine's — so the assertion holds
+    // under any test-runner timezone.
+    const startLabel = (hour: string) =>
+      formatInstant(`${DAY_A}T${hour}:00:00Z`, RESTAURANT_TZ, 'h:mm a');
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('14'),
+      loading: false,
+    });
+    const { rerender } = renderPage();
+    expect(screen.getByText(new RegExp(startLabel('14')))).toBeInTheDocument();
+
+    (useAvailableShifts as ReturnType<typeof vi.fn>).mockReturnValue({
+      items: buildItems('16'),
+      loading: false,
+    });
+    rerender(React.createElement(AvailableShiftsPage));
+
+    expect(screen.getByText(new RegExp(startLabel('16')))).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(startLabel('14')))).not.toBeInTheDocument();
   });
 });

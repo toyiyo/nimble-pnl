@@ -1,7 +1,6 @@
 ---
 name: maintainability-reviewer
 description: Phase 7a reviewer focused on maintainability — CLAUDE.md hygiene, abstraction smells, naming, nested conditionals, dead code, leaky abstractions, unnecessary JSX nesting. Runs in parallel with the other Phase 7a reviewers against the current branch diff.
-subagent_type: feature-dev:code-reviewer
 ---
 
 # Maintainability Reviewer (Phase 7a)

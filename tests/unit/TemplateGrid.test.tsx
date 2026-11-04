@@ -470,3 +470,20 @@ describe('TemplateGrid ghostByCell threading to ShiftCell', () => {
     expect(atText).toBe(false);
   });
 });
+
+describe('TemplateGrid renderDayFooter', () => {
+  it('renders the footer under each day header', () => {
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        renderDayFooter={(day) => <span>{`Labor for ${day}`}</span>}
+      />,
+    );
+    expect(screen.getByText('Labor for 2026-07-04')).toBeInTheDocument();
+  });
+
+  it('renders no footer when the prop is absent', () => {
+    render(<TemplateGrid {...baseGridProps} />);
+    expect(screen.queryByText(/Labor for/)).not.toBeInTheDocument();
+  });
+});

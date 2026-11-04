@@ -1,4 +1,4 @@
-import { format, parseISO, isToday, isFuture, isPast, differenceInMinutes } from 'date-fns';
+import { isFuture, isPast, differenceInMinutes } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,9 +9,9 @@ import {
   ClockIcon,
   Coffee,
   MapPin,
-  PencilLine,
   XCircle,
 } from 'lucide-react';
+import { RestaurantClock } from '@/hooks/useRestaurantClock';
 import { Shift } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +27,13 @@ function formatShiftDuration(startTime: string, endTime: string, breakMinutes: n
   return `${hours}h ${minutes}m`;
 }
 
-function getShiftStatusBadge(shift: Shift): JSX.Element | null {
+// Two kinds of question live here. "Is this shift today?" is a calendar-day
+// question: it must use the restaurant's business day (`clock.toBusinessDay`
+// vs `clock.today`), not the viewer's. "Is this shift over, in progress, or
+// not yet started?" is an instant question: an instant compares the same way
+// in every timezone, so `isPast`, `isFuture` and the `now` range check stay
+// exactly as they are — do not route them through the clock.
+function getShiftStatusBadge(shift: Shift, clock: RestaurantClock): JSX.Element | null {
   const startTime = new Date(shift.start_time);
   const endTime = new Date(shift.end_time);
   const now = new Date();
@@ -59,7 +65,7 @@ function getShiftStatusBadge(shift: Shift): JSX.Element | null {
     );
   }
 
-  if (isToday(startTime)) {
+  if (clock.toBusinessDay(shift.start_time) === clock.today) {
     return (
       <Badge variant="default" className="flex items-center gap-1">
         <Clock className="h-3 w-3" />
@@ -80,23 +86,6 @@ function getShiftStatusBadge(shift: Shift): JSX.Element | null {
   return null;
 }
 
-/**
- * Deliberately NOT variant="outline". The pre-existing "Upcoming" badge is an
- * outline pill in this exact slot, so an outline draft badge would be a second
- * identical grey pill and read as just another status — the precise failure the
- * tentative treatment exists to avoid. The `warning` token matches the "being
- * revised" banner so "amber = not final" is one language across the page. The
- * icon is supplementary; the text carries the meaning.
- */
-function DraftBadge(): JSX.Element {
-  return (
-    <Badge className="flex items-center gap-1 bg-warning/15 text-foreground border-warning/30 hover:bg-warning/15">
-      <PencilLine className="h-3 w-3" />
-      Draft — not confirmed
-    </Badge>
-  );
-}
-
 type ShiftRowVariant = 'day' | 'upcoming';
 
 interface ShiftRowProps {
@@ -108,6 +97,14 @@ interface ShiftRowProps {
    */
   variant?: ShiftRowVariant;
   onTrade?: (shift: Shift) => void;
+  clock: RestaurantClock;
+  /**
+   * Does the restaurant publish its schedule? A restaurant that never
+   * publishes has `is_published = false` on every shift, so the draft
+   * treatment would mark every row and mean nothing. Defaults to `true`, so a
+   * call site that does not know keeps the current behaviour.
+   */
+  restaurantPublishes?: boolean;
 }
 
 /** Cancelled outranks draft, which outranks the per-variant default. */
@@ -118,19 +115,27 @@ function getSurfaceClass(isCancelled: boolean, isDraft: boolean, variant: ShiftR
   return 'bg-muted/50';
 }
 
-export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JSX.Element {
-  const isDraft = !shift.is_published;
+export function ShiftRow({
+  shift,
+  variant = 'day',
+  onTrade,
+  clock,
+  restaurantPublishes = true,
+}: ShiftRowProps): JSX.Element {
+  const isDraft = restaurantPublishes && !shift.is_published;
   const isCancelled = shift.status === 'cancelled';
 
-  // Every draft signal below is load-bearing and redundant on purpose: the
-  // dashed surface, the badge copy, the muted type and the missing Trade
-  // button each say "not final" on their own, because the banner above may go
-  // unread on a fast mobile glance.
+  // Drafts get a visual treatment only, no explanatory copy: many restaurants
+  // never publish, so words like "not confirmed" read as a threat on shifts
+  // that are, in practice, final. The dashed muted surface and the lighter
+  // type mark "draft" for sighted users; the sr-only label below carries the
+  // same fact to screen readers. The Trade button is NOT a draft signal: the
+  // draft-trade design (docs/superpowers/specs/2026-08-14-draft-shift-trade-design.md)
+  // lets an employee offer a draft shift, marked tentative on the trade side.
   const surface = getSurfaceClass(isCancelled, isDraft, variant);
   const timeText = isDraft ? 'font-normal text-muted-foreground' : 'font-medium';
 
-  const canTrade =
-    !!onTrade && shift.is_published && !isCancelled && isFuture(parseISO(shift.start_time));
+  const canTrade = !!onTrade && !isCancelled && isFuture(new Date(shift.start_time));
 
   const tradeButton = canTrade ? (
     <Button
@@ -144,15 +149,11 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
     </Button>
   ) : null;
 
-  // "Is this real" outranks "when is this", so the draft badge takes the slot
-  // the status badge would otherwise occupy rather than sitting beside it.
-  //
-  // Cancelled still outranks draft, matching getSurfaceClass. An unpublished
-  // cancelled shift is reachable — unpublishing flips is_published on every
-  // shift in the week, cancelled ones included — and it would otherwise wear a
-  // struck-through destructive row under a badge reading "Draft — not
-  // confirmed". "It's cancelled" is the fact the employee has to leave with.
-  const statusBadge = isDraft && !isCancelled ? <DraftBadge /> : getShiftStatusBadge(shift);
+  const statusBadge = getShiftStatusBadge(shift, clock);
+
+  // Color and border alone would fail a screen reader and WCAG 1.4.1.
+  const draftSrLabel =
+    isDraft && !isCancelled ? <span className="sr-only">Draft</span> : null;
 
   if (variant === 'upcoming') {
     return (
@@ -160,19 +161,19 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
         <div className="flex items-center gap-4">
           <div className="text-center">
             <div className="text-sm font-medium text-muted-foreground">
-              {format(parseISO(shift.start_time), 'EEE')}
+              {clock.formatInstant(shift.start_time, 'EEE')}
             </div>
             <div className={cn('text-2xl', isDraft ? 'font-normal text-muted-foreground' : 'font-bold')}>
-              {format(parseISO(shift.start_time), 'd')}
+              {clock.formatInstant(shift.start_time, 'd')}
             </div>
             <div className="text-xs text-muted-foreground">
-              {format(parseISO(shift.start_time), 'MMM')}
+              {clock.formatInstant(shift.start_time, 'MMM')}
             </div>
           </div>
           <div>
             <div className={timeText}>
-              {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-              {format(parseISO(shift.end_time), 'h:mm a')}
+              {clock.formatInstant(shift.start_time, 'h:mm a')} -{' '}
+              {clock.formatInstant(shift.end_time, 'h:mm a')}
             </div>
             <div className="text-sm text-muted-foreground flex items-center gap-2">
               <MapPin className="h-3 w-3" />
@@ -188,6 +189,7 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
             </div>
           )}
           {statusBadge}
+          {draftSrLabel}
         </div>
       </div>
     );
@@ -203,8 +205,8 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
       <div className="flex items-center gap-4">
         <div>
           <div className={timeText}>
-            {format(parseISO(shift.start_time), 'h:mm a')} -{' '}
-            {format(parseISO(shift.end_time), 'h:mm a')}
+            {clock.formatInstant(shift.start_time, 'h:mm a')} -{' '}
+            {clock.formatInstant(shift.end_time, 'h:mm a')}
           </div>
           <div className="text-sm text-muted-foreground">{shift.position}</div>
         </div>
@@ -220,6 +222,7 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
           </div>
         )}
         {statusBadge}
+        {draftSrLabel}
         {tradeButton}
       </div>
     </div>

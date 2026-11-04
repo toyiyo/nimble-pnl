@@ -30,13 +30,17 @@ import { useFinancialSettings } from '@/hooks/useFinancialSettings';
 // ---------------------------------------------------------------------------
 
 let mockFromChain: Record<string, ReturnType<typeof vi.fn>>;
+// upsert(...).select() resolves to an array of the inserted rows.
+let mockUpsertSelect: ReturnType<typeof vi.fn>;
 
 function resetChain() {
+  mockUpsertSelect = vi.fn().mockResolvedValue({ data: [], error: null });
   mockFromChain = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
     insert: vi.fn().mockReturnThis(),
+    upsert: vi.fn(() => ({ select: mockUpsertSelect })),
     update: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data: null, error: null }),
   };
@@ -64,7 +68,7 @@ describe('useFinancialSettings', () => {
       created_at: '2026-03-03T00:00:00Z',
       updated_at: '2026-03-03T00:00:00Z',
     };
-    mockFromChain.single.mockResolvedValue({ data: defaultRow, error: null });
+    mockUpsertSelect.mockResolvedValue({ data: [defaultRow], error: null });
 
     const { result } = renderHook(() => useFinancialSettings('rest-123'));
 
@@ -74,12 +78,88 @@ describe('useFinancialSettings', () => {
 
     expect(result.current.settings).toEqual(defaultRow);
     expect(result.current.cogsMethod).toBe('inventory');
-    expect(mockFromChain.insert).toHaveBeenCalledWith(
+    // ON CONFLICT DO NOTHING: two hooks that mount at the same time must not
+    // fail with 23505 (409) on the unique restaurant_id constraint.
+    expect(mockFromChain.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         restaurant_id: 'rest-123',
         cogs_calculation_method: 'inventory',
       }),
+      { onConflict: 'restaurant_id', ignoreDuplicates: true },
     );
+    expect(mockFromChain.insert).not.toHaveBeenCalled();
+  });
+
+  it('reads the row again when another hook created it first (no 23505)', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const winnerRow = {
+      id: 'won-1',
+      restaurant_id: 'rest-123',
+      cogs_calculation_method: 'inventory',
+    };
+    // 1st read finds no row. The upsert skips the duplicate and returns [].
+    // The 2nd read finds the row that the other hook inserted.
+    mockFromChain.maybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: winnerRow, error: null });
+    mockUpsertSelect.mockResolvedValue({ data: [], error: null });
+
+    const { result } = renderHook(() => useFinancialSettings('rest-123'));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings).toEqual(winnerRow);
+    expect(mockFromChain.maybeSingle).toHaveBeenCalledTimes(2);
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('keeps settings empty and stops loading when the re-read fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const readError = { message: 'Read failed' };
+    mockFromChain.maybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: readError });
+    mockUpsertSelect.mockResolvedValue({ data: [], error: null });
+
+    const { result } = renderHook(() => useFinancialSettings('rest-123'));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.settings).toBeNull();
+    expect(consoleError).toHaveBeenCalledWith('Error fetching financial settings:', readError);
+    consoleError.mockRestore();
+  });
+
+  it('ignores a late result for a restaurant that is no longer selected', async () => {
+    const rowA = { id: 'set-a', restaurant_id: 'rest-a', cogs_calculation_method: 'financials' };
+    const rowB = { id: 'set-b', restaurant_id: 'rest-b', cogs_calculation_method: 'inventory' };
+    let resolveA!: (value: { data: unknown; error: unknown }) => void;
+    mockFromChain.maybeSingle
+      .mockReturnValueOnce(new Promise((resolve) => { resolveA = resolve; }))
+      .mockResolvedValueOnce({ data: rowB, error: null });
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useFinancialSettings(id),
+      { initialProps: { id: 'rest-a' } },
+    );
+
+    rerender({ id: 'rest-b' });
+    await waitFor(() => {
+      expect(result.current.settings).toEqual(rowB);
+    });
+
+    // The read for rest-a finishes after the switch. Its row must not win.
+    await act(async () => {
+      resolveA({ data: rowA, error: null });
+    });
+
+    expect(result.current.settings).toEqual(rowB);
+    expect(result.current.cogsMethod).toBe('inventory');
   });
 
   it('returns stored method when settings exist', async () => {
@@ -104,6 +184,28 @@ describe('useFinancialSettings', () => {
     expect(mockFromChain.insert).not.toHaveBeenCalled();
   });
 
+  it('normalizes a legacy "combined" method to "inventory"', async () => {
+    const legacyRow = {
+      id: 'set-1',
+      restaurant_id: 'rest-123',
+      cogs_calculation_method: 'combined',
+      created_at: '2026-03-01T00:00:00Z',
+      updated_at: '2026-03-01T00:00:00Z',
+    };
+    mockFromChain.maybeSingle.mockResolvedValue({ data: legacyRow, error: null });
+
+    const { result } = renderHook(() => useFinancialSettings('rest-123'));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.cogsMethod).toBe('inventory');
+    // The stored record must also hold the normalized value, so a consumer
+    // that reads settings.cogs_calculation_method never sees 'combined'.
+    expect(result.current.settings?.cogs_calculation_method).toBe('inventory');
+  });
+
   it('updateSettings() calls supabase update and shows success toast', async () => {
     const existingRow = {
       id: 'set-1',
@@ -115,7 +217,7 @@ describe('useFinancialSettings', () => {
     const updatedRow = {
       id: 'set-1',
       restaurant_id: 'rest-123',
-      cogs_calculation_method: 'combined',
+      cogs_calculation_method: 'financials',
     };
     // After initial fetch, update call chain
     mockFromChain.single.mockResolvedValue({ data: updatedRow, error: null });
@@ -127,12 +229,12 @@ describe('useFinancialSettings', () => {
     });
 
     await act(async () => {
-      await result.current.updateSettings({ cogs_calculation_method: 'combined' });
+      await result.current.updateSettings({ cogs_calculation_method: 'financials' });
     });
 
     expect(mockSupabase.from).toHaveBeenCalledWith('restaurant_financial_settings');
     expect(mockFromChain.update).toHaveBeenCalledWith(
-      expect.objectContaining({ cogs_calculation_method: 'combined' }),
+      expect.objectContaining({ cogs_calculation_method: 'financials' }),
     );
     expect(mockFromChain.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
     expect(mockToast).toHaveBeenCalledWith(
@@ -229,7 +331,7 @@ describe('useFinancialSettings', () => {
     });
 
     await act(async () => {
-      await result.current.updateSettings({ cogs_calculation_method: 'combined' });
+      await result.current.updateSettings({ cogs_calculation_method: 'financials' });
     });
 
     expect(mockToast).toHaveBeenCalledWith(

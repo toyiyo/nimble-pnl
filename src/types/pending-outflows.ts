@@ -17,6 +17,8 @@ export interface PendingOutflow {
   cleared_at: string | null;
   voided_at: string | null;
   voided_reason: string | null;
+  auto_linked_at: string | null;
+  auto_link_suppressed_at: string | null;
   created_at: string;
   updated_at: string;
   chart_account?: {

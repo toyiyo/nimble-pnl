@@ -1,7 +1,7 @@
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
-SELECT is((SELECT count(*)::int FROM public.area_catalog), 33,
+SELECT is((SELECT count(*)::int FROM public.area_catalog), 31,
   'area_catalog has one row per gateable sidebar page');
 
 SELECT is((SELECT array_agg(DISTINCT ui_group ORDER BY ui_group) FROM public.area_catalog),
@@ -20,8 +20,13 @@ SELECT ok((SELECT bool_and(max_level_collaborator IS NULL)
 SELECT is((SELECT count(*)::int FROM public.area_catalog WHERE area_key = 'books'), 0,
   'the books bundle is retired');
 
+-- 20260915120000_decommission_weekly_brief_ops_inbox.sql deletes these keys.
+SELECT is((SELECT count(*)::int FROM public.area_catalog
+           WHERE area_key IN ('ops_inbox', 'weekly_brief')), 0,
+  'the ops_inbox and weekly_brief pages are retired');
+
 SELECT ok((SELECT bool_and(max_level_collaborator = 'view') FROM public.area_catalog
-           WHERE area_key IN ('dashboard','sales','ops_inbox','weekly_brief','labor',
+           WHERE area_key IN ('dashboard','sales','labor',
                               'budget','stripe_account','financial_statements',
                               'financial_intelligence')),
   'read-only pages are capped at view');

@@ -116,6 +116,7 @@ export const staffNav: NavGroup[] = [
       { path: '/employee/clock', label: 'Time Clock', icon: Clock },
       { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
       { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
+      { path: '/employee/shifts', label: 'Shift Marketplace', icon: ShoppingBag },
       { path: '/employee/pay', label: 'My Pay', icon: Wallet },
       { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
     ],
@@ -144,7 +145,7 @@ export const operationsManagerNav: NavGroup[] = navigationGroups
 // that still includes the Admin group's /team, which this role must never see
 // (fail-open risk flagged in Phase 2.5 design review).
 //   - Accounting group: dropped entirely.
-//   - Main: trimmed to POS Sales only (no Dashboard, Integrations, Ops Inbox).
+//   - Main: trimmed to POS Sales only (no Dashboard, Integrations).
 //   - Admin: relabelled "Settings", trimmed to Settings + Help — /team and
 //     /employees are intentionally excluded (/employees stays in the route
 //     allow-list for scheduling context, but is not surfaced in the sidebar).

@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, parseISO } from "date-fns";
+import { fetchAllPages } from "@/lib/paginatedBankQuery";
+import { toInclusiveDayEnd } from "@/lib/dateOnly";
 
 interface RevenueHealthMetrics {
   depositFrequency: number; // days between deposits
@@ -22,6 +24,18 @@ interface RevenueHealthMetrics {
     amount: number;
     reason: string;
   }>;
+  /** True when the fetch hit the 20-page cap before reaching a short page. */
+  truncated: boolean;
+}
+
+interface RevenueTransactionRow {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  status: string;
+  description: string | null;
+  merchant_name: string | null;
+  category_id: string | null;
 }
 
 export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
@@ -43,24 +57,28 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
       
       const revenueAccountIds = new Set(revenueAccounts?.map(a => a.id) || []);
 
-      let query = supabase
-        .from('bank_transactions')
-        .select('id, transaction_date, amount, status, description, merchant_name, category_id')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
-        .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
+      const { rows: txns, truncated } = await fetchAllPages<RevenueTransactionRow>(async (from, to) => {
+        let query = supabase
+          .from('bank_transactions')
+          .select('id, transaction_date, amount, status, description, merchant_name, category_id')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .eq('status', 'posted')
+          .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
+          .lte('transaction_date', toInclusiveDayEnd(format(endDate, 'yyyy-MM-dd')));
 
-      // Apply bank account filter if specified
-      if (bankAccountId && bankAccountId !== 'all') {
-        query = query.eq('connected_bank_id', bankAccountId);
-      }
+        // Apply bank account filter if specified
+        if (bankAccountId && bankAccountId !== 'all') {
+          query = query.eq('connected_bank_id', bankAccountId);
+        }
 
-      const { data: transactions, error } = await query.order('transaction_date', { ascending: true });
+        // Paging stability rule: see fetchAllPages in paginatedBankQuery.ts.
+        const { data, error } = await query
+          .order('transaction_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
 
-      if (error) throw error;
-
-      const txns = transactions || [];
+        return { data: (data ?? null) as RevenueTransactionRow[] | null, error };
+      });
       
       // Filter deposits (inflows)
       const deposits = txns.filter(t => t.amount > 0);
@@ -203,6 +221,7 @@ export function useRevenueHealth(startDate: Date, endDate: Date, bankAccountId: 
         refundRate,
         missingDepositDays,
         anomalousDeposits,
+        truncated,
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

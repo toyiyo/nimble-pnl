@@ -34,8 +34,6 @@ import {
   Building2,
   Target,
   Printer,
-  Inbox,
-  Newspaper,
   LifeBuoy,
   Banknote,
   Star,
@@ -61,9 +59,7 @@ export const navigationGroups: NavGroup[] = [
       { path: '/', label: 'Dashboard', icon: Home },
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
-      { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
       { path: '/reviews', label: 'Reviews', icon: Star },
-      { path: '/weekly-brief', label: 'Weekly Brief', icon: Newspaper },
     ],
   },
   {

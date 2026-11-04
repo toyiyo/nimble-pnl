@@ -1,16 +1,16 @@
 ---
-title: "Manage Email Notifications and the Weekly Brief"
+title: "Manage Email Notifications"
 category: "settings-and-integrations"
-summary: "Control which time-off events send emails, who receives them, and whether you get a Monday morning performance summary."
+summary: "Control which time-off events send emails and who receives them."
 audience: ["owner", "manager"]
 order: 120
-keywords: ["notifications", "email", "weekly brief", "time-off request", "unsubscribe", "notify managers", "Monday digest"]
-related: ["weekly-brief-performance-digest", "time-off-availability", "restaurant-profile-general-settings", "manage-team-members"]
+keywords: ["notifications", "email", "time-off request", "unsubscribe", "notify managers"]
+related: ["time-off-availability", "restaurant-profile-general-settings", "manage-team-members"]
 ---
 
-# Manage Email Notifications and the Weekly Brief
+# Manage Email Notifications
 
-EasyShiftHQ can send automated emails when staff submit, approve, or reject time-off requests, and deliver a Monday morning summary of your restaurant's performance. This article explains how to turn each option on or off and how to stop receiving emails entirely.
+EasyShiftHQ can send automated emails when staff submit, approve, or reject time-off requests. This article explains how to turn each option on or off and how to stop receiving emails entirely.
 
 ## Before you begin
 
@@ -50,24 +50,12 @@ If **Notify Managers** is on but your restaurant has no owners or managers set u
 
 Follow the link to the Team page to invite a teammate before saving.
 
-## Turn the Weekly Brief on or off
-
-Under the **Weekly Brief** section, one toggle controls your Monday digest.
-
-1. Find the **Weekly Brief Email** toggle.
-2. Toggle it on to receive a Monday morning email with key metrics, variances, and action items for your restaurant.
-3. Toggle it off to stop receiving those emails.
-
-The Weekly Brief toggle saves immediately when you flip it — you do not need to click **Save Settings** afterward.
-
 ## Save or discard your changes
 
 After adjusting any toggle in the **Time-Off Request Notifications** or **Notification Recipients** sections:
 
 1. Click **Save Settings** to apply your changes. The button shows a checkmark icon and is labeled "Save Settings."
 2. Click **Reset Changes** to revert all unsaved toggles back to their last saved values. This button appears only when you have unsaved changes.
-
-The Weekly Brief toggle saves on its own and is not affected by **Save Settings** or **Reset Changes**.
 
 ## Opt out of all EasyShiftHQ emails
 
@@ -83,7 +71,6 @@ If the unsubscribe link appears broken or missing required information, the page
 
 - Email notifications go only to addresses registered in each person's EasyShiftHQ profile. Ask team members to verify their email address if they are not receiving expected notifications.
 - You can have **Notify Managers** and **Notify Employee** both on at the same time — the right people will each get their own copy.
-- The Weekly Brief toggle is per-restaurant, so if you manage multiple locations you can enable it for some and not others.
 
 ## Troubleshooting
 
@@ -104,21 +91,14 @@ Reply directly to any EasyShiftHQ email and request manual removal. The support 
 **Can I silence just one type of notification, like approvals?**
 Yes. Each event — New Request Submitted, Request Approved, and Request Rejected — has its own toggle, so you can enable or disable them individually.
 
-**Does disabling "Notify Managers" also stop the Weekly Brief?**
-No. The Weekly Brief is a separate toggle under the Weekly Brief section and is not affected by the time-off recipient settings.
-
 **If I unsubscribe via email, will the Settings page still show the toggle as on?**
 The in-app toggle reflects the restaurant-level preference, not your personal email opt-out. After using the unsubscribe link you will not receive emails even if the toggle appears on.
 
 **Do staff members see the Notifications tab?**
 No. The Notifications tab is only shown to owners and managers.
 
-**Can I re-enable the Weekly Brief after turning it off?**
-Yes. Go back to Settings, click the Notifications tab, and flip the **Weekly Brief Email** toggle on again.
-
 ## Related articles
 
-- [Weekly Brief Performance Digest](/help/weekly-brief-performance-digest)
 - [Time-Off and Availability](/help/time-off-availability)
 - [Restaurant Profile and General Settings](/help/restaurant-profile-general-settings)
 - [Manage Team Members](/help/manage-team-members)

@@ -5,7 +5,7 @@ summary: "A guide to every section on the main Dashboard — what the numbers me
 audience: ["owner", "manager"]
 order: 5
 keywords: ["dashboard", "snapshot", "prime cost", "runway", "break-even", "alerts", "cashflow", "revenue mix"]
-related: ["budget-break-even", "banking-connect-and-transactions", "ops-inbox-triage-alerts", "financial-statements"]
+related: ["budget-break-even", "banking-connect-and-transactions", "financial-statements"]
 ---
 
 # Read and Use Your Dashboard
@@ -52,7 +52,7 @@ If no daily costs have been configured yet, the line prompts you to **Configure*
 
 ## Read the Monthly Break-Even strip
 
-Just below Today's Snapshot is the **Monthly Break-Even** strip. It summarizes your month-to-date progress toward your monthly break-even in one compact bar:
+Just below Today's Snapshot, under the **Month progress** heading, is the **Monthly Break-Even** strip. Its title shows the current month. It summarizes your month-to-date progress toward your monthly break-even in one compact bar:
 
 1. The **progress bar** fills from left to right as month-to-date revenue grows toward your monthly break-even target. The fill color is green (Ahead), yellow (On pace), or red (Behind).
 2. A **dashed vertical line** marks where the bar should be filled by today's date if you are exactly on pace.
@@ -239,5 +239,4 @@ Yes. Data refreshes in the background. If you add inventory, run a payroll, or i
 
 - [Set Up Your Budget and Break-Even Target](/help/budget-break-even)
 - [Connect and Review Bank Transactions](/help/banking-connect-and-transactions)
-- [Triage Ops Inbox Alerts](/help/ops-inbox-triage-alerts)
 - [Read Your Financial Statements](/help/financial-statements)

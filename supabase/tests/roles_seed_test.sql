@@ -18,17 +18,20 @@
 -- Two fixture tables encode the independently-derived expectation, entirely
 -- decoupled from the migration's own area_key/level choices:
 --   test_area_capability_at_level — for every (area_key, level) pair among
---     the 27 (of 33) area_catalog keys that map to a legacy Capability, the
+--     the 27 (of 31) area_catalog keys that map to a legacy Capability, the
 --     full set of legacy Capability strings that tier bundles. The 'manage'
 --     tier's capability list is always the total union (view-tier
 --     capabilities plus manage-tier additions), so a plain join against a
---     role's granted level needs no cumulative logic. Six re-cut keys —
---     ops_inbox, weekly_brief, budget, labor, stripe_account, assets — are
---     deliberately absent: none of them corresponds to a legacy Capability
---     string (assets was reachable pre-migration only as one of the nine
---     `books` pages, never its own capability), so a role_areas row for any
---     of them contributes nothing to derived_capabilities below, same as
---     omitting it here. (`assets` does have `view:assets`/`edit:assets`
+--     role's granted level needs no cumulative logic. Four re-cut keys —
+--     budget, labor, stripe_account, assets — are deliberately absent:
+--     none of them corresponds to a legacy Capability string (assets was
+--     reachable pre-migration only as one of the nine `books` pages,
+--     never its own capability), so a role_areas row for any of them
+--     contributes nothing to derived_capabilities below, same as
+--     omitting it here. (ops_inbox and weekly_brief were also absent
+--     here for the same reason, until
+--     20260915120000_decommission_weekly_brief_ops_inbox.sql deleted
+--     their area_catalog rows outright.) (`assets` does have `view:assets`/`edit:assets`
 --     capability strings in `user_has_capability` — it's excluded from this
 --     fixture only because those strings aren't in the ROLE_CAPABILITIES
 --     fixed-point being reconstructed here, not because they don't exist.)

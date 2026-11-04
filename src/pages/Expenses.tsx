@@ -23,6 +23,8 @@ import { FeatureGate } from "@/components/subscription";
 
 import type { PendingOutflow } from "@/types/pending-outflows";
 
+import { summarizeOpenOutflows, OPEN_OUTFLOW_WINDOW_DAYS } from "@/lib/openOutflows";
+
 export default function Expenses() {
   const navigate = useNavigate();
   const [showAddExpenseSheet, setShowAddExpenseSheet] = useState(false);
@@ -41,11 +43,12 @@ export default function Expenses() {
     verifyConnectionSession,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
 
-  const totalExpenses = (expenses || [])
-    .filter(expense => ['pending', 'stale_30', 'stale_60', 'stale_90'].includes(expense.status))
-    .reduce((sum, expense) => sum + expense.amount, 0);
+  const { inWindow, older } = useMemo(
+    () => summarizeOpenOutflows(expenses ?? []),
+    [expenses],
+  );
 
-  const bookBalance = totalBalance - totalExpenses;
+  const bookBalance = totalBalance - inWindow;
 
   // Reconnect flow for a quarantined bank surfaced by <BankReauthBanner> —
   // same client-side session-collection flow as Banking.tsx/Accounting.tsx;
@@ -129,9 +132,16 @@ export default function Expenses() {
                   <MetricIcon icon={TrendingUp} variant="amber" />
                   <div>
                     <div className="text-3xl font-bold text-destructive">
-                      ${totalExpenses.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${inWindow.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <div className="text-sm text-muted-foreground">Uncommitted Expenses</div>
+                    <div className="text-sm text-muted-foreground">
+                      Uncommitted Expenses
+                      {older > 0 && (
+                        <span className="block text-xs text-muted-foreground">
+                          +${older.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {OPEN_OUTFLOW_WINDOW_DAYS} days or older, not counted
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>

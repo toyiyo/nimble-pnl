@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Shift, RecurrencePattern, RecurrenceType, ConflictCheck } from '@/types/scheduling';
 import { formatConflictLine } from '@/lib/conflictFormatUtils';
 import { useCreateShift, useUpdateShift, useUpdateShiftSeries } from '@/hooks/useShifts';
-import { RecurringActionScope } from '@/utils/recurringShiftHelpers';
+import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { format, getDay } from 'date-fns';
@@ -16,6 +16,7 @@ import { formatLocalDateInTz, formatLocalHHMMInTz, wallClockToInstant } from '@/
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
 import { AlertTriangle, Repeat } from 'lucide-react';
+import { GuardShiftChangeOptions } from '@/hooks/usePublishedShiftGuard';
 
 interface ShiftDialogProps {
   open: boolean;
@@ -25,6 +26,12 @@ interface ShiftDialogProps {
   timezone?: string; // Restaurant timezone for formatting availability times
   defaultDate?: Date;
   defaultEmployee?: DefaultEmployee;
+  /**
+   * Gate for a save that touches a published shift. The edit path always
+   * routes through it — a create can never target a locked shift. Provided
+   * once per page by `usePublishedShiftGuard`.
+   */
+  guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
 }
 
 export interface DefaultEmployee {
@@ -45,14 +52,13 @@ const POSITIONS = [
   'Other',
 ];
 
-function getSubmitLabel(isSaving: boolean, isLocked: boolean, isEditing: boolean): string {
+function getSubmitLabel(isSaving: boolean, isEditing: boolean): string {
   if (isSaving) return 'Saving...';
-  if (isLocked) return 'Locked';
   if (isEditing) return 'Update Shift';
   return 'Create Shift';
 }
 
-export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee }: ShiftDialogProps) {
+export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee, guardShiftChange }: ShiftDialogProps) {
   const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -179,6 +185,10 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
       return;
     }
 
+    // No is_published/locked here. An edit must never touch the publish
+    // flags: writing false would silently retract a published shift the
+    // manager only meant to move. The create path adds them below — a new
+    // shift always starts as an unlocked draft.
     const shiftData = {
       restaurant_id: restaurantId,
       employee_id: employeeId,
@@ -190,40 +200,55 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
       notes: notes || undefined,
       recurrence_pattern: recurrencePattern,
       is_recurring: recurrencePattern !== null,
-      is_published: false,
-      locked: false,
     };
 
     if (shift) {
-      // If we have an edit scope (from recurring action dialog), use series update
-      if (editScope && editScope !== 'this') {
-        updateShiftSeries.mutate(
-          {
-            shift,
-            scope: editScope,
-            updates: shiftData,
-            restaurantId,
-          },
-          {
-            onSuccess: () => {
-              onOpenChange(false);
-              resetForm();
-            },
+      const employeeName = employees.find((emp) => emp.id === shift.employee_id)?.name ?? '';
+      const isReassignment = employeeId !== shift.employee_id;
+      const secondEmployeeName = isReassignment
+        ? employees.find((emp) => emp.id === employeeId)?.name
+        : undefined;
+
+      guardShiftChange({
+        shiftId: shift.id,
+        restaurantId,
+        employeeName,
+        secondEmployeeName,
+        // A 'following'/'all' edit touches sibling occurrences too. The
+        // guard must warn when ANY shift in scope is locked, not only the
+        // anchor — an unlocked anchor with locked siblings would otherwise
+        // skip the dialog while the RPC touches published shifts.
+        series:
+          editScope && editScope !== 'this'
+            ? {
+                parentId: getSeriesParentId(shift),
+                scope: editScope,
+                fromTime: editScope === 'following' ? shift.start_time : undefined,
+              }
+            : undefined,
+        // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`
+        // looks up the change-log row right after `run` resolves, and that
+        // row only exists once this UPDATE (and its trigger) have committed.
+        run: async ({ allowPublished }) => {
+          // If we have an edit scope (from recurring action dialog), use series update
+          if (editScope && editScope !== 'this') {
+            await updateShiftSeries.mutateAsync({
+              shift,
+              scope: editScope,
+              updates: shiftData,
+              restaurantId,
+              allowPublished,
+            });
+          } else {
+            await updateShift.mutateAsync({ id: shift.id, ...shiftData, allowPublished });
           }
-        );
-      } else {
-        updateShift.mutate(
-          { id: shift.id, ...shiftData },
-          {
-            onSuccess: () => {
-              onOpenChange(false);
-              resetForm();
-            },
-          }
-        );
-      }
+          onOpenChange(false);
+          resetForm();
+        },
+      });
     } else {
-      createShift.mutate(shiftData as any, {
+      // A new shift always starts as an unlocked draft.
+      createShift.mutate({ ...shiftData, is_published: false, locked: false } as any, {
         onSuccess: () => {
           onOpenChange(false);
           resetForm();
@@ -281,35 +306,6 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
-            {/* Lock Warning for Published Shifts */}
-            {shift?.locked && (
-              <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                  <div>
-                    <div className="font-semibold text-sm">Shift is Locked</div>
-                    <div className="text-xs mt-1">
-                      This shift is part of a published schedule and cannot be edited.
-                      You must unpublish the schedule first to make changes.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="employee">
                 Employee <span className="text-destructive">*</span>
@@ -500,11 +496,10 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
             </Button>
             <Button
               type="submit"
-              disabled={createShift.isPending || updateShift.isPending || updateShiftSeries.isPending || shift?.locked}
+              disabled={createShift.isPending || updateShift.isPending || updateShiftSeries.isPending}
             >
               {getSubmitLabel(
                 createShift.isPending || updateShift.isPending || updateShiftSeries.isPending,
-                shift?.locked ?? false,
                 !!shift,
               )}
             </Button>

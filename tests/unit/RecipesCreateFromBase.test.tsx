@@ -46,6 +46,11 @@ vi.mock("@/hooks/useBulkInventoryDeduction", () => ({ useBulkInventoryDeduction:
 // RecipeDialog (rendered inside Recipes) calls usePOSItems, which now uses
 // useQuery internally; same reasoning as useBulkInventoryDeduction above.
 vi.mock("@/hooks/usePOSItems", () => ({ usePOSItems: () => ({ posItems: [], loading: false, error: null, refetch: vi.fn() }) }));
+// RecipeDialog also calls useRecipeWeeklyVolume, which uses useQuery internally;
+// same reasoning as usePOSItems above.
+vi.mock("@/hooks/useRecipeWeeklyVolume", () => ({
+  useRecipeWeeklyVolume: () => ({ weeklyVolume: 0, isLoading: false, isError: false }),
+}));
 
 vi.mock("@/components/RecipeCreateFromExistingDialog", () => ({
   RecipeCreateFromExistingDialog: ({ isOpen }: { isOpen: boolean }) =>

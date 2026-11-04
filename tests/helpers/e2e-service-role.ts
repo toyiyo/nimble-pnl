@@ -13,6 +13,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types';
 import type { SubscriptionTier, SubscriptionStatus } from '@/lib/subscriptionPlans';
@@ -66,9 +67,17 @@ function readEnvLocal(key: string): string | undefined {
   }
 }
 
-/** Prefer the process env, so the CI job env always wins. */
+/**
+ * Read one key from the process env, then from `.env.local`.
+ * Prefer the process env, so the CI job env always wins.
+ */
+export function readEnv(key: string): string | undefined {
+  return process.env[key] || readEnvLocal(key);
+}
+
+/** Read one key with `readEnv`, and throw when it is absent. */
 function requireEnv(key: string): string {
-  const value = process.env[key] || readEnvLocal(key);
+  const value = readEnv(key);
   if (!value) {
     throw new Error(
       `${key} environment variable is required for the E2E service-role helper. ` +
@@ -84,7 +93,7 @@ function requireEnv(key: string): string {
  * The build is lazy on purpose. An import of this module must not throw in a
  * spec that never calls `setSubscriptionTier`.
  */
-function getServiceRoleClient(): SupabaseClient<Database> {
+export function getServiceRoleClient(): SupabaseClient<Database> {
   if (cachedClient) {
     return cachedClient;
   }
@@ -135,4 +144,118 @@ export async function setSubscriptionTier(
       `Failed to set subscription tier: no restaurant row matched id ${restaurantId}`
     );
   }
+}
+
+/**
+ * Seed one product and its usage transactions for a restaurant.
+ * The dashboard COGS reads these rows through the
+ * get_inventory_usage_by_day RPC, which sums ABS(total_cost) for
+ * rows with transaction_type = 'usage'.
+ */
+export async function seedInventoryUsage(
+  restaurantId: string,
+  usageRows: Array<{ totalCost: number; transactionDate: string }>
+): Promise<void> {
+  const supabase = getServiceRoleClient();
+
+  const { data: product, error: productError } = await supabase
+    .from('products')
+    .insert({
+      restaurant_id: restaurantId,
+      sku: `E2E-COGS-${Date.now()}`,
+      name: 'E2E COGS Test Product',
+    })
+    .select('id')
+    .single();
+
+  if (productError || !product) {
+    throw new Error(`Failed to seed product: ${productError?.message}`);
+  }
+
+  const { error: txnError } = await supabase
+    .from('inventory_transactions')
+    .insert(
+      usageRows.map((row) => ({
+        restaurant_id: restaurantId,
+        product_id: product.id,
+        transaction_type: 'usage',
+        quantity: -5,
+        total_cost: row.totalCost,
+        transaction_date: row.transactionDate,
+      }))
+    );
+
+  if (txnError) {
+    throw new Error(`Failed to seed usage transactions: ${txnError.message}`);
+  }
+}
+
+/**
+ * Seed one Toast card payment for a restaurant, as the service role.
+ *
+ * `toast_payments` only carries a member SELECT policy (supabase/migrations/
+ * 20251116100100_toast_integration.sql) — writes come from the sync edge
+ * functions, which use the service-role key. A spec must seed through this
+ * helper instead of the page's own browser session.
+ */
+export async function seedToastPayment(
+  restaurantId: string,
+  input: {
+    paymentDate: string;
+    amount: number;
+    tipAmount?: number;
+    paymentType?: string;
+    paymentStatus?: string;
+  }
+): Promise<void> {
+  const supabase = getServiceRoleClient();
+
+  const { error } = await supabase.from('toast_payments').insert({
+    restaurant_id: restaurantId,
+    toast_payment_guid: `e2e-pay-${randomUUID()}`,
+    toast_order_guid: `e2e-order-${randomUUID()}`,
+    payment_type: input.paymentType ?? 'CREDIT',
+    amount: input.amount,
+    tip_amount: input.tipAmount ?? 0,
+    payment_date: input.paymentDate,
+    // The deposit-match Toast adapter now counts only settled payments
+    // (`AND tp.payment_status = 'CAPTURED'` in
+    // `supabase/migrations/20260905090000_deposit_match_toast_captured.sql`).
+    // Default to a settled payment so a spec that does not care about
+    // `payment_status` still models a real, batch-closed Toast payment.
+    payment_status: input.paymentStatus ?? 'CAPTURED',
+  });
+
+  if (error) {
+    throw new Error(`Failed to seed Toast payment: ${error.message}`);
+  }
+}
+
+/**
+ * Run one auto-link sweep pass for a restaurant, as the service role.
+ *
+ * `auto_link_pending_outflows_internal` is granted to `service_role` only
+ * (supabase/migrations/20260830100000_auto_link_pending_outflows.sql), so a
+ * spec must call it through this client instead of the page's normal
+ * browser session, and instead of waiting for the cron tick that calls it
+ * in production.
+ */
+export async function runAutoLinkPendingOutflows(
+  restaurantId: string
+): Promise<{ linkedCount: number; candidateCount: number }> {
+  const supabase = getServiceRoleClient();
+
+  const { data, error } = await supabase.rpc('auto_link_pending_outflows_internal', {
+    p_restaurant_id: restaurantId,
+  });
+
+  if (error) {
+    throw new Error(`Failed to run auto_link_pending_outflows_internal: ${error.message}`);
+  }
+
+  const row = data?.[0];
+  return {
+    linkedCount: row?.linked_count ?? 0,
+    candidateCount: row?.candidate_count ?? 0,
+  };
 }

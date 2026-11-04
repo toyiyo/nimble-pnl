@@ -32,11 +32,13 @@ interface MonthlyData {
 
 interface MonthlyBreakdownTableProps {
   monthlyData: MonthlyData[];
+  /** Show the card title. The dashboard hides it, because its section already has a heading. */
+  showTitle?: boolean;
 }
 
 type MonthlyRow = MonthlyData & { profitChangePercent: number | null };
 
-export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProps) => {
+export const MonthlyBreakdownTable = ({ monthlyData, showTitle = true }: Readonly<MonthlyBreakdownTableProps>) => {
   const { selectedRestaurant } = useRestaurantContext();
   const navigate = useNavigate();
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
@@ -132,15 +134,17 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   if (!monthlyData || monthlyData.length === 0) {
     return (
       <Card className="rounded-xl border border-border/40 bg-background">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
-              <TrendingUp className="h-4 w-4 text-foreground" />
+        {showTitle && (
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-foreground" />
+              </div>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Monthly Performance</CardTitle>
             </div>
-            <CardTitle className="text-[17px] font-semibold text-foreground">Monthly Performance</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
+          </CardHeader>
+        )}
+        <CardContent className={showTitle ? undefined : 'pt-6'}>
           <div className="text-center py-12 space-y-3">
             <p className="text-sm font-medium text-muted-foreground">
               No monthly data available yet
@@ -156,15 +160,17 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
 
   return (
     <Card className="rounded-xl border border-border/40 bg-background">
-      <CardHeader>
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
-            <TrendingUp className="h-4 w-4 text-foreground" />
+      {showTitle && (
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-foreground" />
+            </div>
+            <CardTitle className="text-[17px] font-semibold text-foreground">Monthly Performance</CardTitle>
           </div>
-          <CardTitle className="text-[17px] font-semibold text-foreground">Monthly Performance</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="px-2 sm:px-6">
+        </CardHeader>
+      )}
+      <CardContent className={showTitle ? 'px-2 sm:px-6' : 'px-2 pt-4 sm:px-6'}>
         <ScrollArea className="w-full">
           <div className="min-w-[650px] sm:min-w-[800px]">
             <table className="w-full">
@@ -172,42 +178,42 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                 Monthly performance breakdown with revenue, costs, profit, and month-over-month change.
               </caption>
               <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground w-8"></th>
-                  <th className="text-left py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                <tr className="border-b border-border/40">
+                  <th className="text-left py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground w-8"></th>
+                  <th className="text-left py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     Month
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     <span className="hidden sm:inline">Collected at POS</span>
                     <span className="sm:hidden">POS</span>
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     <span className="hidden sm:inline">Gross Revenue</span>
                     <span className="sm:hidden">Revenue</span>
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     <span className="hidden sm:inline">Discounts</span>
                     <span className="sm:hidden">Disc</span>
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     <span className="hidden sm:inline">Net Revenue</span>
                     <span className="sm:hidden">Net Rev</span>
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     COGS
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     Labor
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     <span className="hidden sm:inline">Other Expenses</span>
                     <span className="sm:hidden">Other</span>
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     <span className="hidden sm:inline">Net Profit</span>
                     <span className="sm:hidden">Profit</span>
                   </th>
-                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-xs sm:text-sm font-semibold text-muted-foreground">
+                  <th className="text-right py-2 px-2 sm:py-3 sm:px-4 text-[12px] font-medium text-muted-foreground">
                     <span className="hidden sm:inline">vs Prior</span>
                     <span className="sm:hidden">Δ</span>
                   </th>
@@ -263,7 +269,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   return (
                     <Fragment key={month.period}>
                       <tr
-                        className={`border-b border-border/50 hover:bg-muted/50 transition-colors ${
+                        className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${
                           index % 2 === 0 ? 'bg-muted/20' : ''
                         } ${isExpanded ? 'bg-primary/5' : ''}`}
                       >
@@ -286,17 +292,17 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           <span className="font-medium text-xs sm:text-sm">{formatMonth(month.period)}</span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <span className="font-semibold text-xs sm:text-sm text-blue-600">
+                          <span className="font-semibold text-xs sm:text-sm text-foreground">
                             {formatCurrency(posCollected)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <span className="font-semibold text-xs sm:text-sm text-emerald-600">
+                          <span className="font-semibold text-xs sm:text-sm text-foreground">
                             {formatCurrency(month.gross_revenue)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          <span className="font-semibold text-xs sm:text-sm text-red-600">
+                          <span className="font-semibold text-xs sm:text-sm text-muted-foreground">
                             {formatCurrency(month.discounts)}
                           </span>
                         </td>
@@ -361,7 +367,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                             <div className="flex flex-col items-end gap-0.5 sm:gap-1">
                               <span className={`font-bold text-xs sm:text-sm ${
                                 actualNetProfit > 0 ? 'text-primary'
-                                  : actualNetProfit < 0 ? 'text-destructive'
+                                  : actualNetProfit < 0 ? 'text-destructive-strong'
                                   : 'text-foreground'
                               }`}>
                                 {formatCurrency(actualNetProfit)}
@@ -376,12 +382,12 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                 <>
                                   <span className={`font-semibold text-xs sm:text-sm ${
                                     accrualNetProfit > 0 ? 'text-primary'
-                                      : accrualNetProfit < 0 ? 'text-destructive'
+                                      : accrualNetProfit < 0 ? 'text-destructive-strong'
                                       : 'text-foreground'
                                   }`}>
                                     {formatCurrency(accrualNetProfit)}
                                   </span>
-                                  <span className="text-[10px] sm:text-xs text-amber-600">
+                                  <span className="text-[11px] sm:text-xs text-warning-strong">
                                     Accrual basis (matches hours worked)
                                     {month.net_revenue > 0
                                       ? ` (${((accrualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`

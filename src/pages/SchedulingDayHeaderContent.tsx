@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +16,8 @@ interface ScheduleDayHeaderContentProps {
   isToday: boolean;
   /** True in `selectionMode`, where the whole cell is already an emphasized button. */
   emphasize?: boolean;
+  /** Optional line under the date, for example the daily labor cost %. */
+  footer?: ReactNode;
 }
 
 /**
@@ -24,7 +28,7 @@ interface ScheduleDayHeaderContentProps {
  * `TODAY_HEADER_CAP_RULE_CLASS`). Shared between the plain header and the
  * `selectionMode` button variant so both stay in sync.
  */
-export function ScheduleDayHeaderContent({ day, isToday: dayIsToday, emphasize = false }: Readonly<ScheduleDayHeaderContentProps>) {
+export function ScheduleDayHeaderContent({ day, isToday: dayIsToday, emphasize = false, footer }: Readonly<ScheduleDayHeaderContentProps>) {
   return (
     <>
       <div
@@ -58,6 +62,7 @@ export function ScheduleDayHeaderContent({ day, isToday: dayIsToday, emphasize =
           Today
         </span>
       )}
+      {footer}
     </>
   );
 }

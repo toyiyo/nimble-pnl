@@ -6,8 +6,8 @@ description: Create a PR from the current branch with auto-generated summary
 
 ## Current State
 - Branch: !`git branch --show-current`
-- Commits since main: !`git log --oneline main..HEAD 2>/dev/null || echo "(no divergence from main)"`
-- Changed files: !`git diff --stat main..HEAD 2>/dev/null || echo "(none)"`
+- Commits since main: !`git log --oneline origin/main..HEAD 2>/dev/null || echo "(no divergence from main)"`
+- Changed files: !`git diff --stat origin/main...HEAD 2>/dev/null || echo "(none)"`
 
 ## Instructions
 

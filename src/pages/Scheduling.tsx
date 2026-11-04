@@ -7,7 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useEmployees } from '@/hooks/useEmployees';
 import { FeatureGate } from '@/components/subscription';
@@ -21,9 +24,12 @@ import { WeeklyAvailabilityChip } from './SchedulingWeeklyAvailabilityChip';
 import { ShiftCard } from './SchedulingShiftCard';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
+import { DailyLaborPercentBadge } from '@/components/scheduling/DailyLaborPercentBadge';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
+import { usePublishedShiftGuard } from '@/hooks/usePublishedShiftGuard';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
+import { useDailyLaborPercent } from '@/hooks/useDailyLaborPercent';
 import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -48,12 +54,14 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { BroadcastOpenShiftsDialog } from '@/components/scheduling/BroadcastOpenShiftsDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
+import { ShiftProtectionSettingsDialog } from '@/components/scheduling/ShiftProtectionSettingsDialog';
 import { ScheduleMetricsRibbon } from '@/components/scheduling/ScheduleMetricsRibbon';
 import { useScheduleLaborBudget } from '@/hooks/useScheduleLaborBudget';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
+import { WeekTemplatesTab } from '@/components/scheduling/WeekTemplates/WeekTemplatesTab';
 import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
 import { DeleteAvailabilityDialog } from '@/components/scheduling/DeleteAvailabilityDialog';
@@ -67,7 +75,8 @@ import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from 
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
-import { formatLocalDate } from '@/lib/shiftInterval';
+import { formatDayLabel, formatLocalDate } from '@/lib/shiftInterval';
+import { describeDailyLaborPercent } from '@/lib/dailyLaborPercent';
 import { capacityFloor } from '@/lib/shiftCoverage';
 import { distinctAssignedCount } from '@/lib/shiftFill';
 import type { ShiftTemplate } from '@/types/scheduling';
@@ -97,6 +106,7 @@ import {
   CalendarClock,
   CalendarX,
   AlertTriangle,
+  Shield,
   Unlock,
   Send,
   History,
@@ -221,11 +231,20 @@ const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  // Only an owner or a manager can post a trade for an employee. This mirrors
-  // the create_shift_trade_for_employee RPC audience, so the offer action never
-  // shows for a role the RPC would reject (e.g. operations_manager).
-  const canOfferTrade =
-    selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
+  const { hasCapability, isResolved } = usePermissions();
+  // Gate for the manager trade surfaces (tab + approval queue). Matches the
+  // server-side capability the widened trade-visibility RLS policy checks
+  // (docs/superpowers/specs/2026-08-20-trade-approval-area-grant-design.md
+  // §3), so a chef with only `view:scheduling` no longer sees a tab that
+  // leads to a queue the server would reject their actions on anyway.
+  const canManageSchedule = isResolved && hasCapability('edit:scheduling');
+  // Same capability as canManageSchedule. This mirrors the
+  // create_shift_trade_for_employee RPC audience
+  // (supabase/migrations/20260820120000_trade_approval_area_grant.sql),
+  // which now checks edit:scheduling instead of a hardcoded owner/manager
+  // role, so the offer action shows for every role the RPC would accept
+  // (operations_manager and a custom scheduling@manage role included).
+  const canOfferTrade = canManageSchedule;
   // `safeTz`, not `|| 'UTC'` — this value now feeds WRITE paths (drag-copy,
   // copy-week, planner create/update) where it decides the UTC instant that
   // gets stored, not just how a cell is labelled. `restaurants.timezone` is
@@ -244,9 +263,26 @@ const Scheduling = () => {
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
+  const { guardShiftChange, notifyAfterDeferredCommit, dialog: publishedShiftChangeDialog } =
+    usePublishedShiftGuard();
+  const [activeTab, setActiveTab] = useState('schedule');
+  // Week Templates keeps an unsaved draft. The page asks before it leaves that tab.
+  const [templatesDirty, setTemplatesDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const handleTabChange = useCallback(
+    (next: string) => {
+      if (activeTab === 'templates' && next !== 'templates' && templatesDirty) {
+        setPendingTab(next);
+        return;
+      }
+      setActiveTab(next);
+    },
+    [activeTab, templatesDirty],
+  );
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
+  const [protectionDialogOpen, setProtectionDialogOpen] = useState(false);
   const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
   const [exceptionDialogOpen, setExceptionDialogOpen] = useState(false);
   const [gridAvailability, setGridAvailability] = useState<EmployeeAvailability | undefined>();
@@ -265,6 +301,7 @@ const Scheduling = () => {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
+  const [unpublishNotify, setUnpublishNotify] = useState(true);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [broadcastDialogOpen, setBroadcastDialogOpen] = useState(false);
   const [shiftImportOpen, setShiftImportOpen] = useState(false);
@@ -281,6 +318,40 @@ const Scheduling = () => {
   const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [isBulkOperating, setIsBulkOperating] = useState(false);
+
+  // The unpublish notify checkbox starts checked every time the dialog opens.
+  useEffect(() => {
+    if (unpublishDialogOpen) {
+      setUnpublishNotify(true);
+    }
+  }, [unpublishDialogOpen]);
+
+  // The trades tab hides for a viewer without edit:scheduling. If that
+  // viewer is on the trades tab when the gate closes (role change, or the
+  // capability resolves after first paint), fall back to the schedule tab
+  // instead of showing a blank panel.
+  useEffect(() => {
+    if (activeTab === 'trades' && !canManageSchedule) {
+      setActiveTab('schedule');
+    }
+  }, [activeTab, canManageSchedule]);
+
+  // Week Templates: leave the tab when the user cannot manage the schedule.
+  // Wait for isResolved, so the check does not act on the first-paint false.
+  useEffect(() => {
+    if (activeTab === 'templates' && isResolved && !canManageSchedule) {
+      setActiveTab('schedule');
+    }
+  }, [activeTab, isResolved, canManageSchedule]);
+
+  const handleEditTemplates = useCallback(() => setActiveTab('templates'), []);
+  const handleViewTemplateWeek = useCallback(
+    (monday: Date) => {
+      setCurrentWeekStart(getMondayOfWeek(monday));
+      setActiveTab('schedule');
+    },
+    [setCurrentWeekStart],
+  );
 
   // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
   // and weekDayKeys/weekTimeOff memos are stable across drag/hover/selection re-renders.
@@ -371,16 +442,34 @@ const Scheduling = () => {
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
+  // A cancelled shift costs nothing. Without this filter, a cancel does not
+  // lower the day's labor %, the week labor total or the per-employee costs.
+  const costedShifts = useMemo(
+    () => shifts.filter((shift) => shift.status !== 'cancelled'),
+    [shifts],
+  );
+
   // Calculate scheduled labor costs with breakdown
-  const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
-    shifts,
+  const { breakdown: laborCostBreakdown, dailyCosts: scheduledDailyCosts } = useScheduledLaborCosts(
+    costedShifts,
     currentWeekStart,
     weekEnd,
     restaurantId
   );
 
+  // The percent shows wage totals and sales, so it needs both capabilities.
+  // Without view:pay_rates the wages are masked and the percent is too low.
+  const canViewLaborPercent =
+    isResolved && hasCapability('view:pay_rates') && hasCapability('view:pos_sales');
+  // Computed once here and passed to the Planner, so the week is not computed twice.
+  const dailyLaborPercent = useDailyLaborPercent(restaurantId, weekDayKeys, {
+    dailyCosts: scheduledDailyCosts,
+    costsLoading: shiftsLoading || employeesLoading,
+    enabled: canViewLaborPercent,
+  });
+
   // Calculate per-employee labor costs with outlier detection
-  const laborCostSummary = useEmployeeLaborCosts(shifts, allEmployees);
+  const laborCostSummary = useEmployeeLaborCosts(costedShifts, allEmployees);
 
   // Calculate labor budget comparison
   const laborBudgetData = useScheduleLaborBudget(
@@ -709,15 +798,20 @@ const Scheduling = () => {
     if (!shift || !restaurantId) return;
 
     if (actionType === 'delete') {
-      // Delete with scope
-      deleteShiftSeries.mutate(
-        { shift, scope, restaurantId, includePublished: true },
-        {
-          onSuccess: () => {
-            setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
-          },
-        }
-      );
+      // Delete with scope, guarded when the series holds a published shift
+      const employeeName = allEmployees.find((e) => e.id === shift.employee_id)?.name ?? '';
+      guardShiftChange({
+        shiftId: shift.id,
+        restaurantId,
+        employeeName,
+        // Awaited, not fire-and-forget `.mutate()` — `usePublishedShiftGuard`
+        // looks up the change-log row right after `run` resolves, and that
+        // row only exists once this DELETE (and its trigger) have committed.
+        run: async ({ allowPublished }) => {
+          await deleteShiftSeries.mutateAsync({ shift, scope, restaurantId, allowPublished });
+          setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
+        },
+      });
     } else {
       // For edit, close the dialog and open the shift editor
       // The scope will be handled by the ShiftDialog
@@ -736,18 +830,33 @@ const Scheduling = () => {
 
   const confirmDeleteShift = () => {
     if (shiftToDelete && restaurantId) {
-      deleteShift.mutate(
-        { id: shiftToDelete.id, restaurantId, shift: shiftToDelete },
-        {
-          onSuccess: () => {
-            setShiftToDelete(null);
-          },
-        }
-      );
+      const employeeName = allEmployees.find((e) => e.id === shiftToDelete.employee_id)?.name ?? '';
+      guardShiftChange({
+        shiftId: shiftToDelete.id,
+        restaurantId,
+        employeeName,
+        // Awaited, not fire-and-forget `.mutate()` — see the series-delete
+        // branch above for why. `skipLegacyNotify: true`: the guard's own
+        // notify step (the "Notify" checkbox, `notify-shift-changed`) now
+        // owns the employee notification for this guarded delete, so the
+        // unconditional legacy `send-shift-notification` invoke in
+        // `useDeleteShift` must not also fire — that would ignore an
+        // unchecked box and could double-notify when checked.
+        run: async ({ allowPublished }) => {
+          await deleteShift.mutateAsync({
+            id: shiftToDelete.id,
+            restaurantId,
+            shift: shiftToDelete,
+            allowPublished,
+            skipLegacyNotify: true,
+          });
+          setShiftToDelete(null);
+        },
+      });
     }
   };
 
-  const handlePublishSchedule = (notes?: string) => {
+  const handlePublishSchedule = (notes: string | undefined, notify: boolean) => {
     if (restaurantId) {
       publishSchedule.mutate(
         {
@@ -755,6 +864,7 @@ const Scheduling = () => {
           weekStart: currentWeekStart,
           weekEnd,
           notes,
+          notify,
         },
         {
           onSuccess: () => {
@@ -774,6 +884,7 @@ const Scheduling = () => {
           weekStart: currentWeekStart,
           weekEnd,
           reason: 'Schedule unpublished for corrections',
+          notify: unpublishNotify,
         },
         {
           onSuccess: () => {
@@ -783,6 +894,15 @@ const Scheduling = () => {
         }
       );
     }
+  };
+
+  // AlertDialogAction closes the dialog on click by default. Block that: the
+  // unpublish mutation is async, so an auto-close would hide the work in
+  // progress.
+  const handleUnpublishConfirmClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    if (unpublishSchedule.isPending) return;
+    handleUnpublishSchedule();
   };
 
   // Get unique employees scheduled this week (respecting position filter, including inactive)
@@ -834,7 +954,7 @@ const Scheduling = () => {
       />
 
       {/* Tabs for Schedule, Time-Off, and Availability */}
-      <Tabs defaultValue="schedule" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList className="bg-muted/50 p-1 h-auto gap-1">
           <TabsTrigger
             value="schedule"
@@ -858,18 +978,20 @@ const Scheduling = () => {
             <CalendarClock className="h-4 w-4" />
             <span className="hidden sm:inline">Availability</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="trades"
-            className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2 relative"
-          >
-            <ArrowLeftRight className="h-4 w-4" />
-            <span className="hidden sm:inline">Shift Trades</span>
-            {pendingTradeCount > 0 && (
-              <Badge className="ml-1 h-5 min-w-5 px-1.5 bg-warning text-warning-foreground text-[10px] font-bold animate-pulse">
-                {pendingTradeCount}
-              </Badge>
-            )}
-          </TabsTrigger>
+          {canManageSchedule && (
+            <TabsTrigger
+              value="trades"
+              className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2 relative"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+              <span className="hidden sm:inline">Shift Trades</span>
+              {pendingTradeCount > 0 && (
+                <Badge className="ml-1 h-5 min-w-5 px-1.5 bg-warning text-warning-foreground text-[10px] font-bold animate-pulse">
+                  {pendingTradeCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="planner"
             aria-label="Planner"
@@ -878,6 +1000,16 @@ const Scheduling = () => {
             <LayoutGrid className="h-4 w-4" />
             <span className="hidden sm:inline">Planner</span>
           </TabsTrigger>
+          {canManageSchedule && (
+            <TabsTrigger
+              value="templates"
+              aria-label="Week Templates"
+              className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2"
+            >
+              <Layers className="h-4 w-4" />
+              <span className="hidden sm:inline">Week Templates</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="schedule">
@@ -1221,7 +1353,22 @@ const Scheduling = () => {
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Team Member</span>
                     </th>
                     {weekDays.map((day) => {
-                      const dayIsToday = toDateOnlyString(day) === restaurantToday;
+                      const dayKey = toDateOnlyString(day);
+                      const dayIsToday = dayKey === restaurantToday;
+                      const dayLabel = formatDayLabel(dayKey);
+                      const laborPercentFooter = canViewLaborPercent ? (
+                        <DailyLaborPercentBadge
+                          labor={dailyLaborPercent}
+                          day={dayKey}
+                          dayLabel={dayLabel}
+                          // In selection mode the header is a button: no nested focus stop.
+                          variant={selectionMode ? 'plain' : 'tooltip'}
+                        />
+                      ) : null;
+                      // The button's aria-label replaces its text, so it carries the percent too.
+                      const laborPercentLabel = canViewLaborPercent && !dailyLaborPercent.isLoading
+                        ? ` ${describeDailyLaborPercent(dailyLaborPercent.byDay.get(dayKey), '', dailyLaborPercent)}`
+                        : '';
                       return (
                         <th
                           key={day.toISOString()}
@@ -1233,14 +1380,14 @@ const Scheduling = () => {
                           {selectionMode ? (
                             <button
                               type="button"
-                              onClick={() => selectShiftsForDay(toDateOnlyString(day))}
+                              onClick={() => selectShiftsForDay(dayKey)}
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
-                              aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
+                              aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}.${laborPercentLabel}`}
                             >
-                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize />
+                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize footer={laborPercentFooter} />
                             </button>
                           ) : (
-                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} />
+                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} footer={laborPercentFooter} />
                           )}
                         </th>
                       );
@@ -1531,14 +1678,25 @@ const Scheduling = () => {
                     </CardDescription>
                   </div>
                 </div>
-                <Button onClick={() => setTimeOffDialogOpen(true)} className="shadow-sm">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Request
-                </Button>
+                <div className="flex items-center gap-2">
+                  {canManageSchedule && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setProtectionDialogOpen(true)}
+                    >
+                      <Shield className="h-4 w-4 mr-2" />
+                      Protection Rules
+                    </Button>
+                  )}
+                  <Button onClick={() => setTimeOffDialogOpen(true)} className="shadow-sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Request
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {restaurantId && <TimeOffList restaurantId={restaurantId} />}
+              {restaurantId && <TimeOffList restaurantId={restaurantId} timezone={restaurantTimezone} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1585,33 +1743,44 @@ const Scheduling = () => {
         </TabsContent>
 
         {/* Shift Trades Tab */}
-        <TabsContent value="trades">
-          <Card className="border-border/50 overflow-hidden">
-            <CardHeader className="bg-gradient-to-r from-muted/30 via-muted/50 to-muted/30 border-b border-border/50 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-warning/10">
-                  <ArrowLeftRight className="h-5 w-5 text-warning" />
+        {canManageSchedule && (
+          <TabsContent value="trades">
+            <Card className="border-border/50 overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-muted/30 via-muted/50 to-muted/30 border-b border-border/50 pb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-warning/10">
+                      <ArrowLeftRight className="h-5 w-5 text-warning" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        Shift Trade Requests
+                        {pendingTradeCount > 0 && (
+                          <Badge className="bg-warning/15 text-warning border border-warning/30 text-xs">
+                            {pendingTradeCount} pending
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="text-sm">
+                        Review and approve shift swap requests from your team
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setProtectionDialogOpen(true)}
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    Protection Rules
+                  </Button>
                 </div>
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    Shift Trade Requests
-                    {pendingTradeCount > 0 && (
-                      <Badge className="bg-warning/15 text-warning border border-warning/30 text-xs">
-                        {pendingTradeCount} pending
-                      </Badge>
-                    )}
-                  </CardTitle>
-                  <CardDescription className="text-sm">
-                    Review and approve shift swap requests from your team
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <TradeApprovalQueue />
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </CardHeader>
+              <CardContent className="p-0">
+                <TradeApprovalQueue />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="planner">
           {restaurantId && (
@@ -1619,10 +1788,53 @@ const Scheduling = () => {
               restaurantId={restaurantId}
               weekStart={currentWeekStart}
               onWeekStartChange={setCurrentWeekStart}
+              guardShiftChange={guardShiftChange}
+              notifyAfterDeferredCommit={notifyAfterDeferredCommit}
+              dailyLaborPercent={canViewLaborPercent ? dailyLaborPercent : undefined}
             />
           )}
         </TabsContent>
+
+        {canManageSchedule && (
+          <TabsContent value="templates">
+            {restaurantId && (
+              <WeekTemplatesTab
+                // A restaurant switch remounts the tab, so no draft or
+                // selection from the previous restaurant stays.
+                key={restaurantId}
+                restaurantId={restaurantId}
+                timezone={restaurantTimezone}
+                onDirtyChange={setTemplatesDirty}
+                onViewWeek={handleViewTemplateWeek}
+              />
+            )}
+          </TabsContent>
+        )}
       </Tabs>
+
+      <AlertDialog open={pendingTab !== null} onOpenChange={(open) => !open && setPendingTab(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved template changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes in Week Templates. Leave the tab and discard them?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const next = pendingTab;
+                setPendingTab(null);
+                setTemplatesDirty(false);
+                if (next) setActiveTab(next);
+              }}
+            >
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialogs */}
       {restaurantId && (
@@ -1641,7 +1853,9 @@ const Scheduling = () => {
             timezone={restaurantTimezone}
             defaultDate={defaultShiftDate}
             defaultEmployee={defaultShiftEmployee}
+            guardShiftChange={guardShiftChange}
           />
+          {publishedShiftChangeDialog}
           {tradeShift && (
             <TradeRequestDialog
               open={tradeDialogOpen}
@@ -1662,6 +1876,13 @@ const Scheduling = () => {
             onOpenChange={setTimeOffDialogOpen}
             restaurantId={restaurantId}
           />
+          {canManageSchedule && (
+            <ShiftProtectionSettingsDialog
+              open={protectionDialogOpen}
+              onOpenChange={setProtectionDialogOpen}
+              restaurantId={restaurantId}
+            />
+          )}
           <AvailabilityDialog
             open={availabilityDialogOpen}
             onOpenChange={(open) => {
@@ -1752,17 +1973,35 @@ const Scheduling = () => {
               <div className="p-2 rounded-lg bg-warning/10">
                 <Unlock className="h-5 w-5 text-warning" />
               </div>
-              <AlertDialogTitle className="text-lg">Unpublish Schedule</AlertDialogTitle>
+              <AlertDialogTitle className="text-[17px]">Unpublish Schedule</AlertDialogTitle>
             </div>
-            <AlertDialogDescription className="text-sm leading-relaxed">
-              Are you sure you want to unpublish this schedule? This will unlock all shifts for editing
-              and notify employees that the schedule has changed.
+            <AlertDialogDescription className="text-[13px] leading-relaxed">
+              {unpublishNotify
+                ? 'This unlocks every shift in the week and tells the scheduled employees that the week is being revised.'
+                : 'This unlocks every shift in the week. Nobody is notified.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="unpublish-notify-employees"
+              checked={unpublishNotify}
+              onCheckedChange={(checked) => setUnpublishNotify(checked === true)}
+              disabled={unpublishSchedule.isPending}
+            />
+            <Label
+              htmlFor="unpublish-notify-employees"
+              className="text-[13px] font-normal text-foreground"
+            >
+              Notify scheduled employees
+            </Label>
+          </div>
           <AlertDialogFooter className="gap-2 sm:gap-0">
-            <AlertDialogCancel className="text-sm">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="text-sm" disabled={unpublishSchedule.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleUnpublishSchedule}
+              onClick={handleUnpublishConfirmClick}
+              disabled={unpublishSchedule.isPending}
               className="bg-warning text-warning-foreground hover:bg-warning/90 text-sm shadow-sm"
             >
               <Unlock className="h-4 w-4 mr-2" />
@@ -1855,8 +2094,11 @@ const Scheduling = () => {
         sourceWeekEnd={weekEnd}
         shifts={shifts}
         restaurantId={restaurantId}
+        timezone={restaurantTimezone}
         onConfirm={handleCopyWeekConfirm}
         isPending={copyWeekMutation.isPending}
+        canManageTemplates={canManageSchedule}
+        onEditTemplates={handleEditTemplates}
       />
 
       {/* Bulk Delete Confirmation Dialog */}

@@ -31,7 +31,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 import { computeCellFill } from '@/lib/shiftFill';
 import { computeLoanedOut, assignLoanedOutCell } from '@/lib/loanedOut';
 import { safeTz } from '@/lib/restaurantClock';
-import { formatLocalDateInTz } from '@/lib/shiftInterval';
+import { formatDayLabel, formatLocalDateInTz } from '@/lib/shiftInterval';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -57,15 +57,44 @@ import type { ConflictDialogData } from './AvailabilityConflictDialog';
 import { useGenerateSchedule } from '@/hooks/useGenerateSchedule';
 import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
+import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
+import { usePlannerShiftConflicts } from '@/hooks/usePlannerShiftConflicts';
 import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
+import { DailyLaborPercentBadge } from '../DailyLaborPercentBadge';
+import type { DailyLaborPercentView } from '@/lib/dailyLaborPercent';
+import type {
+  GuardShiftChangeOptions,
+  NotifyAfterDeferredCommitArgs,
+} from '@/hooks/usePublishedShiftGuard';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
   weekStart: Date;
   onWeekStartChange: (next: Date) => void;
+  /**
+   * The page's single `usePublishedShiftGuard` instance (design doc: one
+   * guard per page, threaded down to every surface that can change a
+   * shift). Forwarded straight through to the timeline tab.
+   */
+  guardShiftChange: (options: GuardShiftChangeOptions) => void | Promise<void>;
+  /**
+   * Same guard instance's deferred-notify step, for a `run` that surfaced a
+   * conflict dialog instead of committing. Forwarded straight through to the
+   * timeline tab.
+   */
+  notifyAfterDeferredCommit: (args: NotifyAfterDeferredCommitArgs) => void | Promise<void>;
+  /**
+   * Daily labor cost % for the day headers, computed once by the Scheduling
+   * page for the same week. Omitted when the viewer cannot see wages or sales.
+   */
+  dailyLaborPercent?: DailyLaborPercentView;
 }
+
+/** Stable empty index for the conflict load/error states — a module-level
+ *  constant so the gated value never invalidates child memo comparators. */
+const EMPTY_CONFLICT_INDEX: Map<string, string[]> = new Map();
 
 /** Format a template's slot label for CoverageDetail headings.
  *  e.g. "Cold Stone · Server · 10:00–16:30" or "Server · 10:00–16:30 (all areas)". */
@@ -112,6 +141,9 @@ export function ShiftPlannerTab({
   restaurantId,
   weekStart: externalWeekStart,
   onWeekStartChange,
+  guardShiftChange,
+  notifyAfterDeferredCommit,
+  dailyLaborPercent,
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
@@ -150,6 +182,26 @@ export function ShiftPlannerTab({
     tz: restaurantTimezone,
   });
 
+  const renderGridDayFooter = useMemo(() => {
+    if (!dailyLaborPercent) return undefined;
+    return (day: string) => (
+      <DailyLaborPercentBadge labor={dailyLaborPercent} day={day} dayLabel={formatDayLabel(day)} />
+    );
+  }, [dailyLaborPercent]);
+  // The timeline footer sits inside a day button: plain text, no focus stop.
+  const renderTimelineDayFooter = useMemo(() => {
+    if (!dailyLaborPercent) return undefined;
+    return (day: string, selected: boolean) => (
+      <DailyLaborPercentBadge
+        labor={dailyLaborPercent}
+        day={day}
+        dayLabel={formatDayLabel(day)}
+        variant="plain"
+        inverse={selected}
+      />
+    );
+  }, [dailyLaborPercent]);
+
   const {
     templates: allTemplates,
     loading: templatesLoading,
@@ -179,8 +231,16 @@ export function ShiftPlannerTab({
   const handleShowHidden = useCallback(() => setShowHidden(true), []);
   const handleToggleShowHidden = useCallback(() => setShowHidden((prev) => !prev), []);
 
-  const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId);
-  const { exceptions } = useAvailabilityExceptions(restaurantId);
+  const {
+    availability,
+    loading: availabilityLoading,
+    error: availabilityError,
+  } = useEmployeeAvailability(restaurantId);
+  const {
+    exceptions,
+    loading: exceptionsLoading,
+    error: exceptionsError,
+  } = useAvailabilityExceptions(restaurantId);
 
   // Per-employee effective availability (recurring + exception overrides) for the
   // visible week — feeds the sidebar strip tint and timeline outside-availability
@@ -195,6 +255,29 @@ export function ShiftPlannerTab({
       ),
     [availability, exceptions, weekStart, employees],
   );
+
+  // Read-time conflict index (time-off + availability) for the persistent
+  // amber indicators. While ANY source query loads, an empty map renders no
+  // indicator (no partial state); when ANY source errors, the header shows
+  // a muted "Conflicts unavailable" note instead of an incorrect zero — an
+  // errored availability query would otherwise hide the availability half
+  // silently.
+  const {
+    timeOffRequests,
+    loading: timeOffLoading,
+    error: timeOffError,
+  } = useTimeOffRequests(restaurantId);
+  const { conflictsByShiftId, conflictedShiftCount } = usePlannerShiftConflicts(
+    shifts,
+    availabilityByEmployee,
+    timeOffRequests,
+    restaurantTimezone,
+  );
+  const conflictSourcesError = !!timeOffError || !!availabilityError || !!exceptionsError;
+  const conflictsReady =
+    !timeOffLoading && !availabilityLoading && !exceptionsLoading && !conflictSourcesError;
+  const effectiveConflictsByShiftId = conflictsReady ? conflictsByShiftId : EMPTY_CONFLICT_INDEX;
+  const effectiveConflictedShiftCount = conflictsReady ? conflictedShiftCount : 0;
 
   // Compute template grid data — built with ALL templates (active + hidden) so a
   // hidden template's FK-linked shifts keep bucketing under it (not `__unmatched__`).
@@ -771,6 +854,8 @@ export function ShiftPlannerTab({
         onExport={handleExport}
         onGenerate={() => setGenerateDialogOpen(true)}
         isGenerating={generateSchedule.isPending}
+        conflictedShiftCount={effectiveConflictedShiftCount}
+        conflictsUnavailable={conflictSourcesError}
       />
 
       {/* Plan | Timeline view toggle — shared across both modes */}
@@ -810,6 +895,9 @@ export function ShiftPlannerTab({
           loading={false}
           error={null}
           availabilityByEmployee={availabilityByEmployee}
+          guardShiftChange={guardShiftChange}
+          notifyAfterDeferredCommit={notifyAfterDeferredCommit}
+          renderDayFooter={renderTimelineDayFooter}
         />
       )}
 
@@ -919,8 +1007,10 @@ export function ShiftPlannerTab({
                   onCoverageClick={handleCoverageClick}
                   ghostByCell={ghostByCell}
                   offTemplateByArea={offTemplateByArea}
+                  conflictsByShiftId={effectiveConflictsByShiftId}
                   hiddenLaneByDay={hiddenLaneByDay}
                   onShowHidden={handleShowHidden}
+                  renderDayFooter={renderGridDayFooter}
                 />
               </div>
             )}

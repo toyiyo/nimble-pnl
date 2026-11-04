@@ -37,13 +37,19 @@ Geofencing lets you require employees to be physically at your restaurant when t
 1. Open **Settings** and select the **General** tab as described above.
 2. Scroll down to the **Geofence Settings** card.
 3. Click the **Enforcement Mode** dropdown and choose one of the three options:
-   - **Off** — No location check is performed. Employees can clock in from anywhere.
+   - **Off** — Employees can clock in from anywhere. The server still checks and flags off-site punches for managers; see [Off-site flags](#off-site-flags) below.
    - **Warn (allow but flag)** — Employees outside the radius are allowed to clock in, but their punch is flagged for your review.
    - **Block (prevent clock-in)** — Employees outside the radius cannot complete a clock-in until they are within range.
 4. If you choose **Warn** or **Block**, the coordinate and radius fields appear:
    - Enter your restaurant's **Latitude** and **Longitude** directly, or click **Use Current Location** to let the app detect your device's GPS coordinates automatically and fill both fields for you.
    - Drag the **Radius** slider to set the allowed distance from the coordinates. The slider runs from **50 m** to **500 m** in 25 m increments, and the current value is shown next to the label (for example, `Radius (meters): 150m`).
 5. Click **Save Geofence Settings** to apply. A confirmation message will appear when saved successfully.
+
+### Off-site flags
+
+When your restaurant has a latitude and longitude, the server checks the distance of each punch. It flags each punch that is outside the radius. This applies to clock-in, clock-out, and breaks, from the employee app and from the kiosk. It also applies when the enforcement mode is **Off**. Enforcement controls only who can clock in. Managers see the flags on the Time Clock page. See [Track and Manage Employee Time Punches](/help/time-punches-manager).
+
+The check uses the GPS position from the device. The app cannot detect a false GPS position. A punch with no GPS position gets a **No location** flag.
 
 ## Tips
 
@@ -75,7 +81,7 @@ Your account has a role that does not have edit permission (such as Staff). Cont
 Yes. Each restaurant location has its own profile and its own geofence settings. Switch to each location using the restaurant selector at the top of the page and configure them individually.
 
 **What happens to historical punches if I change the enforcement mode?**
-Changing the enforcement mode only affects future clock-in attempts. Past time punches already recorded are not altered.
+Changing the enforcement mode only affects future clock-in attempts. Past time punches already recorded are not altered. Each punch keeps the radius that was in effect when the employee punched.
 
 **Can staff see what the geofence radius is set to?**
 Staff members can open Settings, but the Geofence Settings section is only shown to owners and managers. Staff will not see the coordinates or radius. They will only receive the warning or block message if they try to clock in from outside the allowed area.

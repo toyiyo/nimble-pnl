@@ -113,6 +113,35 @@ describe('prepCostCalculation - Shared Cost Logic', () => {
       expect(result.costImpact).toBe(16);
     });
 
+    it('should raise cost impact for a product with a 90% yield', () => {
+      const fullYieldIngredient: IngredientInfo = {
+        product_id: 'pasta-456',
+        quantity: 4,
+        unit: 'oz',
+        product: {
+          id: 'pasta-456',
+          name: 'Pasta',
+          cost_per_unit: 5,
+          uom_purchase: 'lb',
+          size_value: 1,
+          size_unit: 'lb',
+          yield_pct: 100,
+        },
+      };
+      const lowYieldIngredient: IngredientInfo = {
+        ...fullYieldIngredient,
+        product: { ...fullYieldIngredient.product, yield_pct: 90 },
+      };
+
+      const fullYieldResult = calculateIngredientCost(fullYieldIngredient);
+      const lowYieldResult = calculateIngredientCost(lowYieldIngredient);
+
+      // 4 oz = 0.25 lb, 0.25 lb x $5 = $1.25 at 100% yield.
+      // At 90% yield, the loaded cost is $1.25 / 0.9 = $1.3889.
+      expect(fullYieldResult.costImpact).toBeCloseTo(1.25, 4);
+      expect(lowYieldResult.costImpact).toBeCloseTo(1.3889, 4);
+    });
+
     it('should return zero cost when product has no cost_per_unit', () => {
       const ingredient: IngredientInfo = {
         product_id: 'free-item',

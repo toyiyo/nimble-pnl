@@ -3,6 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { useCreateEntity, useUpdateEntity, useDeleteEntity } from './useCRUDEntity';
 
+// Stable fallbacks while `data` is undefined — a fresh `[]` per render would
+// re-run every downstream memo keyed on these arrays (planner conflict index,
+// availabilityByEmployee).
+const NO_AVAILABILITY: EmployeeAvailability[] = [];
+const NO_EXCEPTIONS: AvailabilityException[] = [];
+
 // Hook for managing recurring availability
 export const useEmployeeAvailability = (restaurantId: string | null, employeeId?: string) => {
   const { data, isLoading, error } = useQuery({
@@ -31,7 +37,7 @@ export const useEmployeeAvailability = (restaurantId: string | null, employeeId?
   });
 
   return {
-    availability: data || [],
+    availability: data ?? NO_AVAILABILITY,
     loading: isLoading,
     error,
   };
@@ -92,7 +98,7 @@ export const useAvailabilityExceptions = (restaurantId: string | null, employeeI
   });
 
   return {
-    exceptions: data || [],
+    exceptions: data ?? NO_EXCEPTIONS,
     loading: isLoading,
     error,
   };

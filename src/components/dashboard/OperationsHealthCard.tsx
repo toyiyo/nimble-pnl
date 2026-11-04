@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, AlertTriangle } from "lucide-react";
 
@@ -18,7 +19,7 @@ interface OperationsHealthCardProps {
   uncategorizedTransactions: number;
 }
 
-export function OperationsHealthCard({
+function OperationsHealthCardBase({
   primeCost,
   primeCostTarget,
   lowInventoryCount,
@@ -78,8 +79,9 @@ export function OperationsHealthCard({
             </div>
             {item.action && (
               <button
+                type="button"
                 onClick={() => navigate(item.action!.path)}
-                className="text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors shrink-0 ml-3"
+                className="inline-flex min-h-6 items-center text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors shrink-0 ml-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {item.action.label} →
               </button>
@@ -97,3 +99,5 @@ export function OperationsHealthCard({
     </div>
   );
 }
+
+export const OperationsHealthCard = memo(OperationsHealthCardBase);

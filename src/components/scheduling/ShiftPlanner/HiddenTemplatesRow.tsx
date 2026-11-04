@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { formatLocalTime } from '@/hooks/useShiftPlanner';
 import { formatCompactTime } from '@/lib/openShiftHelpers';
 
+import { ConflictBadge, CONFLICT_BORDER_CLASS } from './ConflictBadge';
+
 interface HiddenTemplatesRowProps {
   weekDays: string[];
   /** Map<day, Shift[]> merged across all hidden templates (all areas). */
@@ -12,6 +14,8 @@ interface HiddenTemplatesRowProps {
   onRemoveShift: (shiftId: string) => void;
   /** Called when "Show templates" is clicked — sets showHidden = true at the tab level. */
   onShowHidden: () => void;
+  /** shiftId -> display-ready conflict lines (usePlannerShiftConflicts). */
+  conflictsByShiftId?: Map<string, string[]>;
 }
 
 /** Builds the "N shift(s) kept" subtitle fragment. */
@@ -28,6 +32,7 @@ export function HiddenTemplatesRow({
   shiftsByDay,
   onRemoveShift,
   onShowHidden,
+  conflictsByShiftId,
 }: Readonly<HiddenTemplatesRowProps>) {
   const totalShifts = Array.from(shiftsByDay.values()).reduce((sum, shifts) => sum + shifts.length, 0);
 
@@ -59,14 +64,17 @@ export function HiddenTemplatesRow({
           >
             {shifts.map((s) => {
               const employeeLabel = s.employee?.name ?? 'Unassigned';
+              const conflictLines = conflictsByShiftId?.get(s.id) ?? [];
               return (
                 <div
                   key={s.id}
                   className={cn(
                     'flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/60',
                     'bg-muted/30 text-[12px] text-foreground opacity-60',
+                    conflictLines.length > 0 && CONFLICT_BORDER_CLASS,
                   )}
                 >
+                  <ConflictBadge lines={conflictLines} />
                   <span className="truncate">{employeeLabel}</span>
                   <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                     {formatCompactTime(formatLocalTime(s.start_time))}–{formatCompactTime(formatLocalTime(s.end_time))}

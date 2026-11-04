@@ -178,6 +178,10 @@ const BASE_PROPS = {
   tz: 'America/Chicago',
   loading: false,
   error: null,
+  guardShiftChange: vi.fn(async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
+    await run({ allowPublished: false });
+  }),
+  notifyAfterDeferredCommit: vi.fn(),
 } as const;
 
 describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {

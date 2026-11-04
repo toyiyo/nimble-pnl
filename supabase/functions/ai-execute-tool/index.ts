@@ -1,8 +1,32 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  calculateDateRange,
+  restaurantWallClock,
+  toLocalYMD,
+  addDays,
+  type PeriodType,
+  laborServerNow,
+  laborWindowMismatchReason,
+  daysBetweenYmd,
+  restaurantDayBounds,
+} from '../_shared/restaurantDate.ts';
+import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
+import { buildTimePunchShifts } from '../_shared/timePunchShifts.ts';
+import { resolveRestaurantTimeZone } from '../_shared/timezone.ts';
+import {
+  parseHourlySalesArgs,
+  resolveWindow,
+  formatHourlySales,
+  dayKeyFor,
+  type RpcResult,
+  type ArgError,
+} from '../_shared/hourlySalesTool.ts';
+import { minStaffFromCrew, recommendForSlots, recommendStaffForHour, type HourlySlotSales } from '../_shared/hourlyStaffing.ts';
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool } from "../_shared/tools-registry.ts";
+import { asPagedRows, fetchAllRows } from '../_shared/labor/fetchAllRows.ts';
+import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool, hasPayRatesCapability, missingRequiredArgs, nonBooleanFlagArgs } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -11,7 +35,28 @@ import {
   type InventoryTransactionQuery 
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
-import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
+import { EMPLOYEE_LABOR_COLUMNS, EMPLOYEE_LABOR_SOURCE } from "../_shared/employeeLaborColumns.ts";
+import {
+  PAY_HIDDEN_REASON,
+  payHidden,
+  redactLaborCostsResult,
+  redactPayrollSummary,
+  redactTimePunchShifts,
+} from "../_shared/payHidden.ts";
+import { fetchNetSales, sumMonthlyFoodCost } from "../_shared/financialAggregates.ts";
+import { LABOR_CAPABILITY_REASON } from "../_shared/periodMetrics.ts";
+import { ACCOUNT_TYPES, CATEGORY_COLUMNS, filterCategories, isAccountType, normalizeAccountType, resolveCategoryRef, type CategoryRow } from "../_shared/categoryLookup.ts";
+import type { Employee as LaborEmployee } from "../_shared/laborCalculations.ts";
+import type { RecipeDeductionResult } from "../_shared/recipeAnalytics.ts";
+import { computeOperatingCostTotals } from "../_shared/operatingCostMath.ts";
+import {
+  POS_SALE_PREVIEW_COLUMNS,
+  mapTopSoldItems,
+  buildCashFlowSummary,
+  computeCashCoverage,
+  incomeStatementBasis,
+  monthlyPnlBasis,
+} from "../_shared/aiToolFormatters.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -20,113 +65,6 @@ interface ToolExecutionRequest {
   tool_name: string;
   arguments: Record<string, any>;
   restaurant_id: string;
-}
-
-interface DateRange {
-  startDate: Date;
-  endDate: Date;
-  startDateStr: string;
-  endDateStr: string;
-}
-
-type PeriodType =
-  | 'today' | 'yesterday' | 'tomorrow'
-  | 'week' | 'month' | 'quarter' | 'year'
-  | 'current_week' | 'last_week' | 'current_month' | 'last_month'
-  | 'custom';
-
-// Format a Date's local calendar fields as 'YYYY-MM-DD'. Deno edge functions
-// can't import src/lib/dateOnly.ts, so this mirrors toDateOnlyString()'s
-// local-field logic by hand. Use this (never toISOString().split('T')[0])
-// for any Date that represents a calendar day rather than an instant -
-// toISOString reads UTC fields and drifts to the previous/next day for
-// viewers/servers whose local offset differs from UTC (e.g. Pacific/Auckland).
-const toLocalYMD = (d: Date): string => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
-
-/**
- * Calculate date range from period string
- * Centralizes the repeated date calculation logic across tool handlers
- */
-function calculateDateRange(
-  period: PeriodType,
-  customStartDate?: string,
-  customEndDate?: string
-): DateRange {
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
-
-  switch (period) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      break;
-    case 'tomorrow':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
-      break;
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'current_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - dayOfWeek), 23, 59, 59);
-      break;
-    }
-    case 'last_week': {
-      const dayOfWeek = now.getDay();
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 7);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 1, 23, 59, 59);
-      break;
-    }
-    case 'month':
-    case 'current_month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      break;
-    case 'last_month':
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      break;
-    case 'quarter': {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      break;
-    }
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    case 'custom':
-      if (!customStartDate || !customEndDate) {
-        throw new Error('Custom period requires start_date and end_date');
-      }
-      const [sy, sm, sd] = customStartDate.split('-').map(Number);
-      startDate = new Date(sy, sm - 1, sd);
-      const [ey, em, ed] = customEndDate.split('-').map(Number);
-      // End-of-day so the inclusive range matches every other branch above.
-      endDate = new Date(ey, em - 1, ed, 23, 59, 59);
-      break;
-    default:
-      // Default to current week
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-  }
-
-  return {
-    startDate,
-    endDate,
-    startDateStr: toLocalYMD(startDate),
-    endDateStr: toLocalYMD(endDate),
-  };
 }
 
 /**
@@ -149,8 +87,6 @@ function executeNavigate(args: any): any {
     'integrations': '/integrations',
     'team': '/team',
     'settings': '/settings',
-    'weekly-brief': '/weekly-brief',
-    'ops-inbox': '/ops-inbox',
   };
 
   const basePath = routes[section] || '/';
@@ -168,6 +104,21 @@ function executeNavigate(args: any): any {
 }
 
 /**
+ * Why get_kpis omits labor. Order: masked pay, then the missing capability,
+ * then a labor window on other days than sales. Only used when labor is
+ * omitted; redactLaborFields ignores the reason otherwise.
+ */
+function pickLaborOmittedReason(access: {
+  hasPayRates: boolean;
+  hasLaborCapability: boolean;
+  laborMismatchReason: string | undefined;
+}): string | undefined {
+  if (!access.hasPayRates) return PAY_HIDDEN_REASON;
+  if (!access.hasLaborCapability) return LABOR_CAPABILITY_REASON;
+  return access.laborMismatchReason;
+}
+
+/**
  * Execute get_kpis tool
  * Returns comprehensive KPIs including revenue, COGS, labor, prime cost, and profitability metrics
  * Uses shared calculation logic from periodMetrics.ts
@@ -175,15 +126,22 @@ function executeNavigate(args: any): any {
 async function executeGetKpis(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period = 'month', start_date, end_date } = args;
 
   // Import shared calculation module
-  const { calculatePeriodMetrics, redactLaborFields } = await import('../_shared/periodMetrics.ts');
+  const { calculateCostBreakdown, calculateProfitability, calculateBenchmarks, redactLaborFields } = await import('../_shared/periodMetrics.ts');
   const { hasSchedulingOrPayrollCapability } = await import('../_shared/tools-registry.ts');
 
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const salesRange = calculateDateRange(period, start_date, end_date, restaurantNow);
+  const { startDateStr, endDateStr } = salesRange;
+  const laborRange = calculateDateRange(period, start_date, end_date, laborServerNow());
+  const { startDate: laborStartDate, endDate: laborEndDate } = laborRange;
+  // When the two windows are different days, labor would cover the wrong
+  // hours. Omit it rather than report a wrong labor % or prime cost.
+  const laborMismatchReason = laborWindowMismatchReason(salesRange, laborRange);
 
   // This function runs under the caller's forwarded JWT (RLS applies), and
   // time_punches is now self-scoped to own-row unless the caller holds
@@ -198,49 +156,59 @@ async function executeGetKpis(
   // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
 
-  const [hasLaborAccess, salesResult, adjustmentsResult, foodCostResult] = await Promise.all([
+  const [hasLaborCapability, hasPayRates, salesTotals, usageResult, salesCountResult] = await Promise.all([
     hasSchedulingOrPayrollCapability(restaurantId, supabase),
-    // Fetch sales (excluding adjustments)
+    // employees_secure returns NULL pay without view:pay_rates, so labor would
+    // compute as $0. Omit it instead (see _shared/payHidden.ts).
+    hasPayRatesCapability(restaurantId, supabase),
+    // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+    fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
+    // Fetch food costs (COGS) as a monthly-usage aggregate from the SQL side.
+    supabase.rpc('get_inventory_usage_by_month', {
+      p_restaurant_id: restaurantId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr,
+    }),
+    // Server-side count of sale transactions in the period (head:true, so it
+    // is not subject to the 1000-row cap a normal select would hit). This
+    // counts sale transactions, not split-child rows: a split sale's parent
+    // row represents the one transaction, so its children (rows carrying a
+    // parent_sale_id) do not count separately here. That is the opposite
+    // exclusion direction from fetchNetSales/get_monthly_sales_metrics, which
+    // sums the children and drops the pre-split parent so a categorized
+    // transaction's dollar amount is not counted twice — this count works at
+    // transaction granularity, not revenue-line-item granularity. This
+    // differs from the old client-side count (calculateRevenueBreakdown's
+    // filterSplitSales), which counted split children instead of their parent.
+    // A second delta: `.or('item_type.is.null,item_type.eq.sale')` counts
+    // sale transactions only. The old count also included discount and
+    // refund line items, since filterSplitSales does not filter by item_type.
     supabase
       .from('unified_sales')
-      .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_account:chart_of_accounts!category_id(account_type, account_subtype)')
+      .select('*', { count: 'exact', head: true })
       .eq('restaurant_id', restaurantId)
       .gte('sale_date', startDateStr)
       .lte('sale_date', endDateStr)
-      .is('adjustment_type', null),
-    // Fetch adjustments separately
-    supabase
-      .from('unified_sales')
-      .select('adjustment_type, total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', startDateStr)
-      .lte('sale_date', endDateStr)
-      .not('adjustment_type', 'is', null),
-    // Fetch food costs (COGS)
-    supabase
-      .from('inventory_transactions')
-      .select('total_cost')
-      .eq('restaurant_id', restaurantId)
-      .eq('transaction_type', 'usage')
-      .gte('created_at', startDateStr)
-      .lte('created_at', endDateStr + 'T23:59:59.999Z'),
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null)
+      .or('item_type.is.null,item_type.eq.sale'),
   ]);
 
-  const { data: sales, error: salesError } = salesResult;
-  if (salesError) {
-    throw new Error(`Failed to fetch sales: ${salesError.message}`);
+  const { data: usageRows, error: usageError } = usageResult;
+
+  if (usageError) {
+    throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
   }
 
-  const { data: adjustments, error: adjustmentsError } = adjustmentsResult;
-  if (adjustmentsError) {
-    throw new Error(`Failed to fetch adjustments: ${adjustmentsError.message}`);
-  }
+  const totalCogs = sumMonthlyFoodCost(usageRows);
 
-  const { data: foodCostData, error: foodCostError } = foodCostResult;
-
-  if (foodCostError) {
-    throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
+  if (salesCountResult.error) {
+    throw new Error(`unified_sales count failed: ${salesCountResult.error.message}`);
   }
+  const salesCount = salesCountResult.count ?? 0;
+  // Labor needs the capability, unmasked pay rates, AND a labor window on the
+  // same days as sales.
+  const hasLaborAccess = hasLaborCapability && hasPayRates && !laborMismatchReason;
 
   // Fetch labor costs using time_punches + employees (same as Dashboard) —
   // only when the caller can actually see restaurant-wide punches. Skipping
@@ -255,34 +223,29 @@ async function executeGetKpis(
     // shift whose clock_out lands just after endDate still pairs whole.
     // calculateActualLaborCost attributes hours by clock-in day and drops
     // out-of-window periods, so this never double-counts.
-    const { data: timePunches, error: punchesError } = await supabase
-      .from('time_punches')
-      .select('id, employee_id, restaurant_id, punch_time, punch_type')
-      .eq('restaurant_id', restaurantId)
-      .gte('punch_time', startDate.toISOString())
-      .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
-      .order('punch_time', { ascending: true });
+    // All employees (including inactive, for historical accuracy) load in
+    // parallel with the punches: the two reads do not depend on each other.
+    const [{ data: timePunches, error: punchesError }, employees] = await Promise.all([
+      supabase
+        .from('time_punches')
+        .select('id, employee_id, restaurant_id, punch_time, punch_type')
+        .eq('restaurant_id', restaurantId)
+        .gte('punch_time', laborStartDate.toISOString())
+        .lte('punch_time', new Date(laborEndDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
+        .order('punch_time', { ascending: true }),
+      fetchLaborEmployees(supabase, restaurantId),
+    ]);
 
     if (punchesError) {
       throw new Error(`Failed to fetch time punches: ${punchesError.message}`);
-    }
-
-    // Fetch all employees (including inactive for historical accuracy)
-    const { data: employees, error: employeesError } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
-
-    if (employeesError) {
-      throw new Error(`Failed to fetch employees: ${employeesError.message}`);
     }
 
     // Calculate labor costs using shared module (same logic as Dashboard)
     const { breakdown: laborBreakdown } = calculateActualLaborCost(
       employees || [],
       timePunches || [],
-      startDate,
-      endDate
+      laborStartDate,
+      laborEndDate
     );
 
     // Convert to format expected by calculatePeriodMetrics.
@@ -293,18 +256,18 @@ async function executeGetKpis(
     laborCostData = [{ total_labor_cost: Math.round(laborBreakdown.total * 100) / 100 }];
   }
 
-  // Fetch inventory value
-  const { data: inventory, error: invError } = await supabase
-    .from('products')
-    .select('current_stock, cost_per_unit')
-    .eq('restaurant_id', restaurantId);
+  // Fetch inventory value as a single aggregate row from the SQL side.
+  const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+    p_restaurant_id: restaurantId,
+  });
 
-  if (invError) {
-    throw new Error(`Failed to fetch inventory: ${invError.message}`);
+  if (valuationError) {
+    throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
   }
 
-  const inventoryValue = inventory?.reduce((sum: number, item: any) => 
-    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
+  const inventoryValuation = valuationRows?.[0];
+  const inventoryValue = Number(inventoryValuation?.total_value ?? 0);
+  const inventoryItemCount = Number(inventoryValuation?.item_count ?? 0);
 
   // Get bank transaction count
   const { count: transactionCount } = await supabase
@@ -315,20 +278,37 @@ async function executeGetKpis(
     .lte('transaction_date', endDateStr);
 
   // ====== CALCULATE METRICS USING SHARED MODULE ======
-  
-  const metrics = calculatePeriodMetrics(
-    sales || [],
-    adjustments || [],
-    foodCostData || [],
-    laborCostData || []
-  );
 
-  // laborCostData is [] when !hasLaborAccess, so metrics.costs/profitability/
+  // Revenue now comes from the shared net-sales RPC (gross - discounts -
+  // refunds), so cost/profitability/benchmarks are computed directly against
+  // salesTotals.net instead of going through calculatePeriodMetrics (which
+  // would need the raw sale rows this fetch replaced).
+  const rawCosts = calculateCostBreakdown([{ total_cost: totalCogs }], laborCostData, salesTotals.net);
+  const rawProfitability = calculateProfitability(salesTotals.net, rawCosts.prime_cost);
+  const rawBenchmarks = calculateBenchmarks(rawCosts);
+
+  // laborCostData is [] when !hasLaborAccess, so costs/profitability/
   // benchmarks were computed with labor_cost = 0. redactLaborFields strips
   // everything downstream of that (prime_cost, profit_margin, the
   // labor/prime benchmark statuses) rather than let it read as a complete
   // restaurant-wide figure — food-cost-only fields are unaffected and stay in.
-  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(metrics, hasLaborAccess);
+  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(
+    { costs: rawCosts, profitability: rawProfitability, benchmarks: rawBenchmarks },
+    hasLaborAccess,
+    pickLaborOmittedReason({ hasPayRates, hasLaborCapability, laborMismatchReason })
+  );
+
+  const revenue = {
+    gross_revenue: salesTotals.gross,
+    discounts: salesTotals.discounts,
+    refunds: salesTotals.refunds,
+    net_revenue: salesTotals.net,
+    total_collected_at_pos: salesTotals.gross + salesTotals.salesTax + salesTotals.tips + salesTotals.otherLiabilities,
+    sales_tax: salesTotals.salesTax,
+    tips: salesTotals.tips,
+    other_liabilities: salesTotals.otherLiabilities,
+    sales_count: salesCount,
+  };
 
   return {
     ok: true,
@@ -338,12 +318,13 @@ async function executeGetKpis(
       end_date: endDateStr,
 
       // All metrics from shared calculation module
-      revenue: metrics.revenue,
+      revenue,
       costs,
       profitability,
-      liabilities: metrics.liabilities,
+      liabilities: { sales_tax: salesTotals.salesTax, tips: salesTotals.tips, other_liabilities: salesTotals.otherLiabilities },
       benchmarks,
       labor_omitted: laborOmittedReason ? { reason: laborOmittedReason } : undefined,
+      pay_hidden: hasPayRates ? undefined : payHidden(),
 
       // Additional metrics not in shared module
       inventory_value: inventoryValue,
@@ -356,7 +337,7 @@ async function executeGetKpis(
       ...(hasLaborAccess
         ? [{ table: 'time_punches', date: startDateStr, summary: `Labor from time punches ${startDateStr} to ${endDateStr}` }]
         : []),
-      { table: 'products', summary: `Current inventory snapshot (${inventory?.length || 0} items)` },
+      { table: 'products', summary: `Current inventory snapshot (${inventoryItemCount} items)` },
     ],
   };
 }
@@ -371,49 +352,102 @@ async function executeGetInventoryStatus(
 ): Promise<any> {
   const { include_low_stock = true, category } = args;
 
-  let query = supabase
-    .from('products')
-    .select(`
-      id, 
-      name, 
-      current_stock, 
-      par_level_min, 
-      par_level_max,
-      reorder_point,
-      cost_per_unit, 
-      category,
-      product_suppliers (
-        supplier:suppliers (
-          name
-        ),
-        is_preferred
-      )
-    `)
-    .eq('restaurant_id', restaurantId);
+  let totalItems: number;
+  let totalValue: number;
+  let lowStockCount: number;
+  let lowStockItems: any[] = [];
 
   if (category) {
-    query = query.eq('category', category);
+    // Category path: the valuation RPC takes no category filter, so a
+    // category-scoped call reads the filtered product rows directly and
+    // derives all four fields (total_items, total_value, low_stock_count,
+    // low_stock_items) from that same set. This keeps the counts and the
+    // list consistent. A category-filtered product list is bounded in
+    // practice, so a plain fetch-and-sum is safe here.
+    const { data: products, error } = await supabase
+      .from('products')
+      .select(`
+        id,
+        name,
+        current_stock,
+        cost_per_unit,
+        par_level_min,
+        reorder_point,
+        product_suppliers (
+          supplier:suppliers (
+            name
+          ),
+          is_preferred
+        )
+      `)
+      .eq('restaurant_id', restaurantId)
+      .eq('category', category);
+
+    if (error) {
+      throw new Error(`Failed to fetch inventory: ${error.message}`);
+    }
+
+    const categoryProducts = products || [];
+    totalItems = categoryProducts.length;
+    totalValue = categoryProducts.reduce(
+      (sum: number, p: any) => sum + (Number(p.current_stock) || 0) * (Number(p.cost_per_unit) || 0),
+      0
+    );
+    const categoryLowStock = categoryProducts.filter((p: any) =>
+      p.current_stock <= (p.par_level_min ?? 0)
+    );
+    lowStockCount = categoryLowStock.length;
+    lowStockItems = categoryLowStock;
+  } else {
+    // No-category path: the aggregate RPC covers the whole restaurant, so
+    // total_items/total_value/low_stock_count read straight from it.
+    const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+      p_restaurant_id: restaurantId,
+    });
+
+    if (valuationError) {
+      throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+    }
+
+    const valuation = valuationRows?.[0];
+    totalItems = Number(valuation?.item_count ?? 0);
+    totalValue = Number(valuation?.total_value ?? 0);
+    lowStockCount = Number(valuation?.low_stock_count ?? 0);
+
+    if (include_low_stock) {
+      const { data: products, error } = await supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          current_stock,
+          par_level_min,
+          reorder_point,
+          product_suppliers (
+            supplier:suppliers (
+              name
+            ),
+            is_preferred
+          )
+        `)
+        .eq('restaurant_id', restaurantId);
+
+      if (error) {
+        throw new Error(`Failed to fetch inventory: ${error.message}`);
+      }
+
+      lowStockItems = (products || []).filter((p: any) =>
+        p.current_stock <= (p.par_level_min ?? 0)
+      );
+    }
   }
-
-  const { data: products, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to fetch inventory: ${error.message}`);
-  }
-
-  const lowStockItems = products?.filter((p: any) => 
-    p.current_stock <= (p.par_level_min || 0)
-  ) || [];
-
-  const totalValue = products?.reduce((sum: number, item: any) => 
-    sum + ((item.current_stock || 0) * (item.cost_per_unit || 0)), 0) || 0;
 
   return {
     ok: true,
     data: {
-      total_items: products?.length || 0,
+      total_items: totalItems,
       total_value: totalValue,
-      low_stock_count: lowStockItems.length,
+      low_stock_count: lowStockCount,
       low_stock_items: include_low_stock ? lowStockItems.slice(0, 10).map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -424,7 +458,7 @@ async function executeGetInventoryStatus(
       })) : [],
     },
     evidence: [
-      { table: 'products', summary: `Inventory snapshot: ${products?.length || 0} items, ${lowStockItems.length} low stock` },
+      { table: 'products', summary: `Inventory snapshot: ${totalItems} items, ${lowStockCount} low stock` },
     ],
   };
 }
@@ -445,7 +479,7 @@ async function executeGetRecipeAnalytics(
   } = args;
 
   // Import the shared service from _shared directory
-  const { calculateRecipeProfitability } = await import('../_shared/recipeAnalytics.ts');
+  const { calculateRecipeProfitability, buildRecipeDeductions } = await import('../_shared/recipeAnalytics.ts');
 
   try {
     const summary = await calculateRecipeProfitability(supabase, {
@@ -456,10 +490,89 @@ async function executeGetRecipeAnalytics(
       sortBy: sort_by
     });
 
+    // Limit to top 20 for AI responses. The ingredient fetch below runs
+    // AFTER this slice, in one query keyed on these 20 ids, so it never
+    // scales with the full recipe count. See design section 7.
+    const topRecipes = summary.recipes.slice(0, 20);
+    const topRecipeIds = topRecipes.map((recipe) => recipe.id);
+
+    let deductionsByRecipeId = new Map<string, RecipeDeductionResult>();
+    if (topRecipeIds.length > 0) {
+      // Shape matches the select below. Typed here (not inferred from the
+      // Supabase client) because the client's generic types do not model
+      // this query's embedded `products` join.
+      interface RecipeIngredientJoinRow {
+        recipe_id: string;
+        quantity: number;
+        unit: string;
+        yield_pct_override: number | null;
+        products: {
+          name: string | null;
+          cost_per_unit: number | null;
+          uom_purchase: string | null;
+          size_value: number | null;
+          size_unit: string | null;
+          yield_pct: number | null;
+        } | null;
+      }
+
+      // 20 recipes can still have more ingredient lines than PostgREST's
+      // 1000-row cap. Page through all rows, ordered by the unique `id` so
+      // offset pages neither skip nor repeat a row.
+      let ingredientRows: RecipeIngredientJoinRow[];
+      try {
+        ({ rows: ingredientRows } = await fetchAllRows<RecipeIngredientJoinRow>((from, to) =>
+          asPagedRows<RecipeIngredientJoinRow>(
+            supabase
+              .from('recipe_ingredients')
+              .select(`
+                recipe_id,
+                quantity,
+                unit,
+                yield_pct_override,
+                products ( name, cost_per_unit, uom_purchase, size_value, size_unit, yield_pct )
+              `)
+              .in('recipe_id', topRecipeIds)
+              .order('id', { ascending: true })
+              .range(from, to)
+          )
+        ));
+      } catch (ingredientsError) {
+        const message = (ingredientsError as { message?: string })?.message ?? String(ingredientsError);
+        throw new Error(`Failed to fetch recipe ingredients: ${message}`);
+      }
+
+      const deductionRows = ingredientRows.map((row) => ({
+        recipe_id: row.recipe_id,
+        product_name: row.products?.name ?? '',
+        quantity: row.quantity,
+        unit: row.unit,
+        purchase_unit: row.products?.uom_purchase ?? row.unit,
+        size_value: row.products?.size_value ?? null,
+        size_unit: row.products?.size_unit ?? null,
+        cost_per_unit: row.products?.cost_per_unit ?? 0,
+        product_yield_pct: row.products?.yield_pct ?? null,
+        yield_pct_override: row.yield_pct_override ?? null,
+      }));
+
+      deductionsByRecipeId = buildRecipeDeductions(deductionRows);
+    }
+
+    const recipesWithDeductions = topRecipes.map((recipe) => {
+      const deduction = deductionsByRecipeId.get(recipe.id);
+      return {
+        ...recipe,
+        portion_cost: deduction?.portion_cost ?? null,
+        loaded_cost: deduction?.loaded_cost ?? null,
+        waste_cost: deduction?.waste_cost ?? null,
+        ingredients: deduction?.ingredients ?? [],
+      };
+    });
+
     return {
       ok: true,
       data: {
-        recipes: summary.recipes.slice(0, 20), // Limit to top 20 for AI responses
+        recipes: recipesWithDeductions,
         total_count: summary.totalRecipes,
         recipes_with_sales: summary.recipesWithSales,
         average_margin: summary.averageMargin,
@@ -496,50 +609,37 @@ async function calculateCashFlow(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch bank transactions
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, category_id')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: transactions, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch transactions: ${error.message}`);
-  
-  const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
-  const netCashFlow = inflows - outflows;
-  
-  // Calculate daily average
-  const days = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24));
-  const avgDailyCashFlow = days > 0 ? netCashFlow / days : 0;
-  
-  // Calculate volatility (standard deviation)
-  const dailyFlows: Record<string, number> = {};
-  transactions?.forEach((t: any) => {
-    const date = t.transaction_date;
-    dailyFlows[date] = (dailyFlows[date] || 0) + t.amount;
-  });
-  
-  const flowValues = Object.values(dailyFlows);
-  const mean = flowValues.reduce((sum: number, val: number) => sum + val, 0) / (flowValues.length || 1);
-  const variance = flowValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (flowValues.length || 1);
-  const volatility = Math.sqrt(variance);
-  
+
+  // Daily inflow/outflow/net series (get_bank_transactions_daily) replaces
+  // the raw per-transaction fetch. p_bank_account_id filters
+  // connected_bank_id, which fixes the prior filter on a bank_account_id
+  // column that bank_transactions does not have. transaction_count reads
+  // tx_count from get_bank_transaction_summary (already used elsewhere in
+  // this file), since the daily RPC emits one row per active day, not per
+  // transaction — days.length would undercount any day with 2+ transactions.
+  const [{ data: dailyRows, error }, { data: summaryRows, error: summaryError }] = await Promise.all([
+    supabase.rpc('get_bank_transactions_daily', {
+      p_restaurant_id: restaurantId,
+      p_start_date: start_date,
+      p_end_date: end_date,
+      p_bank_account_id: bank_account_id || null,
+    }),
+    supabase.rpc('get_bank_transaction_summary', {
+      p_restaurant_id: restaurantId,
+      p_start_date: start_date,
+      p_end_date: end_date,
+      p_bank_account_id: bank_account_id || null,
+    }),
+  ]);
+
+  if (error) throw new Error(`get_bank_transactions_daily failed: ${error.message}`);
+  if (summaryError) throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+
+  const days = dailyRows || [];
+  const txCount = Number(summaryRows?.[0]?.tx_count ?? 0);
   results.cash_flow = {
-    inflows_7d: inflows,
-    outflows_7d: outflows,
-    net_cash_flow_7d: netCashFlow,
-    avg_daily_cash_flow: avgDailyCashFlow,
-    volatility: volatility,
-    transaction_count: transactions?.length || 0,
+    ...buildCashFlowSummary(days, start_date, end_date),
+    transaction_count: txCount,
   };
 }
 
@@ -553,41 +653,39 @@ async function calculateRevenueHealth(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch bank transactions that look like revenue deposits
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, description')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date)
-    .gt('amount', 0);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: deposits, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch deposits: ${error.message}`);
-  
-  // Filter for likely revenue deposits (excluding small transfers/refunds)
-  const revenueDeposits = deposits?.filter((d: any) => d.amount > 10) || [];
-  
-  const totalRevenue = revenueDeposits.reduce((sum: number, d: any) => sum + d.amount, 0);
-  const avgDeposit = revenueDeposits.length > 0 ? totalRevenue / revenueDeposits.length : 0;
-  const largestDeposit = revenueDeposits.reduce((max: number, d: any) => Math.max(max, d.amount), 0);
-  
-  // Calculate deposit frequency
-  const dates = revenueDeposits.map((d: any) => new Date(d.transaction_date).getTime()).sort((a: number, b: number) => a - b);
-  let totalGap = 0;
-  for (let i = 1; i < dates.length; i++) {
-    totalGap += (dates[i] - dates[i-1]) / (1000 * 60 * 60 * 24); // Convert to days
-  }
-  const avgDaysBetweenDeposits = dates.length > 1 ? totalGap / (dates.length - 1) : 0;
-  
+
+  // Deposit summary (get_bank_transaction_summary) replaces the raw
+  // amount>0 fetch. p_min_inflow: 10 restores the prior code's amount > 10
+  // floor, which excludes small transfers/refunds from the deposit metrics
+  // (inflow_count, avg_inflow, max_inflow). inflow itself stays unfloored.
+  const { data: summaryRows, error } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_bank_account_id: bank_account_id || null,
+    p_min_inflow: 10,
+  });
+
+  if (error) throw new Error(`get_bank_transaction_summary failed: ${error.message}`);
+
+  const summary = summaryRows?.[0] ?? {};
+  const depositCount = Number(summary.inflow_count ?? 0);
+  // total_revenue reads floored_inflow (equal to inflow when p_min_inflow is
+  // NULL), not inflow, so it stays consistent with deposit_count/avg_deposit_size
+  // /largest_deposit: all four exclude the same small transfers/refunds
+  // below the p_min_inflow=10 floor set above.
+  const totalRevenue = Number(summary.floored_inflow ?? 0);
+  const avgDeposit = Number(summary.avg_inflow ?? 0);
+  const largestDeposit = Number(summary.max_inflow ?? 0);
+
+  // Days between deposits: the summary has no per-transaction dates, so this
+  // approximates the average gap from the period length and deposit count
+  // instead of walking individual transaction dates.
+  const periodDays = Math.ceil((new Date(end_date).getTime() - new Date(start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const avgDaysBetweenDeposits = depositCount > 1 ? periodDays / (depositCount - 1) : 0;
+
   results.revenue_health = {
-    deposit_count: revenueDeposits.length,
+    deposit_count: depositCount,
     avg_deposit_size: avgDeposit,
     largest_deposit: largestDeposit,
     total_revenue: totalRevenue,
@@ -606,57 +704,44 @@ async function calculateSpending(
   results: any
 ): Promise<void> {
   const { start_date, end_date, bank_account_id } = args;
-  
-  // Fetch expense transactions
-  let query = supabase
-    .from('bank_transactions')
-    .select(`
-      amount, 
-      transaction_date, 
-      description,
-      merchant_name,
-      category:chart_of_accounts!category_id(id, account_name, account_code)
-    `)
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', start_date)
-    .lte('transaction_date', end_date)
-    .lt('amount', 0);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: expenses, error } = await query;
-  
-  if (error) throw new Error(`Failed to fetch expenses: ${error.message}`);
-  
-  const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + e.amount, 0) || 0);
-  
-  // Group by merchant/vendor
-  const byVendor: Record<string, number> = {};
-  expenses?.forEach((e: any) => {
-    const vendor = e.merchant_name || e.description || 'Unknown';
-    byVendor[vendor] = (byVendor[vendor] || 0) + Math.abs(e.amount);
+
+  // Category breakdown (get_bank_spending_by_category) replaces the raw
+  // amount<0 fetch. Note: this RPC has no p_bank_account_id parameter, so a
+  // bank_account_id filter on this analysis_type is not applied (a known
+  // gap in the Task 8 RPC surface, out of scope to add here). Per-vendor
+  // grouping also has no RPC (only category-level breakdown exists), so
+  // top_vendors is dropped rather than reintroducing an unbounded
+  // per-transaction fetch to compute it.
+  const { data: categoryRows, error } = await supabase.rpc('get_bank_spending_by_category', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
   });
-  
-  const topVendors = Object.entries(byVendor)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10)
-    .map(([name, amount]) => ({ name, amount }));
-  
-  // Group by category
-  const byCategory: Record<string, number> = {};
-  expenses?.forEach((e: any) => {
-    const category = e.category?.account_name || 'Uncategorized';
-    byCategory[category] = (byCategory[category] || 0) + Math.abs(e.amount);
-  });
-  
+
+  if (error) throw new Error(`get_bank_spending_by_category failed: ${error.message}`);
+
+  const rows = categoryRows || [];
+  const totalExpenses = rows.reduce((sum: number, r: any) => sum + Number(r.spend ?? 0), 0);
+  const expenseCount = rows.reduce((sum: number, r: any) => sum + Number(r.tx_count ?? 0), 0);
+
   results.spending = {
     total_expenses: totalExpenses,
-    expense_count: expenses?.length || 0,
-    avg_transaction: expenses?.length ? totalExpenses / expenses.length : 0,
-    top_vendors: topVendors,
-    by_category: Object.entries(byCategory).map(([name, amount]) => ({ name, amount })),
+    expense_count: expenseCount,
+    avg_transaction: expenseCount > 0 ? totalExpenses / expenseCount : 0,
+    // No vendor-level RPC exists; see note above.
+    top_vendors: null,
+    top_vendors_available: false,
+    by_category: rows.map((r: any) => ({ name: r.category_name, amount: Number(r.spend ?? 0) })),
+    // The category-breakdown RPC has no account filter; tell the caller
+    // explicitly when their bank_account_id was silently ignored.
+    ...(bank_account_id
+      ? {
+          filters_applied: {
+            bank_account_id: false,
+          },
+          filters_note: 'The spending breakdown covers all connected bank accounts. bank_account_id is not applied to this analysis_type.',
+        }
+      : {}),
   };
 }
 
@@ -667,7 +752,8 @@ async function calculateLiquidity(
   args: any,
   restaurantId: string,
   supabase: any,
-  results: any
+  results: any,
+  restaurantNow: Date
 ): Promise<void> {
   const { bank_account_id } = args;
   
@@ -692,21 +778,22 @@ async function calculateLiquidity(
     return sum + balance;
   }, 0) || 0;
   
-  // Calculate burn rate from recent outflows
-  let outflowQuery = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date')
-    .eq('restaurant_id', restaurantId)
-    .lt('amount', 0)
-    .gte('transaction_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  
-  if (bank_account_id) {
-    outflowQuery = outflowQuery.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: recentOutflows } = await outflowQuery;
-  
-  const totalOutflows = Math.abs(recentOutflows?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+  // Calculate burn rate from recent outflows (get_bank_transaction_summary),
+  // a 30-day trailing window. p_bank_account_id filters connected_bank_id,
+  // which fixes the prior filter on a bank_account_id column that
+  // bank_transactions does not have.
+  const thirtyDaysAgo = toLocalYMD(addDays(restaurantNow, -30));
+  const todayStr = toLocalYMD(restaurantNow);
+  const { data: outflowSummaryRows, error: outflowSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: thirtyDaysAgo,
+    p_end_date: todayStr,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (outflowSummaryError) throw new Error(`get_bank_transaction_summary failed: ${outflowSummaryError.message}`);
+
+  const totalOutflows = Number(outflowSummaryRows?.[0]?.outflow ?? 0);
   const avgDailyOutflow = totalOutflows / 30;
   const daysOfCash = avgDailyOutflow > 0 ? totalCash / avgDailyOutflow : 999;
   
@@ -715,7 +802,7 @@ async function calculateLiquidity(
     avg_daily_outflow: avgDailyOutflow,
     days_of_cash: Math.round(daysOfCash),
     runway_status: daysOfCash > 60 ? 'healthy' : daysOfCash > 30 ? 'caution' : 'critical',
-    projected_zero_date: daysOfCash < 999 ? new Date(Date.now() + daysOfCash * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null,
+    projected_zero_date: daysOfCash < 999 ? toLocalYMD(addDays(restaurantNow, daysOfCash)) : null,
   };
 }
 
@@ -726,39 +813,44 @@ async function calculatePredictions(
   args: any,
   restaurantId: string,
   supabase: any,
-  results: any
+  results: any,
+  restaurantNow: Date
 ): Promise<void> {
   const { bank_account_id } = args;
-  
-  // Simple predictions based on historical patterns
-  let query = supabase
-    .from('bank_transactions')
-    .select('amount, transaction_date, description, merchant_name')
-    .eq('restaurant_id', restaurantId)
-    .gte('transaction_date', new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  
-  if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
-  }
-  
-  const { data: historical } = await query;
-  
-  // Find recurring patterns
-  const depositPattern = historical?.filter((t: any) => t.amount > 100);
-  const avgDepositSize = depositPattern?.reduce((sum: number, t: any) => sum + t.amount, 0) / (depositPattern?.length || 1);
-  
-  // Calculate days since last deposit
-  const lastDepositDate = depositPattern?.reduce((latest: string, t: any) => {
-    return t.transaction_date > latest ? t.transaction_date : latest;
+
+  const sixtyDaysAgo = toLocalYMD(addDays(restaurantNow, -60));
+  const todayStr = toLocalYMD(restaurantNow);
+
+  // Daily inflow series (get_bank_transactions_daily) replaces the raw
+  // per-transaction fetch. "Recurring deposit" detection now looks at days
+  // whose total inflow exceeds $100 rather than individual transactions
+  // above that amount, since the daily RPC has no per-transaction
+  // granularity. The forecast math below stays in TypeScript over these
+  // bounded daily rows.
+  const { data: dailyRows, error } = await supabase.rpc('get_bank_transactions_daily', {
+    p_restaurant_id: restaurantId,
+    p_start_date: sixtyDaysAgo,
+    p_end_date: todayStr,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (error) throw new Error(`get_bank_transactions_daily failed: ${error.message}`);
+
+  const depositDays = (dailyRows || []).filter((d: any) => Number(d.inflow ?? 0) > 100);
+  const avgDepositSize = depositDays.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0) / (depositDays.length || 1);
+
+  // Calculate days since last deposit day
+  const lastDepositDate = depositDays.reduce((latest: string, d: any) => {
+    return d.day > latest ? d.day : latest;
   }, '1970-01-01');
-  
-  const daysSinceDeposit = Math.floor((Date.now() - new Date(lastDepositDate).getTime()) / (1000 * 60 * 60 * 24));
-  
+
+  const daysSinceDeposit = daysBetweenYmd(lastDepositDate, toLocalYMD(restaurantNow));
+
   results.predictions = {
     next_deposit_prediction: {
       expected_days_from_now: Math.max(0, 7 - daysSinceDeposit), // Assume weekly deposits
       expected_amount: avgDepositSize,
-      confidence: depositPattern?.length > 4 ? 'high' : depositPattern?.length > 2 ? 'medium' : 'low',
+      confidence: depositDays.length > 4 ? 'high' : depositDays.length > 2 ? 'medium' : 'low',
     },
   };
 }
@@ -769,7 +861,8 @@ async function calculatePredictions(
 async function executeGetFinancialIntelligence(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { analysis_type, start_date, end_date, bank_account_id } = args;
   
@@ -790,11 +883,11 @@ async function executeGetFinancialIntelligence(
     }
     
     if (analysis_type === 'all' || analysis_type === 'liquidity') {
-      await calculateLiquidity(args, restaurantId, supabase, results);
+      await calculateLiquidity(args, restaurantId, supabase, results, restaurantNow);
     }
     
     if (analysis_type === 'all' || analysis_type === 'predictions') {
-      await calculatePredictions(args, restaurantId, supabase, results);
+      await calculatePredictions(args, restaurantId, supabase, results, restaurantNow);
     }
     
     return {
@@ -855,9 +948,9 @@ async function executeGetBankTransactions(
     .limit(limit);
   
   if (bank_account_id) {
-    query = query.eq('bank_account_id', bank_account_id);
+    query = query.eq('connected_bank_id', bank_account_id);
   }
-  
+
   if (category_id) {
     query = query.eq('category_id', category_id);
   }
@@ -875,28 +968,60 @@ async function executeGetBankTransactions(
   }
   
   const { data: transactions, error } = await query;
-  
+
   if (error) {
     throw new Error(`Failed to fetch transactions: ${error.message}`);
   }
-  
-  // Calculate summary stats
-  const total = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-  const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+
+  // Period summary totals (get_bank_transaction_summary) cover the whole
+  // date range for this bank account, not just the current page returned
+  // above. The RPC has no category_id/min_amount/max_amount/is_categorized
+  // parameters, so those filters (when set) narrow the transaction list
+  // below but do not narrow this summary.
+  const { data: summaryRows, error: summaryError } = await supabase.rpc('get_bank_transaction_summary', {
+    p_restaurant_id: restaurantId,
+    p_start_date: start_date,
+    p_end_date: end_date,
+    p_bank_account_id: bank_account_id || null,
+  });
+
+  if (summaryError) {
+    throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+  }
+
+  const periodSummary = summaryRows?.[0] ?? {};
+  // categorized_count_in_page/categorization_rate_in_page have no RPC (the
+  // summary RPC has no categorization awareness), so they stay computed from
+  // the fetched page, same as before. The _in_page suffix marks them as
+  // page-scoped so a caller does not read them as period-wide, unlike the
+  // total_* fields beside them, which come from the period-wide summary RPC.
   const categorized = transactions?.filter((t: any) => t.is_categorized).length || 0;
-  
+
+  // The summary RPC only supports p_bank_account_id/p_statuses. When the
+  // caller also sets category_id/min_amount/max_amount/is_categorized, the
+  // list below is narrowed by those filters but the summary above is not.
+  // Flag that mismatch on the response so a caller does not read the
+  // summary as if it matched the filtered list.
+  const hasUnsummarizedFilters =
+    category_id !== undefined || min_amount !== undefined || max_amount !== undefined || is_categorized !== undefined;
+
   return {
     ok: true,
     data: {
       period: { start_date, end_date },
       summary: {
-        total_transactions: transactions?.length || 0,
-        total_net: total,
-        total_inflows: inflows,
-        total_outflows: outflows,
-        categorized_count: categorized,
-        categorization_rate: transactions?.length ? (categorized / transactions.length) * 100 : 0,
+        total_transactions: Number(periodSummary.tx_count ?? 0),
+        total_net: Number(periodSummary.net ?? 0),
+        total_inflows: Number(periodSummary.inflow ?? 0),
+        total_outflows: Number(periodSummary.outflow ?? 0),
+        categorized_count_in_page: categorized,
+        categorization_rate_in_page: transactions?.length ? (categorized / transactions.length) * 100 : 0,
+        ...(hasUnsummarizedFilters
+          ? {
+              partial: true,
+              note: 'Summary totals cover the whole period without the list filters.',
+            }
+          : {}),
       },
       transactions: transactions?.map((t: any) => ({
         id: t.id,
@@ -929,50 +1054,28 @@ async function executeGetFinancialStatement(
   try {
     switch (statement_type) {
       case 'income_statement': {
-        // Fetch revenue from unified_sales
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('total_price')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
-        
-        const revenue = sales?.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0) || 0;
-        
-        // Fetch COGS from inventory transactions
-        const { data: cogs } = await supabase
-          .from('inventory_transactions')
-          .select('total_cost')
-          .eq('restaurant_id', restaurantId)
-          .eq('transaction_type', 'usage')
-          .gte('created_at', start_date)
-          .lte('created_at', end_date);
-        
-        const totalCogs = Math.abs(cogs?.reduce((sum: number, c: any) => sum + (c.total_cost || 0), 0) || 0);
-        
-        // Fetch expenses from journal entries
-        const { data: expenseAccounts } = await supabase
-          .from('chart_of_accounts')
-          .select('id')
-          .eq('restaurant_id', restaurantId)
-          .eq('account_type', 'expense');
-        
-        const expenseAccountIds = expenseAccounts?.map((a: any) => a.id) || [];
-        
-        const { data: expenses } = await supabase
-          .from('journal_entry_lines')
-          .select(`
-            debit_amount,
-            credit_amount,
-            journal_entry:journal_entries!inner(entry_date)
-          `)
-          .in('account_id', expenseAccountIds)
-          .gte('journal_entry.entry_date', start_date)
-          .lte('journal_entry.entry_date', end_date);
-        
-        const totalExpenses = expenses?.reduce((sum: number, e: any) => 
-          sum + (e.debit_amount || 0) - (e.credit_amount || 0), 0) || 0;
-        
+        // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+        const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
+        const revenue = salesTotals.net;
+
+        // Fetch COGS from the monthly usage aggregate RPC.
+        const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
+        const totalCogs = sumMonthlyFoodCost(usageRows);
+
+        // Fetch operating expenses from the journal expense aggregate RPC.
+        const { data: expenseTotal, error: expError } = await supabase.rpc('get_journal_expense_total', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (expError) throw new Error(`get_journal_expense_total failed: ${expError.message}`);
+        const totalExpenses = Number(expenseTotal ?? 0);
+
         const grossProfit = revenue - totalCogs;
         const netIncome = grossProfit - totalExpenses;
         
@@ -988,9 +1091,10 @@ async function executeGetFinancialStatement(
             operating_expenses: totalExpenses,
             net_income: netIncome,
             net_margin: revenue > 0 ? (netIncome / revenue) * 100 : 0,
+            basis: incomeStatementBasis(),
           },
           evidence: [
-            { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date} (${sales?.length || 0} sales)` },
+            { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date}` },
             { table: 'inventory_transactions', summary: `COGS from usage transactions ${start_date} to ${end_date}` },
             { table: 'journal_entry_lines', summary: `Operating expenses from journal entries ${start_date} to ${end_date}` },
           ],
@@ -1013,14 +1117,14 @@ async function executeGetFinancialStatement(
         const cash = cashAccounts?.reduce((sum: number, bank: any) => 
           sum + (bank.bank_account_balances?.[0]?.current_balance || 0), 0) || 0;
         
-        const { data: inventory } = await supabase
-          .from('products')
-          .select('current_stock, cost_per_unit')
-          .eq('restaurant_id', restaurantId);
-        
-        const inventoryValue = inventory?.reduce((sum: number, p: any) => 
-          sum + ((p.current_stock || 0) * (p.cost_per_unit || 0)), 0) || 0;
-        
+        const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+          p_restaurant_id: restaurantId,
+        });
+        if (valuationError) throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+        const balanceSheetValuation = valuationRows?.[0];
+        const inventoryValue = Number(balanceSheetValuation?.total_value ?? 0);
+        const inventoryItemCount = Number(balanceSheetValuation?.item_count ?? 0);
+
         const totalAssets = cash + inventoryValue;
         
         // Simplified - would need accounts payable and other liability tracking
@@ -1055,23 +1159,24 @@ async function executeGetFinancialStatement(
           },
           evidence: [
             { table: 'connected_banks', summary: `Cash balances from connected bank accounts as of ${asOfDate}` },
-            { table: 'products', summary: `Inventory valuation from ${inventory?.length || 0} products` },
+            { table: 'products', summary: `Inventory valuation from ${inventoryItemCount} products` },
           ],
         };
       }
-      
+
       case 'cash_flow': {
-        const { data: transactions } = await supabase
-          .from('bank_transactions')
-          .select('amount, transaction_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .order('transaction_date', { ascending: true });
-        
-        const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-        const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
-        
+        // Scalar summary (get_bank_transaction_summary) replaces the raw
+        // per-transaction fetch.
+        const { data: summaryRows, error: summaryError } = await supabase.rpc('get_bank_transaction_summary', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (summaryError) throw new Error(`get_bank_transaction_summary failed: ${summaryError.message}`);
+        const cfSummary = summaryRows?.[0] ?? {};
+        const inflows = Number(cfSummary.inflow ?? 0);
+        const outflows = Number(cfSummary.outflow ?? 0);
+
         return {
           ok: true,
           data: {
@@ -1091,7 +1196,7 @@ async function executeGetFinancialStatement(
             net_change_in_cash: inflows - outflows,
           },
           evidence: [
-            { table: 'bank_transactions', summary: `Cash flow from ${transactions?.length || 0} transactions ${start_date} to ${end_date}` },
+            { table: 'bank_transactions', summary: `Cash flow from ${Number(cfSummary.tx_count ?? 0)} transactions ${start_date} to ${end_date}` },
           ],
         };
       }
@@ -1171,7 +1276,8 @@ async function executeGetFinancialStatement(
 async function executeGetSalesSummary(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { 
     period, 
@@ -1186,7 +1292,8 @@ async function executeGetSalesSummary(
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(
     effectivePeriod as PeriodType,
     start_date,
-    end_date
+    end_date,
+    restaurantNow
   );
 
   // Calculate previous period for comparison
@@ -1232,64 +1339,62 @@ async function executeGetSalesSummary(
     }
   }
 
-  // Fetch current period sales (excluding adjustments - only actual revenue)
-  const { data: currentSales, error: currentError } = await supabase
-    .from('unified_sales')
-    .select('total_price, sale_date, item_name')
-    .eq('restaurant_id', restaurantId)
-    .gte('sale_date', startDateStr)
-    .lte('sale_date', endDateStr)
-    .is('adjustment_type', null)
-    .is('parent_sale_id', null);
+  // Current period total comes from the shared net-sales RPC so it uses the
+  // same gross - discounts - refunds definition as every other financial
+  // tool. transaction_count is a bounded server-side head-count (Task 11
+  // removes the raw row fetch this used to piggy-back on); the item
+  // breakdown, when requested, comes from get_top_sold_items instead of a
+  // client-side group-by over raw rows.
+  const [salesTotals, currentCountResult] = await Promise.all([
+    fetchNetSales(supabase, restaurantId, startDateStr, endDateStr),
+    // .or('item_type.is.null,item_type.eq.sale') matches the same sale-only
+    // count executeGetKpis uses, so this tool and the KPIs tool report the
+    // same transaction_count for the same period instead of this count also
+    // picking up discount/refund line items.
+    supabase
+      .from('unified_sales')
+      .select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .gte('sale_date', startDateStr)
+      .lte('sale_date', endDateStr)
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null)
+      .or('item_type.is.null,item_type.eq.sale'),
+  ]);
 
-  if (currentError) {
-    throw new Error(`Failed to fetch sales: ${currentError.message}`);
+  if (currentCountResult.error) {
+    throw new Error(`unified_sales count failed: ${currentCountResult.error.message}`);
   }
 
-  const currentTotal = currentSales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
-  const currentCount = currentSales?.length || 0;
+  const currentTotal = salesTotals.net;
+  const currentCount = currentCountResult.count ?? 0;
 
   // Get items breakdown if requested
   let itemsBreakdown = null;
   if (include_items) {
-    const itemsSummary: Record<string, { count: number; total: number }> = {};
-    currentSales?.forEach((sale: any) => {
-      const item = sale.item_name || 'Unknown';
-      if (!itemsSummary[item]) {
-        itemsSummary[item] = { count: 0, total: 0 };
-      }
-      itemsSummary[item].count += 1;
-      itemsSummary[item].total += sale.total_price || 0;
+    const { data: topItems, error: topItemsError } = await supabase.rpc('get_top_sold_items', {
+      p_restaurant_id: restaurantId,
+      p_start_date: startDateStr,
+      p_end_date: endDateStr,
+      p_limit: 10,
     });
-    
-    itemsBreakdown = Object.entries(itemsSummary)
-      .sort(([, a], [, b]) => b.total - a.total)
-      .slice(0, 20)
-      .map(([name, data]) => ({
-        item_name: name,
-        quantity_sold: data.count,
-        total_sales: data.total,
-        avg_price: data.count > 0 ? data.total / data.count : 0,
-      }));
+    if (topItemsError) throw new Error(`get_top_sold_items failed: ${topItemsError.message}`);
+
+    itemsBreakdown = mapTopSoldItems(topItems);
   }
 
   let comparison = null;
 
   if (compare_to_previous) {
-    const prevStartDateStr = prevStartDate.toISOString().split('T')[0];
-    const prevEndDateStr = prevEndDate.toISOString().split('T')[0];
+    const prevStartDateStr = toLocalYMD(prevStartDate);
+    const prevEndDateStr = toLocalYMD(prevEndDate);
 
-    const { data: prevSales, error: prevError } = await supabase
-      .from('unified_sales')
-      .select('total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', prevStartDateStr)
-      .lte('sale_date', prevEndDateStr)
-      .is('adjustment_type', null)
-      .is('parent_sale_id', null);
-
-    if (!prevError) {
-      const prevTotal = prevSales?.reduce((sum: number, sale: any) => sum + (sale.total_price || 0), 0) || 0;
+    // fetchNetSales throws on RPC failure — caught here (rather than left to
+    // propagate) to preserve the original behavior of silently omitting the
+    // comparison instead of failing the whole tool call.
+    try {
+      const prevSalesTotals = await fetchNetSales(supabase, restaurantId, prevStartDateStr, prevEndDateStr);
+      const prevTotal = prevSalesTotals.net;
       const change = prevTotal > 0 ? ((currentTotal - prevTotal) / prevTotal) * 100 : 0;
 
       comparison = {
@@ -1297,6 +1402,8 @@ async function executeGetSalesSummary(
         change_percent: Math.round(change * 10) / 10,
         change_amount: currentTotal - prevTotal,
       };
+    } catch {
+      // Leave comparison as null.
     }
   }
 
@@ -1325,7 +1432,8 @@ async function executeGetSalesSummary(
 async function executeGetInventoryTransactions(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const {
     transaction_type = 'all',
@@ -1349,11 +1457,9 @@ async function executeGetInventoryTransactions(
     startDateStr = start_date;
     endDateStr = end_date;
   } else {
-    const now = new Date();
     const daysToLookBack = Math.min(days_back, 90); // Max 90 days
-    const startDate = new Date(now.getTime() - daysToLookBack * 24 * 60 * 60 * 1000);
-    startDateStr = startDate.toISOString().split('T')[0];
-    endDateStr = now.toISOString().split('T')[0];
+    startDateStr = toLocalYMD(addDays(restaurantNow, -daysToLookBack));
+    endDateStr = toLocalYMD(restaurantNow);
   }
 
   // ✅ REUSE: Call the SAME service function used by the frontend
@@ -1429,7 +1535,8 @@ async function executeGetInventoryTransactions(
 async function executeGetAiInsights(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { focus_area = 'overall_health' } = args;
 
@@ -1438,7 +1545,7 @@ async function executeGetAiInsights(
 
   try {
     // Get KPIs
-    const kpisResult = await executeGetKpis({ period: 'month' }, restaurantId, supabase);
+    const kpisResult = await executeGetKpis({ period: 'month' }, restaurantId, supabase, restaurantNow);
     dataContext.kpis = kpisResult.data;
 
     // Get inventory status
@@ -1450,7 +1557,7 @@ async function executeGetAiInsights(
     dataContext.recipes = recipeResult.data;
 
     // Get sales summary
-    const salesResult = await executeGetSalesSummary({ period: 'month', compare_to_previous: true }, restaurantId, supabase);
+    const salesResult = await executeGetSalesSummary({ period: 'month', compare_to_previous: true }, restaurantId, supabase, restaurantNow);
     dataContext.sales = salesResult.data;
 
     // Focus area specific data
@@ -1668,37 +1775,28 @@ async function executeGenerateReport(
   try {
     switch (type) {
       case 'monthly_pnl': {
-        // Get revenue from unified_sales
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('total_price, sale_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
+        // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+        const salesTotals = await fetchNetSales(supabase, restaurantId, start_date, end_date);
+        const totalRevenue = salesTotals.net;
 
-        const totalRevenue = sales?.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0) || 0;
+        // Get COGS from the monthly usage aggregate RPC.
+        const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
+        const totalCOGS = sumMonthlyFoodCost(usageRows);
 
-        // Get COGS from inventory transactions
-        const { data: inventory } = await supabase
-          .from('inventory_transactions')
-          .select('total_cost, transaction_type')
-          .eq('restaurant_id', restaurantId)
-          .gte('created_at', start_date)
-          .lte('created_at', end_date)
-          .eq('transaction_type', 'usage');
-
-        const totalCOGS = Math.abs(inventory?.reduce((sum: number, i: any) => sum + (i.total_cost || 0), 0) || 0);
-
-        // Get expenses from bank transactions
-        const { data: expenses } = await supabase
-          .from('bank_transactions')
-          .select('amount, description')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .lt('amount', 0);
-
-        const totalExpenses = Math.abs(expenses?.reduce((sum: number, e: any) => sum + (e.amount || 0), 0) || 0);
+        // Get expenses from bank transactions (get_bank_transaction_summary).
+        // outflow is already positive, so no Math.abs() is needed here.
+        const { data: expenseSummaryRows, error: expenseSummaryError } = await supabase.rpc('get_bank_transaction_summary', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (expenseSummaryError) throw new Error(`get_bank_transaction_summary failed: ${expenseSummaryError.message}`);
+        const totalExpenses = Number(expenseSummaryRows?.[0]?.outflow ?? 0);
 
         reportData = {
           period: { start_date, end_date },
@@ -1709,6 +1807,7 @@ async function executeGenerateReport(
           expenses: totalExpenses,
           net_profit: totalRevenue - totalCOGS - totalExpenses,
           net_margin: totalRevenue > 0 ? ((totalRevenue - totalCOGS - totalExpenses) / totalRevenue) * 100 : 0,
+          basis: monthlyPnlBasis(),
         };
         break;
       }
@@ -1745,72 +1844,67 @@ async function executeGenerateReport(
       }
 
       case 'sales_by_category': {
-        const { data: sales } = await supabase
-          .from('unified_sales')
-          .select('item_name, total_price, pos_category, sale_date')
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', start_date)
-          .lte('sale_date', end_date);
-
-        // Group by category
-        const byCategory: Record<string, { total: number; count: number }> = {};
-        sales?.forEach((s: any) => {
-          const cat = s.pos_category || 'Uncategorized';
-          if (!byCategory[cat]) {
-            byCategory[cat] = { total: 0, count: 0 };
-          }
-          byCategory[cat].total += s.total_price || 0;
-          byCategory[cat].count += 1;
+        const { data: categoryRows, error: catErr } = await supabase.rpc('get_sales_by_category', {
+          p_restaurant_id: restaurantId, p_start_date: start_date, p_end_date: end_date,
         });
+        if (catErr) throw new Error(`get_sales_by_category failed: ${catErr.message}`);
 
         reportData = {
           period: { start_date, end_date },
-          categories: Object.entries(byCategory).map(([name, data]) => ({
-            name,
-            total_sales: data.total,
-            item_count: data.count,
-            average_price: data.count > 0 ? data.total / data.count : 0,
-          })),
+          categories: (categoryRows || []).map((row: any) => {
+            const itemCount = Number(row.item_count ?? 0);
+            const totalSales = Number(row.revenue ?? 0);
+            return {
+              name: row.category_name,
+              total_sales: totalSales,
+              item_count: itemCount,
+              average_price: itemCount > 0 ? totalSales / itemCount : 0,
+            };
+          }),
         };
         break;
       }
 
       case 'cash_flow': {
-        const { data: transactions } = await supabase
-          .from('bank_transactions')
-          .select('amount, description, transaction_date, category:chart_of_accounts!category_id(account_name)')
-          .eq('restaurant_id', restaurantId)
-          .gte('transaction_date', start_date)
-          .lte('transaction_date', end_date)
-          .order('transaction_date', { ascending: true });
+        // Daily inflow/outflow/net series (get_bank_transactions_daily)
+        // replaces the raw per-transaction fetch. The per-transaction
+        // `transactions` list this report used to return (with
+        // description/category) is replaced by `daily_breakdown`, one row
+        // per day - the daily RPC has no per-transaction detail, and a raw
+        // fetch here would reintroduce the unbounded read this branch fixes.
+        const { data: dailyRows, error: dailyError } = await supabase.rpc('get_bank_transactions_daily', {
+          p_restaurant_id: restaurantId,
+          p_start_date: start_date,
+          p_end_date: end_date,
+        });
+        if (dailyError) throw new Error(`get_bank_transactions_daily failed: ${dailyError.message}`);
 
-        const inflows = transactions?.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0;
-        const outflows = Math.abs(transactions?.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + t.amount, 0) || 0);
+        const days = dailyRows || [];
+        const inflows = days.reduce((sum: number, d: any) => sum + Number(d.inflow ?? 0), 0);
+        const outflows = days.reduce((sum: number, d: any) => sum + Number(d.outflow ?? 0), 0);
 
         reportData = {
           period: { start_date, end_date },
           cash_inflows: inflows,
           cash_outflows: outflows,
           net_cash_flow: inflows - outflows,
-          transactions: transactions?.map((t: any) => ({
-            date: t.transaction_date,
-            description: t.description,
-            amount: t.amount,
-            category: t.category?.account_name || 'Uncategorized',
-          })) || [],
+          daily_breakdown: days.map((d: any) => ({
+            date: d.day,
+            inflow: Number(d.inflow ?? 0),
+            outflow: Number(d.outflow ?? 0),
+            net: Number(d.net ?? 0),
+          })),
         };
         break;
       }
 
       case 'balance_sheet': {
         // Simplified balance sheet
-        const { data: inventory } = await supabase
-          .from('products')
-          .select('current_stock, cost_per_unit')
-          .eq('restaurant_id', restaurantId);
-
-        const inventoryValue = inventory?.reduce((sum: number, i: any) => 
-          sum + ((i.current_stock || 0) * (i.cost_per_unit || 0)), 0) || 0;
+        const { data: valuationRows, error: valuationError } = await supabase.rpc('get_inventory_valuation', {
+          p_restaurant_id: restaurantId,
+        });
+        if (valuationError) throw new Error(`get_inventory_valuation failed: ${valuationError.message}`);
+        const inventoryValue = Number(valuationRows?.[0]?.total_value ?? 0);
 
         const { data: bank } = await supabase
           .from('connected_banks')
@@ -1916,6 +2010,53 @@ interface FetchLaborDataOptions {
   endLookaheadHours?: number;
 }
 
+interface FetchLaborEmployeesOptions {
+  /** Optional single-employee filter. */
+  employeeId?: string;
+  /** Optional case-insensitive position filter. */
+  position?: string;
+  /** Only employees with status 'active'. */
+  activeOnly?: boolean;
+}
+
+/**
+ * Read the employee rows the labor engine needs, through employees_secure.
+ *
+ * This function runs as the caller. 20260806110000 revokes SELECT on the pay
+ * columns of public.employees from authenticated, so a read of the base table
+ * fails with "permission denied for column hourly_rate". The view returns
+ * those columns, NULL when the caller lacks view:pay_rates. Each labor tool
+ * checks that flag with hasPayRatesCapability before it shows a cost.
+ */
+async function fetchLaborEmployees(
+  supabase: ReturnType<typeof createClient>,
+  restaurantId: string,
+  options: FetchLaborEmployeesOptions = {},
+): Promise<LaborEmployee[]> {
+  const { employeeId, position, activeOnly = false } = options;
+
+  let query = supabase
+    .from(EMPLOYEE_LABOR_SOURCE)
+    .select(EMPLOYEE_LABOR_COLUMNS)
+    .eq('restaurant_id', restaurantId);
+
+  if (employeeId) {
+    query = query.eq('id', employeeId);
+  }
+  if (position) {
+    query = query.ilike('position', position);
+  }
+  if (activeOnly) {
+    query = query.eq('status', 'active');
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to fetch employees: ${error.message}`);
+  // The select is EMPLOYEE_LABOR_COLUMNS, which covers every field of the
+  // engine's Employee type (tests/unit/employeeLaborColumns.test.ts).
+  return (data ?? []) as LaborEmployee[];
+}
+
 /**
  * Fetch time punches and employees in parallel — shared by get_labor_costs
  * and get_time_punches.
@@ -1946,27 +2087,16 @@ async function fetchLaborData(
     punchQuery = punchQuery.eq('employee_id', employeeId);
   }
 
-  let employeeQuery = supabase
-    .from('employees')
-    .select(EMPLOYEE_LABOR_COLUMNS)
-    .eq('restaurant_id', restaurantId);
-
-  if (employeeId) {
-    employeeQuery = employeeQuery.eq('id', employeeId);
-  }
-
-  if (position) {
-    employeeQuery = employeeQuery.ilike('position', position);
-  }
-
-  const [punchesResult, employeesResult] = await Promise.all([punchQuery, employeeQuery]);
+  const [punchesResult, employees] = await Promise.all([
+    punchQuery,
+    fetchLaborEmployees(supabase, restaurantId, { employeeId, position }),
+  ]);
 
   if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
 
   return {
     timePunches: punchesResult.data ?? [],
-    employees: employeesResult.data ?? [],
+    employees,
   };
 }
 
@@ -1983,15 +2113,16 @@ async function executeGetLaborCosts(
   const { period, start_date, end_date, include_daily_breakdown = true, include_employee_breakdown = false } = args;
 
   const { calculateActualLaborCost, calculateHoursPerEmployee } = await import('../_shared/laborCalculations.ts');
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, laborServerNow());
 
   const canSeeEmployees = userRole === 'manager' || userRole === 'owner';
 
   // 18h lookahead so shifts whose clock_out lands just after midnight at the
   // end of the window still get paired into a complete period.
-  const { timePunches, employees } = await fetchLaborData(supabase, restaurantId, startDate, endDate, {
-    endLookaheadHours: 18,
-  });
+  const [{ timePunches, employees }, hasPayRates] = await Promise.all([
+    fetchLaborData(supabase, restaurantId, startDate, endDate, { endLookaheadHours: 18 }),
+    hasPayRatesCapability(restaurantId, supabase),
+  ]);
 
   const { breakdown, dailyCosts } = calculateActualLaborCost(employees, timePunches, startDate, endDate);
 
@@ -2011,21 +2142,28 @@ async function executeGetLaborCosts(
       }))
     : null;
 
+  const costs = {
+    breakdown: {
+      hourly: breakdown.hourly,
+      salary: breakdown.salary,
+      contractor: breakdown.contractor,
+      daily_rate: breakdown.daily_rate,
+      total: breakdown.total,
+    },
+    daily_costs: include_daily_breakdown ? dailyCosts : undefined,
+    employee_breakdown: employeeBreakdown,
+  };
+
   return {
     ok: true,
     data: {
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      breakdown: {
-        hourly: breakdown.hourly,
-        salary: breakdown.salary,
-        contractor: breakdown.contractor,
-        daily_rate: breakdown.daily_rate,
-        total: breakdown.total,
-      },
-      daily_costs: include_daily_breakdown ? dailyCosts : undefined,
-      employee_breakdown: employeeBreakdown,
+      // Without view:pay_rates every rate is a masked NULL, so each cost is $0.
+      // Show null plus a reason, not $0.
+      ...(hasPayRates ? costs : redactLaborCostsResult(costs)),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
     },
     evidence: [
       { table: 'time_punches', summary: `${timePunches.length} time punches across ${employees.length} employees from ${startDateStr} to ${endDateStr}` },
@@ -2044,7 +2182,9 @@ async function executeGetTimePunches(
   args: any,
   restaurantId: string,
   supabase: any,
-  userRole: string
+  userRole: string,
+  restaurantTimeZone: string,
+  restaurantNow: Date
 ): Promise<any> {
   if (userRole !== 'manager' && userRole !== 'owner') {
     // Should never reach here — dispatcher blocks first. If it does, return the
@@ -2062,77 +2202,28 @@ async function executeGetTimePunches(
 
   const { period, start_date, end_date, employee_id, position, min_hours = 0, limit = 50 } = args;
 
-  const { calculateHoursPerEmployee, getEmployeeSnapshotForDate, formatDateLocal } = await import(
-    '../_shared/laborCalculations.ts'
-  );
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
+  const bounds = restaurantDayBounds(startDateStr, endDateStr, restaurantTimeZone);
 
   const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
   const minHours = Math.max(0, Number(min_hours) || 0);
 
   // 18h lookahead so shifts whose clock_out lands just after midnight at the
-  // end of the window still get paired. `calculateHoursPerEmployee` filters
-  // periods by startTime <= endDate so any orphan clock_in in the lookahead
-  // zone is dropped.
-  const { timePunches, employees } = await fetchLaborData(
-    supabase,
-    restaurantId,
-    startDate,
-    endDate,
-    { employeeId: employee_id, position, endLookaheadHours: 18 },
-  );
+  // end of the window still get paired. buildTimePunchShifts keeps a period
+  // when bounds.start <= startTime <= bounds.end, so any orphan clock_in in
+  // the lookahead zone is dropped.
+  const [{ timePunches, employees }, hasPayRates] = await Promise.all([
+    fetchLaborData(
+      supabase,
+      restaurantId,
+      bounds.start,
+      bounds.end,
+      { employeeId: employee_id, position, endLookaheadHours: 18 },
+    ),
+    hasPayRatesCapability(restaurantId, supabase),
+  ]);
 
-  const summaries = calculateHoursPerEmployee(employees, timePunches, startDate, endDate);
-  // Index by id so we can resolve the per-day compensation snapshot below
-  // without a linear scan per shift.
-  const employeesById: Record<string, typeof employees[number]> = {};
-  for (const e of employees) {
-    employeesById[(e as { id: string }).id] = e;
-  }
-
-  // Flatten to one row per work period (clock-in/out pair). Skip pure breaks
-  // and anything below min_hours. Per-shift cost uses the snapshot for that
-  // shift's date so mid-period comp changes are billed correctly:
-  //   - hourly snapshot   → hourly_rate × hours
-  //   - daily_rate / salary / contractor → null (period-allocated, not per-shift)
-  type Shift = {
-    employee_id: string;
-    employee_name: string;
-    position: string | null;
-    compensation_type: string;
-    start_time: string;
-    end_time: string;
-    hours: number;
-    cost_cents: number | null;
-    date: string;
-  };
-
-  const shifts: Shift[] = [];
-  for (const s of summaries) {
-    const workPeriods = s.work_periods.filter((p) => !p.isBreak && p.hours >= minHours);
-    const employee = employeesById[s.employee_id];
-
-    for (const p of workPeriods) {
-      const day = formatDateLocal(new Date(p.startTime));
-      const snapshot = employee ? getEmployeeSnapshotForDate(employee, day) : null;
-      const cost_cents =
-        snapshot && snapshot.compensation_type === 'hourly' && snapshot.hourly_rate
-          ? Math.round((snapshot.hourly_rate / 100) * p.hours * 100)
-          : null;
-
-      shifts.push({
-        employee_id: s.employee_id,
-        employee_name: s.employee_name,
-        position: s.position,
-        compensation_type: snapshot?.compensation_type ?? s.compensation_type,
-        start_time: p.startTime.toISOString(),
-        end_time: p.endTime.toISOString(),
-        hours: Number(p.hours.toFixed(4)),
-        cost_cents,
-        date: day,
-      });
-    }
-  }
+  const shifts = buildTimePunchShifts(employees, timePunches, bounds, restaurantTimeZone, minHours);
 
   // Newest first, then cap.
   shifts.sort((a, b) => (a.start_time < b.start_time ? 1 : -1));
@@ -2153,7 +2244,9 @@ async function executeGetTimePunches(
       total_shifts: shifts.length,
       returned_shifts: limited.length,
       has_more: hasMore,
-      shifts: limited,
+      // Without view:pay_rates each cost_cents is a masked $0. Show null.
+      shifts: hasPayRates ? limited : redactTimePunchShifts(limited),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
     },
     evidence: [
       {
@@ -2171,84 +2264,71 @@ async function executeGetTimePunches(
 async function executeGetScheduleOverview(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantTimeZone: string,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, include_projected_costs = true } = args;
 
   const { calculateScheduledLaborCost } = await import('../_shared/laborCalculations.ts');
 
-  // For schedule overview, 'week' and 'month' look forward from today
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date;
+  // For schedule overview, 'week' and 'month' look forward from today (in the
+  // restaurant's own calendar).
+  const { startDateStr, endDateStr } = scheduleOverviewDays(
+    period as PeriodType,
+    start_date,
+    end_date,
+    restaurantNow
+  );
+  const bounds = restaurantDayBounds(startDateStr, endDateStr, restaurantTimeZone);
 
-  if (period === 'week') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
-  } else if (period === 'month') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    endDate = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
-  } else {
-    const range = calculateDateRange(period as PeriodType, start_date, end_date);
-    startDate = range.startDate;
-    endDate = range.endDate;
-  }
-
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
-
-  // Fetch shifts and employees in parallel
-  const [shiftsResult, employeesResult] = await Promise.all([
+  // Fetch shifts and employees in parallel. The shift embed names only
+  // granted employee columns: the caller cannot read hourly_rate on
+  // public.employees (20260806110000).
+  const [shiftsResult, employees, hasPayRates] = await Promise.all([
     supabase
       .from('shifts')
-      .select('*, employee:employees(id, name, position, compensation_type, hourly_rate)')
+      .select('*, employee:employees(id, name, position)')
       .eq('restaurant_id', restaurantId)
-      .gte('start_time', startDate.toISOString())
-      .lte('start_time', endDate.toISOString())
+      .gte('start_time', bounds.start.toISOString())
+      .lte('start_time', bounds.end.toISOString())
       .order('start_time', { ascending: true }),
-    supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .eq('status', 'active'),
+    // Only the cost projection reads employees and the pay flag.
+    include_projected_costs ? fetchLaborEmployees(supabase, restaurantId, { activeOnly: true }) : Promise.resolve([]),
+    include_projected_costs ? hasPayRatesCapability(restaurantId, supabase) : Promise.resolve(true),
   ]);
 
   if (shiftsResult.error) throw new Error(`Failed to fetch shifts: ${shiftsResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
 
   const shifts = shiftsResult.data || [];
-  const employees = employeesResult.data || [];
 
-  // Calculate projected costs if requested and there are shifts
+  // Calculate projected costs if requested and there are shifts. Without
+  // view:pay_rates every rate is a masked NULL, so the projection is skipped.
   let projectedCosts = null;
-  if (include_projected_costs && shifts.length > 0) {
-    const shiftData = shifts.map((s: any) => ({
-      employee_id: s.employee_id,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      break_duration: s.break_duration || 0,
-    }));
+  if (include_projected_costs && hasPayRates && shifts.length > 0) {
+    const costInputs = scheduledCostInputs(
+      shifts.map((s: any) => ({
+        employee_id: s.employee_id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        break_duration: s.break_duration || 0,
+      })),
+      startDateStr,
+      endDateStr,
+      restaurantTimeZone
+    );
 
-    const { breakdown } = calculateScheduledLaborCost(shiftData, employees, startDate, endDate);
+    const { breakdown } = calculateScheduledLaborCost(
+      costInputs.shiftData,
+      employees,
+      costInputs.startDate,
+      costInputs.endDate
+    );
     projectedCosts = breakdown;
   }
 
-  // Group shifts by date
-  const shiftsByDate: Record<string, any[]> = {};
-  for (const shift of shifts) {
-    const dateKey = new Date(shift.start_time).toISOString().split('T')[0];
-    if (!shiftsByDate[dateKey]) {
-      shiftsByDate[dateKey] = [];
-    }
-    shiftsByDate[dateKey].push({
-      id: shift.id,
-      employee_name: shift.employee?.name || 'Unknown',
-      position: shift.position || shift.employee?.position,
-      start_time: shift.start_time,
-      end_time: shift.end_time,
-      status: shift.status,
-    });
-  }
+  // Group shifts by restaurant calendar day
+  const shiftsByDate = groupShiftsByRestaurantDay(shifts, restaurantTimeZone);
 
   return {
     ok: true,
@@ -2259,6 +2339,7 @@ async function executeGetScheduleOverview(
       total_shifts: shifts.length,
       shifts_by_date: shiftsByDate,
       projected_labor_costs: projectedCosts,
+      pay_hidden: include_projected_costs && !hasPayRates ? payHidden() : undefined,
     },
     evidence: [
       { table: 'shifts', summary: `${shifts.length} scheduled shifts from ${startDateStr} to ${endDateStr}` },
@@ -2277,12 +2358,12 @@ async function executeGetPayrollSummary(
 ): Promise<any> {
   const { period, start_date, end_date, include_employee_details = true } = args;
   const { calculateActualLaborCost, LABOR_FETCH_LOOKAHEAD_HOURS } = await import('../_shared/laborCalculations.ts');
-  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, laborServerNow());
 
   // Fetch all required data in parallel. time_punches upper bound is widened by
   // an overnight look-ahead so a shift crossing endDate still pairs whole;
   // calculateActualLaborCost drops periods whose clock-in is out of window.
-  const [punchesResult, employeesResult, tipsResult, manualResult] = await Promise.all([
+  const [punchesResult, employees, tipsResult, manualResult, hasPayRates] = await Promise.all([
     supabase
       .from('time_punches')
       .select('*')
@@ -2290,10 +2371,7 @@ async function executeGetPayrollSummary(
       .gte('punch_time', startDate.toISOString())
       .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
       .order('punch_time', { ascending: true }),
-    supabase
-      .from('employees')
-      .select('*')
-      .eq('restaurant_id', restaurantId),
+    fetchLaborEmployees(supabase, restaurantId),
     supabase
       .from('tip_splits')
       .select('id, total_amount')
@@ -2308,15 +2386,14 @@ async function executeGetPayrollSummary(
       .eq('source', 'per-job')
       .gte('date', startDateStr)
       .lte('date', endDateStr),
+    hasPayRatesCapability(restaurantId, supabase),
   ]);
 
   if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
   if (tipsResult.error) throw new Error(`Failed to fetch tips: ${tipsResult.error.message}`);
   if (manualResult.error) throw new Error(`Failed to fetch manual payments: ${manualResult.error.message}`);
 
   const punches = punchesResult.data || [];
-  const employees = employeesResult.data || [];
   const tipSplits = tipsResult.data || [];
   const manualPayments = manualResult.data || [];
 
@@ -2343,6 +2420,19 @@ async function executeGetPayrollSummary(
   const totalTips = totalTipsCents / 100;
   const totalManualPaymentsAmount = totalManualPaymentsCents / 100;
 
+  const summary = {
+    total_gross_pay: breakdown.total,
+    total_tips: totalTips,
+    total_manual_payments: totalManualPaymentsAmount,
+    total_payroll: breakdown.total + totalTips + totalManualPaymentsAmount,
+    by_compensation_type: {
+      hourly: breakdown.hourly,
+      salary: breakdown.salary,
+      contractor: breakdown.contractor,
+      daily_rate: breakdown.daily_rate,
+    },
+  };
+
   // Build employee details if requested
   const activeEmployees = employees.filter((e: any) => e.status === 'active');
   const employeeDetails = include_employee_details
@@ -2361,18 +2451,10 @@ async function executeGetPayrollSummary(
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      summary: {
-        total_gross_pay: breakdown.total,
-        total_tips: totalTips,
-        total_manual_payments: totalManualPaymentsAmount,
-        total_payroll: breakdown.total + totalTips + totalManualPaymentsAmount,
-        by_compensation_type: {
-          hourly: breakdown.hourly,
-          salary: breakdown.salary,
-          contractor: breakdown.contractor,
-          daily_rate: breakdown.daily_rate,
-        },
-      },
+      // Without view:pay_rates every rate is a masked NULL, so gross pay is
+      // $0. Show null plus a reason. Tips stay: they do not come from pay rates.
+      summary: hasPayRates ? summary : redactPayrollSummary(summary),
+      pay_hidden: hasPayRates ? undefined : payHidden(),
       employee_count: activeEmployees.length,
       employee_details: employeeDetails,
     },
@@ -2389,10 +2471,11 @@ async function executeGetPayrollSummary(
 async function executeGetTipSummary(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, status_filter = 'all' } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   // Build query
   let query = supabase
@@ -2565,10 +2648,11 @@ async function executeGetPendingOutflows(
 async function executeGetOperatingCosts(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, include_break_even = true } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   // Fetch operating costs
   const { data: costs, error: costsError } = await supabase
@@ -2581,6 +2665,12 @@ async function executeGetOperatingCosts(
 
   if (costsError) throw new Error(`Failed to fetch operating costs: ${costsError.message}`);
 
+  // Net sales for the period (gross - discounts - refunds), from the shared RPC.
+  // Percentage-based cost rows need net revenue to turn a percent into a dollar
+  // amount, so this runs unconditionally (not gated on include_break_even).
+  const salesTotals = await fetchNetSales(supabase, restaurantId, startDateStr, endDateStr);
+  const totalRevenue = salesTotals.net;
+
   // Group by type
   const byCostType: Record<string, any[]> = {
     fixed: [],
@@ -2591,55 +2681,42 @@ async function executeGetOperatingCosts(
 
   for (const cost of costs || []) {
     if (byCostType[cost.cost_type]) {
-      byCostType[cost.cost_type].push({
+      const item: any = {
         name: cost.name,
         category: cost.category,
         monthly_value: cost.monthly_value / 100,
         percentage_value: cost.percentage_value,
         entry_type: cost.entry_type,
-      });
+      };
+      if (cost.entry_type === 'percentage') {
+        item.computed_monthly_amount = cost.percentage_value * totalRevenue;
+      }
+      byCostType[cost.cost_type].push(item);
     }
   }
 
-  // Calculate totals
-  const fixedTotal = byCostType.fixed.reduce((sum, c) => sum + c.monthly_value, 0);
-  const semiVariableTotal = byCostType.semi_variable.reduce((sum, c) => sum + c.monthly_value, 0);
-  const variableTotal = byCostType.variable.reduce((sum, c) => sum + c.monthly_value, 0);
+  // Calculate totals. computeOperatingCostTotals owns all cents-to-dollars
+  // conversion and folds percentage rows (entry_type='percentage',
+  // monthly_value=0) into the variable total — the old reducer summed only
+  // monthly_value, so percentage items (COGS/marketing/processing) contributed
+  // nothing (the July "$82.00" bug).
+  const costTotals = computeOperatingCostTotals(costs || [], totalRevenue);
 
-  // Fetch revenue for break-even calculation
+  // Break-even analysis
   let breakEvenAnalysis = null;
   if (include_break_even) {
-    const { data: sales, error: salesError } = await supabase
-      .from('unified_sales')
-      .select('total_price')
-      .eq('restaurant_id', restaurantId)
-      .gte('sale_date', startDateStr)
-      .lte('sale_date', endDateStr)
-      .is('adjustment_type', null)
-      .is('parent_sale_id', null);
+    const totalFixedCosts = costTotals.fixedTotal + costTotals.semiVariableTotal;
 
-    if (!salesError && sales) {
-      const totalRevenue = sales.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0);
-      const totalFixedCosts = fixedTotal + semiVariableTotal;
-      const variableCostPercentage = variableTotal > 0 && totalRevenue > 0
-        ? (variableTotal / totalRevenue) * 100
-        : 25; // Default estimate
-
-      const contributionMargin = 100 - variableCostPercentage;
-      const breakEvenRevenue = contributionMargin > 0
-        ? (totalFixedCosts / (contributionMargin / 100))
-        : 0;
-
-      breakEvenAnalysis = {
-        total_fixed_costs: totalFixedCosts,
-        variable_cost_percentage: variableCostPercentage,
-        contribution_margin_percentage: contributionMargin,
-        break_even_revenue: breakEvenRevenue,
-        current_revenue: totalRevenue,
-        above_break_even: totalRevenue >= breakEvenRevenue,
-        margin_of_safety: totalRevenue > 0 ? ((totalRevenue - breakEvenRevenue) / totalRevenue) * 100 : 0,
-      };
-    }
+    breakEvenAnalysis = {
+      total_fixed_costs: totalFixedCosts,
+      variable_cost_percentage: costTotals.variableCostPercentage,
+      contribution_margin_percentage: costTotals.contributionMargin,
+      break_even_revenue: costTotals.breakEvenRevenue,
+      current_revenue: totalRevenue,
+      above_break_even: totalRevenue >= costTotals.breakEvenRevenue,
+      margin_of_safety_percent: totalRevenue > 0 ? ((totalRevenue - costTotals.breakEvenRevenue) / totalRevenue) * 100 : 0,
+      margin_of_safety_amount: salesTotals.net - costTotals.breakEvenRevenue,
+    };
   }
 
   return {
@@ -2648,13 +2725,15 @@ async function executeGetOperatingCosts(
       period,
       start_date: startDateStr,
       end_date: endDateStr,
+      source: 'budget_config',
+      note: 'These costs are the configured budget, not period actuals. The period parameter scopes only the revenue used for the break-even.',
       costs_by_type: {
-        fixed: { items: byCostType.fixed, total: fixedTotal },
-        semi_variable: { items: byCostType.semi_variable, total: semiVariableTotal },
-        variable: { items: byCostType.variable, total: variableTotal },
+        fixed: { items: byCostType.fixed, total: costTotals.fixedTotal },
+        semi_variable: { items: byCostType.semi_variable, total: costTotals.semiVariableTotal },
+        variable: { items: byCostType.variable, total: costTotals.variableTotal },
         custom: { items: byCostType.custom, total: byCostType.custom.reduce((sum, c) => sum + c.monthly_value, 0) },
       },
-      total_monthly_costs: fixedTotal + semiVariableTotal + variableTotal,
+      total_monthly_costs: costTotals.totalMonthlyCosts,
       break_even_analysis: breakEvenAnalysis,
     },
     evidence: [
@@ -2669,16 +2748,17 @@ async function executeGetOperatingCosts(
 async function executeGetMonthlyTrends(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { months_back = 12, include_percentages = true } = args;
 
-  const now = new Date();
+  const now = restaurantNow;
   const startDate = new Date(now.getFullYear(), now.getMonth() - months_back + 1, 1);
   const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
+  const startDateStr = toLocalYMD(startDate);
+  const endDateStr = toLocalYMD(endDate);
 
   // Use the RPC function for monthly sales metrics
   const { data: salesMetrics, error: salesError } = await supabase
@@ -2692,22 +2772,20 @@ async function executeGetMonthlyTrends(
     console.warn('RPC not available, using simplified calculation:', salesError);
   }
 
-  // Fetch food costs by month
-  const { data: foodCosts, error: foodError } = await supabase
-    .from('inventory_transactions')
-    .select('created_at, total_cost')
-    .eq('restaurant_id', restaurantId)
-    .eq('transaction_type', 'usage')
-    .gte('created_at', startDateStr)
-    .lte('created_at', endDateStr + 'T23:59:59.999Z');
+  // Fetch food costs by month via the monthly usage aggregate RPC.
+  const { data: usageRows, error: usageError } = await supabase.rpc('get_inventory_usage_by_month', {
+    p_restaurant_id: restaurantId,
+    p_start_date: startDateStr,
+    p_end_date: endDateStr,
+  });
 
-  if (foodError) throw new Error(`Failed to fetch food costs: ${foodError.message}`);
+  if (usageError) throw new Error(`get_inventory_usage_by_month failed: ${usageError.message}`);
 
-  // Group food costs by month
+  // The RPC already aggregates per month, so its rows map directly into the
+  // lookup — no client-side group-by needed.
   const foodCostByMonth: Record<string, number> = {};
-  foodCosts?.forEach((t: any) => {
-    const monthKey = new Date(t.created_at).toISOString().slice(0, 7);
-    foodCostByMonth[monthKey] = (foodCostByMonth[monthKey] || 0) + Math.abs(t.total_cost || 0);
+  (usageRows || []).forEach((row: any) => {
+    foodCostByMonth[row.period] = Number(row.food_cost ?? 0);
   });
 
   // Build monthly trends
@@ -2716,13 +2794,15 @@ async function executeGetMonthlyTrends(
   if (salesMetrics?.length) {
     salesMetrics.forEach((row: any) => {
       const foodCost = foodCostByMonth[row.period] || 0;
-      const netRevenue = Number(row.gross_revenue) - Number(row.discounts || 0);
+      // Net sales = gross_revenue - discounts - refunds (spec §5.1).
+      const netRevenue = Number(row.gross_revenue) - Number(row.discounts || 0) - Number(row.refunds || 0);
 
       const monthData: any = {
         period: row.period,
         gross_revenue: Number(row.gross_revenue),
         net_revenue: netRevenue,
         discounts: Number(row.discounts || 0),
+        refunds: Number(row.refunds || 0),
         sales_tax: Number(row.sales_tax || 0),
         tips: Number(row.tips || 0),
         food_cost: foodCost,
@@ -2738,7 +2818,7 @@ async function executeGetMonthlyTrends(
     // Fallback: generate empty months
     for (let i = 0; i < months_back; i++) {
       const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthKey = monthDate.toISOString().slice(0, 7);
+      const monthKey = toLocalYMD(monthDate).slice(0, 7);
       months.push({
         period: monthKey,
         gross_revenue: 0,
@@ -2778,10 +2858,11 @@ async function executeGetMonthlyTrends(
 async function executeGetExpenseHealth(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date, bank_account_id } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   // Processing fee detection patterns
   const processingFeePatterns = [
@@ -2789,68 +2870,29 @@ async function executeGetExpenseHealth(
     'card fee', 'payment fee', 'square', 'stripe', 'clover fee', 'toast fee',
   ];
 
-  // Fetch bank transactions
-  let txQuery = supabase
-    .from('bank_transactions')
-    .select(`
-      amount,
-      description,
-      merchant_name,
-      category_id,
-      is_split,
-      chart_of_accounts!category_id(account_name, account_subtype)
-    `)
-    .eq('restaurant_id', restaurantId)
-    .in('status', ['posted', 'pending'])
-    .gte('transaction_date', startDateStr)
-    .lte('transaction_date', endDateStr);
+  // One aggregate call (get_expense_health_metrics) replaces the raw fetch
+  // and the six filter/reduce passes over it. The RPC hardcodes the same
+  // status IN ('posted', 'pending') filter as the prior query, so no
+  // p_statuses argument is needed. p_bank_account_id filters
+  // connected_bank_id, the same column the prior query already used.
+  const feePatterns = processingFeePatterns.map((p) => `%${p.toLowerCase()}%`);
+  const { data: healthRows, error: healthError } = await supabase.rpc('get_expense_health_metrics', {
+    p_restaurant_id: restaurantId,
+    p_start_date: startDateStr,
+    p_end_date: endDateStr,
+    p_fee_patterns: feePatterns,
+    p_bank_account_id: bank_account_id || null,
+  });
 
-  if (bank_account_id) {
-    txQuery = txQuery.eq('connected_bank_id', bank_account_id);
-  }
+  if (healthError) throw new Error(`get_expense_health_metrics failed: ${healthError.message}`);
 
-  const { data: transactions, error: txError } = await txQuery;
-
-  if (txError) throw new Error(`Failed to fetch transactions: ${txError.message}`);
-
-  const txns = transactions || [];
-
-  // Calculate metrics
-  const revenue = txns.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0);
-
-  const foodCost = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      if (!t.category_id || !t.chart_of_accounts) return false;
-      const subtype = t.chart_of_accounts.account_subtype;
-      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
-      return subtype === 'cost_of_goods_sold' || name.includes('food') || name.includes('inventory');
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const laborCost = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      if (!t.category_id || !t.chart_of_accounts) return false;
-      const subtype = t.chart_of_accounts.account_subtype;
-      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
-      return subtype === 'payroll' || name.includes('payroll') || name.includes('labor');
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const processingFees = Math.abs(
-    txns.filter((t: any) => {
-      if (t.amount >= 0) return false;
-      const desc = ((t.description || '') + ' ' + (t.merchant_name || '')).toLowerCase();
-      return processingFeePatterns.some(pattern => desc.includes(pattern));
-    }).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
-
-  const outflows = txns.filter((t: any) => t.amount < 0);
-  const totalOutflows = Math.abs(outflows.reduce((sum: number, t: any) => sum + t.amount, 0));
-  const uncategorizedSpend = Math.abs(
-    outflows.filter((t: any) => !t.category_id && !t.is_split).reduce((sum: number, t: any) => sum + t.amount, 0)
-  );
+  const health = healthRows?.[0] ?? {};
+  const revenue = Number(health.revenue ?? 0);
+  const foodCost = Number(health.food_cost ?? 0);
+  const laborCost = Number(health.labor_cost ?? 0);
+  const processingFees = Number(health.processing_fees ?? 0);
+  const totalOutflows = Number(health.total_outflows ?? 0);
+  const uncategorizedSpend = Number(health.uncategorized_spend ?? 0);
 
   // Calculate percentages
   const foodCostPercentage = revenue > 0 ? (foodCost / revenue) * 100 : 0;
@@ -2867,7 +2909,7 @@ async function executeGetExpenseHealth(
     .eq('is_active', true);
 
   const totalCashBalance = (balances || []).reduce((sum: number, b: any) => sum + Number(b.current_balance), 0);
-  const cashCoverageBeforePayroll = laborCost > 0 ? totalCashBalance / laborCost : 0;
+  const cashCoverage = computeCashCoverage(totalCashBalance, laborCost);
 
   // Determine status
   const getStatus = (value: number, good: number, caution: number) => {
@@ -2884,8 +2926,8 @@ async function executeGetExpenseHealth(
   if (uncategorizedPercentage > 10) {
     alerts.push(`${uncategorizedPercentage.toFixed(1)}% of spending is uncategorized`);
   }
-  if (cashCoverageBeforePayroll < 1.5) {
-    alerts.push(`Cash coverage before payroll is only ${cashCoverageBeforePayroll.toFixed(1)}x`);
+  if (cashCoverage.alert) {
+    alerts.push(cashCoverage.alert);
   }
 
   return {
@@ -2926,16 +2968,16 @@ async function executeGetExpenseHealth(
           status: getStatus(uncategorizedPercentage, 5, 10),
         },
         cash_coverage: {
-          multiplier: cashCoverageBeforePayroll,
+          multiplier: cashCoverage.multiplier,
           current_balance: totalCashBalance,
-          status: cashCoverageBeforePayroll >= 2 ? 'good' : cashCoverageBeforePayroll >= 1.5 ? 'caution' : 'critical',
+          status: cashCoverage.status,
         },
       },
       revenue: revenue,
       alerts: alerts,
     },
     evidence: [
-      { table: 'bank_transactions', summary: `${txns.length} transactions from ${startDateStr} to ${endDateStr} for expense health analysis` },
+      { table: 'bank_transactions', summary: `Expense health metrics ${startDateStr} to ${endDateStr}` },
     ],
   };
 }
@@ -2947,10 +2989,11 @@ async function executeGetExpenseHealth(
 async function executeGetDailySalesTotals(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { period, start_date, end_date } = args;
-  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date, restaurantNow);
 
   const { data, error } = await supabase.rpc('get_daily_sales_totals', {
     p_restaurant_id: restaurantId,
@@ -3000,6 +3043,166 @@ async function executeGetDailySalesTotals(
   };
 }
 
+const DEFAULT_STAFFING_SETTINGS = {
+  target_splh: 60,
+  min_staff: 1,
+  min_crew: null as Record<string, number> | null,
+  lookback_weeks: 4,
+};
+
+type HourlySalesRpcCall =
+  | { ok: true; value: RpcResult }
+  | { ok: false; error: ArgError };
+
+/**
+ * Call the get_hourly_sales_pattern RPC and map a bad-argument (22023)
+ * error to the tool's in-band INVALID_ARGUMENTS shape. Shared by the
+ * primary fetch and the sub-hour lookup fetch below, which differ only
+ * in interval_minutes.
+ */
+async function fetchHourlySalesPattern(
+  supabase: any, // Supabase client; typed `any` to match every other executeGetXxx handler in this file.
+  restaurantId: string,
+  window: { start_date: string; end_date: string },
+  intervalMinutes: number,
+  view: string,
+): Promise<HourlySalesRpcCall> {
+  const { data, error } = await supabase.rpc('get_hourly_sales_pattern', {
+    p_restaurant_id: restaurantId,
+    p_start_date: window.start_date,
+    p_end_date: window.end_date,
+    p_interval_minutes: intervalMinutes,
+    p_view: view,
+  });
+  if (error) {
+    if (error.code === '22023') {
+      return { ok: false, error: { code: 'INVALID_ARGUMENTS', message: error.message } };
+    }
+    throw new Error(`Failed to fetch hourly sales: ${error.message}`);
+  }
+  return { ok: true, value: data as RpcResult };
+}
+
+/**
+ * Execute get_hourly_sales tool
+ * Calls the get_hourly_sales_pattern RPC and formats the compact output of
+ * design §4.3. For a sub-hour interval_minutes, also calls the RPC at 60
+ * minutes (in parallel with the primary call) so the staff recommendation
+ * reads the containing hour's average, not the sub-hour slot's own average.
+ */
+async function executeGetHourlySales(
+  args: any, // Raw MCP tool args; typed `any` to match every other executeGetXxx handler in this file.
+  restaurantId: string,
+  supabase: any, // Supabase client; typed `any` to match every other executeGetXxx handler in this file.
+  restaurantNow: Date
+): Promise<any> {
+  const parsed = parseHourlySalesArgs(args);
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error };
+  }
+  const parsedArgs = parsed.value;
+
+  const { data: staffingRow } = await supabase
+    .from('staffing_settings')
+    .select('target_splh, min_staff, min_crew, lookback_weeks')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+
+  const settings = {
+    target_splh: staffingRow?.target_splh ?? DEFAULT_STAFFING_SETTINGS.target_splh,
+    min_staff: staffingRow?.min_staff ?? DEFAULT_STAFFING_SETTINGS.min_staff,
+    min_crew: staffingRow?.min_crew ?? DEFAULT_STAFFING_SETTINGS.min_crew,
+    lookback_weeks: staffingRow?.lookback_weeks ?? DEFAULT_STAFFING_SETTINGS.lookback_weeks,
+  };
+
+  const todayYmd = toLocalYMD(restaurantNow);
+  const windowResult = resolveWindow(parsedArgs, todayYmd, settings.lookback_weeks);
+  if (!windowResult.ok) {
+    return { ok: false, error: windowResult.error };
+  }
+  const window = windowResult.value;
+
+  // The primary fetch and the sub-hour lookup fetch (design §4.3 decision 4)
+  // do not depend on each other's result, so run them together instead of
+  // one after the other — this halves the RPC round-trip time for a
+  // sub-hour view.
+  const isSubHour = parsedArgs.interval_minutes !== 60;
+  const [primary, hourly] = await Promise.all([
+    fetchHourlySalesPattern(supabase, restaurantId, window, parsedArgs.interval_minutes, parsedArgs.view),
+    isSubHour
+      ? fetchHourlySalesPattern(supabase, restaurantId, window, 60, parsedArgs.view)
+      : Promise.resolve(null),
+  ]);
+  if (!primary.ok) return { ok: false, error: primary.error };
+  if (hourly && !hourly.ok) return { ok: false, error: hourly.error };
+
+  let rpc = primary.value;
+  if (parsedArgs.day_of_week !== undefined) {
+    rpc = { ...rpc, days: rpc.days.filter((d) => d.day_of_week === parsedArgs.day_of_week) };
+  }
+
+  // Sub-hour recommendation lookup: the containing hour's own averaged
+  // sales, keyed by the same day key formatHourlySales uses, fed to the
+  // shared, parity-tested recommendForSlots helper below.
+  const hourlySourceRpc: RpcResult = hourly ? hourly.value : rpc;
+  const hourlyByDayKey = new Map<string, HourlySlotSales[]>();
+  for (const day of hourlySourceRpc.days) {
+    const key = dayKeyFor(day, hourlySourceRpc.view);
+    hourlyByDayKey.set(
+      key,
+      day.slots.map((slot) => ({ hour: Math.floor(slot.start_minute / 60), avgSales: slot.sales })),
+    );
+  }
+
+  const effectiveMinStaff = minStaffFromCrew(settings.min_crew, settings.min_staff);
+
+  // Sub-hour recommendations, one recommendForSlots call per day (not per
+  // slot): building the hour->sales map inside recommendForSlots is O(hours)
+  // work, so calling it once per slot made day formatting O(slots x hours)
+  // instead of O(slots + hours). Precompute each day's recommendations here
+  // and have recommendStaff below do a plain map lookup.
+  const subHourRecsByDayKey = new Map<string, Map<number, number>>();
+  if (isSubHour) {
+    for (const day of rpc.days) {
+      const dayKey = dayKeyFor(day, rpc.view);
+      const recs = recommendForSlots(
+        day.slots.map((slot) => ({ startMinute: slot.start_minute, sales: slot.sales })),
+        hourlyByDayKey.get(dayKey) ?? [],
+        { targetSplh: settings.target_splh, minStaff: effectiveMinStaff, minCrew: null },
+      );
+      subHourRecsByDayKey.set(dayKey, new Map(recs.map((rec) => [rec.startMinute, rec.recommendedStaff])));
+    }
+  }
+
+  const recommendStaff = (dayKey: string, startMinute: number, slotSales: number) => {
+    if (!isSubHour) {
+      return recommendStaffForHour(slotSales, settings.target_splh, effectiveMinStaff);
+    }
+    return subHourRecsByDayKey.get(dayKey)?.get(startMinute) ?? effectiveMinStaff;
+  };
+
+  const formatted = formatHourlySales(
+    rpc,
+    { target_splh: settings.target_splh, min_staff: effectiveMinStaff },
+    recommendStaff
+  );
+
+  if (parsedArgs.view === 'weekday') {
+    (formatted.window as Record<string, unknown>).lookback_weeks = window.lookback_weeks;
+  }
+
+  return {
+    ok: true,
+    data: formatted,
+    evidence: [
+      {
+        table: 'unified_sales',
+        summary: `Hourly sales pattern (${parsedArgs.view}) from ${window.start_date} to ${window.end_date}`,
+      },
+    ],
+  };
+}
+
 /**
  * Execute get_break_even_progress tool
  * Computes daily break-even analysis with history and month-to-date progress
@@ -3007,11 +3210,12 @@ async function executeGetDailySalesTotals(
 async function executeGetBreakEvenProgress(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  restaurantNow: Date
 ): Promise<any> {
   const { history_days = 14, include_monthly_progress = true, month } = args;
 
-  const now = new Date();
+  const now = restaurantNow;
 
   let today: Date;
   let historyStart: Date;
@@ -3161,7 +3365,7 @@ async function executeGetBreakEvenProgress(
         days_remaining: daysRemaining,
         projected_month_end_revenue: Math.round(projectedMonthEnd),
         projected_above_break_even: projectedAboveBreakEven,
-        margin_of_safety: monthlyBreakEven > 0
+        margin_of_safety_percent: monthlyBreakEven > 0
           ? Math.round(((projectedMonthEnd - monthlyBreakEven) / monthlyBreakEven) * 1000) / 10
           : 0,
       };
@@ -3199,81 +3403,6 @@ async function executeGetBreakEvenProgress(
 }
 
 /**
- * Execute get_proactive_insights tool
- * Returns top open inbox items + latest weekly brief for proactive AI context
- */
-async function executeGetProactiveInsights(
-  args: any,
-  restaurantId: string,
-  supabase: any
-): Promise<any> {
-  const { include_brief = true } = args;
-
-  // Fetch total count of open inbox items
-  const { count: totalOpenCount, error: countError } = await supabase
-    .from('ops_inbox_item')
-    .select('*', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurantId)
-    .eq('status', 'open');
-
-  if (countError) {
-    throw new Error(`Failed to count inbox items: ${countError.message}`);
-  }
-
-  // Fetch top 5 open ops inbox items by priority
-  const { data: inboxItems, error: inboxError } = await supabase
-    .from('ops_inbox_item')
-    .select('id, title, description, kind, priority, status, due_at, meta, created_at')
-    .eq('restaurant_id', restaurantId)
-    .eq('status', 'open')
-    .order('priority', { ascending: true })
-    .limit(5);
-
-  if (inboxError) {
-    throw new Error(`Failed to fetch inbox items: ${inboxError.message}`);
-  }
-
-  let briefData = null;
-  if (include_brief) {
-    const { data: brief, error: briefError } = await supabase
-      .from('weekly_brief')
-      .select('id, brief_week_end, metrics_json, comparisons_json, variances_json, inbox_summary_json, recommendations_json, narrative')
-      .eq('restaurant_id', restaurantId)
-      .order('brief_week_end', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (briefError) {
-      console.error('Failed to fetch weekly brief:', briefError.message);
-    } else {
-      briefData = brief;
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      inbox: {
-        items: inboxItems || [],
-        total_open: totalOpenCount || 0,
-        has_critical: inboxItems?.some((i: any) => i.priority <= 2) || false,
-      },
-      brief: briefData ? {
-        week_end: briefData.brief_week_end,
-        narrative: briefData.narrative,
-        metrics: briefData.metrics_json,
-        variances: briefData.variances_json,
-        recommendations: briefData.recommendations_json,
-      } : null,
-    },
-    evidence: [
-      { table: 'ops_inbox_item', summary: `${totalOpenCount || 0} total open inbox items (showing top 5 by priority)` },
-      ...(briefData ? [{ table: 'weekly_brief', summary: `Weekly brief for ${briefData.brief_week_end}` }] : []),
-    ],
-  };
-}
-
-/**
  * Execute batch_categorize_transactions tool
  * Preview-first pattern: preview=true shows changes, confirmed=true executes
  */
@@ -3284,17 +3413,19 @@ async function executeBatchCategorizeTransactions(
 ): Promise<any> {
   const { transaction_ids, category_id, preview = false, confirmed = false } = args;
 
-  // Fetch the category info
-  const { data: category, error: catError } = await supabase
-    .from('chart_of_accounts')
-    .select('id, account_name, account_code')
-    .eq('id', category_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (catError || !category) {
-    throw new Error(`Invalid category_id: ${category_id}`);
+  if (!Array.isArray(transaction_ids) || transaction_ids.length === 0) {
+    return { ok: false, error: { code: 'INVALID_REQUEST', message: 'transaction_ids must be a non-empty array.' } };
   }
+
+  if (transaction_ids.length > 1000) {
+    return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${transaction_ids.length}). Send at most 1000 per call.` } };
+  }
+
+  const categoryRef = await resolveCategoryRef(supabase, restaurantId, category_id);
+  if (!categoryRef.ok) {
+    return { ok: false, error: { code: 'INVALID_CATEGORY', message: categoryRef.message } };
+  }
+  const category = categoryRef.category;
 
   // Fetch the transactions
   const { data: transactions, error: txnError } = await supabase
@@ -3311,7 +3442,7 @@ async function executeBatchCategorizeTransactions(
     return { ok: false, error: { code: 'NO_TRANSACTIONS', message: 'No matching transactions found' } };
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3334,7 +3465,7 @@ async function executeBatchCategorizeTransactions(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const { error: updateError } = await supabase
       .from('bank_transactions')
       .update({ category_id: category.id, is_categorized: true })
@@ -3374,20 +3505,23 @@ async function executeBatchCategorizePosSales(
 ): Promise<any> {
   const { sale_ids, category_id, preview = false, confirmed = false } = args;
 
-  const { data: category, error: catError } = await supabase
-    .from('chart_of_accounts')
-    .select('id, account_name, account_code')
-    .eq('id', category_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (catError || !category) {
-    throw new Error(`Invalid category_id: ${category_id}`);
+  if (!Array.isArray(sale_ids) || sale_ids.length === 0) {
+    return { ok: false, error: { code: 'INVALID_REQUEST', message: 'sale_ids must be a non-empty array.' } };
   }
+
+  if (sale_ids.length > 1000) {
+    return { ok: false, error: { code: 'TOO_MANY_IDS', message: `Too many ids (${sale_ids.length}). Send at most 1000 per call.` } };
+  }
+
+  const categoryRef = await resolveCategoryRef(supabase, restaurantId, category_id);
+  if (!categoryRef.ok) {
+    return { ok: false, error: { code: 'INVALID_CATEGORY', message: categoryRef.message } };
+  }
+  const category = categoryRef.category;
 
   const { data: sales, error: salesError } = await supabase
     .from('unified_sales')
-    .select('id, item_name, total_price, sale_date, source')
+    .select(POS_SALE_PREVIEW_COLUMNS)
     .eq('restaurant_id', restaurantId)
     .in('id', sale_ids);
 
@@ -3399,7 +3533,7 @@ async function executeBatchCategorizePosSales(
     return { ok: false, error: { code: 'NO_SALES', message: 'No matching sales found' } };
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3411,7 +3545,7 @@ async function executeBatchCategorizePosSales(
           item_name: s.item_name,
           amount: s.total_price,
           date: s.sale_date,
-          source: s.source,
+          source: s.pos_system,
         })),
         count: sales.length,
         message: `Will categorize ${sales.length} POS sale(s) as "${category.account_name}". Please confirm to proceed.`,
@@ -3423,7 +3557,7 @@ async function executeBatchCategorizePosSales(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const { error: updateError } = await supabase
       .from('unified_sales')
       .update({ category_id: category.id, is_categorized: true })
@@ -3453,6 +3587,51 @@ async function executeBatchCategorizePosSales(
 }
 
 /**
+ * Execute list_categories tool: the chart of accounts of the restaurant, so
+ * the model can pick a category id or account code for the write tools.
+ */
+async function executeListCategories(
+  args: { search?: unknown; account_type?: unknown; include_inactive?: unknown } | null | undefined,
+  restaurantId: string,
+  supabase: ReturnType<typeof createClient>
+): Promise<Record<string, unknown>> {
+  const { search, include_inactive = false } = args ?? {};
+  const account_type = normalizeAccountType(args?.account_type);
+  const includeInactive = include_inactive === true;
+
+  // A value outside account_type_enum makes Postgres fail the cast. Answer in
+  // band, so the model reads the valid values.
+  if (account_type !== undefined && account_type !== null && account_type !== '' && !isAccountType(account_type)) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_ARGUMENTS', message: `account_type must be one of: ${ACCOUNT_TYPES.join(', ')}.` },
+    };
+  }
+
+  let query = supabase
+    .from('chart_of_accounts')
+    .select(CATEGORY_COLUMNS)
+    .eq('restaurant_id', restaurantId);
+  if (isAccountType(account_type)) {
+    query = query.eq('account_type', account_type);
+  }
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+  const { data, error } = await query.order('account_code', { ascending: true });
+  if (error) throw new Error(`Failed to list categories: ${error.message}`);
+
+  const list = filterCategories((data ?? []) as CategoryRow[], typeof search === 'string' ? search : undefined, { includeInactive });
+  return {
+    ok: true,
+    data: list,
+    evidence: [
+      { table: 'chart_of_accounts', summary: `${list.count} categories${list.truncated ? ` (first ${list.categories.length} shown)` : ''}` },
+    ],
+  };
+}
+
+/**
  * Execute create_categorization_rule tool
  * Preview-first: shows rule details + historical match count, then creates
  */
@@ -3463,16 +3642,11 @@ async function executeCreateCategorizationRule(
 ): Promise<any> {
   const { rule_name, pattern_type, pattern_value, category_id, source = 'both', preview = false, confirmed = false } = args;
 
-  const { data: category, error: catError } = await supabase
-    .from('chart_of_accounts')
-    .select('id, account_name, account_code')
-    .eq('id', category_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (catError || !category) {
-    throw new Error(`Invalid category_id: ${category_id}`);
+  const categoryRef = await resolveCategoryRef(supabase, restaurantId, category_id);
+  if (!categoryRef.ok) {
+    return { ok: false, error: { code: 'INVALID_CATEGORY', message: categoryRef.message } };
   }
+  const category = categoryRef.category;
 
   // Count historical matches
   let bankMatchCount = 0;
@@ -3512,7 +3686,7 @@ async function executeCreateCategorizationRule(
     posMatchCount = count || 0;
   }
 
-  if (preview) {
+  if (preview === true) {
     return {
       ok: true,
       data: {
@@ -3534,7 +3708,7 @@ async function executeCreateCategorizationRule(
     };
   }
 
-  if (confirmed) {
+  if (confirmed === true) {
     const appliesTo = source === 'bank' ? 'bank_transactions' : source === 'pos' ? 'pos_sales' : 'both';
     const { data: rule, error: ruleError } = await supabase
       .from('categorization_rules')
@@ -3573,69 +3747,12 @@ async function executeCreateCategorizationRule(
   return { ok: false, error: { code: 'INVALID_REQUEST', message: 'Must specify preview:true or confirmed:true' } };
 }
 
-/**
- * Execute resolve_inbox_item tool
- * Marks an ops inbox item as done or dismissed (low risk, no preview needed)
- */
-async function executeResolveInboxItem(
-  args: any,
-  restaurantId: string,
-  supabase: any,
-  userId: string
-): Promise<any> {
-  const { item_id, resolution } = args;
-
-  const { data: item, error: fetchError } = await supabase
-    .from('ops_inbox_item')
-    .select('id, title, status, kind, priority')
-    .eq('id', item_id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-
-  if (fetchError || !item) {
-    throw new Error(`Inbox item not found: ${item_id}`);
-  }
-
-  if (item.status === 'done' || item.status === 'dismissed') {
-    return {
-      ok: true,
-      data: {
-        action: 'resolve_inbox_item',
-        already_resolved: true,
-        item: { id: item.id, title: item.title, status: item.status },
-        message: `Item "${item.title}" is already ${item.status}.`,
-      },
-      evidence: [
-        { table: 'ops_inbox_item', id: item.id, summary: `Item already ${item.status}` },
-      ],
-    };
-  }
-
-  const { error: updateError } = await supabase
-    .from('ops_inbox_item')
-    .update({
-      status: resolution,
-      resolved_at: new Date().toISOString(),
-      resolved_by: userId,
-    })
-    .eq('id', item_id)
-    .eq('restaurant_id', restaurantId);
-
-  if (updateError) {
-    throw new Error(`Failed to resolve inbox item: ${updateError.message}`);
-  }
-
-  return {
-    ok: true,
-    data: {
-      action: 'resolve_inbox_item',
-      item: { id: item.id, title: item.title, previous_status: item.status, new_status: resolution },
-      message: `Marked "${item.title}" as ${resolution}.`,
-    },
-    evidence: [
-      { table: 'ops_inbox_item', id: item.id, summary: `Item ${resolution}: ${item.title}` },
-    ],
-  };
+/** JSON response with { ok: false, error } for the dispatcher. */
+function toolErrorResponse(status: number, error: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ ok: false, error }), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 serve(async (req) => {
@@ -3695,46 +3812,47 @@ serve(async (req) => {
     if (isCapabilityGatedTool(tool_name)) {
       const allowed = await canUseCapabilityGatedTool(tool_name, restaurant_id, supabase);
       if (!allowed) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            error: {
-              code: 'TOOL_PERMISSION_DENIED',
-              message: `You don't have permission to use ${tool_name}.`,
-              tool: tool_name,
-              required_capability: 'view:scheduling or view:payroll',
-            },
-          }),
-          {
-            status: 403,
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
+        return toolErrorResponse(403, {
+          code: 'TOOL_PERMISSION_DENIED',
+          message: `You don't have permission to use ${tool_name}.`,
+          tool: tool_name,
+          required_capability: 'view:scheduling or view:payroll',
+        });
       }
     } else if (!canUseTool(tool_name, userRestaurant.role)) {
       const requiredRole = requiredRoleFor(tool_name);
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: {
-            code: 'TOOL_PERMISSION_DENIED',
-            message: `You don't have permission to use ${tool_name}.`,
-            tool: tool_name,
-            required_role: requiredRole,
-          },
-        }),
-        {
-          status: 403,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      return toolErrorResponse(403, {
+        code: 'TOOL_PERMISSION_DENIED',
+        message: `You don't have permission to use ${tool_name}.`,
+        tool: tool_name,
+        required_role: requiredRole,
+      });
     }
+
+    // Reject a call with missing required arguments before any DB read. The
+    // answer is in band (HTTP 200, ok:false), so the model reads the names.
+    const missing = missingRequiredArgs(tool_name, args);
+    if (missing.length > 0) {
+      return toolErrorResponse(200, {
+        code: 'INVALID_ARGUMENTS',
+        message: `Missing required argument(s) for ${tool_name}: ${missing.join(', ')}.`,
+        tool: tool_name,
+        missing,
+      });
+    }
+    const nonBoolean = nonBooleanFlagArgs(args);
+    if (nonBoolean.length > 0) {
+      return toolErrorResponse(200, {
+        code: 'INVALID_ARGUMENTS',
+        message: `${nonBoolean.join(', ')} must be true or false for ${tool_name}.`,
+        tool: tool_name,
+        invalid: nonBoolean,
+      });
+    }
+
+    // "Today" for the tools is the restaurant's local day (see restaurantDate.ts).
+    const restaurantTimeZone = await resolveRestaurantTimeZone(supabase, restaurant_id);
+    const restaurantNow = restaurantWallClock(new Date(), restaurantTimeZone);
 
     const startTime = Date.now();
     let result;
@@ -3745,7 +3863,7 @@ serve(async (req) => {
         result = executeNavigate(args);
         break;
       case 'get_kpis':
-        result = await executeGetKpis(args, restaurant_id, supabase);
+        result = await executeGetKpis(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_inventory_status':
         result = await executeGetInventoryStatus(args, restaurant_id, supabase);
@@ -3754,13 +3872,13 @@ serve(async (req) => {
         result = await executeGetRecipeAnalytics(args, restaurant_id, supabase);
         break;
       case 'get_sales_summary':
-        result = await executeGetSalesSummary(args, restaurant_id, supabase);
+        result = await executeGetSalesSummary(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_inventory_transactions':
-        result = await executeGetInventoryTransactions(args, restaurant_id, supabase);
+        result = await executeGetInventoryTransactions(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_financial_intelligence':
-        result = await executeGetFinancialIntelligence(args, restaurant_id, supabase);
+        result = await executeGetFinancialIntelligence(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_bank_transactions':
         result = await executeGetBankTransactions(args, restaurant_id, supabase);
@@ -3769,7 +3887,7 @@ serve(async (req) => {
         result = await executeGetFinancialStatement(args, restaurant_id, supabase);
         break;
       case 'get_ai_insights':
-        result = await executeGetAiInsights(args, restaurant_id, supabase);
+        result = await executeGetAiInsights(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'generate_report':
         result = await executeGenerateReport(args, restaurant_id, supabase);
@@ -3778,37 +3896,40 @@ serve(async (req) => {
         result = await executeGetLaborCosts(args, restaurant_id, supabase, userRestaurant.role);
         break;
       case 'get_time_punches':
-        result = await executeGetTimePunches(args, restaurant_id, supabase, userRestaurant.role);
+        result = await executeGetTimePunches(args, restaurant_id, supabase, userRestaurant.role, restaurantTimeZone, restaurantNow);
         break;
       case 'get_schedule_overview':
-        result = await executeGetScheduleOverview(args, restaurant_id, supabase);
+        result = await executeGetScheduleOverview(args, restaurant_id, supabase, restaurantTimeZone, restaurantNow);
         break;
       case 'get_payroll_summary':
         result = await executeGetPayrollSummary(args, restaurant_id, supabase);
         break;
       case 'get_tip_summary':
-        result = await executeGetTipSummary(args, restaurant_id, supabase);
+        result = await executeGetTipSummary(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_pending_outflows':
         result = await executeGetPendingOutflows(args, restaurant_id, supabase);
         break;
       case 'get_operating_costs':
-        result = await executeGetOperatingCosts(args, restaurant_id, supabase);
+        result = await executeGetOperatingCosts(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_monthly_trends':
-        result = await executeGetMonthlyTrends(args, restaurant_id, supabase);
+        result = await executeGetMonthlyTrends(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_expense_health':
-        result = await executeGetExpenseHealth(args, restaurant_id, supabase);
+        result = await executeGetExpenseHealth(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_daily_sales_totals':
-        result = await executeGetDailySalesTotals(args, restaurant_id, supabase);
+        result = await executeGetDailySalesTotals(args, restaurant_id, supabase, restaurantNow);
+        break;
+      case 'get_hourly_sales':
+        result = await executeGetHourlySales(args, restaurant_id, supabase, restaurantNow);
         break;
       case 'get_break_even_progress':
-        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase);
+        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase, restaurantNow);
         break;
-      case 'get_proactive_insights':
-        result = await executeGetProactiveInsights(args, restaurant_id, supabase);
+      case 'list_categories':
+        result = await executeListCategories(args, restaurant_id, supabase);
         break;
       case 'batch_categorize_transactions':
         result = await executeBatchCategorizeTransactions(args, restaurant_id, supabase);
@@ -3818,9 +3939,6 @@ serve(async (req) => {
         break;
       case 'create_categorization_rule':
         result = await executeCreateCategorizationRule(args, restaurant_id, supabase);
-        break;
-      case 'resolve_inbox_item':
-        result = await executeResolveInboxItem(args, restaurant_id, supabase, user.id);
         break;
       default:
         throw new Error(`Unknown tool: ${tool_name}`);
@@ -3851,21 +3969,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Failed to execute tool';
     console.error('Tool execution error:', error);
     
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: {
-          code: 'TOOL_EXECUTION_ERROR',
-          message: errorMessage,
-        },
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    return toolErrorResponse(500, {
+      code: 'TOOL_EXECUTION_ERROR',
+      message: errorMessage,
+    });
   }
 });

@@ -3,8 +3,16 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeCOGSMethod, type COGSMethod } from '@/lib/cogsMethod';
 
-export type COGSMethod = 'inventory' | 'financials' | 'combined';
+// A legacy row can still hold 'combined' until the migration runs.
+const normalizeRow = (row: unknown): FinancialSettings => {
+  const record = row as FinancialSettings;
+  return {
+    ...record,
+    cogs_calculation_method: normalizeCOGSMethod(record.cogs_calculation_method),
+  };
+};
 
 export interface FinancialSettings {
   id?: string;
@@ -21,6 +29,40 @@ export interface UseFinancialSettingsReturn {
   updateSettings: (updates: { cogs_calculation_method: COGSMethod }) => Promise<void>;
 }
 
+// Creates the default row, or reads the row that another caller created first.
+// Several components mount useFinancialSettings at the same time. ON CONFLICT
+// DO NOTHING stops the losers from failing with 23505 on restaurant_id. Read
+// the result as an array: on a POST, maybeSingle() asks for one object, and
+// PostgREST answers 406 when the insert skips the row.
+const createDefaultSettings = async (restaurantId: string): Promise<unknown> => {
+  const { data: inserted, error: createError } = await supabase
+    .from('restaurant_financial_settings')
+    .upsert(
+      { restaurant_id: restaurantId, cogs_calculation_method: 'inventory' as COGSMethod },
+      { onConflict: 'restaurant_id', ignoreDuplicates: true },
+    )
+    .select();
+
+  if (createError) {
+    console.error('Error creating default financial settings:', createError);
+    return null;
+  }
+  if (inserted?.length) return inserted[0];
+
+  // Another hook inserted the row first. Read that row.
+  const { data: existing, error: refetchError } = await supabase
+    .from('restaurant_financial_settings')
+    .select('*')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+
+  if (refetchError) {
+    console.error('Error fetching financial settings:', refetchError);
+    return null;
+  }
+  return existing;
+};
+
 export const useFinancialSettings = (
   restaurantId: string | undefined | null,
 ): UseFinancialSettingsReturn => {
@@ -28,7 +70,9 @@ export const useFinancialSettings = (
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const fetchSettings = async () => {
+  // isCancelled is true once restaurantId changes or the component unmounts.
+  // A late result for the old restaurant must not overwrite the new one.
+  const fetchSettings = async (isCancelled: () => boolean) => {
     if (!restaurantId) {
       setIsLoading(false);
       return;
@@ -41,6 +85,8 @@ export const useFinancialSettings = (
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
+      if (isCancelled()) return;
+
       if (error) {
         console.error('Error fetching financial settings:', error);
         toast({
@@ -51,31 +97,12 @@ export const useFinancialSettings = (
         return;
       }
 
-      if (data) {
-        setSettings(data as FinancialSettings);
-      } else {
-        // Create default settings if none exist
-        const defaultSettings = {
-          restaurant_id: restaurantId,
-          cogs_calculation_method: 'inventory' as COGSMethod,
-        };
-
-        const { data: newSettings, error: createError } = await supabase
-          .from('restaurant_financial_settings')
-          .insert(defaultSettings)
-          .select()
-          .single();
-
-        if (createError) {
-          console.error('Error creating default financial settings:', createError);
-        } else {
-          setSettings(newSettings as FinancialSettings);
-        }
-      }
+      const row = data ?? (await createDefaultSettings(restaurantId));
+      if (row && !isCancelled()) setSettings(normalizeRow(row));
     } catch (error) {
       console.error('Error in fetchSettings:', error);
     } finally {
-      setIsLoading(false);
+      if (!isCancelled()) setIsLoading(false);
     }
   };
 
@@ -102,7 +129,7 @@ export const useFinancialSettings = (
         return;
       }
 
-      setSettings(data as FinancialSettings);
+      setSettings(normalizeRow(data));
       toast({
         title: 'Settings Updated',
         description: 'Financial settings have been saved successfully',
@@ -113,12 +140,16 @@ export const useFinancialSettings = (
   };
 
   useEffect(() => {
-    fetchSettings();
+    let cancelled = false;
+    void fetchSettings(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [restaurantId]);
 
   return {
     settings,
-    cogsMethod: settings?.cogs_calculation_method ?? 'inventory',
+    cogsMethod: normalizeCOGSMethod(settings?.cogs_calculation_method),
     isLoading,
     updateSettings,
   };

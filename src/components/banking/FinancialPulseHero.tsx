@@ -14,8 +14,18 @@ interface FinancialPulseHeroProps {
 }
 
 export function FinancialPulseHero({ selectedPeriod, selectedBankAccount }: FinancialPulseHeroProps) {
-  const { data: metrics, isLoading } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
+  const { data: metrics, isLoading, error } = useCashFlowMetrics(selectedPeriod.from, selectedPeriod.to, selectedBankAccount);
   const periodDays = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
+
+  if (error) {
+    return (
+      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+        <CardContent className="p-6">
+          <p className="text-sm text-muted-foreground">Cannot load cash flow data</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -78,23 +88,23 @@ export function FinancialPulseHero({ selectedPeriod, selectedBankAccount }: Fina
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Net Cash Flow */}
-          <div className={`group p-4 rounded-lg bg-gradient-to-br ${getStatusColor(metrics.netCashFlow7d)} ${getStatusGlow(metrics.netCashFlow7d)} transition-all duration-300 hover:scale-105`}>
+          <div className={`group p-4 rounded-lg bg-gradient-to-br ${getStatusColor(metrics.netCashFlow)} ${getStatusGlow(metrics.netCashFlow)} transition-all duration-300 hover:scale-105`}>
             <div className="flex items-start justify-between mb-2">
               <div>
                 <p className="text-sm font-medium text-white/80">Net Cash Flow</p>
-                <p className="text-xs text-white/60">({periodDays <= 7 ? periodDays : 7} days)</p>
+                <p className="text-xs text-white/60">{selectedPeriod.label}</p>
               </div>
-              {metrics.netCashFlow7d > 0 ? (
+              {metrics.netCashFlow >= 0 ? (
                 <TrendingUp className="h-5 w-5 text-white/80" />
               ) : (
                 <TrendingDown className="h-5 w-5 text-white/80" />
               )}
             </div>
             <div className="text-3xl font-bold text-white">
-              <CountingNumber 
-                value={Math.abs(metrics.netCashFlow7d)} 
+              <CountingNumber
+                value={Math.abs(metrics.netCashFlow)}
                 decimals={0}
-                prefix={metrics.netCashFlow7d >= 0 ? '$' : '-$'}
+                prefix={metrics.netCashFlow >= 0 ? '$' : '-$'}
               />
             </div>
             {trendSparklineData.length > 0 && (
@@ -131,7 +141,7 @@ export function FinancialPulseHero({ selectedPeriod, selectedBankAccount }: Fina
               />
             </div>
             <div className="mt-3 text-xs text-white/70">
-              ${metrics.netCashFlow30d.toLocaleString()} total
+              ${metrics.netCashFlow.toLocaleString()} total
             </div>
           </div>
 
@@ -185,7 +195,7 @@ export function FinancialPulseHero({ selectedPeriod, selectedBankAccount }: Fina
               />
             </div>
             <div className="mt-3 text-xs text-white/70">
-              Inflows: ${metrics.netInflows30d.toLocaleString()}
+              Inflows: ${metrics.totalInflows.toLocaleString()}
             </div>
           </div>
         </div>

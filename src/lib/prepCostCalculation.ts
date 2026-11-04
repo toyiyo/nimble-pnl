@@ -10,6 +10,7 @@
  */
 
 import { calculateInventoryImpact, getProductUnitInfo } from './enhancedUnitConversion';
+import { resolveYieldPct } from './recipeYield';
 import type { IngredientUnit } from './recipeUnits';
 
 /**
@@ -24,6 +25,7 @@ export interface ProductInfo {
   size_value?: number | null;
   size_unit?: string | null;
   current_stock?: number | null;
+  yield_pct?: number | null;
 }
 
 /**
@@ -91,15 +93,18 @@ export function calculateIngredientCost(ingredient: IngredientInfo): IngredientC
   const productName = product.name || 'Unknown Product';
   const costPerUnit = product.cost_per_unit || 0;
 
-  // If no cost, return zero-cost result
+  // If no cost, still scale the deduction by yield (waste allowance). A
+  // stock-sufficiency check must see the same deducted quantity the
+  // authoritative SQL deduction applies regardless of cost.
   if (costPerUnit === 0) {
+    const { yieldPct: zeroCostYieldPct } = resolveYieldPct(product.yield_pct, null);
     return {
       productId: ingredient.product_id,
       productName,
       quantity: ingredient.quantity,
       unit: ingredient.unit as string,
       costPerUnit: 0,
-      inventoryDeduction: ingredient.quantity,
+      inventoryDeduction: ingredient.quantity * (100 / zeroCostYieldPct),
       inventoryDeductionUnit: ingredient.unit as string,
       costImpact: 0,
       conversionApplied: false,
@@ -121,15 +126,20 @@ export function calculateIngredientCost(ingredient: IngredientInfo): IngredientC
     sizeUnit
   );
 
+  // Scale the deduction and cost by the product yield (waste allowance).
+  // A 90% yield needs 100/90 times the portion quantity to reach the plate.
+  const { yieldPct } = resolveYieldPct(product.yield_pct, null);
+  const yieldFactor = 100 / yieldPct;
+
   return {
     productId: ingredient.product_id,
     productName,
     quantity: ingredient.quantity,
     unit: ingredient.unit as string,
     costPerUnit,
-    inventoryDeduction: conversionResult.inventoryDeduction,
+    inventoryDeduction: conversionResult.inventoryDeduction * yieldFactor,
     inventoryDeductionUnit: conversionResult.inventoryDeductionUnit,
-    costImpact: conversionResult.costImpact,
+    costImpact: conversionResult.costImpact * yieldFactor,
     conversionApplied: !!conversionResult.conversionDetails,
     conversionPath: conversionResult.conversionDetails?.conversionPath,
   };

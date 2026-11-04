@@ -29,6 +29,7 @@
 import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeForOrFilter } from '@/lib/utils';
+import { resolveYieldPct, loadedQuantity } from '@/lib/recipeYield';
 
 export interface IngredientDeduction {
   product_name: string;
@@ -70,6 +71,7 @@ interface RecipeWithIngredients {
     product_id: string;
     quantity: number;
     unit: string;
+    yield_pct_override?: number | null;
     product: {
       id: string;
       name: string;
@@ -79,6 +81,7 @@ interface RecipeWithIngredients {
       uom_recipe: string | null;
       size_value: number | null;
       size_unit: string | null;
+      yield_pct?: number | null;
     };
   }[];
 }
@@ -115,6 +118,7 @@ export async function simulateDeductionClientSide(
         product_id,
         quantity,
         unit,
+        yield_pct_override,
         product:products(
           id,
           name,
@@ -123,7 +127,8 @@ export async function simulateDeductionClientSide(
           uom_purchase,
           uom_recipe,
           size_value,
-          size_unit
+          size_unit,
+          yield_pct
         )
       )
     `)
@@ -148,7 +153,8 @@ export async function simulateDeductionClientSide(
     const product = ingredient.product;
     if (!product) continue;
 
-    const recipeQuantity = ingredient.quantity * quantitySold;
+    const { yieldPct } = resolveYieldPct(product.yield_pct, ingredient.yield_pct_override);
+    const recipeQuantity = loadedQuantity(ingredient.quantity * quantitySold, yieldPct);
     const recipeUnit = ingredient.unit;
     const productInfo = getProductUnitInfo(product);
     

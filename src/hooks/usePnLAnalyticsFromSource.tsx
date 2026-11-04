@@ -136,7 +136,15 @@ export function usePnLAnalyticsFromSource(
     normalizedEndDate
   );
   
-  const { dailyCosts: currentCosts, isLoading: currentCostsLoading } = useCostsFromSource(
+  // The hook's period totals carry overtime banding and tips; the daily
+  // series stays straight-time. Use the totals for the headline numbers
+  // and the daily series only for per-day charts and patterns.
+  const {
+    dailyCosts: currentCosts,
+    totalFoodCost: currentFoodCost,
+    totalLaborCost: currentLaborCost,
+    isLoading: currentCostsLoading,
+  } = useCostsFromSource(
     restaurantId,
     normalizedStartDate,
     normalizedEndDate
@@ -206,9 +214,9 @@ export function usePnLAnalyticsFromSource(
       // Calculate comparison
       const currentTotals = {
         revenue: totalRevenue,
-        food_cost: currentCosts.reduce((sum, c) => sum + c.food_cost, 0),
-        labor_cost: currentCosts.reduce((sum, c) => sum + c.labor_cost, 0),
-        prime_cost: currentCosts.reduce((sum, c) => sum + c.total_cost, 0),
+        food_cost: currentFoodCost,
+        labor_cost: currentLaborCost,
+        prime_cost: currentFoodCost + currentLaborCost,
       };
 
       const previousTotals = {
@@ -327,7 +335,7 @@ export function usePnLAnalyticsFromSource(
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       return { data: null, error: errorMessage };
     }
-  }, [loading, currentRevenue, currentCosts, previousRevenue, prevFoodCost, prevLaborCost]);
+  }, [loading, currentRevenue, currentCosts, currentFoodCost, currentLaborCost, previousRevenue, prevFoodCost, prevLaborCost]);
 
   useEffect(() => {
     if (error) {

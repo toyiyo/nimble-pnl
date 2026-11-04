@@ -341,10 +341,21 @@ test.describe('Roles & Areas', () => {
     await expect(preview.getByText('Banks', { exact: true })).toHaveCount(0);
 
     await page.getByRole('button', { name: /^save role$/i }).click();
-    await expect(page.getByText('Invoices only')).toBeVisible();
 
-    // Reopen: the grant persisted as one page, not a bundle.
-    await page.getByText('Invoices only').click();
+    // Wait on the role card, not on getByText('Invoices only'). The editor
+    // stays open until the save mutation resolves, and its preview sentence
+    // ("Invoices only can create, …") also contains the role name. A text wait
+    // passed at once on that sentence, the "reopen" click then hit the still
+    // open draft, and the save's onBack() closed the editor under the next
+    // assertion. The card exists only on the list, after the save completes.
+    const roleCard = page.getByRole('article', { name: 'Invoices only' });
+    await expect(roleCard).toBeVisible();
+
+    // Reopen: the grant persisted as one page, not a bundle. The card's name
+    // block is its "open this role" door (RolesList.tsx); the footer's
+    // "Assign people" door has a name that does not start with the role name.
+    await roleCard.getByRole('button', { name: /^invoices only/i }).click();
+    await expect(page.getByLabel(/role name/i)).toHaveValue('Invoices only');
     await expect(
       page.getByRole('radiogroup', { name: /^invoices access$/i })
           .getByRole('radio', { name: /^manage$/i })

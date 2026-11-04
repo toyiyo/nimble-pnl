@@ -24,6 +24,7 @@ const baseIngredients: RecipeIngredient[] = [
     quantity: 2,
     unit: "oz",
     notes: "trimmed",
+    yield_pct_override: 90,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   },
@@ -46,6 +47,7 @@ describe("buildRecipePrefill", () => {
       serving_size: 2,
     });
     expect(result.ingredients).toHaveLength(1);
+    expect(result.ingredients?.[0].yield_pct_override).toBe(90);
     expect(result.name).toBeUndefined();
     expect(result.pos_item_name).toBeUndefined();
   });

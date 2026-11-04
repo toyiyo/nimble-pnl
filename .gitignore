@@ -47,6 +47,8 @@ dev-tools/codex-review-output.md
 dev-tools/coderabbit-*
 # Dev workflow Phase 9d review-triage artifacts (ephemeral, per-run)
 dev-tools/9d-triage-*
+# Dev workflow Phase 8.5 (/qa) scratch specs, screenshots, and reports (ephemeral, local only)
+dev-tools/qa/
 
 # Marketing assets (videos, screenshots, audio) — stored in Google Drive
 marketing/

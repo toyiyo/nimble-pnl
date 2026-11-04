@@ -398,7 +398,32 @@ serve(async (req) => {
       } catch (error: any) {
         console.error("[SYNC-TRANSACTIONS] Error applying categorization rules:", error.message);
       }
-      
+
+      // Best-effort: link newly synced transactions to open pending outflows.
+      // p_skip_rebuild=true for the same reason as the rules call above - the
+      // explicit rebuild_account_balances call below covers it. A failure here
+      // logs and does not fail the sync.
+      // p_batch_limit stays small here: this call runs inside the edge
+      // function's ~10s CPU budget. The 5-minute sweep links any remainder.
+      try {
+        const { data: linkResult, error: linkError } = await supabaseAdmin.rpc('auto_link_pending_outflows_internal', {
+          p_restaurant_id: bank.restaurant_id,
+          p_batch_limit: 25,
+          p_skip_rebuild: true,
+        });
+
+        if (linkError) {
+          console.error("[SYNC-TRANSACTIONS] Error auto-linking pending outflows:", linkError.message);
+        } else if (linkResult && linkResult.length > 0) {
+          const { linked_count, candidate_count } = linkResult[0];
+          console.log(`[SYNC-TRANSACTIONS] Auto-linked ${linked_count} of ${candidate_count} pending outflow candidates`);
+        }
+      } catch (error) {
+        // Caught error type is unknown by default; narrow it instead of typing as `any`.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[SYNC-TRANSACTIONS] Error auto-linking pending outflows:", message);
+      }
+
       // Skip default categorization - let rules and AI handle it
       console.log("[SYNC-TRANSACTIONS] Skipping default categorization - transactions will be processed by rules/AI");
       

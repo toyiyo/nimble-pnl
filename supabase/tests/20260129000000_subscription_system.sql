@@ -248,7 +248,10 @@ SELECT * FROM finish();
 ROLLBACK;
 
 
--- 5) ops_inbox and weekly_brief require Pro tier
+-- 5) ops_inbox and weekly_brief are deleted feature keys
+-- 20260915120000_decommission_weekly_brief_ops_inbox.sql deleted their
+-- branches from has_subscription_feature(). The keys now fall through to
+-- the ELSE FALSE branch for every tier, Pro and grandfathered included.
 BEGIN;
 SELECT plan(8);
 
@@ -259,13 +262,13 @@ ON CONFLICT DO NOTHING;
 
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000001', 'ops_inbox'),
-  true,
-  'Active Pro has ops_inbox'
+  false,
+  'Active Pro lacks the deleted ops_inbox key'
 );
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000001', 'weekly_brief'),
-  true,
-  'Active Pro has weekly_brief'
+  false,
+  'Active Pro lacks the deleted weekly_brief key'
 );
 
 -- Active Growth
@@ -276,12 +279,12 @@ ON CONFLICT DO NOTHING;
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000002', 'ops_inbox'),
   false,
-  'Active Growth lacks ops_inbox'
+  'Active Growth lacks the deleted ops_inbox key'
 );
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000002', 'weekly_brief'),
   false,
-  'Active Growth lacks weekly_brief'
+  'Active Growth lacks the deleted weekly_brief key'
 );
 
 -- Active Starter
@@ -292,28 +295,28 @@ ON CONFLICT DO NOTHING;
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000003', 'ops_inbox'),
   false,
-  'Active Starter lacks ops_inbox'
+  'Active Starter lacks the deleted ops_inbox key'
 );
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000003', 'weekly_brief'),
   false,
-  'Active Starter lacks weekly_brief'
+  'Active Starter lacks the deleted weekly_brief key'
 );
 
--- Grandfathered (within window) gets Pro access
+-- Grandfathered (within window) gets Pro access, but the keys are gone
 INSERT INTO restaurants (id, name, subscription_tier, subscription_status, grandfathered_until) VALUES
   ('00000000-0000-0000-0000-eee000000004', 'Grandfathered Restaurant', 'starter', 'grandfathered', now() + interval '30 days')
 ON CONFLICT DO NOTHING;
 
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000004', 'ops_inbox'),
-  true,
-  'Grandfathered restaurant has ops_inbox'
+  false,
+  'Grandfathered restaurant lacks the deleted ops_inbox key'
 );
 SELECT is(
   has_subscription_feature('00000000-0000-0000-0000-eee000000004', 'weekly_brief'),
-  true,
-  'Grandfathered restaurant has weekly_brief'
+  false,
+  'Grandfathered restaurant lacks the deleted weekly_brief key'
 );
 
 SELECT * FROM finish();

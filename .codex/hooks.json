@@ -1,0 +1,30 @@
+{
+  "description": "Nimble development workflow safety gates.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.agents/skills/dev/scripts/hook.mjs\" pre-tool",
+            "timeout": 5,
+            "statusMessage": "Checking repository command policy"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.agents/skills/dev/scripts/hook.mjs\" stop",
+            "timeout": 5,
+            "statusMessage": "Checking development workflow state"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -5,6 +5,10 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPositionColors } from '@/lib/positionColors';
 
+import { sameConflictLines } from '@/hooks/usePlannerShiftConflicts';
+
+import { ConflictBadge, CONFLICT_BORDER_CLASS } from './ConflictBadge';
+
 import type { Shift } from '@/types/scheduling';
 
 interface EmployeeChipProps {
@@ -16,6 +20,9 @@ interface EmployeeChipProps {
   homeArea?: string | null;
   /** The area of the cell this chip renders in (template area). */
   cellArea?: string | null;
+  /** Display-ready conflict lines (usePlannerShiftConflicts). Non-empty
+   *  adds the amber left border and the ConflictBadge. */
+  conflictLines?: string[];
   onRemove: (shiftId: string) => void;
 }
 
@@ -27,10 +34,12 @@ export const EmployeeChip = memo(
     source,
     homeArea,
     cellArea,
+    conflictLines = [],
     onRemove,
   }: EmployeeChipProps) {
     const colors = getPositionColors(position);
     const isCovering = !!homeArea && !!cellArea && homeArea !== cellArea;
+    const hasConflicts = conflictLines.length > 0;
 
     return (
       <div
@@ -40,8 +49,12 @@ export const EmployeeChip = memo(
           colors.border,
           colors.text,
           isCovering && 'border-dashed',
+          // Same low-contrast warning treatment as TimelineBar — the
+          // position color stays the fill.
+          hasConflicts && CONFLICT_BORDER_CLASS,
         )}
       >
+        <ConflictBadge lines={conflictLines} />
         {source === 'ai' && (
           <span className="text-violet-400 text-[10px] shrink-0" aria-label="AI generated">✦</span>
         )}
@@ -77,5 +90,6 @@ export const EmployeeChip = memo(
     prev.source === next.source &&
     prev.homeArea === next.homeArea &&
     prev.cellArea === next.cellArea &&
+    sameConflictLines(prev.conflictLines, next.conflictLines) &&
     prev.onRemove === next.onRemove,
 );

@@ -127,6 +127,12 @@ SELECT is(
 DELETE FROM unified_sales WHERE restaurant_id = '00000000-0000-0000-0000-310000000011';
 UPDATE toast_connections SET last_sync_time = NULL WHERE id = '00000000-0000-0000-0000-310000000099';
 
+-- Watermark skip (2026-08-14 design): the wrapper skips when no source
+-- change happened. This test re-runs the wrapper after only deleting
+-- unified_sales rows, so reset the watermark to force a real run.
+UPDATE toast_connections SET rollup_source_watermark = NULL
+ WHERE restaurant_id = '00000000-0000-0000-0000-310000000011';
+
 SELECT lives_ok(
   $q$ SELECT * FROM sync_all_toast_to_unified_sales() $q$,
   'sync_all handles NULL last_sync_time without error'

@@ -1284,4 +1284,39 @@ describe('useShiftTemplates', () => {
       });
     });
   });
+
+  // QA bug (feature/connector-hourly-sales, PR #829): `templates` returned a
+  // new `[]` literal on every render while the query was still loading (via
+  // `data || []`). A caller that re-seeds state from `templates` in a
+  // `useEffect` with `[templates]` as the dependency — see
+  // `EmployeeDialog.tsx`'s `defaultAvailability`/`availabilityGrid` re-seed
+  // effect — saw a new dependency value on every render and called setState
+  // every time, an infinite render loop ("Maximum update depth exceeded").
+  // It stayed hidden until this PR added extra concurrent queries to the
+  // same page (the daily-labor-percent RPC), which pushed the loading-window
+  // render count over React's runaway-update threshold.
+  describe('reference stability while loading', () => {
+    it('returns the same `templates` array reference across renders before the query settles', async () => {
+      // A builder whose `.order()` never resolves during this test keeps the
+      // query in the loading state, so every render sees `data === undefined`.
+      const builder = {
+        select: vi.fn(),
+        eq: vi.fn(),
+        order: vi.fn().mockReturnValue(new Promise(() => {})),
+      };
+      builder.select.mockReturnValue(builder);
+      builder.eq.mockReturnValue(builder);
+      vi.mocked(supabase.from).mockReturnValue(builder as any);
+
+      const { result, rerender } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+
+      expect(result.current.loading).toBe(true);
+      const firstTemplates = result.current.templates;
+
+      rerender();
+
+      expect(result.current.loading).toBe(true);
+      expect(result.current.templates).toBe(firstTemplates);
+    });
+  });
 });

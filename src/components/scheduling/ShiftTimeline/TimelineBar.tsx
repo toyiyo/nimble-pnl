@@ -68,12 +68,14 @@ interface TimelineBarProps {
  * narrow edge strips are resize handles. `useTimelineBarDrag` disambiguates a
  * tap (< 5px movement — a no-op, left to the native `onClick` below) from a
  * real drag (calls `onDraftChange` each frame, `onDragCommit` on release).
- * Locked shifts and touch pointers never drag — `touch-action: none` is
- * scoped to the body + handles only so the lane's own pan-to-scroll behavior
- * is unaffected. After a real drag, the browser still dispatches a trailing
- * `click` on the bar; `handleTap` consults `consumeJustDragged()` and skips
- * `onSelect` for exactly that one click (Codex P2 fix) so a drag never also
- * reopens the edit popover.
+ * A locked (published) shift drags the same as any other — the guard at the
+ * commit call site asks for confirmation before the change lands. Touch
+ * pointers never drag — `touch-action: none` is scoped to the body + handles
+ * only so the lane's own pan-to-scroll behavior is unaffected. After a real
+ * drag, the browser still dispatches a trailing `click` on the bar;
+ * `handleTap` consults `consumeJustDragged()` and skips `onSelect` for
+ * exactly that one click (Codex P2 fix) so a drag never also reopens the
+ * edit popover.
  *
  * Memoized (Stage D1b): re-renders only when this bar's identity/geometry/
  * label/color actually changes, so a drag frame only re-renders the dragged
@@ -93,7 +95,6 @@ function TimelineBarImpl({
   tz,
 }: TimelineBarProps) {
   const { leftMin, endMin, label, ariaLabel, color, shift } = bar;
-  const locked = shift.locked;
 
   const handleDraftChange = useCallback(
     (range: ShiftMinuteRange | null) => onDraftChange(shift.id, range),
@@ -110,7 +111,6 @@ function TimelineBarImpl({
   const { dragState, handleBodyPointerDown, handleStartHandlePointerDown, handleEndHandlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, consumeJustDragged } =
     useTimelineBarDrag({
       original: { startMin: leftMin, endMin },
-      locked,
       getPlotRect,
       getWindow,
       onDraftChange: handleDraftChange,
@@ -178,7 +178,7 @@ function TimelineBarImpl({
           'relative h-full w-full rounded-md border px-1.5 text-left text-[11px] font-medium truncate',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           'transition-opacity hover:opacity-90 active:opacity-80',
-          !locked && 'cursor-grab touch-none',
+          'cursor-grab touch-none',
           highlighted && 'ring-2 ring-ring',
           color.bg,
           color.border,
@@ -189,28 +189,24 @@ function TimelineBarImpl({
       >
         {label}
 
-        {!locked && (
-          <>
-            <span
-              data-testid="resize-handle-start"
-              aria-hidden="true"
-              onPointerDown={handleStartHandlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerCancel}
-              className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize touch-none"
-            />
-            <span
-              data-testid="resize-handle-end"
-              aria-hidden="true"
-              onPointerDown={handleEndHandlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerCancel}
-              className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize touch-none"
-            />
-          </>
-        )}
+        <span
+          data-testid="resize-handle-start"
+          aria-hidden="true"
+          onPointerDown={handleStartHandlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize touch-none"
+        />
+        <span
+          data-testid="resize-handle-end"
+          aria-hidden="true"
+          onPointerDown={handleEndHandlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize touch-none"
+        />
       </button>
 
       {dragState && (

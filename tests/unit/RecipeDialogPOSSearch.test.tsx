@@ -21,6 +21,10 @@ vi.mock('@/hooks/useProducts', () => ({
 // Spy-backed mock so each test can assert exactly what RecipeDialog passes
 // to usePOSItems, and control what it returns (posItems/loading/error/refetch).
 const usePOSItemsMock = vi.fn();
+vi.mock('@/hooks/useRecipeWeeklyVolume', () => ({
+  useRecipeWeeklyVolume: () => ({ weeklyVolume: 0, isLoading: false, isError: false }),
+}));
+
 vi.mock('@/hooks/usePOSItems', () => ({
   usePOSItems: (...args: unknown[]) => usePOSItemsMock(...args),
 }));

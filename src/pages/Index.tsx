@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, startTransition, type ReactNode } from 'react';
 import posthog from 'posthog-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
@@ -15,21 +16,26 @@ import { useBankTransactions } from '@/hooks/useBankTransactions';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { useMonthlyMetrics } from '@/hooks/useMonthlyMetrics';
-import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
 import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
+import { PendingInvitationsCard } from '@/components/PendingInvitationsCard';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DataCompletenessWarning } from '@/components/DataCompletenessWarning';
 import { DataInputDialog } from '@/components/DataInputDialog';
 import { PeriodSelector, Period } from '@/components/PeriodSelector';
 import { MonthlyBreakdownTable } from '@/components/MonthlyBreakdownTable';
 import { BankSnapshotSection } from '@/components/BankSnapshotSection';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
-import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
-import { OwnerSnapshotWidget } from '@/components/dashboard/OwnerSnapshotWidget';
+import { DashboardTodayCard } from '@/components/dashboard/DashboardTodayCard';
+import { DashboardAttentionList } from '@/components/dashboard/DashboardAttentionList';
+import { DashboardSectionRail } from '@/components/dashboard/DashboardSectionRail';
+import { DASHBOARD_SECTIONS } from '@/components/dashboard/dashboardSections';
+import { useActiveSection } from '@/hooks/useActiveSection';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
@@ -43,9 +49,9 @@ import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenStrip';
-import { useOpsInboxCount } from '@/hooks/useOpsInbox';
-import { useSubscription } from '@/hooks/useSubscription';
-import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
+import { focusDashboardSection } from '@/lib/focusDashboardSection';
+import { getRunwayWindow, buildCashRunwayAlert } from '@/lib/cashRunway';
+import { periodStatusMessage } from '@/utils/periodAnnouncement';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
@@ -62,8 +68,7 @@ import {
   Landmark,
   ChevronDown,
   ChevronUp,
-  Inbox,
-  Newspaper,
+  MoreHorizontal,
 } from 'lucide-react';
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -83,11 +88,7 @@ const Index = () => {
     transactions: uncategorizedTransactions = [],
     totalCount: uncategorizedCount = 0,
   } = useBankTransactions('for_review', { pageSize: 100 });
-  const {
-    transactions: allTransactions = [],
-  } = useBankTransactions(undefined, { autoLoadAll: true, pageSize: 200, sortBy: 'date', sortDirection: 'desc' }); // Fetch transactions incrementally for spending calculation
-  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
-  const { totalPending: totalPendingOutflows } = usePendingOutflowsSummary();
+  const { unmappedItems, loading: unifiedSalesLoading } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -146,6 +147,27 @@ const Index = () => {
   const [laborEfficiencyOpen, setLaborEfficiencyOpen] = useState(false);
   const [laborCostOpen, setLaborCostOpen] = useState(false);
 
+  const sectionOpenSetters: Partial<Record<string, (open: boolean) => void>> = {
+    'dash-labor-cost': setLaborCostOpen,
+    'dash-performance-overview': setMetricsOpen,
+    'dash-cashflow': setCashflowOpen,
+    'dash-monthly-performance': setMonthlyOpen,
+    'dash-revenue-mix': setRevenueOpen,
+    'dash-banking': setBankingOpen,
+    'dash-expenses': setMoneyOutOpen,
+    'dash-labor-efficiency': setLaborEfficiencyOpen,
+    'dash-operations-health': setOperationsOpen,
+    'dash-quick-actions': setQuickActionsOpen,
+  };
+
+  function handleSectionNavigate(sectionId: string): void {
+    posthog.capture('dashboard_rail_clicked', { section_id: sectionId });
+    sectionOpenSetters[sectionId]?.(true);
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Wait one frame so a section that the setter opens has its height.
+    requestAnimationFrame(() => focusDashboardSection(sectionId, { reducedMotion: prefersReducedMotion }));
+  }
+
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'today',
     from: startOfDay(new Date()),
@@ -168,14 +190,20 @@ const Index = () => {
     todayEnd
   );
 
-  const { data: periodMetrics, isLoading: periodLoading } = usePeriodMetrics(
+  const { data: periodMetrics, isLoading: periodLoading, isFetching: periodFetching, error: periodError, capped: periodCapped } = usePeriodMetrics(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
   );
 
   // Fetch monthly metrics from unified_sales + daily_pnl
-  const { data: monthlyMetrics, isLoading: monthlyLoading } = useMonthlyMetrics(
+  const {
+    data: monthlyMetrics,
+    isLoading: monthlyLoading,
+    isFetching: monthlyFetching,
+    error: monthlyError,
+    warnings: monthlyWarnings
+  } = useMonthlyMetrics(
     selectedRestaurant?.restaurant_id || null,
     monthlyRangeStart,
     monthlyRangeEnd
@@ -183,7 +211,7 @@ const Index = () => {
 
   // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display
   // React Query will cache this with the same key, so no duplicate network requests
-  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+  const { data: revenueBreakdown, isLoading: revenueLoading, isFetching: revenueFetching } = useRevenueBreakdown(
     selectedRestaurant?.restaurant_id || null,
     selectedPeriod.from,
     selectedPeriod.to
@@ -255,10 +283,39 @@ const Index = () => {
 
   const todaysData = todaysMetrics;
 
-  // Fetch liquidity metrics for cash runway
-  const { data: liquidityMetrics } = useLiquidityMetrics(
-    todayStart,
-    todayEnd,
+  // The Revenue Mix section only renders when categorized revenue data
+  // exists (see the `dash-revenue-mix` block below). Drop its rail link and
+  // chip when that is not the case, so a click never scrolls to a section
+  // with no visible content.
+  const showRevenueMixSection = !revenueLoading && Boolean(revenueBreakdown?.has_categorization_data);
+  const dashboardSections = useMemo(
+    () =>
+      showRevenueMixSection
+        ? DASHBOARD_SECTIONS
+        : DASHBOARD_SECTIONS.filter((section) => section.id !== 'dash-revenue-mix'),
+    [showRevenueMixSection]
+  );
+  const dashboardSectionIds = useMemo(
+    () => dashboardSections.map((section) => section.id),
+    [dashboardSections]
+  );
+  // The section elements are hidden behind DashboardSkeleton until this is
+  // false, so the observer waits for it before it starts observing.
+  const areDashboardSectionsReady = !(
+    alertsLoading ||
+    (todaysLoading && !todaysData) ||
+    (periodLoading && !periodData)
+  );
+  const activeSectionId = useActiveSection(dashboardSectionIds, areDashboardSectionsReady);
+
+  // Fetch liquidity metrics for cash runway, over the last 30 days
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
+  // todayKey triggers a once-per-day recompute; the callback reads the clock, not todayKey.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const runwayWindow = useMemo(() => getRunwayWindow(new Date()), [todayKey]);
+  const { data: liquidityMetrics, isLoading: liquidityLoading } = useLiquidityMetrics(
+    runwayWindow.start,
+    runwayWindow.end,
     'all'
   );
 
@@ -291,9 +348,6 @@ const Index = () => {
     return foodCostItem?.percentage;  // already in % form (e.g. 28)
   }, [breakEvenData]);
 
-  const { data: opsInboxCounts } = useOpsInboxCount(selectedRestaurant?.restaurant_id);
-  const { hasFeature } = useSubscription();
-
   // Calculate available cash from connected banks
   const availableCash = useMemo(() => {
     return connectedBanks?.reduce((total, bank) => {
@@ -310,45 +364,10 @@ const Index = () => {
     return (todaysData.grossProfit / todaysData.netRevenue) * 100;
   }, [todaysData]);
 
-  const cashRunway = liquidityMetrics?.daysOfCash || 0;
-
-  // Calculate daily average spending from actual transaction history + pending outflows
-  const dailyAvgSpending = useMemo(() => {
-    if (!allTransactions || allTransactions.length === 0) {
-      // If no transactions but have pending outflows, estimate based on those
-      if (totalPendingOutflows > 0) {
-        return totalPendingOutflows / 30; // Rough estimate
-      }
-      return 0;
-    }
-
-    // Filter for expenses: negative amounts, not transfers, not excluded, from last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const expenses = allTransactions.filter(t => {
-      const transactionDate = new Date(t.transaction_date);
-      return (
-        t.amount < 0 && // Expenses are negative
-        !t.is_transfer && // Exclude paired transfers
-        !isTransferCategoryType(t.chart_account?.account_type) && // Exclude asset/liability/equity-categorized
-        !t.excluded_reason && // Exclude transactions marked as excluded
-        transactionDate >= thirtyDaysAgo // Last 30 days only
-      );
-    });
-
-    if (expenses.length === 0) return 0;
-
-    // Calculate total spending (absolute values) including pending outflows
-    const totalSpending = expenses.reduce((sum, t) => sum + Math.abs(t.amount), 0) + totalPendingOutflows;
-
-    // Calculate actual number of days with data
-    const dates = new Set(expenses.map(t => format(new Date(t.transaction_date), 'yyyy-MM-dd')));
-    const daysWithData = dates.size;
-
-    // Return average daily spending (including pending outflows amortized over period)
-    return daysWithData > 0 ? totalSpending / daysWithData : 0;
-  }, [allTransactions, totalPendingOutflows]);
+  const cashRunway = liquidityLoading || !liquidityMetrics ? null : liquidityMetrics.daysOfCash;
+  // The attention list reads bank balances and unmapped POS items. Show a
+  // skeleton until both load, so the page never shows a false "0 alerts".
+  const attentionLoading = banksLoading || unifiedSalesLoading;
 
   // Generate Critical Alerts
   const criticalAlerts = useMemo(() => {
@@ -362,16 +381,9 @@ const Index = () => {
     }> = [];
 
     // Cash runway alert
-    const runway = dailyAvgSpending > 0 ? availableCash / dailyAvgSpending : 0;
-    if (runway < 30 && runway > 0) {
-      alerts.push({
-        id: "cash-runway",
-        type: "cash",
-        severity: runway < 14 ? "critical" : "warning",
-        title: `${Math.floor(runway)} days of cash runway`,
-        description: "Monitor cash flow closely",
-        action: { label: "View Banking", path: "/banking" },
-      });
+    const cashRunwayAlert = buildCashRunwayAlert(cashRunway);
+    if (cashRunwayAlert) {
+      alerts.push(cashRunwayAlert);
     }
 
     // Prime cost alert
@@ -412,7 +424,7 @@ const Index = () => {
     }
 
     return alerts;
-  }, [availableCash, periodData, reorderAlerts, unmappedItems]);
+  }, [cashRunway, periodData, reorderAlerts, unmappedItems]);
 
   // Monthly data from new metrics hook
   const monthlyData = monthlyMetrics || [];
@@ -573,6 +585,30 @@ const Index = () => {
     return ((current - average) / average) * 100;
   };
 
+  // Monthly Performance body: one branch per state (error, loading, data).
+  let monthlyPerformanceContent: ReactNode;
+  if (monthlyError) {
+    monthlyPerformanceContent = (
+      <div
+        role="alert"
+        className="p-4 rounded-xl border border-destructive/40 bg-destructive/10 text-[13px] text-destructive-strong"
+      >
+        The monthly data failed to load. Refresh the page.
+      </div>
+    );
+  } else if (monthlyLoading) {
+    monthlyPerformanceContent = <Skeleton className="h-64 w-full rounded-xl" />;
+  } else {
+    monthlyPerformanceContent = (
+      <div className="space-y-3">
+        {monthlyWarnings.length > 0 && (
+          <DataCompletenessWarning message={monthlyWarnings.join(' ')} />
+        )}
+        <MonthlyBreakdownTable monthlyData={monthlyData} showTitle={false} />
+      </div>
+    );
+  }
+
   // Redirect collaborators to their designated landing page (they don't see the dashboard)
   if (isCollaborator && landingPath !== '/') {
     return <Navigate to={landingPath} replace />;
@@ -598,7 +634,11 @@ const Index = () => {
               </p>
             </div>
           </div>
-          <RestaurantSelector 
+          {/* An invitee with zero restaurants must see their pending
+              invitation before the create-restaurant path — otherwise
+              they open a second, self-serve owner account. */}
+          {!restaurantsLoading && restaurants.length === 0 && <PendingInvitationsCard />}
+          <RestaurantSelector
             selectedRestaurant={selectedRestaurant}
             onSelectRestaurant={handleRestaurantSelect}
             restaurants={restaurants}
@@ -613,17 +653,12 @@ const Index = () => {
           <div className="space-y-5">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div className="space-y-1.5">
+                <p className="text-[13px] text-muted-foreground">
+                  {format(new Date(), 'EEEE, MMMM d')} · Updated {format(new Date(), 'h:mm a')}
+                </p>
                 <h1 className="text-[28px] font-semibold tracking-tight text-foreground">
                   {selectedRestaurant.restaurant.name}
                 </h1>
-                <p className="text-[14px] text-muted-foreground">
-                  {new Date().toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <DataInputDialog
@@ -637,77 +672,141 @@ const Index = () => {
                   }}
                   className="w-full sm:w-auto"
                 />
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/banking')}
-                  className="h-9 rounded-lg text-[13px] font-medium border-border/40"
-                >
-                  <Landmark className="h-4 w-4 mr-2" />
-                  Banking
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/reports')}
-                  className="h-9 rounded-lg text-[13px] font-medium border-border/40"
-                >
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  Reports
-                </Button>
-                <Button
-                  onClick={() => navigate('/inventory')}
-                  className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-                >
-                  <Package className="h-4 w-4 mr-2" />
-                  Inventory
-                </Button>
+                <div className="hidden sm:flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate('/banking')}
+                    className="h-9 rounded-lg text-[13px] font-medium border-border/40"
+                  >
+                    <Landmark className="h-4 w-4 mr-2" />
+                    Banking
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate('/reports')}
+                    className="h-9 rounded-lg text-[13px] font-medium border-border/40"
+                  >
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Reports
+                  </Button>
+                  <Button
+                    onClick={() => navigate('/inventory')}
+                    className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  >
+                    <Package className="h-4 w-4 mr-2" />
+                    Inventory
+                  </Button>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="sm:hidden h-9 w-9 p-0 rounded-lg border-border/40"
+                      aria-label="More dashboard actions"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => navigate('/banking')}>
+                      <Landmark className="h-4 w-4 mr-2" />
+                      Banking
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/reports')}>
+                      <TrendingUp className="h-4 w-4 mr-2" />
+                      Reports
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/inventory')}>
+                      <Package className="h-4 w-4 mr-2" />
+                      Inventory
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
             <div className="h-px bg-border/40" />
           </div>
 
-          {todaysLoading || periodLoading || alertsLoading ? (
+          {/* The chip row is a direct child of the page column, so it stays
+              sticky under the app header (h-14) for the full page. */}
+          <div className="lg:hidden sticky top-14 z-40 -mx-4 px-4 bg-background/95 backdrop-blur border-b border-border/40">
+            <DashboardSectionRail
+              sections={dashboardSections}
+              activeSectionId={activeSectionId}
+              onNavigate={handleSectionNavigate}
+              variant="compact"
+            />
+          </div>
+
+          {alertsLoading || (todaysLoading && !todaysData) || (periodLoading && !periodData) ? (
             <DashboardSkeleton />
           ) : (
-            <>
-              {/* Critical Alerts Bar */}
-              <CriticalAlertsBar alerts={criticalAlerts} />
+            <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8">
+            <div className="space-y-8 min-w-0">
+              {/* Today card */}
+              <section id="dash-today" className="scroll-mt-32 lg:scroll-mt-24 space-y-3">
+                <h2 className="text-[17px] font-semibold text-foreground">Today</h2>
+                <DashboardTodayCard
+                  todaySales={todaysData?.netRevenue || 0}
+                  profitMargin={todayProfitMargin}
+                  availableCash={availableCash}
+                  cashRunway={cashRunway}
+                  cashLoading={banksLoading}
+                  runwayLoading={liquidityLoading}
+                  todayFoodCost={todaysData?.foodCost || 0}
+                  todayLaborCost={todaysData?.laborCost || 0}
+                  monthToDateSales={breakEvenData?.monthlyProgress?.mtdSales ?? 0}
+                  primeCostPercentage={todaysData?.primeCostPercentage ?? 0}
+                  breakEvenData={breakEvenData ? {
+                    dailyBreakEven: breakEvenData.dailyBreakEven,
+                    todayStatus: breakEvenData.todayStatus,
+                    todayDelta: breakEvenData.todayDelta,
+                    daysAbove: breakEvenData.daysAbove,
+                    daysBelow: breakEvenData.daysBelow,
+                    completeDays: breakEvenData.completeDays,
+                  } : null}
+                  breakEvenLoading={breakEvenLoading}
+                  breakEvenError={Boolean(breakEvenError)}
+                  unmappedItemCount={unmappedItems?.length || 0}
+                />
+              </section>
 
-              {/* Owner Snapshot Widget */}
-              <OwnerSnapshotWidget
-                todaySales={todaysData?.netRevenue || 0}
-                profitMargin={todayProfitMargin}
-                availableCash={availableCash}
-                cashRunway={cashRunway}
-                todayFoodCost={todaysData?.foodCost || 0}
-                todayLaborCost={todaysData?.laborCost || 0}
-                lastUpdated={format(new Date(), 'h:mm a')}
-                breakEvenData={breakEvenData ? {
-                  dailyBreakEven: breakEvenData.dailyBreakEven,
-                  todayStatus: breakEvenData.todayStatus,
-                  todayDelta: breakEvenData.todayDelta,
-                  daysAbove: breakEvenData.daysAbove,
-                  daysBelow: breakEvenData.daysBelow,
-                  historyDays: 14,
-                } : null}
-                breakEvenLoading={breakEvenLoading}
-              />
-
-              {/* Monthly break-even progress strip */}
-              <MonthlyBreakEvenStrip
-                progress={breakEvenData?.monthlyProgress ?? null}
-                isLoading={breakEvenLoading}
-              />
+              {/* Needs your attention + Month progress */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <section id="dash-attention" className="scroll-mt-32 lg:scroll-mt-24 space-y-3">
+                  <h2 className="flex items-center gap-2 text-[17px] font-semibold text-foreground">
+                    Needs your attention
+                    {!attentionLoading && (
+                      <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                        <span aria-hidden="true">{criticalAlerts.length}</span>
+                        <span className="sr-only">({criticalAlerts.length} {criticalAlerts.length === 1 ? 'item' : 'items'})</span>
+                      </span>
+                    )}
+                  </h2>
+                  <DashboardAttentionList alerts={criticalAlerts} isLoading={attentionLoading} />
+                </section>
+                <div className="space-y-3">
+                  <h2 className="text-[17px] font-semibold text-foreground">Month progress</h2>
+                  <MonthlyBreakEvenStrip
+                    progress={breakEvenData?.monthlyProgress ?? null}
+                    isLoading={breakEvenLoading}
+                  />
+                </div>
+              </div>
 
               {/* Sales vs Break-Even Chart */}
-              <SalesVsBreakEvenChart
-                data={breakEvenData ?? null}
-                isLoading={breakEvenLoading}
-                error={breakEvenError}
-                actualCOGSPercentage={actualCOGSPercentage}
-                targetCOGSPercentage={targetCOGSPercentage}
-              />
+              <section id="dash-sales-vs-break-even" className="scroll-mt-32 lg:scroll-mt-24">
+                <SalesVsBreakEvenChart
+                  data={breakEvenData ?? null}
+                  isLoading={breakEvenLoading}
+                  error={breakEvenError}
+                  actualCOGSPercentage={actualCOGSPercentage}
+                  targetCOGSPercentage={targetCOGSPercentage}
+                />
+              </section>
 
               {/* Labor cost - Collapsible (financial: labor % of sales vs target, distinct from scheduling's Labor Efficiency section below) */}
+              <section id="dash-labor-cost" className="scroll-mt-32 lg:scroll-mt-24">
               <Collapsible open={laborCostOpen} onOpenChange={setLaborCostOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -726,21 +825,28 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
               {/* AI Insights */}
-              <DashboardInsights insights={insights} />
-
-              {/* Period Selector - MOVED TO TOP */}
-              <PeriodSelector
-                selectedPeriod={selectedPeriod}
-                onPeriodChange={setSelectedPeriod}
-              />
+              <div id="dash-smart-alerts" className="scroll-mt-32 lg:scroll-mt-24">
+                <DashboardInsights insights={insights} />
+              </div>
 
               {/* ===== OPERATIONAL METRICS SECTION ===== */}
 
+              {/* The period selector is inside this section, so a rail jump
+                  to Performance Overview shows the period control too. */}
+              <section id="dash-performance-overview" className="scroll-mt-32 lg:scroll-mt-24 space-y-4">
+              <PeriodSelector
+                selectedPeriod={selectedPeriod}
+                onPeriodChange={(period) => startTransition(() => setSelectedPeriod(period))}
+              />
+              <output aria-live="polite" className="sr-only">
+                {periodStatusMessage(periodFetching, periodError, selectedPeriod.label)}
+              </output>
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Performance Overview</h2>
                     <CollapsibleTrigger asChild>
@@ -750,10 +856,16 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
+                {periodCapped && (
+                  <DataCompletenessWarning
+                    className="mb-4"
+                    message="Some cost rows hit the fetch limit. The cost figures for this period can show low values."
+                  />
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4" role="region" aria-label="Performance metrics">
                   <DashboardMetricCard
                     title="Your Sales (after discounts/refunds)"
-                    value={periodData ? `$${periodData.net_revenue.toFixed(0)}` : '--'}
+                    value={periodData ? currencyFormatter.format(periodData.net_revenue) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.net_revenue, previousPeriodData.net_revenue),
                       label: 'vs previous period'
@@ -764,7 +876,7 @@ const Index = () => {
                   />
                   <DashboardMetricCard
                     title="Inventory Purchases"
-                    value={inventoryPurchases ? `$${inventoryPurchases.totalPurchases.toFixed(0)}` : '--'}
+                    value={inventoryPurchases ? currencyFormatter.format(inventoryPurchases.totalPurchases) : '--'}
                     icon={Package}
                     variant="default"
                     subtitle={(() => {
@@ -779,7 +891,7 @@ const Index = () => {
                   />
                   <DashboardMetricCard
                     title="COGS"
-                    value={periodData ? `$${periodData.food_cost.toFixed(0)}` : '--'}
+                    value={periodData ? currencyFormatter.format(periodData.food_cost) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.food_cost_percentage, previousPeriodData.food_cost_percentage),
                       label: 'vs previous period'
@@ -793,7 +905,7 @@ const Index = () => {
                     title={periodData
                       ? `Labor Cost · ${periodData.labor_basis === 'accrued' ? 'Accrued' : 'Paid'}`
                       : 'Labor Cost (Wages + Payroll)'}
-                    value={periodData ? `$${periodData.labor_cost.toFixed(0)}` : '--'}
+                    value={periodData ? currencyFormatter.format(periodData.labor_cost) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.labor_cost_percentage, previousPeriodData.labor_cost_percentage),
                       label: 'vs previous period'
@@ -814,7 +926,7 @@ const Index = () => {
                     return (
                       <DashboardMetricCard
                         title="Gross Profit"
-                        value={periodData ? `$${profit.toFixed(0)}` : '--'}
+                        value={periodData ? currencyFormatter.format(profit) : '--'}
                         trend={periodData && previousPeriodData ? {
                           value: getTrendValue(profit, previousProfit),
                           label: 'vs previous period'
@@ -827,6 +939,7 @@ const Index = () => {
                         }
                         subtitle={periodData && periodData.net_revenue > 0 ? `${profitMargin.toFixed(1)}% Gross Profit Margin` : undefined}
                         periodLabel={selectedPeriod.label}
+                        caption="Before other expenses"
                       />
                     );
                   })()}
@@ -837,7 +950,7 @@ const Index = () => {
                     <div className="px-4 py-3 border-b border-border/40">
                       <p className="text-[14px] text-foreground">
                         <span className="font-medium">
-                          ${(periodData.net_revenue - periodData.food_cost - periodData.labor_cost).toFixed(0)}
+                          {currencyFormatter.format(periodData.net_revenue - periodData.food_cost - periodData.labor_cost)}
                         </span>{' '}
                         <span className="text-muted-foreground">earned after food and labor costs</span>
                         {periodData.net_revenue > 0 && (
@@ -882,12 +995,17 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-cashflow" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Cashflow Visualization - Collapsible */}
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${periodFetching ? 'opacity-60' : ''}`} aria-busy={periodFetching}>
                   <div className="flex items-center justify-between">
-                    <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
+                    <div>
+                      <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
+                      <p className="text-[12px] text-muted-foreground">Cash basis</p>
+                    </div>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={cashflowOpen ? "Collapse Cashflow" : "Expand Cashflow"}>
                         {cashflowOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -899,12 +1017,17 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-monthly-performance" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Monthly Performance Table - Collapsible */}
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
-                <div className="space-y-4">
+                <div className={`space-y-4 transition-opacity ${monthlyFetching ? 'opacity-60' : ''}`} aria-busy={monthlyFetching}>
                   <div className="flex items-center justify-between">
-                    <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
+                    <div>
+                      <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
+                      <p className="text-[12px] text-muted-foreground">Accrual basis</p>
+                    </div>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={monthlyOpen ? "Collapse Monthly Performance" : "Expand Monthly Performance"}>
                         {monthlyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -912,15 +1035,17 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                    <MonthlyBreakdownTable monthlyData={monthlyData} />
+                    {monthlyPerformanceContent}
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-revenue-mix" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Revenue Mix Section - Collapsible */}
               {!revenueLoading && revenueBreakdown && revenueBreakdown.has_categorization_data && (
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
-                  <div className="space-y-4">
+                  <div className={`space-y-4 transition-opacity ${revenueFetching ? 'opacity-60' : ''}`} aria-busy={revenueFetching}>
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-[17px] font-semibold text-foreground">Revenue Mix</h2>
@@ -972,7 +1097,7 @@ const Index = () => {
                           <p className="text-sm text-muted-foreground mb-1">
                             Discounts & Refunds
                           </p>
-                          <p className="text-[15px] font-semibold text-destructive">
+                          <p className="text-[15px] font-semibold text-destructive-strong">
                             -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
                           </p>
                           {revenueBreakdown.totals.gross_revenue > 0 && (
@@ -1089,6 +1214,8 @@ const Index = () => {
                   </div>
                 </Collapsible>
               )}
+              </section>
+              <section id="dash-banking" className="scroll-mt-32 lg:scroll-mt-24">
 
               {/* ===== BANKING SECTION ===== */}
 
@@ -1129,7 +1256,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-expenses" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Expenses Section */}
               <Collapsible open={moneyOutOpen} onOpenChange={setMoneyOutOpen}>
                 <div className="space-y-4">
@@ -1150,6 +1279,7 @@ const Index = () => {
                         startDate={selectedPeriod.from}
                         endDate={selectedPeriod.to}
                         periodLabel={selectedPeriod.label}
+                        hasConnectedBank={Boolean(connectedBanks?.length)}
                       />
                       <TopVendorsCard
                         startDate={selectedPeriod.from}
@@ -1160,7 +1290,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-labor-efficiency" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Labor Efficiency - Collapsible */}
               <Collapsible open={laborEfficiencyOpen} onOpenChange={setLaborEfficiencyOpen}>
                 <div className="space-y-4">
@@ -1177,7 +1309,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
+              <section id="dash-operations-health" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Operations Health */}
               <Collapsible open={operationsOpen} onOpenChange={setOperationsOpen}>
                 <div className="space-y-4">
@@ -1200,46 +1334,9 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+              </section>
 
-              {/* AI Operator — Pro only */}
-              {(hasFeature('ops_inbox') || hasFeature('weekly_brief')) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {hasFeature('ops_inbox') && (opsInboxCounts?.open ?? 0) > 0 && (
-                    <button
-                      onClick={() => navigate('/ops-inbox')}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
-                    >
-                      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
-                        <Inbox className="h-5 w-5 text-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-foreground">Ops Inbox</div>
-                        <div className="text-[13px] text-muted-foreground">
-                          {opsInboxCounts?.open} open item{opsInboxCounts?.open !== 1 ? 's' : ''}
-                          {(opsInboxCounts?.critical ?? 0) > 0 && (
-                            <span className="text-destructive font-medium"> ({opsInboxCounts?.critical} critical)</span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  )}
-                  {hasFeature('weekly_brief') && (
-                    <button
-                      onClick={() => navigate('/weekly-brief')}
-                      className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
-                    >
-                      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
-                        <Newspaper className="h-5 w-5 text-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-foreground">Weekly Brief</div>
-                        <div className="text-[13px] text-muted-foreground">This week's performance summary</div>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              )}
-
+              <section id="dash-quick-actions" className="scroll-mt-32 lg:scroll-mt-24">
               {/* Quick Actions */}
               <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
                 <div className="space-y-4">
@@ -1256,7 +1353,17 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
-            </>
+              </section>
+            </div>
+            {/* The aside fills the grid row height, so the sticky nav inside it can follow the page. */}
+            <aside className="hidden lg:block">
+              <DashboardSectionRail
+                sections={dashboardSections}
+                activeSectionId={activeSectionId}
+                onNavigate={handleSectionNavigate}
+              />
+            </aside>
+            </div>
           )}
         </div>
       )}

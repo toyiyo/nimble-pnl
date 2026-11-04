@@ -36,7 +36,7 @@ vi.mock('@/hooks/useLaborPnlSummary', () => ({
   useLaborPnlSummary: (restaurantId: string | null) => mockUseLaborPnlSummary(restaurantId),
 }));
 
-import { LaborPnlCard, buildLaborSparklineData } from '@/components/dashboard/LaborPnlCard';
+import { LaborPnlCard, buildLaborSparklineData, buildSparklineLabel } from '@/components/dashboard/LaborPnlCard';
 
 const sparklinePoints: FinancialPoint[] = [
   {
@@ -193,5 +193,23 @@ describe('LaborPnlCard — loaded', () => {
     mockUseLaborPnlSummary.mockReturnValue(mockHookReturn());
     renderCard();
     expect(screen.getByRole('link', { name: /open labor detail/i })).toHaveAttribute('href', '/labor');
+  });
+});
+
+describe('buildSparklineLabel', () => {
+  it('names the first and the last day with a value', () => {
+    expect(
+      buildSparklineLabel([
+        { date: '2026-09-01', laborPct: null },
+        { date: '2026-09-02', laborPct: 31 },
+        { date: '2026-09-03', laborPct: 28 },
+      ]),
+    ).toBe('Daily labor % of sales trend for 3 days: 31% on the first day with sales, 28% on the last.');
+  });
+
+  it('says so when no day has sales', () => {
+    expect(buildSparklineLabel([{ date: '2026-09-01', laborPct: null }])).toBe(
+      'Daily labor % of sales trend. No days with sales.',
+    );
   });
 });

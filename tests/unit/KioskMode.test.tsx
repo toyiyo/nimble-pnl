@@ -136,7 +136,9 @@ vi.mock('@/hooks/useEmployeeTips', () => ({
   }),
 }));
 
-vi.mock('@/utils/punchContext', () => ({
+vi.mock('@/utils/punchContext', async (importOriginal) => ({
+  // Keep the pure location helpers real so tests check the payload shape.
+  ...(await importOriginal<typeof import('@/utils/punchContext')>()),
   collectPunchContext: collectPunchContextMock,
   startPunchContext: startPunchContextMock,
   _resetPunchContextForTests: resetPunchContextMock,
@@ -475,6 +477,45 @@ describe('KioskMode — offline queue carries photoBlob argument (not state)', (
     const [, photoBlobArg] = addQueuedPunchMock.mock.calls[0];
     expect(photoBlobArg).toBe(blob);
   });
+
+  it("does NOT close a newer employee's camera dialog when an older punch queues offline late", async () => {
+    // Race: punch A releases the lock before its background mutate settles.
+    // Employee B opens the camera dialog. Then A's onError queues the punch
+    // offline. The late offline queue must not reset B's camera state.
+    const onErrorCallbacks: Array<(err: unknown) => Promise<void>> = [];
+    createPunchMutateMock.mockImplementation((_payload, opts) => {
+      if (opts?.onError) onErrorCallbacks.push(opts.onError);
+    });
+
+    render(<KioskMode />, { wrapper });
+
+    // Punch A — mutate is captured and not resolved.
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+    await screen.findByText(/Jose Delgado/);
+    await waitFor(() => {
+      expect(screen.queryByTestId('image-capture-mock')).toBeNull();
+    });
+
+    // Employee B opens the camera dialog.
+    enterPin('5678');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    expect(await screen.findByTestId('image-capture-mock')).toBeDefined();
+    imageCaptureStopMock.mockClear();
+
+    // Punch A fails while the device is offline.
+    isLikelyOfflineMock.mockReturnValue(true);
+    await act(async () => {
+      await onErrorCallbacks[0]?.(new Error('Network down'));
+    });
+
+    expect(addQueuedPunchMock).toHaveBeenCalledTimes(1);
+    // B's dialog stays open and B's camera stays on.
+    expect(screen.queryByTestId('image-capture-mock')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Confirm punch/i })).toBeDefined();
+    expect(imageCaptureStopMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('KioskMode — cache projection after optimistic punch', () => {
@@ -517,5 +558,79 @@ describe('KioskMode — cache projection after optimistic punch', () => {
     // RPC should NOT have run a second time because the projected cache value
     // (is_clocked_in: true) is fresh.
     expect(rpcMock.mock.calls.length).toBe(rpcCallsAfterFirst);
+  });
+});
+
+describe('KioskMode — punch location when the GPS read fails', () => {
+  it('sends location_unavailable when the GPS read fails', async () => {
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+
+    await waitFor(() => {
+      expect(createPunchMutateMock).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createPunchMutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ location_unavailable: true });
+  });
+
+  it('sends the coordinates without location_unavailable when the GPS read succeeds', async () => {
+    collectPunchContextMock.mockResolvedValue({
+      location: { latitude: 40.7, longitude: -74.0 },
+      device_info: 'test-agent',
+    });
+
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+
+    await waitFor(() => {
+      expect(createPunchMutateMock).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createPunchMutateMock.mock.calls[0];
+    expect(payload.location).toEqual({ latitude: 40.7, longitude: -74.0 });
+  });
+
+  it('queues location_unavailable offline when the mutate fails after a failed GPS read', async () => {
+    isLikelyOfflineMock.mockReturnValue(true);
+    let capturedOnError: ((err: unknown) => void) | null = null;
+    createPunchMutateMock.mockImplementation((_payload, opts) => {
+      capturedOnError = opts?.onError ?? null;
+    });
+
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+    await screen.findByRole('status');
+
+    await act(async () => {
+      capturedOnError?.(new Error('Network down'));
+    });
+
+    expect(addQueuedPunchMock).toHaveBeenCalledTimes(1);
+    const [queued] = addQueuedPunchMock.mock.calls[0];
+    expect(queued.location).toEqual({ location_unavailable: true });
+  });
+
+  it('reads the started GPS result before it queues a punch whose status check failed offline', async () => {
+    isLikelyOfflineMock.mockReturnValue(true);
+    // The PIN matches, then the status RPC fails before handlePunch reads
+    // the punch context. The offline queue must read it.
+    rpcMock.mockRejectedValue(new Error('Failed to fetch'));
+
+    render(<KioskMode />, { wrapper });
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+
+    await waitFor(() => {
+      expect(addQueuedPunchMock).toHaveBeenCalledTimes(1);
+    });
+    const [queued] = addQueuedPunchMock.mock.calls[0];
+    expect(queued.location).toEqual({ location_unavailable: true });
+    expect(queued.device_info).toBe('test-agent');
   });
 });

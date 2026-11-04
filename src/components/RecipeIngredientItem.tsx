@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +11,7 @@ import { Product } from '@/hooks/useProducts';
 import { RecipeConversionInfo } from './RecipeConversionInfo';
 import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
+import { computeLineCost, YIELD_REVIEW_BELOW } from '@/lib/recipeYield';
 
 interface RecipeIngredientItemProps {
   index: number;
@@ -38,8 +40,26 @@ export function RecipeIngredientItem({
   const productField = control._getWatch(`ingredients.${index}.product_id`);
   const quantityField = control._getWatch(`ingredients.${index}.quantity`);
   const unitField = control._getWatch(`ingredients.${index}.unit`);
+  const yieldOverrideField = control._getWatch(`ingredients.${index}.yield_pct_override`);
   const safeProducts = products ?? [];
   const selectedProduct = safeProducts.find(p => p.id === productField);
+
+  // Loaded (post-waste) line cost, mirroring the SQL deduction's yield math.
+  const lineCost = useMemo(() => {
+    if (!quantityField || !unitField) {
+      return null;
+    }
+    try {
+      return computeLineCost(
+        { quantity: quantityField, unit: unitField, yield_pct_override: yieldOverrideField ?? null },
+        selectedProduct
+      );
+    } catch {
+      // An incompatible or missing unit conversion throws here. The
+      // conversion warning below already reports the problem to the user.
+      return null;
+    }
+  }, [quantityField, unitField, yieldOverrideField, selectedProduct]);
   
   // Check for conversion issues
   const conversionIssue = useMemo(() => {
@@ -180,10 +200,50 @@ export function RecipeIngredientItem({
             )}
           />
           
-          <Button 
+          <FormField
+            control={control}
+            name={`ingredients.${index}.yield_pct_override`}
+            render={({ field }) => (
+              <FormItem className="w-20">
+                <FormLabel>Yield</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={50}
+                      max={100}
+                      step={1}
+                      placeholder={String(selectedProduct?.yield_pct ?? 100)}
+                      aria-label={`Yield percent for ${selectedProduct?.name ?? 'product'}`}
+                      value={field.value ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        field.onChange(raw === '' ? null : Number(raw));
+                      }}
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                      %
+                    </span>
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <div className="w-20 text-right">
+            {/* Plain Label: this value has no matching form field, so
+                FormLabel (which needs a FormField context) does not apply. */}
+            <Label className="block">Cost</Label>
+            <div className="h-10 flex items-center justify-end text-[14px] font-medium tabular-nums">
+              {lineCost ? `$${lineCost.loadedCost.toFixed(2)}` : '—'}
+            </div>
+          </div>
+
+          <Button
             type="button"
-            variant="ghost" 
-            size="icon" 
+            variant="ghost"
+            size="icon"
             className="h-10 w-10"
             onClick={onRemove}
           >
@@ -191,7 +251,31 @@ export function RecipeIngredientItem({
           </Button>
         </div>
       </div>
-      
+
+      {selectedProduct && lineCost && (
+        <div className="text-[13px] text-muted-foreground flex flex-wrap items-center gap-2">
+          {(lineCost.source === 'override' || lineCost.yieldPct !== 100) && (
+            lineCost.source === 'override' ? (
+              <span className="px-1.5 py-0.5 rounded-md bg-muted text-foreground">
+                {lineCost.yieldPct}% override · product {selectedProduct.yield_pct ?? 100}%
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                {lineCost.yieldPct}% from product
+              </span>
+            )
+          )}
+          <span>
+            Uses {lineCost.loadedQty.toFixed(2)} {unitField || 'unit'} from inventory per sale · portion ${lineCost.portionCost.toFixed(2)}
+          </span>
+          {lineCost.yieldPct < YIELD_REVIEW_BELOW && (
+            <span className="px-1.5 py-0.5 rounded-md text-warning bg-warning/10 border border-warning/30">
+              Low yield — review
+            </span>
+          )}
+        </div>
+      )}
+
       {selectedProduct && quantityField && unitField && (
         <Button
           type="button"

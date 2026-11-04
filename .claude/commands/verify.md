@@ -21,8 +21,9 @@ Run ALL verification steps and report actual output for each. Never claim "tests
 2. **Unit tests**: `npm run test`
 3. **DB tests**: `npm run test:db`
 4. **E2E tests**: `npm run test:e2e`
-5. **Lint**: `npm run lint`
-6. **Build**: `npm run build`
+5. **Typecheck**: `npm run typecheck`
+6. **Lint**: `npm run lint`
+7. **Build**: `npm run build`
 
 ## Reporting
 

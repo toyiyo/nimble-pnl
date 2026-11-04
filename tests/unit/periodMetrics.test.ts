@@ -20,6 +20,7 @@ import {
   calculateBenchmarks,
   calculatePeriodMetrics,
   redactLaborFields,
+  LABOR_CAPABILITY_REASON,
   type SaleRecord,
   type AdjustmentRecord,
   type InventoryTransactionRecord,
@@ -638,6 +639,12 @@ describe('redactLaborFields', () => {
 
   it('supplies an explicit reason when labor access is missing', () => {
     const result = redactLaborFields(metrics, false);
-    expect(result.laborOmittedReason).toMatch(/view:scheduling|view:payroll/);
+    expect(result.laborOmittedReason).toBe(LABOR_CAPABILITY_REASON);
+  });
+
+  it('uses the reason the caller gives, for example the pay-rates reason', () => {
+    const result = redactLaborFields(metrics, false, 'Pay rates are hidden for your role.');
+    expect(result.laborOmittedReason).toBe('Pay rates are hidden for your role.');
+    expect(result.costs).not.toHaveProperty('labor_cost');
   });
 });

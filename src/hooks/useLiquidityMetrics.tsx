@@ -2,6 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, addDays, subDays, parseISO } from "date-fns";
+import { fetchAllPages } from "@/lib/paginatedBankQuery";
+import { toInclusiveDayEnd } from "@/lib/dateOnly";
+import { OPEN_OUTFLOW_STATUSES, OPEN_OUTFLOW_WINDOW_DAYS, getOpenOutflowCutoff } from "@/lib/openOutflows";
 
 interface LiquidityMetrics {
   currentBalance: number;
@@ -15,7 +18,17 @@ interface LiquidityMetrics {
   burnRateTrend: number[];
   runwayStatus: 'healthy' | 'caution' | 'critical';
   recommendation: string;
+  truncated: boolean;
 }
+
+interface LiquidityTransactionRow {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  status: string;
+}
+
+export { OPEN_OUTFLOW_WINDOW_DAYS };
 
 export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
   const { selectedRestaurant } = useRestaurantContext();
@@ -58,11 +71,15 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
       const currentBalance = bankBalances?.reduce((sum, b) => sum + Number(b.current_balance), 0) || 0;
 
       // Fetch pending outflows to calculate book balance
+      // Use today, not endDate, as the cutoff. The bank balance is a current
+      // balance. The subtracted outflows need a current cutoff too.
+      const outflowCutoff = getOpenOutflowCutoff();
       const { data: pendingOutflows, error: pendingError } = await supabase
         .from('pending_outflows')
         .select('amount, status')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90']);
+        .in('status', [...OPEN_OUTFLOW_STATUSES])
+        .gte('issue_date', outflowCutoff);
 
       if (pendingError) throw pendingError;
 
@@ -71,25 +88,29 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
 
       // Fetch recent outflows for burn rate calculation
       const periodDays = differenceInDays(endDate, startDate) + 1;
-      
-      let txnQuery = supabase
-        .from('bank_transactions')
-        .select('transaction_date, amount, status')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
-        .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
 
-      // Apply bank account filter if specified
-      if (bankAccountId && bankAccountId !== 'all') {
-        txnQuery = txnQuery.eq('connected_bank_id', bankAccountId);
-      }
+      const { rows: periodTxns, truncated } = await fetchAllPages<LiquidityTransactionRow>(async (from, to) => {
+        let txnQuery = supabase
+          .from('bank_transactions')
+          .select('id, transaction_date, amount, status')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .eq('status', 'posted')
+          .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
+          .lte('transaction_date', toInclusiveDayEnd(format(endDate, 'yyyy-MM-dd')));
 
-      const { data: periodTransactions, error: periodError } = await txnQuery.order('transaction_date', { ascending: true });
+        // Apply bank account filter if specified
+        if (bankAccountId && bankAccountId !== 'all') {
+          txnQuery = txnQuery.eq('connected_bank_id', bankAccountId);
+        }
 
-      if (periodError) throw periodError;
+        // Paging stability rule: see fetchAllPages in paginatedBankQuery.ts.
+        const { data, error } = await txnQuery
+          .order('transaction_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
 
-      const periodTxns = periodTransactions || [];
+        return { data: (data ?? null) as LiquidityTransactionRow[] | null, error };
+      });
 
       // Calculate outflows and inflows for period
       const outflows = periodTxns
@@ -189,6 +210,7 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
         burnRateTrend,
         runwayStatus,
         recommendation,
+        truncated,
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

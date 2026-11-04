@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { formatExpiresIn, classifyInvitationError } from '@/lib/invitationUtils';
+import { formatExpiresIn, classifyInvitationError, readFunctionErrorBody } from '@/lib/invitationUtils';
 
 describe('formatExpiresIn', () => {
   beforeEach(() => {
@@ -60,5 +60,40 @@ describe('classifyInvitationError', () => {
     expect(classifyInvitationError('Invalid token')).toBe('invalid');
     expect(classifyInvitationError('')).toBe('invalid');
     expect(classifyInvitationError('Not found')).toBe('invalid');
+  });
+});
+
+describe('readFunctionErrorBody', () => {
+  it('returns the JSON body of a FunctionsHttpError context', async () => {
+    const error = {
+      message: 'Edge Function returned a non-2xx status code',
+      context: new Response(JSON.stringify({ success: false, code: 'account_exists', error: 'Sign in' }), {
+        status: 409,
+      }),
+    };
+    await expect(readFunctionErrorBody(error)).resolves.toEqual({
+      success: false,
+      code: 'account_exists',
+      error: 'Sign in',
+    });
+  });
+
+  it('returns null when the error has no context', async () => {
+    await expect(readFunctionErrorBody({ message: 'network' })).resolves.toBeNull();
+  });
+
+  it('returns null when the body is not JSON', async () => {
+    const error = { message: 'x', context: new Response('not json', { status: 500 }) };
+    await expect(readFunctionErrorBody(error)).resolves.toBeNull();
+  });
+
+  it('returns null for a JSON body that is not an object', async () => {
+    const error = { message: 'x', context: new Response('"text"', { status: 500 }) };
+    await expect(readFunctionErrorBody(error)).resolves.toBeNull();
+  });
+
+  it('returns null for a null or non-object error', async () => {
+    await expect(readFunctionErrorBody(null)).resolves.toBeNull();
+    await expect(readFunctionErrorBody('boom')).resolves.toBeNull();
   });
 });

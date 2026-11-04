@@ -1,7 +1,6 @@
 ---
 name: performance-reviewer
 description: Phase 7a reviewer focused on performance — N+1 queries, hot-path bloat, missing virtualization, missed concurrency, query/cache hygiene. Runs in parallel with the other Phase 7a reviewers against the current branch diff.
-subagent_type: feature-dev:code-reviewer
 ---
 
 # Performance Reviewer (Phase 7a)

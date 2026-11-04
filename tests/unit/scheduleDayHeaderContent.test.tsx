@@ -64,3 +64,15 @@ describe('ScheduleDayHeaderContent', () => {
     expect(weekday).toHaveClass('font-semibold');
   });
 });
+
+describe('ScheduleDayHeaderContent footer', () => {
+  it('renders the footer node under the date', () => {
+    render(<ScheduleDayHeaderContent day={OTHER_DAY} isToday={false} footer={<span>Labor 24%</span>} />);
+    expect(screen.getByText('Labor 24%')).toBeInTheDocument();
+  });
+
+  it('renders no footer by default', () => {
+    render(<ScheduleDayHeaderContent day={OTHER_DAY} isToday={false} />);
+    expect(screen.queryByText(/Labor/)).not.toBeInTheDocument();
+  });
+});

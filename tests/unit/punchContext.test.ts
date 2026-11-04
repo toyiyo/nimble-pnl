@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   mergePunchLocation,
+  punchContextLocation,
   getDeviceInfo,
   collectPunchContext,
   startPunchContext,
@@ -10,6 +11,12 @@ import {
 describe('mergePunchLocation', () => {
   it('returns undefined when base location is undefined', () => {
     expect(mergePunchLocation(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for geofence data with no base location and no flag', () => {
+    // The server deletes a client distance, so a distance alone is not a position.
+    const result = mergePunchLocation(undefined, { distanceMeters: 500, within: false });
+    expect(result).toBeUndefined();
   });
 
   it('returns base location without geofence when no result provided', () => {
@@ -91,6 +98,109 @@ describe('mergePunchLocation', () => {
   });
 });
 
+describe('punchContextLocation', () => {
+  it('returns the coordinates when the GPS read succeeds', () => {
+    const result = punchContextLocation({
+      location: { latitude: 40.7, longitude: -74.0 },
+      device_info: 'agent',
+    });
+    expect(result).toEqual({ latitude: 40.7, longitude: -74.0 });
+    expect(result).not.toHaveProperty('location_unavailable');
+  });
+
+  it('sets location_unavailable when the GPS read fails or times out', () => {
+    const result = punchContextLocation({ location: undefined, device_info: 'agent' });
+    expect(result).toEqual({ location_unavailable: true });
+  });
+
+  it('sets location_unavailable when no context arrives in time', () => {
+    expect(punchContextLocation(undefined)).toEqual({ location_unavailable: true });
+    expect(punchContextLocation(null)).toEqual({ location_unavailable: true });
+  });
+
+  it('merges the geofence result with the coordinates', () => {
+    const result = punchContextLocation(
+      { location: { latitude: 51.5, longitude: -0.1 }, device_info: 'agent' },
+      { distanceMeters: 500, within: false }
+    );
+    expect(result).toEqual({
+      latitude: 51.5,
+      longitude: -0.1,
+      distance_meters: 500,
+      within_geofence: false,
+    });
+  });
+
+  it('sets location_unavailable for a geofence distance with no coordinates', () => {
+    // The trigger deletes distance_meters and within_geofence, so without
+    // coordinates the stored punch has no position.
+    const result = punchContextLocation(
+      { location: undefined, device_info: 'agent' },
+      { distanceMeters: 50, within: true }
+    );
+    expect(result).toEqual({
+      distance_meters: 50,
+      within_geofence: true,
+      location_unavailable: true,
+    });
+  });
+
+  it('sends the geofence coordinates when the quick read fails', () => {
+    const result = punchContextLocation(
+      { location: undefined, device_info: 'agent' },
+      { distanceMeters: 1500, within: false, latitude: 30.28, longitude: -97.74 }
+    );
+    expect(result).toEqual({
+      latitude: 30.28,
+      longitude: -97.74,
+      distance_meters: 1500,
+      within_geofence: false,
+    });
+    expect(result).not.toHaveProperty('location_unavailable');
+  });
+
+  it('prefers the quick-read coordinates over the geofence coordinates', () => {
+    const result = punchContextLocation(
+      { location: { latitude: 40.7, longitude: -74.0 }, device_info: 'agent' },
+      { distanceMeters: 20, within: true, latitude: 40.6, longitude: -73.9 }
+    );
+    expect(result).toEqual({
+      latitude: 40.7,
+      longitude: -74.0,
+      distance_meters: 20,
+      within_geofence: true,
+    });
+  });
+
+  it('ignores geofence coordinates that are not finite numbers', () => {
+    const result = punchContextLocation(null, {
+      distanceMeters: 50,
+      within: true,
+      latitude: Number.NaN,
+      longitude: -97.74,
+    });
+    expect(result).toEqual({
+      distance_meters: 50,
+      within_geofence: true,
+      location_unavailable: true,
+    });
+    expect(result).not.toHaveProperty('latitude');
+  });
+
+  it('sets location_unavailable when the geofence check reports no position', () => {
+    const result = punchContextLocation(
+      { location: { latitude: 40.7, longitude: -74.0 }, device_info: 'agent' },
+      undefined,
+      true
+    );
+    expect(result).toEqual({
+      latitude: 40.7,
+      longitude: -74.0,
+      location_unavailable: true,
+    });
+  });
+});
+
 describe('getDeviceInfo', () => {
   it('returns a string', () => {
     const info = getDeviceInfo();
@@ -119,6 +229,22 @@ describe('collectPunchContext', () => {
   it('device_info is a string', async () => {
     const ctx = await collectPunchContext(50);
     expect(typeof ctx.device_info).toBe('string');
+  });
+
+  it('resolves to a location_unavailable punch location when the GPS read fails', async () => {
+    _resetPunchContextForTests();
+    const getCurrentPosition = vi.fn((_success: PositionCallback, error?: PositionErrorCallback) => {
+      error?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    const ctx = await collectPunchContext(50);
+
+    expect(ctx.location).toBeUndefined();
+    expect(punchContextLocation(ctx)).toEqual({ location_unavailable: true });
   });
 });
 
@@ -174,6 +300,70 @@ describe('startPunchContext', () => {
 
     expect(getCurrentPosition).toHaveBeenCalledTimes(1);
     expect(ctx.location).toEqual({ latitude: 1, longitude: 2 });
+  });
+
+  it('starts a new GPS read for the next punch flow after a failed read', async () => {
+    const getCurrentPosition = vi.fn((_success: PositionCallback, error?: PositionErrorCallback) => {
+      error?.({ code: 3, message: 'timeout' } as GeolocationPositionError);
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    const first = await startPunchContext(3000);
+    expect(first.location).toBeUndefined();
+
+    // A cached failure would flag the next employee's punch without a new read.
+    await startPunchContext(3000);
+
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+  });
+
+  it('collectPunchContext reuses a failed read of the same punch flow', async () => {
+    const getCurrentPosition = vi.fn((_success: PositionCallback, error?: PositionErrorCallback) => {
+      error?.({ code: 3, message: 'timeout' } as GeolocationPositionError);
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    await startPunchContext(3000);
+    const ctx = await collectPunchContext(3000);
+
+    expect(ctx.location).toBeUndefined();
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves with no location when getCurrentPosition throws', async () => {
+    const getCurrentPosition = vi.fn(() => {
+      throw new Error('geolocation blocked');
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    const ctx = await collectPunchContext(3000);
+
+    expect(ctx.location).toBeUndefined();
+    expect(punchContextLocation(ctx)).toEqual({ location_unavailable: true });
+  });
+
+  it('does not cache a rejection when the geolocation getter throws', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      get() {
+        throw new Error('geolocation getter blocked');
+      },
+    });
+
+    const first = await startPunchContext(3000);
+    const second = await collectPunchContext(3000);
+
+    expect(first.location).toBeUndefined();
+    expect(second.location).toBeUndefined();
   });
 
   it('returns a fresh promise after _resetPunchContextForTests', () => {

@@ -1,7 +1,7 @@
 export const meta = {
   name: 'dev-build-and-ship',
   description:
-    'Autonomous /dev Phases 4-9: build (TDD), UI review, simplify, multi-model review, verify, ship + CI loop. Launched by the development-workflow skill AFTER the user approves the plan (Phase 3). Runs in the background; stops and hands back on any needs_human gate.',
+    'Autonomous /dev Phases 4-9: build (TDD), UI review, simplify, multi-model review, verify, QA, ship + CI loop. Launched by the development-workflow skill AFTER the user approves the plan (Phase 3). Runs in the background; stops and hands back on any needs_human gate. When only CI is pending at 9e, returns status handed_to_autofix so the main session turns on the desktop app Auto-fix monitor.',
   phases: [
     { title: 'Preflight' },
     { title: 'Build' },
@@ -9,6 +9,7 @@ export const meta = {
     { title: 'Simplify' },
     { title: 'Review' },
     { title: 'Verify' },
+    { title: 'QA' },
     { title: 'Ship' },
     { title: 'CI Loop' },
     { title: 'Triage' },
@@ -37,6 +38,10 @@ export const meta = {
 //      (the runtime has no sleep primitive for script-level polling).
 //   3. Phase 9e "done" is verified via on-disk ARTIFACTS, not transcript
 //      visibility (which does not exist across fresh-context agents).
+//   4. CI that is still PENDING at 9e is not a human gate. The run returns
+//      status 'handed_to_autofix' with the PR number. The main session (not a
+//      sub-agent: the mcp__ccd_pr__* tools exist only there) then turns on the
+//      desktop app Auto-fix monitor, which watches the PR after the run ends.
 //
 // RUNAWAY-BURN HARDENING (post-mortem of run wf_da8ba6ba-5bb: 1.10M subagent
 // tokens, 59 min, zero commits — 97% of it ONE build task re-run six times).
@@ -106,6 +111,37 @@ const statusSchema = (extraProps = {}, extraRequired = []) => ({
   properties: { ...STATUS, ...extraProps },
   required: ['status', ...extraRequired],
 })
+
+// Phase 8.5 (QA) result. The same block is in both /dev workflow scripts, and
+// tests/unit/workflowQaPhase.test.ts fails if their QA prompts drift apart.
+// minorFindings go into the PR body and are never dropped.
+const QA_SCHEMA = statusSchema(
+  {
+    qaPassed: { type: 'boolean' },
+    reportPath: { type: 'string' },
+    headSha: { type: 'string', description: 'git rev-parse HEAD after QA, including any QA fix commits.' },
+    exception: { type: 'string', description: 'One sentence, only when the diff touches no file with a runtime effect.' },
+    charterRows: { type: 'number' },
+    bugsFixed: { type: 'number' },
+    minorFindings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { title: { type: 'string' }, severity: { type: 'string' }, evidence: { type: 'string' } },
+        required: ['title'],
+      },
+    },
+  },
+  ['qaPassed', 'reportPath', 'headSha', 'charterRows', 'commits'],
+)
+const qaShipSection = (qa, reportPath) =>
+  'ALSO add a "## QA" section to the PR body: the verdict, ' +
+  (qa.exception ? `the exception (${qa.exception}), ` : `${qa.charterRows} charter rows, ${qa.bugsFixed || 0} bug(s) fixed, `) +
+  `and the report path ${reportPath} (gitignored, local only). ` +
+  ((qa.minorFindings || []).length
+    ? 'List each open minor QA finding below verbatim:\n' + JSON.stringify(qa.minorFindings, null, 2) + '\n'
+    : '')
 
 // Second runaway mode, distinct from the stall retries: a wait whose exit
 // condition is unsatisfiable by construction. Observed for real — an agent left
@@ -177,7 +213,7 @@ function envelope(body, { skillRef = false } = {}) {
     `- Plan file: ${ctx.planPath}`,
     `- progress.md: ${ctx.worktreePath}/progress.md — read it for prior-phase state; update it when you finish your phase.`,
     ...(skillRef
-      ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
+      ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow/SKILL.md — consult the matching phase if you need detail.`]
       : []),
     '',
     STAGING_DISCIPLINE,
@@ -212,6 +248,10 @@ function spent() {
 // operator sees the stall signature without digging through transcripts.
 const stalls = []
 
+// The PR number, set after Ship. stop() copies it into every later stop payload
+// so the main session knows which PR to bind to the Auto-fix monitor.
+let shippedPr = null
+
 // True when this label already died inside the runtime's retry loop. A null
 // from a THROWN stall is not the same as a null from an agent that simply
 // returned nothing: the runtime has already spent six byte-identical attempts
@@ -222,7 +262,14 @@ function didCrash(label) {
 }
 
 function stop(phase, extra = {}) {
-  return { stopped: true, phase, tokensSpent: spent(), ...(stalls.length ? { stalls } : {}), ...extra }
+  return {
+    stopped: true,
+    phase,
+    tokensSpent: spent(),
+    ...(shippedPr != null ? { prNumber: shippedPr } : {}),
+    ...(stalls.length ? { stalls } : {}),
+    ...extra,
+  }
 }
 
 // Halt helper: stop the workflow cleanly when an agent needs a human or fails.
@@ -487,11 +534,11 @@ const FINDINGS = statusSchema(
 )
 
 const REVIEWERS = [
-  { key: 'security', promptFile: '.claude/agents/security-reviewer.md' },
-  { key: 'performance', promptFile: '.claude/agents/performance-reviewer.md' },
-  { key: 'maintainability', promptFile: '.claude/agents/maintainability-reviewer.md' },
-  { key: 'sound-logic', promptFile: '.claude/agents/sound-logic-reviewer.md' },
-  { key: 'ocr-rules', promptFile: '.claude/agents/ocr-rules-reviewer.md' },
+  { key: 'security', agentType: 'security-reviewer', promptFile: '.claude/agents/security-reviewer.md' },
+  { key: 'performance', agentType: 'performance-reviewer', promptFile: '.claude/agents/performance-reviewer.md' },
+  { key: 'maintainability', agentType: 'maintainability-reviewer', promptFile: '.claude/agents/maintainability-reviewer.md' },
+  { key: 'sound-logic', agentType: 'sound-logic-reviewer', promptFile: '.claude/agents/sound-logic-reviewer.md' },
+  { key: 'ocr-rules', agentType: 'ocr-rules-reviewer', promptFile: '.claude/agents/ocr-rules-reviewer.md' },
 ]
 function reviewerPrompt(d) {
   return envelope(
@@ -506,12 +553,10 @@ function reviewerPrompt(d) {
 // including the non-skippable ocr-rules reviewer, plus the best-effort Codex
 // adversarial reviewer.
 async function runReviewer(d) {
-  // ocr-rules enforces a strict rulebook (style violations included), so it must
-  // NOT run as feature-dev:code-reviewer, whose purpose is confidence-based
-  // filtering of low-priority findings — that would suppress exactly what this
-  // reviewer exists to catch. Use a faithful general-purpose reviewer for it;
-  // the judgment-based dimensions keep the bug-hunting reviewer.
-  const agentType = d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer'
+  // Each dimension runs as its registered agent type from .claude/agents/.
+  // The ocr-rules-reviewer type enforces the full rulebook without a
+  // confidence filter, so no dimension needs a general-purpose fallback.
+  const agentType = d.agentType
   // nullOnCrash: this path treats null as "reviewer produced nothing" and
   // retries exactly once, which is the bounded script-level retry the build
   // loop cannot have. But a null that came from a THROWN stall must NOT be
@@ -653,7 +698,7 @@ if (postSnap.diff && postSnap.diff.trim()) {
             'The changes below were committed AFTER the main review pass (Phase 7b/7c fixes and any late edits) and have NEVER been reviewed. Review ONLY this diff. Report findings with severity. DO NOT fix anything.\n\n' +
             '=== new commits ===\n' + postSnap.newCommits + '\n\n=== diff ===\n' + postSnap.diff,
         ),
-        { label: `re-review:${d.key}`, phase: 'Review', agentType: d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer', schema: FINDINGS },
+        { label: `re-review:${d.key}`, phase: 'Review', agentType: d.agentType, schema: FINDINGS },
         { nullOnCrash: true },
       ),
     ),
@@ -665,6 +710,12 @@ if (postSnap.diff && postSnap.diff.trim()) {
         'PHASE 7d (fold re-review). The findings below come from re-reviewing code committed AFTER the main review pass. Deduplicate by file:line. FIX actionable critical/major findings and commit ("fix(review): <area> — addresses <reviewer> re-review"). ' +
           'Fix trivially-safe minors too; return EVERY unfixed minor/info in `deferred[]` with a reason. Never discard a finding silently. ' +
           'If a fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human — do NOT improvise.\n\n' +
+          // Same pattern as ctx.foldResolutionNote in Phase 7b: a distinct note
+          // re-keys the agent cache, so resumeFromRunId re-runs a halted 7d
+          // fold instead of replaying its cached halt.
+          (ctx.reFoldResolutionNote
+            ? 'RESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.reFoldResolutionNote + '\n\n'
+            : '') +
           '=== findings JSON ===\n' + JSON.stringify(reFindings),
       ),
       { label: 're-review-fold', phase: 'Review', schema: DEFERRED },
@@ -686,15 +737,81 @@ phase('Verify')
 // exists (or is one push away) and abandoning mid-CI strands finished work in a
 // worse state than finishing it, so those phases log spend instead of halting.
 { const b = budgetHalt('Verify'); if (b) return b }
+// One prompt for Verify and for the post-QA re-verify, so both run the same suite.
+const VERIFY_PROMPT =
+  'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build. ' +
+  'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start. Return headSha from git rev-parse HEAD after your last commit.'
+const VERIFY_SCHEMA = statusSchema({ allPass: { type: 'boolean' }, headSha: { type: 'string' } }, ['allPass', 'headSha'])
+// Returns a stop payload when a Verify result does not pass, else null.
+function verifyFailure(result, phaseName, when, extra = {}) {
+  const g = gate(result, phaseName, extra)
+  if (g.halt) return g.out
+  if (!result.allPass) return stop(phaseName, { reason: `local verification did not pass ${when}`, ...extra })
+  return null
+}
 const verify = await runAgent(
   envelope(
-    'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build. ' +
-      'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.',
+    VERIFY_PROMPT +
+      // A distinct note re-keys the agent cache, so resumeFromRunId can
+      // re-run a halted Verify instead of replaying its cached halt.
+      // Same pattern as ctx.foldResolutionNote in Phase 7b.
+      (ctx.verifyResolutionNote
+        ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.verifyResolutionNote
+        : ''),
   ),
-  { label: 'verify', phase: 'Verify', schema: statusSchema({ allPass: { type: 'boolean' } }, ['allPass']) },
+  { label: 'verify', phase: 'Verify', schema: VERIFY_SCHEMA },
 )
-{ const g = gate(verify, 'Verify'); if (g.halt) return g.out }
-if (!verify.allPass) return stop('Verify', { reason: 'local verification did not pass after 5 iterations' })
+{ const f = verifyFailure(verify, 'Verify', 'after 5 iterations'); if (f) return f }
+
+// ===========================================================================
+// PHASE 8.5: QA. Verify proves the code passes the tests its author wrote. QA
+// uses the running app as a tester does and looks for what those tests miss:
+// other roles, empty and error states, mobile width, console errors, wrong
+// numbers. The method lives in .claude/skills/qa/SKILL.md, shared with /qa.
+// ===========================================================================
+phase('QA')
+{ const b = budgetHalt('QA'); if (b) return b }
+const QA_REPORT = `dev-tools/qa/qa-report-${String(ctx.branch).replace(/[^A-Za-z0-9._-]/g, '-')}.md`
+const qa = await runAgent(
+  envelope(
+    'PHASE 8.5 (QA). Read .claude/skills/qa/SKILL.md and follow it in FIX mode. ' +
+      `Acceptance source: the design doc ${ctx.designDocPath} and the plan ${ctx.planPath}. Write the report to ${QA_REPORT}. ` +
+      'Return qaPassed=true ONLY if every charter row is pass or a justified n/a AND zero critical or major bugs stay open. ' +
+      'Return headSha from git rev-parse HEAD after your last commit. List every commit SHA you made in commits (an empty list if none). List each open minor bug in minorFindings. ' +
+      'If the diff touches only docs, .claude/, .github/, or other config with no runtime effect, put the one-sentence reason in exception, write it to the report, and return qaPassed=true. A change under src/ or supabase/ is never an exception. ' +
+      'If the environment is not ready (for example .env.local does not point at local Supabase), return status=needs_human. Never run QA against production.' +
+      // Same re-key pattern as ctx.verifyResolutionNote.
+      (ctx.qaResolutionNote
+        ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.qaResolutionNote
+        : ''),
+  ),
+  { label: 'qa', phase: 'QA', schema: QA_SCHEMA },
+)
+{ const g = gate(qa, 'QA', { reportPath: QA_REPORT }); if (g.halt) return g.out }
+if (!qa.qaPassed) {
+  return stop('QA', {
+    status: 'needs_human',
+    reason: qa.reason || `QA did not pass: a charter row failed or a critical or major bug is still open. Read ${QA_REPORT}.`,
+    reportPath: QA_REPORT,
+  })
+}
+// Re-verify when QA reports commits OR when HEAD moved since Verify. The second
+// test catches a QA agent that committed a fix but did not list it, and a
+// resumed QA whose fixes landed on an earlier attempt.
+if ((qa.commits || []).length || qa.headSha !== verify.headSha) {
+  { const b = budgetHalt('QA', { reportPath: QA_REPORT }); if (b) return b }
+  const reverify = await runAgent(
+    envelope(
+      VERIFY_PROMPT +
+        `\n\nPOST-QA RE-VERIFY: Phase 8.5 (QA) changed the branch after Verify passed (commits: ${(qa.commits || []).join(', ') || 'none listed'}; HEAD ${verify.headSha || 'unknown'} -> ${qa.headSha || 'unknown'}). Run the full suite again on the current HEAD.` +
+        (ctx.postQaVerifyResolutionNote
+          ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.postQaVerifyResolutionNote
+          : ''),
+    ),
+    { label: 'verify:post-qa', phase: 'QA', schema: VERIFY_SCHEMA },
+  )
+  { const f = verifyFailure(reverify, 'QA', 'after QA fixes', { reportPath: QA_REPORT }); if (f) return f }
+}
 
 // ===========================================================================
 // PHASE 9a: Ship — push + open PR, return the PR number (load-bearing state).
@@ -707,12 +824,14 @@ const ship = await runAgent(
         ? 'ALSO add a "## Known deferred review findings" section listing each item below verbatim (file:line — severity — message — why deferred), so reviewers see what was consciously not fixed rather than it being silently dropped:\n' +
           JSON.stringify(deferredFindings, null, 2) + '\n'
         : '') +
+      qaShipSection(qa, QA_REPORT) +
       'Return the PR number as prNumber. Update progress.md with it.',
   ),
   { label: 'ship', phase: 'Ship', schema: statusSchema({ prNumber: { type: 'number' } }, ['prNumber']) },
 )
 { const g = gate(ship, 'Ship'); if (g.halt) return g.out }
 const PR = ship.prNumber
+shippedPr = PR
 
 // ===========================================================================
 // PHASE 9b: CI loop (script-level counter, max 5). Agent blocks on --watch.
@@ -725,7 +844,10 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
       `PHASE 9b (CI) iteration ${it}/5 for PR #${PR}. Run: gh pr checks ${PR} --watch (blocks until checks finish). Then run dev-tools/refresh-queue.sh --pr ${PR} --skip-tests and check the SonarCloud quality gate (poll up to 3x with 60s gaps if Sonar lags CI).\n` +
         '- If all checks pass AND the Sonar gate passes (or Sonar is unconfigured — note it), return ciGreen=true.\n' +
         '- If checks fail, fix the actionable failures, commit, push, and return ciGreen=false (we re-run).\n' +
-        '- If a review item genuinely needs human clarification, return status=needs_human with the items.',
+        '- If a review item genuinely needs human clarification, return status=needs_human with the items.' +
+        (ctx.ciResolutionNote
+          ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.ciResolutionNote
+          : ''),
     ),
     { label: `ci:${it}`, phase: 'CI Loop', schema: statusSchema({ ciGreen: { type: 'boolean' } }, ['ciGreen']) },
   )
@@ -733,7 +855,7 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
   ciGreen = ci.ciGreen
   log(`CI ${it}/5: ${ciGreen ? 'green' : 'fixed + pushed, re-watching'} (run total ~${spent()} tokens)`)
 }
-if (!ciGreen) return stop('CI Loop', { reason: 'CI not green after 5 iterations — escalating to human' })
+if (!ciGreen) return stop('CI Loop', { status: 'needs_human', reason: 'CI not green after 5 iterations — escalating to human' })
 
 // ===========================================================================
 // PHASE 9d: Review-comment triage (NON-SKIPPABLE). Writes a disk artifact.
@@ -772,7 +894,43 @@ if (triage.pushedFix) {
     { label: 'ci:post-triage', phase: 'Triage', schema: statusSchema({ ciGreen: { type: 'boolean' } }, ['ciGreen']) },
   )
   const g = gate(reCi, 'Triage'); if (g.halt) return g.out
-  if (!reCi.ciGreen) return stop('Triage', { reason: 'CI not green after triage fix push' })
+  if (!reCi.ciGreen) return stop('Triage', { status: 'needs_human', reason: 'CI not green after triage fix push' })
+}
+
+// 9e contract for CI that is still pending. dev-continue-verify-and-ship.js
+// carries the same text; tests/unit/workflowAutofixHandoff.test.ts checks that
+// the two copies match.
+const DONE_PENDING_CI_RULE =
+  'PENDING CI: if every item above holds except checks that are still pending (none failed), return status=completed, donePassed=false, ciPending=true, and name the pending checks in reason. ' +
+  'Do NOT return needs_human for pending CI. Do NOT wait for or poll pending checks: after this run the main session hands the PR to the desktop app Auto-fix monitor, which acts on the late results. ' +
+  'Set ciPending=true ONLY when pending checks are the sole unmet item; a failed check or any other unmet item means ciPending=false.'
+const DONE_GATE_PROPS = {
+  donePassed: { type: 'boolean' },
+  ciPending: {
+    type: 'boolean',
+    description: 'true only when every 9e item holds except CI checks that are still pending (none failed)',
+  },
+}
+
+// Maps the 9e result to the run status. 'handed_to_autofix' is not a blocker:
+// the main session turns on Auto-fix and reports. 'needs_human' stays for a
+// done gate that failed for any other reason.
+function doneOutcome(done, pr) {
+  if (done.donePassed) {
+    return { status: 'done', note: `PR #${pr} green AND all review comments triaged — ready for review/merge. Auto-fix keeps watching the PR after this run.` }
+  }
+  if (done.ciPending) {
+    return {
+      status: 'handed_to_autofix',
+      reason: done.reason || 'CI checks still pending at the done gate',
+      note: `PR #${pr}: every 9e item holds except pending CI. Main session: turn on the Auto-fix monitor (development-workflow step 9a.1); do not poll CI.`,
+    }
+  }
+  return {
+    status: 'needs_human',
+    reason: done.reason || 'done gate did not pass',
+    note: `PR #${pr} reached the done gate but did NOT fully pass — see reason; human attention needed.`,
+  }
 }
 
 // ===========================================================================
@@ -787,16 +945,21 @@ const done = await runAgent(
       '- SonarCloud quality gate: PASS (or explicitly note it is unconfigured).\n' +
       `- dev-tools/9d-triage-${ctx.branch}.md exists and every row is fixed / replied / classified-as-nit.\n` +
       '- dev-tools/review_queue.json: zero OPEN critical or major items.\n' +
-      'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).',
+      `- ${QA_REPORT}: exists and shows zero OPEN critical or major QA bugs (or a justified exception).\n` +
+      'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).\n' +
+      DONE_PENDING_CI_RULE,
   ),
-  { label: 'done-gate', phase: 'Done Gate', schema: statusSchema({ donePassed: { type: 'boolean' } }, ['donePassed']) },
+  { label: 'done-gate', phase: 'Done Gate', schema: statusSchema(DONE_GATE_PROPS, ['donePassed']) },
 )
 { const g = gate(done, 'Done Gate'); if (g.halt) return g.out }
+const outcome = doneOutcome(done, PR)
 
 return {
   stopped: false,
   prNumber: PR,
   done: done.donePassed,
+  status: outcome.status,
+  ...(outcome.reason ? { reason: outcome.reason } : {}),
   buildTasks: planRead.tasks.length,
   tokensSpent: spent(),
   ...(stalls.length ? { stalls } : {}),
@@ -805,7 +968,5 @@ return {
     declinedWithReply: triage.declinedWithReply || 0,
     informational: triage.informational || 0,
   },
-  note: done.donePassed
-    ? `PR #${PR} green AND all review comments triaged — ready for review/merge.`
-    : `PR #${PR} reached the done gate but did NOT fully pass — see reason; human attention needed.`,
+  note: outcome.note,
 }

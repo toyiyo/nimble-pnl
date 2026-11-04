@@ -21,6 +21,7 @@ export type RecipePrefill = Partial<{
     quantity: number;
     unit: IngredientUnit;
     notes?: string;
+    yield_pct_override?: number | null;
   }[];
 }>;
 
@@ -54,6 +55,7 @@ export const buildRecipePrefill = (
       quantity: Number(ingredient.quantity),
       unit: toIngredientUnit(ingredient.unit),
       notes: ingredient.notes || "",
+      yield_pct_override: ingredient.yield_pct_override,
     }));
   }
 

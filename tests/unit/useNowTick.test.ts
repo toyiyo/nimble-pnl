@@ -42,4 +42,17 @@ describe('useNowTick', () => {
     });
     expect(result.current).toBeGreaterThan(first);
   });
+
+  it('starts no interval and no listeners when enabled is false', () => {
+    const intervalSpy = vi.spyOn(window, 'setInterval');
+    const listenerSpy = vi.spyOn(window, 'addEventListener');
+
+    const { result } = renderHook(() => useNowTick(60_000, { enabled: false }));
+
+    expect(typeof result.current).toBe('number');
+    expect(intervalSpy).not.toHaveBeenCalled();
+    expect(listenerSpy).not.toHaveBeenCalledWith('focus', expect.any(Function));
+    intervalSpy.mockRestore();
+    listenerSpy.mockRestore();
+  });
 });

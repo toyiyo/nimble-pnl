@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -31,7 +32,7 @@ interface PublishScheduleDialogProps {
   openShiftCount: number;
   openShiftsEnabled: boolean;
   broadcastDate?: string | null;
-  onConfirm: (notes?: string) => void;
+  onConfirm: (notes: string | undefined, notify: boolean) => void;
   onNavigateToSettings?: () => void;
   isPublishing: boolean;
 }
@@ -52,9 +53,18 @@ export const PublishScheduleDialog = ({
   isPublishing,
 }: PublishScheduleDialogProps) => {
   const [notes, setNotes] = useState('');
+  const [notify, setNotify] = useState(true);
+
+  // Every time the dialog opens, it starts clean: notify checked, notes empty.
+  useEffect(() => {
+    if (open) {
+      setNotify(true);
+      setNotes('');
+    }
+  }, [open]);
 
   const handleConfirm = () => {
-    onConfirm(notes.trim() || undefined);
+    onConfirm(notes.trim() || undefined, notify);
     setNotes('');
   };
 
@@ -137,9 +147,8 @@ export const PublishScheduleDialog = ({
             <AlertDescription className="text-sm">
               <strong>Important:</strong> Once published, the schedule will be:
               <ul className="list-disc list-inside mt-2 space-y-1 text-xs">
-                <li>Locked and cannot be edited without unpublishing</li>
                 <li>Visible to all employees</li>
-                <li>Sent via push notifications to staff</li>
+                <li>Editable — a change to a published shift asks you to confirm first</li>
               </ul>
             </AlertDescription>
           </Alert>
@@ -161,6 +170,22 @@ export const PublishScheduleDialog = ({
               disabled={isPublishing}
             />
           </div>
+
+          {/* Notify Employees Checkbox */}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="publish-notify-employees"
+              checked={notify}
+              onCheckedChange={(checked) => setNotify(checked === true)}
+              disabled={isPublishing}
+            />
+            <Label
+              htmlFor="publish-notify-employees"
+              className="text-[13px] font-normal text-foreground"
+            >
+              Notify employees about this schedule
+            </Label>
+          </div>
         </div>
 
         <DialogFooter>
@@ -173,7 +198,7 @@ export const PublishScheduleDialog = ({
           */}
           <span role="status" aria-live="polite" className="sr-only">
             {isPublishing
-              ? employeeCount > 0
+              ? notify && employeeCount > 0
                 ? `Publishing. Notifying ${employeeCount} ${employeeCount === 1 ? 'employee' : 'employees'}.`
                 : 'Publishing.'
               : ''}
@@ -203,7 +228,7 @@ export const PublishScheduleDialog = ({
                 <Clock className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
                 {/* Not a live region: the sr-only one above owns the announcement. */}
                 <span>
-                  {employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
+                  {notify && employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
                 </span>
               </>
             ) : (

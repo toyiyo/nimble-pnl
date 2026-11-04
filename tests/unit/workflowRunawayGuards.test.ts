@@ -51,6 +51,7 @@ function defaultResponder(label: string) {
   if (label.startsWith('coderabbit:')) return { result: { status: 'completed', clean: true } }
   if (label === 're-review-snapshot') return { result: { status: 'completed', newCommits: '', diff: '' } }
   if (label === 'verify') return { result: { status: 'completed', allPass: true, probeAbsentFromBundle: true } }
+  if (label === 'qa') return { result: { status: 'completed', qaPassed: true, reportPath: 'dev-tools/qa/qa-report.md', commits: [] } }
   if (label === 'ship') return { result: { status: 'completed', prNumber: 42 } }
   if (label.startsWith('ci:')) return { result: { status: 'completed', ciGreen: true } }
   if (label === 'triage') return { result: { status: 'completed', openCriticalOrMajor: 0, pushedFix: false } }
@@ -253,10 +254,56 @@ describe('dev-continue-verify-and-ship: same containment', () => {
     })
 
     expect(run.result.stopped).toBe(true)
-    expect(run.result.phase).toBe('Ship')
+    // QA (Phase 8.5) is the first phase after Verify, so the ceiling bites there.
+    expect(run.result.phase).toBe('QA')
     expect(run.result.reason).toContain('Token ceiling reached')
     // Verify ran and passed, but nothing was pushed and no PR was opened.
     expect(labelsOf(run)).toEqual(['verify'])
+  })
+})
+
+/**
+ * Regression for the incomplete #695 fix. envelope() emitted TWO "PRIOR
+ * STATE:" paragraphs: the parameterized one, then a stale hardcoded one from
+ * the error-boundary branch. The stale paragraph told every agent that phases
+ * 4-7 were complete and that commit ff3776c1 resolved a Codex finding. On
+ * every other branch both claims were false. The guard: each prompt carries
+ * exactly ONE "PRIOR STATE:" line, and its text comes only from
+ * args.priorState or the claim-free fallback.
+ */
+describe('dev-continue-verify-and-ship: PRIOR STATE comes only from the caller', () => {
+  const priorStateCount = (prompt: string) => prompt.split('PRIOR STATE:').length - 1
+
+  it('emits exactly one PRIOR STATE line, carrying the supplied text', async () => {
+    const SUPPLIED = 'The human fixed the fold-gate finding in commit abc1234 on this branch.'
+    const run = await runWorkflow(CONTINUE_SCRIPT, {
+      args: { ...BASE_ARGS, priorState: SUPPLIED },
+      onAgent: responder(),
+    })
+
+    expect(run.calls.length).toBeGreaterThan(0)
+    for (const call of run.calls) {
+      expect(priorStateCount(call.prompt), String(call.label)).toBe(1)
+      expect(call.prompt, String(call.label)).toContain(SUPPLIED)
+      // The stale paragraph's landmarks, none of which may survive anywhere.
+      expect(call.prompt, String(call.label)).not.toContain('ff3776c1')
+      expect(call.prompt, String(call.label)).not.toContain('c0872b91')
+      expect(call.prompt, String(call.label)).not.toContain('RouteShellBoundary')
+      expect(call.prompt, String(call.label)).not.toContain('Phases 4-7 are COMPLETE')
+    }
+  })
+
+  it('falls back to claim-free text that sends the agent to the records', async () => {
+    const run = await runWorkflow(CONTINUE_SCRIPT, { args: BASE_ARGS, onAgent: responder() })
+
+    expect(run.calls.length).toBeGreaterThan(0)
+    for (const call of run.calls) {
+      expect(priorStateCount(call.prompt), String(call.label)).toBe(1)
+      expect(call.prompt, String(call.label)).toContain('progress.md')
+      expect(call.prompt, String(call.label)).not.toContain('ff3776c1')
+      expect(call.prompt, String(call.label)).not.toContain('RouteShellBoundary')
+      expect(call.prompt, String(call.label)).not.toContain('Phases 4-7 are COMPLETE')
+    }
   })
 })
 

@@ -21,7 +21,6 @@ import {
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { resolveLaborBasis } from '@/lib/combineCosts';
 import { format } from 'date-fns';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { useCostsFromSource } from '@/hooks/useCostsFromSource';
@@ -68,8 +67,18 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
     actualDateTo
   );
   
-  // Fetch daily cost data for trends (from source tables)
-  const { dailyCosts, isLoading: costsLoading } = useCostsFromSource(
+  // Fetch daily cost data for trends (from source tables). The period
+  // labor totals come from the same hook: the daily series is straight
+  // time, while the period totals carry overtime banding and tips. A
+  // re-sum of dailyCosts diverges from the header whenever the period
+  // holds overtime or tips.
+  const {
+    dailyCosts,
+    pendingLaborCost,
+    actualLaborCost,
+    laborBasis,
+    isLoading: costsLoading,
+  } = useCostsFromSource(
     restaurantId,
     actualDateFrom,
     actualDateTo
@@ -252,9 +261,9 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         // toward Labor Cost. Percentages are of net revenue (not of the parent,
         // which previously made pending + actual sum to ~183%).
         children: current.labor_cost > 0 ? (() => {
-          const pendingTotal = dailyCosts.reduce((sum, d) => sum + d.pending_labor_cost, 0);
-          const actualTotal = dailyCosts.reduce((sum, d) => sum + d.actual_labor_cost, 0);
-          const basis = resolveLaborBasis(pendingTotal);
+          const pendingTotal = pendingLaborCost;
+          const actualTotal = actualLaborCost;
+          const basis = laborBasis;
           const netRevenue = current.revenue;
           const pct = (v: number) => (netRevenue > 0 ? (v / netRevenue) * 100 : 0);
 
@@ -340,7 +349,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         status: current.avg_prime_cost_pct < benchmarks.industry_avg_prime_cost ? 'good' : 'warning',
       },
     ];
-  }, [periodMetrics, revenueBreakdown, dailyCosts]);
+  }, [periodMetrics, revenueBreakdown, dailyCosts, pendingLaborCost, actualLaborCost, laborBasis]);
 
   const getStatusIcon = (status?: PnLRow['status']) => {
     switch (status) {

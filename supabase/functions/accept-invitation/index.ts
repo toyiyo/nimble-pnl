@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { inviterMayInvite } from '../_shared/invitePermissions.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -76,9 +77,8 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log('Invitation found:', { 
-      id: invitation.id, 
-      email: invitation.email, 
-      role: invitation.role, 
+      id: invitation.id,
+      role: invitation.role,
       employee_id: invitation.employee_id,
       restaurant_id: invitation.restaurant_id
     });
@@ -107,6 +107,32 @@ const handler = async (req: Request): Promise<Response> => {
     // use the same case-insensitive rule.
     if (!user.email || user.email.toLowerCase() !== invitation.email.toLowerCase()) {
       throw new Error(`This invitation was sent to ${invitation.email}, but you're logged in as ${user.email}`);
+    }
+
+    // The inviter must hold a role that may invite this role. A row can carry
+    // a role its inviter could not grant: a manager could write an owner
+    // invitation through PostgREST before 20261026120200, and an inviter can
+    // lose the right after the send. This client is the service role, so no
+    // RLS or trigger checks the copy into user_restaurants below.
+    const { data: inviterMembership, error: inviterError } = await supabase
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', invitation.invited_by)
+      .eq('restaurant_id', invitation.restaurant_id)
+      .maybeSingle();
+
+    if (inviterError) {
+      console.error('Error loading the inviter membership:', inviterError);
+      throw new Error('Could not verify the invitation');
+    }
+
+    if (!inviterMayInvite(inviterMembership?.role, invitation.role)) {
+      console.warn('Rejected invitation: inviter may not invite this role', {
+        id: invitation.id,
+        role: invitation.role,
+        inviterRole: inviterMembership?.role ?? null,
+      });
+      throw new Error('This invitation is no longer valid. Ask the restaurant for a new invitation.');
     }
 
     // Check if user is already a member of this restaurant

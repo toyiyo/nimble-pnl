@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { receiptStoragePath } from "../_shared/receiptStoragePath.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -47,7 +48,7 @@ serve(async (req) => {
     // Fetch receipt details to get the file path and verify access
     const { data: receipt, error: receiptError } = await supabaseClient
       .from('receipt_imports')
-      .select('raw_file_url, file_name')
+      .select('raw_file_url, file_name, restaurant_id')
       .eq('id', receiptId)
       .single();
 
@@ -61,23 +62,15 @@ serve(async (req) => {
 
     console.log('Fetching file from storage:', receipt.raw_file_url);
 
-    // Extract just the path if raw_file_url is a full URL
-    let filePath = receipt.raw_file_url;
-    
-    // If it's a full URL, extract just the path part after the bucket name
-    if (filePath.includes('http')) {
-      // Match pattern: .../receipt-images/{path}
-      const match = filePath.match(/\/receipt-images\/(.+)$/);
-      if (match) {
-        filePath = match[1];
-        console.log('Extracted path from URL:', filePath);
-      } else {
-        console.error('Could not extract path from URL:', filePath);
-        return new Response(
-          JSON.stringify({ error: 'Invalid file URL format' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    // The download below uses the service role, so storage RLS does not apply.
+    // Serve only a file in the folder of the restaurant that owns the row.
+    const filePath = receiptStoragePath(receipt.raw_file_url, receipt.restaurant_id);
+    if (!filePath) {
+      console.error('Receipt file is not in the restaurant folder:', receipt.raw_file_url);
+      return new Response(
+        JSON.stringify({ error: 'Receipt not found or access denied' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Download file from storage using service role

@@ -34,6 +34,10 @@ export interface E2EHelperWindow extends Window {
   __supabase: SupabaseClient<Database>;
   __getAuthUser: () => Promise<{ id: string } | null>;
   __getRestaurantId: (userId?: string) => Promise<string | null>;
+  __insertEmployees: (
+    employees: Record<string, unknown>[],
+    restaurantId: string,
+  ) => Promise<Array<{ id: string; name: string }>>;
   __supabaseHelpersReady?: boolean;
 }
 
@@ -1240,4 +1244,69 @@ export async function signUpAndCreateRestaurant(
   await setSubscriptionTier(restaurantId, 'pro', 'active');
 
   return restaurantId;
+}
+
+/**
+ * Change the role of the signed-in user in their restaurant, then reload.
+ * The membership guard lets a user change their own role to 'staff' or 'kiosk'.
+ */
+export async function setUserRole(page: Page, role: string): Promise<void> {
+  await exposeSupabaseHelpers(page);
+  await page.evaluate(
+    async ({ role }) => {
+      const w = window as unknown as E2EHelperWindow;
+      const user = await w.__getAuthUser();
+      if (!user?.id) throw new Error('No user session');
+
+      const restaurantId = await w.__getRestaurantId(user.id);
+      if (!restaurantId) throw new Error('No restaurant');
+
+      const { error } = await w.__supabase
+        .from('user_restaurants')
+        .update({ role })
+        .eq('user_id', user.id)
+        .eq('restaurant_id', restaurantId);
+
+      if (error) throw new Error(`Failed to update role: ${error.message}`);
+    },
+    { role }
+  );
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+}
+
+/**
+ * Insert one active hourly employee and a kiosk PIN for that employee.
+ * Run it as an owner or manager. The PIN hash is the same as
+ * `hashString` in src/utils/kiosk.ts (SHA-256, lowercase hex).
+ */
+export async function seedEmployeeWithPin(
+  page: Page,
+  restaurantId: string,
+  name: string,
+  pin: string,
+): Promise<{ id: string; name: string }> {
+  await exposeSupabaseHelpers(page);
+  return page.evaluate(
+    async ({ restId, name, pin }) => {
+      const w = window as unknown as E2EHelperWindow;
+      const [employee] = await w.__insertEmployees(
+        [{ name, position: 'Server', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1800 }],
+        restId,
+      );
+      if (!employee?.id) throw new Error('Employee insert returned no row');
+
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+      const pinHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      const { error } = await w.__supabase
+        .from('employee_pins')
+        .insert({ restaurant_id: restId, employee_id: employee.id, pin_hash: pinHash, min_length: 4, force_reset: false });
+      if (error) throw new Error(error.message);
+
+      return { id: employee.id, name: employee.name };
+    },
+    { restId: restaurantId, name, pin },
+  );
 }

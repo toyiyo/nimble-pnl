@@ -40,7 +40,8 @@ vi.mock('@/lib/analytics', () => ({
   recordTeamMemberJoined: mockRecordTeamMemberJoined,
 }));
 
-vi.mock('@/lib/invitationUtils', () => ({
+vi.mock('@/lib/invitationUtils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/invitationUtils')>()),
   classifyInvitationError: () => 'invalid' as const,
 }));
 
@@ -299,5 +300,67 @@ describe('AcceptInvitation signup auto sign-in', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sign In & Join Team' })).toBeInTheDocument();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Signup for an email that already has an account
+// ---------------------------------------------------------------------------
+
+describe('AcceptInvitation signup for an existing account', () => {
+  function stubAccountExists() {
+    mockInvoke.mockImplementation((fn: string) => {
+      if (fn === 'validate-invitation') {
+        return Promise.resolve({ data: { success: true, invitation: INVITATION }, error: null });
+      }
+      if (fn === 'signup-with-invitation') {
+        return Promise.resolve({
+          data: null,
+          error: {
+            message: 'Edge Function returned a non-2xx status code',
+            context: new Response(
+              JSON.stringify({
+                success: false,
+                code: 'account_exists',
+                error: 'Sign in to accept this invitation.',
+              }),
+              { status: 409 },
+            ),
+          },
+        });
+      }
+      throw new Error(`unexpected function ${fn}`);
+    });
+  }
+
+  it('opens the sign-in form and tells the user to sign in', async () => {
+    mockUseAuth.mockReturnValue({ user: null, loading: false });
+    stubAccountExists();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Full Name')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Ada Invitee' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Join Team' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign In & Join Team' })).toBeInTheDocument();
+    });
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'You already have an account',
+        description: 'Sign in to accept this invitation.',
+      }),
+    );
+    // No destructive error toast for this case.
+    expect(mockToast).not.toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
+    // The page must not try the typed password against the existing account.
+    expect(mockSignInWithPassword).not.toHaveBeenCalled();
+    // The typed password does not carry into the sign-in form.
+    expect(screen.getByLabelText('Password')).toHaveValue('');
   });
 });

@@ -3569,6 +3569,15 @@
   5. Write `.env.local` from `npx supabase status -o env`, with local keys only.
   With these steps, `npm run test:db` passed 3594 of 3594, and a Playwright spec ran against local Supabase.
 
+### [2026-10-27] Read this category before you say QA cannot run in the cloud (PR #850)
+- **Mistake:** I reported QA as blocked after ECR and GHCR returned 403. The recipe above was already here. I tried `ghcr.io` (the CI value), not `docker.io`.
+- **Correction:** Four more details made the recipe work on 2026-10-27:
+  1. Docker Hub can return `429 Too Many Requests` when sibling sessions pull at the same time. Pull each image with a short backoff, then run `supabase start` again.
+  2. CLI 2.65.5 fails at "Initialising schema": its realtime image needs IPv6 (`listen_error ... :eafnosupport`), and this kernel has none. `-x realtime` does not help, because the schema step still runs that image. Use the current CLI (`npx supabase@2.122.0`).
+  3. The local edge runtime cannot load `deno.land` or `esm.sh` (DNS blocked). Run the function on the host with `npx deno@2.1.4 run` and a QA-only import map in the scratchpad. Map `std/http/server.ts` to a `Deno.serve` stand-in and `esm.sh/@supabase/supabase-js@x` to `npm:@supabase/supabase-js@x`. Route the app call with `page.route`. Delete the `supabase/functions/deno.lock` that the run creates.
+  4. Launch Chromium with `executablePath: '/opt/pw-browsers/chromium'` in the scratch spec, because the pinned Playwright build is not installed.
+- **Rule:** Before you report that a check cannot run in a cloud session, read "Cloud Sessions" in this file and try each step.
+
 ### [2026-09-30] A race between an optimistic punch and a late failure is testable in E2E (PR #833)
 - **Mistake:** The first plan omitted `npm run test:e2e`. A later draft said "a browser test cannot hold one mutate pending and then fail it". Codex flagged the missing E2E as P1.
 - **Correction:** `tests/e2e/kiosk-offline-queue-camera-race.spec.ts` holds the first `POST **/rest/v1/time_punches*` in `page.route`. It opens the dialog for the second employee, calls `context.setOffline(true)`, then `route.abort('internetdisconnected')`. The spec failed on the old code and passed with the fix. `PUNCH_INSERT_TIMEOUT_MS` (15 s) sets the maximum hold time.
@@ -3695,6 +3704,7 @@
 ### [2026-10-06] Give the full E2E run its own time in Verify (PR #844)
 - **Mistake:** Verify stopped before the full local E2E run finished. The one failure (`accountless-employee-invite.spec.ts:126`, strict mode violation on "Add Employee") was in a spec the branch does not touch.
 - **Rule:** In Verify, run the specs that cover the change first, then the full run in the background with a bound. Check a failure in an untouched spec against main CI before you act on it.
+- **Confirmed [2026-10-25] (PR #847):** The Verify agent ran the full `npx playwright test` in the foreground. It passed the 600s tool limit and ran more than 25 minutes with no result. The workflow stopped. The 4 related specs ran in 1.0m (11 passed). A resume with `verifyNotes` that limited E2E to those specs shipped the PR, and CI ran the full suite green. The Phase 8 prompt in `.claude/workflows/dev-build-and-ship.js` still says to run the full `npm run test:e2e`. Change that prompt to match this rule.
 
 ## Category: E2E / Flaky Tests (continued)
 
@@ -3704,3 +3714,32 @@
 - **Correction:** Compute the seed in `page.evaluate` as the later of `now - 30 min` and the local start of today. A per-minute simulation over one day in 4 zones gave 30 failures before the fix and 0 after.
 - **Rule:** When a spec seeds a time relative to now for a "today" view, clamp the seed to the page's range. Compute it in the browser, because the page uses the browser zone and Playwright has no `timezoneId` here. Check the fix with a per-minute simulation, not one CI run.
 - **Remaining risk:** The seed and `page.goto('/time-punches')` occur a few seconds apart. If local midnight falls between them, the page opens on the next day and the test fails. We accept that window of a few seconds. If the flake comes back, add `page.clock.setFixedTime` before the seed, so the seed and the page use one date.
+
+## Category: Development Workflow (time-off shift choice)
+
+### [2026-10-25] Check the UI gate before a design claims a second path (PR #847)
+- **Mistake:** The first design said a manager can re-approve a decided request from `DecidedHistory`. `TimeOffRow.tsx:98` shows Approve only for a pending row. The Supabase design reviewer found the false claim.
+- **Rule:** Before a design names an entry point, open the component and find the condition that shows the control. Cite the line.
+
+### [2026-10-25] Fetch fresh data before a bulk write (PR #847)
+- **Mistake:** The plan used `fetchQuery` with `staleTime: 30000` for the shift list before the approval. A cached list can miss a shift that a manager added in the last 30 seconds. That shift then stays on the schedule with no action.
+- **Correction:** CodeRabbit flagged it. The approval fetch now uses `staleTime: 0`.
+- **Rule:** When a fetch selects the rows for a write (delete, post, update), fetch with `staleTime: 0`. Keep the 30s staleTime for display only.
+
+### [2026-10-25] Catch the second step after an irreversible first step (PR #847)
+- **Mistake:** The plan approved the request, then awaited the shift action with no `catch`. If the shift action threw, the request stayed approved, the dialog stayed open, and the manager got no clear message.
+- **Correction:** The sound-logic reviewer flagged it. The flow now catches the failure, closes the dialogs, and shows a toast that says the request is approved and the shifts did not change.
+- **Rule:** In a flow that is not atomic, put a `try`/`catch` around each step after the first write. The message must name the state that remains.
+
+### [2026-10-25] Lock every action on the row during a multi-step flow (PR #847)
+- **Mistake:** The plan locked Approve during the flow but not Reject. A manager could reject the request while the approval and the shift action ran.
+- **Rule:** When a flow locks one action on a record, lock every action that changes the same record.
+
+### [2026-10-25] Show shift times in the restaurant timezone, also in a dialog (PR #847)
+- **Mistake:** The design accepted the browser timezone for the shift times as a trade-off. The plan used `format(new Date(shift.start_time), 'h:mm a')`. A manager in a different timezone saw the wrong clock times.
+- **Correction:** The review changed the dialog to take the restaurant timezone as a prop and to use `formatInstant` from `src/lib/restaurantClock.ts`.
+- **Rule:** Never accept the browser timezone for a shift time. Use `formatInstant` with the restaurant timezone in every view.
+
+### [2026-10-25] Write plan code that passes the ocr rules and SonarCloud (PR #847)
+- **Mistake:** The plan code had a nested ternary in the policy button text, a toast helper with high cognitive complexity, and props that were not read-only. Reviewers and SonarCloud sent the code back three times.
+- **Rule:** In plan code, use no nested ternaries. Split a text helper with more than 3 branches. Mark component props `Readonly<>`. Use `void` on a promise that the code does not await.

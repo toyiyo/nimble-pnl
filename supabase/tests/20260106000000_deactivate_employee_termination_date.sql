@@ -19,6 +19,13 @@ INSERT INTO restaurants (id, name) VALUES
   ('00000000-0000-0000-0000-0000000DEAC1', 'Test Restaurant Deactivation')
 ON CONFLICT (id) DO NOTHING;
 
+-- deactivate_employee requires manage:employees in the employee's restaurant
+-- (20261026120500_secure_employee_activation_rpcs.sql). The JWT caller above
+-- is an owner here.
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000DEAC1', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner', role_id = NULL;
+
 -- Create test employee
 INSERT INTO employees (
   id,

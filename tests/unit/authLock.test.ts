@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { authLock } from '@/lib/authLock';
+import { createClient } from '@supabase/supabase-js';
+
+vi.mock('@supabase/supabase-js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@supabase/supabase-js')>()),
+  createClient: vi.fn(() => ({})),
+}));
 
 type Req = {
   name: string;
@@ -312,5 +318,13 @@ describe('authLock', () => {
     await vi.advanceTimersByTimeAsync(10000);
     await p;
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('supabase client', () => {
+  it('configures the supabase client with authLock', async () => {
+    await import('@/integrations/supabase/client');
+    const options = vi.mocked(createClient).mock.calls[0][2] as { auth: { lock?: unknown } };
+    expect(options.auth.lock).toBe(authLock);
   });
 });

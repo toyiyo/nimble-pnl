@@ -58,7 +58,8 @@ export async function authLock<R>(
 
   const onLimit = async () => {
     if (finished || work) return;
-    const [previous, current] = [await lastHolder, await readHolder(locks, name)];
+    const previous: Holder = await lastHolder;
+    const current: Holder = await readHolder(locks, name);
     if (finished || work) return;
     const progressed =
       current !== QUERY_FAILED && previous !== QUERY_FAILED && current !== previous;

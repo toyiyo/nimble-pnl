@@ -101,6 +101,35 @@ describe('sendEmailResult', () => {
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
     expect(body.to).toEqual(['to@x.com']);
   });
+
+  it('sends no headers key when the caller omits the headers argument', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await sendEmailResult('key', 'from@x.com', 'to@x.com', 'Subj', '<p>hi</p>');
+
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(body).not.toHaveProperty('headers');
+  });
+
+  it('sends the headers object in the Resend body when it holds keys', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await sendEmailResult('key', 'from@x.com', 'to@x.com', 'Subj', '<p>hi</p>', {
+      'X-Entity-Ref-ID': 'abc-123',
+    });
+
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(body.headers).toEqual({ 'X-Entity-Ref-ID': 'abc-123' });
+  });
+
+  it('sends no headers key when the caller passes an empty object', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await sendEmailResult('key', 'from@x.com', 'to@x.com', 'Subj', '<p>hi</p>', {});
+
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(body).not.toHaveProperty('headers');
+  });
 });
 
 describe('sendPaced', () => {

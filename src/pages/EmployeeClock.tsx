@@ -11,8 +11,22 @@ import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTime
 import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { collectPunchContext, mergePunchLocation } from '@/utils/punchContext';
+import { collectPunchContext, punchContextLocation } from '@/utils/punchContext';
+import type { PunchGeofenceResult } from '@/utils/punchContext';
 import { useGeofenceCheck } from '@/hooks/useGeofenceCheck';
+import type { GeofenceResult } from '@/hooks/useGeofenceCheck';
+
+// Keeps the geofence position, so the punch still has coordinates when the
+// quick GPS read fails (the native geofence read uses a separate provider).
+const toPunchGeofenceResult = (result: GeofenceResult): PunchGeofenceResult | undefined =>
+  result.checked
+    ? {
+        distanceMeters: result.distanceMeters,
+        within: result.within,
+        latitude: result.userLat,
+        longitude: result.userLng,
+      }
+    : undefined;
 
 const EmployeeClock = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -22,7 +36,7 @@ const EmployeeClock = () => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | null>(null);
-  const [pendingGeofenceResult, setPendingGeofenceResult] = useState<{ distanceMeters?: number; within?: boolean } | undefined>(undefined);
+  const [pendingGeofenceResult, setPendingGeofenceResult] = useState<PunchGeofenceResult | undefined>(undefined);
   const [geofenceWarning, setGeofenceWarning] = useState<{
     type: 'outside' | 'unavailable';
     distanceMeters?: number;
@@ -146,7 +160,7 @@ const EmployeeClock = () => {
       if (geofenceResult.action === 'warn') {
         // Show confirmation dialog instead of toast
         setPendingPunchType(punchType);
-        setPendingGeofenceResult(geofenceResult.checked ? { distanceMeters: geofenceResult.distanceMeters, within: geofenceResult.within } : undefined);
+        setPendingGeofenceResult(toPunchGeofenceResult(geofenceResult));
         setPendingLocationUnavailable(false);
         setGeofenceWarning({ type: 'outside', distanceMeters: geofenceResult.distanceMeters });
         return;
@@ -161,7 +175,7 @@ const EmployeeClock = () => {
         return;
       }
 
-      setPendingGeofenceResult(geofenceResult.checked ? { distanceMeters: geofenceResult.distanceMeters, within: geofenceResult.within } : undefined);
+      setPendingGeofenceResult(toPunchGeofenceResult(geofenceResult));
       setPendingLocationUnavailable(false);
     } else {
       setPendingGeofenceResult(undefined);
@@ -245,7 +259,7 @@ const EmployeeClock = () => {
         employee_id: employee.id,
         punch_type: punchType,
         punch_time: new Date().toISOString(),
-        location: mergePunchLocation(context?.location, geofenceResult, locationUnavailable),
+        location: punchContextLocation(context, geofenceResult, locationUnavailable),
         device_info: context?.device_info,
         photoBlob,
       };
@@ -512,7 +526,11 @@ const EmployeeClock = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     {punch.photo_path && <Camera className="h-4 w-4 text-green-600" aria-label="Photo verified" />}
-                    {punch.location && <MapPin className="h-4 w-4 text-blue-600" aria-label="Location verified" />}
+                    {typeof punch.location?.latitude === 'number' ? (
+                      <MapPin className="h-4 w-4 text-blue-600" aria-label="Location verified" />
+                    ) : punch.location?.location_unavailable ? (
+                      <MapPinOff className="h-4 w-4 text-muted-foreground" aria-label="Location unavailable" />
+                    ) : null}
                   </div>
                 </div>
               ))}

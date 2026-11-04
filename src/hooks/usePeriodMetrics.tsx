@@ -59,13 +59,16 @@ export function usePeriodMetrics(
 ): {
   data: PeriodMetrics | null;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
+  capped: boolean;
   refetch: () => void;
 } {
   // Get revenue from unified_sales (correct source)
   const {
     data: revenueData,
     isLoading: revenueLoading,
+    isFetching: revenueFetching,
     refetch: refetchRevenue,
     error: revenueError,
   } = useRevenueBreakdown(
@@ -81,7 +84,9 @@ export function usePeriodMetrics(
     pendingLaborCost: pendingLaborCostRaw,
     actualLaborCost: actualLaborCostRaw,
     laborBasis,
+    capped,
     isLoading: costsLoading,
+    isFetching: costsFetching,
     refetch: refetchCosts,
     error: costsError,
   } = useCostsFromSource(restaurantId, dateFrom, dateTo);
@@ -146,7 +151,9 @@ export function usePeriodMetrics(
   return {
     data: metrics,
     isLoading: revenueLoading || costsLoading,
+    isFetching: revenueFetching || costsFetching,
     error: revenueError ?? costsError ?? null,
+    capped,
     refetch,
   };
 }

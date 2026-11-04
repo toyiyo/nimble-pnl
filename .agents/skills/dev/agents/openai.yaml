@@ -1,0 +1,7 @@
+interface:
+  display_name: "Nimble Dev Workflow"
+  short_description: "Build, review, verify, and ship safely"
+  default_prompt: "Use $dev to take this feature through the full Nimble P&L development workflow."
+
+policy:
+  allow_implicit_invocation: true

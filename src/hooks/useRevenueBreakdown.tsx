@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPassThroughItem, isTipLiability } from './utils/passThroughAdjustments';
 import type { PassThroughType } from './utils/passThroughAdjustments';
 
@@ -796,5 +797,6 @@ export function useRevenueBreakdown(
     staleTime: 300000, // 5 minutes - reduce refetch frequency
     refetchOnWindowFocus: false, // Disable automatic refetch on window focus
     refetchOnMount: false, // Disable automatic refetch on mount
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 }

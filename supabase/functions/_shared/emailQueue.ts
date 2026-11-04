@@ -97,6 +97,7 @@ export const sendEmailResult = async (
   to: string | string[],
   subject: string,
   html: string,
+  headers?: Record<string, string>,
 ): Promise<EmailSendResult> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -113,6 +114,7 @@ export const sendEmailResult = async (
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
+        ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
       }),
       signal: controller.signal,
     });

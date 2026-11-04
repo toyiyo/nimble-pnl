@@ -54,8 +54,8 @@ SELECT ok(
       jsonb_build_array(
         jsonb_build_object(
           'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
-          'start_time', '2026-04-07T09:00:00+00:00',
-          'end_time',   '2026-04-07T17:00:00+00:00',
+          'day_offset', 1, 'employee_name', 'Test', 'start_time', '09:00:00',
+          'end_time', '17:00:00',
           'break_duration', 30,
           'position', 'Server'
         )
@@ -74,15 +74,15 @@ SELECT is(
       jsonb_build_array(
         jsonb_build_object(
           'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
-          'start_time', '2026-04-08T09:00:00+00:00',
-          'end_time',   '2026-04-08T17:00:00+00:00',
+          'day_offset', 1, 'employee_name', 'Test', 'start_time', '09:00:00',
+          'end_time', '17:00:00',
           'break_duration', 30,
           'position', 'Server'
         ),
         jsonb_build_object(
           'employee_id', 'aaaaaaaa-0000-0000-0000-000000000003',
-          'start_time', '2026-04-08T10:00:00+00:00',
-          'end_time',   '2026-04-08T18:00:00+00:00',
+          'day_offset', 1, 'employee_name', 'Test', 'start_time', '10:00:00',
+          'end_time', '18:00:00',
           'break_duration', 0,
           'position', 'Cook'
         )
@@ -118,65 +118,45 @@ SELECT throws_ok(
 );
 
 -- ============================================
--- save_schedule_plan_template — 5-template limit
+-- save_schedule_plan_template — 20-template limit
 -- ============================================
 
--- Test 5: saving 3 more templates (to reach 5) succeeds
+-- Test 5: saving more templates (to reach 20) succeeds
 SELECT lives_ok(
   $$
     SELECT save_schedule_plan_template(
       'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
-      'Week 3',
+      'Week ' || (g + 2),
       jsonb_build_array(jsonb_build_object(
         'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
-        'start_time', '2026-04-09T09:00:00+00:00',
-        'end_time',   '2026-04-09T17:00:00+00:00',
-        'break_duration', 30,
-        'position', 'Server'
-      ))
-    );
-    SELECT save_schedule_plan_template(
-      'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
-      'Week 4',
-      jsonb_build_array(jsonb_build_object(
-        'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
-        'start_time', '2026-04-10T09:00:00+00:00',
-        'end_time',   '2026-04-10T17:00:00+00:00',
-        'break_duration', 30,
-        'position', 'Server'
-      ))
-    );
-    SELECT save_schedule_plan_template(
-      'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
-      'Week 5',
-      jsonb_build_array(jsonb_build_object(
-        'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
-        'start_time', '2026-04-11T09:00:00+00:00',
-        'end_time',   '2026-04-11T17:00:00+00:00',
+        'day_offset', 2, 'employee_name', 'Alice',
+        'start_time', '09:00:00',
+        'end_time',   '17:00:00',
         'break_duration', 30,
         'position', 'Server'
       ))
     )
+    FROM generate_series(1, 18) g
   $$,
-  'Saving up to 5 templates succeeds'
+  'Saving up to 20 templates succeeds'
 );
 
 -- Test 6: 6th template raises limit exception
 SELECT throws_ok(
   $$SELECT save_schedule_plan_template(
       'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
-      'Week 6',
+      'Week 21',
       jsonb_build_array(jsonb_build_object(
         'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
-        'start_time', '2026-04-12T09:00:00+00:00',
-        'end_time',   '2026-04-12T17:00:00+00:00',
+        'day_offset', 1, 'employee_name', 'Test', 'start_time', '09:00:00',
+        'end_time', '17:00:00',
         'break_duration', 30,
         'position', 'Server'
       ))
     )$$,
   'P0001',
-  'Maximum of 5 schedule templates allowed. Delete one to save a new one.',
-  'save_schedule_plan_template enforces 5-template limit'
+  'Maximum of 20 schedule templates allowed. Delete one to save a new one.',
+  'save_schedule_plan_template enforces 20-template limit'
 );
 
 -- ============================================
@@ -192,8 +172,8 @@ SELECT throws_ok(
       'Unauthorized Template',
       jsonb_build_array(jsonb_build_object(
         'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
-        'start_time', '2026-04-13T09:00:00+00:00',
-        'end_time',   '2026-04-13T17:00:00+00:00',
+        'day_offset', 1, 'employee_name', 'Test', 'start_time', '09:00:00',
+        'end_time', '17:00:00',
         'break_duration', 30,
         'position', 'Server'
       ))
@@ -402,11 +382,11 @@ SELECT lives_ok(
   'delete_schedule_plan_template happy path succeeds'
 );
 
--- Test 18: verify the row count decreased by 1 (from 5 to 4)
+-- Test 18: verify the row count decreased by 1 (from 20 to 19)
 SELECT is(
   (SELECT count(*)::integer FROM schedule_plan_templates
    WHERE restaurant_id = 'aaaaaaaa-0000-0000-0000-000000000001'),
-  4,
+  19,
   'delete_schedule_plan_template removes the template from the table'
 );
 

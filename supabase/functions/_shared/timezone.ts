@@ -49,7 +49,7 @@ export function safeTz(tz: string | null | undefined): string {
  * `tzOffsetMs` twice per timestamp, so a bulk Revel sync/backfill would
  * otherwise build thousands of identical formatters (avoidable CPU/GC in the
  * CPU-limited edge runtime). Mirrors the `_fmtCache` pattern in
- * `src/lib/splhAnalytics.ts` / `src/hooks/useHourlySalesPattern.ts`.
+ * `src/lib/splhAnalytics.ts` and the `get_hourly_sales_pattern` RPC.
  */
 const _offsetFmtCache = new Map<string, Intl.DateTimeFormat>();
 

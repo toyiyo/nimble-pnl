@@ -56,6 +56,7 @@ const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8');
 
 const TS_PATH = 'src/lib/permissions/invitations.ts';
 const DENO_PATH = 'supabase/functions/send-team-invitation/index.ts';
+const ACCEPT_PATH = 'supabase/functions/_shared/invitePermissions.ts';
 
 const MIGRATIONS_DIR = 'supabase/migrations';
 
@@ -164,6 +165,23 @@ describe('invite matrix mirror', () => {
     for (const [inviter, targets] of Object.entries(deno)) {
       expect(targets, `${inviter} (Deno) should not be able to invite kiosk`).not.toContain('kiosk');
     }
+  });
+
+  it('the accept-invitation matrix matches the TS matrix row for row', () => {
+    // The fourth copy: accept-invitation checks the inviter with it. Same
+    // rule as the SQL copy -- only the non-empty TS rows are compared.
+    const accept = parseMatrix(read(ACCEPT_PATH), ACCEPT_PATH);
+    const tsNonEmpty = Object.fromEntries(
+      Object.entries(ts).filter(([, targets]) => targets.length > 0)
+    );
+    expect(accept).toEqual(tsNonEmpty);
+  });
+
+  it('the accept-invitation custom-role inviters and literal match the TS ones', () => {
+    expect(parseCustomRoleInviters(read(ACCEPT_PATH), ACCEPT_PATH))
+      .toEqual(parseCustomRoleInviters(read(TS_PATH), TS_PATH));
+    expect(parseCustomRoleLiteral(read(ACCEPT_PATH), ACCEPT_PATH))
+      .toEqual(parseCustomRoleLiteral(read(TS_PATH), TS_PATH));
   });
 
   it('the SQL matrix matches the TS matrix row for row', () => {

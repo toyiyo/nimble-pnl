@@ -315,7 +315,7 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
       ];
 
       // Get periods directly from parseWorkPeriods
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
       const workPeriods = periods.filter(p => !p.isBreak);
       const manualSum = workPeriods.reduce((sum, p) => sum + p.hours, 0);
 

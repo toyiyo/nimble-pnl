@@ -77,9 +77,14 @@ export class LockedShiftError extends Error {
   }
 }
 
-/** Throws `LockedShiftError` if the shift is locked; no-op otherwise. */
-export function assertNotLockedClient(shift: Shift): void {
-  if (shift.locked) {
+/**
+ * Throws `LockedShiftError` if the shift is locked; no-op otherwise.
+ * Pass `allowPublished: true` to skip the check for a shift the caller has
+ * already confirmed the change against (the published-shift guard dialog).
+ * Absent or `false` keeps the assertion as the last-line backstop.
+ */
+export function assertNotLockedClient(shift: Shift, allowPublished?: boolean): void {
+  if (shift.locked && !allowPublished) {
     throw new LockedShiftError(shift.id);
   }
 }

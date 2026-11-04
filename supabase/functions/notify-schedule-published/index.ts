@@ -8,6 +8,7 @@ import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
 import { notifySchedulePublishedPush } from "../_shared/schedulePublishedPush.ts";
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 import { safeTz } from "../_shared/timezone.ts";
+import { scheduleThreadHeaders } from "../_shared/scheduleEmailThread.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -252,6 +253,10 @@ serve(async (req) => {
             </div>
           `;
 
+    // Built once, outside the loop: every recipient in one publish shares the
+    // same restaurant and week, so the thread id is the same for all of them.
+    const emailThreadHeaders = scheduleThreadHeaders(restaurantId, weekStart);
+
     // Paced rather than fanned out. Resend allows 2 requests/second and this
     // used to fire every recipient at once through Promise.allSettled, so any
     // roster past a handful started collecting 429s that nothing looked at.
@@ -265,7 +270,8 @@ serve(async (req) => {
           isRepublish
             ? `Updated Schedule: ${weekStartFormatted} - ${weekEndFormatted} at ${restaurant.name} — changes made`
             : `New Schedule Published: ${weekStartFormatted} - ${weekEndFormatted}`,
-          buildEmailHtml(employee.name)
+          buildEmailHtml(employee.name),
+          emailThreadHeaders
         ),
       { label: `schedule-published ${publicationId}` }
     );

@@ -10,6 +10,13 @@ import type { ShiftTemplate } from '@/types/scheduling';
 import { pluralize } from '@/lib/scheduling/deletionCopy';
 import { describeCascadeShortfall } from '@/lib/scheduling/hoursChangeCopy';
 
+// One shared reference for "no templates yet". `data || []` would build a
+// new array on every render while the query loads (`data` is `undefined`
+// then). A caller that re-seeds state from `templates` in a `useEffect`
+// keyed on that reference — see EmployeeDialog.tsx's default-availability
+// effect — would see a new dependency value each render and loop.
+const EMPTY_TEMPLATES: ShiftTemplate[] = [];
+
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
@@ -435,7 +442,7 @@ export function useShiftTemplates(
   });
 
   return {
-    templates: data || [],
+    templates: data || EMPTY_TEMPLATES,
     loading: isLoading,
     error,
     createTemplate: createMutation.mutateAsync,

@@ -14,6 +14,18 @@ INSERT INTO employees (id, restaurant_id, name, email, position, status, is_acti
 VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Test Employee', 'test@example.com', 'Server', 'active', true)
 ON CONFLICT (id) DO NOTHING;
 
+-- update_shift_series checks user_has_capability itself (SECURITY DEFINER,
+-- migration 20260815110000), so the calls below need an authenticated owner.
+INSERT INTO auth.users (id, email)
+VALUES ('33333333-3333-3333-3333-333333333333', 'series-ops-owner@test.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
+VALUES ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'owner')
+ON CONFLICT DO NOTHING;
+
+SELECT set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+
 -- Create a parent shift and its children for testing
 INSERT INTO shifts (id, restaurant_id, employee_id, start_time, end_time, position, status, is_recurring, recurrence_parent_id, locked)
 VALUES

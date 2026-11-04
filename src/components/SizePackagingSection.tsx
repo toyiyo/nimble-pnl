@@ -5,13 +5,24 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Package, Scale } from 'lucide-react';
+import { useProductRecipeUsageCount } from '@/hooks/useProductRecipeUsageCount';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 import { convertUnits, WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
+import { YIELD_REVIEW_BELOW } from '@/lib/recipeYield';
 
 interface SizePackagingSectionProps {
   form: any;
+  restaurantId?: string | null;
+  productId?: string | null;
 }
+
+const WASTE_REASON_SUGGESTIONS = [
+  'Trim',
+  'Breakage',
+  'Batch freezer / stone loss',
+  'Spoilage',
+];
 
 // Product-specific conversions for common ingredients
 const getProductSpecificConversions = (productName: string, sizeValue: number, sizeUnit: string) => {
@@ -48,11 +59,16 @@ const getProductSpecificConversions = (productName: string, sizeValue: number, s
   return conversions;
 };
 
-export function SizePackagingSection({ form }: SizePackagingSectionProps) {
+export function SizePackagingSection({ form, restaurantId, productId }: Readonly<SizePackagingSectionProps>) {
   const sizeValue = form.watch('size_value') || 0;
   const sizeUnit = form.watch('size_unit') || '';  // Weight unit (oz, lb, etc.)
   const purchaseUnit = form.watch('uom_purchase') || '';  // Package type (bag, case, etc.)
   const productName = form.watch('name') || '';
+  const yieldPct = form.watch('yield_pct');
+  const { count: recipeUsageCount, isLoading: recipeUsageLoading } = useProductRecipeUsageCount(
+    restaurantId ?? null,
+    productId ?? null
+  );
 
   // Calculate alternative units  
   const alternativeUnits = useMemo(() => {
@@ -284,7 +300,86 @@ export function SizePackagingSection({ form }: SizePackagingSectionProps) {
         />
 
       </div>
-      
+
+      {/* Usable yield & waste reason */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="yield_pct"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Usable yield</FormLabel>
+              <div className="relative">
+                <FormControl>
+                  <Input
+                    name={field.name}
+                    ref={field.ref}
+                    type="number"
+                    min={50}
+                    max={100}
+                    step="1"
+                    className="pr-8"
+                    value={field.value !== undefined && field.value !== null ? String(field.value) : ''}
+                    onBlur={field.onBlur}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '') {
+                        field.onChange(undefined);
+                      } else {
+                        const parsed = Number.parseFloat(value);
+                        field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                      }
+                    }}
+                  />
+                </FormControl>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Share of each unit that ends up in what you sell. 100% means no loss.
+              </p>
+              {typeof yieldPct === 'number' && yieldPct < YIELD_REVIEW_BELOW && (
+                <span className="inline-block mt-1 px-1.5 py-0.5 rounded-md text-xs text-warning bg-warning/10 border border-warning/30">
+                  Low yield — review
+                </span>
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="waste_reason"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Waste reason</FormLabel>
+              <FormControl>
+                <Input
+                  list="waste-reason-suggestions"
+                  placeholder="e.g., Trim"
+                  maxLength={120}
+                  {...field}
+                  value={field.value ?? ''}
+                />
+              </FormControl>
+              <datalist id="waste-reason-suggestions">
+                {WASTE_REASON_SUGGESTIONS.map((reason) => (
+                  <option key={reason} value={reason} />
+                ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">Optional. Pick a suggestion or type your own.</p>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+
+      {productId && !recipeUsageLoading && (
+        <p className="text-xs text-muted-foreground">
+          Used in {recipeUsageCount} {recipeUsageCount === 1 ? 'recipe' : 'recipes'}.
+        </p>
+      )}
+
       {/* Live example */}
       {sizeValue && sizeUnit && purchaseUnit && (
         <div className="p-4 bg-green-50 border-2 border-green-300 rounded-md">

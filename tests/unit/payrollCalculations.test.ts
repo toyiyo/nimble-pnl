@@ -65,7 +65,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         // Missing clock_out
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
 
       expect(periods.length).toBe(0);
       expect(incompleteShifts.length).toBe(1);
@@ -79,7 +79,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         // No prior clock_in
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
 
       expect(periods.length).toBe(0);
       expect(incompleteShifts.length).toBe(1);
@@ -93,7 +93,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-16T12:00:00Z'), // 28 hours later
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
 
       // Implementation flags this as missing_clock_out (excessive gap)
       expect(incompleteShifts.length).toBeGreaterThan(0);
@@ -107,7 +107,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-16T10:00:00Z'), // 25 hours later (>18 hour gap)
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
 
       // Should flag as incomplete due to excessive gap
       expect(incompleteShifts.length).toBeGreaterThan(0);
@@ -122,7 +122,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T17:00:00Z'),
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       expect(periods.length).toBe(1);
       expect(periods[0].startTime.toISOString()).toBe('2024-01-15T09:02:00.000Z');
@@ -135,7 +135,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T17:03:00Z'), // Duplicate within 5 min
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       expect(periods.length).toBe(1);
       expect(periods[0].endTime.toISOString()).toBe('2024-01-15T17:03:00.000Z');
@@ -149,7 +149,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T17:00:00Z'),
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       expect(periods.length).toBe(2); // Two separate shifts
     });
@@ -164,7 +164,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T17:00:00Z'),
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       const workPeriods = periods.filter(p => !p.isBreak);
       const breakPeriods = periods.filter(p => p.isBreak);
@@ -182,7 +182,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T17:00:00Z'),
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       // Should handle gracefully - may create work period before break
       const workPeriods = periods.filter(p => !p.isBreak);
@@ -196,7 +196,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T17:00:00Z'),
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       // Should handle gracefully
       expect(periods.length).toBeGreaterThanOrEqual(0);
@@ -212,7 +212,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         // Missing final clock_out
       ];
 
-      const result = calculateWorkedHoursWithAnomalies(punches);
+      const result = calculateWorkedHoursWithAnomalies(punches, 'America/Chicago');
 
       expect(result.hours).toBe(8); // Only the complete shift
       expect(result.incompleteShifts.length).toBe(1);
@@ -843,7 +843,7 @@ describe('payrollCalculations - Additional Coverage', () => {
 
     it('should handle single punch (incomplete)', () => {
       const punches = [createPunch('clock_in', '2024-01-15T09:00:00Z')];
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
 
       expect(periods.length).toBe(0);
       expect(incompleteShifts.length).toBe(1);
@@ -855,7 +855,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T09:00:30Z'), // 30 seconds
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       expect(periods.length).toBe(1);
       expect(periods[0].hours).toBeCloseTo(0.0083, 4); // ~30 seconds in hours
@@ -881,7 +881,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         createPunch('clock_out', '2024-01-15T18:00:00Z'),
       ];
 
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
 
       const workPeriods = periods.filter((p) => !p.isBreak);
       const breakPeriods = periods.filter((p) => p.isBreak);

@@ -1,40 +1,31 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
-import { TimePunch, DBTimePunch } from '@/types/timeTracking';
-import { calculateActualLaborCost } from '@/services/laborCalculations';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
-import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
-import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
+import {
+  loadPeriodLaborCost,
+  type LaborCostData,
+} from '../../supabase/functions/_shared/labor/periodLaborCost';
 
-export interface LaborCostData {
-  date: string;
-  total_labor_cost: number;
-  hourly_wages: number;
-  salary_wages: number;
-  contractor_payments: number;
-  total_hours: number;
-}
+export type { LaborCostData };
 
 export interface LaborCostsFromTimeTrackingResult {
   dailyCosts: LaborCostData[];
   totalCost: number;
+  /** Wages + per-job payments only, tips owed excluded. The labor-basis
+   * decision reads this — a period with only tips owed must not count as
+   * "has accrued labor" and hide paid (bank) labor. */
+  wageCost: number;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
   refetch: () => void;
-  /** True when the time_punches fetch hit the pagination backstop
-   * (`fetchAllRows`'s `maxPages`) — results may be truncated. */
+  /** True when any of the paged fetches (time punches, per-job payments,
+   * tip splits, tip payouts) hit the pagination backstop
+   * (`fetchAllRowsKeyset`'s `maxPages`) — results may be truncated. */
   capped: boolean;
-}
-
-interface ManualPaymentDB {
-  id: string;
-  employee_id: string;
-  date: string;
-  allocated_cost: number;
-  notes: string | null;
 }
 
 /**
@@ -72,125 +63,39 @@ export function useLaborCostsFromTimeTracking(
   // the clock. `throughNow` is in the query key so the two variants don't collide.
   const throughNow = options?.throughNow ?? false;
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['labor-costs-from-time-tracking', restaurantId, toDateOnlyString(dateFrom), toDateOnlyString(dateTo), throughNow, timezone],
-    queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; capped: boolean }> => {
+    queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; wageCost: number; capped: boolean }> => {
       if (!restaurantId) {
-        return { dailyCosts: [], totalCost: 0, capped: false };
+        return { dailyCosts: [], totalCost: 0, wageCost: 0, capped: false };
       }
 
-      // 1. Fetch time punches for the period.
-      // Look-AHEAD only (not symmetric): calculateActualLaborCost attributes
-      // hours/active-days to every day a shift touches and does NOT drop shifts
-      // whose clock-in precedes dateFrom. A look-back would pull a prior-period
-      // Sunday-night shift into Monday and overstate labor; the look-ahead still
-      // completes an in-range shift whose clock_out lands just after dateTo.
-      //
-      // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
-      // this window can span 18 weeks, and PostgREST caps an unpaginated
-      // response at 1,000 rows — silently dropping the newest punches (the
-      // query orders `punch_time asc`) once a restaurant crosses that
-      // threshold. The `.order('id')` tiebreaker makes each page boundary
-      // deterministic when multiple punches share a `punch_time`.
-      const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-      const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
-        supabase
-          .from('time_punches')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .gte('punch_time', fetchStart.toISOString())
-          .lte('punch_time', fetchEnd.toISOString())
-          .order('punch_time', { ascending: true })
-          .order('id')
-          .range(from, to),
-      );
-
-      // 2. Fetch per-job contractor payments (source records only)
-      const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
-        .from('daily_labor_allocations')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('source', 'per-job') // Only per-job source records, not auto-generated
-        .gte('date', toDateOnlyString(dateFrom))
-        .lte('date', toDateOnlyString(dateTo));
-
-      if (manualPaymentsError) throw manualPaymentsError;
-
-      // 3. Convert database punches to TimePunch type
-      const typedPunches: TimePunch[] = (punches || []).map((punch: DBTimePunch) => ({
-        ...punch,
-        punch_type: punch.punch_type as TimePunch['punch_type'],
-        location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location
-          ? punch.location as { latitude: number; longitude: number }
-          : undefined,
-      }));
-
-      // 3b. For a live view, close still-open shifts at "now" so in-progress
-      // hours count (parseWorkPeriods otherwise drops an un-clocked-out shift).
-      const punchesForCost = throughNow
-        ? appendOpenShiftClockOuts(typedPunches, new Date())
-        : typedPunches;
-
-      // 4. Use calculateActualLaborCost from laborCalculations.ts (same as payroll)
-      // This ensures Dashboard and Payroll use identical calculation logic
-      const { dailyCosts: laborDailyCosts } = calculateActualLaborCost(
+      // The loader works on whole restaurant days. dateFrom / dateTo are
+      // calendar-day tokens: their local fields name the days (the same
+      // strings as the query key). `now` is a real instant, read here.
+      const { dailyCosts, totalCost, wageCost, capped } = await loadPeriodLaborCost(supabase, {
+        restaurantId,
+        startDay: toDateOnlyString(dateFrom),
+        endDay: toDateOnlyString(dateTo),
+        timeZone: timezone,
         employees,
-        punchesForCost,
-        dateFrom,
-        dateTo,
-        timezone
-      );
-
-      // 5. Add per-job contractor payments to the daily costs
-      // (these are manual payments not included in the time-punch-based calculation)
-      const dateMap = new Map<string, LaborCostData>();
-      
-      // Convert laborCalculations format to our format
-      laborDailyCosts.forEach(day => {
-        dateMap.set(day.date, {
-          date: day.date,
-          total_labor_cost: day.total_cost,
-          hourly_wages: day.hourly_cost,
-          salary_wages: day.salary_cost,
-          contractor_payments: day.contractor_cost,
-          total_hours: day.hours_worked,
-        });
+        throughNow,
+        now: new Date(),
       });
-
-      // Add per-job contractor payments
-      (manualPaymentsData || []).forEach((payment: ManualPaymentDB) => {
-        const dayData = dateMap.get(payment.date);
-        if (dayData) {
-          const paymentDollars = payment.allocated_cost / 100; // Convert cents to dollars
-          dayData.contractor_payments += paymentDollars;
-          dayData.total_labor_cost += paymentDollars;
-        } else {
-          // Create entry for this date if it doesn't exist (edge case: payment outside period)
-          dateMap.set(payment.date, {
-            date: payment.date,
-            total_labor_cost: payment.allocated_cost / 100,
-            hourly_wages: 0,
-            salary_wages: 0,
-            contractor_payments: payment.allocated_cost / 100,
-            total_hours: 0,
-          });
-        }
-      });
-
-      const dailyCosts = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-      const totalCost = dailyCosts.reduce((sum, day) => sum + day.total_labor_cost, 0);
-
-      return { dailyCosts, totalCost, capped };
+      return { dailyCosts, totalCost, wageCost, capped };
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
+    wageCost: data?.wageCost || 0,
     isLoading,
+    isFetching,
     error,
     refetch: () => { refetch(); },
     capped: data?.capped ?? false,

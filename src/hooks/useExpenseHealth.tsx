@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, parseISO } from "date-fns";
 import { isTransferCategoryType } from "@/lib/chartOfAccountsUtils";
+import { fetchAllPages } from "@/lib/paginatedBankQuery";
+import { toInclusiveDayEnd } from "@/lib/dateOnly";
 
 // Processing fee detection patterns
 const PROCESSING_FEE_PATTERNS = [
@@ -30,6 +32,23 @@ export interface ExpenseHealthMetrics {
   cashCoverageBeforePayroll: number; // multiplier (e.g., 1.5x)
   uncategorizedSpendPercentage: number;
   uncategorizedSpendTarget: number;
+  truncated: boolean;
+}
+
+interface ExpenseTransactionRow {
+  id: string;
+  transaction_date: string;
+  amount: number;
+  status: string;
+  description: string | null;
+  merchant_name: string | null;
+  category_id: string | null;
+  is_split: boolean;
+  chart_of_accounts: {
+    account_name: string | null;
+    account_subtype: string | null;
+    account_type: string | null;
+  } | null;
 }
 
 export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
@@ -47,23 +66,28 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
       // isTransferCategoryType filter additionally drops rows whose category
       // type is asset/liability/equity (e.g. "Transfer Clearing Account"),
       // which categorize_bank_transaction does not flag as is_transfer.
-      let txQuery = supabase
-        .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, category_id, is_split, chart_of_accounts!category_id(account_name, account_subtype, account_type)')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .in('status', ['posted', 'pending'])
-        .eq('is_transfer', false)
-        .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
+      const { rows: txns, truncated } = await fetchAllPages<ExpenseTransactionRow>(async (from, to) => {
+        let txQuery = supabase
+          .from('bank_transactions')
+          .select('id, transaction_date, amount, status, description, merchant_name, category_id, is_split, chart_of_accounts!category_id(account_name, account_subtype, account_type)')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .in('status', ['posted', 'pending'])
+          .eq('is_transfer', false)
+          .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
+          .lte('transaction_date', toInclusiveDayEnd(format(endDate, 'yyyy-MM-dd')));
 
-      if (bankAccountId && bankAccountId !== 'all') {
-        txQuery = txQuery.eq('connected_bank_id', bankAccountId);
-      }
+        if (bankAccountId && bankAccountId !== 'all') {
+          txQuery = txQuery.eq('connected_bank_id', bankAccountId);
+        }
 
-      const { data: transactions, error: txError } = await txQuery;
-      if (txError) throw txError;
+        // Paging stability rule: see fetchAllPages in paginatedBankQuery.ts.
+        const { data, error } = await txQuery
+          .order('transaction_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
 
-      const txns = transactions || [];
+        return { data: (data ?? null) as ExpenseTransactionRow[] | null, error };
+      });
 
       // Drop rows whose category's account_type is asset/liability/equity
       // (e.g. Transfer Clearing Account). These are not P&L events and must
@@ -164,6 +188,7 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
         cashCoverageBeforePayroll,
         uncategorizedSpendPercentage,
         uncategorizedSpendTarget,
+        truncated,
       };
     },
     enabled: !!selectedRestaurant?.restaurant_id,

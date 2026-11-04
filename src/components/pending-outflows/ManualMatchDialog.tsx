@@ -131,6 +131,14 @@ export function ManualMatchDialog({
       .filter(t => {
         if (t.amount >= 0) return false;
 
+        // A transfer, an excluded row, or a split parent must never get a
+        // single-category journal entry — the bulk categorize RPC skips
+        // all three for the same reason (see
+        // supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql).
+        // A split parent's ledger lives in bank_transaction_splits, one row
+        // per allocation; a transfer or excluded row must not enter P&L.
+        if (t.is_transfer || t.is_split || t.excluded_reason) return false;
+
         if (!searchLower) return true;
 
         const textMatch =
@@ -180,10 +188,16 @@ export function ManualMatchDialog({
   async function handleConfirm(): Promise<void> {
     if (!selectedTransactionId) return;
 
-    await confirmMatch.mutateAsync({
-      pendingOutflowId: pendingOutflow.id,
-      bankTransactionId: selectedTransactionId,
-    });
+    try {
+      await confirmMatch.mutateAsync({
+        pendingOutflowId: pendingOutflow.id,
+        bankTransactionId: selectedTransactionId,
+      });
+    } catch {
+      // The mutation's onError already shows a toast. Keep the dialog
+      // open so the user can retry or pick a different transaction.
+      return;
+    }
 
     onClose();
   }

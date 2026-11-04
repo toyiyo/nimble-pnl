@@ -27,9 +27,10 @@ vi.mock('@/contexts/RestaurantContext', () => ({
   }),
 }));
 
-// --- Mock the Supabase client query builder ---
+// --- Mock the Supabase client: `rpc` for the hourly-sales pattern, `from`
+// only for the (unrelated) time-punches query. ---
 const { mockSupabase } = vi.hoisted(() => ({
-  mockSupabase: { from: vi.fn() },
+  mockSupabase: { from: vi.fn(), rpc: vi.fn() },
 }));
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
@@ -37,20 +38,10 @@ vi.mock('@/integrations/supabase/client', () => ({
 
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 
-const PAGE_SIZE = 1000;
-
-// A Friday — its day-of-week (5) is the only one in weekDays, so ONLY sales
-// landing on this DOW ever aggregate into daySuggestions/hasHourlyBreakdown.
 const FRIDAY = '2026-07-24';
-// A Wednesday (DOW 3), deliberately NOT in weekDays — page-1 filler rows land
-// here so they can never account for hasHourlyBreakdown being true.
-const WEDNESDAY = '2026-07-01';
-
-let salesRangeCalls: Array<[number, number]>;
 
 type QueryResult = { data: unknown; error: unknown };
 type MockBuilder = {
-  __range?: [number, number];
   then: (
     onFulfilled: (value: QueryResult) => unknown,
     onRejected?: (reason: unknown) => unknown,
@@ -58,62 +49,26 @@ type MockBuilder = {
   [method: string]: unknown;
 };
 
-// Chainable builder: every method returns the builder; awaiting resolves via
-// `resolver`. `.range` offsets are captured (per table) for assertions.
-function makeBuilder(
-  resolver: (b: MockBuilder) => QueryResult,
-  rangeSink?: Array<[number, number]>,
-) {
+function makeBuilder(resolver: () => QueryResult) {
   const builder = {} as MockBuilder;
-  for (const m of ['select', 'eq', 'is', 'gte', 'lte', 'in', 'order']) {
+  for (const m of ['select', 'eq', 'is', 'gte', 'lte', 'in', 'order', 'range']) {
     builder[m] = vi.fn(() => builder);
   }
-  builder.range = vi.fn((from: number, to: number) => {
-    builder.__range = [from, to];
-    rangeSink?.push([from, to]);
-    return builder;
-  });
   builder.then = (onFulfilled, onRejected) =>
-    Promise.resolve(resolver(builder)).then(onFulfilled, onRejected);
+    Promise.resolve(resolver()).then(onFulfilled, onRejected);
   return builder;
 }
 
-function saleRow(id: number, sale_date: string) {
-  return {
-    sale_date,
-    sale_time: '18:00:00',
-    sold_at: null,
-    total_price: 100,
-    id: `s-${id}`,
-    created_at: '2026-07-01T18:00:00Z',
-  };
-}
-
-// unified_sales: page 0 is a FULL page of Wednesday filler (forces a second
-// fetch); page 1 holds the lone Friday sale. A non-paginated query stops after
-// page 0 and drops Friday entirely — reproducing the "No sales history" bug.
-function salesPageFor(from: number) {
-  if (from === 0) {
-    return Array.from({ length: PAGE_SIZE }, (_, i) => saleRow(i, WEDNESDAY));
-  }
-  if (from === PAGE_SIZE) {
-    return [saleRow(PAGE_SIZE, FRIDAY)];
-  }
-  return [];
-}
-
 function setup() {
-  salesRangeCalls = [];
-  mockSupabase.from.mockImplementation((table: string) => {
-    if (table === 'unified_sales') {
-      return makeBuilder((b) => {
-        const [from] = b.__range as [number, number];
-        return { data: salesPageFor(from), error: null };
-      }, salesRangeCalls);
-    }
-    // time_punches (unused by these assertions): always an empty page.
-    return makeBuilder(() => ({ data: [], error: null }));
+  mockSupabase.rpc.mockResolvedValue({
+    data: {
+      total_sales: 100,
+      days: [{ day_of_week: 5, has_hourly_breakdown: true, slots: [{ start_minute: 1080, sales: 100, sample_count: 1 }] }],
+    },
+    error: null,
   });
+  // time_punches (unused by these assertions): always an empty page.
+  mockSupabase.from.mockImplementation(() => makeBuilder(() => ({ data: [], error: null })));
 }
 
 const createWrapper = () => {
@@ -124,12 +79,12 @@ const createWrapper = () => {
     React.createElement(QueryClientProvider, { client: queryClient }, children);
 };
 
-describe('useWeekStaffingSuggestions sales pagination', () => {
+describe('useWeekStaffingSuggestions hourly sales source', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('pages past the first 1000 rows so recent days are not dropped', async () => {
+  it('calls get_hourly_sales_pattern once and never queries unified_sales directly', async () => {
     setup();
 
     const { result } = renderHook(
@@ -139,40 +94,15 @@ describe('useWeekStaffingSuggestions sales pagination', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    // The second page must be fetched at offset 1000, not left truncated.
-    expect(salesRangeCalls[0]).toEqual([0, PAGE_SIZE - 1]);
-    expect(salesRangeCalls[1]).toEqual([PAGE_SIZE, PAGE_SIZE * 2 - 1]);
+    expect(mockSupabase.rpc).toHaveBeenCalledTimes(1);
+    expect(mockSupabase.rpc).toHaveBeenCalledWith(
+      'get_hourly_sales_pattern',
+      expect.objectContaining({ p_restaurant_id: 'rest-1', p_interval_minutes: 60, p_view: 'weekday' }),
+    );
+    expect(mockSupabase.from).not.toHaveBeenCalledWith('unified_sales');
 
-    // Friday's only sale lives in page 2. If pagination stopped after page 1,
-    // this DOW would aggregate to nothing and hasHourlyBreakdown stays false.
     expect(result.current.hasHourlyBreakdown).toBe(true);
     const friday = result.current.daySuggestions.get(FRIDAY);
     expect(friday?.recommendations.some((r) => (r.projectedSales ?? 0) > 0)).toBe(true);
-  });
-
-  it('stops paging when a page is short (no dead-end extra fetch)', async () => {
-    // First page short → no second range call.
-    salesRangeCalls = [];
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'unified_sales') {
-        return makeBuilder((b) => {
-          const [from] = b.__range as [number, number];
-          return {
-            data: from === 0 ? [saleRow(0, FRIDAY)] : [],
-            error: null,
-          };
-        }, salesRangeCalls);
-      }
-      return makeBuilder(() => ({ data: [], error: null }));
-    });
-
-    const { result } = renderHook(
-      () => useWeekStaffingSuggestions('rest-1', [FRIDAY], null),
-      { wrapper: createWrapper() },
-    );
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(salesRangeCalls).toHaveLength(1);
-    expect(salesRangeCalls[0]).toEqual([0, PAGE_SIZE - 1]);
   });
 });

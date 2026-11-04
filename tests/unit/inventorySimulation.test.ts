@@ -745,5 +745,71 @@ describe('Async Supabase Functions', () => {
       );
       expect(result.total_cost).toBeCloseTo(ingredientCosts, 2);
     });
+
+    it('applies the effective yield pct to the deduction (SQL parity)', async () => {
+      // Mirrors process_unified_inventory_deduction: the loaded quantity is
+      // quantity * quantitySold / (effective_yield_pct / 100.0).
+      // A 90% yield_pct must raise both the deducted quantity and the cost
+      // above the 100%-yield baseline by the same 100/90 factor.
+      const baseIngredient = {
+        product_id: 'prod-1',
+        quantity: 2,
+        unit: 'oz',
+        product: {
+          id: 'prod-1',
+          name: 'Ground Beef',
+          current_stock: 100,
+          cost_per_unit: 10,
+          uom_purchase: 'lb',
+          uom_recipe: 'oz',
+          size_value: null,
+          size_unit: null,
+        },
+      };
+
+      const buildMock = (recipe: unknown) => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: recipe, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      supabaseMock.mockReturnValueOnce(
+        buildMock({
+          id: 'recipe-100',
+          name: 'Baseline Recipe',
+          pos_item_name: 'Baseline',
+          ingredients: [baseIngredient],
+        })
+      );
+      const baseline = await simulateDeductionClientSide('restaurant-1', 'Baseline', 1);
+
+      supabaseMock.mockReturnValueOnce(
+        buildMock({
+          id: 'recipe-90',
+          name: 'Low Yield Recipe',
+          pos_item_name: 'LowYield',
+          ingredients: [
+            {
+              ...baseIngredient,
+              product: { ...baseIngredient.product, yield_pct: 90 },
+            },
+          ],
+        })
+      );
+      const lowYield = await simulateDeductionClientSide('restaurant-1', 'LowYield', 1);
+
+      const expectedFactor = 100 / 90;
+      expect(lowYield.ingredients_deducted[0].quantity_purchase_units).toBeCloseTo(
+        baseline.ingredients_deducted[0].quantity_purchase_units * expectedFactor,
+        6
+      );
+      expect(lowYield.total_cost).toBeCloseTo(baseline.total_cost * expectedFactor, 6);
+    });
   });
 });

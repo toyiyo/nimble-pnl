@@ -67,6 +67,7 @@ const mockTxns = [
 ];
 
 const txEqSpy = vi.fn();
+const txOrderSpy = vi.fn();
 
 function makeTxBuilder() {
   const builder: Record<string, unknown> = {};
@@ -79,7 +80,13 @@ function makeTxBuilder() {
   builder.in = vi.fn(passthrough);
   builder.gte = vi.fn(passthrough);
   builder.lte = vi.fn(passthrough);
-  // Make builder thenable so `await txQuery` resolves
+  builder.order = vi.fn((...args: unknown[]) => {
+    txOrderSpy(...args);
+    return builder;
+  });
+  builder.range = vi.fn(passthrough);
+  // Make builder thenable so `await txQuery...range(from, to)` resolves.
+  // 4 rows is under PAGE_SIZE, so fetchAllPages stops after one page.
   (builder as { then: (cb: (v: unknown) => unknown) => unknown }).then = (cb) =>
     cb({ data: mockTxns, error: null });
   return builder;
@@ -125,6 +132,19 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('useExpenseHealth', () => {
   beforeEach(() => {
     txEqSpy.mockClear();
+    txOrderSpy.mockClear();
+  });
+
+  it('orders by transaction_date and id for a stable page order', async () => {
+    renderHook(
+      () => useExpenseHealth(new Date('2026-04-01'), new Date('2026-04-30')),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(txOrderSpy).toHaveBeenCalledWith('transaction_date', { ascending: true });
+      expect(txOrderSpy).toHaveBeenCalledWith('id', { ascending: true });
+    });
   });
 
   it('applies is_transfer = false in the query', async () => {

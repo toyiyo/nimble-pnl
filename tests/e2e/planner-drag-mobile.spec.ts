@@ -48,12 +48,12 @@ test.describe('Planner mobile tap-to-assign', () => {
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 8000 });
 
-    // Navigate to Planner tab — find the tab with the grid icon (last tab)
-    const tabs = page.locator('[role="tablist"] button');
-    await expect(tabs.first()).toBeVisible({ timeout: 10000 });
-    const tabCount = await tabs.count();
-    // Planner tab is typically the last one
-    await tabs.nth(tabCount - 1).click();
+    // Navigate to the Planner tab by its accessible name. On mobile the tab
+    // labels are icon-only, but the trigger keeps aria-label="Planner".
+    // (It is no longer the last tab: Week Templates follows it.)
+    const plannerTab = page.getByRole('tab', { name: 'Planner' });
+    await expect(plannerTab).toBeVisible({ timeout: 10000 });
+    await plannerTab.click();
     await page.waitForTimeout(1500);
 
     // Look for the floating Team button

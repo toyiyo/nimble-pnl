@@ -33,3 +33,11 @@ export const TIME_OFF_ACTION_TYPE: Record<'created' | 'approved' | 'rejected', N
   approved: 'time_off_approved',
   rejected: 'time_off_rejected',
 };
+
+// The shift-trade-reminders worker (design B3). `employee` covers the 72h,
+// 24h and 6h stages (push only). `unclaimed` covers the scheduler and poster
+// stage (email and push).
+export const TRADE_REMINDER_TYPE: Record<'employee' | 'unclaimed', NotificationType> = {
+  employee: 'shift_trade_reminder',
+  unclaimed: 'shift_trade_unclaimed',
+};

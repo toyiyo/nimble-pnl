@@ -1,13 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useFeatureFlagEnabled } from 'posthog-js/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useMyShifts } from '@/hooks/useShifts';
-import { useWeekScheduleStatus, useWeekRetractionReason } from '@/hooks/useSchedulePublish';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
 import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
@@ -20,6 +17,16 @@ import {
   ScheduleUpdatedPill,
   ShiftRow,
 } from '@/components/employee';
+import { NextShiftCard } from '@/components/employee/NextShiftCard';
+import { UpForGrabsCard } from '@/components/employee/UpForGrabsCard';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useMyShifts } from '@/hooks/useShifts';
+import { useWeekScheduleStatus } from '@/hooks/useSchedulePublish';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { useRestaurantPublishes } from '@/hooks/useRestaurantPublishes';
+import { useClaimableTrades } from '@/hooks/useClaimableTrades';
+import { useOpenShifts } from '@/hooks/useOpenShifts';
 import {
   Clock,
   ChevronLeft,
@@ -30,39 +37,98 @@ import {
 } from 'lucide-react';
 import {
   format,
-  startOfWeek,
   endOfWeek,
   subWeeks,
   addWeeks,
+  addDays,
+  subDays,
   eachDayOfInterval,
-  parseISO,
-  isToday,
   differenceInMinutes,
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
-import { safeTz } from '@/lib/restaurantClock';
-import { formatLocalDate } from '@/lib/shiftInterval';
+import { toBusinessDay, businessDayRangeToInstants } from '@/lib/restaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { formatLocalDate, wallClockToInstant, formatLocalDateInTz } from '@/lib/shiftInterval';
+import { useNowTick } from '@/hooks/useNowTick';
+import { useMarketplaceRange } from '@/hooks/useMarketplaceRange';
 import {
   computeScheduleFingerprint,
   hasScheduleChangedSinceSeen,
   readSeenFingerprint,
   writeSeenFingerprint,
 } from '@/lib/scheduleSeenFingerprint';
+import { getRelativeWeekLabel, getRestaurantWeekStart } from '@/lib/scheduleWeek';
+import { selectUpcomingShifts, countShiftsInWeek } from '@/lib/nextShift';
+import { shouldShowUpForGrabs } from '@/lib/claimableTrades';
+import { MARKETPLACE_PATH } from '@/lib/tradeDeepLink';
 import { Shift } from '@/types/scheduling';
 
 const EmployeeSchedule = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
+  // The restaurant's clock, never the host browser's. Two questions on this
+  // page are calendar-day questions -- "which day column does this shift belong
+  // to" and "which day is today" -- and only the restaurant's calendar answers
+  // them. An employee who opens the page from another zone (travel, a remote
+  // manager, a phone that never left the last airport) otherwise reads a
+  // different week than the one the restaurant published.
+  const clock = useRestaurantClock();
+  const restaurantTimezone = clock.tz;
+  const restaurantToday = clock.today;
+
+  // One key for the whole page treatment. `useFeatureFlagEnabled` returns
+  // `undefined` when PostHog is unconfigured, so compare to `true`. The
+  // default is the current page.
+  const showClarity = useFeatureFlagEnabled('employee_schedule_clarity') === true;
+
+  // The week itself must start from the restaurant's calendar day, not the
+  // host's. `getRestaurantWeekStart` reads `new Date()` in the restaurant
+  // timezone, so the anchor names the restaurant's week. A host anchor could
+  // disagree near a week boundary (host America/Phoenix, restaurant
+  // Pacific/Auckland is ~19-20h apart), and a shift for the restaurant's
+  // actual current day would match no column and vanish from the grid.
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    getRestaurantWeekStart(new Date(), restaurantTimezone)
   );
   const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
   const pageHeaderRef = useRef<HTMLDivElement>(null);
   const [selectedShiftForTrade, setSelectedShiftForTrade] = useState<Shift | null>(null);
 
+  // `restaurantTimezone` starts at `DEFAULT_TIMEZONE` (see `safeTz`) while
+  // `selectedRestaurant` is still loading, so the lazy initializer above can
+  // compute `currentWeekStart` from the wrong clock. Once the real timezone
+  // arrives, resync -- unless the employee already navigated to a different
+  // week on purpose, which the ref below tracks.
+  const hasNavigatedRef = useRef(false);
+  const restaurantTimezoneRef = useRef(restaurantTimezone);
+  useEffect(() => {
+    if (restaurantTimezoneRef.current === restaurantTimezone) return;
+    restaurantTimezoneRef.current = restaurantTimezone;
+    if (hasNavigatedRef.current) return;
+    setCurrentWeekStart(getRestaurantWeekStart(new Date(), restaurantTimezone));
+  }, [restaurantTimezone]);
+
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: WEEK_STARTS_ON });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
+
+  // Calendar-day strings for the visible week, read from host-local `Date`
+  // fields. `currentWeekStart` was itself seeded from the restaurant's
+  // calendar day (`restaurantToday`), so these strings already name the
+  // restaurant's week, not the host's.
+  const weekStartStr = formatLocalDate(currentWeekStart);
+  const weekEndStr = formatLocalDate(weekEnd);
+
+  // The shift query needs UTC instants, not host-local `Date`s. Calling
+  // `.toISOString()` on `currentWeekStart`/`weekEnd` would bound the query in
+  // the HOST's zone: for a Phoenix viewer and an Auckland restaurant the two
+  // windows sit ~19h apart, so most of Auckland's Monday shifts would fall
+  // outside the query and never load. `businessDayRangeToInstants` resolves
+  // restaurant-local midnight for both ends instead.
+  const { start: queryStart, end: queryEnd } = useMemo(
+    () => businessDayRangeToInstants(weekStartStr, weekEndStr, restaurantTimezone),
+    [weekStartStr, weekEndStr, restaurantTimezone]
+  );
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const {
@@ -70,9 +136,69 @@ const EmployeeSchedule = () => {
     loading: shiftsLoading,
     error: shiftsError,
     refetch: refetchShifts,
-  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, currentWeekStart, weekEnd);
+  } = useMyShifts(restaurantId, currentEmployee?.id ?? null, queryStart, queryEnd);
 
-  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+  // The anchor never depends on the viewed week. Both bounds come from one
+  // value that changes once per restaurant calendar day. A `Date` built in the
+  // render body would make a new query key on every render, because the key at
+  // `src/hooks/useShifts.tsx:76` holds `startDate?.toISOString()`.
+  const todayStr = formatLocalDateInTz(new Date(), restaurantTimezone);
+
+  const anchorRange = useMemo(() => {
+    // `useMyShifts` filters `start_time >= start`. Anchoring exactly at
+    // today's midnight would drop a shift that began yesterday and is still
+    // running past midnight -- `selectUpcomingShifts` keeps an in-progress
+    // shift, but only once the query actually returns it. Start the window 1
+    // day earlier, and keep the far end at today + 21 days as before.
+    const start = subDays(wallClockToInstant(todayStr, '00:00', restaurantTimezone), 1);
+    return { start, end: addDays(start, 22) };
+  }, [todayStr, restaurantTimezone]);
+
+  const {
+    shifts: anchorShifts,
+    loading: anchorLoading,
+    error: anchorError,
+  } = useMyShifts(
+    restaurantId,
+    currentEmployee?.id ?? null,
+    anchorRange.start,
+    anchorRange.end
+  );
+
+  // `nowTick` (from `useNowTick`) advances every 60s on its own, so this memo
+  // recomputes as wall-clock time passes, not only when `anchorShifts`
+  // changes. Without it, a shift that ends while the page stays open would
+  // keep reading as "next" until an unrelated refetch happened to run.
+  const nowTick = useNowTick();
+  const upcomingAnchorShifts = useMemo(
+    () => selectUpcomingShifts(anchorShifts ?? [], new Date(nowTick), 5),
+    [anchorShifts, nowTick]
+  );
+
+  // "Teammates need cover": open trades this employee can accept now.
+  const {
+    trades: claimableTrades,
+    loading: claimableLoading,
+    error: claimableError,
+    refetch: refetchClaimable,
+  } = useClaimableTrades(restaurantId, currentEmployee?.id ?? null, nowTick);
+
+  const openShiftRange = useMarketplaceRange(nowTick);
+  const showUpForGrabs = shouldShowUpForGrabs(claimableTrades, claimableLoading, claimableError);
+  const hasUrgentTrade = showUpForGrabs && claimableTrades.some((t) => t.isUrgent);
+
+  // Only the card footer reads the open shifts, so the query waits for the card.
+  const {
+    openShifts,
+    loading: openShiftsLoading,
+    error: openShiftsError,
+  } = useOpenShifts(showUpForGrabs ? restaurantId : null, openShiftRange.start, openShiftRange.end);
+  const openShiftCount = openShiftsLoading || openShiftsError ? null : openShifts.length;
+
+  const { publishes: restaurantPublishes } = useRestaurantPublishes(
+    restaurantId,
+    restaurantTimezone
+  );
 
   // What this week actually IS, as opposed to what the rows look like: a week
   // that was announced and then pulled back is otherwise indistinguishable
@@ -80,8 +206,6 @@ const EmployeeSchedule = () => {
   const {
     state,
     publication,
-    publishedCount,
-    draftCount,
     loading: statusLoading,
     // `employeeLoading` too, not just `shiftsLoading`: `useMyShifts` stays
     // disabled until `employeeId` resolves, and a disabled query reports
@@ -92,11 +216,6 @@ const EmployeeSchedule = () => {
     currentWeekStart,
     myShifts,
     shiftsLoading || employeeLoading
-  );
-  const retractionReason = useWeekRetractionReason(
-    restaurantId,
-    currentWeekStart,
-    state === 'retracted'
   );
 
   // "Has anything moved since I last looked?" There is no server-side read
@@ -110,7 +229,6 @@ const EmployeeSchedule = () => {
     [publication?.published_at, myShifts]
   );
 
-  const weekStartStr = formatLocalDate(currentWeekStart);
   const employeeId = currentEmployee?.id ?? null;
 
   const [seenFingerprint, setSeenFingerprint] = useState<string | null>(null);
@@ -136,19 +254,26 @@ const EmployeeSchedule = () => {
   // Group shifts by day
   const shiftsByDay = useMemo(() => {
     const grouped = new Map<string, Shift[]>();
+    // `weekDays` are calendar days the user navigated to, held as host-local
+    // midnight `Date`s -- `toDateOnlyString` reads their fields, it does not
+    // convert an instant.
     weekDays.forEach((day) => {
-      grouped.set(format(day, 'yyyy-MM-dd'), []);
+      grouped.set(toDateOnlyString(day), []);
     });
 
     myShifts.forEach((shift) => {
-      const dayKey = format(parseISO(shift.start_time), 'yyyy-MM-dd');
+      // `start_time` IS an instant, so it needs the restaurant's zone to name
+      // a day. The old `format(parseISO(...))` read it in the viewer's zone:
+      // a 9 p.m. shift seen from a zone one day ahead landed in the next day's
+      // column, and on the week's last day it matched no column and vanished.
+      const dayKey = toBusinessDay(shift.start_time, restaurantTimezone);
       if (grouped.has(dayKey)) {
         grouped.get(dayKey)!.push(shift);
       }
     });
 
     return grouped;
-  }, [myShifts, weekDays]);
+  }, [myShifts, weekDays, restaurantTimezone]);
 
   // Calculate weekly totals
   const weeklyStats = useMemo(() => {
@@ -183,11 +308,30 @@ const EmployeeSchedule = () => {
   const allUpcomingAreDrafts =
     upcomingShifts.length > 0 && upcomingShifts.every((shift) => !shift.is_published);
 
+  // The anchor query covers today to +21 days, so next week sits inside it.
+  const nextWeekShiftCount = useMemo(
+    () =>
+      countShiftsInWeek(
+        anchorShifts ?? [],
+        addDays(getRestaurantWeekStart(new Date(), restaurantTimezone), 7),
+        restaurantTimezone
+      ),
+    [anchorShifts, restaurantTimezone]
+  );
+
+  const weekLabel = getRelativeWeekLabel(currentWeekStart, new Date(), restaurantTimezone);
+  const viewsCurrentWeek = weekLabel === 'This week';
+
+  const showNextWeekHint = showClarity && viewsCurrentWeek && nextWeekShiftCount > 0;
+  const nextWeekShiftWord = nextWeekShiftCount === 1 ? 'shift' : 'shifts';
+
   const handlePreviousWeek = () => {
+    hasNavigatedRef.current = true;
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
   };
 
   const handleNextWeek = () => {
+    hasNavigatedRef.current = true;
     setCurrentWeekStart(addWeeks(currentWeekStart, 1));
   };
 
@@ -197,7 +341,10 @@ const EmployeeSchedule = () => {
   };
 
   const handleToday = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON }));
+    // Back to "current week" -- so a later timezone resolution may resync
+    // again, the same as right after mount.
+    hasNavigatedRef.current = false;
+    setCurrentWeekStart(getRestaurantWeekStart(new Date(), restaurantTimezone));
   };
 
   if (!restaurantId) {
@@ -214,6 +361,19 @@ const EmployeeSchedule = () => {
 
   const isLoading = shiftsLoading;
 
+  const upForGrabsCard = (
+    <UpForGrabsCard
+      trades={claimableTrades}
+      loading={claimableLoading}
+      error={claimableError}
+      onRetry={() => refetchClaimable()}
+      restaurantId={restaurantId}
+      timezone={restaurantTimezone}
+      now={new Date(nowTick)}
+      openShiftCount={openShiftCount}
+    />
+  );
+
   return (
     <div className="space-y-6">
       {/* Header — focusable anchor: MyShiftTradesCard returns focus here when a
@@ -228,36 +388,54 @@ const EmployeeSchedule = () => {
           title="My Schedule"
           subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
         />
-        <Link to="/employee/shifts" className="w-full sm:w-auto">
-          <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
-            <ArrowLeftRight className="h-4 w-4 mr-2" />
-            Browse Available Shifts
-          </Button>
-        </Link>
+        {/* The card footer takes this job when the card shows. */}
+        {!showUpForGrabs && (
+          <Link to={MARKETPLACE_PATH} className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
+              <ArrowLeftRight className="h-4 w-4 mr-2" />
+              Browse Available Shifts
+            </Button>
+          </Link>
+        )}
       </div>
 
-      {/* Is this week actually mine? Above everything, because a retracted week
-          contradicts an email the employee may already have acted on. */}
+      {/* A trade that starts in 24 h or less goes above the status line. */}
+      {hasUrgentTrade && upForGrabsCard}
+
+      {/* One quiet "Published {date}" line, or nothing. Never a warning. */}
       <ScheduleStatusBanner
         state={state}
         publication={publication}
-        publishedCount={publishedCount}
-        draftCount={draftCount}
-        weekRange={`${format(currentWeekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`}
         timezone={restaurantTimezone}
-        retractionReason={retractionReason}
+        reserveHeight={!hasUrgentTrade}
       />
+
+      {!hasUrgentTrade && upForGrabsCard}
 
       {/* My shift trades — poster tracker + claimant status */}
       <MyShiftTradesCard
         restaurantId={restaurantId}
         employeeId={currentEmployee.id}
+        timezone={restaurantTimezone}
         fallbackFocusRef={pageHeaderRef}
       />
 
+      {showClarity && (
+        <NextShiftCard
+          shifts={upcomingAnchorShifts}
+          isLoading={anchorLoading}
+          isError={!!anchorError}
+          timezone={restaurantTimezone}
+        />
+      )}
+
       {/* Upcoming Shifts. The green celebratory chrome is a claim that these
-          are locked in, so it only survives while at least one of them is. */}
-      {upcomingShifts.length > 0 && (
+          are locked in, so it only survives while at least one of them is.
+
+          The title never states a publish status. Many restaurants never
+          publish, so a draft is the only status their staff ever see. The
+          word "tentative" told those staff their real shift was optional. */}
+      {!showClarity && upcomingShifts.length > 0 && (
         <Card
           className={
             allUpcomingAreDrafts
@@ -270,13 +448,13 @@ const EmployeeSchedule = () => {
               <Clock
                 className={`h-5 w-5 ${allUpcomingAreDrafts ? 'text-muted-foreground' : 'text-green-600'}`}
               />
-              {allUpcomingAreDrafts ? 'Upcoming (tentative)' : 'Upcoming Shifts'}
+              Upcoming Shifts
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {upcomingShifts.map((shift) => (
-                <ShiftRow key={shift.id} shift={shift} variant="upcoming" />
+                <ShiftRow key={shift.id} shift={shift} variant="upcoming" clock={clock} />
               ))}
             </div>
           </CardContent>
@@ -305,19 +483,44 @@ const EmployeeSchedule = () => {
                 <Button variant="outline" size="sm" onClick={handleToday} className="min-h-[44px]">
                   Today
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextWeek}
-                  aria-label="Next week"
-                  className="min-h-[44px] min-w-[44px]"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNextWeek}
+                    aria-label={
+                      showNextWeekHint
+                        ? `Next week, ${nextWeekShiftCount} ${nextWeekShiftWord}`
+                        : 'Next week'
+                    }
+                    className="min-h-[44px] min-w-[44px]"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  {showNextWeekHint && (
+                    // A dot alone would fail WCAG 1.4.1. The footer row below
+                    // carries the same fact in words, and the aria-label
+                    // carries it for a screen reader. `border-background`
+                    // holds the 3:1 non-text contrast of WCAG 1.4.11.
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background"
+                    />
+                  )}
+                </div>
               </div>
-              <Badge variant="outline" className="px-3 py-1">
-                {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
-              </Badge>
+              {showClarity ? (
+                <div className="text-center">
+                  <p className="text-[15px] font-semibold text-foreground">{weekLabel}</p>
+                  <p className="text-[13px] text-muted-foreground">
+                    {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+                  </p>
+                </div>
+              ) : (
+                <Badge variant="outline" className="px-3 py-1">
+                  {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+                </Badge>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -348,13 +551,14 @@ const EmployeeSchedule = () => {
           ) : (
             <div className="space-y-3">
               {weekDays.map((day) => {
-                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayKey = toDateOnlyString(day);
                 const dayShifts = shiftsByDay.get(dayKey) || [];
-                const isDayToday = isToday(day);
+                const isDayToday = dayKey === restaurantToday;
 
                 return (
                   <div
                     key={dayKey}
+                    data-testid={`schedule-day-${dayKey}`}
                     className={`p-4 rounded-lg border ${
                       isDayToday ? 'bg-primary/5 border-primary/20' : 'bg-card'
                     }`}
@@ -376,7 +580,13 @@ const EmployeeSchedule = () => {
                     ) : (
                       <div className="space-y-2">
                         {dayShifts.map((shift) => (
-                          <ShiftRow key={shift.id} shift={shift} onTrade={handleTradeShift} />
+                          <ShiftRow
+                            key={shift.id}
+                            shift={shift}
+                            onTrade={handleTradeShift}
+                            clock={clock}
+                            restaurantPublishes={showClarity ? restaurantPublishes : true}
+                          />
                         ))}
                       </div>
                     )}
@@ -386,6 +596,20 @@ const EmployeeSchedule = () => {
             </div>
           )}
         </CardContent>
+        {showNextWeekHint && (
+          <div className="px-6 pb-4">
+            <button
+              type="button"
+              onClick={handleNextWeek}
+              className="w-full min-h-[44px] flex items-center justify-between px-3 rounded-lg border border-border/40 text-[13px] text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+            >
+              <span>
+                Next week: {nextWeekShiftCount} {nextWeekShiftWord}
+              </span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </Card>
 
       {/* Weekly Summary */}

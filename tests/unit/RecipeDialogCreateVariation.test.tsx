@@ -15,6 +15,10 @@ vi.mock("@/hooks/useRecipes", () => ({
 
 vi.mock("@/hooks/useProducts", () => ({ useProducts: () => ({ products: [] }) }));
 vi.mock("@/hooks/usePOSItems", () => ({ usePOSItems: () => ({ posItems: [], loading: false }) }));
+
+vi.mock("@/hooks/useRecipeWeeklyVolume", () => ({
+  useRecipeWeeklyVolume: () => ({ weeklyVolume: 0, isLoading: false, isError: false }),
+}));
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
   return { ...actual, useNavigate: () => vi.fn() };

@@ -1,6 +1,27 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
+/**
+ * Click one day cell in the copy-week calendar.
+ *
+ * The month grid also shows outside days from the adjacent months. An outside
+ * day can show the same number as the target day. Example: the August 2026
+ * view starts with July 26-31, so gridcell "31" appears two times and the
+ * first DOM match is July 31 — a past week. Prefer the in-month cell
+ * (no `day-outside` class). Fall back to the first match when the target day
+ * is in an adjacent month, because then only the outside cell shows it.
+ */
+async function clickCalendarDay(dialog: Locator, day: number) {
+  const cells = dialog.getByRole('gridcell', { name: String(day), exact: true });
+  await cells.first().waitFor({ state: 'visible' });
+  const inMonth = cells.and(dialog.locator(':not(.day-outside)'));
+  if (await inMonth.count()) {
+    await inMonth.first().click();
+  } else {
+    await cells.first().click();
+  }
+}
+
 test.describe('Copy Week Shifts', () => {
   test('copies shifts from current week to next week via dialog', async ({ page }) => {
     // 1. Setup: create user, restaurant, employees, and shifts
@@ -133,12 +154,9 @@ test.describe('Copy Week Shifts', () => {
       await page.waitForTimeout(300);
     }
 
-    // Click the target day in the calendar.
-    // IMPORTANT: use exact:true — Playwright's `name` matcher is a substring match,
-    // so without it, single-digit days (e.g. "1") would also match outside-day cells
-    // like "31" or "11", which is the first DOM match and silently selects the wrong week.
-    const dayButton = dialog.getByRole('gridcell', { name: String(targetDay), exact: true }).first();
-    await dayButton.click();
+    // Click the target day in the calendar. The helper prefers the in-month
+    // cell, because an outside day can show the same number (see clickCalendarDay).
+    await clickCalendarDay(dialog, targetDay);
 
     // Target week info should appear (no existing shifts = fresh copy message)
     await expect(dialog.getByText(/no existing shifts|will be permanently deleted/i)).toBeVisible({ timeout: 3000 });
@@ -260,9 +278,9 @@ test.describe('Copy Week Shifts', () => {
       }
     }
 
-    // Now click the Monday date — use exact match to avoid ambiguity
-    const dayCell = dialog.getByRole('gridcell', { name: String(mondayDay), exact: true }).first();
-    await dayCell.click();
+    // Now click the Monday date. The helper prefers the in-month cell and
+    // falls back to the outside cell when Monday is in the previous month.
+    await clickCalendarDay(dialog, mondayDay);
 
     // Should show "Cannot copy to the same week" warning (or past week if Monday < today)
     await expect(dialog.getByText(/cannot copy to the same week|cannot copy to a past week/i)).toBeVisible({ timeout: 5000 });
@@ -464,8 +482,7 @@ test.describe('Copy Week Shifts', () => {
 
       await navigateCalendarToMonth(page, dialog, TARGET_MONTH_YEAR.year, TARGET_MONTH_YEAR.monthIndex);
 
-      const dayButton = dialog.getByRole('gridcell', { name: String(TARGET_MONDAY_DAY), exact: true }).first();
-      await dayButton.click();
+      await clickCalendarDay(dialog, TARGET_MONDAY_DAY);
 
       await expect(dialog.getByText(/no existing shifts|will be permanently deleted/i)).toBeVisible({ timeout: 3000 });
 

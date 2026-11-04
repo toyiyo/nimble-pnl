@@ -8,12 +8,13 @@
  * drop the newest punches and understate/misstate pay.
  *
  * This test asserts:
- *   1. `.range()` is called with advancing offsets across pages — proving
- *      the fetch is paginated via `fetchAllRows`, not a single unbounded
- *      `.select()`.
+ *   1. The fetch asks for pages of 1,000 rows (`.range(0, 999)`), and each
+ *      next page starts after the last `(punch_time, id)` of the page before
+ *      (keyset paging via `fetchAllRowsKeyset`, not offsets) — proving the
+ *      fetch is paginated, not a single unbounded `.select()`.
  *   2. `.order('id')` is added as a deterministic tiebreaker after
  *      `.order('punch_time', { ascending: true })`.
- *   3. When the fetch hits `fetchAllRows`'s `maxPages` cap (20 full pages),
+ *   3. When the fetch hits the `maxPages` cap (20 full pages),
  *      `usePayroll` surfaces it via `console.warn` (matching its existing
  *      non-fatal-logging pattern — this hook `throw`s on a real Supabase
  *      error, but a page-cap is a safety signal, not a query failure).
@@ -22,6 +23,7 @@ import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { keysetAfterFilter } from '../../supabase/functions/_shared/labor/fetchAllRows';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toDbPunch(id: string, employee_id: string, punch_time: string, punch_type: string): any {
@@ -35,12 +37,13 @@ function toDbPunch(id: string, employee_id: string, punch_time: string, punch_ty
 
 // Generic chainable Supabase query-builder mock for tables we don't assert
 // on (tip_splits, tip_split_items, daily_labor_allocations, employee_tips,
-// tip_payouts).
+// tip_payouts, overtime_adjustments). `.range()` returns the chain, which is
+// thenable and resolves to an empty page.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeChainable(): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain: any = {};
-  ['select', 'eq', 'in', 'order', 'gte', 'lte', 'maybeSingle'].forEach((m) => {
+  ['select', 'eq', 'in', 'order', 'gte', 'lte', 'or', 'range', 'maybeSingle'].forEach((m) => {
     chain[m] = vi.fn(() => chain);
   });
   chain.then = (resolve: (v: { data: unknown[]; error: null }) => void) =>
@@ -77,9 +80,10 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
     vi.resetModules();
   });
 
-  it('paginates time_punches via .range() with advancing offsets and orders by id as a tiebreaker', async () => {
+  it('pages time_punches with keyset paging and orders by id as a tiebreaker', async () => {
     const rangeCalls: Array<[number, number]> = [];
     const orderCalls: unknown[][] = [];
+    const orCalls: string[] = [];
 
     // 1,039 rows across 2 pages (1,000 + 39), matching the prod repro shape.
     const page0 = Array.from({ length: 1000 }, (_, i) =>
@@ -94,6 +98,10 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
     });
     timePunchesChain.order = vi.fn((...args: unknown[]) => {
       orderCalls.push(args);
+      return timePunchesChain;
+    });
+    timePunchesChain.or = vi.fn((filters: string) => {
+      orCalls.push(filters);
       return timePunchesChain;
     });
     let callIndex = 0;
@@ -127,20 +135,23 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
 
     expect(result.current.error).toBeNull();
     // Proves the fetch is paginated (not a single unbounded `.select()`):
-    // offsets advance across the 2 pages needed to cover all 1,039 rows.
+    // two pages of up to 1,000 rows cover all 1,039 rows, and the second
+    // page starts after the last (punch_time, id) of the first.
     expect(rangeCalls).toEqual([
       [0, 999],
-      [1000, 1999],
+      [0, 999],
     ]);
+    const last = page0[page0.length - 1];
+    expect(orCalls).toEqual([keysetAfterFilter('punch_time', { key: last.punch_time, id: last.id })]);
     // Deterministic page-boundary tiebreaker: `.order('punch_time', {asc})`
-    // followed by `.order('id')` — the `buildPage` callback rebuilds the
-    // query chain on every page, so this pair repeats once per page fetched
-    // (2 pages here).
+    // followed by `.order('id', {asc})` — the `buildPage` callback rebuilds
+    // the query chain on every page, so this pair repeats once per page
+    // fetched (2 pages here).
     expect(orderCalls).toEqual([
       ['punch_time', { ascending: true }],
-      ['id'],
+      ['id', { ascending: true }],
       ['punch_time', { ascending: true }],
-      ['id'],
+      ['id', { ascending: true }],
     ]);
   });
 
@@ -148,17 +159,18 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const rangeCalls: Array<[number, number]> = [];
 
-    // Every page comes back full (1,000 rows) so `fetchAllRows` never sees a
-    // short page and exhausts its default `maxPages` (20) → `capped: true`.
+    // Every page comes back full (1,000 rows) so the keyset loop never sees
+    // a short page and exhausts its default `maxPages` (20) → `capped: true`.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const timePunchesChain: any = {};
-    ['select', 'eq', 'gte', 'lte', 'order'].forEach((m) => {
+    ['select', 'eq', 'gte', 'lte', 'order', 'or'].forEach((m) => {
       timePunchesChain[m] = vi.fn(() => timePunchesChain);
     });
     timePunchesChain.range = vi.fn((from: number, to: number) => {
+      const offset = rangeCalls.length * 1000;
       rangeCalls.push([from, to]);
       const page = Array.from({ length: 1000 }, (_, i) =>
-        toDbPunch(`p${from + i}`, 'emp-1', '2026-03-02T10:00:00.000Z', i % 2 === 0 ? 'clock_in' : 'clock_out'));
+        toDbPunch(`p${offset + i}`, 'emp-1', '2026-03-02T10:00:00.000Z', i % 2 === 0 ? 'clock_in' : 'clock_out'));
       return Promise.resolve({ data: page, error: null });
     });
 

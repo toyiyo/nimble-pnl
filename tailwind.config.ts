@@ -39,14 +39,17 @@ export default {
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+          strong: "hsl(var(--destructive-strong))",
         },
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
+          strong: "hsl(var(--success-strong))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
+          strong: "hsl(var(--warning-strong))",
         },
         info: {
           DEFAULT: "hsl(var(--info))",

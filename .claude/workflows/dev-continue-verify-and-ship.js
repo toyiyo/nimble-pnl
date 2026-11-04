@@ -1,10 +1,11 @@
 export const meta = {
   name: 'dev-continue-verify-and-ship',
-  description: 'Continue /dev Phases 8-9e (Verify, Ship, CI loop, Triage, Done gate) after a Review-phase needs_human gate was resolved by hand.',
+  description: 'Continue /dev Phases 8-9e (Verify, QA, Ship, CI loop, Triage, Done gate) after a Review-phase needs_human gate was resolved by hand. When only CI is pending at 9e, returns status handed_to_autofix so the main session turns on the desktop app Auto-fix monitor.',
   whenToUse:
     'When dev-build-and-ship.js halted at the Review fold gate, the human resolved the finding and committed the fix, and Phases 8 onward still need to run. Resuming the original run would replay the cached fold agent and stop at the same gate.',
   phases: [
     { title: 'Verify', detail: 'full suite (+ optional prod-bundle probe)' },
+    { title: 'QA', detail: 'Phase 8.5: browser QA per .claude/skills/qa/SKILL.md; re-verify if QA commits' },
     { title: 'Ship', detail: 'push + open PR' },
     { title: 'CI Loop', detail: 'watch checks, fix, re-push (max 5)' },
     { title: 'Triage', detail: 'reply to every review finding, audit exit 0' },
@@ -162,6 +163,37 @@ const statusSchema = (extraProps = {}, extraRequired = []) => ({
   required: ['status', ...extraRequired],
 })
 
+// Phase 8.5 (QA) result. The same block is in both /dev workflow scripts, and
+// tests/unit/workflowQaPhase.test.ts fails if their QA prompts drift apart.
+// minorFindings go into the PR body and are never dropped.
+const QA_SCHEMA = statusSchema(
+  {
+    qaPassed: { type: 'boolean' },
+    reportPath: { type: 'string' },
+    headSha: { type: 'string', description: 'git rev-parse HEAD after QA, including any QA fix commits.' },
+    exception: { type: 'string', description: 'One sentence, only when the diff touches no file with a runtime effect.' },
+    charterRows: { type: 'number' },
+    bugsFixed: { type: 'number' },
+    minorFindings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { title: { type: 'string' }, severity: { type: 'string' }, evidence: { type: 'string' } },
+        required: ['title'],
+      },
+    },
+  },
+  ['qaPassed', 'reportPath', 'headSha', 'charterRows', 'commits'],
+)
+const qaShipSection = (qa, reportPath) =>
+  'ALSO add a "## QA" section to the PR body: the verdict, ' +
+  (qa.exception ? `the exception (${qa.exception}), ` : `${qa.charterRows} charter rows, ${qa.bugsFixed || 0} bug(s) fixed, `) +
+  `and the report path ${reportPath} (gitignored, local only). ` +
+  ((qa.minorFindings || []).length
+    ? 'List each open minor QA finding below verbatim:\n' + JSON.stringify(qa.minorFindings, null, 2) + '\n'
+    : '')
+
 // skillRef is opt-in: development-workflow.md is 42 KB and every prompt below
 // already states what its phase must do. See the runaway-burn notes in
 // dev-build-and-ship.js — context size is what drives the 180s stall.
@@ -212,7 +244,7 @@ function envelope(body, { skillRef = false } = {}) {
     `- Plan file: ${ctx.planPath}`,
     `- progress.md: ${ctx.worktreePath}/progress.md — read it for prior-phase state; update it when you finish your phase.`,
     ...(skillRef
-      ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
+      ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow/SKILL.md — consult the matching phase if you need detail.`]
       : []),
     '',
     STAGING_DISCIPLINE,
@@ -220,9 +252,8 @@ function envelope(body, { skillRef = false } = {}) {
     WAIT_DISCIPLINE,
     '',
     `PRIOR STATE: ${PRIOR_STATE}`,
-    WRITING_STANDARD,
     '',
-    'PRIOR STATE: Phases 4-7 are COMPLETE. All reviewers ran (security/performance/maintainability: no findings; ocr-rules + sound-logic minors fixed in c0872b91). One Codex major — tier-2 route-shell boundary had no resetKey — was escalated and has since been resolved by hand in commit ff3776c1, which adds src/components/RouteShellBoundary.tsx, amends the design doc\'s "Reset semantics" section, and adds tests/unit/RouteShellBoundary.test.tsx. Do NOT re-litigate that decision or re-run the reviewers.',
+    WRITING_STANDARD,
     '',
     body,
   ].join('\n')
@@ -245,8 +276,19 @@ function spent() {
 
 const stalls = []
 
+// The PR number, set after Ship. stop() copies it into every later stop payload
+// so the main session knows which PR to bind to the Auto-fix monitor.
+let shippedPr = null
+
 function stop(phase, extra = {}) {
-  return { stopped: true, phase, tokensSpent: spent(), ...(stalls.length ? { stalls } : {}), ...extra }
+  return {
+    stopped: true,
+    phase,
+    tokensSpent: spent(),
+    ...(shippedPr != null ? { prNumber: shippedPr } : {}),
+    ...(stalls.length ? { stalls } : {}),
+    ...extra,
+  }
 }
 
 function gate(result, phase, extra = {}) {
@@ -311,27 +353,77 @@ const probeInstruction = PROBE
     (PROBE.rationale ? `Why this gate exists: ${PROBE.rationale}\n` : '') +
     'If the observed result contradicts the expectation, fix the cause and re-run; do NOT proceed. Record the raw grep output and its exit code in progress.md under a "Production bundle verification" heading, and set bundleProbeOk=true only if what you observed matches the expectation.\n'
   : ''
-const verify = await runAgent(
-  envelope(
-    'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build.\n' +
-      probeInstruction +
-      'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.',
-  ),
-  {
-    label: 'verify',
-    phase: 'Verify',
-    schema: statusSchema(
-      { allPass: { type: 'boolean' }, ...(PROBE ? { bundleProbeOk: { type: 'boolean' } } : {}) },
-      ['allPass', ...(PROBE ? ['bundleProbeOk'] : [])],
-    ),
-  },
+// One prompt and one result check for Verify and for the post-QA re-verify,
+// so both run the same suite and the same production-bundle probe.
+const VERIFY_PROMPT =
+  'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build.\n' +
+  probeInstruction +
+  'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start. Return headSha from git rev-parse HEAD after your last commit.'
+const VERIFY_SCHEMA = statusSchema(
+  { allPass: { type: 'boolean' }, headSha: { type: 'string' }, ...(PROBE ? { bundleProbeOk: { type: 'boolean' } } : {}) },
+  ['allPass', 'headSha', ...(PROBE ? ['bundleProbeOk'] : [])],
 )
-{ const g = gate(verify, 'Verify'); if (g.halt) return g.out }
-if (!verify.allPass) return stop('Verify', { reason: 'local verification did not pass after 5 iterations' })
-if (PROBE && !verify.bundleProbeOk) {
-  return stop('Verify', {
-    reason: `production-bundle gate failed: "${PROBE.pattern}" was required to be ${PROBE.expect} in ${PROBE.dir} and was not`,
+// Returns a stop payload when a Verify result does not pass, else null.
+function verifyFailure(result, phaseName, when, extra = {}) {
+  const g = gate(result, phaseName, extra)
+  if (g.halt) return g.out
+  if (!result.allPass) return stop(phaseName, { reason: `local verification did not pass ${when}`, ...extra })
+  if (PROBE && !result.bundleProbeOk) {
+    return stop(phaseName, {
+      reason: `production-bundle gate failed: "${PROBE.pattern}" was required to be ${PROBE.expect} in ${PROBE.dir} and was not`,
+      ...extra,
+    })
+  }
+  return null
+}
+const verify = await runAgent(envelope(VERIFY_PROMPT), { label: 'verify', phase: 'Verify', schema: VERIFY_SCHEMA })
+{ const f = verifyFailure(verify, 'Verify', 'after 5 iterations'); if (f) return f }
+
+// ===========================================================================
+// PHASE 8.5: QA — see the Phase 8.5 comment in dev-build-and-ship.js.
+// ===========================================================================
+phase('QA')
+{ const b = budgetHalt('QA'); if (b) return b }
+const QA_REPORT = `dev-tools/qa/qa-report-${String(ctx.branch).replace(/[^A-Za-z0-9._-]/g, '-')}.md`
+const qa = await runAgent(
+  envelope(
+    'PHASE 8.5 (QA). Read .claude/skills/qa/SKILL.md and follow it in FIX mode. ' +
+      `Acceptance source: the design doc ${ctx.designDocPath} and the plan ${ctx.planPath}. Write the report to ${QA_REPORT}. ` +
+      'Return qaPassed=true ONLY if every charter row is pass or a justified n/a AND zero critical or major bugs stay open. ' +
+      'Return headSha from git rev-parse HEAD after your last commit. List every commit SHA you made in commits (an empty list if none). List each open minor bug in minorFindings. ' +
+      'If the diff touches only docs, .claude/, .github/, or other config with no runtime effect, put the one-sentence reason in exception, write it to the report, and return qaPassed=true. A change under src/ or supabase/ is never an exception. ' +
+      'If the environment is not ready (for example .env.local does not point at local Supabase), return status=needs_human. Never run QA against production.' +
+      // Same re-key pattern as ctx.verifyResolutionNote.
+      (ctx.qaResolutionNote
+        ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.qaResolutionNote
+        : ''),
+  ),
+  { label: 'qa', phase: 'QA', schema: QA_SCHEMA },
+)
+{ const g = gate(qa, 'QA', { reportPath: QA_REPORT }); if (g.halt) return g.out }
+if (!qa.qaPassed) {
+  return stop('QA', {
+    status: 'needs_human',
+    reason: qa.reason || `QA did not pass: a charter row failed or a critical or major bug is still open. Read ${QA_REPORT}.`,
+    reportPath: QA_REPORT,
   })
+}
+// Re-verify when QA reports commits OR when HEAD moved since Verify. The second
+// test catches a QA agent that committed a fix but did not list it, and a
+// resumed QA whose fixes landed on an earlier attempt.
+if ((qa.commits || []).length || qa.headSha !== verify.headSha) {
+  { const b = budgetHalt('QA', { reportPath: QA_REPORT }); if (b) return b }
+  const reverify = await runAgent(
+    envelope(
+      VERIFY_PROMPT +
+        `\n\nPOST-QA RE-VERIFY: Phase 8.5 (QA) changed the branch after Verify passed (commits: ${(qa.commits || []).join(', ') || 'none listed'}; HEAD ${verify.headSha || 'unknown'} -> ${qa.headSha || 'unknown'}). Run the full suite again on the current HEAD.` +
+        (ctx.postQaVerifyResolutionNote
+          ? '\n\nRESOLUTION FROM A PRIOR HALT ON THIS PHASE — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n' + ctx.postQaVerifyResolutionNote
+          : ''),
+    ),
+    { label: 'verify:post-qa', phase: 'QA', schema: VERIFY_SCHEMA },
+  )
+  { const f = verifyFailure(reverify, 'QA', 'after QA fixes', { reportPath: QA_REPORT }); if (f) return f }
 }
 
 // ===========================================================================
@@ -347,12 +439,14 @@ const ship = await runAgent(
   envelope(
     'PHASE 9a (Ship). Push the branch: git push -u origin ' + ctx.branch + '. Open a PR with gh pr create: concise title (<70 chars), body with ## Summary (bullets from the plan), ## Test plan, and a link to the design doc.\n' +
       (PR_NOTES ? `ALSO call the following out explicitly in ## Summary — it is the context the diff alone will not convey:\n${PR_NOTES}\n` : '') +
+      qaShipSection(qa, QA_REPORT) +
       'Return the PR number as prNumber. Update progress.md with it.',
   ),
   { label: 'ship', phase: 'Ship', schema: statusSchema({ prNumber: { type: 'number' } }, ['prNumber']) },
 )
 { const g = gate(ship, 'Ship'); if (g.halt) return g.out }
 const PR = ship.prNumber
+shippedPr = PR
 
 // ===========================================================================
 // PHASE 9b: CI loop (max 5)
@@ -373,7 +467,7 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
   ciGreen = ci.ciGreen
   log(`CI ${it}/5: ${ciGreen ? 'green' : 'fixed + pushed, re-watching'} (run total ~${spent()} tokens)`)
 }
-if (!ciGreen) return stop('CI Loop', { reason: 'CI not green after 5 iterations — escalating to human' })
+if (!ciGreen) return stop('CI Loop', { status: 'needs_human', reason: 'CI not green after 5 iterations — escalating to human' })
 
 // ===========================================================================
 // PHASE 9d: Review-comment triage (NON-SKIPPABLE)
@@ -416,7 +510,43 @@ if (triage.pushedFix) {
     { label: 'ci:post-triage', phase: 'Triage', schema: statusSchema({ ciGreen: { type: 'boolean' } }, ['ciGreen']) },
   )
   const g = gate(reCi, 'Triage'); if (g.halt) return g.out
-  if (!reCi.ciGreen) return stop('Triage', { reason: 'CI not green after triage fix push' })
+  if (!reCi.ciGreen) return stop('Triage', { status: 'needs_human', reason: 'CI not green after triage fix push' })
+}
+
+// 9e contract for CI that is still pending. dev-build-and-ship.js carries the
+// same text; tests/unit/workflowAutofixHandoff.test.ts checks that
+// the two copies match.
+const DONE_PENDING_CI_RULE =
+  'PENDING CI: if every item above holds except checks that are still pending (none failed), return status=completed, donePassed=false, ciPending=true, and name the pending checks in reason. ' +
+  'Do NOT return needs_human for pending CI. Do NOT wait for or poll pending checks: after this run the main session hands the PR to the desktop app Auto-fix monitor, which acts on the late results. ' +
+  'Set ciPending=true ONLY when pending checks are the sole unmet item; a failed check or any other unmet item means ciPending=false.'
+const DONE_GATE_PROPS = {
+  donePassed: { type: 'boolean' },
+  ciPending: {
+    type: 'boolean',
+    description: 'true only when every 9e item holds except CI checks that are still pending (none failed)',
+  },
+}
+
+// Maps the 9e result to the run status. 'handed_to_autofix' is not a blocker:
+// the main session turns on Auto-fix and reports. 'needs_human' stays for a
+// done gate that failed for any other reason.
+function doneOutcome(done, pr) {
+  if (done.donePassed) {
+    return { status: 'done', note: `PR #${pr} green AND all review comments triaged — ready for review/merge. Auto-fix keeps watching the PR after this run.` }
+  }
+  if (done.ciPending) {
+    return {
+      status: 'handed_to_autofix',
+      reason: done.reason || 'CI checks still pending at the done gate',
+      note: `PR #${pr}: every 9e item holds except pending CI. Main session: turn on the Auto-fix monitor (development-workflow step 9a.1); do not poll CI.`,
+    }
+  }
+  return {
+    status: 'needs_human',
+    reason: done.reason || 'done gate did not pass',
+    note: `PR #${pr} reached the done gate but did NOT fully pass — see reason; human attention needed.`,
+  }
 }
 
 // ===========================================================================
@@ -431,16 +561,22 @@ const done = await runAgent(
       '- SonarCloud quality gate: PASS (or explicitly note it is unconfigured).\n' +
       `- dev-tools/9d-triage-${ctx.branch}.md exists and every row is fixed / replied / classified-as-nit.\n` +
       '- dev-tools/review_queue.json: zero OPEN critical or major items.\n' +
-      'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).',
+      `- ${QA_REPORT}: exists and shows zero OPEN critical or major QA bugs (or a justified exception).\n` +
+      'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).\n' +
+      DONE_PENDING_CI_RULE,
   ),
-  { label: 'done-gate', phase: 'Done Gate', schema: statusSchema({ donePassed: { type: 'boolean' } }, ['donePassed']) },
+  { label: 'done-gate', phase: 'Done Gate', schema: statusSchema(DONE_GATE_PROPS, ['donePassed']) },
 )
 { const g = gate(done, 'Done Gate'); if (g.halt) return g.out }
+const outcome = doneOutcome(done, PR)
 
 return {
   stopped: false,
   prNumber: PR,
   done: done.donePassed,
+  status: outcome.status,
+  ...(outcome.reason ? { reason: outcome.reason } : {}),
+  note: outcome.note,
   tokensSpent: spent(),
   ...(stalls.length ? { stalls } : {}),
   ...(PROBE ? { bundleProbeOk: verify.bundleProbeOk } : {}),

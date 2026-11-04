@@ -1,4 +1,5 @@
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
+import { DEFAULT_TIMEZONE } from '@/lib/restaurantClock';
 import { TimePunch } from '@/types/timeTracking';
 import { Employee } from '@/types/scheduling';
 
@@ -111,6 +112,7 @@ export interface TimePunchInsert {
   employee_id: string;
   punch_type: 'clock_in' | 'clock_out' | 'break_start' | 'break_end';
   punch_time: string;
+  shift_id?: string | null;
   notes?: string | null;
   device_info?: string | null;
 }
@@ -519,7 +521,9 @@ export const buildTimePunchImportPreview = ({
   });
 
   punchesByEmployee.forEach((employeePunches) => {
-    const { periods, incompleteShifts: employeeIncomplete } = parseWorkPeriods(employeePunches);
+    // Only the count of incomplete shifts is used here, not their messages,
+    // so the zone does not change the result.
+    const { periods, incompleteShifts: employeeIncomplete } = parseWorkPeriods(employeePunches, DEFAULT_TIMEZONE);
     incompleteShifts += employeeIncomplete.length;
 
     const workPeriods = periods

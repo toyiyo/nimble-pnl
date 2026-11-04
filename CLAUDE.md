@@ -126,7 +126,7 @@ const { data, isLoading } = useQuery({
 ## Critical Rules
 
 ### Mandatory Development Workflow
-**Every task MUST follow the `development-workflow` skill.** Before starting any implementation work, invoke the development-workflow skill from `.claude/skills/development-workflow.md`. This is non-negotiable. The skill orchestrates: consult lessons → brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → PR → CI feedback loop → retrospective. After the user approves the plan, execution is **fully autonomous** through PR creation and CI green.
+**Every task MUST follow the `development-workflow` skill.** Before starting any implementation work, invoke the development-workflow skill from `.claude/skills/development-workflow/SKILL.md`. This is non-negotiable. The skill orchestrates: consult lessons → brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → QA (`/qa`) → PR → CI feedback loop → retrospective. After the user approves the plan, execution is **fully autonomous** through PR creation and CI green.
 
 ### No Manual Caching
 ```typescript
@@ -252,7 +252,7 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 - Track via `initial_sync_done` and `sync_cursor` columns on connection
 - Edge functions use service role key - remove `auth.uid()` checks from RPC functions
 - **CPU Limits**: Edge functions have strict CPU limits (~10s). Batch processing and skip per-order RPC calls
-- **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts
+- **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts. The cron skips a restaurant when `rollup_source_watermark` on `toast_connections` shows no source change since the last successful rollup.
 - Use `skipUnifiedSalesSync: true` in processOrder during bulk imports
 
 **Key Files:**
@@ -280,6 +280,9 @@ curl -X POST http://localhost:54321/functions/v1/toast-bulk-sync \
 
 ### Banking (Stripe Financial Connections)
 Never store bank credentials. Use Stripe for credential storage. Always verify webhook signatures.
+
+### Claude connector (MCP)
+EasyShiftHQ is a remote MCP server for Claude: `supabase/functions/mcp/` (logic in `_shared/mcpHandler.ts`). It forwards tool calls to `ai-execute-tool`, so add new tools there and in `tools-registry.ts`. OAuth comes from the Supabase Auth OAuth 2.1 server; the consent page is `src/pages/OAuthConsent.tsx`. Runbook: `docs/CLAUDE_INTEGRATION.md`.
 
 ### AI (OpenRouter)
 Multi-model fallback: free models first (Llama, Gemma), then paid (Gemini, Claude, GPT). AI suggestions stored separately—user must approve before applying.

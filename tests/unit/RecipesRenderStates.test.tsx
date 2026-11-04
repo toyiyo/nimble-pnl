@@ -46,6 +46,11 @@ vi.mock("@/hooks/useBulkInventoryDeduction", () => ({
 vi.mock("@/hooks/usePOSItems", () => ({
   usePOSItems: () => ({ posItems: [], loading: false, error: null, refetch: vi.fn() }),
 }));
+// RecipeDialog also calls useRecipeWeeklyVolume, which uses useQuery internally;
+// same reasoning as usePOSItems above.
+vi.mock("@/hooks/useRecipeWeeklyVolume", () => ({
+  useRecipeWeeklyVolume: () => ({ weeklyVolume: 0, isLoading: false, isError: false }),
+}));
 
 import Recipes from "@/pages/Recipes";
 

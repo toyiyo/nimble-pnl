@@ -1,7 +1,6 @@
 ---
 name: frontend-design-reviewer
 description: Reviews a freshly committed design doc for UI/component/styling/accessibility correctness BEFORE any code is written. Runs in Phase 2.5 of `/dev` when the design touches components, dialogs, forms, pages, mobile/viewport behaviour, or styling.
-subagent_type: general-purpose
 ---
 
 # Frontend Design Reviewer

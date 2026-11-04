@@ -11,6 +11,7 @@ export interface TimePunch {
     distance_meters?: number;
     within_geofence?: boolean;
     location_unavailable?: boolean;
+    geofence_radius_meters?: number;
   };
   device_info?: string;
   photo_path?: string; // Storage path in time-clock-photos bucket (e.g., restaurant_id/employee_id/punch-timestamp.jpg)

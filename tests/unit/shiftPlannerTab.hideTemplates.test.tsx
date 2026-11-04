@@ -194,6 +194,10 @@ const DEFAULT_PROPS = {
   restaurantId: 'r1',
   weekStart: new Date('2026-07-06T00:00:00Z'),
   onWeekStartChange: vi.fn(),
+  guardShiftChange: vi.fn(async ({ run }: { run: (options: { allowPublished: boolean }) => void | Promise<void> }) => {
+    await run({ allowPublished: false });
+  }),
+  notifyAfterDeferredCommit: vi.fn(),
 } as const;
 
 function renderTab(props = DEFAULT_PROPS) {

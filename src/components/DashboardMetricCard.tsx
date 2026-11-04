@@ -11,6 +11,7 @@ interface DashboardMetricCardProps {
   variant?: 'default' | 'success' | 'warning' | 'danger';
   subtitle?: string;
   periodLabel?: string;
+  caption?: string;
 }
 
 export function DashboardMetricCard({
@@ -20,7 +21,8 @@ export function DashboardMetricCard({
   icon: Icon,
   variant = 'default',
   subtitle,
-  periodLabel
+  periodLabel,
+  caption
 }: DashboardMetricCardProps) {
   const getTrendIcon = () => {
     if (!trend) return null;
@@ -46,7 +48,11 @@ export function DashboardMetricCard({
   };
 
   return (
-    <div className="group flex flex-col justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors">
+    <div
+      role="region"
+      aria-label={title}
+      className="group flex flex-col justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+    >
       <div className="flex items-start justify-between mb-3">
         <p className="text-[13px] text-muted-foreground leading-tight pr-2">{title}</p>
         <div className={`h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0 ${getAccentColor()}`}>
@@ -58,6 +64,9 @@ export function DashboardMetricCard({
         <p className="text-[22px] font-semibold tracking-tight text-foreground">{value}</p>
         {subtitle && (
           <p className="text-[12px] text-muted-foreground mt-0.5">{subtitle}</p>
+        )}
+        {caption && (
+          <p className="text-[11px] text-muted-foreground mt-1">{caption}</p>
         )}
       </div>
 

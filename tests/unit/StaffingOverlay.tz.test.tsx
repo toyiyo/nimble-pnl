@@ -1,7 +1,7 @@
 /**
  * Task 8 — StaffingOverlay timezone wiring
- * Verifies that the restaurant timezone from useRestaurantContext is resolved and
- * forwarded as the second argument to aggregateHourlySales.
+ * Verifies that the restaurant timezone from useRestaurantContext reaches the
+ * get_hourly_sales_pattern RPC as the business-day p_start_date/p_end_date.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -9,19 +9,12 @@ import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// ── Spy on aggregateHourlySales BEFORE the component imports it ────────────────
-// We need the module factory to expose the spy so we can assert call args.
-const aggregateSpy = vi.fn();
-vi.mock('@/hooks/useHourlySalesPattern', async () => {
-  const actual = await vi.importActual<typeof import('@/hooks/useHourlySalesPattern')>('@/hooks/useHourlySalesPattern');
-  return {
-    ...actual,
-    aggregateHourlySales: (...args: Parameters<typeof actual.aggregateHourlySales>) => {
-      aggregateSpy(...args);
-      return actual.aggregateHourlySales(...args);
-    },
-  };
-});
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
+
+// ── Mock the Supabase client so the real queryFn (invoked manually below via
+// mockUseQuery) hits this spy instead of a live network call. ──────────────────
+const { mockSupabase } = vi.hoisted(() => ({ mockSupabase: { from: vi.fn(), rpc: vi.fn() } }));
+vi.mock('@/integrations/supabase/client', () => ({ supabase: mockSupabase }));
 
 // ── Stub heavy sub-components ───────────────────────────────────────────────────
 vi.mock('@/components/scheduling/ShiftPlanner/SuggestedShifts', () => ({
@@ -78,14 +71,6 @@ import { StaffingOverlay } from '@/components/scheduling/ShiftPlanner/StaffingOv
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 const WEEK_DAYS = ['2026-05-25', '2026-05-26', '2026-05-27', '2026-05-28', '2026-05-29', '2026-05-30', '2026-05-31'];
 
-// A Saturday with sales data so the memoised computation actually calls aggregateHourlySales
-const FAKE_SALES = Array.from({ length: 5 }, (_, i) => ({
-  sale_date: '2026-05-23', // Saturday
-  sale_time: `${10 + i}:00:00`,
-  sold_at: null as string | null,
-  total_price: '200',
-}));
-
 const wrapper = ({ children }: { children: React.ReactNode }) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
@@ -95,20 +80,27 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+/** Runs `useWeekStaffingSuggestions`'s real hourly-sales queryFn so the RPC
+ *  call underneath is observable, while `useQuery` itself stays mocked for
+ *  the other queries the overlay's descendants may issue. */
+function forwardHourlySalesQueryFn(opts: { queryKey: string[]; queryFn?: () => unknown }) {
+  const key = opts.queryKey[0];
+  if (key === 'hourly-sales-all') {
+    void opts.queryFn?.();
+    return { data: { total_sales: 0, days: [] }, isLoading: false, error: null };
+  }
+  if (key === 'staffing-time-punches') return { data: [], isLoading: false, error: null };
+  return { data: undefined, isLoading: false, error: null };
+}
+
 describe('<StaffingOverlay> timezone wiring (Task 8)', () => {
   beforeEach(() => {
-    aggregateSpy.mockClear();
     vi.clearAllMocks();
-
-    mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
-      const key = opts.queryKey[0];
-      if (key === 'hourly-sales-all') return { data: FAKE_SALES, isLoading: false, error: null };
-      if (key === 'staffing-time-punches') return { data: [], isLoading: false, error: null };
-      return { data: undefined, isLoading: false, error: null };
-    });
+    mockSupabase.rpc.mockResolvedValue({ data: { total_sales: 0, days: [] }, error: null });
+    mockUseQuery.mockImplementation(forwardHourlySalesQueryFn);
   });
 
-  it('passes the restaurant timezone from useRestaurantContext to aggregateHourlySales', () => {
+  it('sends the restaurant timezone from useRestaurantContext as the RPC business-day range', async () => {
     // Use a non-Chicago timezone so the test is unambiguous
     mockRestaurantContext.mockReturnValue({
       selectedRestaurant: { restaurant: { timezone: 'America/New_York' } },
@@ -116,36 +108,43 @@ describe('<StaffingOverlay> timezone wiring (Task 8)', () => {
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
 
-    // aggregateHourlySales should have been called at least once (once per day with matching DOW)
-    // and every call should receive 'America/New_York' as the second argument.
-    expect(aggregateSpy).toHaveBeenCalled();
-    const tzArgs = aggregateSpy.mock.calls.map((c: unknown[]) => c[1]);
-    expect(tzArgs.every((tz: unknown) => tz === 'America/New_York')).toBe(true);
+    await Promise.resolve();
+
+    expect(mockSupabase.rpc).toHaveBeenCalled();
+    const tz = safeTz('America/New_York');
+    const expectedEnd = toBusinessDay(new Date(), tz);
+    const [, args] = mockSupabase.rpc.mock.calls[0];
+    expect(args.p_end_date).toBe(expectedEnd);
   });
 
-  it('falls back to America/Chicago when selectedRestaurant has no timezone', () => {
+  it('falls back to America/Chicago when selectedRestaurant has no timezone', async () => {
     mockRestaurantContext.mockReturnValue({
       selectedRestaurant: { restaurant: {} }, // no timezone field
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
 
-    expect(aggregateSpy).toHaveBeenCalled();
-    const tzArgs = aggregateSpy.mock.calls.map((c: unknown[]) => c[1]);
-    expect(tzArgs.every((tz: unknown) => tz === 'America/Chicago')).toBe(true);
+    await Promise.resolve();
+
+    expect(mockSupabase.rpc).toHaveBeenCalled();
+    const expectedEnd = toBusinessDay(new Date(), 'America/Chicago');
+    const [, args] = mockSupabase.rpc.mock.calls[0];
+    expect(args.p_end_date).toBe(expectedEnd);
   });
 
-  it('falls back to America/Chicago when selectedRestaurant is null', () => {
+  it('falls back to America/Chicago when selectedRestaurant is null', async () => {
     mockRestaurantContext.mockReturnValue({
       selectedRestaurant: null,
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
 
-    // With no restaurant, aggregateHourlySales still runs (sales still aggregate)
-    // and must use the default timezone
-    expect(aggregateSpy).toHaveBeenCalled();
-    const tzArgs = aggregateSpy.mock.calls.map((c: unknown[]) => c[1]);
-    expect(tzArgs.every((tz: unknown) => tz === 'America/Chicago')).toBe(true);
+    await Promise.resolve();
+
+    // With no restaurant, the RPC still runs and must use the default timezone.
+    expect(mockSupabase.rpc).toHaveBeenCalled();
+    const expectedEnd = toBusinessDay(new Date(), 'America/Chicago');
+    const [, args] = mockSupabase.rpc.mock.calls[0];
+    expect(args.p_end_date).toBe(expectedEnd);
   });
 });

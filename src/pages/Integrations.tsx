@@ -13,6 +13,7 @@ import { useFocusConnection } from '@/hooks/useFocusConnection';
 import { useRevelIntegration } from '@/hooks/useRevelIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
+import { ConnectedAppsCard } from '@/components/integrations/ConnectedAppsCard';
 import { MetricIcon } from '@/components/MetricIcon';
 import { ExternalLink, Plug, CheckCircle2, TrendingUp } from 'lucide-react';
 
@@ -259,6 +260,8 @@ const Integrations = () => {
               </div>
             </div>
           ))}
+
+          <ConnectedAppsCard />
 
           {/* Help Section */}
           <Card className="bg-gradient-to-br from-muted/30 to-muted/10 border-muted hover:shadow-md transition-all duration-200">

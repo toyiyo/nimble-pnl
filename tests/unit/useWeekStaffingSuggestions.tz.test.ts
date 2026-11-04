@@ -34,10 +34,11 @@ vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: () => mockRestaurantContext,
 }));
 
-const { mockSupabase } = vi.hoisted(() => ({ mockSupabase: { from: vi.fn() } }));
+const { mockSupabase } = vi.hoisted(() => ({ mockSupabase: { from: vi.fn(), rpc: vi.fn() } }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: mockSupabase }));
 
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 
 type QueryResult = { data: unknown; error: unknown };
 type MockBuilder = Record<string, unknown> & {
@@ -60,14 +61,20 @@ function makeBuilder(gteSink?: string[]) {
 }
 
 let punchGteBounds: string[];
+let rpcArgs: Record<string, unknown>[];
 
 function setup(timezone: string | null | undefined) {
   punchGteBounds = [];
+  rpcArgs = [];
   mockRestaurantContext.selectedRestaurant =
     timezone === undefined ? null : { restaurant: { timezone } };
   mockSupabase.from.mockImplementation((table: string) =>
     table === 'time_punches' ? makeBuilder(punchGteBounds) : makeBuilder()
   );
+  mockSupabase.rpc.mockImplementation((_fn: string, args: Record<string, unknown>) => {
+    rpcArgs.push(args);
+    return Promise.resolve({ data: null, error: null });
+  });
 }
 
 const createWrapper = () => {
@@ -112,5 +119,21 @@ describe('useWeekStaffingSuggestions timezone handling', () => {
     expect([5, 6]).toContain(start.getUTCHours());
     expect(start.getUTCMinutes()).toBe(0);
     expect(start.getUTCSeconds()).toBe(0);
+  });
+
+  it('sends the get_hourly_sales_pattern RPC the restaurant business-day range', async () => {
+    setup('Not/AZone');
+
+    renderHook(() => useWeekStaffingSuggestions('rest-1', null, null), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(rpcArgs.length).toBeGreaterThan(0));
+
+    const tz = safeTz('Not/AZone');
+    const expectedEnd = toBusinessDay(new Date(), tz);
+    expect(rpcArgs[0].p_restaurant_id).toBe('rest-1');
+    expect(rpcArgs[0].p_end_date).toBe(expectedEnd);
+    expect(rpcArgs[0].p_start_date as string < expectedEnd).toBe(true);
   });
 });

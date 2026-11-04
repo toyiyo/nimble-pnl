@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 
+import { SHIFT_PROTECTION_DEFAULTS } from '@/lib/shiftProtection';
+
 import type { StaffingSettings } from '@/types/scheduling';
 
 const DEFAULTS: Omit<StaffingSettings, 'id' | 'restaurant_id' | 'created_at' | 'updated_at'> = {
@@ -16,19 +18,21 @@ const DEFAULTS: Omit<StaffingSettings, 'id' | 'restaurant_id' | 'created_at' | '
   min_crew: null,
   open_shifts_enabled: false,
   require_shift_claim_approval: false,
+  // The Shift Protection rules keep one default set, in @/lib/shiftProtection.
+  ...SHIFT_PROTECTION_DEFAULTS,
 };
 
 export function useStaffingSettings(restaurantId: string | null) {
   const queryClient = useQueryClient();
   const queryKey = ['staffing-settings', restaurantId];
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading, error, refetch } = useQuery({
     queryKey,
     queryFn: async () => {
       if (!restaurantId) return null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
       const { data, error } = await (supabase.from as any)('staffing_settings')
-        .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, min_crew, open_shifts_enabled, require_shift_claim_approval, created_at, updated_at')
+        .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, min_crew, open_shifts_enabled, require_shift_claim_approval, trade_deadline_mode, trade_deadline_hours, trade_auto_expire, timeoff_notice_mode, timeoff_notice_days, timeoff_sameday_mode, timeoff_sameday_limit, coverage_floor_mode, created_at, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
@@ -67,6 +71,8 @@ export function useStaffingSettings(restaurantId: string | null) {
     settings,
     effectiveSettings,
     isLoading,
+    error,
+    refetch,
     updateSettings: upsertMutation.mutateAsync,
     isSaving: upsertMutation.isPending,
   };

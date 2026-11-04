@@ -32,7 +32,7 @@ Below the status area, three plan cards display side by side. Each card lists wh
 |------|--------------|-------------|-----------|
 | **Starter** | $99/mo | $990/yr | Daily P&L Dashboard, Basic Inventory Tracking, Labor Cost Tracking, POS Integration (Square, Toast, Clover), Recipe Management, Multi-User Access, Email Support |
 | **Growth** | $199/mo | $1,990/yr | Everything in Starter, plus Financial Intelligence Dashboard, Inventory Automation (OCR), Recipe & Menu Profitability Analytics, Employee Scheduling, AI Alerts & Anomaly Detection, AI Transaction Categorization, Priority Support |
-| **Pro** | $299/mo | $2,990/yr | Everything in Growth, plus AI Assistant, Ops Inbox, Weekly Brief, Bank Account Connections, Automated Transaction Sync, Customer Invoicing, Expense Management, Asset & Equipment Tracking, Payroll Reports & Export, VIP Support |
+| **Pro** | $299/mo | $2,990/yr | Everything in Growth, plus AI Assistant, Bank Account Connections, Automated Transaction Sync, Customer Invoicing, Expense Management, Asset & Equipment Tracking, Payroll Reports & Export, VIP Support |
 
 The **Growth** plan is marked as recommended.
 

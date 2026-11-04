@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:dev-workflow": "node --test tests/dev-workflow/orchestrate.test.mjs",
     "test:db": "cd supabase/tests && ./run_tests.sh",
     "test:db:reset": "npm run env:setup && npx supabase db reset && npm run test:db",
     "test:e2e": "npx playwright test --project=e2e",

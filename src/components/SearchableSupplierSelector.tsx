@@ -19,6 +19,8 @@ import {
 import { useInsideScrollLock } from "@/components/ui/scroll-lock-boundary";
 import { Supplier } from '@/hooks/useSuppliers';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface SearchableSupplierSelectorProps {
   value?: string;
   onValueChange: (value: string, isNew: boolean) => void;
@@ -62,7 +64,12 @@ export function SearchableSupplierSelector({
   }, [searchValue, fuse, suppliers]);
 
   const selectedSupplier = suppliers.find((supplier) => supplier.id === value);
-  
+  // A staged new name is a non-empty value, not the "new_supplier"
+  // sentinel, with no matching supplier. Exclude UUIDs: a UUID value
+  // means the supplier list has not loaded yet, not a real name.
+  const isStagedNewName =
+    !!value?.trim() && value !== 'new_supplier' && !selectedSupplier && !UUID_RE.test(value);
+
   // Handle display for special values
   const getDisplayValue = () => {
     if (value === 'new_supplier') {
@@ -70,8 +77,11 @@ export function SearchableSupplierSelector({
       return pendingNewName || searchValue || '+ Create New Supplier';
     }
     if (selectedSupplier) return selectedSupplier.name;
+    if (isStagedNewName) return value;
     return placeholder;
   };
+
+  const showNewStyling = value === 'new_supplier' || isStagedNewName;
 
   const handleSelect = (supplierId: string) => {
     if (supplierId === 'new_supplier') {
@@ -100,11 +110,11 @@ export function SearchableSupplierSelector({
           >
             <span className={cn(
               "truncate",
-              value === 'new_supplier' && "text-blue-600 font-medium"
+              showNewStyling && "text-primary font-medium"
             )}>
               {getDisplayValue()}
-              {showNewIndicator && value === 'new_supplier' && (
-                <span className="ml-2 text-xs text-muted-foreground">(new)</span>
+              {showNewIndicator && showNewStyling && (
+                <span className="ml-2 text-xs text-muted-foreground"> (new)</span>
               )}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

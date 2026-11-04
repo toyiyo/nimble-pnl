@@ -130,7 +130,7 @@ describe('Hourly Employee Edge Cases', () => {
         '2024-01-16T00:00:00Z' // Midnight Tuesday (18 hours)
       );
 
-      const { incompleteShifts } = calculateWorkedHoursWithAnomalies(punches);
+      const { incompleteShifts } = calculateWorkedHoursWithAnomalies(punches, 'America/Chicago');
       // Current behavior: Should flag but still count the hours
       // OR: Should NOT count them until manager review?
       // This is a potential hole - what's the right behavior?
@@ -157,7 +157,7 @@ describe('Hourly Employee Edge Cases', () => {
         // No clock_out - employee forgot
       ];
 
-      const { incompleteShifts } = parseWorkPeriods(punches);
+      const { incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
       expect(incompleteShifts.length).toBe(1);
       expect(incompleteShifts[0].type).toBe('missing_clock_out');
     });
@@ -168,7 +168,7 @@ describe('Hourly Employee Edge Cases', () => {
         // No preceding clock_in
       ];
 
-      const { incompleteShifts } = parseWorkPeriods(punches);
+      const { incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
       expect(incompleteShifts.length).toBe(1);
       expect(incompleteShifts[0].type).toBe('missing_clock_in');
     });
@@ -180,7 +180,7 @@ describe('Hourly Employee Edge Cases', () => {
         createPunch('clock_out', '2024-01-16T17:00:00Z'), // Tuesday evening
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
       // Should flag Monday's clock_in as incomplete
       expect(incompleteShifts.length).toBe(1);
       expect(incompleteShifts[0].type).toBe('missing_clock_out');
@@ -196,7 +196,7 @@ describe('Hourly Employee Edge Cases', () => {
         createPunch('clock_out', '2024-01-15T17:01:00Z'), // Accidental double tap within 5 min
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
       // Deduplication removes the first clock_out, keeps the last one
       // So this should be treated as a single valid shift
       expect(periods.length).toBe(1);
@@ -210,7 +210,7 @@ describe('Hourly Employee Edge Cases', () => {
         createPunch('clock_out', '2024-01-15T17:10:00Z'), // 10 min later - not a double tap
       ];
 
-      const { periods, incompleteShifts } = parseWorkPeriods(punches);
+      const { periods, incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
       // First clock_out pairs with clock_in, second clock_out is orphan
       expect(periods.length).toBe(1);
       expect(incompleteShifts.length).toBe(1);
@@ -223,7 +223,7 @@ describe('Hourly Employee Edge Cases', () => {
         createPunch('clock_out', '2024-01-17T17:00:00Z'), // Wednesday 5 PM - 56 hour gap!
       ];
 
-      const { incompleteShifts } = parseWorkPeriods(punches);
+      const { incompleteShifts } = parseWorkPeriods(punches, 'America/Chicago');
       // This should NOT count as a valid shift - it needs manager review
       expect(incompleteShifts.length).toBeGreaterThan(0);
     });
@@ -268,7 +268,7 @@ describe('Hourly Employee Edge Cases', () => {
       ];
 
       // Should still calculate something reasonable
-      const { periods } = parseWorkPeriods(punches);
+      const { periods } = parseWorkPeriods(punches, 'America/Chicago');
       expect(periods.length).toBeGreaterThan(0);
     });
 

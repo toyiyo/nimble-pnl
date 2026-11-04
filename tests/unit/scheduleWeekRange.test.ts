@@ -113,6 +113,29 @@ describe('week range serialization', () => {
     );
   });
 
+  it('usePublishSchedule refreshes shift-trade queries so the tentative badge clears', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 'pub-1', error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: {}, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children);
+
+    const { result } = renderHook(() => usePublishSchedule(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    // A published shift flips offered_shift.is_published to true. Without this,
+    // the badge on an open draft trade would clear only after the trade
+    // query's own 30s staleTime.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['shift_trades', 'r1'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['marketplace_trades', 'r1'] });
+  });
+
   it('useUnpublishSchedule sends a Mon..Sun range, not Mon..Mon', async () => {
     mockSupabase.rpc.mockResolvedValue({ data: 3, error: null });
     mockSupabase.functions.invoke.mockResolvedValue({ data: {}, error: null });
@@ -130,6 +153,28 @@ describe('week range serialization', () => {
       p_week_end: '2026-08-02',
       p_reason: null,
     });
+  });
+
+  it('useUnpublishSchedule refreshes shift-trade queries so the tentative badge reappears', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 3, error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: {}, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children);
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    // An unpublished shift flips offered_shift.is_published back to false. The
+    // badge must reappear promptly, not only on the trade query's next fetch.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['shift_trades', 'r1'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['marketplace_trades', 'r1'] });
   });
 
   it('useWeekPublicationStatus uses instants for start_time and dates for date columns', async () => {

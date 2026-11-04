@@ -123,15 +123,74 @@ service-role key.
 
 ---
 
-### Task 2: Stop owners from writing their own subscription tier
+### Task 2: Stop owners from writing their own subscription tier — DONE
 
-Audit: Vuln 2.
+Audit: Vuln 2. Shipped in
+[PR #736](https://github.com/toyiyo/nimble-pnl/pull/736).
+Retrospective in [PR #737](https://github.com/toyiyo/nimble-pnl/pull/737).
 
-**Files:**
-- Create: `supabase/migrations/20260807000001_guard_restaurant_billing_columns.sql`
-- Test: `supabase/tests/restaurant_billing_columns.test.sql`
+Design: `docs/superpowers/specs/2026-08-09-restaurant-billing-column-guard-design.md`.
+Plan: `docs/superpowers/plans/2026-08-09-restaurant-billing-column-guard-plan.md`.
 
-- [ ] **Step 1: Write the pgTAP test.** Cases:
+**Files, all 16 that PR #736 changed.** The guard needs more than a migration.
+A server-side block alone leaves the client free to send a write that now
+fails, so the task also added a type barrier and a service-role test path.
+
+*Server guard:*
+- Create: `supabase/migrations/20260809100000_guard_restaurant_billing_columns.sql`
+  (the draft below named `20260807000001_...`; the shipped file uses the later
+  timestamp)
+- Create: `supabase/tests/restaurant_billing_columns.test.sql`
+- Change: `supabase/tests/20260129000000_subscription_system.sql`
+
+*Client type barrier — blocks the write before it reaches the database:*
+- Change: `src/hooks/useRestaurants.tsx` (the `RestaurantUpdate` type)
+- Change: `src/pages/RestaurantSettings.tsx`
+- Change: `src/components/settings/GeofenceSettings.tsx`
+- Create: `tests/unit/types/restaurantUpdateBillingColumns.test.ts`
+
+*Test path — the browser role can no longer set a tier, so E2E needs
+`service_role`:*
+- Create: `tests/helpers/e2e-service-role.ts`
+- Create: `tests/unit/e2e-service-role.test.ts`
+- Create: `tests/e2e/subscription-tier-guard.spec.ts`
+- Change: `tests/helpers/e2e-supabase.ts`
+
+*CI gate — no job compiled `src` before this task, so the type barrier gated
+nothing:*
+- Create: `tsconfig.typetest.json`
+- Change: `.github/workflows/unit-tests.yml`
+- Change: `package.json`
+
+*Design record:*
+- Create: `docs/superpowers/specs/2026-08-09-restaurant-billing-column-guard-design.md`
+- Create: `docs/superpowers/plans/2026-08-09-restaurant-billing-column-guard-plan.md`
+
+**The shipped guard blocks two writer shapes, not one.** The draft below says
+"the writer is not the service role". The trigger tests two things in order.
+First it checks `current_user IN ('authenticated', 'anon')`. Then, for any
+other role, it reads `request.jwt.claims ->> 'role'`.
+
+That second test matters. Inside a `SECURITY DEFINER` function, `current_user`
+becomes the function owner, but the JWT claim still says `authenticated`. The
+first test alone would let such a function through. The second test stops it.
+
+The second test also blocked a fixture `UPDATE` in an existing pgTAP test. The
+harness runs as `postgres`, so the first test was false. But the harness kept
+an `authenticated` JWT claim from an earlier assertion. That claim made the
+second test true. The fix clears the claim before each guarded write. It
+restores the claim after, because the assertions below need `auth.uid()`.
+
+**A pre-merge audit found no regression.** No production `SECURITY DEFINER`
+function updates `public.restaurants`. `create_restaurant_with_owner` only
+INSERTs, and the trigger is `BEFORE UPDATE`. All 15 `cron.job` entries run as
+`postgres` with no JWT claim. All 10 Stripe edge-function writes use
+`service_role`. The 3 client write sites pass explicit column lists.
+
+<details>
+<summary>Original steps, kept for the record</summary>
+
+- [x] **Step 1: Write the pgTAP test.** Cases:
       - An owner UPDATE that changes `subscription_tier` **fails**.
       - An owner UPDATE that changes only `name`, `address`, or `timezone`
         **succeeds**.
@@ -141,18 +200,20 @@ Audit: Vuln 2.
         `subscription_ends_at`, `subscription_cancel_at`, `trial_ends_at`,
         `stripe_customer_id`, `stripe_subscription_id`,
         `stripe_subscription_customer_id`.
-- [ ] **Step 2: Add a BEFORE UPDATE trigger** on `public.restaurants`. Raise an
+- [x] **Step 2: Add a BEFORE UPDATE trigger** on `public.restaurants`. Raise an
       exception when any billing column changes and the writer is not the
       service role. Prefer a trigger over a policy split. A policy cannot
       compare `OLD` to `NEW`.
-- [ ] **Step 3: Confirm the writer test works in this project.** Test both
+- [x] **Step 3: Confirm the writer test works in this project.** Test both
       `auth.role()` and `current_setting('request.jwt.claims', true)` inside
       pgTAP. Migrations run as `postgres`, so the trigger must allow `postgres`
       too or later migrations break.
-- [ ] **Step 4: Grep every caller.** Confirm no frontend or non-webhook edge
+- [x] **Step 4: Grep every caller.** Confirm no frontend or non-webhook edge
       function writes these columns. Search for `subscription_tier`,
       `trial_ends_at`, and `stripe_customer_id`.
-- [ ] **Step 5: Run `npm run test:db` and the subscription E2E flow.**
+- [x] **Step 5: Run `npm run test:db` and the subscription E2E flow.**
+
+</details>
 
 ---
 

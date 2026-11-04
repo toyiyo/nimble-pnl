@@ -1,8 +1,9 @@
 /**
  * Unit tests for TimelineBar's pointer drag-move / edge-resize gesture
  * (Stage D1):
- *   - A locked shift renders no resize handles and never drags — pointer
- *     sequences on its body are inert (no onDraftChange/onDragCommit calls).
+ *   - A locked (published) shift renders resize handles and drags the same
+ *     as an unlocked shift — the guard at the commit call site is the gate,
+ *     not this hook.
  *   - A sub-threshold pointer sequence (movement below the 5px drag
  *     threshold) never fires onDraftChange/onDragCommit, leaving the bar's
  *     native onClick as the only path to onSelect — preserving tap-to-edit.
@@ -22,7 +23,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { TimelineBar } from '@/components/scheduling/ShiftTimeline/TimelineBar';
@@ -116,7 +117,7 @@ function renderBar(overrides: RenderBarOptions = {}) {
       onDragCommit={onDragCommit}
     />,
   );
-  const button = screen.getByRole('button');
+  const button = within(utils.container).getByRole('button');
   return { ...utils, button, onSelect, onDraftChange, onDragCommit };
 }
 
@@ -138,10 +139,10 @@ afterEach(() => {
 });
 
 describe('TimelineBar drag — locked shifts', () => {
-  it('renders no resize handles for a locked shift', () => {
+  it('renders resize handles for a locked shift too', () => {
     renderBar({ bar: makeBar({ shift: makeShift({ locked: true }) }) });
-    expect(screen.queryByTestId('resize-handle-start')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('resize-handle-end')).not.toBeInTheDocument();
+    expect(screen.getByTestId('resize-handle-start')).toBeInTheDocument();
+    expect(screen.getByTestId('resize-handle-end')).toBeInTheDocument();
   });
 
   it('renders resize handles for an unlocked shift', () => {
@@ -150,8 +151,8 @@ describe('TimelineBar drag — locked shifts', () => {
     expect(screen.getByTestId('resize-handle-end')).toBeInTheDocument();
   });
 
-  it('does not drag a locked bar — a pointer drag on the body never calls onDraftChange or onDragCommit', () => {
-    const { button, onDraftChange, onDragCommit, onSelect } = renderBar({
+  it('drags a locked bar — the gesture starts and calls onDraftChange and onDragCommit; the guard gates the commit later, not this hook', () => {
+    const { button, onDraftChange, onDragCommit } = renderBar({
       bar: makeBar({ shift: makeShift({ locked: true }) }),
     });
 
@@ -159,21 +160,18 @@ describe('TimelineBar drag — locked shifts', () => {
     fireEvent.pointerMove(button, { pointerId: 1, clientX: 200, pointerType: 'mouse' });
     fireEvent.pointerUp(button, { pointerId: 1, clientX: 200, pointerType: 'mouse' });
 
-    expect(onDraftChange).not.toHaveBeenCalled();
-    expect(onDragCommit).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onDraftChange).toHaveBeenCalled();
+    expect(onDragCommit).toHaveBeenCalled();
   });
 
-  it('applies cursor-grab and touch-none only to unlocked bars', () => {
+  it('applies cursor-grab and touch-none to every bar, locked or not', () => {
     const { button: unlockedBtn } = renderBar({ bar: makeBar({ shift: makeShift({ locked: false }) }) });
     expect(unlockedBtn.className).toContain('cursor-grab');
     expect(unlockedBtn.className).toContain('touch-none');
-  });
 
-  it('does not apply cursor-grab or touch-none to a locked bar', () => {
     const { button: lockedBtn } = renderBar({ bar: makeBar({ shift: makeShift({ locked: true }) }) });
-    expect(lockedBtn.className).not.toContain('cursor-grab');
-    expect(lockedBtn.className).not.toContain('touch-none');
+    expect(lockedBtn.className).toContain('cursor-grab');
+    expect(lockedBtn.className).toContain('touch-none');
   });
 });
 

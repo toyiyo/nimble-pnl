@@ -30,6 +30,7 @@ import {
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 import { sendWebPushToUsers } from "../_shared/webPushHelper.ts";
 import { runBounded } from "../_shared/webPushFanout.ts";
+import { scheduleThreadHeaders } from "../_shared/scheduleEmailThread.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -175,18 +176,13 @@ serve(async (req) => {
       return noop(`retraction ${retraction.id} has no publication to walk back`);
     }
 
-    const { data: publication, error: publicationError } = await serviceClient
-      .from("schedule_publications")
-      .select("notification_sent")
-      .eq("id", retraction.publication_id)
-      .maybeSingle();
-
-    if (publicationError) {
-      throw new Error(`Failed to read publication: ${publicationError.message}`);
-    }
-    if (!publication?.notification_sent) {
-      return noop(`publication ${retraction.publication_id} was never announced`);
-    }
+    // Gate on the retracted publication row, not on
+    // `schedule_publications.notification_sent` (Phase 2.5 review). A quiet
+    // publish leaves `notification_sent` false, but the week is still live
+    // and visible to employees -- a later retraction of it must still
+    // announce. `retraction.publication_id` already proves that row exists
+    // (checked above), so no further read of `schedule_publications` is
+    // needed here.
 
     // Claim before sending, not after. Two managers unpublishing in quick
     // succession, or a client retry, would otherwise each read notified_at as
@@ -266,6 +262,12 @@ serve(async (req) => {
       const scheduleUrl = `${APP_URL}${SCHEDULE_PATH}`;
 
       const emailRecipients = (ch.email ? audience : []).filter((emp) => emp.email);
+
+      // Built once, outside the loop: every recipient in one retraction
+      // shares the same restaurant and week, so the thread id matches the
+      // one the publish notifier used for the same schedule.
+      const emailThreadHeaders = scheduleThreadHeaders(restaurantId, retraction.week_start_date);
+
       const emailResults = await sendPaced(
         emailRecipients,
         (employee) =>
@@ -275,6 +277,7 @@ serve(async (req) => {
             employee.email as string,
             `Schedule update: ${weekRange} at ${restaurant.name} is being revised`,
             buildEmailHtml(employee.name, restaurant.name, weekRange, scheduleUrl),
+            emailThreadHeaders,
           ),
         { label: `schedule-unpublished ${retraction.id}` },
       );

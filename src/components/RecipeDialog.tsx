@@ -29,15 +29,15 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
+import { Plus, ChefHat } from 'lucide-react';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
 import { Product } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
+import { useRecipeWeeklyVolume } from '@/hooks/useRecipeWeeklyVolume';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
-import { calculateInventoryImpact, getProductUnitInfo } from "@/lib/enhancedUnitConversion";
 import { MEASUREMENT_UNITS, IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
+import { computeLineCost } from '@/lib/recipeYield';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Recipe name is required'),
@@ -50,6 +50,11 @@ const formSchema = z.object({
     quantity: z.number().min(0.001, 'Quantity must be greater than 0'),
     unit: z.enum(MEASUREMENT_UNITS),
     notes: z.string().optional(),
+    yield_pct_override: z.number()
+      .min(50, 'Yield must be 50% or more')
+      .max(100, 'Yield must be 100% or less')
+      .nullable()
+      .optional(),
   })).min(1, 'At least one ingredient is required'),
 });
 
@@ -100,6 +105,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
 
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
+  const [portionCostTotal, setPortionCostTotal] = useState(0);
   const [expandedIngredients, setExpandedIngredients] = useState<Record<number, boolean>>({});
 
   const defaultValues: FormData = {
@@ -108,7 +114,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
     pos_item_name: '',
     pos_item_id: '',
     serving_size: 1,
-    ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+    ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '', yield_pct_override: null }],
   };
 
   const form = useForm<FormData>({
@@ -146,8 +152,9 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                   quantity: ing.quantity,
                   unit: toIngredientUnit(ing.unit),
                   notes: ing.notes || '',
+                  yield_pct_override: ing.yield_pct_override ?? null,
                 }))
-              : [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+              : [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '', yield_pct_override: null }],
           });
         } catch (error) {
           if (import.meta.env.DEV) {
@@ -176,7 +183,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
             pos_item_name: recipeState.pos_item_name || '',
             pos_item_id: recipeState.pos_item_id || '',
             serving_size: recipeState.serving_size || 1,
-            ingredients: recipeState.ingredients || [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+            ingredients: recipeState.ingredients || [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '', yield_pct_override: null }],
           });
         } catch (error) {
           if (import.meta.env.DEV) {
@@ -189,7 +196,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
             pos_item_name: initialPosItemName || '',
             pos_item_id: '',
             serving_size: 1,
-            ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+            ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '', yield_pct_override: null }],
           });
         }
       } else {
@@ -213,58 +220,62 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
   const isNameValid = nameValue.trim().length > 0 && nameValue.trim().toLowerCase() !== baseName;
   const isSubmitDisabled = loading || (basedOn ? !isNameValid : false);
 
-  // Calculate estimated cost when ingredients change using enhanced unit conversions
+  // Calculate estimated cost when ingredients change. Uses computeLineCost
+  // so the total matches the loaded (post-waste) cost each RecipeIngredientItem
+  // row shows, per design §5.1 and §6.1.
   useEffect(() => {
     const subscription = form.watch((value) => {
       if (value.ingredients) {
         let totalCost = 0;
+        let totalPortionCost = 0;
         let hasValidIngredients = false;
 
-        try {
-          value.ingredients.forEach((ingredient: any) => {
-            if (ingredient?.product_id && ingredient?.quantity && ingredient?.unit) {
-              const product = products.find(p => p.id === ingredient.product_id);
-              if (product?.cost_per_unit) {
-                hasValidIngredients = true;
-                
-                try {
-                  // Use shared helper to get validated product unit info
-                  const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
-                  const costPerUnit = product.cost_per_unit || 0;
-                  
-                  const result = calculateInventoryImpact(
-                    ingredient.quantity,
-                    ingredient.unit,
-                    quantityPerPurchaseUnit,
-                    purchaseUnit,
-                    product.name || '',
-                    costPerUnit,
-                    sizeValue,
-                    sizeUnit
-                  );
-                  
-                  totalCost += result.costImpact;
-                } catch (conversionError) {
-                  console.warn(`Conversion error for ${product.name}:`, conversionError);
-                  // Skip this ingredient in cost calculation rather than breaking everything
-                }
+        value.ingredients.forEach((ingredient) => {
+          if (ingredient?.product_id && ingredient?.quantity && ingredient?.unit) {
+            const product = products.find(p => p.id === ingredient.product_id);
+            if (product?.cost_per_unit) {
+              hasValidIngredients = true;
+
+              try {
+                const result = computeLineCost(
+                  {
+                    quantity: ingredient.quantity,
+                    unit: ingredient.unit,
+                    yield_pct_override: ingredient.yield_pct_override ?? null,
+                  },
+                  product
+                );
+                totalCost += result.loadedCost;
+                totalPortionCost += result.portionCost;
+              } catch (conversionError) {
+                console.warn(`Conversion error for ${product.name}:`, conversionError);
+                // Skip this ingredient in cost calculation rather than breaking everything
               }
             }
-          });
-
-          if (hasValidIngredients) {
-            setEstimatedCost(totalCost);
-          } else {
-            setEstimatedCost(0);
           }
-        } catch (error) {
-          console.warn('Cost calculation error:', error);
-          setEstimatedCost(0);
-        }
+        });
+
+        setEstimatedCost(hasValidIngredients ? totalCost : 0);
+        setPortionCostTotal(hasValidIngredients ? totalPortionCost : 0);
       }
     });
     return () => subscription.unsubscribe();
   }, [products]);
+
+  // Cost summary tiles (design §6.2). Portion cost and loaded cost come
+  // from the effect above; waste allowance is the difference. Food cost %
+  // needs the recipe's average sale price, which a new recipe does not
+  // have yet.
+  const servingSizeValue = form.watch('serving_size') || 1;
+  const wasteAllowanceTotal = estimatedCost - portionCostTotal;
+  const wasteAllowancePerServing = wasteAllowanceTotal / servingSizeValue;
+  const foodCostPct = recipe?.avg_sale_price
+    ? (estimatedCost / recipe.avg_sale_price) * 100
+    : null;
+
+  const { weeklyVolume } = useRecipeWeeklyVolume(restaurantId, recipe?.pos_item_name ?? null);
+  const showWeeklyVolume = !!recipe?.pos_item_name && weeklyVolume > 0;
+  const weeklyWasteAllowance = wasteAllowancePerServing * weeklyVolume;
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -288,6 +299,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
             quantity: number;
             unit: IngredientUnit;
             notes?: string;
+            yield_pct_override?: number | null;
           }[];
           await updateRecipeIngredients(recipe.id, validIngredients);
           
@@ -313,6 +325,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
             quantity: number;
             unit: IngredientUnit;
             notes?: string;
+            yield_pct_override?: number | null;
           }[],
         };
         await createRecipe(createData);
@@ -328,7 +341,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
   };
 
   const addIngredient = useCallback(() => {
-    append({ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' });
+    append({ product_id: '', quantity: 1, unit: 'oz' as const, notes: '', yield_pct_override: null });
   }, [append]);
 
   const removeIngredient = useCallback((index: number) => {
@@ -404,7 +417,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Basic Information */}
               <Card>
@@ -531,15 +544,49 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                     )}
                   />
 
-                  <div className="p-4 bg-muted rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">Estimated Cost:</span>
-                      <Badge variant="secondary" className="text-lg">
-                        <DollarSign className="w-4 h-4 mr-1" />
-                        {estimatedCost.toFixed(2)}
-                      </Badge>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Portion cost
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        ${portionCostTotal.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Waste allowance
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        ${wasteAllowanceTotal.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-foreground/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Loaded cost
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        ${estimatedCost.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                      <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Food cost %
+                      </div>
+                      <div className="text-[17px] font-semibold tabular-nums text-foreground mt-1">
+                        {foodCostPct !== null ? `${foodCostPct.toFixed(1)}%` : '—'}
+                      </div>
                     </div>
                   </div>
+                  <p className="text-[13px] text-muted-foreground">
+                    Waste allowance: ${wasteAllowancePerServing.toFixed(2)} per serving
+                    {showWeeklyVolume
+                      ? ` · $${weeklyWasteAllowance.toFixed(0)} a week at current volume (${weeklyVolume} sold in the last 7 days).`
+                      : '.'}
+                    {wasteAllowanceTotal === 0 && (
+                      <span className="block mt-0.5">Set a yield on the product to include waste.</span>
+                    )}
+                  </p>
                 </CardContent>
               </Card>
             </div>

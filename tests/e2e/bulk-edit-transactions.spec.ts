@@ -117,16 +117,34 @@ test.describe('Bank Transactions Bulk Edit', () => {
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole('heading', { name: /categorize.*transaction/i })).toBeVisible();
 
-    // Close panel
-    const closeButton = page.getByRole('button', { name: /cancel|close/i }).last();
-    await closeButton.click();
+    // Pick a category from the restaurant's default chart of accounts.
+    // The account selector's role is combobox but it carries no accessible
+    // name, so scope the query to the dialog to find it. The popover's
+    // search input also carries role combobox and can outlive its close
+    // animation in the DOM, so pin to the first match: the trigger button,
+    // which renders before the portaled popover content in DOM order.
+    const categorySelector = page.getByRole('dialog').getByRole('combobox').first();
+    await expect(categorySelector).toBeVisible({ timeout: 10000 });
+    await categorySelector.click();
+    await page.getByPlaceholder(/search accounts/i).fill('Office Supplies');
+    await page.getByRole('option', { name: /office supplies/i }).click();
+    await expect(categorySelector).toContainText(/office supplies/i);
 
-    // Exit selection mode
-    await page.getByRole('button', { name: /^done$/i }).click();
+    // Apply the category to both selected transactions
+    await page.getByRole('button', { name: /apply to 2 transactions/i }).click();
 
-    // Verify selection mode is exited
-    await expect(page.getByRole('button', { name: /^select$/i })).toBeVisible();
-    await expect(page.getByText(/selected/i)).not.toBeVisible();
+    // Verify the success toast
+    await expect(page.getByText(/2 transactions categorized/i)).toBeVisible({ timeout: 10000 });
+
+    // A successful apply exits selection mode automatically
+    await expect(page.getByRole('button', { name: /^select$/i })).toBeVisible({ timeout: 10000 });
+
+    // Switch to the Categorized tab and confirm both rows show the new category
+    await page.getByRole('tab', { name: /categorized/i }).click();
+    const categorizedRows = page
+      .locator('[data-testid="bank-transaction-row"]')
+      .filter({ hasText: 'Office Supplies' });
+    await expect(categorizedRows).toHaveCount(2, { timeout: 10000 });
   });
 
   test('should support range selection with shift+click', async ({ page }) => {

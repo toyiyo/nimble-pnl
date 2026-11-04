@@ -1,7 +1,6 @@
 ---
 name: supabase-design-reviewer
 description: Reviews a freshly committed design doc for Supabase/Postgres/RLS/edge-function correctness BEFORE any code is written. Runs in Phase 2.5 of `/dev` workflow when the design touches DB schema, RPC, RLS, edge functions, migrations, or any `restaurant_id`-scoped table.
-subagent_type: general-purpose
 ---
 
 # Supabase Design Reviewer

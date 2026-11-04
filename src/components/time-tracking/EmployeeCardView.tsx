@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -5,9 +7,13 @@ import { WorkSession } from '@/utils/timePunchProcessing';
 import { format } from 'date-fns';
 import { AlertCircle, Clock, Coffee, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PunchLocationFlag } from '@/components/time-clock/PunchLocationFlag';
+import { buildLocationFlagIndex, worstLocationFlagForSessions } from '@/utils/punchLocationFlag';
+import type { TimePunch } from '@/types/timeTracking';
 
 interface EmployeeCardViewProps {
   sessions: WorkSession[];
+  punches: TimePunch[];
   loading?: boolean;
   date: Date;
 }
@@ -23,7 +29,9 @@ interface EmployeeSummary {
   anomalies: string[];
 }
 
-export const EmployeeCardView = ({ sessions, loading, date }: EmployeeCardViewProps) => {
+export const EmployeeCardView = ({ sessions, punches, loading, date }: EmployeeCardViewProps) => {
+  const locationFlagIndex = useMemo(() => buildLocationFlagIndex(punches), [punches]);
+
   // Group sessions by employee and create summaries
   const employeeSummaries = sessions.reduce((acc, session) => {
     const existing = acc.find(s => s.employee_id === session.employee_id);
@@ -83,6 +91,7 @@ export const EmployeeCardView = ({ sessions, loading, date }: EmployeeCardViewPr
         const lastSession = summary.sessions[summary.sessions.length - 1];
         const earliestIn = firstSession?.clock_in;
         const latestOut = lastSession?.clock_out;
+        const worstFlagged = worstLocationFlagForSessions(summary.sessions, locationFlagIndex);
 
         return (
           <Card 
@@ -93,8 +102,11 @@ export const EmployeeCardView = ({ sessions, loading, date }: EmployeeCardViewPr
             )}
           >
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{summary.employee_name}</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CardTitle className="text-lg truncate">{summary.employee_name}</CardTitle>
+                  {worstFlagged && <PunchLocationFlag location={worstFlagged.location} />}
+                </div>
                 {summary.has_anomalies ? (
                   <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
                     <AlertCircle className="h-3 w-3 mr-1" />

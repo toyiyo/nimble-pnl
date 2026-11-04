@@ -1,13 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
-import {
-  aggregateFinancialCOGSByDate,
-  toUtcDayKey,
-  type BankTransactionRow,
-  type PendingOutflowRow,
-  type SplitItemRow,
-} from '@/services/cogsCalculations';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { aggregateFinancialCOGSByDate } from '@/services/cogsCalculations';
+import { fetchFinancialCOGSRows } from '@/services/cogsFetch';
+import { keepDataUnlessRestaurantChanged } from '@/lib/react-query-config';
 
 export interface FinancialCOGSData {
   date: string;
@@ -17,6 +13,7 @@ export interface FinancialCOGSData {
 export interface FinancialCOGSResult {
   dailyCosts: FinancialCOGSData[];
   totalCost: number;
+  capped: boolean;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -33,123 +30,60 @@ export interface FinancialCOGSResult {
  * @param dateTo - End date for the period
  * @returns COGS data aggregated by date
  */
+// The query key for this hook's data. Export it so other hooks that need to
+// watch this exact query (for example, an isFetching signal) build the same
+// key instead of copying the literal string. Return fromStr and toStr beside
+// the key, so a caller reads them by name instead of a tuple position.
+export function cogsFinancialsKey(
+  restaurantId: string | null,
+  dateFrom: Date,
+  dateTo: Date,
+) {
+  const fromStr = toDateOnlyString(dateFrom);
+  const toStr = toDateOnlyString(dateTo);
+  return {
+    key: ['cogs-financials', restaurantId, fromStr, toStr] as const,
+    fromStr,
+    toStr,
+  };
+}
+
 export function useCOGSFromFinancials(
   restaurantId: string | null,
   dateFrom: Date,
   dateTo: Date
 ): FinancialCOGSResult {
-  const startDateStr = format(dateFrom, 'yyyy-MM-dd');
-  const endDateStr = format(dateTo, 'yyyy-MM-dd');
+  const { key, fromStr, toStr } = cogsFinancialsKey(restaurantId, dateFrom, dateTo);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['cogs-financials', restaurantId, startDateStr, endDateStr],
+    queryKey: key,
     queryFn: async () => {
       if (!restaurantId) return null;
 
-      // ---------------------------------------------------------------
-      // Source 1: Non-split bank transactions categorised as COGS
-      // ---------------------------------------------------------------
-      const { data: bankTxns, error: bankError } = await supabase
-        .from('bank_transactions')
-        .select(`
-          id,
-          transaction_date,
-          amount,
-          is_split,
-          chart_of_accounts!category_id(account_subtype)
-        `)
-        .eq('restaurant_id', restaurantId)
-        .in('status', ['posted', 'pending'])
-        .eq('is_transfer', false)
-        .eq('is_split', false)
-        .lt('amount', 0)
-        .gte('transaction_date', startDateStr)
-        .lte('transaction_date', endDateStr)
-        .limit(10000);
+      const { bankTxns, splitItems, parentDateMap, pendingTxns, capped } =
+        await fetchFinancialCOGSRows(supabase, restaurantId, fromStr, toStr);
 
-      if (bankError) throw bankError;
+      const dateMap = aggregateFinancialCOGSByDate({ bankTxns, splitItems, parentDateMap, pendingTxns });
 
-      // ---------------------------------------------------------------
-      // Source 2: Split line items for split parent transactions
-      // ---------------------------------------------------------------
-      const { data: splitParents, error: splitParentError } = await supabase
-        .from('bank_transactions')
-        .select('id, transaction_date')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_split', true)
-        .in('status', ['posted', 'pending'])
-        .eq('is_transfer', false)
-        .gte('transaction_date', startDateStr)
-        .lte('transaction_date', endDateStr)
-        .limit(10000);
-
-      if (splitParentError) throw splitParentError;
-
-      let splitItems: SplitItemRow[] = [];
-
-      const splitParentIds = (splitParents || []).map((p) => p.id);
-      if (splitParentIds.length > 0) {
-        const { data: splits, error: splitsError } = await supabase
-          .from('bank_transaction_splits')
-          .select('transaction_id, amount, chart_of_accounts!category_id(account_subtype)')
-          .in('transaction_id', splitParentIds)
-          .limit(10000);
-
-        if (splitsError) throw splitsError;
-        splitItems = (splits || []) as typeof splitItems;
-      }
-
-      // Build a lookup for split parent dates.
-      // Use the canonical UTC day key so split items bucket the same way as the
-      // direct bank-txn rows (see toUtcDayKey for the TZ rationale).
-      const parentDateMap = new Map<string, string>();
-      for (const p of splitParents || []) {
-        parentDateMap.set(p.id, toUtcDayKey(p.transaction_date));
-      }
-
-      // ---------------------------------------------------------------
-      // Source 3: Pending outflows (unmatched) categorised as COGS
-      // ---------------------------------------------------------------
-      const { data: pendingTxns, error: pendingError } = await supabase
-        .from('pending_outflows')
-        .select('id, issue_date, amount, chart_of_accounts!category_id(account_subtype)')
-        .eq('restaurant_id', restaurantId)
-        .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
-        .is('linked_bank_transaction_id', null)
-        .gte('issue_date', startDateStr)
-        .lte('issue_date', endDateStr)
-        .limit(10000);
-
-      if (pendingError) throw pendingError;
-
-      // ---------------------------------------------------------------
-      // Aggregate all sources by date using shared pure helper
-      // ---------------------------------------------------------------
-      const dateMap = aggregateFinancialCOGSByDate({
-        bankTxns: (bankTxns || []) as BankTransactionRow[],
-        splitItems,
-        parentDateMap,
-        pendingTxns: (pendingTxns || []) as PendingOutflowRow[],
-      });
-
-      // Convert to sorted array
       const dailyCosts: FinancialCOGSData[] = Array.from(dateMap.entries())
         .map(([date, total_cost]) => ({ date, total_cost }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
       const totalCost = dailyCosts.reduce((sum, day) => sum + day.total_cost, 0);
 
-      return { dailyCosts, totalCost };
+      return { dailyCosts, totalCost, capped };
     },
     enabled: !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
+    placeholderData: keepDataUnlessRestaurantChanged(restaurantId),
   });
 
   return {
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
+    capped: data?.capped || false,
     isLoading,
     error,
     refetch: () => { void refetch(); },

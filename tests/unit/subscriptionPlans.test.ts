@@ -303,8 +303,6 @@ describe('subscriptionPlans utilities', () => {
 
       it('does NOT have access to pro features', () => {
         expect(tierHasFeature('starter', 'ai_assistant')).toBe(false);
-        expect(tierHasFeature('starter', 'ops_inbox')).toBe(false);
-        expect(tierHasFeature('starter', 'weekly_brief')).toBe(false);
         expect(tierHasFeature('starter', 'banking')).toBe(false);
         expect(tierHasFeature('starter', 'invoicing')).toBe(false);
         expect(tierHasFeature('starter', 'expenses')).toBe(false);
@@ -325,8 +323,6 @@ describe('subscriptionPlans utilities', () => {
 
       it('does NOT have access to pro features', () => {
         expect(tierHasFeature('growth', 'ai_assistant')).toBe(false);
-        expect(tierHasFeature('growth', 'ops_inbox')).toBe(false);
-        expect(tierHasFeature('growth', 'weekly_brief')).toBe(false);
         expect(tierHasFeature('growth', 'banking')).toBe(false);
         expect(tierHasFeature('growth', 'invoicing')).toBe(false);
         expect(tierHasFeature('growth', 'expenses')).toBe(false);
@@ -347,8 +343,6 @@ describe('subscriptionPlans utilities', () => {
 
       it('HAS access to pro features', () => {
         expect(tierHasFeature('pro', 'ai_assistant')).toBe(true);
-        expect(tierHasFeature('pro', 'ops_inbox')).toBe(true);
-        expect(tierHasFeature('pro', 'weekly_brief')).toBe(true);
         expect(tierHasFeature('pro', 'banking')).toBe(true);
         expect(tierHasFeature('pro', 'invoicing')).toBe(true);
         expect(tierHasFeature('pro', 'expenses')).toBe(true);
@@ -412,14 +406,24 @@ describe('subscriptionPlans utilities', () => {
       it('returns pro for payroll', () => {
         expect(getRequiredTier('payroll')).toBe('pro');
       });
+    });
+  });
 
-      it('returns pro for ops_inbox', () => {
-        expect(getRequiredTier('ops_inbox')).toBe('pro');
-      });
+  // ============================================================
+  // Deleted features stay absent
+  // ============================================================
+  describe('deleted features', () => {
+    it('does NOT include ops_inbox (the feature is deleted)', () => {
+      expect(Object.keys(SUBSCRIPTION_FEATURES)).not.toContain('ops_inbox');
+    });
 
-      it('returns pro for weekly_brief', () => {
-        expect(getRequiredTier('weekly_brief')).toBe('pro');
-      });
+    it('does NOT include weekly_brief (the feature is deleted)', () => {
+      expect(Object.keys(SUBSCRIPTION_FEATURES)).not.toContain('weekly_brief');
+    });
+
+    it('does NOT list Ops Inbox or Weekly Brief in the pro plan', () => {
+      expect(SUBSCRIPTION_PLANS.pro.features).not.toContain('Ops Inbox');
+      expect(SUBSCRIPTION_PLANS.pro.features).not.toContain('Weekly Brief');
     });
   });
 

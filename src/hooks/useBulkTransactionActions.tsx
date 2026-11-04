@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -8,49 +8,284 @@ interface BulkCategorizeParams {
   restaurantId: string;
 }
 
+interface BulkCategorizeSkippedRow {
+  id: string;
+  reason: string;
+}
+
+interface BulkCategorizeRpcResult {
+  success: boolean;
+  categorized_count: number;
+  reclassified_count: number;
+  unchanged_count: number;
+  skipped: BulkCategorizeSkippedRow[];
+}
+
+/** The RPC accepts at most 500 ids per call (see the migration's guard 4). */
+const BULK_CATEGORIZE_CHUNK_SIZE = 500;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 /**
- * Hook for bulk categorizing bank transactions
- * Applies a category to multiple transactions at once
+ * The five skip reasons the RPC's guarded branches set. Any other value
+ * is the raw SQLERRM text from the RPC's catch-all exception trap
+ * (supabase/migrations/20260819231210_add_bulk_categorize_bank_transactions.sql)
+ * and must not reach the user verbatim or be underscore-replaced — a real
+ * Postgres error can carry underscores from a constraint or column name.
+ */
+const KNOWN_SKIP_REASONS = new Set(['reconciled', 'closed_period', 'not_found', 'excluded', 'split']);
+
+/** Groups skipped rows by reason for a toast description like "3 reconciled, 2 closed period". */
+function summarizeSkipReasons(skipped: BulkCategorizeSkippedRow[]): string {
+  const counts = new Map<string, number>();
+  let unexpectedCount = 0;
+  for (const row of skipped) {
+    if (KNOWN_SKIP_REASONS.has(row.reason)) {
+      counts.set(row.reason, (counts.get(row.reason) ?? 0) + 1);
+    } else {
+      unexpectedCount += 1;
+      console.error('Unexpected bulk categorize skip reason', { id: row.id, reason: row.reason });
+    }
+  }
+  const parts = Array.from(counts.entries()).map(([reason, count]) => `${count} ${reason.replace(/_/g, ' ')}`);
+  if (unexpectedCount > 0) {
+    parts.push(`${unexpectedCount} unexpected error${unexpectedCount === 1 ? '' : 's'}`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * Thrown when a chunk fails after an earlier chunk already wrote real
+ * journal entries, or when every chunk succeeds but the trailing balance
+ * rebuild fails. Carries the partial aggregate so onError can invalidate
+ * queries and tell the user how much succeeded, instead of discarding it.
+ * `message` is for logging only — never render it in a toast; it can carry
+ * the raw RPC error text (see KNOWN_SKIP_REASONS above for why).
+ */
+class PartialBulkCategorizeError extends Error {
+  partial: BulkCategorizeRpcResult;
+  /**
+   * True when every selected row was categorized and only the trailing
+   * balance-rebuild call failed. onError must not call this a partial
+   * categorize — the categorize step fully succeeded.
+   */
+  rebuildOnlyFailed: boolean;
+  constructor(message: string, partial: BulkCategorizeRpcResult, rebuildOnlyFailed = false) {
+    super(message);
+    this.name = 'PartialBulkCategorizeError';
+    this.partial = partial;
+    this.rebuildOnlyFailed = rebuildOnlyFailed;
+  }
+}
+
+/** Invalidates every query the new journal entries change. Shared by the success and partial-failure paths. */
+function invalidateBulkCategorizeQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+  queryClient.invalidateQueries({ queryKey: ['income-statement'] });
+  queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+  queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+}
+
+/** Rows the RPC changed: categorized plus reclassified. Unchanged and skipped rows are not in it. */
+function changedCount(result: BulkCategorizeRpcResult): number {
+  return result.categorized_count + result.reclassified_count;
+}
+
+function extractErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  return (error as { message?: string })?.message;
+}
+
+/** Calls the RPC for one chunk of at most 500 ids. Throws on an RPC error or a failure result. */
+async function categorizeChunk(
+  idChunk: string[],
+  categoryId: string,
+  restaurantId: string
+): Promise<BulkCategorizeRpcResult> {
+  const { data, error } = await supabase.rpc('bulk_categorize_bank_transactions', {
+    p_transaction_ids: idChunk,
+    p_category_id: categoryId,
+    p_restaurant_id: restaurantId,
+    // Every chunk skips its own rebuild; one rebuild_account_balances
+    // call runs after the chunk loop, for the whole operation.
+    p_skip_rebuild: true,
+  });
+
+  if (error) throw error;
+
+  const result = data as unknown as BulkCategorizeRpcResult;
+  if (!result.success) {
+    throw new Error('Failed to categorize transactions');
+  }
+  return result;
+}
+
+function addChunkResult(aggregate: BulkCategorizeRpcResult, result: BulkCategorizeRpcResult): void {
+  aggregate.categorized_count += result.categorized_count;
+  aggregate.reclassified_count += result.reclassified_count;
+  aggregate.unchanged_count += result.unchanged_count;
+  aggregate.skipped.push(...result.skipped);
+}
+
+/**
+ * Rebuilds balances for a partial write, so the ledger is not left stale
+ * on top of the operation being incomplete. A failure here must not
+ * replace the real cause in the caller — log it and return.
+ */
+async function rebuildBalancesAfterPartialWrite(restaurantId: string): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('rebuild_account_balances', {
+      p_restaurant_id: restaurantId,
+    });
+    if (error) {
+      console.error('Balance rebuild after a partial bulk categorize also failed', error);
+    }
+  } catch (error_) {
+    console.error('Balance rebuild after a partial bulk categorize also failed', error_);
+  }
+}
+
+/**
+ * A later chunk's failure must not hide an earlier chunk's real writes:
+ * those journal entries already exist in the database. When an earlier
+ * chunk wrote, rebuild balances now and raise a PartialBulkCategorizeError
+ * that carries the partial aggregate. Otherwise re-raise the original error.
+ */
+async function raiseChunkFailure(
+  chunkError: unknown,
+  aggregate: BulkCategorizeRpcResult,
+  restaurantId: string
+): Promise<never> {
+  if (changedCount(aggregate) === 0) {
+    throw chunkError;
+  }
+  await rebuildBalancesAfterPartialWrite(restaurantId);
+  throw new PartialBulkCategorizeError(
+    extractErrorMessage(chunkError) || 'Failed to categorize transactions',
+    aggregate
+  );
+}
+
+/**
+ * Hook for bulk categorizing bank transactions.
+ * Calls the bulk_categorize_bank_transactions RPC, which writes a journal
+ * entry per transaction so the change reaches the income statement.
  */
 export function useBulkCategorizeTransactions() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ transactionIds, categoryId, restaurantId }: BulkCategorizeParams) => {
-      const { data, error } = await supabase
-        .from('bank_transactions')
-        .update({
-          category_id: categoryId,
-          is_categorized: true,
-          suggested_category_id: null, // Clear AI suggestions
-        })
-        .in('id', transactionIds)
-        .eq('restaurant_id', restaurantId)
-        .select();
+    mutationFn: async ({
+      transactionIds,
+      categoryId,
+      restaurantId,
+    }: BulkCategorizeParams): Promise<BulkCategorizeRpcResult> => {
+      const aggregate: BulkCategorizeRpcResult = {
+        success: true,
+        categorized_count: 0,
+        reclassified_count: 0,
+        unchanged_count: 0,
+        skipped: [],
+      };
 
-      if (error) throw error;
-      return data;
+      for (const idChunk of chunk(transactionIds, BULK_CATEGORIZE_CHUNK_SIZE)) {
+        try {
+          addChunkResult(aggregate, await categorizeChunk(idChunk, categoryId, restaurantId));
+        } catch (chunkError) {
+          await raiseChunkFailure(chunkError, aggregate, restaurantId);
+        }
+      }
+
+      if (changedCount(aggregate) > 0) {
+        const { error: rebuildError } = await supabase.rpc('rebuild_account_balances', {
+          p_restaurant_id: restaurantId,
+        });
+        if (rebuildError) {
+          // Every row was categorized; only the cached current_balance
+          // rollup failed. This is not a partial categorize — flag it so
+          // onError shows copy that matches what actually happened.
+          throw new PartialBulkCategorizeError(rebuildError.message, aggregate, true);
+        }
+      }
+
+      return aggregate;
     },
-    onSuccess: (_, variables) => {
-      // Invalidate all transaction queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      
-      toast.success(`${variables.transactionIds.length} transactions categorized`, {
-        description: 'Changes have been applied successfully',
-        duration: 10000,
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            // TODO: Implement undo functionality
-            toast.info('Undo feature coming soon');
+    onSuccess: (result) => {
+      invalidateBulkCategorizeQueries(queryClient);
+
+      const changed = changedCount(result);
+
+      // A row only ever lands in categorized/reclassified, unchanged, or
+      // skipped. Showing "0 transactions categorized" as a success when
+      // every row was skipped would contradict the skip-count error toast
+      // shown right below it.
+      if (changed > 0 || result.unchanged_count > 0) {
+        const description =
+          result.unchanged_count > 0
+            ? `${result.unchanged_count} already had this category`
+            : 'Changes have been applied successfully';
+
+        toast.success(`${changed} transactions categorized`, {
+          description,
+          duration: 10000,
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              // TODO: Implement undo functionality
+              toast.info('Undo feature coming soon');
+            },
           },
-        },
-      });
+        });
+      }
+
+      if (result.skipped.length > 0) {
+        toast.error(`${result.skipped.length} transactions skipped`, {
+          description: summarizeSkipReasons(result.skipped),
+          duration: 10000,
+        });
+      }
     },
     onError: (error) => {
       console.error('Error bulk categorizing transactions:', error);
+
+      if (error instanceof PartialBulkCategorizeError) {
+        // Some rows already wrote real journal entries before the failure.
+        // Refresh the UI to show them instead of leaving it stale.
+        invalidateBulkCategorizeQueries(queryClient);
+
+        const changed = changedCount(error.partial);
+
+        // error.message may carry raw RPC error text (a guard message, a
+        // network error, or a rebuild failure) — the same rule as
+        // KNOWN_SKIP_REASONS applies: log it, do not render it.
+        if (error.rebuildOnlyFailed) {
+          toast.error('Categorized, but balances did not refresh', {
+            description: `${changed} transactions were categorized. Reload the page, or contact support if balances still look wrong.`,
+            duration: 10000,
+          });
+        } else {
+          toast.error('Only part of the selection was categorized', {
+            description: `${changed} transactions were categorized before this error. Please try again or contact support.`,
+            duration: 10000,
+          });
+        }
+        return;
+      }
+
+      // A generic failure can still follow a committed write — for example
+      // the RPC commits but the response is lost in transit. Refresh the
+      // queries so the UI converges on the real database state.
+      invalidateBulkCategorizeQueries(queryClient);
+
+      const message = extractErrorMessage(error);
       toast.error('Failed to categorize transactions', {
-        description: 'Please try again or contact support',
+        description: message || 'Please try again or contact support',
       });
     },
   });

@@ -152,6 +152,18 @@ BEGIN
   );
 END $$;
 
+-- Member user: belongs to the test restaurant. The four delete/restore RPCs
+-- now check membership, so the functional tests below need a real caller.
+INSERT INTO auth.users (id, email) VALUES
+  ('a0000000-0000-0000-0000-000000000099'::uuid, 'tombstone-member@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('a0000000-0000-0000-0000-000000000099'::uuid, 'a0000000-0000-0000-0000-000000000001'::uuid, 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
+
+SELECT set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000099","role":"authenticated"}', true);
+
 -- ============================================================
 -- Test 13: delete_bank_transaction creates tombstone and removes active row
 -- ============================================================

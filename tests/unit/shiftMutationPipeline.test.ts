@@ -192,4 +192,22 @@ describe('assertNotLockedClient', () => {
       expect((err as Error).message).toMatch(/locked/i);
     }
   });
+
+  it('does not throw for a locked shift when allowPublished is true', () => {
+    expect(() =>
+      assertNotLockedClient(makeShift({ locked: true }), true),
+    ).not.toThrow();
+  });
+
+  it('still throws for a locked shift when allowPublished is false', () => {
+    expect(() =>
+      assertNotLockedClient(makeShift({ locked: true }), false),
+    ).toThrow(LockedShiftError);
+  });
+
+  it('still throws for a locked shift when allowPublished is absent (unchanged default)', () => {
+    expect(() => assertNotLockedClient(makeShift({ locked: true }))).toThrow(
+      LockedShiftError,
+    );
+  });
 });

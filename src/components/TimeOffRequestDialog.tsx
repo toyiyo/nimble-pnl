@@ -1,15 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { DatePicker } from '@/components/ui/date-picker';
 import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
 import { useCreateTimeOffRequest, useUpdateTimeOffRequest } from '@/hooks/useTimeOffRequests';
+import { useShiftProtection, useTimeoffDayCounts } from '@/hooks/useShiftProtection';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TimeOffRequest } from '@/types/scheduling';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { EmployeeSelector } from './scheduling/EmployeeSelector';
+import { ShiftProtectionWarning } from './scheduling/ShiftProtectionWarning';
+import { dateOnlyInTimeZone, timeoffNoticeFinding } from '@/lib/shiftProtection';
 
 interface TimeOffRequestDialogProps {
   open: boolean;
@@ -33,6 +38,52 @@ export const TimeOffRequestDialog = ({
 
   const createRequest = useCreateTimeOffRequest();
   const updateRequest = useUpdateTimeOffRequest();
+
+  // Shift Protection: warn about (or, in block mode, stop) short-notice
+  // and stacked same-day requests. A capability holder is exempt — the
+  // server triggers apply the same exemption.
+  const { protection } = useShiftProtection(restaurantId);
+  const { hasCapability, isResolved } = usePermissions();
+  const { selectedRestaurant } = useRestaurantContext();
+  const isExempt = isResolved && hasCapability('edit:scheduling');
+
+  const startStr = startDate ? toDateOnlyString(startDate) : null;
+  const endStr = endDate ? toDateOnlyString(endDate) : null;
+  // The server rules run on the restaurant-local day; compare in the
+  // same frame or a device a timezone ahead warns one day early.
+  const todayStr = dateOnlyInTimeZone(new Date(), selectedRestaurant?.restaurant?.timezone);
+
+  const noticeFinding = useMemo(
+    () => timeoffNoticeFinding(protection, startStr ?? undefined, todayStr),
+    [protection, startStr, todayStr]
+  );
+
+  const countsEnabled = protection.timeoff_sameday_mode !== 'off';
+  const dayCounts = useTimeoffDayCounts(
+    countsEnabled ? restaurantId : null,
+    employeeId || null,
+    startStr,
+    endStr
+  );
+  const maxSameday = useMemo(
+    () => Math.max(0, ...(dayCounts.data ?? []).map((d) => d.approved_count)),
+    [dayCounts.data]
+  );
+  const samedayHit = countsEnabled && maxSameday >= protection.timeoff_sameday_limit;
+
+  const blocked =
+    !isExempt &&
+    (noticeFinding?.mode === 'block' ||
+      (samedayHit && protection.timeoff_sameday_mode === 'block'));
+
+  const policyMessages = [
+    noticeFinding?.message,
+    samedayHit
+      ? `${maxSameday} coworker${maxSameday === 1 ? '' : 's'} with the same position ` +
+        `already have approved time off on a requested day ` +
+        `(limit ${protection.timeoff_sameday_limit}).`
+      : undefined,
+  ].filter((message): message is string => !!message);
 
   useEffect(() => {
     if (request) {
@@ -87,7 +138,7 @@ export const TimeOffRequestDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" aria-describedby="time-off-request-description">
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" aria-describedby="time-off-request-description">
         <DialogHeader>
           <DialogTitle>{request ? 'Edit Time-Off Request' : 'New Time-Off Request'}</DialogTitle>
           <DialogDescription id="time-off-request-description">
@@ -137,6 +188,30 @@ export const TimeOffRequestDialog = ({
             </Alert>
           )}
 
+          {countsEnabled && dayCounts.isLoading && startStr && endStr && (
+            <p className="text-[13px] text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              Checking the coverage rules…
+            </p>
+          )}
+          {countsEnabled && dayCounts.error !== null && (
+            <p className="text-[13px] text-muted-foreground">
+              Could not check the coverage rules. You can still submit.
+            </p>
+          )}
+
+          {policyMessages.length > 0 && (
+            <ShiftProtectionWarning
+              id="time-off-policy-warning"
+              messages={policyMessages}
+              footnote={
+                blocked
+                  ? 'A shift protection rule blocks this request. Ask your manager to submit it for you.'
+                  : 'You can still submit. Your manager sees this warning with your request.'
+              }
+            />
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="reason">Reason (Optional)</Label>
             <Textarea
@@ -158,7 +233,8 @@ export const TimeOffRequestDialog = ({
             </Button>
             <Button
               type="submit"
-              disabled={!isValid || createRequest.isPending || updateRequest.isPending}
+              disabled={!isValid || blocked || createRequest.isPending || updateRequest.isPending}
+              aria-describedby={blocked ? 'time-off-policy-warning' : undefined}
             >
               {request ? 'Update Request' : 'Submit Request'}
             </Button>

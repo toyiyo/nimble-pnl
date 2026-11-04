@@ -18,7 +18,7 @@ Parse `$ARGUMENTS` for these flags (all optional):
 
 Before doing anything, verify these MCPs are connected by attempting a discovery call:
 
-- `mcp__claude_ai_PostHog__exec` (PostHog hosted MCP)
+- The PostHog MCP `exec` tool (the server name differs by host, for example `mcp__PostHog__exec`)
 - `mcp__supabase-prod__execute_sql` (Supabase prod MCP)
 - `mcp__grafana__list_datasources` or similar (Grafana MCP)
 

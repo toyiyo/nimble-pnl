@@ -110,6 +110,11 @@
 
 ## Category: Development Workflow
 
+### [2026-09-25] A workflow gate must not depend on an optional field that an agent reports
+- **Mistake:** The first cut of the /dev Phase 8.5 QA gate re-ran Verify only when the QA agent listed SHAs in `commits`. That field was optional in the schema. A QA agent that committed a fix and left `commits` out would ship code that no Verify run saw. A resume after a failed `verify:post-qa` also replayed the cached halt, because its prompt had no resolution note.
+- **Correction:** Verify and QA both return a required `headSha`. The script re-verifies when QA lists commits OR when HEAD moved after Verify. `args.postQaVerifyResolutionNote` re-keys the re-verify on resume. The sound-logic reviewer found both defects before the push.
+- **Rule:** When a script-level gate decides whether a safety step runs, base the decision on a required, objective value (HEAD SHA, exit code), not on an optional list the agent can omit. Give every agent call that can halt its own resolution note, so a resume can re-run it.
+
 ### [2026-04-22] Worktree must be created BEFORE brainstorm/plan, not after
 - **Mistake:** Ran `/dev` brainstorm + plan phases from the main branch, committing `docs/superpowers/specs/*-design.md` and `docs/superpowers/plans/*-plan.md` directly to `main`. The development-workflow skill's phase order was Brainstorm → Plan → Isolate, which guarantees that every spec and plan commit lands on `main`.
 - **Correction:** Always create the feature worktree FIRST, before any artifact is written. Design docs, plans, and code all get authored in the worktree and commit to the feature branch. `main` never receives work-in-progress artifacts for a task.
@@ -145,6 +150,7 @@
 - **Correction:** Delete-before-insert in FK order inside the same `BEGIN ... ROLLBACK` transaction. Also `ALTER TABLE ... DISABLE ROW LEVEL SECURITY` so fixture inserts don't depend on the caller's role. Keep `ON CONFLICT DO UPDATE` (not `DO NOTHING`) on tables that have auto-create triggers (e.g., `profiles` auto-created from `auth.users`), so the fixture deterministically lands its values regardless of trigger timing.
 - **Rule:** Deterministic pgTAP fixtures: (1) RLS off inside the txn, (2) delete-before-insert in FK-safe order, (3) use `ON CONFLICT DO UPDATE` not `DO NOTHING` when a trigger may have pre-created the row.
 - **Confirmed and refined [2026-07-31]:** A reviewer asked for `ON CONFLICT` on fixture inserts to guard against an id collision with a *different* test file. Declined, correctly: `supabase/tests/run_tests.sh` gives every file its own `psql` invocation and every file is `BEGIN … ROLLBACK`, so cross-file collision is impossible and the only duplicate `ON CONFLICT` could ever absorb is one **inside a single file** — which is a bug worth failing on, not one worth swallowing. Fixed by moving the file to a distinct id prefix and recording the prefix-per-file allocation in the header. **Rule:** before adding `ON CONFLICT` to a fixture, check the runner's transaction model. If each file is its own transaction, `ON CONFLICT` buys nothing and costs you a real failure signal; separate the id spaces instead.
+- **Confirmed [2026-08-20] (PR #767):** A new test file mixed the two forms. Two inserts used `DO UPDATE`, six used `DO NOTHING`. CodeRabbit flagged the six and cited the repo guideline: "Use ON CONFLICT ... DO UPDATE for idempotent test data inserts in pgTAP." Commit b705edd8 made all inserts uniform. **Rule:** when a file uses `ON CONFLICT`, use one form for the whole file, and make it `DO UPDATE` per the guideline. A mixed file draws a review round even when both forms work.
 
 ---
 
@@ -352,6 +358,7 @@
 - **Mistake:** PR #589's design doc, plan, and regression-test fixtures used the *real* employee names and restaurant name pulled from the prod-DB investigation that diagnosed the bug (Timeline shared-row pointer-event theft). It felt natural — the whole diagnosis was "these specific people's bars are inert" — so the names flowed straight from the `supabase-prod` query results into the artifacts. Both Codex (P2) and CodeRabbit (Major, "Redact employee PII") flagged it on the PR. Because these artifacts commit to a repo whose history is permanent, the PII would have lived on `main` forever.
 - **Correction:** Redacted all names from the doc/plan/tests (fictional fixtures "Ada Early"/"Bess Late"; generic "Bar A/Bar B" tables), then `git reset --soft origin/main` + recommitted PII-free with PII-free commit messages and `git push --force-with-lease` — so no name ever reaches `main`, not even in history. Verified with `{ git log origin/main..HEAD --format=%B; git diff origin/main..HEAD; } | grep -niE '<names>'` returning clean. Also added a "Privacy" note to the design doc.
 - **Rule:** When a diagnosis is driven by production data (Supabase/PostHog/logs), the investigation may reference real names in the *chat*, but the moment you write a committed artifact — design doc, plan, test fixture, commit message, PR body — swap every real person/restaurant/account identifier for a fictional placeholder. Do a `grep -niE` PII sweep across the branch diff AND commit messages before pushing (add it to the Phase 8 verify checklist). If PII already committed, redaction alone is insufficient — rewrite history (`reset --soft` + recommit + `--force-with-lease`) so it never merges; a plain follow-up "redact" commit leaves the PII in the merged history. Tests never need real data to reproduce a structural bug — a shared row of two abutting fictional shifts reproduces it exactly.
+- **[2026-09-09] Confirmed again (PR #801):** The invite-flow design doc carried the invitee's real email and her event timeline, copied from the PostHog case study. CodeRabbit flagged it (Major, CWE-359). Redacted to a synthetic timeline and rewrote the branch history per this rule. The Phase 8 PII sweep did not run — run `grep -niE` over the diff and the commit messages before every push, not only when the artifact "contains names".
 
 ---
 
@@ -701,6 +708,7 @@
 - **Correction:** Scoped the gate check to the PR's own diff: `git diff origin/main..HEAD --name-only` ∩ queue `origin_ref.file`. Only items on `scheduleTimeOff.ts` / `Scheduling.tsx` / `tailwind.config.ts` count. Verified each survivor against current file content (the tailwind one was stale — confirmed via `eslint tailwind.config.ts` clean + `grep require(` empty), then `node dev-tools/mark-task.js --id <id> --status fixed --note "stale: ..."`. Documented the shared-queue caveat in the 9d triage artifact.
 - **Rule:** The 9e queue check means "zero open critical/major *attributable to this PR's diff*," not "zero in the whole shared file." Always intersect open items with `git diff --name-only origin/main..HEAD`, and before treating a survivor as a blocker, verify the finding against the CURRENT file (stale line refs from old ingests are common). Record the scoping rationale in the triage artifact so the next run doesn't re-chase other branches' debt.
 - **[2026-07-04] CONFIRMED on PR #580:** refresh-queue ingested 34,319 open items (whole-repo eslint debt); intersection with the PR's two changed files = 0. Scoping rule applied as written; also `git checkout -- dev-tools/review_queue.json` afterwards so the polluted churn doesn't ride the PR.
+- **[2026-09-28] CONFIRMED on PR #827:** The Done-gate agent stopped with needs_human on 5546 open items. The intersection with the diff gave 1059 old `no-explicit-any` / `no-case-declarations` items on `ai-execute-tool/index.ts`. The `: any` count was 119 on main and 119 on HEAD, so the diff added none. Give the Done-gate agent this rule in its prompt, so it does not stop again.
 
 ---
 
@@ -968,6 +976,8 @@
 - **Mistake:** During Phase 8 verify, `npm run test:e2e` (159 tests, 4 local workers) reported 27 failures right after the 5589-test unit suite + build + local Supabase stack had loaded the machine. First instinct is "27 e2e failures = regression, halt."
 - **Correction:** The failing SET shifted between runs (permissions-roles:70/113/248 failed then passed; :218 passed then failed) — the signature of load-induced flakiness, not a deterministic regression. A targeted re-run of the 27 passed 25/27; the 2 stragglers both passed when re-run serially (`--workers=1`, 2 passed in 16.9s). None of the branch's changes touched any e2e-tested flow. CI then ran e2e in 4 parallel shards and all passed.
 - **Rule:** When local full-suite e2e fails under load, before assuming regression: (1) check whether the failing set is stable across runs — a shifting set means flake; (2) re-run the failures serially with `--workers=1`; (3) map the failures to the diff — if the branch touches none of the failing flows, it's environment, not code. Treat CI's sharded e2e as the authoritative gate; don't block a PR on single-machine full-suite e2e noise. (Reinforces the pre-existing e2e-flake entries.)
+- **[2026-09-30] CONFIRMED on PR #833.** I told the user that CI does not run E2E, because I read only the job names in `.github/workflows/unit-tests.yml`. The same workflow run holds `E2E Tests (Shard 1/4)` to `(Shard 4/4)` and `Database Tests (pgTAP)`. I then spent 20 minutes on a local full-suite run that CI finished faster. Read the check runs of a pushed commit before you say what CI runs.
+- **Confirmed [2026-09-26] (PR #822):** The PR deleted a dead component. The design doc listed E2E as a justified exception, because no route mounts the component. The Verify gate still ran the full local E2E suite and stopped on 11 load failures. A rerun with 2 workers passed 10 of them. The last spec passed with 1 worker on the branch and on `origin/main`. The user then said to skip local E2E. CI's four E2E shards were the real gate. **Rule addition:** When the design doc gives an E2E exception, pass that exception to the workflow at launch. Do not let local E2E block the change.
 
 ### [2026-07-06] codex-adversarial-review.sh: macOS has no `timeout`, and a stale output file yields a phantom finding
 - **Mistake:** Wrapped the Phase 7a Codex runner as `timeout 400 dev-tools/codex-adversarial-review.sh main`. macOS ships no `timeout` binary (it's `gtimeout` from coreutils), so the wrapper failed before the script ran — exit 0, but `dev-tools/codex-review-output.md` still held a finding from the PREVIOUS task's run (a `20260703…categorization` migration not even in this branch's diff). Taking that at face value would have chased a non-existent bug.
@@ -1091,6 +1101,7 @@
 - **Mistake:** `useLaborIntradaySeries` (the `/labor` Day view) fetched one day of `unified_sales` and one day of punches with a direct `.select()`, on the assumption that a single day is small. A busy restaurant writes 1000+ line-item rows per day. `supabase/config.toml` sets PostgREST `max_rows = 1000`, so the client got exactly 1000 rows and **no error** — the intraday chart under-counted sales silently. This is the same silent-cap failure class the parent PR (#741) existed to remove: the old 18-week client fetch capped at 20,000 rows.
 - **Correction:** Routed the sales fetch and the punch fetch through the repo `fetchAllRows` helper, which pages by `.range()` until the server returns a short page.
 - **Rule:** Never trust a direct `.select()` on a table whose window can exceed 1000 rows. PostgREST caps the response at `max_rows` (1000 in this repo) and returns success, not an error. Page through `fetchAllRows` (or an explicit `.range()` loop) for any unbounded row set. A "one day" or "one week" window is not a safety bound on a busy tenant — the row count is a function of sales volume, not window length.
+- **Confirmed [2026-09-30] (PR #832):** Reviewers found the same cap two times in one PR. `useRecipeWeeklyVolume` read 7 days of `unified_sales` with one `.select()`. The `get_recipe_analytics` ingredient query read `recipe_ingredients` the same way. Both now use `fetchAllRows` with `.order("id")` before `.range()`. Write every new `unified_sales` or join read with `fetchAllRows` from the start.
 
 ---
 
@@ -1375,6 +1386,7 @@
 - **Mistake:** Two independent branches (#625 bulk-deduction, #628 shift-fill) both picked prefix `20260720120000`. Supabase keys `schema_migrations` on that 14-digit prefix alone, so a fresh `supabase db start` hit `schema_migrations_pkey` and aborted — turning **every open PR's** Unit/pgTAP/E2E red and breaking `main`'s Deploy Supabase. Worse, on prod the **first-merged** file recorded the version and the **second-merged** file was silently **skipped** (its schema change never applied). The single failing unit test (`migrationVersionUniqueness.test.ts`) was the tell.
 - **Correction:** Rename the **un-applied (later-merged)** file to a unique adjacent prefix (`…120001`) — keep the already-recorded one where prod has it. On fresh DBs both apply in order; on prod the renamed one applies for the first time (verify it's idempotent, since it may re-run). Determine merge order with `git merge-base --is-ancestor`, not PR number.
 - **Rule:** A duplicate migration-version prefix is a repo-wide P0, not a per-PR problem — it blocks every branch and can leave prod missing a migration. When a rebased PR is mysteriously red on db-start with a PK collision on `schema_migrations`, check `main` itself is green before touching your own branch; the fix belongs in a separate PR against `main`.
+- **[2026-10-01] CONFIRMED on PR #841, from the other side.** PR #838 and the recipe-yield PR both merged prefix `20260930120000`. PR #841 fixed the collision inside its own branch (rename to `…120001`). At the same time, #840 fixed it on `main` (rename to `…120300`). The next merge of `main` gave a rename/rename conflict, and the UI-only PR carried a migration diff for one CI cycle. **Rule:** Do not fix a collision that is already on `main` inside a feature branch. Check `gh pr list --search 'migration'` for a fix PR. Wait for it or open it against `main`, then merge `main` into the branch.
 
 ### [2026-07-21] A backfill DO block is ONE statement — the whole thing runs under one statement_timeout
 - **Mistake:** The Revel `sold_at` backfill migration ran its per-restaurant loop inside a single `DO $$ … $$;` block. A DO block is one SQL statement, so the "bounded per-restaurant loop" was still one statement covering the ENTIRE historical dataset (1353 orders + per-date re-aggregation). On the first prod deploy it exceeded the default `statement_timeout` and was cancelled (SQLSTATE 57014); because the migration runs in a transaction it fully rolled back, never recorded in `schema_migrations`, so every subsequent deploy re-ran and re-failed — halting the whole migration pipeline.
@@ -1832,6 +1844,9 @@
 - **Mistake:** Re-ran this branch's pgTAP file expecting the 8/8 it had produced minutes earlier and got four `not ok`s, starting with "the week-range insert trigger exists". Nothing in the branch had changed. A concurrent session in another worktree had run `npx supabase db reset` against the shared `127.0.0.1:54322`, which reapplies **that** branch's migrations — and this branch's migration exists only here, so it was silently dropped. The same contention had already produced a phantom pgTAP failure earlier in the run (188 leftover e2e restaurants breaking an unrelated "no restaurants exist" assertion) and a spray of unrelated e2e failures (`inventory-*`, `payroll-*`, `permissions-roles`).
 - **Correction:** Re-applied the migration with `psql -f` and re-ran — 8/8. Stopped trying to get a trustworthy full-suite e2e result locally and delegated it to CI, which shards Playwright 4 ways on clean runners each with its own fresh Supabase. All four shards passed.
 - **Rule:** A red local DB test is not evidence of a code defect until you have confirmed your own migration is still applied — check first, re-apply, re-run, *then* debug. With ~5 concurrent worktrees on one Postgres, local full-suite e2e is not an authority; CI is. Delegating it is the stronger signal, not the weaker one — but say so explicitly rather than reporting a suite as "passing" when it never finished.
+- **Confirmed [2026-08-20] (PR #767):** The worktree count grew to ~13, and the contention hit three times in one run: `test:db` in Phase 7b, the full E2E suite in Phase 8, and a `psql` check in Phase 9d. Four sibling worktrees ran `supabase db reset` in an overlap of 20+ minutes, so no quiet window came. The clean hand-back: the workflow stopped on a `needs_human` gate with the evidence, and the resume carried the decision in `args.verifyResolutionNote` — accept CI as the authoritative gate for the full suite, and do not run `db:reset` locally. CI's four isolated shards passed. Two earlier timed local passes of the branch's own new spec kept the local signal honest.
+- **[2026-08-20] CONFIRMED again (PR #770), plus a coordination protocol that worked:** three mid-run resets from sibling worktrees during one task (one run lost the connection at 27/37 pgTAP tests; another hit a freshly reset db with no `pgtap` extension — `function plan(integer) does not exist`). Two additions: (1) a peer session sent a cross-session message declaring its e2e window and a reset window; replying with this session's own schedule (what already ran, what remains, a hold commitment for any late local run) avoided every further collision — answer these messages with concrete timestamps, and before replying check the workflow journal for what is *actually* still running rather than assuming. (2) CodeRabbit flagged that a plan's RED step ran `test:db` with no preceding `db:reset` while the same plan documented sibling-migration drift — on a shared db, the RED step needs the reset as much as the verify step does (fixed in `9d2172a3`).
+- **Confirmed [2026-09-26] (PR #824):** `test:db` deadlocked on a different SQL file in each attempt. `pg_stat_activity` showed the blocking PIDs as PostgREST connections from a sibling session. The same busy stack made 25 E2E specs fail at signup, before any branch-specific step. The user decided to stop the local E2E and let CI run it. The resume passed that decision in `args.verifyNotes`.
 
 ## Category: Development Workflow (continued)
 
@@ -2315,6 +2330,7 @@
 - **Mistake:** Made the same class of error twice in a single piece of work. First: "Production has zero external collaborators with an employee record" — sampled two role *names* and generalized to all collaborators, including area-derived custom roles; the Supabase reviewer flagged it as uncited. Second, after fixing that one: claimed in the PR body that the new surface is "strictly narrower than what this role already holds" — true for `collaborator_operations_manager` (which already reaches `/scheduling` and payroll), false for `collaborator_inventory`/`collaborator_chef`, and a review bot flagged it P1. Each time the reasoning was sound about the instance in front of me and got quietly promoted to a claim about the class.
 - **Correction:** Rewrote both claims to state the role they were actually verified for, and backed the general form with a query matching on both `ur.role LIKE 'collaborator%'` **and** `r.flavor = 'collaborator'` so custom roles are included (result: 3 memberships, only the internal user has a record).
 - **Rule:** When writing a security claim, underline the noun. If it is a category ("collaborators", "this role", "these pages") but the evidence is one instance, either widen the query until it covers the category or narrow the sentence until it matches the evidence. Watch especially for the promotion happening *while fixing a previous over-generalization* — being freshly burned did not stop the second one.
+- **[2026-08-20] CONFIRMED again on PR #770 (bulk-categorize capability guard), with a sharper sub-rule for capabilities:** the design doc claimed "a role without `edit:transactions` also lacks `view:transactions`" — verified for legacy role strings only (both map to the same `('owner','manager','collaborator_accountant')` list in the resolver CASE). Custom roles disprove it: `src/lib/permissions/areas.ts` defines `transactions: { view: ['view:transactions'], manageAdds: ['edit:transactions'] }`, so a custom role at area level `view` reaches `/transactions` (`routeAreas.ts`, `minLevel: 'view'`) and then hits the RPC's new `Access denied` on a UI click. Codex caught it in CI; commit `95c307d9` added the `canBulkEditTransactions` UI gate. **Sub-rule:** a claim that capability X implies capability Y must be checked on BOTH resolution paths — the legacy CASE *and* the custom-role area levels. Area `view`/`manage` levels split capabilities that legacy role strings bundle, so legacy-role evidence never proves a co-occurrence claim for custom roles.
 
 ## Category: CI / Workflows (continued)
 
@@ -2326,6 +2342,7 @@
 - **Mistake:** Same failure as [2026-08-04], same shape, next session. All 5 bot findings on PR #702 were answered with `gh api -X POST .../pulls/702/comments/<id>/replies`. The replies were correct on the merits and correctly threaded — and `pr-comment-response` still reported "**5 unanswered**". Two were classified `no verdict in reply` (raw prose carries no marker) and two `reply from a bot` (a later CodeRabbit reply landed on the thread after mine, and the audit reports the *last* non-answering reason it saw, so my reply was invisible in the reason string entirely). I then declared Phase 9d complete and moved on, because the replies had posted successfully and I never re-read the check.
 - **Correction:** Re-posted all 5 through `node dev-tools/pr-triage.js reply --pr 702 --comment <id> --verdict <agreed|pushed-back|ignored> [--commit <sha>] --rationale "…"`, confirmed locally with `node dev-tools/pr-triage.js audit --pr 702` (exit 0, "0 unanswered · 5 answered"), then `gh workflow run pr-comment-response.yml --ref main -f pr=702` to republish rather than waiting out the 30-minute cron.
 - **Rule:** The habit did not stick because the previous fix was a `PATCH` workaround, not a change of tool. Bind it to the tool instead: in Phase 9d, `gh api .../replies` is **never** the write path — it is only the read path. The gate has a local oracle (`pr-triage.js audit`, exit 0) — run it before claiming 9d done, in the same breath as posting. "The replies posted successfully" is not evidence the gate is satisfied; only `audit` exit 0 is. And when a reason string says `reply from a bot`, do not read it as "I have not replied" — it means *some* reply on that thread was a bot's, and yours may be sitting right there unmarked.
+- **Confirmed again [2026-09-30] (PR #832):** I answered review threads with plain `gh api` replies again, and `pr-comment-response` failed. I posted each verdict with `pr-triage.js reply`, then ran `gh workflow run pr-comment-response.yml -f pr=832`. The habit still returns after a context compaction, so read Phase 9d again before the first reply.
 
 ### [2026-08-05] A green test run is not evidence when the shell's cwd has silently left the worktree
 - **Mistake:** After backgrounding `gh pr checks 702 --watch`, the persistent shell's cwd reverted from `.claude/worktrees/employee-app-access` to the primary checkout on `main`. I then ran `npx vitest run tests/unit/EmployeeDialog.statusSync.test.tsx …` and got "4 passed / 38 passed" — that was `main`'s copy of those files against `main`'s source, where the component under test (`EmployeeAppAccessRow`) does not exist at all. I reported those suites as clean to the user. CI then failed 10 tests in exactly those two files, all `useAuth must be used within an AuthProvider`. The tell was already on screen and I misread it: `grep -rn "EmployeeAppAccessRow" src/` returned **nothing** and `ls src/components/employees/` returned "No such file or directory" — in a worktree whose entire PR is that component. I read "no usages" instead of "wrong directory."
@@ -2355,6 +2372,7 @@
 - **Confirmed [2026-08-05], and the gate is red for a second, duller reason: timing.** The check fired 20 seconds after the fix push — correctly reporting the findings as unanswered, because the replies did not exist yet. `pr-triage.js list` said "No unanswered findings" while the PR showed `pr-comment-response fail`. Don't debug that disagreement; the check is a snapshot of the moment it ran. `gh run rerun <run-id>` on the "PR Comment Response" workflow settles it. Note the failing check-run id in `gh pr checks` is **not** a run id — resolve the real one with `gh run list --commit <sha>`.
 - **Confirmed again [2026-08-06] (PR #709), one day later — so this is systematic, not a one-off.** Same sequence, same red check: push the fix, the gate fires seconds later against a PR whose replies do not exist yet, `pr-triage.js list` reports "No unanswered findings" locally. `gh run rerun <run-id>` on the "PR Comment Response" workflow flipped it to pass with no code change. The cheap way to avoid the round-trip entirely: post the verdict replies **before** pushing the commit that fixes them. Otherwise the gate needs one manual rerun as the last step — the workflow does also carry `schedule: cron '*/30 * * * *'` (`.github/workflows/pr-comment-response.yml`), so a scheduled audit will eventually observe the late replies and clear it on its own, but waiting up to 30 minutes for that is slower than `gh run rerun`.
 - **Confirmed again [2026-08-14] (PR #744) — `workflow_dispatch` re-audits the current head on demand.** I pushed the P1 fix (`ecbfb8ba`), and `pr-comment-response` fired seconds later and failed, because my verdict reply did not exist yet. I posted the reply with `node dev-tools/pr-triage.js reply --pr 744 --comment <id> --verdict agreed --commit ecbfb8ba --rationale "…"`, then ran `gh workflow run pr-comment-response.yml -f pr=744`. The `workflow_dispatch` input form re-audits the current head at once, so I did not wait for the `*/30` cron. The check flipped to pass. Warning: an `agreed` reply must cite the fix commit SHA in backticks (for example `ecbfb8ba`). Without the SHA, `citesKnownCommit` fails and the audit still counts the finding as unanswered.
+- **Confirmed again [2026-08-20] (PR #766), fourth time.** Same order of operations: push `5d55e256` first, reply after, red check. The [2026-08-06] note above already names the cheap path — commit locally, read the SHA, post the verdict replies, then push. Follow that order. The recovery stays `gh workflow run pr-comment-response.yml -f pr=766`.
 
 ## Category: Database — Constraints & Triggers (continued)
 
@@ -2391,6 +2409,7 @@
 - **Mistake:** Ran `npm run test:e2e | tail -40 > out.log` in the background and treated the still-running process as a stuck test suite. `ps` showed 04:03:58 elapsed and the output file was 0 bytes, which read as "wedged before printing anything." I killed PIDs 73082/73054 assuming lost work. The log, once flushed, ended with `166 passed (29.2m)` followed by `Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.` — the default `html` reporter starts a **blocking web server** after the run and waits for Ctrl+C forever. The 0-byte file was `tail` buffering, not silence.
 - **Correction:** `npx playwright test --reporter=line 2>&1 | tee <file>` — a reporter that streams and then exits.
 - **Rule:** Never run Playwright non-interactively with the default reporter. `--reporter=line` (or `list`, or `--reporter=html --reporter-open=never`) for anything an agent launches. Two corollaries with teeth: (1) a piped-through-`tail` command produces **no output at all** until it exits, so an empty log file is evidence of nothing — redirect the full stream and read the tail of the *file*; (2) before killing a long-running job, read what it already wrote. This is the CLAUDE.md "No Unbounded Waits" failure class arriving from the tool's own default rather than from a hand-rolled loop, so the "don't write poll loops" rule alone does not catch it.
+- **Confirmed [2026-09-26] (PR #824):** The Phase 8 verify agent ran `npm run test:e2e`. The run finished and then served its report on `localhost:9323`. The workflow saw no progress for 6 × 180 s and stopped with `needs_human`. The Phase 8 prompt still says `npm run test:e2e` with no reporter flag. **Rule:** In an agent prompt, write `npx playwright test --reporter=line`, not `npm run test:e2e`.
 
 ## Category: Accessibility (continued)
 
@@ -2701,6 +2720,7 @@
 - **Mistake:** PR #744 added `create_shift_trade_for_employee`, a SECURITY DEFINER function. The RLS INSERT policy on `shift_trades` blocks a manager, so the function does the insert. It checked the caller role, the shift owner, the status allow-list (`scheduled`/`confirmed`), and the offerer-active state. It did not check `is_published`. The employee self-service flow gates on `is_published`: `src/components/employee/ShiftRow.tsx` offers a trade only for a published shift. So a manager, or a direct RPC call, could post a draft shift for trade. That trade would notify a coworker about a shift that can still change or disappear. The status allow-list looked complete, so the gap was invisible in the diff. Codex flagged it P1 on the open PR. No Phase 7a reviewer and no other bot caught it.
 - **Correction:** Added `IF NOT v_shift.is_published THEN RAISE EXCEPTION 'Only a published shift can be traded'` in the function, after the status check and before the offerer-active check (commit `ecbfb8ba`). Added the same gate to the UI: `SchedulingShiftCard.tsx` renders the offer button only when `shift.is_published` is true. Added a pgTAP rejection scenario (a `scheduled` draft shift is denied) and a unit test (an unpublished shift hides the offer button).
 - **Rule:** Before you add a privileged path that parallels a self-service path, read the self-service path end to end — UI gate, hook, RLS, RPC — and list every precondition it applies. Mirror each precondition in the new path. A SECURITY DEFINER function bypasses RLS, so it is the last line of defense. A precondition the UI enforced but the function omits is a real hole. The status allow-list is not the whole contract: `is_published`, `is_active`, and tenant scope are separate invariants, and each one needs its own check.
+- **Update [2026-08-14] (PR #747):** The `is_published` precondition is lifted on purpose. A draft shift can now be traded, marked tentative in the UI and the notification (design: `docs/superpowers/specs/2026-08-14-draft-shift-trade-design.md`). Do not read the missing guard in `create_shift_trade_for_employee` as a regression. The rule stands, in both directions: when you add a privileged path, mirror every precondition; when a product decision deletes a precondition, delete it from every parallel path in one change — UI gate, RPC, and tests.
 
 ## Category: Database Tests (pgTAP) (continued)
 
@@ -2796,3 +2816,930 @@
 - **Diagnosis:** CodeRabbit found the hole. TypeScript checks excess properties only on an object literal at the assignment site. A pre-built variable is checked by structural assignability, which permits extra properties. So `const p = { name: 'X', subscription_tier: 'pro' }; const u: RestaurantUpdate = p;` compiled, and the guarded column reached the database. The literal-only tests could not see this.
 - **Correction:** `RestaurantUpdate` now intersects the `Omit` with `{ [K in GuardedBillingColumn]?: never }`. `string` is not assignable to `never`, so the variable form is rejected too. The `never` half also reaches `subscription_cancel_at` and `stripe_customer_id`, which the `Restaurant` interface does not declare, so `Omit` could not name them.
 - **Rule:** To forbid a key, declare it as `?: never`; do not only `Omit` it. `Omit` removes a key from the target type, which makes it an *excess* property, and excess-property checking fires on literals alone. Test both forms: a literal and a variable assigned to the same type. A type that passes only the literal case gives false assurance for every call site that builds the payload first.
+
+## Category: Security (continued)
+
+### [2026-08-14] A tenant check after a load-by-id is a cross-tenant existence oracle (PR #747)
+- **Mistake:** `create_shift_trade_for_employee` loaded the shift by `id` alone, then raised `Shift does not belong to this restaurant` when `restaurant_id` did not match. `Shift not found` and the mismatch error were distinct. A manager in restaurant A could probe shift ids from restaurant B: a different error means the id exists. The pattern came from the PR #744 migration; the draft-trade migration copied the body forward, and CodeRabbit flagged it major on the copy.
+- **Correction:** Fold the tenant filter into the load: `WHERE id = p_offered_shift_id AND restaurant_id = p_restaurant_id`. A missing id and a foreign id now raise the same `Shift not found` (commit `68358ec0`). The pgTAP scenario asserts only the SQLSTATE, so it needed no change.
+- **Rule:** Filter by tenant inside the load query. Do not load by id and check the tenant after. Warning: a `CREATE OR REPLACE` migration re-submits the whole old body to review. Read the copied body as new code, because its defects are now yours.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-14] The plan may not narrow a spec sentence silently (PR #747)
+- **Mistake:** The design doc said add the tentative line to "the email body and to the push body". The plan narrowed the push change to the created-broadcast body and stated the reason only in the plan text. The per-user push for accepted/approved/rejected/cancelled kept the plain body. The sound-logic reviewer and Codex both flagged the gap as a real deviation from the design doc.
+- **Correction:** Applied `tentativePushBody` to the per-user push loop too (commit `97ae4c1f`). The email needed no change: the shared template already covered every action.
+- **Rule:** Reviewers check the diff against the spec, not against the plan. When the plan narrows a spec sentence, change the spec sentence in the same commit, or implement the full sentence. A narrowing that lives only in the plan reads as a bug to every reviewer.
+
+## Category: UI Patterns (continued)
+
+### [2026-08-14] shadcn `Badge` renders a `div`; a `div` may not sit inside `<p>` (PR #747)
+- **Mistake:** `TentativeDraftBadge` (a shadcn `Badge`, root element `div`) sat inside a `<p>` in two dialogs of `TradeApprovalQueue.tsx`. The HTML parser closes a `<p>` at a block element, so the browser re-parents the markup and React logs a DOM-nesting error. No unit test asserts markup validity, so the tests stayed green; the Phase 5 UI review caught it.
+- **Correction:** Moved the badge to a sibling position after the `<p>` in both spots (commit `f0b61b41`). `Badge` inside `CardTitle` (an `h3`) is valid and has precedent at `SubscriptionPlans.tsx:53-56`.
+- **Rule:** Before you place a component inside a text element, check the component's root element. `Badge` renders a `div`. Flow content inside `<p>` is invalid HTML, and React only warns at runtime.
+
+## Category: React Query (continued)
+
+### [2026-08-14] A badge derived from a joined column needs the mutation invalidation AND the memo comparator (PR #747)
+- **Mistake:** The tentative badge reads `offered_shift.is_published` through the `shift_trades` join. Two staleness holes shipped in sequence. First, publish and unpublish flip the flag on `shifts`, but neither mutation invalidated the trade queries, so the badge changed only after the 30s staleTime. Second, the `TradeCard` memo comparator checked `id`, `status`, and `is_published` only, so a manager edit to `start_time`, `end_time`, or `position` on the offered shift did not re-render the card.
+- **Correction:** Invalidate `shift_trades` and `marketplace_trades` in both mutations' `onSuccess` (commit `ce7c7d83`). Add the three mutable shift fields to the comparator (commit `d109ccf8`). Both fixes carry regression tests.
+- **Rule:** When a render reads a mutable column through a join, list every mutation that writes that column and invalidate the joined query in each one. Then check every memo comparator on the render path: it must compare each rendered mutable field, not only the id and the flag that prompted the feature.
+## Category: Development Workflow (continued)
+
+### [2026-08-14] Cite the line that holds the named identifier — call a wrapped consumer indirect (PR #748)
+- **Mistake:** The design doc for the dead-page deletion said `AvailableShiftsPage` "consumes this hook" and cited `src/pages/AvailableShiftsPage.tsx:29` and `:239`. The claim named `useMarketplaceTrades`. Those two lines import and call `useAvailableShifts`. The call to `useMarketplaceTrades` sits one layer down, at `src/hooks/useAvailableShifts.ts:51`. The sound-logic reviewer flagged the gap as `logic:minor`.
+- **Correction:** Commit c35784ba reworded the claim: `AvailableShiftsPage` consumes `useMarketplaceTrades` indirectly, through `useAvailableShifts`, with a citation for each hop. The reviewer confirmed the fix.
+- **Rule:** A `file:line` citation must land on the identifier the sentence names. When the use is transitive, write "indirect, through X" and cite each hop in the chain. A citation that lands on a wrapper sends the next reader to a line that does not contain the named identifier. This extends the mandatory-citation rule in `development-workflow.md` Phase 2: the lookup exposes a false claim only when the cited line must hold the exact identifier.
+
+## Category: Security (continued)
+
+### [2026-08-15] A CREATE OR REPLACE from an old template reverted the security fix that sat between (PR #743)
+- **Mistake:** Migration `20260501120000` fixed a revenue double-count in `get_monthly_sales_metrics`. It started from the December body, which is `SECURITY DEFINER` with no guard. The March fix (`20260302120000`) — `SECURITY INVOKER` plus a `user_restaurants` guard — sat between and vanished. Postgres grants EXECUTE to PUBLIC on creation, so any holder of the anon key could read any restaurant's monthly financials for three months.
+- **Correction:** Migration `20260814120000` restores `INVOKER`, the guard, and revokes PUBLIC and anon. pgTAP `37_` pins `prosecdef = false` and `has_function_privilege('anon', ...) = false`, so a future replace that drops either fails the suite.
+- **Rule:** Before you `CREATE OR REPLACE` a function, read the LATEST migration that defines it, not the version you remember. Carry the security mode, the guard, and the grants forward. Pin `prosecdef` and the grants in pgTAP; catalog assertions survive body rewrites.
+
+### [2026-08-15] SECURITY INVOKER makes result correctness depend on the caller's RLS for every table in the body (PR #743)
+- **Mistake:** I judged the `INVOKER` flip safe because the membership guard passed for every member. The body reads three tables. `chart_of_accounts` SELECT is gated on `user_has_capability(restaurant_id, 'view:chart_of_accounts')`, which chef and staff do not hold.
+- **Diagnosis:** A per-role probe showed the failure shape: a caller without the capability gets `gross_revenue = 160`, `sales_tax = 0` against a truth of 150/10. The LEFT JOIN turns invisible liability accounts into NULL `account_type`, so tax lands in gross revenue. That is wrong data, not an error. The only app path admits manager and owner; a prod query showed all 73 owner/manager memberships hold the capability, so no live caller degrades.
+- **Rule:** When you flip a function to `SECURITY INVOKER`, list every table the body reads and read each SELECT policy. Probe the function per reachable role against a BYPASSRLS truth run. A role can pass the membership guard and still fail one table's policy; the result is silently wrong numbers, not a denial.
+
+### [2026-08-15] Filter every NOT EXISTS on a multi-tenant table by restaurant_id, and test on the path where the bug is visible (PR #743)
+- **Mistake:** Both child-sale checks read `WHERE child.parent_sale_id = us.id` with no restaurant filter. Under authenticated plus RLS the hole is invisible: RLS hides a cross-restaurant child, and the probe returned the correct 70.
+- **Diagnosis:** On a BYPASSRLS path (service_role, cron, pgTAP as postgres) the same query returned 0 rows — the cross-restaurant child suppressed the in-tenant parent.
+- **Correction:** `AND child.restaurant_id = p_restaurant_id` in both subqueries. The boundary test went into `36_`, which runs RLS-disabled — the only path where the regression is observable.
+- **Rule:** Filter every subquery on a multi-tenant table by `restaurant_id`, `NOT EXISTS` included. Place the regression test on the execution path where the bug can appear; a test under RLS proves nothing about the BYPASSRLS path.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-15] PostgREST max_rows truncates silently — never fetch rows and sum them in JavaScript (PR #752)
+- **Mistake:** Ten AI-tool sites fetched raw rows with `.select()` and summed with `.reduce()`. PostgREST caps every response at 1000 rows (`max_rows = 1000`) and returns success. A restaurant with 22,366 July sale rows got `$3,647.22` as revenue instead of `$68,038.11`. Three displayed numbers replicated to the cent as first-1000-row slices.
+- **Correction:** Nine aggregate RPCs plus a modified shared RPC compute every period-bound sum in SQL. `GROUP BY` collapses any volume into a bounded set. A `head:true` + `count:'exact'` query is not row-capped and serves counts.
+- **Rule:** Never fetch rows and sum them client-side for a period-bound financial metric. Aggregate in SQL. If a raw fetch must remain, bound it explicitly and check `data.length` against the cap. The failure is silent: the sum looks plausible and carries no error.
+
+### [2026-08-15] Read the column's precision and seed data before you write math on it — a fixture that mirrors the plan cannot catch the plan's unit error (PR #752)
+- **Mistake:** The plan's break-even formula treated `percentage_value` as a whole-number percent (27) and divided by 100. The column is `NUMERIC(6,5)` — it cannot store 27. Seeds store `0.28`; the form divides user input by 100 on save; the sibling function multiplies the raw value. The unit tests passed 4/4 because their fixture used the plan's wrong unit.
+- **Diagnosis:** A task reviewer checked the schema instead of the tests and caught a x100 error that would have shipped plausible, silently wrong break-even numbers for every restaurant on default costs.
+- **Rule:** Before you write math on a column, read its type, precision, seed values, and one existing consumer. Build test fixtures from real stored values, not from the plan's description. A green test proves internal consistency, not unit correctness.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-15] Verify a reviewer's factual claim in both directions before you act on it (PR #752)
+- **Mistake risk, avoided twice:** A triage agent reported "7 pre-existing pgTAP failures" — false; a fresh `db reset` showed 2879/2879 green, and the failures were artifacts of its stale local DB. A bot reviewer claimed the old `total_revenue` honored the `>$10` deposit floor — true; `git show <merge-base>` proved the old code computed the total from the floored set, and an earlier internal review had stated the floor's scope incompletely.
+- **Rule:** A reviewer's factual claim about baseline behavior is an input, not a verdict. Check "pre-existing failure" claims against a fresh baseline run. Check "the old code did X" claims against the merge-base source, not against a summary of it. Accept or refute with the artifact, in either direction.
+
+## Category: Testing (E2E / Playwright) (continued)
+
+### [2026-08-15] Do not assert a status badge whose text ages with the calendar (PR #753 → #756)
+- **Mistake:** The retraction E2E spec seeded a Wednesday shift and asserted `getByText(/upcoming/i)`. A shift in the past wears "Completed", so the assertion failed on every Thursday–Sunday CI run. The flaw shipped in PR #753 and broke PR #756's CI on a Saturday.
+- **Correction:** Assert the seeded shift's time text (`/10:00 AM/`), which does not age. Commit b4404750.
+- **Rule:** In an E2E spec, never assert badge or status copy that depends on the run date (Upcoming/Today/Completed). Assert seed-controlled facts: the time text, the position, or a count.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-15] A create-shaped payload reused for an update writes state-machine fields backward (PR #756)
+- **Mistake:** `ShiftDialog` built one `shiftData` with `is_published: false, locked: false` and reused it for both create and update. Every guarded edit of a published shift silently retracted the publication. Unit and E2E tests passed because none asserted the flags.
+- **Correction:** The base payload carries no publish flags; only the create path adds them. A unit test now asserts the update payload excludes both. Commit d905eb50.
+- **Rule:** When one payload serves create and update, strip every state-machine field (publish flags, status latches, counters) from the shared shape. Add them only where the state transition is intended, and test their absence on the other path.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-15] A resumed workflow replays a halted phase's cached needs_human verbatim (PR #756)
+- **Mistake:** Phase 7c halted on a stale CodeRabbit file. After the file was replaced, a plain resume returned the same needs_human in 37 ms — the phase's (prompt, opts) were unchanged, so the cache replayed the old answer and never read the new file.
+- **Correction:** Passed `coderabbitOutDir` (embedded in the 7c prompt) to a session-private path. The prompt changed, the cache missed, the phase ran live.
+- **Rule:** To re-run a halted workflow phase after you fix its input, change something the phase's prompt embeds (a path, an iteration marker). Fixing the input file alone changes nothing the cache can see. Prefer session-private paths over shared /tmp for any file a phase reads — two concurrent sessions collide there.
+- **Confirmed [2026-08-18] (PR #758):** the halted Verify phase replayed its cached needs_human on resume. A scratchpad copy of the workflow script, with only the Verify prompt edited, forced the live re-run. Edit a session-private copy of the script; never edit the shared repo script for one resume.
+
+### [2026-08-15] Cleanup chained with `;` dies with the first zsh error — and `status` is read-only (PR #756)
+- **Mistake:** A background command ran tests, then `status=$?`, then reverted two temporarily edited migrations. zsh aborted at `status=$?` ("read-only variable: status"), so the revert never ran and the two out-of-branch migrations sat modified in the worktree.
+- **Rule:** On zsh, never assign to `status`. Put cleanup in a `trap ... EXIT`, not after a `;` — cleanup that only runs when everything before it succeeds is not cleanup. After any background command, re-check `git status` before staging.
+
+### [2026-08-15] Judge a full-repo lint gate by the branch delta, with hunk evidence (PR #756)
+- **Mistake risk, avoided:** Phase 8 halted because `npm run lint` (full repo) exits 1 with 1,721 pre-existing problems. Blindly "fixing lint" would have meant a repo-wide cleanup inside a feature PR; blindly overriding would have shipped 4 genuinely new findings.
+- **Correction:** Linted only `git diff --name-only origin/main...HEAD` files, then mapped each finding to the branch's hunks (`git diff -U0`). 12 findings sat outside the hunks (pre-existing, line-shifted); 4 were new and got fixed. CI does not run full-repo lint, so the gate was local-only.
+- **Rule:** When a full-repo check fails on known debt, produce the delta evidence: run the check on changed files and map findings to added hunks. Fix what the branch introduced. State the pre-existing remainder in the PR body — never silently override and never widen the PR into a cleanup.
+
+## Category: Security (continued)
+
+### [2026-08-15] A SECURITY DEFINER RPC that takes p_restaurant_id must gate on the caller's membership (PR #756)
+- **Mistake:** The new `update_shift_series` re-declaration took `p_restaurant_id` from the caller, filtered rows by it, and checked nothing about the caller. SECURITY DEFINER bypasses RLS, and the function was granted to `authenticated` — any signed-in user could update another restaurant's series. Codex flagged it P1; five Claude reviewers and CodeRabbit local missed it.
+- **Correction:** Added `IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN RAISE EXCEPTION` plus `SET search_path = public, pg_temp`, with two pgTAP tests (refusal + pin). Commit 4a2756c5. The sibling `delete_shift_series` has the same pre-existing hole — flagged as a separate task.
+- **Rule:** Every SECURITY DEFINER function that accepts a tenant id as a parameter must verify the caller's capability for that tenant inside the function, first, before any read or write. Confirms the 2026-07-20 search_path lesson; extends it: the pin alone is not the hardening — the tenancy gate is.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-18] Verify the task brief's premise against main before you design (PR #758)
+- **Mistake risk, avoided:** The task brief asked for the removal of the published-week lock. Commit 26e9e296 (PR #756, merged 3 days earlier) had already removed it. A design for the brief as written would have rebuilt a shipped feature.
+- **Correction:** Phase 0 checked every file:line the brief cited against current main and found the shipped fix. The scope became the three residual gaps: no notify choice on unpublish, no email collapse, and a help doc that taught the deleted workflow. The user approved the reduced scope before design started. The Phase 2.5 reviewers then re-verified every citation in the design and found 3 wrong ones.
+- **Rule:** Before you design, verify each claim in the task brief against current main. Cite the commit that confirms or refutes each claim. A brief goes stale whenever the backlog is older than the branch. Treat every file:line citation as a testable claim, not as context.
+
+### [2026-08-18] Run gate-deciding tests in the foreground; a background run dies with its agent (PR #758)
+- **Mistake:** The Verify agent started `npm run test:e2e` as a background task, then halted the workflow to wait for it. When the agent's shell exited, the run died silently at test 59 of 227 with 0 failures: the log froze, no Playwright process remained, and the task id resolved to "Task not found."
+- **Correction:** A bounded watcher (240 iterations x 15 s, with stall/summary/cap exits) detected the stall. The two branch-affected specs then ran in the foreground under the Bash tool's 600 s timeout and passed in 36 s. CI's four E2E shards covered the full suite.
+- **Rule:** Never leave gate evidence in a background process — the process dies with the agent that started it. Run the deciding tests in the foreground, bounded by the tool's timeout. When the full suite does not fit one foreground run, run the branch-affected specs in the foreground and let CI run the rest. Confirms the "No Unbounded Waits" rules in CLAUDE.md.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-18] Derive a shared context value per recipient role when one edit fans out (PR #758)
+- **Mistake:** `notify-shift-changed` resolved one email-thread header from `after_data` and reused it for every recipient. One edit can move a shift to a new employee and a new week at the same time. The removed employee's email then threaded into the destination week — a week that employee never received.
+- **Correction:** Codex flagged it P2. The header now resolves per recipient: `removed` uses `before_data`'s business day; `assigned` and `updated` use `after_data`'s, with a fallback to `before_data`. Commit 2e03317e.
+- **Rule:** When one change produces messages for recipients in different roles, derive each context value (week, date, thread key) from the data that belongs to that role. One shared value is correct only while every recipient shares the same before/after context. Same shape as the 2026-08-15 create/update payload lesson: one value, two states.
+
+## Category: Documentation (Help Content)
+
+### [2026-08-18] Quote the exact UI label, and sweep the whole doc for the old workflow (PR #758)
+- **Mistake:** The rewritten help doc paraphrased the unpublish checkbox as "Notify employees"; the component renders "Notify scheduled employees." A troubleshooting entry elsewhere in the same doc still taught the deleted unpublish-edit-republish workflow. The plan named specific lines to replace; both defects sat outside them. CodeRabbit caught both.
+- **Correction:** The doc now quotes the label from the component source, and the troubleshooting entry teaches the live-edit flow. Fix commits on PR #758, confirmed by the reviewer.
+- **Rule:** In a help doc, copy UI labels from the component source, not from the plan or from memory. When you change a workflow, grep the whole doc — and sibling docs — for the old workflow's words. The plan's named lines are not the full blast radius.
+
+## Category: Feature Flags
+
+### [2026-08-19] A flag turns a deletion into a deferral, and the plan must say so (PR #761)
+- **Mistake:** The design doc's Change 4 said "delete `allUpcomingAreDrafts` and the Upcoming (tentative) heading". The user then asked for a feature flag. A deletion and a flag contradict each other: a flag needs both code paths alive to compare them.
+- **Correction:** The design doc gained a "The feature flag" section that restates Change 4 as a deferral. `upcomingShifts` and `allUpcomingAreDrafts` stay. `EmployeeSchedule.tsx` carries both branches behind `showClarity`. The section also records the cleanup change that deletes the old path after the rollout ends.
+- **Rule:** When a user adds a flag to an approved design, re-read every "delete" in that design. Each one becomes a deferral. State the cleanup change in the same commit, before the rollout starts.
+
+### [2026-08-19] PostHog cannot target a customer that it never learns about (PR #761)
+- **Mistake:** The user asked to target named restaurants. I planned the flag before I checked what PostHog knows. `posthog.identify` at `src/lib/analytics.ts:225` sends `signup_source`, `is_internal`, and the signup classification. It sends no restaurant id, and the code called `posthog.group()` nowhere. The flag had no attribute to target.
+- **Correction:** Task 7 added `posthog.group('restaurant', restaurantId)` in `src/contexts/RestaurantContext.tsx`, where the restaurant is selected. It sends the id only, never the name, per the "PII minimization" rule at `src/lib/analytics.ts:223`. A reviewer then found a second half: sign-out must reset the group, or it carries to the next login on the same browser.
+- **Rule:** Before you promise per-customer targeting, grep for the identify and group calls and read what they send. The group call belongs where the tenant is selected, not in the auth event recorder — a user can hold several restaurants. Pair every group call with a reset on sign-out.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-19] A helper name I remembered did not exist (PR #761)
+- **Mistake:** The plan's Task 6 called `formatInRestaurantTz(value, tz, pattern)` in five places. That function does not exist. The real one is `formatInstant` at `src/lib/restaurantClock.ts:122`. The plan also destructured `isLoading` from `useMyShifts`; `UseShiftsResult` at `src/hooks/useShifts.tsx:49` names the field `loading`.
+- **Correction:** The self-review pass caught both before any code ran. One `grep -n "^export" src/lib/restaurantClock.ts` and one read of `UseShiftsResult` fixed them.
+- **Rule:** Before you write a helper call into a plan, print the module's exports. A plan that names a function which does not exist fails at the first task, and the executing agent then invents a replacement instead of finding the real one.
+
+### [2026-08-19] A timezone test can pass by coincidence on the author's machine (PR #761)
+- **Mistake:** `tests/unit/scheduleWeek.test.ts` compared restaurant-timezone output against a host-local `new Date(2026, 7, 17)`. My host sits in the same offset as the fixture timezone, so a bug that read the host clock would still pass here and fail in CI on another host.
+- **Correction:** A reviewer on PR #761 added a host-timezone pin to those tests. The CI Timezone Matrix runs UTC, America/Chicago, and Pacific/Auckland, and all three pass.
+- **Rule:** Pin the host timezone in any test that asserts restaurant-timezone behaviour. Never let the assertion and the code under test read the same ambient clock — a shared default hides the exact bug the test exists to catch.
+
+## Category: Dev workflow / Worktree hygiene (continued)
+
+### [2026-08-19] A shared append-only JSON file conflicts on every parallel branch (PR #761)
+- **Mistake:** `dev-tools/review_queue.json` conflicted with `main` after the workflow finished. Two branches each appended review findings to the same 6000-item file. `gh pr view` reported `mergeStateStatus: DIRTY` after every check had already passed.
+- **Correction:** A three-way compare showed pure additions on both sides, and zero changed items. The fix took the union by `id`: every item from `main`, then the 34 items this branch adds. The serialization had to match `main` exactly — `json.dumps(d, indent=2, ensure_ascii=False)` with no trailing newline — or the diff read as 1401 changed lines instead of 580 added ones.
+- **Rule:** Before you fix a conflict in a machine-written JSON file, compare base, ours, and theirs as parsed objects, not as text. Check whether either side changed an existing record. Then reproduce the writer's exact serialization, and confirm the diff against `main` is additions only.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-19] Split a date into a calendar-day question and an instant question (PR #764)
+- **Mistake risk, avoided:** The task brief said `ShiftRow` uses `isToday`, `isPast`, `isFuture` and `new Date()` on the host clock, and asked to move the page to the restaurant timezone. A change to all four calls would have been wrong.
+- **Correction:** The design split the five badge branches by the question each one asks. "Is this shift today?" is a calendar-day question, so it now reads `clock.toBusinessDay(shift.start_time) === clock.today`. "Is this shift over?" and "is it in progress?" compare instants, and an instant compares the same way in every zone, so `isPast`, `isFuture` and the `now` range check stay unchanged. Both Phase 2.5 reviewers confirmed the split. Commit 7a74b35b puts the rule in a comment above the function.
+- **Rule:** Before you route a date through the restaurant clock, name the question it answers. A calendar-day question needs the zone. An instant comparison does not, and the clock adds risk with no gain. Write the split into the code as a comment, or the next author reverts it.
+
+### [2026-08-19] Test count is not branch count (PR #764)
+- **Mistake:** `tests/unit/ShiftRow.test.tsx` held six cases for a function with five branches. Every case used a shift seven days out, so `Completed` and `In Progress` never ran. The suite looked complete and covered three of five branches.
+- **Correction:** A Phase 2.5 reviewer read the branches, not the test names, and found the gap. The plan gained two cases plus a re-run with the host zone pinned to `America/Phoenix`, which proves the two instant branches do not move with the host clock.
+- **Rule:** Count the branches in the function, then map each test to a branch. A fixture reused across every case can pin the code to one branch and hide the rest.
+
+### [2026-08-19] An `as` cast lets a wrong field name into a fixture (PR #764)
+- **Mistake:** `tests/unit/ShiftRow.publishes.test.tsx` built its `Shift` fixture with `break_minutes: 0`. The type names the field `break_duration` (`src/types/scheduling.ts:117`). The `as Shift` cast silenced `tsc`, so `break_duration` stayed `undefined` and every row in that file rendered `NaNh NaNm`. Three tests passed anyway, because none of them read the duration. CodeRabbit found it.
+- **Correction:** The fixture now sets `break_duration: 0`. A fourth case asserts the row shows `8h 0m` and contains no `NaN`, so the wrong field name cannot come back unseen.
+- **Rule:** An `as T` cast on a test fixture turns a wrong field name into silent `undefined`. Build fixtures with a typed factory, or assert one rendered value that depends on each field. A passing test proves nothing about a field it never reads.
+
+## Category: Dev workflow / Worktree hygiene (continued)
+
+### [2026-08-19] A pass on every check does not mean the branch merges (PR #764)
+- **Mistake:** The workflow finished, opened PR #764, and reported a pass on every check. `gh pr view --json mergeable` then returned `CONFLICTING`. PR #761 had landed on main and touched both changed files. Nothing in the check output showed this.
+- **Correction:** `git merge origin/main` produced 8 conflicts: 2 in `ShiftRow.tsx` and 6 in `EmployeeSchedule.tsx`. The resolution kept main's shared `getRestaurantWeekStart` helper over the equivalent inline code on this branch, and kept both new props on `ShiftRow`. Nine tests then failed for two reasons that no conflict marker showed: main's new test file did not pass the required `clock` prop, and the merged page called `useRestaurantPublishes`, which runs a React Query query that three timezone tests did not mock.
+- **Rule:** After every check passes, query `mergeable` before you report the PR ready. When you merge main into a branch, run the full suite after the merge. A clean conflict resolution still breaks tests that neither side changed.
+
+### [2026-08-19] `npm run typecheck` does not read the test folder (PR #764)
+- **Mistake:** `tests/unit/ShiftRow.publishes.test.tsx` rendered `ShiftRow` without the new required `clock` prop. `npm run typecheck` passed. `tsconfig.app.json` sets `"include": ["src"]`, so `tsc` never read the file. Only the test run found it, as a runtime `TypeError` on `undefined.toBusinessDay`.
+- **Rule:** When you add a required prop to a shared component, grep the test folder for the component name. A `typecheck` pass does not prove the call sites compile. Check which folders the tsconfig includes.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-20] A period guard must compare on the date basis the write uses (PR #766)
+- **Mistake:** The backfill wrote `entry_date` as `(transaction_date AT TIME ZONE 'UTC')::date`. Its closed-period guard compared the raw `timestamptz` with `period_start` and `period_end`. Postgres casts the `date` side to `timestamptz` at the session TimeZone, so `period_end` became midnight. A row at 23:30Z on the period's last day passed the guard, and its `entry_date` landed inside the closed period. CodeRabbit found it; the guard came from the single RPC, copied without a basis check.
+- **Correction:** The guard now compares `(bt.transaction_date AT TIME ZONE 'UTC')::date` with both bounds — the exact expression the insert uses. A one-line psql probe proved the bug before the fix: `TIMESTAMPTZ '2020-01-31 23:30:00+00' <= DATE '2020-01-31'` returns `f`, the UTC-cast form returns `t`. A pgTAP fixture at 23:30Z on the last closed day pins it.
+- **Rule:** When a guard and a write derive a day from the same `timestamptz`, both must use one expression. Write the cast once and copy it exactly. Test the last day of the range with a time after 00:00 UTC — that row separates the two forms. A one-line psql probe (`old-form <= bound` vs `new-form <= bound`) proves the fixture bites before you run the suite.
+
+### [2026-08-20] A backfill predicate must carry every guard of the RPC it mirrors (PR #766)
+- **Mistake:** The backfill predicate mirrored `bulk_categorize_bank_transactions` but listed only five of its six eligibility guards. `is_reconciled = false` was absent. Production had 0 reconciled candidates, so no wrong rows were written — but the function stays in the database for later reruns, where the gap becomes live. CodeRabbit found it. The tests had the same blind spot: every eligible fixture was a negative amount, so half of each `CASE WHEN amount < 0` branch in the line insert ran untested.
+- **Correction:** Added `AND bt.is_reconciled = false` plus a reconciled fixture that asserts no entry. Added a positive-amount fixture with debit-cash and credit-category assertions (plan 14 → 19).
+- **Rule:** Before you ship a predicate that mirrors an RPC, write the RPC's guards in one list and the predicate's in another. Every guard must appear in both, or the difference needs a written reason. Then fixture every `CASE` branch the insert contains — one eligible row per sign is the minimum for a ledger write.
+
+## Category: CI / Migrations (continued)
+
+### [2026-08-21] A 14-digit-prefix migration collision recurred, from two other PRs (PR #771)
+- **Mistake:** PR #767 and PR #769 each merged a migration file with the same prefix `20260820120000` to `main`. The July 21 lesson in this file names this exact failure. Neither author saw the collision, because neither branch could see the other branch's file before merge.
+- **Correction:** This branch had already met and fixed its own collision with PR #767's file (commit 669d41dd, renamed to `…120001`). The second collision, between PR #767 and PR #769, was outside this branch — our diff does not touch either file. Filed a follow-up task to rename PR #769's file on `main` to a free prefix.
+- **Rule:** A repeated lesson in this file is a sign that the fix must live in the pipeline, not in memory. `tests/unit/migrationVersionUniqueness.test.ts` finds the collision only after both PRs merge, too late for either author to act. The real fix is a check at merge time — a required status check on `main` that runs this test on every push, so CI fails the second PR before the merge, not after.
+
+## Category: Testing — Test Design (continued)
+
+### [2026-08-21] A guard test that never renders the hook passes whether the guard works or not (PR #771)
+- **Mistake:** `useCashFlowMetrics.test.tsx` had a "no restaurant selected" case, but it never rendered the hook under test. The assertion ran against nothing, so it passed with the guard present, and it would have passed with the guard removed. CodeRabbit found this during PR review.
+- **Correction:** Set `mockRestaurantContext.selectedRestaurant = null` and rendered the hook for real, so the test now exercises the actual early-return path.
+- **Rule:** A guard test must render or call the code under test. Check this by breaking the guard on purpose and confirming the test then fails. A test that continues to pass after you delete the guard tests nothing.
+
+## Category: Data Integrity / RPC Contracts (continued)
+
+### [2026-08-21] A generated RPC Args type can omit `null` even when the hook already sends it (PR #771)
+- **Mistake:** The generated Supabase types typed `get_cash_flow_metrics`'s `p_bank_account_id` as `string`, but the hook passes `null` for "all accounts." `strictNullChecks` is off in this repo, so `tsc` did not catch it — the type was simply wrong, silently.
+- **Correction:** Changed the generated type to `string | null`, to match the real call site.
+- **Rule:** After you add an RPC with a nullable filter argument, check the generated Args type allows `null` at every call site that passes it. With `strictNullChecks: false`, `tsc` will not catch a missing `| null` — inspect the generated type manually.
+
+## Category: E2E / Flaky Tests (continued)
+
+### [2026-08-21] `toISOString()` renders the UTC day, and a "days ago" helper can inherit the wrong day near midnight UTC (PR #771)
+- **Mistake:** `dateDaysAgo()` in `tests/e2e/financial-intelligence-cashflow.spec.ts` built a date string through `toISOString()`, which always renders the UTC day. In a timezone behind UTC, immediately after midnight UTC, the local calendar day is still the previous day, but `toISOString()` already names the next day. The test's "Today" filter check would then compare against the wrong day. CodeRabbit found the risk.
+- **Correction:** Read the date from the browser's own clock at that call site, instead of converting through UTC.
+- **Rule:** Do not build a "days ago" or "today" string with `toISOString()` when the check is a LOCAL calendar day. `toISOString()` answers a UTC question; a "Today" UI filter asks a local-day question. Read the day from the same clock the UI reads.
+## Category: Code Review (continued)
+
+### [2026-08-20] A "load-bearing" eslint-disable is a search you have not run yet (PR #767)
+- **Mistake:** The Phase 6 simplify pass kept six `window as any` casts and their `eslint-disable-line` comments in `tests/e2e/bank-delete-cross-tenant.spec.ts`. It checked that the lint rule was active and called the comments load-bearing. It also kept two duplicate check blocks as test-file style. Both calls rationalized the current state instead of a search for an alternative.
+- **Correction:** The Phase 7a ocr-rules reviewer found that the codebase already exports the `E2EHelperWindow` type for `page.evaluate` callbacks. Commit f4d57215 replaced all six casts with the typed cast, deleted the six disable comments, and extracted the duplicate blocks into one `transactionExists` helper. The same commit fixed the file's stale header comment, which still described the tests as RED-phase failures after the guard migration made them pass.
+- **Rule:** Before you keep an `any` cast because its disable comment is "load-bearing", grep the test helpers for an existing type — the cast is only load-bearing when no typed alternative exists. And when a later task changes a file's premise (RED tests turn GREEN), update the file's comments in that task; a comment that describes the old premise is a review finding in waiting.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-21] The minimum entry day is not the entry day of the minimum timestamp (PR #772)
+- **Mistake:** `useCalculateOpeningBalance` fetched the earliest `transaction_date` and derived one entry day from it. The hybrid convention is not monotonic. An anchor at `2026-02-01 00:00Z` keeps Feb 1. A later instant at `2026-02-01 03:30Z` maps to Jan 31 in America/Chicago. The earliest timestamp can give a later day than the true minimum. The hook also dropped the query error, so a failed fetch fell through to today's date. The codex reviewer found both (P1).
+- **Correction:** A new RPC, `min_bank_txn_entry_day(p_restaurant_id)`, returns `MIN(bank_txn_entry_day(...))` over the restaurant's transactions on the server. The hook now makes one RPC call, throws on error, and never derives a day. Suite 68 pins the anchor-plus-instant pair that inverts the order.
+- **Rule:** When a day mapping is not monotonic, aggregate over the mapped values, not over the raw values. Put the aggregate next to the mapping, in SQL. Test with one anchor and one instant that invert their order.
+
+### [2026-08-21] A closed-period guard must block moves out, not only moves in (PR #772)
+- **Mistake:** The re-date migration skipped a row only when the new derived day fell inside a closed fiscal period. A row whose old `entry_date` sat inside a closed period still moved out. A move out changes the period's historical totals in the same way as a move in. The codex reviewer found the gap (P2).
+- **Correction:** The guard now tests both days: `bank_txn_entry_day(bt.transaction_date, r.timezone) BETWEEN fp.period_start AND fp.period_end OR je.entry_date BETWEEN fp.period_start AND fp.period_end`. Suite 67 pins both collisions with one fixture per direction (plan 8 → 9).
+- **Rule:** A guard on a value change must test the old value and the new value against the protected range. Write one fixture per direction. Production held 0 closed periods, so the blast-radius count could not show the gap — a symmetric guard is a code property, not a data property.
+
+## Category: Workflow / PR Hygiene (continued)
+
+### [2026-08-21] A wrong sentence in the PR body becomes a review finding against correct code (PR #772)
+- **Mistake:** The PR body said an invalid or null timezone falls back to UTC. The code and the design doc say: null falls back to `America/Chicago` (the column default), and only an invalid string falls back to the UTC day. CodeRabbit read the body, saw a mismatch with the code, and demanded a UTC fallback for null (finding 3825938826). That change would contradict the approved design.
+- **Correction:** The fix was to the PR body, not to the code. The reply pushed back with the design-doc citation and the suite 65 tests that pin both fallbacks.
+- **Rule:** The PR body is review input. Check every behavior sentence in it against the code before you publish. When a finding contradicts the design, first check whether the reviewer quoted your own wrong words.
+
+## Category: Database Tests (pgTAP) (continued)
+
+### [2026-08-20] A RED-phase denial test executes for real and poisons later tests (PR #770)
+- **Mistake:** The plan predicted 2 failing tests in the RED phase for a new capability guard: the `throws_like '%Access denied%'` denial test and its no-side-effect check. The run showed 3 failures. Under the old, un-guarded function body the denial test's RPC call does not raise — it *succeeds*, and categorizes the fixture row for real. The success test that reused the same row and category then landed in the "already categorized, same category" branch and reported `unchanged_count` instead of `categorized_count`.
+- **Correction:** The guard landed and all 37 tests passed; the plan doc was updated to predict 3 RED failures with the cascade explained. No code change was needed — the wrong prediction cost a debugging detour during the RED run.
+- **Rule:** In the RED phase, a denial test is a *live call* under the old permissive body. Trace its real side effects through every later test that shares its fixtures before predicting the failure count. Either give the denial test fixtures no other test touches, or write the RED prediction by simulating the old body's actual writes, not by counting the new assertions.
+
+### [2026-08-21] An assertion that depends on a column default must pin the value in the fixture (PR #772)
+- **Mistake:** Suites 22, 23, and `categorization_background_rules.test.sql` asserted local-day results for restaurants that never set `timezone`. The assertions held only because the column default is `'America/Chicago'`. A change to the default would move the expected days and fail three suites for an unrelated reason. A review finding flagged the hidden dependency.
+- **Correction:** Each suite now pins the timezone: an explicit `UPDATE restaurants SET timezone = 'America/Chicago'`, or the value in the INSERT, with a comment that names the dependency.
+- **Rule:** When an expected value depends on a column value, set that value in the fixture. A schema default is not part of the test's contract.
+
+## Category: Data Accuracy (continued)
+
+### [2026-08-30] Two money tables store one flow with opposite signs (PR #779 investigation)
+- **Mistake:** The first duplicate-match query joined `pending_outflows.amount` to `bank_transactions.amount` directly. It found 0 matches. Pending outflows store positive amounts. Bank outflows store negative amounts. The zero result looked like "no duplicates" while $7,157.24 of double-counted COGS sat in the month.
+- **Correction:** The predicate became `p.amount = abs(b.amount)`. The re-run found 8 duplicate pairs. Those pairs explain most of the $20K COGS the user reported against ~$12K of real transactions.
+- **Rule:** Before you write a cross-table match on money, select one sample row from each table and print the signs. Put the sign rule in a comment next to the predicate.
+
+## Category: Code Review (continued)
+
+### [2026-08-30] A textbook optimization can fight a recorded decision (PR #779 audit)
+- **Mistake:** A 25-finding performance audit contained 6 findings that a verify pass refuted. Three examples: lazy-load the `Index` route (the repo eager-loads the landing route on purpose, PR #704); defer `posthog-js` (it already loads at the entry point in `main.tsx`); avoid the `lucide-react` barrel import (the package sets `"sideEffects": false`, so Vite tree-shakes it).
+- **Correction:** One adversarial verify agent per finding checked each claim against the build output and the repo history. Only the 19 confirmed findings went into the fix plan.
+- **Rule:** Check a textbook optimization against the build output and the repo's recorded decisions before you propose it. Run one refute pass over an audit before you act on it.
+
+### [2026-08-30] Three Sonar majors after four green reviewers, one shared shape (PR #779)
+- **Mistake:** Commit-ready code used `role="status"` on a `div`, chained `.sort()` inside a larger expression, and copied one test block three times with one changed value. The four Phase 7 reviewers passed all three. SonarCloud flagged all three as major, after the PR was open, and the Done Gate held the branch.
+- **Correction:** Commit 4e609118 fixed all three: the `<output>` element carries the status role natively; the sort moved to its own statement; the three test copies became one `it.each` table.
+- **Rule:** Reach for the platform primitive before the ARIA attribute, keep a mutating call as its own statement, and write repeated test cases as an `it.each` table. The Phase 7 reviewers do not run the Sonar rule set — expect Sonar to add findings after the push, and keep the Done Gate open until its queue is empty.
+
+## Category: Workflow / PR Hygiene (continued)
+
+### [2026-08-30] The GitHub org name is not the account login (PR #779)
+- **Mistake:** A reply-count probe filtered review comments with `user.login == "toyiyo"`. That string is the org name, not the login of the account that replied. The count came back 0 and looked like 12 unanswered review threads on a PR that had answered all 12.
+- **Correction:** The `pr-comment-response` CI check and the workflow audit both showed "0 unanswered · 12 answered · 0 skipped". The probe was wrong, not the replies.
+- **Rule:** Resolve the login with `gh api user --jq .login` before you filter by `user.login`. When a purpose-built check exists for the question, trust the check over a hand-rolled count.
+## Category: Workflow / PR Hygiene — Reviewer Agent Configuration
+
+### [2026-08-30] The workflow script names a reviewer agentType that does not exist (PR #782)
+- **Mistake:** The Workflow script requested `agentType: 'feature-dev:code-reviewer'` for the four Phase 7a reviewers. That agent type does not exist in the session registry. Every reviewer call failed, the Verify gate looped 5 times, and the run stopped. Only the ocr-rules and codex reviews ran.
+- **Correction:** The recovery ran the four reviewers from the main session with the real agent types: `security-reviewer`, `maintainability-reviewer`, `performance-reviewer`, `sound-logic-reviewer`. The fold then shipped manually.
+- **Rule:** Before a workflow spawns a custom agentType, check the name against the session's agent list. A wrong name fails every call in the phase, not one.
+
+### [2026-08-30] A repo-wide lint gate that already fails proves nothing about a branch (PR #782)
+- **Mistake:** The plan's verification gate listed `npm run lint`. The repo baseline fails that command with 1539 pre-existing errors. A red run neither blocks nor clears the branch.
+- **Correction:** The gate became: run `npx eslint` on the changed files only, and confirm the branch diff adds no new findings. The pre-existing errors stay untouched.
+- **Rule:** When a repo-wide gate fails on the base branch, scope the gate to the changed files. Do not fix pre-existing findings inside a feature branch.
+
+## Category: Verification (continued)
+
+### [2026-08-30] `npx tsc --noEmit` at the repo root is a false green (PR #782)
+- **Mistake:** The root `tsconfig.json` sets `files: []` and only references the app and node projects. A plain `npx tsc --noEmit` type-checks zero files and always exits 0.
+- **Correction:** The gate now runs `npx tsc -p tsconfig.app.json --noEmit`.
+- **Rule:** Check what a type-check command compiles before you trust its exit code. A project file with `files: []` compiles nothing.
+
+## Category: Database Tests (pgTAP) — TAP Output Parsing
+
+### [2026-08-30] psql wraps TAP output in result tables, so a plain grep counts zero (PR #782)
+- **Mistake:** A pass/fail grep for `^ok` counted 0 lines on a green suite. psql prints the TAP lines inside a result table with leading spaces and a column header.
+- **Correction:** Run psql with `-qAt` (quiet, unaligned, tuples-only). The TAP lines then start at column one and the grep counts them.
+- **Rule:** Use `psql -qAt` for any script that parses query output.
+
+## Category: Design Docs — Premise Citations
+
+### [2026-08-31] A line number from a sibling checkout points at the wrong code (PR #785)
+- **Mistake:** The design doc cited `src/integrations/supabase/types.ts:4833` for the `product_suppliers` Row type. The read came from the main checkout on a different branch. In the task worktree, line 4833 sits inside `prep_recipes`. Both design reviewers flagged the citation as a false premise.
+- **Correction:** Re-read the file in the task worktree. The block starts at line 4908 there. The doc now cites the worktree.
+- **Rule:** Cite `file:line` from the checkout that the build will use. Before you write a citation, confirm the current Bash path or `Read` path points inside the task worktree.
+
+## Category: Data Flow — Pending State
+
+### [2026-08-31] A field captured into pending state is not a field that persists (PR #785)
+- **Mistake:** The add-supplier form captured the new pack-size fields into `pendingSupplierDetails` for a new product. The chain `onUpdate → handleUpdateProduct → createProduct` dropped the fields before the insert. Codex found the drop. A later review found the same drop on a second chain: `ScanSessionView → handleSessionUpdateProduct → persistProductUpsert`.
+- **Correction:** Thread the fields through both chains to the `product_suppliers` insert. The fix took two separate review rounds because each round found one chain.
+- **Rule:** When you add a field to a capture site, list every save path from that site to the database first. Then check the field on each path. A component with more than one caller has more than one save path.
+
+## Category: Validation — Client vs CHECK Constraint
+
+### [2026-08-31] A client guard that checks less than the CHECK constraint fails late and ugly (PR #785)
+- **Mistake:** The migration requires `pack_size_qty > 0` and both pack fields together. The first client guard checked the pair on one submit handler only, and no handler checked sign or finiteness. A `0` quantity tripped the constraint with a generic toast on an existing product. On a new product, the insert dropped the whole supplier link without an error.
+- **Correction:** Extract `isPackSizePairIncomplete` and `isPackSizeQtyInvalid` into `src/utils/supplierUnitPrice.ts`. Call both at both submit sites. Cover both with unit tests.
+- **Rule:** When a migration adds a CHECK constraint, write one shared client guard that mirrors the full constraint. Call the guard at every submit site that can write the column.
+## Category: Testing / Playwright E2E
+
+### [2026-08-31] A perf speedup breaks E2E specs that read values immediately after a period switch
+- **Mistake:** PR #786 made the dashboard keep the previous period's numbers on screen, dimmed, while the "This Month" queries run (`placeholderData` in the period hooks). Two specs from #779 then failed deterministically. `labor-cost-alignment` read the labor card right after the period click and got the Today value (230 = 100 salary + 50 contractor + 80 punch). `dashboard-basis-labels` hit a strict-mode violation: the fast RPC path rendered `MonthlyBreakdownTable` before the read, so two elements carried the name "Monthly Performance". On slow main, a full-section skeleton hid both problems — the locators auto-waited.
+- **Correction:** Kept the assertions identical. Wrapped the two value reads in `expect.poll(...).toBeCloseTo(payrollRounded, 0)`. Scoped the heading locator with `{ level: 2 }`. Filed the duplicate-heading UI debt as a separate chip.
+- **Rule:** After a perf change, treat new E2E failures as timing assumptions first, not as product regressions. Confirm with arithmetic: match the received value to a seeded quantity (230 was exactly the Today labor). Use `expect.poll` for any value read after a period or filter switch when the UI keeps stale data on screen. A skeleton that disappears can also expose duplicate accessible names — scope locators with `level`/`exact` instead of `.first()` when the target is structural.
+
+---
+
+## Category: CI / Workflows
+
+### [2026-08-31] The pr-comment-response gate is stale at push time — reply to every finding BEFORE the push that must go green
+- **Mistake:** Every push to PR #786 re-ran `pr-comment-response`, which failed whenever a review comment lacked a verdict reply at that moment. Fix commits pushed before the triage replies guaranteed one extra red round.
+- **Correction:** Reordered the loop: fix → commit → reply to each comment with the SHA (`node dev-tools/pr-triage.js reply --commit <sha>`) → push. The push then triggers the gate with every comment already answered. The audit reports "cites an unknown commit" for an unpushed SHA — that reason clears on push; re-run `audit` after the push to confirm 0 unanswered.
+- **Rule:** Post the triage replies between the local commit and the push. A reply may cite a not-yet-pushed SHA; push immediately after so the citation resolves. Never push a fix and plan to reply "later" — that push burns a full CI round on a known-red gate.
+- **Confirmed:** [2026-09-03] PR #795. The CI-loop agent pushed fix commits with no replies. The gate stayed red until the resumed agent posted the replies and re-ran the audit.
+
+---
+
+## Category: Supabase Migrations
+
+### [2026-08-31] One CREATE INDEX CONCURRENTLY per migration file, and expect version collisions with sibling PRs
+- **Mistake:** A migration held two `CREATE INDEX CONCURRENTLY` statements. The Supabase preview runner refuses a second statement after a CONCURRENTLY statement (CONCURRENTLY cannot run inside a transaction). Separately, the migration's timestamp collided with a peer PR's migration; the collision applies silently — no error, wrong order.
+- **Correction:** Split the file: one CONCURRENTLY statement per migration, each with the `-- supabase: no-transaction` header (precedent: 20260830100300). Renamed the versions to free slots (20260830184218/20260830184219) and confirmed with `npm run db:reset`.
+- **Rule:** Give each `CREATE INDEX CONCURRENTLY` its own migration file with the `-- supabase: no-transaction` header. Before the final push, list `supabase/migrations/` on `origin/main` and check your timestamps against freshly merged peer migrations — a collision produces no error.
+
+---
+
+## Category: Tooling / gh CLI
+
+### [2026-08-31] `gh pr checks --watch` dies on TLS flakiness, and a pipe masks the failure
+- **Mistake:** Three watch/poll attempts on PR #786 died with `Post "https://api.github.com/graphql": net/http: TLS handshake timeout`. Piping the output (`gh pr checks | sort | uniq`) made `$?` report the LAST command in the pipe, so the shell printed exit 0 over a dead API call.
+- **Correction:** Replaced the watch with a capped background retry loop: up to 25 attempts, 90s apart, each attempt writes the full check table to a file, exits when no line contains `pending`. The loop treats a `Post "https` line in the output as a failed attempt and retries.
+- **Rule:** Do not trust `$?` after a pipe — grep the captured output for the error string instead. For CI waits on a flaky network, run a capped retry loop in the background (bounded attempts, bounded sleep) and read the result file; a single `--watch` is one TLS hiccup away from silent death. Cap every loop — this machine has no `timeout`/`gtimeout`.
+- **Confirmed:** [2026-09-03] PR #795. `gh pr checks --watch` also trips the workflow 180 s watchdog — see the watchdog lesson below.
+
+---
+
+## Category: Data Accuracy (continued)
+
+### [2026-09-02] Any session in a list can be open, not only the last one (PR #793)
+- **Mistake:** `computePairingMetrics` in `src/utils/scheduleClockAudit.ts` cast every `session.clockOut` to `string`. The call sites guarded only `lastSession.clockOut`. A double clock-in makes `buildWorkSessions` close the FIRST session as open (`clockOut: null`) while the last session is closed. `differenceInMinutes` then read the null as the 1970 epoch and added a huge bogus delta to `workedMinutes`. Codex found it in review; the tests missed it.
+- **Correction:** Skip any session with a null `clockOut` in the worked-minutes reduce and the gap loop. Add a double-clock-in regression test.
+- **Rule:** A guard on the last element does not cover the list. When a fold reads an optional field, handle the null inside the fold, not at the call site.
+
+## Category: Testing — Test Design (continued)
+
+### [2026-09-02] An exclusion test must build the case that passes without the rule (PR #793)
+- **Mistake:** The test "keeps a future-ending draft shift excluded" used a punch three days before the shift. The punch never overlapped the shift window, so the test passed with or without the `end_time <= now` gate it claimed to guard.
+- **Correction:** Move the punch inside the shift's own padded window. The test now fails when the gate is deleted.
+- **Rule:** Before you accept a test for a filter or gate, delete the gate mentally: the test must then fail. A fixture that cannot reach the gate proves nothing.
+
+## Category: Dev workflow / Workflow Orchestration
+
+### [2026-09-02] Give every fixed-prompt workflow agent an operator-notes passthrough (run wf_aa3e857e-0a7)
+- **Mistake:** The Phase 8 `verify` agent in `.claude/workflows/dev-build-and-ship.js` stalled on all 6 runtime attempts. The runtime retries a stalled agent with a byte-identical prompt, and the script's `resolutionNotes` lever covered only the Build-phase plan tasks. The verify prompt was a fixed string, so a plain resume reproduced the stall.
+- **Correction:** Added a `ctx.verifyNotes` passthrough that appends operator guidance to the verify prompt. The changed bytes forced a fresh run; the notes cut the workload (known-green facts, one command per turn) and verify passed first try.
+- **Rule:** In a workflow script, append an optional per-run notes arg to every fixed agent prompt. A stall is only recoverable by a prompt change, so every phase needs a prompt-change lever.
+- **Confirmed:** [2026-09-03] PR #795. The CI-loop phase stalled the same way; a `ciResolutionNote` hook fixed it — see the watchdog lesson below.
+
+---
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] A blocking command in a workflow-agent prompt causes repeated watchdog stalls (PR #795)
+- **Mistake:** The CI-loop prompt in `.claude/workflows/dev-build-and-ship.js` said: "Run: gh pr checks --watch (blocks until checks finish)". The watch blocks 15+ minutes with no tool call. The workflow watchdog kills an agent after 180 s without a tool call. The runtime retried six times with the identical prompt and reproduced the identical stall — ~269k tokens gone. Build task-3 died the same way earlier: whole-file reads plus one long response.
+- **Correction:** Fixed the CI red myself in the main session. Then added a `ciResolutionNote` hook into the CI-loop prompt and resumed the run. The note forbids blocking watches and requires single bounded polls (`gh pr checks` with a Bash timeout of 120000 ms or less).
+- **Rule:** Never put a blocking watch in a workflow-agent prompt; each poll must be one bounded tool call. Give EVERY phase a resolution-note hook — the resume cache keys on (prompt, opts), so a phase without a hook replays its stall verbatim. When a phase stalls, diagnose and fix in the main session first, then resume with a note that records the fix.
+
+### [2026-09-03] A workflow resume needs the previous args verbatim (PR #795)
+- **Mistake:** The resume args carry every prior resolution note. A one-character drift in any note changes that agent's prompt, misses the cache, and re-runs a finished phase live.
+- **Correction:** Recovered the exact previous args from the session transcript (`grep resumeFromRunId ~/.claude/projects/<session>.jsonl`), then added only the new note.
+- **Rule:** Before a resume, recover the previous `args` verbatim from the transcript or the task output file. Add new keys; never retype old ones.
+
+---
+
+## Category: Domain — POS Integrations
+
+### [2026-09-03] `revel_payments.payment_type` does not hold the payment type (PR #795)
+- **Mistake:** The deposit-match Revel adapter first filtered card rows on the stored `payment_type` column. That column is polluted: `supabase/functions/_shared/revelOrderProcessor.ts:172` writes `card_type ?? payment_type ?? ...` into it, so a cash row and a card row can carry the same digits.
+- **Correction:** Filter on `raw_json->>'payment_type'` instead. Production evidence: all 2,231 rows with a card brand carry `raw_json->>'payment_type' = '2'`; cash rows carry `'1'`.
+- **Rule:** Before you filter on a POS mirror column, read the order-processor line that writes it. When the processor coalesces two source fields into one column, filter on `raw_json` and say why in a function comment.
+
+---
+
+## Category: Testing / Playwright E2E (continued)
+
+### [2026-09-03] A review fix that changes engine semantics silently breaks the test seed premise (PR #795)
+- **Mistake:** Commit 901ecb89 (a Codex review finding) widened the deposit-match accepted gap to the rule fee band. The e2e seed ($196 deposit on $200 sales, a 2% implied fee) then sat INSIDE the band, the day settled `matched_net`, and the "needs attention" assertion failed on both CI runs. The commit went out without a local run of the dependent spec.
+- **Correction:** Re-seeded the test outside the new band ($150 deposit, 25% implied fee → no link → `late`) and asserted the Late path. Ran the spec locally (2/2 in 19 s) before the push.
+- **Rule:** A test seed encodes a premise about the engine's thresholds. After any fix that moves a threshold or a band, list the tests whose seeds sit near it and run them locally before the push. A deterministic both-runs CI failure on your own spec means the premise moved, not the infrastructure.
+
+## Category: Testing / pgTAP Fixtures
+
+### [2026-09-03] A new timing check breaks sibling suites that seed past-dated fixtures (PR #794)
+- **Mistake:** `approve_shift_trade` gained a `shift_started` re-check. Suite 65 seeded its shifts at the literal date `'2026-09-01 09:00:00+00'`. The calendar passed that date, the new check fired, and the suite's `success = true` assertion failed in CI only.
+- **Correction:** Seeded the fixture shifts at `now() + interval '3 days'` up to `now() + interval '6 days'`, one day apart. Then grepped every suite for date literals and read each one: only a suite that asserts success on a timing-checked function needs relative dates; RLS-only suites do not.
+- **Rule:** When you add a timing check to a SQL function, grep `supabase/tests/` for `'20[0-9][0-9]-` and audit every suite that calls the function. Convert the fixtures that assert success to relative dates. Write new fixtures with relative dates from the start.
+
+## Category: Testing / Unit
+
+### [2026-09-03] A new React Query hook in a page breaks every test file that renders the page (PR #794)
+- **Mistake:** A review fix added `useShiftProtection` to `AvailableShiftsPage`. `tests/unit/AvailableShiftsPage.tradeCard.test.tsx` renders the full page without a `QueryClientProvider`. All 12 tests failed in CI with `No QueryClient set, use QueryClientProvider to set one` — the Unit job and all three Timezone Matrix jobs went red at once.
+- **Correction:** Added `vi.mock('@/hooks/useShiftProtection', () => import('../helpers/mockShiftProtection'))` to the file, the same shared helper the other component tests use.
+- **Rule:** Before you push a change that adds a hook to a page or component, grep `tests/unit/` for files that import that page. Add the shared mock to each one and run those files locally.
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] The pr-comment-response gate parses a verdict format — prose replies do not count (PR #794)
+- **Mistake:** Review replies read "Fixed in c60e3cd. ..." — clear to a human, invisible to the gate. `dev-tools/pr-triage.js` accepts a reply only when it carries the `<!-- pr-triage: agreed -->` marker or its first line opens with a verdict word ("Agreed — ..."), plus a backticked commit sha (≥7 hex chars) that exists on the PR. The check stayed red after the replies.
+- **Correction:** Posted marker-format replies: `<!-- pr-triage: agreed -->` newline `**✅ Agreed** — <rationale ≥10 chars>. Fixed in \`<sha>\`.` Also note the re-audit path: the `*/30` cron fires only every 2-3 hours in practice, and `workflow_dispatch` returns 403 for the bot token — the reliable trigger is the next push (`pull_request_target: synchronize`).
+- **Rule:** Write every review reply in the pr-triage format from the start: the marker line, the verdict word, a rationale, and the backticked sha. Follow the 2026-08-31 lesson's order — fix, commit, reply, push — so the push both carries the fix and re-runs the gate.
+
+## Category: Frontend / Routing
+
+### [2026-09-03] Wire a feature into the ROUTED component, not the best-named one (PR #794)
+- **Mistake:** The trade-accept warning went into `TradeMarketplace` — the component whose name matches the feature. A repo search showed no route mounts it; `/employee/shifts` renders `AvailableShiftsPage`, so employees never saw the warning. Codex flagged it as a P1.
+- **Correction:** Moved the gate into `AvailableShiftsPage.handleAcceptTrade` (confirm dialog + block handling) and kept the `TradeMarketplace` panel for parity.
+- **Rule:** Before you put behavior in a component, confirm a route or a mounted parent renders it: grep the router and the page imports. A component that no route renders passes its own tests, but users never see it.
+
+### [2026-09-04] A DATE upper bound cuts a TIMESTAMPTZ window short (PR #798)
+
+- **Mistake:** `refresh_deposit_matches` filtered `bt.transaction_date` (TIMESTAMPTZ) with `BETWEEN` and DATE arithmetic. The upper DATE casts to midnight at the start of the last lag day. Intraday deposits on that day fell out of the window. Production showed $0 deposited against $10,436 in card sales. The pgTAP seeds used bare dates, which cast to midnight, so every test stayed green.
+- **Correction:** Change the filter to half-open bounds pinned to UTC: `>= start::timestamp AT TIME ZONE 'UTC'` and `< (end + 1)::timestamp AT TIME ZONE 'UTC'`. Seed at least one test row with an intraday timestamp (12:30 UTC) on the last day of the window.
+- **Rule:** When a filter compares a TIMESTAMPTZ column with DATE arithmetic, write half-open bounds and add one intraday test row on the boundary day. A bare-date seed cannot catch a midnight-cast bug.
+
+### [2026-09-04] A settlement lag counts business days, not calendar days (PR #798)
+
+- **Mistake:** `deposit_match_rules` lag 1-2 counted calendar days. Shift4 settles in T+2 business days and rolls a weekend batch to Monday. Weekend sales never matched, and the ledger showed five false `Late` days.
+- **Correction:** The engine now computes the window with `deposit_match_business_days_after(date, integer)`. The defaults stay 1-2. All eight observed production deposits fit business-day lag 1-2.
+- **Rule:** Model a payment-processor timeline in business days. Before you pick the unit for a lag rule, check it against real deposit timestamps that cross a weekend.
+
+### [2026-09-04] The host computer's sleep kills background agents (run wf and Phase 2.5)
+
+- **Mistake:** A Phase 2.5 review agent stalled with "no progress for 600s", and a relaunch died with "API Error: Your computer went to sleep mid-response". Two resume attempts died the same way. Three launches produced zero review output.
+- **Correction:** Ran the review inline in the main session. The inline review completed and found two should-fix items that went into the design.
+- **Rule:** After two agent deaths with a sleep or watchdog error, stop the relaunch loop and do the work inline. Before a long background run, tell the user to keep the machine awake, and resume a stalled workflow with `resumeFromRunId` instead of a fresh launch.
+
+### [2026-09-04] A relative E2E seed date breaks under weekday-dependent logic (PR #798)
+
+- **Mistake:** The deposit-match E2E spec seeded `businessDate = today - 3` and asserted the `Late` chip. Under business-day lag, `today - 3` is still inside the window when the suite runs on Sunday, Monday, or Tuesday. The spec would pass in review week and fail three days out of seven forever after.
+- **Correction:** Moved the seed to `today - 7` before the build started. Seven calendar days back covers at least five business days on every weekday, so `expected_by` always sits in the past.
+- **Rule:** When a feature makes status depend on the weekday, walk every relative test date through all seven start days. Push the seed far enough back that the worst-case weekday still satisfies the assertion, and write the reason in the spec comment.
+
+### [2026-09-04] Verify every file:line citation before the design commit (PR #798)
+
+- **Mistake:** The design doc cited `depositMatchUi.ts:176` as a lag comment site. That line is the JSDoc for the unrelated `measured` boolean. The frontend reviewer caught it; an agent that trusted the citation would have edited the wrong block.
+- **Correction:** Re-read the file and pointed the design at lines 195-197 and the per-source comment sites.
+- **Rule:** Read each cited line immediately before you write it into a design doc. A citation from memory or from an earlier read of a changed file is a build hazard.
+## Category: Design Docs / Premise Checks
+
+### [2026-09-03] Check a column type in the table DDL, not in a nearby function signature (PR #796)
+- **Mistake:** The design doc stated `bank_transactions.transaction_date` "is a plain `DATE`". The claim came from a tombstone function parameter, not from the table DDL. The column is `TIMESTAMPTZ` (migration `20251021195308`). The sound-logic reviewer caught the wrong bound before the PR.
+- **Correction:** The migration kept the sargable comparison and added an explicit upper bound: `bt.transaction_date >= CURRENT_DATE - 90 AND bt.transaction_date < CURRENT_DATE + 1`, with a comment that names the real type.
+- **Rule:** Before a design doc asserts a column type, read the `CREATE TABLE` or `ALTER TABLE` line for that exact table. A parameter type in a related function is not evidence.
+
+## Category: CI / Workflows (continued)
+
+### [2026-09-03] Re-run the stale pr-comment-response check-run with `gh run rerun` (PR #796)
+- **Mistake:** The build workflow stopped with "CI not green after triage fix push". The only red check was `pr-comment-response`. The audit ran before the triage replies landed, and no later event refreshed it. `node dev-tools/pr-triage.js list` showed zero unanswered findings.
+- **Correction:** `gh run rerun <run-id>` on the audit's workflow run refreshed the check-run to green in under a minute. No new commit was necessary. This extends the 2026-09-03 gate lesson: a push is one re-audit trigger, and a rerun of the existing run is a cheaper one when the code needs no change.
+- **Rule:** When `pr-comment-response` is the only red check, compare its `completed_at` with the reply timestamps. When the replies are newer and `pr-triage.js list` shows zero unanswered, run `gh run rerun <run-id>` — do not push a filler commit.
+
+### [2026-09-03] Set the workflow token ceiling to match the task size at launch (PR #796)
+- **Mistake:** The five-task build with the full review panel spent ~2.09M output tokens and hit the default 2M ceiling at the Verify phase. The run stopped one phase before the ship.
+- **Correction:** Relaunched with `resumeFromRunId` and `args.tokenCeiling: 4000000`. All 25 finished agents replayed from the cache, so the resume cost nothing extra for the completed phases.
+- **Rule:** For a multi-task /dev build (4+ plan tasks with the review panel), pass `tokenCeiling: 4000000` in the launch args. On a ceiling stop, resume with the identical args plus the raised ceiling — never relaunch fresh.
+
+## Category: Supabase / Migrations (continued)
+
+### [2026-09-08] Cite an RLS policy by its LATEST migration — the creating migration can be superseded
+- **Mistake:** The invite-flow design claimed "the invitee cannot read the `invitations` table" and cited the creating migration (20250916223011). Two later migrations (20250927023236, 20251220025830) added and then rewrote a policy "Users can view invitations sent to their email" that grants exactly that read. Both Phase 2.5 reviewers flagged the false premise.
+- **Correction:** Grepped every migration for the table name, read the policy set newest-first, and rewrote the root cause: the gap was a missing client query plus no access to `restaurants.name`, not a missing SELECT policy.
+- **Rule:** Before you claim "role X cannot read table Y", grep ALL of `supabase/migrations/` for the table name and read the hits newest-first. Cite the newest migration that touches the policy. A citation to the creating migration proves the policy existed once, not that it stands.
+
+### [2026-09-08] `ON CONFLICT (col)` collides with a same-named RETURNS TABLE output parameter in plpgsql
+- **Mistake:** The first draft of `accept_my_invitation` used `INSERT ... ON CONFLICT (user_id, restaurant_id) DO NOTHING` inside a function whose RETURNS TABLE declares `restaurant_id`. plpgsql variable substitution reaches the conflict-target list, so the reference is ambiguous at run time.
+- **Correction:** Replaced the clause with an `INSERT ... SELECT ... WHERE NOT EXISTS` guarded by an `EXCEPTION WHEN unique_violation` handler, and wrote the reason into the migration comment.
+- **Rule:** In a plpgsql function with RETURNS TABLE, never name a conflict-target column that matches an output parameter. Rename the output parameter, use `ON CONFLICT ON CONSTRAINT <name>`, or catch `unique_violation`. Table-qualify every other column reference that shares an output parameter's name.
+
+## Category: Testing / Unit (continued)
+
+### [2026-09-08] `vi.clearAllMocks()` keeps mock implementations — a throwing mock leaks into the next test
+- **Mistake:** A test set `mockPosthogReset.mockImplementation(() => { throw ... })` to prove the sign-out redirect survives a telemetry failure. `beforeEach` ran `vi.clearAllMocks()`, which clears calls but keeps implementations, so the next test also ran with a throwing `reset` and the suite became order-dependent. The 7d logic reviewer caught it from a stray stderr line.
+- **Correction:** Changed the test to `mockImplementationOnce`, with a comment naming the clearAllMocks behavior.
+- **Rule:** Use `mockImplementationOnce` for a per-test throwing or special implementation, or use `vi.resetAllMocks()` in `beforeEach` when the file mixes implementations. `clearAllMocks` is call-history hygiene only.
+
+## Category: Development Workflow (remote container)
+
+### [2026-09-09] A grep pipeline hid a test failure, and the commit chained through it
+- **Mistake:** During the Phase 5 UI fix on PR #803, the command was `vitest run ... 2>&1 | grep -E "Test Files|Tests " && git commit ...`. The suite had a startup error: a `{/* */}` JSX comment wrapper placed in a JavaScript expression position, where it does not parse. A plain `/* ... */` block comment or a `//` line comment parses there; the `{...}` JSX wrapper does not. The grep still matched the "Test Files ... failed" line, exited 0, and the commit landed while the test suite failed. The same pipeline pattern hid an earlier failure: `npm run typecheck | tail -3` reported exit 0 (tail's exit) while tsc printed TS2307 errors.
+- **Correction:** Read the result line for "passed", not for presence. Never chain `git commit` after a filter on test output; run the test, check its verdict, then commit in a separate command. A follow-up commit fixed the JSX comment.
+- **Rule:** In a pipeline, `$?` belongs to the LAST command. `cmd | grep X && git commit` commits whenever grep matches anything, including a failure line. Gate a commit on the test command's own exit status or on an explicit "N passed, 0 failed" check.
+
+### [2026-09-09] /dev in the remote (claude.ai/code) container: run Phases 4-9 inline; pin blocked packages locally
+- **Failure sequence (PR #803):** (1) The `dev-build-and-ship` orchestrator was not usable — its Preflight returns `failed` without `gh` and `coderabbit`, and its Verify needs the local `supabase` CLI; none exist in the container. (2) `npm install` failed whole: the egress proxy denies `cdn.sheetjs.com`, where package.json pins `xlsx`. (3) `.env.local` does not exist (gitignored, never cloned), so pgTAP and E2E cannot run locally.
+- **Correction:** Run Phases 4-9 inline (the lesson 2026-07-19/07-20 pattern), with the five reviewers as Agent calls (they work fine) and the GitHub MCP tools for the PR. For `xlsx`: edit package.json and package-lock.json locally to `npm:@e965/xlsx@0.20.3` (a registry mirror of the same SheetJS build), install, then `git checkout -- package.json package-lock.json` so no repo change leaks. Declare the E2E gate "Covered — CI runs it" and restore CI to passing through the PR subscription.
+- **Rule:** In the remote container, check for `gh`/`coderabbit`/`supabase` BEFORE the plan promises the orchestrator or local pgTAP/E2E. On a 403 from the proxy for a package host, look for an npm-registry mirror and pin it locally only — never commit the pin. Local verify = unit (TZ=UTC) + typecheck + lint (scoped to changed files; repo-wide lint carries ~1500 baseline errors) + build; CI carries the rest.
+
+### [2026-09-09] pr-comment-response reports a failure when replies land after the last push — and its cron is throttled to hours
+- **Mistake:** On PR #803 the CodeRabbit review arrived AFTER the final push, so the `pull_request_target`-triggered audit ran at once and published a red check before any verdict reply existed. The plan assumed the workflow's `*/30` cron would re-audit within 30 minutes; the run history shows GitHub fires that cron every 4-5 hours on this repo. `workflow_dispatch` through the GitHub MCP integration returns `403 Resource not accessible by integration`.
+- **Correction:** Post every verdict reply, then let the next REAL push (here: the Phase 10 lessons commit) re-trigger the audit. Do not push an empty commit for it.
+- **Rule:** Treat the pr-comment-response check as push-driven: get all inline-finding replies onto the PR BEFORE the last code push when possible. When a bot review lands after the last push, pair the replies with the next real commit (retrospective lessons, doc fixes). The cron is a fallback with a delay of hours, not minutes.
+
+## Category: UI Patterns (continued)
+
+### [2026-09-09] `--warning` IS amber-500; tokens for surfaces, the amber-700/400 pair for small text (PR #803)
+- **Mistake:** The planner conflict indicator shipped amber literals (`border-l-amber-500`, `bg-amber-500/10`) with a recorded "planner uses amber" trade-off. Three reviewers plus CodeRabbit re-flagged it. The token check nobody ran first: `--warning` is `hsl(38 92% 50%)` — exactly amber-500, and theme-aware.
+- **Correction:** `border-l-warning`, `text-warning` (icons), `bg-warning/10` render identically to the literals. The one legitimate literal: an 11px LABEL keeps `text-amber-700 dark:text-amber-400`, because `text-warning` on the light ground fails the WCAG AA ratio at that size — the same pair `availabilityColorClasses` uses.
+- **Rule:** Before recording a "literals match the neighbors" trade-off, read the token's value in `src/index.css`. When the token equals the literal, use the token. Keep a contrast-driven literal only for small text, with a comment naming the ratio reason. Related: a Radix `Tooltip` never opens from touch — a disclosure that must work on mobile is a `Popover` (the planner's coverage indicator idiom), with `stopPropagation` when a tappable ancestor exists.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-15] The orchestrator runs in the remote container with a scratchpad copy (PR #804)
+- **Mistake:** The 2026-09-09 lesson said the `dev-build-and-ship` orchestrator is not usable in the remote container and Phases 4-9 must run inline. This session disproved the first half: the orchestrator halted only because its Preflight names `coderabbit` a hard dependency, which contradicts both the skill contract and its own Phase 7c best-effort clause.
+- **Correction:** Copy `.claude/workflows/dev-build-and-ship.js` to the scratchpad. In the copy: make `coderabbit` a warning in Preflight, and add an ENVIRONMENT NOTES line to `envelope()` (blocked hosts, gh GraphQL blocked, local-verify limits). Launch with `scriptPath` at the copy. The run completed all 8 build tasks through Phase 9e. Preflight installed `gh` v2.100.0 itself; REST routes work, GraphQL is blocked.
+- **Rule:** Keep the Preflight hard-dependency list equal to the skill contract: `gh`, `jq`, `node`. `coderabbit` and `codex` are best-effort everywhere. Fix an orchestrator-vs-contract conflict in a scratchpad copy, never by an inline retreat, and never by a repo edit inside a feature PR.
+- **Superseded in part [2026-09-30] (PR #831):** The permission classifier now blocks a Workflow launch of a changed scratchpad copy ("Self-Modification"). Do not retry it or route around it. The unchanged script still fails Preflight on `coderabbit`. Ask the user, then run Phases 4-9 inline (the 2026-09-09 pattern). The real fix is a separate repo PR that makes `coderabbit` best-effort in `dev-build-and-ship.js` Preflight.
+
+### [2026-09-15] The container starts dockerd, but image blob pulls 403 — guard .env.local before any test
+- **Mistake:** `docker` exists and `dockerd` starts, so the plan promised local `db:reset` + `test:db`. The pull of every Supabase image failed: the proxy allows the registry manifests but 403s the CloudFront blob hosts (`production.cloudfront.docker.com`, `d2glxqk2uabbnd.cloudfront.net`). Worse: with no `.env.local`, `.env` points every client at PRODUCTION Supabase.
+- **Correction:** Write a guard `.env.local` (gitignored) with `VITE_SUPABASE_URL="http://127.0.0.1:54321"` and the public demo anon key, so an accidental DB call fails on connection refused instead of touching production. Defer `db:reset`, `test:db`, `test:e2e` to CI; run unit + typecheck + lint + build locally. Stop `dockerd` after the decision.
+- **Rule:** In the remote container, test docker with one real image pull before the plan promises local Supabase. Write the guard `.env.local` FIRST, in every remote session that can run tests.
+
+## Category: Design Docs / Premise Checks (continued)
+
+### [2026-09-15] Name every call site in a "sole caller" claim (PR #804)
+- **Mistake:** The decommission design claimed `pgmq_delete_message()` stays "if another caller exists" and assumed `process_weekly_brief_queue` was its caller. False: that SQL function calls `pgmq.delete` directly; the only callers were two `supabase.rpc("pgmq_delete_message", ...)` lines in the deleted worker. A literal read of the rule kept an orphaned SECURITY DEFINER RPC in production. Both Phase 2.5 reviewers flagged it as critical.
+- **Correction:** The design now drops the function unconditionally and cites both worker call sites by file:line.
+- **Rule:** A "sole caller" or "no caller" claim needs the grep run at design time and every call site cited as `file:line` in the doc. A conditional deletion rule ("keep it if X calls it") hides a wrong premise; resolve the condition during design, not during build.
+
+## Category: Supabase / Migrations (continued)
+
+### [2026-09-15] A deleted function directory does not delete the hosted edge function (PR #804)
+- **Mistake:** The decommission design deleted three edge-function directories and assumed the deploy pipeline retires them. `supabase functions deploy` never deletes a remote function: the three stay live in production with their secrets after the merge.
+- **Correction:** The PR body carries a mandatory post-merge step: `supabase functions delete <name> --project-ref ncdujvdgqtaunuyigflp` for each. `docs/DEPLOYMENT.md` gained a "Deleted Edge Functions" runbook section.
+- **Rule:** Every PR that deletes an edge-function directory must name the manual `supabase functions delete` step in its body and point at the runbook. The security reviewer caught this; put it in the design template for the next decommission.
+
+## Category: Supabase / Column Grants (continued)
+
+### [2026-09-24] A column-level REVOKE breaks every caller-JWT read of that column, in edge functions too (PR #806)
+- **Mistake:** `20260806110000_employee_column_gating.sql` revoked the pay and contact columns of `public.employees` from `authenticated` and moved the frontend to `employees_secure`. Two edge functions that run as the caller (anon key + the caller's JWT) still read `hourly_rate`, `salary_amount` and `date_of_birth` from the base table: `ai-execute-tool` (five labor tools) and `generate-schedule`. PostgREST rejects such a read with `permission denied for column hourly_rate`, so the AI labor answers and the AI schedule failed. The bug was found only while designing an unrelated timezone fix.
+- **Correction:** Both functions read `EMPLOYEE_LABOR_SOURCE` (`employees_secure`). A caller without `view:pay_rates` (the builtin Chef role) gets `null` cost figures plus a `pay_hidden` reason, never a masked $0. A source-contract test forbids `.from('employees')` and any embed of a revoked column in the two functions.
+- **Rule:** A migration that revokes a column must sweep `supabase/functions` too, not only `src/`. For each read, check which client runs it: a service-role client keeps the full table, an anon + JWT client does not. A masked view returns NULL, so every total built on it needs the capability check, or it reports a false $0.
+
+### [2026-09-24] A sweep grep with one quote style misses half the reads (PR #806)
+- **Mistake:** The first sweep for `employees` reads used `from\('employees'\)`. `generate-schedule` uses double quotes (`from("employees")`), so the sweep missed it, and the design doc claimed "no other edge function" was affected. The design reviewer found it.
+- **Rule:** Grep for both quote styles (`from\(["']employees["']\)`) and for embeds (`employees\(`). State the exact sweep command in the design doc, so a reviewer can re-run it.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-24] dev-build-and-ship stops at preflight in the cloud container (PR #806)
+- **Mistake:** The workflow preflight treats `gh` and `coderabbit` as hard dependencies. The cloud container has neither (GitHub goes through the MCP tools), so the workflow stopped at once. `npm install` also fails there, because the egress policy blocks `cdn.sheetjs.com` (the `xlsx` tarball).
+- **Correction:** Phases 4–9 ran inline in the main session, per the skill's reference contract: TDD commits, the five Phase 7a reviewers as agents, a Phase 7d re-review of the fix commit, the PR through the GitHub MCP tools. For install: a temporary `package.json` and lockfile without `xlsx`, `npm ci`, then restore both files. Four test files that import `xlsx` fail locally and pass in CI.
+- **Rule:** In the cloud container, expect the workflow preflight to fail. Run the phases inline and state in the PR body which local passes (CodeRabbit CLI, Codex) did not run.
+- **Confirmed (PR #816, 2026-09-26):** the preflight failed again for the same reason. The phases ran inline.
+
+### [2026-09-25] A plain "Fixed in <sha>" reply fails the pr-comment-response gate (PR #809)
+- **Mistake:** Four code-quality bot threads got replies of the form "Fixed in cf245d71. ...". The `pr-comment-response` check read them as `no verdict in reply` and failed. The cloud container has no `gh`, so `node dev-tools/pr-triage.js reply` cannot post the reply there.
+- **Correction:** Build the body with `composeReply({verdict, commit, rationale})` from `dev-tools/pr-triage.js`, and post it with the GitHub MCP reply tool. Check it first with `classifyThreads` (give each reply an `authorAssociation`, or the check reports a non-maintainer).
+- **Rule:** Every reply to a review finding opens with the `<!-- pr-triage: <verdict> -->` marker that `composeReply` writes. The check re-runs only on a push or on its schedule, and the MCP token cannot re-run it (403). So post the verdict reply before the push that carries the fix.
+- **Confirmed (PR #812):** The same mistake happened again. Free-text "Agreed, fixed in <sha>" replies failed the gate with `no verdict in reply`. Marker replies passed on the next push. Read this lesson before the first reply in Phase 9d, not after the gate fails.
+- **Confirmed (PR #816, 2026-09-26):** two plain "Fixed in" replies failed the gate again. Replies built with `composeReply` passed it.
+
+### [2026-09-26] Supabase OAuth + HS256: never let a client ask for `openid` (Claude connector)
+- **Mistake:** The `mcp` server advertised no scopes. Claude asked for `openid`, and the token exchange failed with `HS256 is not supported for ID token signing`. The first fix proposal was a move to asymmetric keys plus `verify_jwt = false` on 66 functions, which breaks the lesson below on `verify_jwt`.
+- **Correction:** `mcp` sends `scope="email offline_access"` in `WWW-Authenticate` and in `scopes_supported`. No key rotation, no `verify_jwt` change.
+- **Rule:** Read `memory/lessons.md` before you propose an auth or platform setting change. While the project signs with HS256, no OAuth client may get the `openid` scope. A signing-key rotation needs its own plan for every `verify_jwt = true` function.
+
+### [2026-09-25] Green CI is not proof: check the change in the preview environment (PR #809)
+- **Mistake:** PR #809 went to review with only unit, E2E and CI evidence. Nobody opened the Vercel preview to see the changed pages work on the preview database.
+- **Rule (from the user):** Before you report a change as working, show proof from the preview environment. Use the Vercel preview: it reads the Supabase preview branch. The Netlify preview has no Supabase variables, so it falls back to the production database. Never sign up test users there. The preview branch has no seed data: sign up a test user and create the data that the check needs. The cloud container must allow the preview hosts (`*.vercel.app` and the preview `*.supabase.co` project) in its network settings.
+- **Confirmed (PR #812):** The preview check did not run. The container network policy blocked both preview hosts (`CONNECT tunnel failed, response 403`). The gap showed only in Phase 10. Check access to the preview hosts in Phase 8.5. If a host is blocked, ask the user to allow it before the PR goes to review.
+
+### [2026-09-26] A keyword search of this file misses recent lessons (PR #816)
+- **Mistake:** Phase 0 used a keyword grep only. It missed three lessons from 2026-09-24 and 2026-09-25 that applied directly: the preflight failure, the verdict-reply format, and the preview-proof rule. Two of those mistakes then happened again.
+- **Rule:** In Phase 0, read the newest 15 entries of this file in full, then run the keyword search.
+
+### [2026-09-26] Test a new argument check against the old behavior of every tool (PR #816)
+- **Mistake:** A required-argument check in `ai-execute-tool` rejected every call without `period`. Unit tests passed. A live call with `{}` to each tool, on the old and the new code, showed that 10 tools had answered with a default window before.
+- **Correction:** The check does not enforce `period`, because every handler defaults it.
+- **Rule:** When you add validation in front of existing handlers, call each handler with `{}` on the old and the new code. Reject only the calls that failed or gave output with no use before.
+
+### [2026-09-26] Multi-round AI tool calls need a strict write-confirm guard (PR #816)
+- **Mistake:** Multi-round turns let the model preview a write in round 1 and confirm it in round 2 with no user approval. Four review rounds each found one more gap: a truthy `"true"`, a confirm in the same round as the preview, a failed preview or other arguments, and two confirms from one preview.
+- **Rule:** A write confirm runs only in a new user message, after a successful preview of the same tool with the same arguments, once per preview. The server writes only on `confirmed === true`. Add the complete rule when you add a multi-step loop, not one gap at a time.
+
+### [2026-09-26] SonarCloud is blocked in the cloud container: run the type-aware rule locally (PR #816)
+- **Mistake:** The SonarCloud gate failed with "D Reliability Rating". The proxy blocks `sonarcloud.io`, and the check run has no issue list.
+- **Correction:** Install `eslint-plugin-sonarjs` and `typescript-eslint` in a scratch folder. Run `@typescript-eslint/no-base-to-string` with `checkUnknown: true` on the changed files. It found `String()` on `unknown` values in a sort comparator (Sonar S6551).
+- **Rule:** Do not call `String()` on a value typed `unknown` or `object`. When the Sonar gate fails in the container, run the type-aware rules on the diff of the failing commit.
+
+## Category: Supabase / Cron (continued)
+
+### [2026-09-26] A cron command must not read `app.settings.*` without `missing_ok` (PR #812)
+- **Mistake:** The first `shift-trade-reminders` cron command built its URL from `current_setting('app.settings.supabase_url')`. Production does not set that value (`20260702160000_focus_crons_gateless.sql:6-9`). Without `missing_ok`, the call raises on each run, and no reminder sends. The `bank-reauth-notices` cron has the same problem.
+- **Correction:** The cron calls `dispatch_shift_trade_reminders()`. That function uses a constant project URL. It reads the key from `app.settings.service_role_key` with `missing_ok`, then from Vault. With no key, it returns NULL and sends nothing.
+- **Rule:** Before a new cron uses a setting, grep the migrations for the setting and check that production sets it. Put the HTTP call in a dispatcher function with a pgTAP test for the "no key" path.
+
+## Category: Development Workflow (remote container, continued)
+
+### [2026-09-26] Start Docker in the main session before the QA agent runs (PR #812)
+- **Mistake:** The QA agent found Docker down. The permission policy refused its `dockerd` call, and QA stopped. Starting `dockerd` for the agent after that refusal is permission laundering.
+- **Correction:** The user approved one Docker restart. The main session ran `(dockerd &)`, then `npx supabase start`, and QA passed.
+- **Rule:** At the start of Phase 8, check `docker info` in the main session. If Docker is down, ask the user before you start it. Launch the QA agent only after Supabase is up.
+
+### [2026-09-26] Do not run the unit suite at the same time as the E2E suite (PR #812)
+- **Mistake:** The post-QA unit run went in parallel with the full E2E run. `usePredictableExpenses.test.tsx` failed at the default 1000 ms `waitFor`, because of CPU load. The file was not in the diff, and it passed alone in 474 ms.
+- **Rule:** Run the full unit suite with no other heavy load. A timeout failure under load is not proof of a bug or of a flake. Run the suite again alone before you decide.
+- **Confirmed [2026-09-26] (PR #824):** The same `usePredictableExpenses > stops at 20 pages` failure came back in a full run under load. It passed alone, and it passed in the next full run.
+
+## Category: UI Patterns (continued)
+
+### [2026-09-26] Check a reserved-height slot when an element moves around it (PR #812)
+- **Mistake:** The urgent "Teammates need cover" card moved above `ScheduleStatusBanner`. The banner kept its fixed 76 px slot with no content, and a gap showed under the card.
+- **Correction:** The banner got a `reserveHeight` prop. With no content and no reserved height, it returns null.
+- **Rule:** When a new element moves around a component that reserves height, check the layout at both positions. Make the reserved height a prop, not a constant.
+
+## Category: Development Workflow (continued)
+
+### [2026-09-26] Launch the /dev workflow from the worktree copy of the script (PR #824)
+- **Mistake:** The workflow ran with `scriptPath` set to the main checkout copy of `.claude/workflows/dev-build-and-ship.js`. The main checkout was on another branch, with local edits to that file. That copy had no Phase 8.5, so no browser QA ran. The PR merged with no check of the real screens. The user asked "did you qa it using the chrome tools?", and the answer was no.
+- **Correction:** None before the merge. `grep -c "PHASE 8.5"` gave 0 for the main checkout copy and 2 for `origin/main`.
+- **Rule:** Set `scriptPath` to the script in the task worktree, which is on a branch from `origin/main`. Before the launch, run `grep -c "PHASE 8.5"` on that path. If the result is 0, stop and find the correct copy.
+
+## Category: Development Workflow (off-site punch flags)
+
+### [2026-09-29] Write a stalled task in the main session after the second stall (PR #830)
+- **Mistake:** The workflow agents for task 9 (help text) and task 10 (E2E test) stalled on all 6 attempts each. Each task then waited for the full retry budget.
+- **Correction:** The main session wrote both tasks, committed them, and resumed the run with `stalledTasks` and `resolutionNotes`.
+- **Rule:** When a build agent stalls two times on the same task, stop the run. Write the task in the main session, then resume with `stalledTasks` and a `resolutionNotes` entry.
+
+### [2026-09-29] A SonarCloud item can arrive after the Phase 9d triage (PR #830)
+- **Mistake:** The Done Gate found one OPEN critical SonarCloud item (cognitive complexity 16 of 15). The item came into `review_queue.json` after the 9d triage file was complete. The gate only checks, so the run stopped.
+- **Correction:** The main session refactored `worstLocationFlag` with a rank table and an `isFarther` helper, and marked the item resolved.
+- **Rule:** Before the Done Gate, refresh the review queue and triage every new OPEN item for the PR. Keep each new function below cognitive complexity 15.
+
+### [2026-09-29] Do not rewrite `review_queue.json` with Python `json.dump` (PR #830)
+- **Mistake:** A Python `json.dump` of the queue escaped every emoji and changed 2546 lines.
+- **Correction:** A second commit wrote the file again with Node `JSON.stringify(data, null, 2)`.
+- **Rule:** Change the queue with `dev-tools/mark-task.js`. If you must write it by hand, use Node `JSON.stringify(data, null, 2)` plus a final newline.
+
+## Category: Time / Timezone (continued)
+
+### [2026-09-28] Instant day bounds give an extra day to a consumer that keys days by local fields (PR #827)
+- **Mistake:** The AI schedule tool moved to `restaurantDayBounds` instants. The executor also passed these instants to `calculateScheduledLaborCost`. That engine keys days with `generateDateRange` and `formatDateLocal`. In the UTC runtime, the Chicago end instant falls on the next UTC day. An 8-day week gave 9 salary days. The Phase 2.5 review found this fault for `calculateHoursPerEmployee`, but not for `calculateScheduledLaborCost`. The operator found it at the verify step.
+- **Correction:** Add `scheduledCostInputs` in `_shared/scheduleOverview.ts`. It gives the engine wall-clock start and end days and wall-clock shift starts. The shift length does not change. A test checks 8 daily rows and a Friday-night shift on Friday.
+- **Rule:** When a range changes from wall-clock days to real instants, list every consumer of that range. Grep each consumer for `getDate`, `formatDateLocal`, `generateDateRange` and `toLocalYMD`. A consumer that reads local fields must get wall-clock inputs, not instants. Add a test that counts the days the consumer produces.
+
+### [2026-09-28] Local midnight does not exist in some zones on a DST day (PR #827)
+- **Mistake:** `restaurantDayBounds` used `zonedNaiveToUtc(`${ymd}T00:00:00`, tz)` for the first instant of a day. `America/Santiago` moves its clocks forward at local midnight (2026-09-06), so `00:00` does not exist. The result fell on the previous day. Codex found this on the PR.
+- **Correction:** Check the guess with `ymdInTimeZone`. If the check fails, do a binary search by minute for the first instant of the day. This is the same fallback as `firstInstantOfDayInZone` in `_shared/labor/restaurantClock.ts`.
+- **Rule:** Do not assume that local `00:00` exists. For the start of a restaurant day, use a helper that checks the result and has a DST fallback. Add a test for a zone with a DST change at midnight.
+
+## Category: Development Workflow (continued)
+
+### [2026-09-28] The verify agent stalls on a long foreground command with no output (PR #827)
+- **Mistake:** The Phase 8 verify agent stalled 6 times. Each time, a foreground test command gave no output for 180 s, and the agent stopped. One vitest run under `Pacific/Auckland` hung for 16 minutes. When I ran it again, all 59 tests passed.
+- **Correction:** The operator ran the checks directly. Then the workflow resumed with `verifyNotes`. The notes told the agent to run long commands in the background, listed the checks already done, and gave the reasons to skip `test:db` and E2E.
+- **Rule:** When a verify agent stalls, do not start it again with no change. Resume it with `verifyNotes` that list the finished checks and tell it to run long commands in the background. When one time zone run hangs, stop that run and run it again before you look for a code fault.
+
+### [2026-09-28] An empty reviewer result is not a pass (PR #827)
+- **Mistake:** In Phase 7, Codex gave no findings because its CLI version was too old. CodeRabbit gave no output in 7c. Both results looked like a clean review. The late fix commit 866e787e also got no reviewer-agent pass. Only CI and the CodeRabbit PR review saw it.
+- **Correction:** Codex found a real DST fault on the PR after the push. That fault is fixed in commit 5156596f.
+- **Rule:** When a reviewer gives no output, look for the cause (CLI version, auth, rate limit) before you record a pass. Record "reviewer did not run" in `progress.md`. When a fix commit comes after Phase 7, run at least one reviewer agent on that commit.
+## Category: Development Workflow (PR #829)
+
+### [2026-09-29] The workflow ran from the main checkout copy again, and no QA ran (PR #829)
+- **Mistake:** The PR #824 rule says to launch from the worktree copy of `.claude/workflows/dev-build-and-ship.js`. This run used the main checkout copy again. `grep -c "PHASE 8.5"` gave 0 for that copy. The workflow reported the PR green with no browser QA.
+- **Correction:** The main session found the gap in the retrospective. It ran Phase 8.5 as a separate agent before the merge.
+- **Rule:** The summary of a compacted session must include the full `scriptPath`, taken from the worktree. Before each launch or resume, run `grep -c "PHASE 8.5" <scriptPath>`. A resume must use the same path as a new launch.
+
+### [2026-09-29] A build agent stalls when a task spans many test files (PR #829)
+- **Mistake:** Task 7 changed one hook and five test files. The build agent planned in silence for 180 s before its first tool call. The watchdog stopped it 6 times.
+- **Correction:** The resume passed `resolutionNotes["task-7"]` as six ordered steps with a commit after each step. The task finished on the next run.
+- **Rule:** Write a plan task that touches more than three files as ordered steps, each with its own commit. Name the line ranges, so the agent does not read whole files.
+
+### [2026-09-29] Merge main before the review phase when a shared query changes shape (PR #829)
+- **Mistake:** This branch changed the result of the `'hourly-sales-all'` query from rows to the RPC result. Main PR #826 added `useDailyLaborPercent`, which read the old rows through the same key. GitHub found the conflict only after CI was green. Without a fix, the two hooks write two different shapes to one React Query cache entry.
+- **Correction:** The merge gave the shared query its own key, `'daily-sales-by-date'`. It now reads `get_hourly_sales_pattern` with `p_view: 'by_date'`.
+- **Rule:** When you change the return shape of a React Query, change its key too. Before Phase 7, merge `origin/main` and grep main for new users of each changed query key and export.
+
+### [2026-09-29] `sync_with_base_branch` refuses a worktree that the app did not make (PR #829)
+- **Mistake:** The host tool refused: "This session doesn't run in a worktree the app made for it". The `/dev` skill makes its own worktrees under `.claude/worktrees/`.
+- **Rule:** In a `/dev` worktree, merge with `git fetch origin main && git merge origin/main`. First move uncommitted local files, such as `dev-tools/review_queue.json`, to the scratchpad.
+
+## Category: Supabase / SQL (continued)
+
+### [2026-09-29] `NOT IN` does not reject a NULL argument (PR #829)
+- **Mistake:** The RPC guard `IF p_view NOT IN ('weekday', 'by_date')` is NULL for a NULL argument, so the guard did not raise. A NULL view went to the `by_date` branch. The Codex review found it.
+- **Correction:** `IF p_view IS NULL OR p_view NOT IN (...)`.
+- **Rule:** Put `x IS NULL OR` before each `NOT IN` guard on an RPC argument. Add a pgTAP case that sends NULL explicitly.
+
+### [2026-09-29] Two RPC calls in one request do not share a snapshot (PR #829)
+- **Mistake:** The design called the RPC twice for a sub-hour view. It named the CPU cost, but not the consistency. The review found that the 5-minute cron can write between the two calls. The workflow stopped for a design decision.
+- **Correction:** The operator accepted the risk and recorded it in design §8.
+- **Rule:** When a design reads the same table in more than one call, state in the design whether the calls must share a snapshot.
+
+## Category: Cloud Sessions (Claude Code on the web)
+
+### [2026-09-30] The cloud container can run pgTAP and E2E, with three workarounds (PR #833)
+- **Mistake:** `npm ci` failed with a 403, so I reported that E2E and pgTAP cannot run in the cloud session.
+- **Correction:** Only one package failed: `xlsx` comes from `cdn.sheetjs.com`, which the network policy blocks. Docker is installed but its daemon does not start by itself. The Supabase CLI pulls images from ECR, and the ECR blob host returns `Forbidden`.
+- **Rule:** In a cloud session, run these steps before you say a check cannot run:
+  1. Delete `xlsx` from a temporary copy of `package.json` and `package-lock.json`, run `npm ci`, then `git checkout` both files.
+  2. Run `npm i --no-save xlsx@0.18.5` from the npm registry so Vite and `tsc` can resolve the import. Check that `git status` stays clean.
+  3. Start Docker with `(dockerd > <scratch>/dockerd.log 2>&1 &)`.
+  4. Start Supabase with `SUPABASE_INTERNAL_IMAGE_REGISTRY=docker.io npx supabase start`.
+  5. Write `.env.local` from `npx supabase status -o env`, with local keys only.
+  With these steps, `npm run test:db` passed 3594 of 3594, and a Playwright spec ran against local Supabase.
+
+### [2026-10-27] Read this category before you say QA cannot run in the cloud (PR #850)
+- **Mistake:** I reported QA as blocked after ECR and GHCR returned 403. The recipe above was already here. I tried `ghcr.io` (the CI value), not `docker.io`.
+- **Correction:** Four more details made the recipe work on 2026-10-27:
+  1. Docker Hub can return `429 Too Many Requests` when sibling sessions pull at the same time. Pull each image with a short backoff, then run `supabase start` again.
+  2. CLI 2.65.5 fails at "Initialising schema": its realtime image needs IPv6 (`listen_error ... :eafnosupport`), and this kernel has none. `-x realtime` does not help, because the schema step still runs that image. Use the current CLI (`npx supabase@2.122.0`).
+  3. The local edge runtime cannot load `deno.land` or `esm.sh` (DNS blocked). Run the function on the host with `npx deno@2.1.4 run` and a QA-only import map in the scratchpad. Map `std/http/server.ts` to a `Deno.serve` stand-in and `esm.sh/@supabase/supabase-js@x` to `npm:@supabase/supabase-js@x`. Route the app call with `page.route`. Delete the `supabase/functions/deno.lock` that the run creates.
+  4. Launch Chromium with `executablePath: '/opt/pw-browsers/chromium'` in the scratch spec, because the pinned Playwright build is not installed.
+- **Rule:** Before you report that a check cannot run in a cloud session, read "Cloud Sessions" in this file and try each step.
+
+### [2026-09-30] A race between an optimistic punch and a late failure is testable in E2E (PR #833)
+- **Mistake:** The first plan omitted `npm run test:e2e`. A later draft said "a browser test cannot hold one mutate pending and then fail it". Codex flagged the missing E2E as P1.
+- **Correction:** `tests/e2e/kiosk-offline-queue-camera-race.spec.ts` holds the first `POST **/rest/v1/time_punches*` in `page.route`. It opens the dialog for the second employee, calls `context.setOffline(true)`, then `route.abort('internetdisconnected')`. The spec failed on the old code and passed with the fix. `PUNCH_INSERT_TIMEOUT_MS` (15 s) sets the maximum hold time.
+- **Rule:** Before you claim an E2E exception for a network race, try `page.route` to hold the request and `context.setOffline` to control `navigator.onLine`. Prove the spec is RED on the old code in a separate worktree. A worktree gets its own Playwright port, so the RED run does not touch a suite that runs in the main tree.
+
+### [2026-09-30] `pkill -f <pattern>` kills the shell that runs it
+- **Mistake:** `pkill -f "playwright test"` matched the command line of my own Bash shell and ended it with exit code 144.
+- **Rule:** Put a bracket in the pattern, as in `pgrep -af "[p]laywright test"`. Or use `pkill -x <name>` for an exact process name.
+
+### [2026-09-30] Do not push a guess for a bot finding you cannot read (PR #833)
+- **Mistake:** SonarCloud reported "1 New issue", and the network policy blocks `sonarcloud.io`. I guessed rule S4123 and pushed a type change. The next analysis still reported 1 issue, so the push cost one CI cycle and fixed nothing.
+- **Rule:** When a finding is not readable from the session, ask the user for the rule and the line, or ask them to allow the host. Push only a fix for a finding you can see. The first report of the issue also tells you which commit added it, so check that before you guess.
+
+## Category: Development Workflow (punch location capture)
+
+### [2026-09-30] A precise task text is not a plan approval: run /dev first (PR #831)
+- **Mistake:** The task named files, a pattern, and tests, so I built the fix, pushed it, and opened the PR without the development-workflow skill. The user asked "where are you in the /dev workflow?"
+- **Correction:** Phases 0-3 ran afterwards. The retroactive design pass found a real bug in the pushed code (next lesson). Phases 4-9 then ran in order.
+- **Rule:** Invoke development-workflow before the first code edit, also for a small fix with a detailed task text. A task text is input to Phase 2, not a substitute for Phases 2-3.
+
+### [2026-09-30] Check the server trigger before you design a client payload (PR #831)
+- **Mistake:** The first cut counted a client `distance_meters` as a position. The trigger deletes that key (`20260928120000_time_punch_geofence_trigger.sql:27`), so the stored row was `{}` with no flag.
+- **Correction:** The design doc got a payload-to-stored-row table. Only coordinates count as a position, and EmployeeClock sends the geofence coordinates as a fallback.
+- **Rule:** When a client writes a JSONB column that a trigger rewrites, read the trigger first. Put a payload-to-stored-row table in the design, one row per client payload.
+
+### [2026-09-30] When a hidden failure becomes a visible flag, check every cache of that failure (PR #831)
+- **Mistake:** A failed GPS read used to send `undefined`, which showed nothing. After the fix it wrote `location_unavailable`. The punch-context cache reused a failed read for 10 s, so the next Kiosk punches got the flag with no GPS read of their own.
+- **Correction:** The sound-logic reviewer found it. `startPunchContext` now starts a new read after a failed result; `collectPunchContext` in the same flow still reuses it.
+- **Rule:** When a change turns a silent failure into a stored or shown value, find every cache, retry, or reuse path of that failure. A cached failure then produces false positives.
+
+### [2026-09-30] A new key on an object breaks truthy checks in its consumers (PR #831)
+- **Mistake:** `{ location_unavailable: true }` is a truthy `location`. Today's Activity in EmployeeClock showed "Location verified" for it. Five reviewers missed it; CodeRabbit found it outside the diff.
+- **Correction:** The icon now checks `typeof location.latitude === 'number'`, with a separate "Location unavailable" icon.
+- **Rule:** When a payload can take a new shape, grep every reader of that field (`punch.location &&`, `?.location`) and check each one against the new shape. Reviewers see the diff, not the readers outside it.
+
+## Category: UI Copy — Boundaries
+
+### [2026-10-01] A boundary note must use the same comparison as the code
+- **Mistake:** On PR #841 the Expenses note said "older than 60 days". The code puts a row in `older` when `issue_date < cutoff`, and the cutoff is today − 59 days. A row that is exactly 60 days old is in `older`, so "older than 60 days" was wrong at the boundary. The Codex PR review found it (P2).
+- **Correction:** Changed the text to "60 days or older, not counted". Changed the page test to assert the new text.
+- **Rule:** When UI text names a day window, write the boundary day in a test. Then read the text against that test. "Older than N" means `> N`. "N or older" means `>= N`.
+
+## Category: Dev Workflow Runs
+
+### [2026-10-01] A stalled workflow CI agent: finish Phase 9 in the main session
+- **Mistake:** Workflow `dev-build-and-ship` stopped at "CI Loop" with `Agent "ci:2" never produced a result`. The commit with the fix was already pushed, so the stall left the PR without a CI result and without the Phase 9d audit.
+- **Correction:** Did not re-run the workflow. In the main session: checked `git log origin/main` for new merges, merged `main`, ran the changed tests, pushed, ran `gh pr checks --watch` in the background, then ran 9d (`refresh-queue.sh`, three `gh api` fetches, `pr-triage.js audit`).
+- **Rule:** After a workflow stall in the CI phase, check `main` first. A new merge on `main` can change what the PR needs. Then finish Phase 9 by hand with one bounded `gh pr checks --watch`.
+
+## Category: Time / Timezone (continued)
+
+### [2026-09-30] A "last 7 days" window needs the restaurant day, not the browser day (PR #832)
+- **Mistake:** `useRecipeWeeklyVolume` took "today" from `new Date()` in the browser timezone. `sale_date` is a restaurant calendar date. A manager in a different timezone, or a UTC browser near midnight, got a window that was one day off.
+- **Correction:** The hook now reads `selectedRestaurant.restaurant.timezone` and calls `parseDateOnly(dateOnlyInTimeZone(new Date(), timeZone))`. The timezone is part of the query key. Fixed-clock tests cover Chicago and Auckland, and the suite passes with `TZ` set to UTC, Chicago and Auckland.
+- **Rule:** When a query filters a calendar-date column (`sale_date`, `date`), take "today" from `dateOnlyInTimeZone` with the restaurant timezone. Put the timezone in the query key. Test with a fixed clock on both sides of UTC midnight.
+
+## Category: E2E / Flaky Tests (continued)
+
+### [2026-10-01] `offsite-punch-flag.spec.ts` fails between 00:00 and about 00:35 UTC (PR #832)
+- **Mistake:** E2E Shard 2 failed in two CI runs, at 00:25 and 00:34 UTC, on `offsite-punch-flag.spec.ts:95` with `element(s) not found`. The branch did not change any time-punch code. The spec comes from main (#831).
+- **Correction:** A rerun of the failed jobs at 00:51 UTC passed with no code change. The spec inserts a punch at `Date.now() - 30 min`. The CI browser runs in UTC, so before 00:30 UTC the punch falls on the previous day, and `/time-punches` does not count it for today.
+- **Rule:** When an E2E failure is in a spec that the branch does not touch, check the UTC time of the run first. If the spec seeds "now minus N minutes" and the run is near UTC midnight, rerun the failed jobs after the window. A database reset does not help in CI, because each E2E job runs `supabase start` on a new runner. Make the spec seed a time that is safe on the same day, in a separate PR.
+
+## Category: Development Workflow (editable week templates)
+
+### [2026-10-06] An edit-in-place draft needs a newer-than check against the server row (PR #842)
+- **Mistake:** The tab copied the server template into the draft on every list refetch. A refetch that started before a save finished returned the old row and put the old shifts back into the draft.
+- **Correction:** Copy a server row into the draft only when its `updated_at` is newer than the baseline (`isNewer`). Apply a save result only to the draft it started from (a `draftGeneration` ref). Block a second save while one runs (a `saveInFlight` ref).
+- **Rule:** For an editor with an explicit Save, keep a draft and a baseline. Never let a refetch overwrite the draft without a version compare.
+
+### [2026-10-06] Send the raw `updated_at` string for a compare-and-set (PR #842)
+- **Mistake:** A JS `Date` holds milliseconds. Postgres `timestamptz` holds microseconds. A round trip through `Date` makes the compare fail every time.
+- **Rule:** Keep `updated_at` as the string from the server. Send that string back to the RPC unchanged.
+
+### [2026-10-06] Radix Dialog returns focus only to its DialogTrigger (PR #842)
+- **Mistake:** A dialog opened from a grid cell with `open` state had no trigger. On close, focus went to `body`. QA found it (WT-QA-1).
+- **Correction:** Keep the opener element in a ref. In `onCloseAutoFocus`, call `preventDefault()` and focus the opener if it `isConnected`.
+- **Rule:** Every controlled dialog with no DialogTrigger needs an explicit focus target on close. Add a unit test for it.
+
+### [2026-10-06] After a delete, remove the row from the cache before the refetch (PR #842)
+- **Mistake:** After the user deleted the last template, the selection effect read the old list and selected the deleted template again. Codex and CodeRabbit both found it.
+- **Correction:** In `onSuccess`, call `setQueryData` to filter out the row, then invalidate.
+- **Rule:** When a selection effect reads a list, update the cache at once after a delete. Do not wait for the refetch.
+
+### [2026-10-06] Select a tab by name in E2E, not by position (PR #842)
+- **Mistake:** `planner-drag-mobile.spec.ts` clicked the last tab. The new "Week Templates" tab became the last tab, and E2E shard 2 failed.
+- **Rule:** Use `page.getByRole('tab', { name: '...' })`. When you add a tab, grep the E2E specs for `.last()` and `.nth(` on tab locators.
+
+### [2026-10-06] SonarCloud reliability rules for JSX (PR #842)
+- **Mistake:** SonarCloud gave a C reliability grade for 7 items: `{' '}` spacing, a floating promise, `role="status"` on a div, a radio group with no fieldset, `<p>` inside `<label>`, and `returnValue` in `beforeunload`.
+- **Correction:** Use a span with a margin, `void` on the promise, `<output>`, `<fieldset>` with `<legend>`, `<span className="block">` inside a label, and `preventDefault()` only.
+- **Rule:** Write new JSX in these forms from the start.
+
+### [2026-10-06] Cloud session: resolve review threads through the REST ccr route (PR #842)
+- **Mistake:** `dev-tools/pr-triage.js` failed to resolve threads, because the cloud proxy blocks GitHub GraphQL.
+- **Correction:** Post the reply with `gh api repos/{o}/{r}/pulls/{n}/comments/{id}/replies`. Resolve with `POST /repos/{o}/{r}/pulls/{n}/ccr/comments/{id}/resolve`.
+- **Rule:** In a cloud session, use REST for every review-thread action.
+
+### [2026-10-06] CodeRabbit does not review again by itself after its rate limit (PR #842)
+- **Mistake:** I waited for CodeRabbit after the "Review limit reached" notice. No review came after the limit reset.
+- **Rule:** After the reset time, post `@coderabbitai review` on the PR.
+
+## Category: Database Performance (recipe sales stats RLS timeout)
+
+### [2026-10-06] A non-inlined SQL function gets a generic plan, and RLS subplans become per-row (PR #844)
+- **Mistake:** `get_recipe_sales_stats` was `LANGUAGE sql` with `SET search_path`. The `SET` clause stops inlining, so Postgres plans `p_restaurant_id` as `$1`. In the generic plan, the `unified_sales` RLS EXISTS subplan was correlated and ran 21,670 times (546k buffers, 3.2 s warm, 57014 under load).
+- **Correction:** Make the function `SECURITY DEFINER` with an owner that has `rolbypassrls`. Add an explicit `public.user_has_capability(p_restaurant_id, ...)` check. The planner runs it as a One-Time Filter. The production probe went to about 21 ms per call.
+- **Rule:** To prove the cause of a slow RPC, compare three plans: the real call, the body with a literal, and the body with `$1` under `plan_cache_mode = force_generic_plan`. If the generic plan matches the real call, look for a correlated RLS subplan.
+
+### [2026-10-06] Two PRs can each pass CI with the same migration version (PR #844)
+- **Mistake:** Main merged `20261006120000_editable_week_templates.sql` while this branch had `20261006120000_get_recipe_sales_stats_definer.sql`. Every CI database job failed with `duplicate key value violates unique constraint "schema_migrations_pkey"`.
+- **Rule:** Before the push that opens a PR, fetch `origin/main` and compare the migration prefixes. Use a prefix later than every migration on main.
+
+### [2026-10-06] "Supabase Preview" fails when the branch is behind main on migrations (PR #844)
+- **Mistake:** The check failed with `Remote migration versions not found in local migrations directory.` The preview branch had a migration from main that the PR branch did not have.
+- **Correction:** Merge `origin/main` into the branch and push.
+- **Rule:** When this check fails, run `git diff --name-status HEAD origin/main -- supabase/migrations` first. Do not change the migration.
+
+### [2026-10-06] Local Supabase when Docker cannot pull new images (PR #844)
+- **Mistake:** `npx supabase start` hung on image pulls from public.ecr.aws in the sandbox. A start without kong failed with `HealthCheckTimeoutError`.
+- **Correction:** Write version pin files in `supabase/.temp/` (gitignored) for the images that are already local: `postgres-version`, `rest-version`, `gotrue-version`, `realtime-version`, `storage-version`, `pgmeta-version`, `edge-runtime-version`, `studio-version`. Start with `-x` for the services you do not need. Keep kong, because the health check uses it.
+- **Rule:** When a pull hangs, run `docker images` and pin each service to a local tag. Never exclude kong.
+
+### [2026-10-06] Give the full E2E run its own time in Verify (PR #844)
+- **Mistake:** Verify stopped before the full local E2E run finished. The one failure (`accountless-employee-invite.spec.ts:126`, strict mode violation on "Add Employee") was in a spec the branch does not touch.
+- **Rule:** In Verify, run the specs that cover the change first, then the full run in the background with a bound. Check a failure in an untouched spec against main CI before you act on it.
+- **Confirmed [2026-10-25] (PR #847):** The Verify agent ran the full `npx playwright test` in the foreground. It passed the 600s tool limit and ran more than 25 minutes with no result. The workflow stopped. The 4 related specs ran in 1.0m (11 passed). A resume with `verifyNotes` that limited E2E to those specs shipped the PR, and CI ran the full suite green. The Phase 8 prompt in `.claude/workflows/dev-build-and-ship.js` still says to run the full `npm run test:e2e`. Change that prompt to match this rule.
+
+## Category: E2E / Flaky Tests (continued)
+
+### [2026-10-08] Clamp a "now minus N" seed to the page's day range, and compute it in the browser (PR #845)
+- **Amends:** [2026-10-01] "`offsite-punch-flag.spec.ts` fails between 00:00 and about 00:35 UTC (PR #832)". That entry said to fix the seed in a separate PR. This is that fix. The flake failed again on PR #844 at 00:19 UTC.
+- **Mistake:** The spec seeded `now - 30 min`. `/time-punches` opens on `startOfDay(new Date())` to `endOfDay(new Date())` in the browser zone (`src/pages/TimePunchesManager.tsx:290`). Before 00:30, the seed was yesterday.
+- **Correction:** Compute the seed in `page.evaluate` as the later of `now - 30 min` and the local start of today. A per-minute simulation over one day in 4 zones gave 30 failures before the fix and 0 after.
+- **Rule:** When a spec seeds a time relative to now for a "today" view, clamp the seed to the page's range. Compute it in the browser, because the page uses the browser zone and Playwright has no `timezoneId` here. Check the fix with a per-minute simulation, not one CI run.
+- **Remaining risk:** The seed and `page.goto('/time-punches')` occur a few seconds apart. If local midnight falls between them, the page opens on the next day and the test fails. We accept that window of a few seconds. If the flake comes back, add `page.clock.setFixedTime` before the seed, so the seed and the page use one date.
+
+## Category: Development Workflow (time-off shift choice)
+
+### [2026-10-25] Check the UI gate before a design claims a second path (PR #847)
+- **Mistake:** The first design said a manager can re-approve a decided request from `DecidedHistory`. `TimeOffRow.tsx:98` shows Approve only for a pending row. The Supabase design reviewer found the false claim.
+- **Rule:** Before a design names an entry point, open the component and find the condition that shows the control. Cite the line.
+
+### [2026-10-25] Fetch fresh data before a bulk write (PR #847)
+- **Mistake:** The plan used `fetchQuery` with `staleTime: 30000` for the shift list before the approval. A cached list can miss a shift that a manager added in the last 30 seconds. That shift then stays on the schedule with no action.
+- **Correction:** CodeRabbit flagged it. The approval fetch now uses `staleTime: 0`.
+- **Rule:** When a fetch selects the rows for a write (delete, post, update), fetch with `staleTime: 0`. Keep the 30s staleTime for display only.
+
+### [2026-10-25] Catch the second step after an irreversible first step (PR #847)
+- **Mistake:** The plan approved the request, then awaited the shift action with no `catch`. If the shift action threw, the request stayed approved, the dialog stayed open, and the manager got no clear message.
+- **Correction:** The sound-logic reviewer flagged it. The flow now catches the failure, closes the dialogs, and shows a toast that says the request is approved and the shifts did not change.
+- **Rule:** In a flow that is not atomic, put a `try`/`catch` around each step after the first write. The message must name the state that remains.
+
+### [2026-10-25] Lock every action on the row during a multi-step flow (PR #847)
+- **Mistake:** The plan locked Approve during the flow but not Reject. A manager could reject the request while the approval and the shift action ran.
+- **Rule:** When a flow locks one action on a record, lock every action that changes the same record.
+
+### [2026-10-25] Show shift times in the restaurant timezone, also in a dialog (PR #847)
+- **Mistake:** The design accepted the browser timezone for the shift times as a trade-off. The plan used `format(new Date(shift.start_time), 'h:mm a')`. A manager in a different timezone saw the wrong clock times.
+- **Correction:** The review changed the dialog to take the restaurant timezone as a prop and to use `formatInstant` from `src/lib/restaurantClock.ts`.
+- **Rule:** Never accept the browser timezone for a shift time. Use `formatInstant` with the restaurant timezone in every view.
+
+### [2026-10-25] Write plan code that passes the ocr rules and SonarCloud (PR #847)
+- **Mistake:** The plan code had a nested ternary in the policy button text, a toast helper with high cognitive complexity, and props that were not read-only. Reviewers and SonarCloud sent the code back three times.
+- **Rule:** In plan code, use no nested ternaries. Split a text helper with more than 3 branches. Mark component props `Readonly<>`. Use `void` on a promise that the code does not await.

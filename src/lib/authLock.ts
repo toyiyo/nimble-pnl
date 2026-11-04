@@ -83,7 +83,7 @@ export async function authLock<R>(
       if (!isAbortError(error)) throw error;
     }
     console.warn(
-      `[authLock] Lock "${name}" held by the same owner for ${Date.now() - startedAt} ms. Stealing the lock.`,
+      `[authLock] Lock "${name}" not granted for ${Date.now() - startedAt} ms. Stealing the lock.`,
     );
     try {
       return await locks.request(name, { mode: 'exclusive', steal: true }, run);

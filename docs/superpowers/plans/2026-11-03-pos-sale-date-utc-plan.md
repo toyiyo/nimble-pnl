@@ -12,17 +12,20 @@ Do each task with TDD. Run the tasks in this order.
 ## Task 2: Use the restaurant clock in the dialog
 
 - Write a failing test in `tests/unit/POSSaleDialog.defaultDate.test.tsx`.
-- Add the `timezone` prop. Use the helper at both default sites.
+- Add the `timezone` prop. Compute the blank form in one local function.
+- Run the reset effect on open, with deps `[editingSale, form, open, timezone]`.
+- Add a test: the dialog opens on a later day and shows the new default.
 - Pass `safeTz(selectedRestaurant.restaurant?.timezone)` from `src/pages/POSSales.tsx`.
-- Add the prop to the existing `POSSaleDialog` unit tests.
+- Add the prop to the four existing `POSSaleDialog` unit test files.
 
 ## Task 3: Keep the stated day in the CSV path
 
 - Write failing tests in `tests/unit/importedSaleDate.test.ts`. Run them under
   `TZ=America/Chicago` and `TZ=Pacific/Auckland`.
 - Add `toImportedSaleDate` to `src/lib/timezone.ts`.
-- Use it at `src/components/POSSalesFileUpload.tsx:132-134`.
-- Format the local fields at `src/components/POSSalesFileUpload.tsx:349`.
+- Add a test for an impossible calendar day, such as `2026-13-45`.
+- Use it at `src/components/POSSalesFileUpload.tsx:132-138`.
+- Use `toDateOnlyString` at `src/components/POSSalesFileUpload.tsx:349`.
 
 ## Task 4: Run the E2E spec after 18:00 CST
 

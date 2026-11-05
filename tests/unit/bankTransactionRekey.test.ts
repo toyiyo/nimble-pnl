@@ -22,6 +22,7 @@ const txn = (id: string, o: Partial<StripeTxn> = {}): StripeTxn => ({
 const row = (id: string, sid: string, o: Partial<BankRowMatch> = {}): BankRowMatch => ({
   id,
   stripe_transaction_id: sid,
+  status: null,
   created_at: '2026-01-01T00:00:00Z',
   ta: String(T0),
   amt: '-1250',

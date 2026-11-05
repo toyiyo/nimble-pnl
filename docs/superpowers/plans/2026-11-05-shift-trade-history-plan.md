@@ -16,6 +16,7 @@ No migration. No RLS change. Follow TDD for each task. Commit each task.
 - Export `hasValidJoins` from `src/hooks/useShiftTrades.ts`.
 - Create `src/hooks/useShiftTradeHistory.ts`.
 - The Supabase mock must implement every chain method that the hook calls.
+- Use the `get_users_by_ids` cast from `src/hooks/useTipSplitAuditLog.ts:45-47`.
 
 ## Task 3: History section
 
@@ -26,8 +27,11 @@ No migration. No RLS change. Follow TDD for each task. Commit each task.
 
 - Render `TradeHistorySection` under `TradeApprovalQueue` in
   `src/pages/Scheduling.tsx`, with `restaurantId` and `restaurantTimezone`.
-- Check `tests/unit/scheduling-trades-gate.test.tsx`. Mock the new section
-  there if the test does not provide a `QueryClient`.
+- Set the section root classes as the design states. Do not change the queue.
+- Add a `vi.mock` for `TradeHistorySection` in
+  `tests/unit/scheduling-trades-gate.test.tsx`. That test has no `QueryClient`.
+- Add a check that the section shows with `edit:scheduling` and not with
+  `view:scheduling`.
 
 ## Task 5: Full check
 

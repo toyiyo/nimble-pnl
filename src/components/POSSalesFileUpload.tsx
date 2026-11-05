@@ -12,6 +12,8 @@ import { ColumnMappingDialog, ColumnMapping } from './ColumnMappingDialog';
 import { suggestColumnMappings, isSummaryRow } from '@/utils/csvColumnMapping';
 import { extractDateFromFilename } from '@/utils/filenameDateExtraction';
 import { loadMappingTemplates, findBestMatchingTemplate, applyTemplate } from '@/utils/mappingTemplates';
+import { toImportedSaleDate } from '@/lib/timezone';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 interface POSSalesFileUploadProps {
   onFileProcessed: (data: ParsedSale[]) => void;
@@ -129,12 +131,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       // Parse date and time
       let saleDate = getMappedValue('saleDate') || '';
       if (saleDate) {
-        const dateObj = new Date(saleDate);
-        if (!isNaN(dateObj.getTime())) {
-          saleDate = dateObj.toISOString().split('T')[0];
-        } else {
-          saleDate = '';
-        }
+        saleDate = toImportedSaleDate(saleDate);
       }
 
       const saleTime = getMappedValue('saleTime');
@@ -346,7 +343,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
 
       // If we detected a date from the filename, set it on all rows that don't have dates
       if (detectedDate) {
-        const dateStr = detectedDate.date.toISOString().split('T')[0];
+        const dateStr = toDateOnlyString(detectedDate.date);
         parsedSales.forEach(sale => {
           if (!sale.saleDate) {
             sale.saleDate = dateStr;

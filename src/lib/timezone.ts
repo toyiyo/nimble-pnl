@@ -1,4 +1,5 @@
 import { format, toZonedTime } from 'date-fns-tz';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 /**
  * Converts a UTC date to the restaurant's local timezone for display
@@ -64,4 +65,27 @@ export function getSaleDateTimeDefaults(
     saleDate: formatDateInTimezone(now, timezone, 'yyyy-MM-dd'),
     saleTime: formatDateInTimezone(now, timezone, 'HH:mm'),
   };
+}
+
+/**
+ * Converts imported date text to a YYYY-MM-DD sale day.
+ * Valid YYYY-MM-DD text stays the same. An impossible day gives ''.
+ * Other text uses the local fields of the parsed date. Bad text gives ''.
+ */
+export function toImportedSaleDate(text: string): string {
+  const trimmed = (text ?? '').trim();
+  if (!trimmed) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (match) {
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const check = new Date(Date.UTC(year, month - 1, day));
+    const isRealDay =
+      check.getUTCFullYear() === year &&
+      check.getUTCMonth() === month - 1 &&
+      check.getUTCDate() === day;
+    return isRealDay ? trimmed : '';
+  }
+  const parsed = new Date(trimmed);
+  if (isNaN(parsed.getTime())) return '';
+  return toDateOnlyString(parsed);
 }

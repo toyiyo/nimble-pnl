@@ -44,10 +44,18 @@ const COLUMNS = `
 
 async function fetchReviewerNames(ids: string[]): Promise<Map<string, string> | null> {
   if (ids.length === 0) return new Map();
-  const { data, error } = (await supabase.rpc('get_users_by_ids', {
-    user_ids: ids,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  })) as any as { data: ReviewerRow[] | null; error: unknown };
+  let result: { data: ReviewerRow[] | null; error: unknown };
+  try {
+    // get_users_by_ids is not in the generated RPC types. Same cast as useTipSplitAuditLog.ts.
+    result = (await supabase.rpc('get_users_by_ids', {
+      user_ids: ids,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    })) as any as { data: ReviewerRow[] | null; error: unknown };
+  } catch (error) {
+    console.error('Failed to load trade reviewer names', error);
+    return null;
+  }
+  const { data, error } = result;
   if (error) {
     console.error('Failed to load trade reviewer names', error);
     return null;
@@ -90,13 +98,12 @@ export const useShiftTradeHistory = (
       ];
       const names = await fetchReviewerNames(reviewerIds);
 
+      // reviewer_name is null when the lookup failed or no reviewer exists.
+      // It is the former-member text when the lookup worked but the id is missing.
       const rows = valid.map((t) => ({
         ...t,
-        reviewer_name: !t.reviewed_by
-          ? null
-          : names === null
-            ? null
-            : (names.get(t.reviewed_by) ?? FORMER_TEAM_MEMBER),
+        reviewer_name:
+          t.reviewed_by && names ? (names.get(t.reviewed_by) ?? FORMER_TEAM_MEMBER) : null,
       })) as ShiftTradeHistoryRow[];
 
       return { rows, rawCount: raw.length, nextOffset: from + TRADE_HISTORY_PAGE_SIZE };

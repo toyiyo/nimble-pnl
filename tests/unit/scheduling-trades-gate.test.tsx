@@ -336,6 +336,7 @@ describe('Scheduling page — Shift Trades tab capability gate', () => {
 
     render(<Scheduling />);
 
+    expect(screen.queryByRole('tab', { name: /shift trades/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId('trade-history-section')).not.toBeInTheDocument();
   });
 

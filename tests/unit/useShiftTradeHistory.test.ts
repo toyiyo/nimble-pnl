@@ -214,12 +214,24 @@ describe('useShiftTradeHistory', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('does not query when the restaurant id is null', async () => {
+  it('does not query when the restaurant id is null', () => {
     const { result } = renderHook(() => useShiftTradeHistory(null, 'all'), {
       wrapper: wrapper(),
     });
     expect(result.current.trades).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+
+  it('gives a new query key with no prior rows when the filter changes', async () => {
+    pages = [{ data: [row('a')], error: null }, { data: [], error: null }];
+    const { result, rerender } = renderHook(
+      ({ f }: { f: 'approved' | 'rejected' }) => useShiftTradeHistory('r1', f),
+      { wrapper: wrapper(), initialProps: { f: 'approved' as 'approved' | 'rejected' } },
+    );
+    await waitFor(() => expect(result.current.trades).toHaveLength(1));
+    rerender({ f: 'rejected' });
+    expect(result.current.trades).toHaveLength(0);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
   });
 
   it('surfaces a query error', async () => {

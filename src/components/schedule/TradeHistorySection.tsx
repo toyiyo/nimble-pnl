@@ -46,9 +46,9 @@ function HistoryRow({ trade, timezone }: { trade: ShiftTradeHistoryRow; timezone
     <li className="flex flex-col gap-2 rounded-xl border border-border/40 bg-background p-4 sm:flex-row sm:justify-between">
       <div className="min-w-0 space-y-1">
         <p className="break-words text-[14px] font-medium text-foreground">
-          <span className="min-w-0 break-words">{giver}</span>
+          <span>{giver}</span>
           <span className="text-muted-foreground"> to </span>
-          <span className="min-w-0 break-words">{taker}</span>
+          <span>{taker}</span>
         </p>
         <p className="text-[13px] text-muted-foreground">
           {formatInstant(shift.start_time, timezone, 'EEE, MMM d')} ·{' '}
@@ -107,6 +107,48 @@ export const TradeHistorySection = ({ restaurantId, timezone }: TradeHistorySect
     </div>
   );
 
+  const renderBody = () => {
+    if (isLoading) {
+      return (
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} data-testid="history-skeleton" className="h-[84px] w-full rounded-xl" />
+          ))}
+        </div>
+      );
+    }
+    if (error && trades.length === 0) return errorBlock;
+    if (trades.length === 0) {
+      return (
+        <p data-testid="history-empty" className="py-6 text-center text-[13px] text-muted-foreground">
+          {EMPTY_MESSAGES[filter]}
+        </p>
+      );
+    }
+    return (
+      <>
+        <ul className="space-y-2">
+          {trades.map((trade) => (
+            <HistoryRow key={trade.id} trade={trade} timezone={timezone} />
+          ))}
+        </ul>
+        {error && <div className="mt-3">{errorBlock}</div>}
+        {hasNextPage && (
+          <div className="mt-3 flex justify-center">
+            <Button
+              variant="ghost"
+              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+              disabled={isFetchingNextPage}
+              onClick={() => void fetchNextPage()}
+            >
+              {isFetchingNextPage ? 'Loading...' : 'Load more'}
+            </Button>
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <section className="border-t border-border/40 px-4 py-4 sm:px-6" aria-label="Trade history">
       <h3 className="mb-3 text-[12px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -126,40 +168,7 @@ export const TradeHistorySection = ({ restaurantId, timezone }: TradeHistorySect
         </TabsList>
       </Tabs>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} data-testid="history-skeleton" className="h-[84px] w-full rounded-xl" />
-          ))}
-        </div>
-      ) : error && trades.length === 0 ? (
-        errorBlock
-      ) : trades.length === 0 ? (
-        <p data-testid="history-empty" className="py-6 text-center text-[13px] text-muted-foreground">
-          {EMPTY_MESSAGES[filter]}
-        </p>
-      ) : (
-        <>
-          <ul className="space-y-2">
-            {trades.map((trade) => (
-              <HistoryRow key={trade.id} trade={trade} timezone={timezone} />
-            ))}
-          </ul>
-          {error && <div className="mt-3">{errorBlock}</div>}
-          {hasNextPage && (
-            <div className="mt-3 flex justify-center">
-              <Button
-                variant="ghost"
-                className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                disabled={isFetchingNextPage}
-                onClick={() => void fetchNextPage()}
-              >
-                {isFetchingNextPage ? 'Loading...' : 'Load more'}
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+      {renderBody()}
     </section>
   );
 };

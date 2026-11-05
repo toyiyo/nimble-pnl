@@ -24,6 +24,7 @@ import { POSSalesDashboard } from "@/components/POSSalesDashboard";
 import { POSSystemStatus } from "@/components/POSSystemStatus";
 import { IntegrationLogo } from "@/components/IntegrationLogo";
 import { format } from "date-fns";
+import { safeTz } from "@/lib/restaurantClock";
 import { InventoryDeductionDialog } from "@/components/InventoryDeductionDialog";
 import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
 import { UnifiedSaleItem } from "@/types/pos";
@@ -1649,6 +1650,7 @@ export default function POSSales() {
         open={showSaleDialog}
         onOpenChange={handleDialogClose}
         restaurantId={selectedRestaurant.restaurant_id}
+        timezone={safeTz(selectedRestaurant.restaurant?.timezone)}
         editingSale={editingSale}
       />
 

@@ -129,10 +129,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       const unitPrice = unitPriceRaw ?? (totalPrice !== undefined ? totalPrice / quantity : undefined);
 
       // Parse date and time
-      let saleDate = getMappedValue('saleDate') || '';
-      if (saleDate) {
-        saleDate = toImportedSaleDate(saleDate);
-      }
+      const saleDate = toImportedSaleDate(getMappedValue('saleDate') || '');
 
       const saleTime = getMappedValue('saleTime');
       const orderId = getMappedValue('orderId');

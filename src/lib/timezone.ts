@@ -72,7 +72,7 @@ export function getSaleDateTimeDefaults(
  * Valid YYYY-MM-DD text stays the same. An impossible day gives ''.
  * Other text uses the local fields of the parsed date. Bad text gives ''.
  */
-export function toImportedSaleDate(text: string): string {
+export function toImportedSaleDate(text: string | null | undefined): string {
   const trimmed = (text ?? '').trim();
   if (!trimmed) return '';
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);

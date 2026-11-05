@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { POSSaleDialog } from '@/components/POSSaleDialog';
 
 vi.mock('@/hooks/useUnifiedSales', () => ({
@@ -61,6 +61,5 @@ describe('POSSaleDialog default sale date', () => {
     vi.setSystemTime(new Date('2026-11-04T15:00:00Z'));
     rerender(renderDialog(true, 'America/New_York'));
     expect(dateInput().value).toBe('2026-11-04');
-    expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });

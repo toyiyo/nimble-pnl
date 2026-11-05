@@ -11,6 +11,11 @@ describe('toImportedSaleDate', () => {
     expect(toImportedSaleDate('11/3/2026')).toBe('2026-11-03');
   });
 
+  it('keeps the stated day for a US date with a time', () => {
+    expect(toImportedSaleDate('11/03/2026')).toBe('2026-11-03');
+    expect(toImportedSaleDate('11/03/2026 22:30')).toBe('2026-11-03');
+  });
+
   it('keeps the stated day for a date and time without an offset', () => {
     expect(toImportedSaleDate('2026-11-03T22:46:00')).toBe('2026-11-03');
     expect(toImportedSaleDate('2026-11-03 22:46:00')).toBe('2026-11-03');

@@ -24,7 +24,6 @@ import { POSSalesDashboard } from "@/components/POSSalesDashboard";
 import { POSSystemStatus } from "@/components/POSSystemStatus";
 import { IntegrationLogo } from "@/components/IntegrationLogo";
 import { format } from "date-fns";
-import { safeTz } from "@/lib/restaurantClock";
 import { InventoryDeductionDialog } from "@/components/InventoryDeductionDialog";
 import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
 import { UnifiedSaleItem } from "@/types/pos";
@@ -50,6 +49,7 @@ import { BulkCategorizePosSalesPanel } from "@/components/pos-sales/BulkCategori
 import { useBulkCategorizePosSales } from "@/hooks/useBulkPosSaleActions";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { safeTz } from "@/lib/restaurantClock";
 
 // Lowercase, singular-tab labels for the active Status filter — used to make
 // the results header and empty state name the active tab (e.g. "203

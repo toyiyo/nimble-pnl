@@ -22,7 +22,9 @@ an offset for a recurring window.
 
 ## 2. Evidence from production
 
-Every available row belongs to a restaurant in `America/Chicago`.
+Every available row belongs to a restaurant in `America/Chicago`. The source is
+read-only queries on production on 2026-11-05. The dry-run SQL of section 8
+repeats the row counts.
 
 | Measure | Result |
 |---|---|
@@ -67,7 +69,9 @@ values.
 
 - A change to the storage of `availability_exceptions`.
 - A change to the limit of one slot for each day in `setSlot`
-  (`supabase/functions/generate-schedule/index.ts:326-336`).
+  (`supabase/functions/generate-schedule/index.ts:326-336`). `setSlot` is
+  last-wins, so an overnight piece on D+1 can overwrite the own window of D+1.
+  This limit exists today and stays.
 - Exceptions with more than one slot.
 - A visual change. The UI stays the same.
 - A global detector that reloads stale bundles.
@@ -111,33 +115,51 @@ Two options were rejected:
 
 Add a `BEFORE INSERT OR UPDATE` trigger on `employee_availability`.
 
-| Operation | Condition | Action |
-|---|---|---|
-| INSERT | Both local columns are null | Derive the local columns from the legacy columns. |
-| INSERT | A local column has a value | Derive the legacy columns from the local columns. |
-| UPDATE | A local column changes | Derive the legacy columns from the local columns. |
-| UPDATE | No local column changes, a legacy column changes | Derive both local columns from the legacy columns. |
-| UPDATE | No time column changes | Do nothing. |
+INSERT:
+
+| Condition | Action |
+|---|---|
+| Both local columns have a value | Derive both legacy columns from the local columns. Local wins over any legacy value in the write. |
+| Both local columns are null, both legacy columns have a value | Derive both local columns from the legacy columns. |
+| Any other shape | Raise `not_null_violation`. |
+
+UPDATE:
+
+| Condition | Action |
+|---|---|
+| A local column becomes null | Raise `not_null_violation`. |
+| A local column changes | Derive both legacy columns from the local columns. Local wins over any legacy value in the write. |
+| No local column changes, a legacy column becomes null | Raise `not_null_violation`. |
+| No local column changes, a legacy column changes | Derive only the local column of each legacy column that changed. Keep the other local column. |
+| No time column changes | Do nothing. |
 
 Rules for the trigger:
 
 - The offset is the offset of **today** in the restaurant timezone. Today is
-  `(now() AT TIME ZONE tz)::date`. A stale writer uses the same anchor, so the
-  stale writer and the trigger agree.
+  `(now() AT TIME ZONE tz)::date`.
 - The offset is one fixed value for the date: the offset at noon local time.
   Two different local values then stay different. The `valid_time` constraint
   cannot fail on the day of a time change.
-- The trigger function is `SECURITY DEFINER` with a fixed `search_path`. It
-  must read `restaurants.timezone` for every caller. If RLS hides the
-  restaurant from a caller, the fallback to UTC writes a wrong local value.
+- A stale writer uses the offset of the window time on the browser date. That
+  value and the trigger value agree, except on the day of a time change. On
+  that day the local value that the trigger derives wins.
+- The trigger function is `SECURITY DEFINER` with
+  `SET search_path = public, pg_catalog`. It must read `restaurants.timezone`
+  for every caller. If RLS hides the restaurant from a caller, the fallback to
+  UTC writes a wrong local value.
 - A helper function gets the offset. An invalid timezone gives a zero offset
   through an `EXCEPTION` block. It does not read `pg_timezone_names`, because
   that read is slow (see the header of migration `20260724120000`).
+- Run `REVOKE ALL ... FROM PUBLIC, anon` on the trigger function and the helper.
 
-The stale update rule derives **both** local columns. A stale dialog sends both
-times. If only one column changed, the other column shows the old frame. The
-stale user saw both values on the screen and saved them, so the row then
-matches the screen.
+The stale update rule works on each column. A stale dialog sends both times, but
+the column that the user did not edit returns its old legacy value. That column
+counts as not changed, so its correct local value stays. A stale tab that sends
+one column has the same result.
+
+Example: a row holds 10:00 local and 15:00 UTC from a CDT save. In CST the stale
+dialog shows 09:00. The user edits only the end time. The local start stays
+10:00, which is the time that the user entered.
 
 A stale save with no change keeps the local columns. The legacy values do not
 change in that case, so the correct local values stay.
@@ -183,9 +205,16 @@ Rules for the backfill:
   `update_employee_availability_updated_at`
   (`20251123100050_create_availability_tables.sql:117-120`) for the backfill.
   Without this step the backfill erases the evidence of the write date.
-- Run the column change, the backfill, the sync trigger, and the constraints in
-  one transaction. `ALTER TABLE` takes a lock, so no write can pass between the
-  backfill and the trigger.
+- Run all steps in one explicit `BEGIN` and `COMMIT`. `ALTER TABLE` takes a
+  lock, so no write can pass between the backfill and the trigger.
+- Keep this order. The sync trigger must not exist during the backfill. If it
+  exists, it overwrites the legacy values that are the source of the backfill.
+  1. Add the local columns and drop `NOT NULL` on the legacy columns.
+  2. Disable `update_employee_availability_updated_at`.
+  3. Run the backfill.
+  4. Enable `update_employee_availability_updated_at`.
+  5. Create the sync trigger.
+  6. Add the constraint of section 7.3.
 
 Known limits of the anchor:
 
@@ -213,15 +242,22 @@ Base file:
   why.
 - Add two return columns, `available_start_local` and `available_end_local`.
   They hold a local value for both recurring and exception conflicts. For an
-  exception, they hold `v_w_start_tod` and `v_w_end_tod`.
+  exception, they hold `v_w_start_tod` and `v_w_end_tod`. Capture them with the
+  same first-window rule as `v_last_start` and `v_last_end`.
+- The previous-day test (`:191`) changes to `end <= start AND end <> '00:00:00'`.
+  A window of 18:00 to 00:00 ends at midnight of its own day. It does not spill
+  into the next day. Today the test marks that next day as an occupied day, so
+  a day with no data gives a false conflict.
 - Keep `available_start` and `available_end` with their current values for
   stale clients.
 
 A change to the return shape needs `DROP FUNCTION` and `CREATE FUNCTION` in one
 transaction. The precedent is
-`20260322170137_conflict_structured_data.sql:4`. Add an explicit `GRANT EXECUTE`
-to `authenticated` and `service_role`. Only the client calls this function. No
-SQL function calls it. Keep `STABLE` and the `search_path`.
+`20260322170137_conflict_structured_data.sql:4`. That precedent has no grants.
+After `CREATE`, the default privileges give `EXECUTE` to `PUBLIC`. So run
+`REVOKE ALL ... FROM PUBLIC, anon`, then `GRANT EXECUTE` to `authenticated` and
+`service_role`. Only the client calls this function. No SQL function calls it.
+Keep `SECURITY INVOKER`, `STABLE`, and the `search_path`.
 
 End the migration with `NOTIFY pgrst, 'reload schema';`.
 
@@ -231,6 +267,9 @@ End the migration with `NOTIFY pgrst, 'reload schema';`.
   when they exist.
 - If they do not exist, read the legacy keys. The trigger then derives the
   local values. This is the path of a stale client.
+- If both frames exist in an element, the local keys win.
+- The bulk RPC adds no shape check. The trigger raises `not_null_violation` for
+  an incomplete pair, as the old `NOT NULL` did.
 - Keep the signature, `SECURITY DEFINER`, and the grants.
 
 ### 7.7 Edge function: `generate-schedule`
@@ -248,6 +287,8 @@ End the migration with `NOTIFY pgrst, 'reload schema';`.
   recomputes the weekday with `getDay()`, so it is not a reference for the new
   code.
 - Delete `dateForDayOfWeek` and the `weekStart` parameter if nothing uses them.
+  The call site at `generate-schedule/index.ts:302-311` and its tests then
+  change.
 
 The downstream consumers (`schedule-solver.ts`, `schedule-prompt-builder.ts`,
 `schedule-validator.ts`) receive `LocalAvail`. Their frame does not change.
@@ -266,45 +307,75 @@ Writers (no conversion):
 
 Readers:
 
-- `EffectiveSlot` in `src/lib/effectiveAvailability.ts` gets a frame marker,
-  `'local' | 'utc'`. Recurring slots (`:96-101`) use the local columns and the
-  marker `'local'`. Exception slots (`:78-84`) keep `'utc'`.
-- One helper, for example `slotLocalTime(slot, tz, date)`, gives the local time
-  of a slot. These sites use it:
+- **Every `EffectiveSlot` is local.** `computeEffectiveAvailability`
+  (`src/lib/effectiveAvailability.ts:30`) gets a `timezone` parameter. Recurring
+  slots (`:96-101`) read the local columns. Exception slots (`:78-84`) convert to
+  local at this one place, with the exception's own date as the anchor. Parse
+  that date with `new Date(year, month, day)`. No frame marker exists. A mix of
+  frames then cannot reach a label or a comparison. `sourceRecord` stays raw.
+- The three callers pass the timezone:
+  `src/components/scheduling/TeamAvailabilityGrid.tsx:402`,
+  `src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx:250`, and
+  `src/pages/Scheduling.tsx:534`.
+- These sites stop the conversion of slot times:
   - `src/components/scheduling/TeamAvailabilityGrid.tsx:227`
-  - `availabilityLabel` (`src/lib/effectiveAvailability.ts:225-235`)
-  - `overnightPrevSlots` (`:247-248`)
-  - `pushWindow` (`:317-318`)
+  - `availabilityLabel` (`src/lib/effectiveAvailability.ts:225-235`). Delete its
+    `timezone` and `date` parameters. Change its caller
+    `src/components/scheduling/ShiftPlanner/EmployeeMiniWeek.tsx:83`.
+  - `overnightPrevSlots` (`:240-251`). Its filter changes to
+    `end <= start AND end <> 00:00`, the same as the RPC in section 7.5.
+  - `pushWindow` (`:314-324`). Keep `we += 1440`, because a window of 18:00 to
+    00:00 on its own day ends at 24:00.
+- A null local value counts as no window. The sync trigger and the backfill keep
+  the columns non-null. PR 2 merges after PR 1, so a null does not occur.
 - `src/pages/EmployeePortal.tsx:151-154,291` show the recurring local values.
   `:361` stays UTC for exceptions.
 - `src/components/scheduling/DeleteAvailabilityDialog.tsx:58-93` shows recurring
   rows with no conversion. Exceptions stay.
-- `src/hooks/usePlannerShiftConflicts.ts:104-105` gives local values.
-- `src/lib/conflictFormatUtils.ts:18-27,79-97` formats `available_start_local`
-  and `available_end_local` with no conversion.
+- `src/hooks/usePlannerShiftConflicts.ts:104-105` sets `available_start_local`
+  and `available_end_local` from the slot. Slots are local on recurring days and
+  on exception days.
+- `src/lib/conflictFormatUtils.ts:18-27,62-97` formats `available_start_local`
+  and `available_end_local` with no conversion. If they are null, the message
+  shows no time range. Delete `extractDateAnchor` if nothing uses it.
 - `src/hooks/useConflictDetection.tsx:24-25,79-80` maps the new fields.
-- `src/lib/scheduleWarnings.ts:104` reads the local columns. This line compares
-  a UTC availability value with a local shift template value, so
-  `no_time_overlap` is not correct today. The change fixes that bug too. The
-  template frame comes from the note at `src/lib/availabilityTimeUtils.ts:71-73`.
-  The builder must check it before the change.
+- `src/lib/scheduleWarnings.ts:104` reads `avail.start_time_local` and
+  `avail.end_time_local`. This line compares a UTC availability value with a
+  local template value, so `no_time_overlap` is not correct today. The change
+  fixes that bug too. Template times are local:
+  `src/components/scheduling/ShiftPlanner/TemplateFormDialog.tsx:160-161` saves
+  the raw input, and `supabase/functions/_shared/schedule-solver.ts:153-154`
+  reads them as local.
+- `src/hooks/useBulkSetAvailability.ts:24-30` gets a user message for
+  `not_null_violation`.
+- `src/components/EmployeeDialog.tsx` and `BulkSetAvailabilitySheet.tsx` pass
+  closed-day rows through with local placeholder times.
+- Change the comments that state the old UTC contract:
+  `src/types/scheduling.ts:215-216`, `BulkSetAvailabilitySheet.tsx:26-30`,
+  `src/lib/availabilityTimeUtils.ts:66-87`, and
+  `src/lib/conflictFormatUtils.ts:6-17,80-88`.
 - Change `ConflictCheck` and `EmployeeAvailability` in
-  `src/types/scheduling.ts:181-192,215-216`.
+  `src/types/scheduling.ts:181-192,215-216`. Type the new fields as
+  `string | null`.
 - Make both generated type files again with the `sync-types` skill:
-  `src/types/supabase.ts` and `src/integrations/supabase/types.ts`.
+  `src/types/supabase.ts` and `src/integrations/supabase/types.ts`. The dropped
+  `NOT NULL` makes the legacy `Row` fields nullable. Fix the type errors that
+  this gives.
 
 Files that need no change (read in this audit):
 
 - `src/components/AvailabilityExceptionDialog.tsx`
-- `src/components/scheduling/ShiftPlanner/EmployeeMiniWeek.tsx`, because it reads
-  only `isAvailable`
 - `src/components/scheduling/availability/AvailabilityGrid.tsx`, because its rows
   are local form values
 - `src/lib/timelineModel.ts`, because it calls `shiftOutsideAvailability`
-- `EmployeeSidebar.tsx`, `GenerateScheduleDialog.tsx`, `ShiftPlannerTab.tsx`,
-  `ShiftTimelineTab.tsx`, `TimelineBar.tsx`, `TimelineLane.tsx`,
-  `useTimelineModel.ts`, `WeekScheduleMobile.tsx`, and `Scheduling.tsx`, because
-  they pass availability data but do not read a time field
+- `EmployeeSidebar.tsx`, `GenerateScheduleDialog.tsx`, `ShiftTimelineTab.tsx`,
+  `TimelineBar.tsx`, `TimelineLane.tsx`, `useTimelineModel.ts`, and
+  `WeekScheduleMobile.tsx`, because they pass availability data but do not read
+  a time field
+- `src/pages/SchedulingWeeklyAvailabilityChip.tsx`, because it reads no time field
+- `src/lib/availabilityDefaults.ts`, because its input is already local
+- `src/hooks/useAvailability.tsx` and `src/hooks/useCRUDEntity.tsx`. `select('*')`
+  returns the new columns, and `.update(rest)` sends them as they are.
 - `src/hooks/useEmployeesMissingAvailability.ts`
 - `src/hooks/useGenerateSchedule.ts`
 - `src/lib/shiftMutationPipeline.ts`
@@ -359,9 +430,9 @@ Before the merge:
    - Rows in a restaurant with an invalid timezone.
 4. Wait for an explicit yes from the owner.
 
-The `supabase-prod` MCP server needs authentication again for this step. The
-owner runs `claude`, then `/mcp`, then selects `supabase-prod`, then
-Authenticate, in a real terminal.
+Run `get_project_url` on the `supabase-prod` MCP server before the first query.
+If its tools fail, the owner must authenticate it again. The owner runs `claude`,
+then `/mcp`, then selects `supabase-prod`, then Authenticate, in a real terminal.
 
 Autonomous work stops at two open PRs with green CI. The plan delivers the
 dry-run SQL as a read-only file. The dry run, the approval, and both merges
@@ -376,7 +447,11 @@ pgTAP:
 
 - A local window gives the same conflict result on a July date and a December
   date.
-- Trigger cases: all five rows of the table in section 7.2.
+- Trigger cases: all rows of both tables in section 7.2.
+- A stale update of one column keeps the other local column.
+- The sync trigger does not exist while the backfill runs: the legacy values do
+  not change.
+- The grants of `check_availability_conflict` exclude `anon`.
 - A closed-day row written with local values has non-null legacy values.
 - A write with no complete pair raises `not_null_violation`.
 - The trigger gets the correct timezone for a caller who cannot read the
@@ -386,6 +461,7 @@ pgTAP:
 - Backfill: a CDT anchor, a CST anchor, a transition-day anchor, an invalid
   timezone, and an unchanged `updated_at`.
 - Overnight windows, and the previous-day carry-over.
+- A window of 18:00 to 00:00 gives no conflict on the next day.
 - A local start past 24:00 UTC: 17:00 Pacific and 20:00 Eastern.
 - `available_start_local` for recurring and exception conflicts.
 - The bulk RPC with local keys and with legacy keys.
@@ -409,12 +485,22 @@ Unit and edge tests:
 - `tests/unit/useBulkSetAvailability.test.tsx`
 - `tests/unit/DeleteAvailabilityDialog.test.tsx`
 - The unit tests for `conflictFormatUtils`, `effectiveAvailability`, and
-  `scheduleWarnings`.
+  `scheduleWarnings`. Add a window of 18:00 to 00:00, and an exception slot on a
+  day of a time change.
+- `tests/unit/EmployeeMiniWeek.test.tsx`
+- `tests/unit/useConflictDetection.test.ts`
+- `tests/unit/usePlannerShiftConflicts.test.ts`
+- The unit tests for `AvailabilityDialog`, `EmployeeDialog.availabilitySection`,
+  `TeamAvailabilityGrid`, `timelineBarLiveAvailability`,
+  `shiftPlannerTab.availabilityWiring`, `scheduleAvailabilityChip`, and
+  `availabilityDefaults`.
 
 E2E:
 
 - `tests/helpers/e2e-supabase.ts`
 - `tests/e2e/impact-aware-deletion.spec.ts`
+- `tests/e2e/scheduling-conflicts.spec.ts`: the helper at line 79 writes the
+  local columns.
 
 ## 10. Success criteria
 
@@ -431,7 +517,28 @@ E2E:
 ## 11. Left to the builder
 
 - The exact names of the helper and trigger functions.
-- The location of the frame marker logic, if a simpler shape gives the same
-  behavior. For example, `effectiveAvailability.ts` can convert exceptions at
-  the source if it has the timezone.
 - The split of commits inside each PR.
+
+## 12. Decided trade-offs
+
+These items come from the Phase 2.5 reviews. They stay out of this change.
+
+- **Error states on two screens.** `TeamAvailabilityGrid.tsx:489` and
+  `EmployeePortal.tsx:251` have a loading state but no error state. A failed
+  fetch reads as "No availability set". This gap exists today and this change
+  does not make it worse. Section 5 keeps the UI the same. It becomes a separate
+  task.
+- **Tenant check in the self-service RLS policies.**
+  `20251123100100_add_employee_self_service_rls.sql:55-90` checks only
+  `is_current_user_employee(employee_id)`. The policy does not check
+  `restaurant_id`. This gap exists today. The trigger reads a wrong timezone only
+  for the row of the employee who sends it. It becomes a separate task.
+- **A stale edit can fail the local check.** The column rule of section 7.2 can
+  derive an end value that equals the kept local start. The constraint then
+  rejects the save. No data changes. The user reloads and saves again.
+- **Stale conflict results for up to 10 seconds.** `['conflict-check', ...]`
+  (`src/hooks/useConflictDetection.tsx`, `staleTime` 10000) is not invalidated
+  after an availability edit. This exists today.
+- **`useCheckConflicts` consumers ignore loading and error**
+  (`ShiftDialog.tsx:111`, `TimelineShiftEditor.tsx:131`). This exists today.
+- **`select('*')` in `src/hooks/useAvailability.tsx:20-22`.** This exists today.

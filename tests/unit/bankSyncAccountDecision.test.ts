@@ -162,15 +162,11 @@ describe('computeDataCurrentThrough', () => {
 
 describe('resultForFetchFailed', () => {
   it('reports refresh_failed with synced 0 and an error message', () => {
-    const result = resultForFetchFailed('fca_789', 'Stripe timeout');
+    const result = resultForFetchFailed('fca_789');
     expect(result.accountId).toBe('fca_789');
     expect(result.status).toBe('refresh_failed');
     expect(result.synced).toBe(0);
-    expect(result.error).toContain('Stripe timeout');
-  });
-
-  it('uses a default error message when none is given', () => {
-    expect(resultForFetchFailed('fca_789').error).toBeTruthy();
+    expect(result.error).toBe('Transaction fetch failed for account fca_789');
   });
 
   it('does not stamp last_sync_at', () => {

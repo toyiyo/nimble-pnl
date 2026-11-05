@@ -44,7 +44,7 @@ const plan = (txns: StripeTxn[], rows: BankRowMatch[] = [], tombstones: Tombston
 describe('constants', () => {
   it('has the expected select projection', () => {
     expect(BANK_ROW_MATCH_SELECT).toBe(
-      'id, stripe_transaction_id, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description',
+      'id, stripe_transaction_id, status, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description',
     );
     expect(MAX_REKEYS_PER_RUN).toBe(500);
   });
@@ -85,8 +85,12 @@ describe('planTransactionStore: section 3.1 table', () => {
   it('1 orphan, 1 new: 1 rekey', () => {
     const d = plan([txn('fctxn_new')], [row('r1', 'fctxn_old')]);
     expect(d).toEqual([
-      { kind: 'rekey_row', txn: txn('fctxn_new'), rowId: 'r1', previousStripeId: 'fctxn_old' },
+      { kind: 'rekey_row', txn: txn('fctxn_new'), rowId: 'r1', previousStripeId: 'fctxn_old', previousStatus: null },
     ]);
+  });
+  it('passes the row status to the rekey decision', () => {
+    const d = plan([txn('n1')], [row('r1', 'o1', { status: 'reconciled' })]);
+    expect(d[0]).toMatchObject({ kind: 'rekey_row', previousStatus: 'reconciled' });
   });
   it('2 orphans, 2 new: 2 rekeys', () => {
     const d = plan(
@@ -119,14 +123,6 @@ describe('planTransactionStore: rules', () => {
   });
   it('handles fca_ rotation', () => {
     const d = plan([txn('n1', { account: 'fca_2' })], [row('r1', 'o1')]);
-    expect(d[0].kind).toBe('rekey_row');
-  });
-  it('handles a reissue on the same fca_', () => {
-    const d = plan([txn('n1', { account: 'fca_1' })], [row('r1', 'o1')]);
-    expect(d[0].kind).toBe('rekey_row');
-  });
-  it('matches on Stripe values, not on the row description', () => {
-    const d = plan([txn('n1')], [row('r1', 'o1')]);
     expect(d[0].kind).toBe('rekey_row');
   });
   it('never matches a row with no raw_data', () => {
@@ -175,6 +171,7 @@ describe('planTransactionStore: tombstones', () => {
       kind: 'rekey_tombstone',
       txn: txn('fctxn_new'),
       tombstoneId: 't1',
+      previousExternalId: 'fctxn_old',
     });
   });
   it('limits one tombstone to one transaction', () => {

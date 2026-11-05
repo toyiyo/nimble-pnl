@@ -24,6 +24,37 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const PAGE_SIZE = 1000;
+const PG_UNIQUE_VIOLATION = '23505';
+const RECONCILED_STATUS = 'reconciled';
+
+// Reads all rows of a query in pages of PAGE_SIZE, by keyset on `id`.
+// Returns null when a page read fails.
+interface PagedQuery {
+  gt(column: string, value: string): PagedQuery;
+  order(column: string, opts: { ascending: boolean }): PagedQuery;
+  limit(count: number): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+}
+
+async function readAllPages<T extends { id: string }>(label: string, buildQuery: () => PagedQuery): Promise<T[] | null> {
+  const all: T[] = [];
+  let lastId: string | null = null;
+  while (true) {
+    let q = buildQuery();
+    if (lastId !== null) q = q.gt("id", lastId);
+    const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_SIZE);
+    if (error) {
+      console.error(`[SYNC-TRANSACTIONS] Error reading ${label} - skipping the store step:`, error.message);
+      return null;
+    }
+    const page = (data ?? []) as T[];
+    all.push(...page);
+    // Stop only on an empty page. The server max_rows can be lower than PAGE_SIZE.
+    if (page.length === 0) return all;
+    lastId = page[page.length - 1].id;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -223,9 +254,9 @@ serve(async (req) => {
           console.log(`[SYNC-TRANSACTIONS] Fetched ${page.data.length} transactions from ${accountId}, total so far: ${allTransactions.length}`);
         }
       } catch (fetchError: any) {
-        console.log(`[SYNC-TRANSACTIONS] No transactions available yet for ${accountId}:`, fetchError.message);
+        console.error(`[SYNC-TRANSACTIONS] Transaction fetch failed for ${accountId}:`, fetchError.message);
         fetchComplete = false;
-        accountResults.push(resultForFetchFailed(accountId, fetchError.message));
+        accountResults.push(resultForFetchFailed(accountId));
         continue;
       }
 
@@ -241,55 +272,33 @@ serve(async (req) => {
     const syncedByAccount = new Map<string, number>();
 
     // Read the rows and tombstones in pages. max_rows is 1000, so a page loop is necessary.
-    const PAGE_SIZE = 1000;
     let readOk = fetchComplete;
     if (!fetchComplete) {
       console.log("[SYNC-TRANSACTIONS] Stripe list is incomplete - skipping the store step for this run");
     }
 
-    const bankRows: BankRowMatch[] = [];
-    const tombstoneRows: TombstoneMatch[] = [];
+    let bankRows: BankRowMatch[] = [];
+    let tombstoneRows: TombstoneMatch[] = [];
 
     if (readOk && allTransactions.length > 0) {
-      let lastId = "";
-      while (true) {
-        let q = supabaseAdmin
+      const rows = await readAllPages<BankRowMatch>("bank rows", () =>
+        supabaseAdmin
           .from("bank_transactions")
           .select(BANK_ROW_MATCH_SELECT)
           .eq("restaurant_id", bank.restaurant_id)
-          .eq("connected_bank_id", bankId);
-        if (lastId) q = q.gt("id", lastId);
-        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_SIZE);
-        if (error) {
-          console.error("[SYNC-TRANSACTIONS] Error reading bank rows - skipping the store step:", error.message);
-          readOk = false;
-          break;
-        }
-        const page = (data ?? []) as unknown as BankRowMatch[];
-        bankRows.push(...page);
-        if (page.length < PAGE_SIZE) break;
-        lastId = page[page.length - 1].id;
-      }
-    }
-
-    if (readOk && allTransactions.length > 0) {
-      let lastId = "";
-      while (true) {
-        let q = supabaseAdmin
+          .eq("connected_bank_id", bankId),
+      );
+      const tombs = rows === null ? null : await readAllPages<TombstoneMatch>("tombstones", () =>
+        supabaseAdmin
           .from("deleted_bank_transactions")
           .select("id, external_transaction_id, transaction_date, amount, description, source, connected_bank_id")
-          .eq("restaurant_id", bank.restaurant_id);
-        if (lastId) q = q.gt("id", lastId);
-        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_SIZE);
-        if (error) {
-          console.error("[SYNC-TRANSACTIONS] Error reading tombstones - skipping the store step:", error.message);
-          readOk = false;
-          break;
-        }
-        const page = (data ?? []) as unknown as TombstoneMatch[];
-        tombstoneRows.push(...page);
-        if (page.length < PAGE_SIZE) break;
-        lastId = page[page.length - 1].id;
+          .eq("restaurant_id", bank.restaurant_id),
+      );
+      if (rows === null || tombs === null) {
+        readOk = false;
+      } else {
+        bankRows = rows;
+        tombstoneRows = tombs;
       }
     }
 
@@ -301,11 +310,9 @@ serve(async (req) => {
         bankId,
       });
 
-      // Do the re-keys first, then the inserts.
-      const ordered = [
-        ...decisions.filter((d) => d.kind === 'rekey_row' || d.kind === 'rekey_tombstone'),
-        ...decisions.filter((d) => d.kind !== 'rekey_row' && d.kind !== 'rekey_tombstone'),
-      ];
+      // Re-keys go first. An insert must not take an ID that a re-key needs.
+      const isRekey = (d: { kind: string }) => d.kind === 'rekey_row' || d.kind === 'rekey_tombstone';
+      const ordered = [...decisions.filter(isRekey), ...decisions.filter((d) => !isRekey(d))];
 
       for (const decision of ordered) {
         const txn = decision.txn as unknown as Stripe.FinancialConnections.Transaction;
@@ -322,28 +329,25 @@ serve(async (req) => {
 
         if (decision.kind === 'rekey_row') {
           // Keep a status of 'reconciled': that value is ours, not Stripe's.
-          const { data: existingRow } = await supabaseAdmin
-            .from("bank_transactions")
-            .select("status")
-            .eq("id", decision.rowId)
-            .maybeSingle();
-          const nextStatus = existingRow?.status === 'reconciled' ? 'reconciled' : txn.status;
+          const nextStatus = decision.previousStatus === RECONCILED_STATUS ? RECONCILED_STATUS : txn.status;
+          const rekeyUpdate: Record<string, unknown> = {
+            stripe_transaction_id: txn.id,
+            raw_data: txn,
+            status: nextStatus,
+          };
+          // Do not overwrite an existing posted_date with null.
+          if (txn.posted_at) rekeyUpdate.posted_date = new Date(txn.posted_at * 1000).toISOString();
 
           const { data: updated, error: rekeyError } = await supabaseAdmin
             .from("bank_transactions")
-            .update({
-              stripe_transaction_id: txn.id,
-              raw_data: txn,
-              status: nextStatus,
-              posted_date: txn.posted_at ? new Date(txn.posted_at * 1000).toISOString() : null,
-            })
+            .update(rekeyUpdate)
             .eq("id", decision.rowId)
             .eq("restaurant_id", bank.restaurant_id)
             .eq("stripe_transaction_id", decision.previousStripeId)
             .select("id");
 
           if (rekeyError) {
-            if (rekeyError.code === '23505') {
+            if (rekeyError.code === PG_UNIQUE_VIOLATION) {
               skippedCount++;
             } else {
               console.error("[SYNC-TRANSACTIONS] Error re-keying transaction:", rekeyError);
@@ -362,10 +366,11 @@ serve(async (req) => {
             .update({ external_transaction_id: txn.id })
             .eq("id", decision.tombstoneId)
             .eq("restaurant_id", bank.restaurant_id)
+            .eq("external_transaction_id", decision.previousExternalId)
             .select("id");
 
           if (rekeyError) {
-            if (rekeyError.code === '23505') {
+            if (rekeyError.code === PG_UNIQUE_VIOLATION) {
               skippedCount++;
             } else {
               console.error("[SYNC-TRANSACTIONS] Error re-keying tombstone:", rekeyError);
@@ -380,6 +385,7 @@ serve(async (req) => {
 
         // decision.kind === 'insert'
         // Insert new transaction - NO default category set
+        // Stripe types do not list merchant_name, so read it as unknown.
         const merchantName = typeof (txn as any).merchant_name === 'string'
           ? (txn as any).merchant_name
           : null;
@@ -403,7 +409,7 @@ serve(async (req) => {
           });
 
         if (insertError) {
-          if (insertError.code === '23505') {
+          if (insertError.code === PG_UNIQUE_VIOLATION) {
             // A row of a different bank can hold this ID.
             skippedCount++;
           } else {

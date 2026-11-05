@@ -167,7 +167,7 @@ export function convertRecurringToLocal(rows: RawRecurringAvail[]): LocalAvail[]
     const start = row.start_time_local;
     const end = row.end_time_local;
     if (!is_available) {
-      out.push(localWindow(employee_id, dow, start, end, is_available));
+      out.push(localWindow(employee_id, dow, start, end, false));
       continue;
     }
     if (start === null || end === null) continue;

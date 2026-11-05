@@ -9,7 +9,15 @@ import {
   shouldStampLastSyncAt,
   computeDataCurrentThrough,
   type AccountSyncResult,
+  resultForFetchFailed,
 } from "../_shared/bankSyncAccountDecision.ts";
+import {
+  planTransactionStore,
+  BANK_ROW_MATCH_SELECT,
+  type BankRowMatch,
+  type TombstoneMatch,
+  type StripeTxn,
+} from "../_shared/bankTransactionRekey.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -128,6 +136,9 @@ serve(async (req) => {
     // synced: 0 whenever one account in the mix is still cold).
     const pendingFetchAccounts: Array<{ accountId: string; refreshStatus: string | undefined }> = [];
     let anyNeedsReauth = false;
+    // False when a Stripe list call fails. The store step then does nothing,
+    // because a partial list makes a good row look like an orphan.
+    let fetchComplete = true;
 
     // Process each account
     for (const accountId of accountIds) {
@@ -213,6 +224,9 @@ serve(async (req) => {
         }
       } catch (fetchError: any) {
         console.log(`[SYNC-TRANSACTIONS] No transactions available yet for ${accountId}:`, fetchError.message);
+        fetchComplete = false;
+        accountResults.push(resultForFetchFailed(accountId, fetchError.message));
+        continue;
       }
 
       pendingFetchAccounts.push({ accountId, refreshStatus });
@@ -220,78 +234,185 @@ serve(async (req) => {
 
     console.log(`[SYNC-TRANSACTIONS] Total transactions fetched across all accounts: ${allTransactions.length}`);
 
-    // Query tombstones to filter out previously deleted transactions
-    const allStripeIds = allTransactions.map(t => t.id);
-    let tombstonedIds = new Set<string>();
+    let syncedCount = 0;
+    let skippedCount = 0;
+    let rekeyedCount = 0;
+    let deferredCount = 0;
+    const syncedByAccount = new Map<string, number>();
 
-    if (allStripeIds.length > 0) {
-      const { data: tombstones } = await supabaseAdmin
-        .from("deleted_bank_transactions")
-        .select("external_transaction_id")
-        .eq("restaurant_id", bank.restaurant_id)
-        .in("external_transaction_id", allStripeIds);
+    // Read the rows and tombstones in pages. max_rows is 1000, so a page loop is necessary.
+    const PAGE_SIZE = 1000;
+    let readOk = fetchComplete;
+    if (!fetchComplete) {
+      console.log("[SYNC-TRANSACTIONS] Stripe list is incomplete - skipping the store step for this run");
+    }
 
-      if (tombstones && tombstones.length > 0) {
-        tombstonedIds = new Set(
-          tombstones.map(t => t.external_transaction_id).filter((id): id is string => id !== null)
-        );
-        console.log(`[SYNC-TRANSACTIONS] Found ${tombstonedIds.size} tombstoned transactions to skip`);
+    const bankRows: BankRowMatch[] = [];
+    const tombstoneRows: TombstoneMatch[] = [];
+
+    if (readOk && allTransactions.length > 0) {
+      let lastId = "";
+      while (true) {
+        let q = supabaseAdmin
+          .from("bank_transactions")
+          .select(BANK_ROW_MATCH_SELECT)
+          .eq("restaurant_id", bank.restaurant_id)
+          .eq("connected_bank_id", bankId);
+        if (lastId) q = q.gt("id", lastId);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_SIZE);
+        if (error) {
+          console.error("[SYNC-TRANSACTIONS] Error reading bank rows - skipping the store step:", error.message);
+          readOk = false;
+          break;
+        }
+        const page = (data ?? []) as unknown as BankRowMatch[];
+        bankRows.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        lastId = page[page.length - 1].id;
       }
     }
 
-    let syncedCount = 0;
-    let skippedCount = 0;
-    const syncedByAccount = new Map<string, number>();
-
-    // Store each transaction
-    for (const txn of allTransactions) {
-      // Check if transaction already exists
-      const { data: existing } = await supabaseAdmin
-        .from("bank_transactions")
-        .select("id")
-        .eq("stripe_transaction_id", txn.id)
-        .single();
-
-      if (existing) {
-        skippedCount++;
-        continue;
+    if (readOk && allTransactions.length > 0) {
+      let lastId = "";
+      while (true) {
+        let q = supabaseAdmin
+          .from("deleted_bank_transactions")
+          .select("id, external_transaction_id, transaction_date, amount, description, source, connected_bank_id")
+          .eq("restaurant_id", bank.restaurant_id);
+        if (lastId) q = q.gt("id", lastId);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_SIZE);
+        if (error) {
+          console.error("[SYNC-TRANSACTIONS] Error reading tombstones - skipping the store step:", error.message);
+          readOk = false;
+          break;
+        }
+        const page = (data ?? []) as unknown as TombstoneMatch[];
+        tombstoneRows.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        lastId = page[page.length - 1].id;
       }
+    }
 
-      // Skip transactions that were previously deleted (tombstoned)
-      if (tombstonedIds.has(txn.id)) {
-        skippedCount++;
-        continue;
-      }
+    if (readOk && allTransactions.length > 0) {
+      const decisions = planTransactionStore({
+        txns: allTransactions as unknown as StripeTxn[],
+        rows: bankRows,
+        tombstones: tombstoneRows,
+        bankId,
+      });
 
-      // Insert new transaction - NO default category set
-      // Safely extract merchant_name with optional chaining and type guard
-      const merchantName = typeof (txn as any).merchant_name === 'string' 
-        ? (txn as any).merchant_name 
-        : null;
-      
-      const { error: insertError } = await supabaseAdmin
-        .from("bank_transactions")
-        .insert({
-          restaurant_id: bank.restaurant_id,
-          connected_bank_id: bankId,
-          stripe_transaction_id: txn.id,
-          transaction_date: new Date(txn.transacted_at * 1000).toISOString(),
-          posted_date: txn.posted_at ? new Date(txn.posted_at * 1000).toISOString() : null,
-          amount: txn.amount / 100, // Convert cents to dollars
-          currency: txn.currency.toLowerCase(),
-          description: txn.description,
-          merchant_name: merchantName,
-          status: txn.status,
-          category_id: null, // No default category - let AI/rules handle it
-          is_categorized: false,
-          raw_data: txn,
-        });
+      // Do the re-keys first, then the inserts.
+      const ordered = [
+        ...decisions.filter((d) => d.kind === 'rekey_row' || d.kind === 'rekey_tombstone'),
+        ...decisions.filter((d) => d.kind !== 'rekey_row' && d.kind !== 'rekey_tombstone'),
+      ];
 
-      if (insertError) {
-        console.error("[SYNC-TRANSACTIONS] Error inserting transaction:", insertError);
-      } else {
-        syncedCount++;
-        syncedByAccount.set(txn.account, (syncedByAccount.get(txn.account) ?? 0) + 1);
+      for (const decision of ordered) {
+        const txn = decision.txn as unknown as Stripe.FinancialConnections.Transaction;
+
+        if (decision.kind === 'skip_existing' || decision.kind === 'skip_tombstoned') {
+          skippedCount++;
+          continue;
+        }
+
+        if (decision.kind === 'defer_rekey') {
+          deferredCount++;
+          continue;
+        }
+
+        if (decision.kind === 'rekey_row') {
+          // Keep a status of 'reconciled': that value is ours, not Stripe's.
+          const { data: existingRow } = await supabaseAdmin
+            .from("bank_transactions")
+            .select("status")
+            .eq("id", decision.rowId)
+            .maybeSingle();
+          const nextStatus = existingRow?.status === 'reconciled' ? 'reconciled' : txn.status;
+
+          const { data: updated, error: rekeyError } = await supabaseAdmin
+            .from("bank_transactions")
+            .update({
+              stripe_transaction_id: txn.id,
+              raw_data: txn,
+              status: nextStatus,
+              posted_date: txn.posted_at ? new Date(txn.posted_at * 1000).toISOString() : null,
+            })
+            .eq("id", decision.rowId)
+            .eq("restaurant_id", bank.restaurant_id)
+            .eq("stripe_transaction_id", decision.previousStripeId)
+            .select("id");
+
+          if (rekeyError) {
+            if (rekeyError.code === '23505') {
+              skippedCount++;
+            } else {
+              console.error("[SYNC-TRANSACTIONS] Error re-keying transaction:", rekeyError);
+            }
+          } else if (updated && updated.length === 1) {
+            rekeyedCount++;
+          } else {
+            skippedCount++;
+          }
+          continue;
+        }
+
+        if (decision.kind === 'rekey_tombstone') {
+          const { data: updated, error: rekeyError } = await supabaseAdmin
+            .from("deleted_bank_transactions")
+            .update({ external_transaction_id: txn.id })
+            .eq("id", decision.tombstoneId)
+            .eq("restaurant_id", bank.restaurant_id)
+            .select("id");
+
+          if (rekeyError) {
+            if (rekeyError.code === '23505') {
+              skippedCount++;
+            } else {
+              console.error("[SYNC-TRANSACTIONS] Error re-keying tombstone:", rekeyError);
+            }
+          } else if (updated && updated.length === 1) {
+            rekeyedCount++;
+          } else {
+            skippedCount++;
+          }
+          continue;
+        }
+
+        // decision.kind === 'insert'
+        // Insert new transaction - NO default category set
+        const merchantName = typeof (txn as any).merchant_name === 'string'
+          ? (txn as any).merchant_name
+          : null;
+
+        const { error: insertError } = await supabaseAdmin
+          .from("bank_transactions")
+          .insert({
+            restaurant_id: bank.restaurant_id,
+            connected_bank_id: bankId,
+            stripe_transaction_id: txn.id,
+            transaction_date: new Date(txn.transacted_at * 1000).toISOString(),
+            posted_date: txn.posted_at ? new Date(txn.posted_at * 1000).toISOString() : null,
+            amount: txn.amount / 100, // Convert cents to dollars
+            currency: txn.currency.toLowerCase(),
+            description: txn.description,
+            merchant_name: merchantName,
+            status: txn.status,
+            category_id: null, // No default category - let AI/rules handle it
+            is_categorized: false,
+            raw_data: txn,
+          });
+
+        if (insertError) {
+          if (insertError.code === '23505') {
+            // A row of a different bank can hold this ID.
+            skippedCount++;
+          } else {
+            console.error("[SYNC-TRANSACTIONS] Error inserting transaction:", insertError);
+          }
+        } else {
+          syncedCount++;
+          syncedByAccount.set(txn.account, (syncedByAccount.get(txn.account) ?? 0) + 1);
+        }
       }
     }
 
@@ -370,7 +491,7 @@ serve(async (req) => {
       }
     }
 
-    console.log("[SYNC-TRANSACTIONS] Sync complete:", syncedCount, "new,", skippedCount, "skipped");
+    console.log("[SYNC-TRANSACTIONS] Sync complete:", syncedCount, "new,", rekeyedCount, "rekeyed,", deferredCount, "deferred,", skippedCount, "skipped");
 
     // Auto-categorize newly synced transactions using categorization rules
     if (syncedCount > 0) {
@@ -479,6 +600,8 @@ serve(async (req) => {
         success: true,
         synced: syncedCount,
         skipped: skippedCount,
+        rekeyed: rekeyedCount,
+        deferred: deferredCount,
         total: allTransactions.length,
         accounts: accountResults,
         needsReauth,

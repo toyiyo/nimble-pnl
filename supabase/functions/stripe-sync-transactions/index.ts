@@ -17,43 +17,17 @@ import {
   type BankRowMatch,
   type TombstoneMatch,
   type StripeTxn,
+  type StoreDecision,
 } from "../_shared/bankTransactionRekey.ts";
+import { readAllPages } from "../_shared/pagedRead.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PAGE_SIZE = 1000;
 const PG_UNIQUE_VIOLATION = '23505';
 const RECONCILED_STATUS = 'reconciled';
-
-// Reads all rows of a query in pages of PAGE_SIZE, by keyset on `id`.
-// Returns null when a page read fails.
-interface PagedQuery {
-  gt(column: string, value: string): PagedQuery;
-  order(column: string, opts: { ascending: boolean }): PagedQuery;
-  limit(count: number): PromiseLike<{ data: unknown; error: { message: string } | null }>;
-}
-
-async function readAllPages<T extends { id: string }>(label: string, buildQuery: () => PagedQuery): Promise<T[] | null> {
-  const all: T[] = [];
-  let lastId: string | null = null;
-  while (true) {
-    let q = buildQuery();
-    if (lastId !== null) q = q.gt("id", lastId);
-    const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_SIZE);
-    if (error) {
-      console.error(`[SYNC-TRANSACTIONS] Error reading ${label} - skipping the store step:`, error.message);
-      return null;
-    }
-    const page = (data ?? []) as T[];
-    all.push(...page);
-    // Stop only on an empty page. The server max_rows can be lower than PAGE_SIZE.
-    if (page.length === 0) return all;
-    lastId = page[page.length - 1].id;
-  }
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -281,19 +255,22 @@ serve(async (req) => {
     let tombstoneRows: TombstoneMatch[] = [];
 
     if (readOk && allTransactions.length > 0) {
-      const rows = await readAllPages<BankRowMatch>("bank rows", () =>
-        supabaseAdmin
-          .from("bank_transactions")
-          .select(BANK_ROW_MATCH_SELECT)
-          .eq("restaurant_id", bank.restaurant_id)
-          .eq("connected_bank_id", bankId),
-      );
-      const tombs = rows === null ? null : await readAllPages<TombstoneMatch>("tombstones", () =>
-        supabaseAdmin
-          .from("deleted_bank_transactions")
-          .select("id, external_transaction_id, transaction_date, amount, description, source, connected_bank_id")
-          .eq("restaurant_id", bank.restaurant_id),
-      );
+      // The two reads are independent, so run them together.
+      const [rows, tombs] = await Promise.all([
+        readAllPages<BankRowMatch>("bank rows", () =>
+          supabaseAdmin
+            .from("bank_transactions")
+            .select(BANK_ROW_MATCH_SELECT)
+            .eq("restaurant_id", bank.restaurant_id)
+            .eq("connected_bank_id", bankId),
+        ),
+        readAllPages<TombstoneMatch>("tombstones", () =>
+          supabaseAdmin
+            .from("deleted_bank_transactions")
+            .select("id, external_transaction_id, transaction_date, amount, description, source, connected_bank_id")
+            .eq("restaurant_id", bank.restaurant_id),
+        ),
+      ]);
       if (rows === null || tombs === null) {
         readOk = false;
       } else {
@@ -311,7 +288,7 @@ serve(async (req) => {
       });
 
       // Re-keys go first. An insert must not take an ID that a re-key needs.
-      const isRekey = (d: { kind: string }) => d.kind === 'rekey_row' || d.kind === 'rekey_tombstone';
+      const isRekey = (d: StoreDecision): boolean => d.kind === 'rekey_row' || d.kind === 'rekey_tombstone';
       const ordered = [...decisions.filter(isRekey), ...decisions.filter((d) => !isRekey(d))];
 
       for (const decision of ordered) {
@@ -338,13 +315,15 @@ serve(async (req) => {
           // Do not overwrite an existing posted_date with null.
           if (txn.posted_at) rekeyUpdate.posted_date = new Date(txn.posted_at * 1000).toISOString();
 
-          const { data: updated, error: rekeyError } = await supabaseAdmin
+          let rekeyQuery = supabaseAdmin
             .from("bank_transactions")
             .update(rekeyUpdate)
             .eq("id", decision.rowId)
             .eq("restaurant_id", bank.restaurant_id)
-            .eq("stripe_transaction_id", decision.previousStripeId)
-            .select("id");
+            .eq("stripe_transaction_id", decision.previousStripeId);
+          // The row may become reconciled after the page read. Do not overwrite that status.
+          if (nextStatus !== RECONCILED_STATUS) rekeyQuery = rekeyQuery.neq("status", RECONCILED_STATUS);
+          const { data: updated, error: rekeyError } = await rekeyQuery.select("id");
 
           if (rekeyError) {
             if (rekeyError.code === PG_UNIQUE_VIOLATION) {
@@ -386,9 +365,8 @@ serve(async (req) => {
         // decision.kind === 'insert'
         // Insert new transaction - NO default category set
         // Stripe types do not list merchant_name, so read it as unknown.
-        const merchantName = typeof (txn as any).merchant_name === 'string'
-          ? (txn as any).merchant_name
-          : null;
+        const rawMerchant: unknown = (txn as unknown as { merchant_name?: unknown }).merchant_name;
+        const merchantName = typeof rawMerchant === 'string' ? rawMerchant : null;
 
         const { error: insertError } = await supabaseAdmin
           .from("bank_transactions")
@@ -424,8 +402,14 @@ serve(async (req) => {
 
     // Finalize per-account results for accounts whose transactions were
     // actually fetched this run, now that their real synced counts are known.
+    // When the store step was skipped, nothing was stored. Report these accounts as failed
+    // so last_sync_at does not advance.
     for (const { accountId, refreshStatus } of pendingFetchAccounts) {
-      accountResults.push(resultForRefresh(accountId, refreshStatus, syncedByAccount.get(accountId) ?? 0));
+      accountResults.push(
+        readOk
+          ? resultForRefresh(accountId, refreshStatus, syncedByAccount.get(accountId) ?? 0)
+          : resultForFetchFailed(accountId),
+      );
     }
 
     // Stamp truth, not intent (design §4.3.3). last_sync_at only advances

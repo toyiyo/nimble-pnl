@@ -27,7 +27,7 @@ export interface StripeTxn {
 export interface BankRowMatch {
   id: string;
   stripe_transaction_id: string;
-  status?: string | null;
+  status: string | null;
   created_at: string;
   ta: string | number | null;
   amt: string | number | null;
@@ -181,16 +181,17 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
       decisions.push({ kind: 'defer_rekey', txn });
       continue;
     }
-    rekeys++;
     const r = hasRow ? rowPool?.shift() : undefined;
     const t = !r && hasTomb ? tombPool?.shift() : undefined;
+    // Count a re-key only when a candidate exists.
+    if (r || (t && t.external_transaction_id)) rekeys++;
     if (r) {
       decisions.push({
         kind: 'rekey_row',
         txn,
         rowId: r.id,
         previousStripeId: r.stripe_transaction_id,
-        previousStatus: r.status ?? null,
+        previousStatus: r.status,
       });
     } else if (t && t.external_transaction_id) {
       decisions.push({

@@ -2,6 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { toImportedSaleDate } from '@/lib/timezone';
 
 describe('toImportedSaleDate', () => {
+  it('keeps the stated day of ISO text with Z or an offset', () => {
+    expect(toImportedSaleDate('2026-11-03T00:00:00Z')).toBe('2026-11-03');
+    expect(toImportedSaleDate('2026-11-03T22:30:00-06:00')).toBe('2026-11-03');
+    expect(toImportedSaleDate('2026-11-03T00:30:00+13:00')).toBe('2026-11-03');
+  });
+
+  it('gives an empty day for ISO text with an impossible day or time', () => {
+    expect(toImportedSaleDate('2026-02-31T10:00:00Z')).toBe('');
+    expect(toImportedSaleDate('2026-11-03T25:00:00')).toBe('');
+  });
+
   it('keeps a valid YYYY-MM-DD day with no change', () => {
     expect(toImportedSaleDate('2026-11-03')).toBe('2026-11-03');
     expect(toImportedSaleDate('2024-02-29')).toBe('2024-02-29');

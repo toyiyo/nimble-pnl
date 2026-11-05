@@ -69,13 +69,14 @@ export function getSaleDateTimeDefaults(
 
 /**
  * Converts imported date text to a YYYY-MM-DD sale day.
- * Valid YYYY-MM-DD text stays the same. An impossible day gives ''.
- * Other text uses the local fields of the parsed date. Bad text gives ''.
+ * ISO text keeps its stated day, also with a time, Z, or an offset.
+ * An impossible day gives ''. Other text uses the local fields of the
+ * parsed date. Bad text gives ''.
  */
 export function toImportedSaleDate(text: string | null | undefined): string {
   const trimmed = (text ?? '').trim();
   if (!trimmed) return '';
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].+)?$/.exec(trimmed);
   if (match) {
     const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
     const check = new Date(Date.UTC(year, month - 1, day));
@@ -83,7 +84,7 @@ export function toImportedSaleDate(text: string | null | undefined): string {
       check.getUTCFullYear() === year &&
       check.getUTCMonth() === month - 1 &&
       check.getUTCDate() === day;
-    return isRealDay ? trimmed : '';
+    return isRealDay && !isNaN(new Date(trimmed).getTime()) ? trimmed.slice(0, 10) : '';
   }
   const parsed = new Date(trimmed);
   if (isNaN(parsed.getTime())) return '';

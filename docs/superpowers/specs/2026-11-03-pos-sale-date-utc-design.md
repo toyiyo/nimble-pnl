@@ -88,9 +88,10 @@ change. The edit path of the dialog does not change.
 - **Draft on reopen.** The form now resets each time the dialog opens. A draft
   that the user cancels does not come back. Today it stays until a page reload.
 
-- **Timestamps with an offset.** Text such as `2026-11-04T03:00:00Z` uses the
-  browser day, not the restaurant day. The CSV path has no time zone today, and
-  most POS exports have no offset.
+- **Timestamps with an offset.** ISO text keeps its stated day, so
+  `2026-11-03T22:30:00-06:00` gives `2026-11-03`. The code review found that
+  the browser day gave `2026-11-02` for `2026-11-03T00:00:00Z` in Chicago. Other
+  text with an offset, such as `Nov 3 2026 22:30 GMT-0600`, uses the browser day.
 - **Page range.** The default range at `src/pages/POSSales.tsx:172-173` stays on
   the browser clock. If the restaurant is ahead of the browser, a new sale can
   fall after the range end for a short time. The user can change the range.

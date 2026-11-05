@@ -78,6 +78,25 @@ export function resultForRefresh(
 }
 
 /**
+ * Result entry for an account whose transaction fetch threw. The status is
+ * `refresh_failed` and `synced` is 0, so `shouldStampLastSyncAt` stays false
+ * when no other account succeeded.
+ */
+export function resultForFetchFailed(
+  accountId: string,
+  message?: string,
+): AccountSyncResult {
+  return {
+    accountId,
+    synced: 0,
+    status: 'refresh_failed',
+    error: message
+      ? `Transaction fetch failed for account ${accountId}: ${message}`
+      : `Transaction fetch failed for account ${accountId}`,
+  };
+}
+
+/**
  * Whether `connected_banks.last_sync_at` should be stamped for this run.
  * Only true when at least one account actually completed a successful
  * refresh+fetch (design §4.3.3: "last_sync_at = now() only when the refresh

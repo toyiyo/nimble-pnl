@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 // The Scheduling page showed the "Shift Trades" tab and its approval queue
 // to every viewer, regardless of role — a chef with only `view:scheduling`
@@ -90,6 +91,11 @@ vi.mock('@/pages/SchedulingWeeklyAvailabilityChip', () => ({
 vi.mock('@/pages/SchedulingShiftCard', () => ({
   ShiftCard: () => null,
   getShiftStatusClass: () => '',
+}));
+
+// The real section needs a QueryClientProvider that these tests lack.
+vi.mock('@/components/schedule/TradeHistorySection', () => ({
+  TradeHistorySection: () => <div data-testid="trade-history-section" />,
 }));
 
 vi.mock('@/components/schedule/TradeRequestDialog', () => ({
@@ -312,6 +318,25 @@ describe('Scheduling page — Shift Trades tab capability gate', () => {
     render(<Scheduling />);
 
     expect(screen.getByRole('tab', { name: /shift trades/i })).toBeInTheDocument();
+  });
+
+  it('shows the trade history section with edit:scheduling', async () => {
+    isResolvedMock = true;
+    hasCapabilityMock.mockImplementation((cap: string) => cap === 'edit:scheduling');
+
+    render(<Scheduling />);
+    await userEvent.click(screen.getByRole('tab', { name: /shift trades/i }));
+
+    expect(screen.getByTestId('trade-history-section')).toBeInTheDocument();
+  });
+
+  it('hides the trade history section with only view:scheduling', () => {
+    isResolvedMock = true;
+    hasCapabilityMock.mockImplementation((cap: string) => cap === 'view:scheduling');
+
+    render(<Scheduling />);
+
+    expect(screen.queryByTestId('trade-history-section')).not.toBeInTheDocument();
   });
 
   it('hides the Shift Trades tab with only view:scheduling', () => {

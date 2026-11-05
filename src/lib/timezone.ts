@@ -51,3 +51,17 @@ export function isDateInTimezone(utcDate: Date | string, localDateStr: string, t
   const localDate = formatDateInTimezone(dateObj, timezone, 'yyyy-MM-dd');
   return localDate === localDateStr;
 }
+
+/**
+ * Gets the default sale date (yyyy-MM-dd) and time (HH:mm) for a new sale.
+ * Both values come from the same zone, the restaurant timezone.
+ */
+export function getSaleDateTimeDefaults(
+  timezone: string,
+  now: Date = new Date(),
+): { saleDate: string; saleTime: string } {
+  return {
+    saleDate: formatDateInTimezone(now, timezone, 'yyyy-MM-dd'),
+    saleTime: formatDateInTimezone(now, timezone, 'HH:mm'),
+  };
+}

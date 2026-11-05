@@ -10,6 +10,7 @@ import {
   type TradeHistoryTone,
 } from '@/lib/shiftTradeHistory';
 import { formatInstant } from '@/lib/restaurantClock';
+import { AUTO_EXPIRED_NOTE } from '@/lib/shiftTradeStatus';
 import { cn } from '@/lib/utils';
 
 interface TradeHistorySectionProps {
@@ -56,6 +57,11 @@ function HistoryRow({ trade, timezone }: { trade: ShiftTradeHistoryRow; timezone
           {formatInstant(shift.end_time, timezone, 'h:mm a')}
           {shift.position ? ` · ${shift.position}` : ''}
         </p>
+        {trade.manager_note && trade.manager_note !== AUTO_EXPIRED_NOTE && (
+          <p className="break-words text-[13px] text-muted-foreground">
+            Note: {trade.manager_note}
+          </p>
+        )}
       </div>
       <div className="shrink-0 space-y-1 sm:text-right">
         <span

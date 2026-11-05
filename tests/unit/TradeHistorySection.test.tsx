@@ -96,6 +96,16 @@ describe('TradeHistorySection', () => {
     expect(screen.getByTestId('history-empty').textContent).not.toBe(first);
   });
 
+  it('shows the manager note unless it is the auto-expired marker', () => {
+    state.trades = [
+      makeRow({ id: 't1', status: 'rejected', manager_note: 'Not enough cover' }),
+      makeRow({ id: 't2', status: 'cancelled', manager_note: 'auto_expired', accepted_by: null }),
+    ];
+    renderSection();
+    expect(screen.getByText(/Not enough cover/)).toBeInTheDocument();
+    expect(screen.queryByText(/auto_expired/)).not.toBeInTheDocument();
+  });
+
   it('shows rows in the restaurant time zone', () => {
     state.trades = [makeRow()];
     renderSection();

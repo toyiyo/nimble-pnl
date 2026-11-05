@@ -408,6 +408,7 @@ use `shiftOutsideAvailability` in the browser. They stay wrong until PR 2.
 After stale tabs age out, a separate PR makes these changes:
 
 - Delete `start_time`, `end_time`, and the sync trigger.
+- Delete the function `backfill_employee_availability_local()`. It exists only for pgTAP.
 - Delete `available_start` and `available_end` from the RPC return shape.
 - Rename nothing. The local names stay.
 - Set `NOT NULL` on the local columns.

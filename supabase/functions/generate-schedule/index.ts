@@ -298,14 +298,15 @@ serve(async (req) => {
           : 1,
     }));
 
-    // ── Build availability map (TZ-converted to restaurant local) ────────────
+    // ── Build availability map. Recurring rows are already restaurant-local;
+    //    only exception rows are converted with the restaurant timezone. ─────
     const recurringLocal: LocalAvail[] = convertRecurringToLocal(
       (recurringAvailResult.data ?? []).map((r) => ({
         employee_id: r.employee_id,
         day_of_week: r.day_of_week,
         is_available: r.is_available,
-        start_time_local: r.start_time_local ?? null,
-        end_time_local: r.end_time_local ?? null,
+        start_time_local: r.start_time_local,
+        end_time_local: r.end_time_local,
       })),
     );
 

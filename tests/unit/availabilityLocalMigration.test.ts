@@ -24,7 +24,7 @@ describe('availability local time migration order', () => {
   });
 
   it('runs in one explicit transaction', () => {
-    expect(sql.trimStart().startsWith('BEGIN;') || /^BEGIN;$/m.test(sql)).toBe(true);
+    expect(/^BEGIN;$/m.test(sql)).toBe(true);
     expect(/^COMMIT;$/m.test(sql)).toBe(true);
   });
 });

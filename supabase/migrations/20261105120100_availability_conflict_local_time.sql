@@ -62,7 +62,7 @@ BEGIN
   --    (the old behaviour) instead of failing the whole conflict check. v_tz
   --    itself is reassigned (not just the locals) because it is reused in every
   --    downstream AT TIME ZONE cast below (exception window, recurring loop,
-  --    previous-day overnight carry-over) — see header note.
+  --    previous-day overnight carry-over).
   BEGIN
     v_start_local := p_start_time AT TIME ZONE v_tz;
     v_end_local   := p_end_time   AT TIME ZONE v_tz;

@@ -1,13 +1,15 @@
 /**
  * availability-tz.ts
  *
- * Pure utility: convert employee availability rows whose times are stored as
- * UTC clock values (TIME columns with no timezone metadata, written by
- * AvailabilityDialog via localTimeToUtcTime) back into restaurant-local clock
- * values for the AI prompt + validator.
+ * Pure utility: prepare employee availability rows for the AI prompt and the
+ * validator.
  *
- * Rows whose conversion crosses local midnight are split into two LocalAvail
- * rows on adjacent local days.
+ * Recurring rows already hold restaurant-local clock values in the
+ * start_time_local and end_time_local columns. A row that crosses local
+ * midnight becomes two LocalAvail rows on adjacent local days.
+ *
+ * Exception rows still hold UTC clock values. Convert them to restaurant-local
+ * values with the restaurant timezone.
  */
 import { toZonedTime } from "date-fns-tz";
 
@@ -146,53 +148,37 @@ function addDays(date: string, days: number): string {
   return `${base.getUTCFullYear()}-${pad2(base.getUTCMonth() + 1)}-${pad2(base.getUTCDate())}`;
 }
 
+const END_OF_DAY = "24:00:00";
+
+function localWindow(
+  employee_id: string,
+  day_of_week: number,
+  start_time: string | null,
+  end_time: string | null,
+  is_available = true,
+): LocalAvail {
+  return { employee_id, day_of_week, is_available, start_time, end_time, isOvernight: false };
+}
+
 export function convertRecurringToLocal(rows: RawRecurringAvail[]): LocalAvail[] {
   const out: LocalAvail[] = [];
   for (const row of rows) {
     const { employee_id, day_of_week: dow, is_available } = row;
-    if (!is_available) {
-      out.push({
-        employee_id,
-        day_of_week: dow,
-        is_available,
-        start_time: row.start_time_local,
-        end_time: row.end_time_local,
-        isOvernight: false,
-      });
-      continue;
-    }
     const start = row.start_time_local;
     const end = row.end_time_local;
+    if (!is_available) {
+      out.push(localWindow(employee_id, dow, start, end, is_available));
+      continue;
+    }
     if (start === null || end === null) continue;
     const endIsMidnight = timeToMinutes(end) === 0;
     if (endIsMidnight || timeToMinutes(end) > timeToMinutes(start)) {
-      out.push({
-        employee_id,
-        day_of_week: dow,
-        is_available: true,
-        start_time: start,
-        end_time: endIsMidnight ? "24:00:00" : end,
-        isOvernight: false,
-      });
+      out.push(localWindow(employee_id, dow, start, endIsMidnight ? END_OF_DAY : end));
       continue;
     }
     out.push(
-      {
-        employee_id,
-        day_of_week: dow,
-        is_available: true,
-        start_time: start,
-        end_time: "24:00:00",
-        isOvernight: false,
-      },
-      {
-        employee_id,
-        day_of_week: (dow + 1) % 7,
-        is_available: true,
-        start_time: "00:00:00",
-        end_time: end,
-        isOvernight: false,
-      },
+      localWindow(employee_id, dow, start, END_OF_DAY),
+      localWindow(employee_id, (dow + 1) % 7, "00:00:00", end),
     );
   }
   return out;

@@ -70,7 +70,7 @@ ORDER BY ea.restaurant_id, ea.updated_at;
 
 -- Query 4: rows with an anchor on the day of a time change,
 -- and rows in a restaurant with an invalid or null timezone.
--- A time change day has a different noon offset on the next local day.
+-- A time change day has a different noon offset than the previous local day.
 SELECT
   ea.id,
   ea.restaurant_id,
@@ -88,6 +88,6 @@ WHERE tz.name IS NULL
    OR (
      (d.noon - ((d.noon AT TIME ZONE tz.name) AT TIME ZONE 'UTC'))
      IS DISTINCT FROM
-     ((d.noon + INTERVAL '1 day') - (((d.noon + INTERVAL '1 day') AT TIME ZONE tz.name) AT TIME ZONE 'UTC'))
+     ((d.noon - INTERVAL '1 day') - (((d.noon - INTERVAL '1 day') AT TIME ZONE tz.name) AT TIME ZONE 'UTC'))
    )
 ORDER BY reason, ea.restaurant_id, anchor;

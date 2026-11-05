@@ -53,14 +53,15 @@ export async function authLock<R>(
 
   const scheduleLimit = () => {
     if (finished) return;
-    timer = setTimeout(onLimit, BASE_WAIT_MS + Math.random() * JITTER_MS);
+    // NOSONAR: the random value only spreads the tabs over time. It is not a security value.
+    timer = setTimeout(onLimit, BASE_WAIT_MS + Math.random() * JITTER_MS); // NOSONAR
   };
 
   const onLimit = async () => {
-    if (finished || work) return;
+    if (finished || work !== undefined) return;
     const previous: Holder = await lastHolder;
     const current: Holder = await readHolder(locks, name);
-    if (finished || work) return;
+    if (finished || work !== undefined) return;
     const progressed =
       current !== QUERY_FAILED && previous !== QUERY_FAILED && current !== previous;
     // A free lock means a grant is next. A changed holder means the lock moves.
@@ -79,7 +80,7 @@ export async function authLock<R>(
     try {
       return await locks.request(name, { mode: 'exclusive', signal: controller.signal }, run);
     } catch (error) {
-      if (work) return work; // The lock was stolen, or fn rejected.
+      if (work !== undefined) return work; // The lock was stolen, or fn rejected.
       if (!isAbortError(error)) throw error;
     }
     console.warn(
@@ -88,7 +89,7 @@ export async function authLock<R>(
     try {
       return await locks.request(name, { mode: 'exclusive', steal: true }, run);
     } catch (error) {
-      if (work) return work;
+      if (work !== undefined) return work;
       throw error;
     }
   } finally {

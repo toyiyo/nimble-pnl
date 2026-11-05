@@ -68,6 +68,35 @@ export function getSaleDateTimeDefaults(
 }
 
 /**
+ * Gives the end date of a default date range for the restaurant day.
+ * An end date that differs from the default is a user choice, so it stays.
+ */
+export function alignDefaultEndDate(
+  currentEnd: string,
+  defaultEnd: string,
+  timezone: string,
+  now: Date = new Date(),
+): string {
+  return currentEnd === defaultEnd ? getSaleDateTimeDefaults(timezone, now).saleDate : currentEnd;
+}
+
+// Group 1 is the date text. Group 2 is its day of the month.
+const NON_ISO_DATE_PATTERNS = [
+  /^(\d{1,2}[/-](\d{1,2})[/-]\d{2,4})\b/,
+  /^([a-z]+\.?\s+(\d{1,2}),?\s+\d{4})\b/i,
+  /^((\d{1,2})\s+[a-z]+\.?,?\s+\d{4})\b/i,
+];
+
+/** Date parsers roll 02/31 over to March, so the parsed day differs from the stated day. */
+function hasRolledOverDay(text: string): boolean {
+  for (const pattern of NON_ISO_DATE_PATTERNS) {
+    const match = pattern.exec(text);
+    if (match) return new Date(match[1]).getDate() !== Number(match[2]);
+  }
+  return false;
+}
+
+/**
  * Converts imported date text to a YYYY-MM-DD sale day.
  * ISO text keeps its stated day, also with a time, Z, or an offset.
  * An impossible day gives ''. Other text uses the local fields of the
@@ -87,6 +116,6 @@ export function toImportedSaleDate(text: string | null | undefined): string {
     return isRealDay && !isNaN(new Date(trimmed).getTime()) ? trimmed.slice(0, 10) : '';
   }
   const parsed = new Date(trimmed);
-  if (isNaN(parsed.getTime())) return '';
+  if (isNaN(parsed.getTime()) || hasRolledOverDay(trimmed)) return '';
   return toDateOnlyString(parsed);
 }

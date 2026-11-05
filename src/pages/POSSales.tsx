@@ -50,6 +50,7 @@ import { useBulkCategorizePosSales } from "@/hooks/useBulkPosSaleActions";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { safeTz } from "@/lib/restaurantClock";
+import { alignDefaultEndDate } from "@/lib/timezone";
 
 // Lowercase, singular-tab labels for the active Status filter — used to make
 // the results header and empty state name the active tab (e.g. "203
@@ -191,6 +192,13 @@ export default function POSSales() {
       setEndDate(parsed.endDate);
     }
   }, [searchParams]);
+  // The default range starts from the browser day. New sales use the restaurant
+  // day, so move the default end date there or the list can omit a new sale.
+  const rangeTimezone = selectedRestaurant ? safeTz(selectedRestaurant.restaurant?.timezone) : null;
+  useEffect(() => {
+    if (!rangeTimezone || parseDateRangeFromSearchParams(searchParams)) return;
+    setEndDate((current) => alignDefaultEndDate(current, initialDateRange.endDate, rangeTimezone));
+  }, [rangeTimezone, searchParams, initialDateRange.endDate]);
   // Sales trends panel: expanded by default on lg+ screens, collapsed on
   // mobile — an expanded stack of charts would push the sales list far
   // below the fold on small viewports (design doc §4.2).

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractDateFromFilename } from '@/utils/filenameDateExtraction';
+import { extractDateFromFilename, applyFilenameDate } from '@/utils/filenameDateExtraction';
 
 describe('Filename Date Extraction', () => {
   describe('ISO date format (YYYY-MM-DD)', () => {
@@ -79,5 +79,25 @@ describe('Filename Date Extraction', () => {
       expect(result?.date.getFullYear()).toBe(2024);
       expect(result?.date.getMonth()).toBe(11); // December = 11
     });
+  });
+});
+
+describe('applyFilenameDate', () => {
+  it('sets the filename date on a row with no date', () => {
+    const sales = [{ saleDate: '' }];
+    applyFilenameDate(sales, '2026-11-03');
+    expect(sales[0].saleDate).toBe('2026-11-03');
+  });
+
+  it('keeps the date of a row that has one', () => {
+    const sales = [{ saleDate: '2026-11-01' }];
+    applyFilenameDate(sales, '2026-11-03');
+    expect(sales[0].saleDate).toBe('2026-11-01');
+  });
+
+  it('leaves a row with an invalid source date empty', () => {
+    const sales = [{ saleDate: '', hasInvalidSaleDate: true }];
+    applyFilenameDate(sales, '2026-11-03');
+    expect(sales[0].saleDate).toBe('');
   });
 });

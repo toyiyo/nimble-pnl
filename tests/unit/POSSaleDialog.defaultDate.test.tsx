@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import React from 'react';
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { POSSaleDialog } from '@/components/POSSaleDialog';
 
 vi.mock('@/hooks/useUnifiedSales', () => ({
@@ -61,5 +62,36 @@ describe('POSSaleDialog default sale date', () => {
     vi.setSystemTime(new Date('2026-11-04T15:00:00Z'));
     rerender(renderDialog(true, 'America/New_York'));
     expect(dateInput().value).toBe('2026-11-04');
+  });
+});
+
+describe('POSSaleDialog cancelled draft', () => {
+  function input(name: string): HTMLInputElement {
+    return document.querySelector(`input[name="${name}"]`) as HTMLInputElement;
+  }
+
+  it('clears the item, price, adjustment, and search when the dialog opens again', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(renderDialog(true, 'America/New_York'));
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByPlaceholderText('Search items...'), 'Burger');
+    await user.click(screen.getAllByText(/Burger/, { selector: 'strong' })[0]);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Burger');
+    fireEvent.change(input('totalPrice'), { target: { value: '12.5' } });
+    fireEvent.change(input('taxAmount'), { target: { value: '1.25' } });
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByPlaceholderText('Search items...'), 'Fries');
+    await user.keyboard('{Escape}');
+
+    rerender(renderDialog(false, 'America/New_York'));
+    rerender(renderDialog(true, 'America/New_York'));
+
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('Burger');
+    expect(input('totalPrice').value).toBe('');
+    expect(input('taxAmount').value).toBe('');
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByPlaceholderText('Search items...')).toHaveValue('');
   });
 });

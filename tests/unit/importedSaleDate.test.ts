@@ -42,4 +42,23 @@ describe('toImportedSaleDate', () => {
     expect(toImportedSaleDate('not a date')).toBe('');
     expect(toImportedSaleDate('')).toBe('');
   });
+
+  it('gives an empty string for null and undefined', () => {
+    expect(toImportedSaleDate(null)).toBe('');
+    expect(toImportedSaleDate(undefined)).toBe('');
+  });
+
+  it('gives an empty string for impossible non-ISO days', () => {
+    expect(toImportedSaleDate('02/31/2026')).toBe('');
+    expect(toImportedSaleDate('02-31-2026')).toBe('');
+    expect(toImportedSaleDate('Feb 31, 2026')).toBe('');
+    expect(toImportedSaleDate('31 Feb 2026')).toBe('');
+  });
+
+  it('keeps real non-ISO days', () => {
+    expect(toImportedSaleDate('02/28/2026')).toBe('2026-02-28');
+    expect(toImportedSaleDate('2/8/2026 10:30 PM')).toBe('2026-02-08');
+    expect(toImportedSaleDate('Feb 28, 2026')).toBe('2026-02-28');
+    expect(toImportedSaleDate('28 Feb 2026')).toBe('2026-02-28');
+  });
 });

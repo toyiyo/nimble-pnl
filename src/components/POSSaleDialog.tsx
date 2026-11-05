@@ -112,6 +112,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   // Reset on open so a default from mount time does not go stale past midnight.
   React.useEffect(() => {
     if (!open) return;
+    setSearchQuery('');
     if (editingSale) {
       form.reset({
         itemName: editingSale.itemName,

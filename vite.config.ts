@@ -3,6 +3,17 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+const VENDOR_CHUNKS: Record<string, string[]> = {
+  // Split vendor chunks to reduce memory usage during build
+  'react-vendor': ['react/', 'react-dom/', 'react-router-dom/'],
+  'ui-vendor': ['@radix-ui/react-dialog/', '@radix-ui/react-dropdown-menu/', '@radix-ui/react-select/'],
+  'chart-vendor': ['recharts/'],
+  // Deduplicate large libraries that were being bundled multiple times
+  // Match the entry only, so that the lazy diagram modules stay in their own chunks
+  'mermaid': ['mermaid/dist/mermaid.core.mjs'],
+  'date-fns': ['date-fns/'],
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
   const plugins: PluginOption[] = [react()];
@@ -64,14 +75,11 @@ export default defineConfig(async ({ mode }) => {
       sourcemap: enableSourceMaps,
       rollupOptions: {
         output: {
-          manualChunks: {
-            // Split vendor chunks to reduce memory usage during build
-            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-            'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
-            'chart-vendor': ['recharts'],
-            // Deduplicate large libraries that were being bundled multiple times
-            'mermaid': ['mermaid'],
-            'date-fns': ['date-fns'],
+          // Rolldown (Vite 8) accepts manualChunks only as a function.
+          manualChunks(id: string) {
+            return Object.keys(VENDOR_CHUNKS).find((chunk) =>
+              VENDOR_CHUNKS[chunk].some((pkg) => id.includes(`/node_modules/${pkg}`)),
+            );
           },
         },
       },

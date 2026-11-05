@@ -35,7 +35,7 @@ test.describe('Time Punch Upload', () => {
 
 
     const employeeButton = page.getByRole('button', { name: /Lopez/i }).first();
-    const importedBadge = page.locator('div[data-component-name="Badge"]', { hasText: 'Imported' }).first();
+    const importedBadge = page.getByText('Imported', { exact: true }).first();
     await employeeButton.click();
     await importedBadge.scrollIntoViewIfNeeded();
     await expect(importedBadge).toBeVisible({ timeout: 10000 });

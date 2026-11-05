@@ -7,10 +7,13 @@
 
 /** Projection for the page read of bank rows. Aliases avoid the real columns. */
 export const BANK_ROW_MATCH_SELECT =
-  'id, stripe_transaction_id, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description';
+  'id, stripe_transaction_id, status, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description';
 
 /** Maximum re-keys (rows and tombstones together) for one run. */
 export const MAX_REKEYS_PER_RUN = 500;
+
+/** Prefix of a Stripe Financial Connections transaction ID. */
+export const STRIPE_TXN_ID_PREFIX = 'fctxn_';
 
 export interface StripeTxn {
   id: string;
@@ -24,6 +27,7 @@ export interface StripeTxn {
 export interface BankRowMatch {
   id: string;
   stripe_transaction_id: string;
+  status?: string | null;
   created_at: string;
   ta: string | number | null;
   amt: string | number | null;
@@ -43,10 +47,16 @@ export interface TombstoneMatch {
 export type StoreDecision =
   | { kind: 'skip_existing'; txn: StripeTxn }
   | { kind: 'skip_tombstoned'; txn: StripeTxn }
-  | { kind: 'rekey_row'; txn: StripeTxn; rowId: string; previousStripeId: string }
-  | { kind: 'rekey_tombstone'; txn: StripeTxn; tombstoneId: string }
+  | { kind: 'rekey_row'; txn: StripeTxn; rowId: string; previousStripeId: string; previousStatus: string | null }
+  | { kind: 'rekey_tombstone'; txn: StripeTxn; tombstoneId: string; previousExternalId: string }
   | { kind: 'defer_rekey'; txn: StripeTxn }
   | { kind: 'insert'; txn: StripeTxn };
+
+function compareStrings(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
 
 function toNumber(v: string | number | null | undefined): number | null {
   if (v === null || v === undefined || v === '') return null;
@@ -118,8 +128,8 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
 
   // Orphan rows, oldest first, grouped by key.
   const rowPools = new Map<string, BankRowMatch[]>();
-  const sortedRows = [...rows].sort((a, b) =>
-    a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  const sortedRows = [...rows].sort(
+    (a, b) => compareStrings(a.created_at, b.created_at) || compareStrings(a.id, b.id),
   );
   for (const r of sortedRows) {
     if (stripeIds.has(r.stripe_transaction_id)) continue;
@@ -132,10 +142,10 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
 
   // Orphan tombstones, grouped by key.
   const tombPools = new Map<string, TombstoneMatch[]>();
-  const sortedTombs = [...tombstones].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const sortedTombs = [...tombstones].sort((a, b) => compareStrings(a.id, b.id));
   for (const t of sortedTombs) {
     const ext = t.external_transaction_id;
-    if (!ext || !ext.startsWith('fctxn_')) continue;
+    if (!ext || !ext.startsWith(STRIPE_TXN_ID_PREFIX)) continue;
     if (t.source !== 'bank_integration' || t.connected_bank_id !== bankId) continue;
     if (stripeIds.has(ext)) continue;
     const k = tombstoneKey(t.transaction_date, t.amount, t.description);
@@ -172,17 +182,25 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
       continue;
     }
     rekeys++;
-    if (hasRow) {
-      const r = rowPool!.shift()!;
+    const r = hasRow ? rowPool?.shift() : undefined;
+    const t = !r && hasTomb ? tombPool?.shift() : undefined;
+    if (r) {
       decisions.push({
         kind: 'rekey_row',
         txn,
         rowId: r.id,
         previousStripeId: r.stripe_transaction_id,
+        previousStatus: r.status ?? null,
+      });
+    } else if (t && t.external_transaction_id) {
+      decisions.push({
+        kind: 'rekey_tombstone',
+        txn,
+        tombstoneId: t.id,
+        previousExternalId: t.external_transaction_id,
       });
     } else {
-      const t = tombPool!.shift()!;
-      decisions.push({ kind: 'rekey_tombstone', txn, tombstoneId: t.id });
+      decisions.push({ kind: 'insert', txn });
     }
   }
   return decisions;

@@ -82,17 +82,14 @@ export function resultForRefresh(
  * `refresh_failed` and `synced` is 0, so `shouldStampLastSyncAt` stays false
  * when no other account succeeded.
  */
-export function resultForFetchFailed(
-  accountId: string,
-  message?: string,
-): AccountSyncResult {
+export function resultForFetchFailed(accountId: string): AccountSyncResult {
+  // The error text is stored in `connected_banks.sync_error` and shown to
+  // users. Keep Stripe error text out of it. The caller logs the detail.
   return {
     accountId,
     synced: 0,
     status: 'refresh_failed',
-    error: message
-      ? `Transaction fetch failed for account ${accountId}: ${message}`
-      : `Transaction fetch failed for account ${accountId}`,
+    error: `Transaction fetch failed for account ${accountId}`,
   };
 }
 

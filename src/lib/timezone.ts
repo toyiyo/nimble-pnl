@@ -113,9 +113,9 @@ export function toImportedSaleDate(text: string | null | undefined): string {
       check.getUTCFullYear() === year &&
       check.getUTCMonth() === month - 1 &&
       check.getUTCDate() === day;
-    return isRealDay && !isNaN(new Date(trimmed).getTime()) ? trimmed.slice(0, 10) : '';
+    return isRealDay && !Number.isNaN(new Date(trimmed).getTime()) ? trimmed.slice(0, 10) : '';
   }
   const parsed = new Date(trimmed);
-  if (isNaN(parsed.getTime()) || hasRolledOverDay(trimmed)) return '';
+  if (Number.isNaN(parsed.getTime()) || hasRolledOverDay(trimmed)) return '';
   return toDateOnlyString(parsed);
 }

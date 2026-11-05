@@ -16,9 +16,9 @@ export interface RawRecurringAvail {
   /** 0=Sun..6=Sat in the user's restaurant-local calendar */
   day_of_week: number;
   is_available: boolean;
-  /** UTC clock time HH:MM:SS, or null when "all day" / unavailable */
-  start_time: string | null;
-  end_time: string | null;
+  /** Restaurant-local clock time HH:MM:SS, or null when unavailable */
+  start_time_local: string | null;
+  end_time_local: string | null;
 }
 
 export interface RawExceptionAvail {
@@ -45,20 +45,6 @@ function pad2(n: number): string {
 
 function formatTime(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
-
-/**
- * Compute the YYYY-MM-DD for the given `dayOfWeek` (0=Sun..6=Sat) within the
- * calendar week that contains `weekStart`. `weekStart` may be any day of that
- * week; this function finds the Sunday of the week first, then adds `dayOfWeek`.
- */
-function dateForDayOfWeek(weekStart: string, dayOfWeek: number): string {
-  const [y, m, d] = weekStart.split("-").map(Number);
-  const base = new Date(y, m - 1, d);
-  // Step back to Sunday of the same week, then forward to the target day.
-  const sundayOffset = base.getDay();
-  base.setDate(base.getDate() - sundayOffset + dayOfWeek);
-  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}`;
 }
 
 interface LocalPoint {
@@ -160,24 +146,53 @@ function addDays(date: string, days: number): string {
   return `${base.getUTCFullYear()}-${pad2(base.getUTCMonth() + 1)}-${pad2(base.getUTCDate())}`;
 }
 
-export function convertRecurringToLocal(
-  rows: RawRecurringAvail[],
-  restaurantTimezone: string,
-  weekStart: string,
-): LocalAvail[] {
+export function convertRecurringToLocal(rows: RawRecurringAvail[]): LocalAvail[] {
   const out: LocalAvail[] = [];
   for (const row of rows) {
-    const refDate = dateForDayOfWeek(weekStart, row.day_of_week);
+    const { employee_id, day_of_week: dow, is_available } = row;
+    if (!is_available) {
+      out.push({
+        employee_id,
+        day_of_week: dow,
+        is_available,
+        start_time: row.start_time_local,
+        end_time: row.end_time_local,
+        isOvernight: false,
+      });
+      continue;
+    }
+    const start = row.start_time_local;
+    const end = row.end_time_local;
+    if (start === null || end === null) continue;
+    const endIsMidnight = timeToMinutes(end) === 0;
+    if (endIsMidnight || timeToMinutes(end) > timeToMinutes(start)) {
+      out.push({
+        employee_id,
+        day_of_week: dow,
+        is_available: true,
+        start_time: start,
+        end_time: endIsMidnight ? "24:00:00" : end,
+        isOvernight: false,
+      });
+      continue;
+    }
     out.push(
-      ...convertOne(
-        row.employee_id,
-        refDate,
-        row.day_of_week,
-        row.is_available,
-        row.start_time,
-        row.end_time,
-        restaurantTimezone,
-      ),
+      {
+        employee_id,
+        day_of_week: dow,
+        is_available: true,
+        start_time: start,
+        end_time: "24:00:00",
+        isOvernight: false,
+      },
+      {
+        employee_id,
+        day_of_week: (dow + 1) % 7,
+        is_available: true,
+        start_time: "00:00:00",
+        end_time: end,
+        isOvernight: false,
+      },
     );
   }
   return out;

@@ -153,7 +153,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     return date.getFullYear() === y && date.getMonth() === m && date.getDate() === d;
   };
 
-  const isoPattern = /(\d{4})[-_.\/](\d{1,2})[-_.\/](\d{1,2})/;
+  const isoPattern = /(\d{4})[-_./](\d{1,2})[-_./](\d{1,2})/;
   const isoMatch = nameWithoutExt.match(isoPattern);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
@@ -165,7 +165,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     }
   }
 
-  const usPattern = /(\d{1,2})[-_.\/](\d{1,2})[-_.\/](\d{4})/;
+  const usPattern = /(\d{1,2})[-_./](\d{1,2})[-_./](\d{4})/;
   const usMatch = nameWithoutExt.match(usPattern);
   if (usMatch) {
     const [, month, day, year] = usMatch;

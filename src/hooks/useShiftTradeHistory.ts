@@ -51,9 +51,8 @@ async function fetchReviewerNames(ids: string[]): Promise<Map<string, string> | 
       user_ids: ids,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })) as any as { data: ReviewerRow[] | null; error: unknown };
-  } catch (error) {
-    console.error('Failed to load trade reviewer names', error);
-    return null;
+  } catch (thrown) {
+    result = { data: null, error: thrown };
   }
   const { data, error } = result;
   if (error) {

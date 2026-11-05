@@ -232,6 +232,7 @@ describe('useShiftTradeHistory', () => {
     rerender({ f: 'rejected' });
     expect(result.current.trades).toHaveLength(0);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(calls).toContainEqual({ method: 'eq', args: ['status', 'rejected'] });
   });
 
   it('surfaces a query error', async () => {

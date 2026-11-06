@@ -51,8 +51,8 @@ async function fetchReviewerNames(ids: string[]): Promise<Map<string, string> | 
       user_ids: ids,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })) as any as { data: ReviewerRow[] | null; error: unknown };
-  } catch (thrown) {
-    result = { data: null, error: thrown };
+  } catch (error_) {
+    result = { data: null, error: error_ };
   }
   const { data, error } = result;
   if (error) {

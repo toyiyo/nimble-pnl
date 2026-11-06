@@ -38,7 +38,10 @@ const TONE_CLASSES: Record<TradeHistoryTone, string> = {
   muted: 'bg-muted text-muted-foreground',
 };
 
-function HistoryRow({ trade, timezone }: { trade: ShiftTradeHistoryRow; timezone: string }) {
+function HistoryRow({
+  trade,
+  timezone,
+}: Readonly<{ trade: ShiftTradeHistoryRow; timezone: string }>) {
   const outcome = getTradeHistoryOutcome(trade, trade.reviewer_name);
   const { giver, taker } = getTradeHistoryParties(trade);
   const shift = trade.offered_shift;

@@ -1,5 +1,7 @@
 import { quoteForOrFilter } from '@/lib/utils';
 
+// Accepted forms: optional sign before or after an optional $ (not both),
+// a whole part with or without thousands commas, and up to 2 decimals.
 const AMOUNT_PATTERN = /^(-?)\$?(-?)((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)?)(?:\.([0-9]{1,2}))?$/;
 
 /**
@@ -31,6 +33,7 @@ export function buildBankSearchFilter(text: string): string {
   const amount = parseSearchAmount(text);
   if (amount !== null) {
     conditions.push(`amount.eq.${amount}`);
+    // A zero amount has no negative twin, so skip the negative condition.
     if (!/^[0.]+$/.test(amount)) conditions.push(`amount.eq.-${amount}`);
   }
   return conditions.join(',');

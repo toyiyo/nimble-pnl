@@ -1,10 +1,10 @@
-import { buildBankSearchFilter } from '@/lib/bankTransactionSearch';
 import React, { ReactNode } from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useBankTransactions, useCategorizeTransaction } from '@/hooks/useBankTransactions';
 import type { TransactionFilters } from '@/types/transactions';
+import { buildBankSearchFilter } from '@/lib/bankTransactionSearch';
 
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
@@ -392,6 +392,35 @@ describe('useBankTransactions (paginated)', () => {
 
     mockRestaurantContext.selectedRestaurant = { restaurant_id: 'rest-123' }; // restore for other tests
   });
+
+  it('quotes a search term that contains a comma and matches the amount', async () => {
+    const accountBalanceBuilder = createAccountBalanceBuilder({
+      data: { stripe_financial_account_id: 'fca_stripe_123' },
+      error: null,
+    });
+    const transactionBuilder = createQueryBuilder([], 0);
+    mockSupabase.from.mockImplementation((tableName: string) =>
+      tableName === 'bank_account_balances' ? accountBalanceBuilder : transactionBuilder
+    );
+
+    const { result } = renderHook(
+      () =>
+        useBankTransactions('for_review', {
+          searchTerm: '$1,260.05',
+          filters: {},
+          sortBy: 'date',
+          sortDirection: 'desc',
+          pageSize: 2,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(transactionBuilder.or).toHaveBeenCalledWith(
+      'description.ilike."%$1,260.05%",merchant_name.ilike."%$1,260.05%",normalized_payee.ilike."%$1,260.05%",amount.eq.1260.05,amount.eq.-1260.05'
+    );
+  });
 });
 
 type UpdateResult = { error: { message: string } | null };
@@ -469,36 +498,5 @@ describe('useCategorizeTransaction', () => {
         result.current.mutateAsync({ transactionId: 'txn-1', categoryId: 'cat-1' })
       ).rejects.toThrow();
     });
-  });
-
-  it('quotes a search term that contains a comma and matches the amount', async () => {
-    const accountBalanceBuilder = createAccountBalanceBuilder({
-      data: { stripe_financial_account_id: 'fca_stripe_123' },
-      error: null,
-    });
-    const transactionBuilder = createQueryBuilder([], 0);
-    mockSupabase.from.mockImplementation((tableName: string) =>
-      tableName === 'bank_account_balances' ? accountBalanceBuilder : transactionBuilder
-    );
-
-    const { result } = renderHook(
-      () =>
-        useBankTransactions('for_review', {
-          searchTerm: '$1,260.05',
-          filters: {},
-          sortBy: 'date',
-          sortDirection: 'desc',
-          pageSize: 2,
-        }),
-      { wrapper: createWrapper() }
-    );
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    const filter = buildBankSearchFilter('$1,260.05');
-    expect(filter).toContain('description.ilike."%$1,260.05%"');
-    expect(filter).toContain('amount.eq.1260.05');
-    expect(filter).toContain('amount.eq.-1260.05');
-    expect(transactionBuilder.or).toHaveBeenCalledWith(filter);
   });
 });

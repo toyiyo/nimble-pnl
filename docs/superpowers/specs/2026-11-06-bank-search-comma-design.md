@@ -33,6 +33,10 @@ Local PostgREST returned these results:
 | `(description.ilike.%$1,260.05%,merchant_name.ilike.%$1,260.05%)` | `400`, `PGRST100` |
 | `(description.ilike."%$1,260.05%",merchant_name.ilike."%$1,260.05%")` | `200` |
 | `(description.ilike."%a\"b\\c(d)%")` | `200` |
+| `(description.ilike."%a%",amount.eq.1260.05,amount.eq.-1260.05)` | `200` |
+
+The anon role returns no rows because of RLS. These results prove the parse
+only. They do not prove a row match.
 
 ## Goals
 
@@ -61,7 +65,18 @@ description that contains `$1,260.05`.
 ### `src/lib/bankTransactionSearch.ts` (new)
 
 `parseSearchAmount(text: string): string | null` returns the absolute amount as
-a canonical decimal string, or `null` if the text is not an amount.
+a decimal string, or `null` if the text is not an amount.
+
+The accepted form is strict:
+
+- One optional `-`, before or after one optional `$`.
+- A whole part: ASCII digits, or groups of three digits with commas.
+- An optional `.` with one or two ASCII digits. The whole part can be empty
+  only when this part exists.
+- No spaces inside the text.
+
+Use `[0-9]` in the regular expression, not `\d`. The function deletes the
+commas and adds a leading `0` when the whole part is empty.
 
 | Input | Output |
 |---|---|
@@ -69,11 +84,32 @@ a canonical decimal string, or `null` if the text is not an amount.
 | `1260.05` | `1260.05` |
 | `-$1,260.05` | `1260.05` |
 | `$-50` | `50` |
-| `.5` | `.5` |
+| `.5` | `0.5` |
+| `-.5` | `0.5` |
+| `1,260` | `1260` |
+| `1,260.5` | `1260.5` |
+| `007` | `007` |
+| `0.00` | `0.00` |
 | `1,26` | `null` |
+| `1,2603` | `null` |
+| `12,34,567` | `null` |
+| `1260.` | `null` |
 | `1260.055` | `null` |
+| `1.260,05` | `null` |
+| `+5` | `null` |
+| `--5` | `null` |
+| `5-` | `null` |
+| `-` | `null` |
+| `.` | `null` |
+| `$.` | `null` |
+| `($50.00)` | `null` |
+| `$ 50` | `null` |
+| `1e5` | `null` |
+| `NaN` | `null` |
+| `USD 50` | `null` |
 | `coffee` | `null` |
 | `$` | `null` |
+| `１２` (full-width digits) | `null` |
 
 The function returns a string and not a number. This keeps the exact digits, so
 float conversion cannot change the value. `amount` is `NUMERIC(15, 2)`
@@ -81,10 +117,11 @@ float conversion cannot change the value. `amount` is `NUMERIC(15, 2)`
 
 `buildBankSearchFilter(text: string): string` returns the full `.or()` string.
 It quotes the three text conditions. If `parseSearchAmount` returns a value, it
-adds `amount.eq.<value>` and `amount.eq.-<value>`.
+adds `amount.eq.<value>` and `amount.eq.-<value>`. If the value is zero, it adds
+`amount.eq.<value>` only.
 
-Both signs are necessary because `applyAmountFilters` treats debits as negative
-(`src/hooks/useBankTransactions.tsx:197-199`).
+Both signs are necessary because debits are negative and credits are positive
+(`src/hooks/useBankTransactions.tsx:212-213`).
 
 `applySearchFilter` calls `buildBankSearchFilter`.
 
@@ -97,9 +134,12 @@ no amount match.
 
 - A bare number such as `2024` also matches an amount of `2024.00`. The match
   is exact, so the search adds few rows. The user chose to match amounts.
-- `%` and `_` stay LIKE wildcards. This behavior does not change.
-- A value with more than 13 whole digits exceeds the column range. The
-  comparison returns no row, and no error occurs.
+- `%`, `_`, and `*` stay wildcards. PostgREST changes `*` to `%` in `ilike`
+  values. A `\` stays a LIKE escape character. This behavior does not change.
+- A value beyond the column range returns no row and no error. Local PostgREST
+  returned `200` for `amount.eq.99999999999999999999`.
+- `($50.00)` is not an amount in this change. The search still checks it as
+  text.
 
 ## Tests
 

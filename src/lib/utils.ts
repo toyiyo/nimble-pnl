@@ -31,6 +31,18 @@ export function sanitizeForOrFilter(input: string): string {
 }
 
 /**
+ * Quote a value for use inside a Supabase .or() filter.
+ * Escape backslash and double quote, then wrap the value in double quotes.
+ * A quoted value keeps commas and parentheses as plain text.
+ *
+ * @param value - The user-provided string to quote
+ * @returns The quoted value
+ */
+export function quoteForOrFilter(value: string): string {
+  return `"${value.replace(/\\/g, String.raw`\\`).replace(/"/g, String.raw`\"`)}"`;
+}
+
+/**
  * Format a time string (HH:MM:SS) to display format (HH:MM)
  * @param time - Time string in HH:MM:SS or HH:MM format
  * @returns Time string in HH:MM format

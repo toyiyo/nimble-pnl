@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useBankTransactions, useCategorizeTransaction } from '@/hooks/useBankTransactions';
 import type { TransactionFilters } from '@/types/transactions';
-import { buildBankSearchFilter } from '@/lib/bankTransactionSearch';
 
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),

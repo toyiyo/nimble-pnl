@@ -30,6 +30,9 @@ export function sanitizeForOrFilter(input: string): string {
     .replace(/"/g, '');
 }
 
+const ESCAPED_BACKSLASH = String.raw`\\`;
+const ESCAPED_QUOTE = String.raw`\"`;
+
 /**
  * Quote a value for use inside a Supabase .or() filter.
  * Escape backslash and double quote, then wrap the value in double quotes.
@@ -39,7 +42,8 @@ export function sanitizeForOrFilter(input: string): string {
  * @returns The quoted value
  */
 export function quoteForOrFilter(value: string): string {
-  return `"${value.replace(/\\/g, String.raw`\\`).replace(/"/g, String.raw`\"`)}"`;
+  const escaped = value.replace(/\\/g, ESCAPED_BACKSLASH).replace(/"/g, ESCAPED_QUOTE);
+  return `"${escaped}"`;
 }
 
 /**

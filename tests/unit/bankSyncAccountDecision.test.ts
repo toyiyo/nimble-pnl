@@ -4,6 +4,7 @@ import {
   resultForNeedsReauth,
   resultForSubscribing,
   resultForRefresh,
+  resultForFetchFailed,
   shouldStampLastSyncAt,
   computeDataCurrentThrough,
 } from '../../supabase/functions/_shared/bankSyncAccountDecision';
@@ -156,5 +157,19 @@ describe('computeDataCurrentThrough', () => {
     expect(
       computeDataCurrentThrough([null, '2026-07-01T00:00:00.000Z', undefined]),
     ).toBe('2026-07-01T00:00:00.000Z');
+  });
+});
+
+describe('resultForFetchFailed', () => {
+  it('reports refresh_failed with synced 0 and an error message', () => {
+    const result = resultForFetchFailed('fca_789');
+    expect(result.accountId).toBe('fca_789');
+    expect(result.status).toBe('refresh_failed');
+    expect(result.synced).toBe(0);
+    expect(result.error).toBe('Transaction fetch failed for account fca_789');
+  });
+
+  it('does not stamp last_sync_at', () => {
+    expect(shouldStampLastSyncAt([resultForFetchFailed('fca_789')])).toBe(false);
   });
 });

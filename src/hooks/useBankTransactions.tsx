@@ -1,3 +1,4 @@
+import { buildBankSearchFilter } from '@/lib/bankTransactionSearch';
 import { useCallback, useEffect, useMemo } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -182,9 +183,7 @@ const applyStatusFilter = (query: SupabaseQuery, status?: TransactionStatus) => 
 
 const applySearchFilter = (query: SupabaseQuery, normalizedSearch: string) => {
   if (!normalizedSearch) return query;
-  return query.or(
-    `description.ilike.%${normalizedSearch}%,merchant_name.ilike.%${normalizedSearch}%,normalized_payee.ilike.%${normalizedSearch}%`
-  );
+  return query.or(buildBankSearchFilter(normalizedSearch));
 };
 
 const applyDateFilters = (query: SupabaseQuery, filters: TransactionFilters) => {

@@ -3,7 +3,7 @@ import { fetchInventoryTransactions } from '@/services/inventoryTransactions.ser
 
 function makeClient() {
   const calls: string[] = [];
-  const builder: any = {};
+  const builder: Record<string, unknown> = {};
   for (const m of ['select', 'eq', 'gte', 'lte', 'order', 'limit', 'in']) {
     builder[m] = vi.fn(() => builder);
   }
@@ -13,7 +13,7 @@ function makeClient() {
   });
   builder.then = (resolve: (v: unknown) => unknown) =>
     resolve({ data: [], error: null });
-  const client: any = { from: vi.fn(() => builder) };
+  const client = { from: vi.fn(() => builder) } as unknown as Parameters<typeof fetchInventoryTransactions>[0];
   return { client, calls };
 }
 

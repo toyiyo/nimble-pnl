@@ -1,6 +1,6 @@
 import { quoteForOrFilter } from '@/lib/utils';
 
-const AMOUNT_PATTERN = /^(-?)(\$?)(-?)((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)?)(?:\.([0-9]{1,2}))?$/;
+const AMOUNT_PATTERN = /^(-?)\$?(-?)((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)?)(?:\.([0-9]{1,2}))?$/;
 
 /**
  * Parse search text as a money amount.
@@ -10,7 +10,7 @@ const AMOUNT_PATTERN = /^(-?)(\$?)(-?)((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)?)(?:\
 export function parseSearchAmount(text: string): string | null {
   const match = AMOUNT_PATTERN.exec(text);
   if (!match) return null;
-  const [, signBefore, , signAfter, whole, fraction] = match;
+  const [, signBefore, signAfter, whole, fraction] = match;
   if (signBefore && signAfter) return null;
   if (!whole && fraction === undefined) return null;
   const digits = whole.replace(/,/g, '') || '0';

@@ -1,10 +1,10 @@
-import { buildBankSearchFilter } from '@/lib/bankTransactionSearch';
 import { useCallback, useEffect, useMemo } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { buildBankSearchFilter } from "@/lib/bankTransactionSearch";
 import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
 import type { BankTransactionSort, TransactionFilters } from "@/types/transactions";
 import type { PaymentMethod } from "@/types/pending-outflows";

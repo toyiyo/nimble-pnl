@@ -27,6 +27,7 @@ const row = (id: string, sid: string, o: Partial<BankRowMatch> = {}): BankRowMat
   ta: String(T0),
   amt: '-1250',
   descr: 'Sysco Foods',
+  acct: null,
   ...o,
 });
 const tomb = (id: string, ext: string | null, o: Partial<TombstoneMatch> = {}): TombstoneMatch => ({
@@ -45,7 +46,7 @@ const plan = (txns: StripeTxn[], rows: BankRowMatch[] = [], tombstones: Tombston
 describe('constants', () => {
   it('has the expected select projection', () => {
     expect(BANK_ROW_MATCH_SELECT).toBe(
-      'id, stripe_transaction_id, status, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description',
+      'id, stripe_transaction_id, status, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description, acct:raw_data->>account',
     );
     expect(MAX_REKEYS_PER_RUN).toBe(500);
   });
@@ -90,22 +91,25 @@ describe('planTransactionStore: section 3.1 table', () => {
     ]);
   });
   it('passes the row status to the rekey decision', () => {
-    const d = plan([txn('n1')], [row('r1', 'o1', { status: 'reconciled' })]);
+    const d = plan([txn('n1')], [row('r1', 'fctxn_o1', { status: 'reconciled' })]);
     expect(d[0]).toMatchObject({ kind: 'rekey_row', previousStatus: 'reconciled' });
   });
   it('2 orphans, 2 new: 2 rekeys', () => {
     const d = plan(
       [txn('n1'), txn('n2')],
-      [row('r1', 'o1'), row('r2', 'o2')],
+      [row('r1', 'fctxn_o1'), row('r2', 'fctxn_o2')],
     );
-    expect(d.map((x) => x.kind)).toEqual(['rekey_row', 'rekey_row']);
+    expect(d).toMatchObject([
+      { kind: 'rekey_row', txn: txn('n1'), rowId: 'r1', previousStripeId: 'fctxn_o1' },
+      { kind: 'rekey_row', txn: txn('n2'), rowId: 'r2', previousStripeId: 'fctxn_o2' },
+    ]);
   });
   it('1 orphan, 2 new: 1 rekey, 1 insert', () => {
-    const d = plan([txn('n1'), txn('n2')], [row('r1', 'o1')]);
+    const d = plan([txn('n1'), txn('n2')], [row('r1', 'fctxn_o1')]);
     expect(d.map((x) => x.kind)).toEqual(['rekey_row', 'insert']);
   });
   it('2 orphans, 1 new: 1 rekey, orphan stays', () => {
-    const d = plan([txn('n1')], [row('r1', 'o1'), row('r2', 'o2')]);
+    const d = plan([txn('n1')], [row('r1', 'fctxn_o1'), row('r2', 'fctxn_o2')]);
     expect(d).toHaveLength(1);
     expect(d[0].kind).toBe('rekey_row');
   });
@@ -123,21 +127,63 @@ describe('planTransactionStore: rules', () => {
     expect(d.map((x) => x.kind)).toEqual(['skip_existing', 'skip_existing', 'insert']);
   });
   it('handles fca_ rotation', () => {
-    const d = plan([txn('n1', { account: 'fca_2' })], [row('r1', 'o1')]);
+    const d = plan([txn('n1', { account: 'fca_2' })], [row('r1', 'fctxn_o1')]);
     expect(d[0].kind).toBe('rekey_row');
   });
   it('never matches a row with no raw_data', () => {
-    const d = plan([txn('n1')], [row('r1', 'o1', { ta: null, amt: null, descr: null })]);
+    const d = plan([txn('n1')], [row('r1', 'fctxn_o1', { ta: null, amt: null, descr: null })]);
     expect(d[0].kind).toBe('insert');
   });
   it('never matches a csv_ row', () => {
     const d = plan([txn('n1')], [row('r1', 'csv_abc', { ta: null, amt: null, descr: null })]);
     expect(d[0].kind).toBe('insert');
   });
+  it('never matches an imported row with Stripe-shaped raw_data', () => {
+    const d = plan([txn('n1'), txn('n2')], [row('r1', 'csv_abc'), row('r2', 'manual_abc')]);
+    expect(d.map((x) => x.kind)).toEqual(['insert', 'insert']);
+  });
+  it('does not match a row of a different live account', () => {
+    const d = plan(
+      [txn('n1', { account: 'fca_1' }), txn('n2', { account: 'fca_2', amount: -1 })],
+      [row('r1', 'fctxn_o1', { acct: 'fca_2' })],
+    );
+    expect(d.map((x) => x.kind)).toEqual(['insert', 'insert']);
+  });
+  it('matches a row of the same account', () => {
+    const d = plan([txn('n1')], [row('r1', 'fctxn_o1', { acct: 'fca_1' })]);
+    expect(d[0].kind).toBe('rekey_row');
+  });
+  it('matches a row of an account that is not live', () => {
+    const d = plan([txn('n1')], [row('r1', 'fctxn_o1', { acct: 'fca_rotated' })]);
+    expect(d[0].kind).toBe('rekey_row');
+  });
+  it('passes over a live-account row to a row of the same account', () => {
+    const d = plan(
+      [txn('n1', { account: 'fca_1' }), txn('n2', { account: 'fca_2', amount: -1 })],
+      [row('r1', 'fctxn_o1', { acct: 'fca_2' }), row('r2', 'fctxn_o2', { acct: 'fca_1' })],
+    );
+    expect(d[0]).toMatchObject({ kind: 'rekey_row', rowId: 'r2' });
+  });
+  it('matches a zero amount and an epoch timestamp on a row', () => {
+    const t = { transacted_at: 0, amount: 0 };
+    expect(rowKey('0', '0', 'Sysco Foods')).not.toBeNull();
+    const d = plan([txn('n1', t)], [row('r1', 'fctxn_o1', { ta: '0', amt: '0' })]);
+    expect(d[0].kind).toBe('rekey_row');
+  });
+  it('matches a zero amount and an epoch timestamp on a tombstone', () => {
+    const t = { transacted_at: 0, amount: 0 };
+    expect(tombstoneKey('1970-01-01', 0, 'Sysco Foods')).not.toBeNull();
+    const d = plan(
+      [txn('fctxn_a', t)],
+      [],
+      [tomb('t1', 'fctxn_old', { transaction_date: '1970-01-01', amount: 0 })],
+    );
+    expect(d[0].kind).toBe('rekey_tombstone');
+  });
   it('matches a null description with a null description', () => {
     const d = plan(
       [txn('n1', { description: null })],
-      [row('r1', 'o1', { descr: null })],
+      [row('r1', 'fctxn_o1', { descr: null })],
     );
     expect(d[0].kind).toBe('rekey_row');
   });
@@ -145,18 +191,18 @@ describe('planTransactionStore: rules', () => {
     const d = plan(
       [txn('n1')],
       [
-        row('r2', 'o2', { created_at: '2026-02-01T00:00:00Z' }),
-        row('r1', 'o1', { created_at: '2026-01-01T00:00:00Z' }),
+        row('r2', 'fctxn_o2', { created_at: '2026-02-01T00:00:00Z' }),
+        row('r1', 'fctxn_o1', { created_at: '2026-01-01T00:00:00Z' }),
       ],
     );
-    expect(d[0]).toMatchObject({ rowId: 'r1', previousStripeId: 'o1' });
+    expect(d[0]).toMatchObject({ rowId: 'r1', previousStripeId: 'fctxn_o1' });
   });
   it('breaks a created_at tie by id', () => {
-    const d = plan([txn('n1')], [row('rb', 'ob'), row('ra', 'oa')]);
+    const d = plan([txn('n1')], [row('rb', 'fctxn_ob'), row('ra', 'fctxn_oa')]);
     expect(d[0]).toMatchObject({ rowId: 'ra' });
   });
   it('does not match when the key differs', () => {
-    const d = plan([txn('n1', { amount: -999 })], [row('r1', 'o1')]);
+    const d = plan([txn('n1', { amount: -999 })], [row('r1', 'fctxn_o1')]);
     expect(d[0].kind).toBe('insert');
   });
 });
@@ -223,7 +269,7 @@ describe('planTransactionStore: limit', () => {
     const rows: BankRowMatch[] = [];
     for (let i = 0; i < n; i++) {
       txns.push(txn(`n${i}`, { amount: -i - 1 }));
-      rows.push(row(`r${i}`, `o${i}`, { amt: String(-i - 1) }));
+      rows.push(row(`r${i}`, `fctxn_o${i}`, { amt: String(-i - 1) }));
     }
     return { txns, rows };
   };
@@ -233,6 +279,14 @@ describe('planTransactionStore: limit', () => {
     expect(d.filter((x) => x.kind === 'rekey_row')).toHaveLength(MAX_REKEYS_PER_RUN);
     expect(d[MAX_REKEYS_PER_RUN].kind).toBe('defer_rekey');
     expect(d.some((x) => x.kind === 'insert')).toBe(false);
+  });
+  it('holds one orphan for one deferred match and inserts the next', () => {
+    const { txns, rows } = many(MAX_REKEYS_PER_RUN);
+    const d = plan(
+      [...txns, txn('same1', { description: 'Other' }), txn('same2', { description: 'Other' })],
+      [...rows, row('rx', 'fctxn_ox', { descr: 'Other' })],
+    );
+    expect(d.slice(-2).map((x) => x.kind)).toEqual(['defer_rekey', 'insert']);
   });
   it('shares the limit between row and tombstone rekeys', () => {
     const { txns, rows } = many(MAX_REKEYS_PER_RUN);

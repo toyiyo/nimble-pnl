@@ -7,7 +7,7 @@
 
 /** Projection for the page read of bank rows. Aliases avoid the real columns. */
 export const BANK_ROW_MATCH_SELECT =
-  'id, stripe_transaction_id, status, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description';
+  'id, stripe_transaction_id, status, created_at, ta:raw_data->>transacted_at, amt:raw_data->>amount, descr:raw_data->>description, acct:raw_data->>account';
 
 /** Maximum re-keys (rows and tombstones together) for one run. */
 export const MAX_REKEYS_PER_RUN = 500;
@@ -32,6 +32,7 @@ export interface BankRowMatch {
   ta: string | number | null;
   amt: string | number | null;
   descr: string | null;
+  acct: string | null;
 }
 
 export interface TombstoneMatch {
@@ -125,6 +126,7 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
   const tombIds = new Set(
     tombstones.map((t) => t.external_transaction_id).filter((x): x is string => !!x),
   );
+  const liveAccounts = new Set(txns.map((t) => t.account));
 
   // Orphan rows, oldest first, grouped by key.
   const rowPools = new Map<string, BankRowMatch[]>();
@@ -132,6 +134,8 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
     (a, b) => compareStrings(a.created_at, b.created_at) || compareStrings(a.id, b.id),
   );
   for (const r of sortedRows) {
+    // Imported rows (csv_, manual_) are never orphans.
+    if (!r.stripe_transaction_id.startsWith(STRIPE_TXN_ID_PREFIX)) continue;
     if (stripeIds.has(r.stripe_transaction_id)) continue;
     const k = rowKey(r.ta, r.amt, r.descr);
     if (k === null) continue;
@@ -168,23 +172,24 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
     }
     const rk = rowKey(txn.transacted_at, txn.amount, txn.description);
     const rowPool = rk === null ? undefined : rowPools.get(rk);
+    // A row of a different live account is a different transaction. A rotated fca_ is not live.
+    const rowIndex = rowPool
+      ? rowPool.findIndex((r) => !r.acct || r.acct === txn.account || !liveAccounts.has(r.acct))
+      : -1;
+    const r = rowIndex >= 0 ? rowPool?.splice(rowIndex, 1)[0] : undefined;
     const tk = txnTombstoneKey(txn);
-    const tombPool = tk === null ? undefined : tombPools.get(tk);
-    const hasRow = !!rowPool && rowPool.length > 0;
-    const hasTomb = !hasRow && !!tombPool && tombPool.length > 0;
+    const t = r || tk === null ? undefined : tombPools.get(tk)?.shift();
 
-    if (!hasRow && !hasTomb) {
+    if (!r && !t) {
       decisions.push({ kind: 'insert', txn });
       continue;
     }
+    // The candidate is already taken, so one orphan holds back one transaction only.
     if (rekeys >= MAX_REKEYS_PER_RUN) {
       decisions.push({ kind: 'defer_rekey', txn });
       continue;
     }
-    const r = hasRow ? rowPool?.shift() : undefined;
-    const t = !r && hasTomb ? tombPool?.shift() : undefined;
-    // Count a re-key only when a candidate exists.
-    if (r || (t && t.external_transaction_id)) rekeys++;
+    rekeys++;
     if (r) {
       decisions.push({
         kind: 'rekey_row',
@@ -193,15 +198,14 @@ export function planTransactionStore(input: PlanInput): StoreDecision[] {
         previousStripeId: r.stripe_transaction_id,
         previousStatus: r.status,
       });
-    } else if (t && t.external_transaction_id) {
+    } else if (t) {
       decisions.push({
         kind: 'rekey_tombstone',
         txn,
         tombstoneId: t.id,
-        previousExternalId: t.external_transaction_id,
+        // The pool holds only tombstones with an ID.
+        previousExternalId: t.external_transaction_id as string,
       });
-    } else {
-      decisions.push({ kind: 'insert', txn });
     }
   }
   return decisions;

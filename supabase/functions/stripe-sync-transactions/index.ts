@@ -243,6 +243,7 @@ serve(async (req) => {
     let skippedCount = 0;
     let rekeyedCount = 0;
     let deferredCount = 0;
+    let rekeyFailed = false;
     const syncedByAccount = new Map<string, number>();
 
     // Read the rows and tombstones in pages. max_rows is 1000, so a page loop is necessary.
@@ -330,6 +331,7 @@ serve(async (req) => {
               skippedCount++;
             } else {
               console.error("[SYNC-TRANSACTIONS] Error re-keying transaction:", rekeyError);
+              rekeyFailed = true;
             }
           } else if (updated && updated.length === 1) {
             rekeyedCount++;
@@ -353,6 +355,7 @@ serve(async (req) => {
               skippedCount++;
             } else {
               console.error("[SYNC-TRANSACTIONS] Error re-keying tombstone:", rekeyError);
+              rekeyFailed = true;
             }
           } else if (updated && updated.length === 1) {
             rekeyedCount++;
@@ -402,11 +405,11 @@ serve(async (req) => {
 
     // Finalize per-account results for accounts whose transactions were
     // actually fetched this run, now that their real synced counts are known.
-    // When the store step was skipped, nothing was stored. Report these accounts as failed
+    // When the store step was skipped or a re-key failed, report these accounts as failed
     // so last_sync_at does not advance.
     for (const { accountId, refreshStatus } of pendingFetchAccounts) {
       accountResults.push(
-        readOk
+        readOk && !rekeyFailed
           ? resultForRefresh(accountId, refreshStatus, syncedByAccount.get(accountId) ?? 0)
           : resultForFetchFailed(accountId),
       );

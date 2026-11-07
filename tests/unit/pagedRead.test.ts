@@ -5,15 +5,19 @@ type Row = { id: string };
 
 function makeBuilder(rows: Row[], maxRows: number, failOnCall?: number) {
   let calls = 0;
+  const sorted = [...rows].sort((a, b) => a.id.localeCompare(b.id));
   return () => {
     let after: string | null = null;
+    let ascending: boolean | null = null;
     const q: PagedQuery = {
       gt(_c, v) { after = v; return q; },
-      order() { return q; },
+      order(_c, opts) { ascending = opts.ascending; return q; },
       limit(n) {
         calls++;
         if (failOnCall === calls) return Promise.resolve({ data: null, error: { message: 'boom' } });
-        const rest = after === null ? rows : rows.filter((r) => r.id > after!);
+        // Rows come back in input order unless the query asks for an ascending order.
+        const source = ascending ? sorted : rows;
+        const rest = after === null ? source : source.filter((r) => r.id > after!);
         return Promise.resolve({ data: rest.slice(0, Math.min(n, maxRows)), error: null });
       },
     };
@@ -21,7 +25,7 @@ function makeBuilder(rows: Row[], maxRows: number, failOnCall?: number) {
   };
 }
 
-const rows: Row[] = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id }));
+const rows: Row[] = ['c', 'a', 'e', 'b', 'd'].map((id) => ({ id }));
 
 describe('readAllPages', () => {
   it('reads all rows across pages and stops on an empty page', async () => {

@@ -17,7 +17,7 @@ export function extractDateFromFilename(filename: string): ExtractedDate | null 
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
   
   // Pattern 1: YYYY-MM-DD or YYYY_MM_DD or YYYY.MM.DD (high confidence)
-  const isoPattern = /(\d{4})[-_.\/](\d{1,2})[-_.\/](\d{1,2})/;
+  const isoPattern = /(\d{4})[-_./](\d{1,2})[-_./](\d{1,2})/;
   const isoMatch = nameWithoutExt.match(isoPattern);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
@@ -32,7 +32,7 @@ export function extractDateFromFilename(filename: string): ExtractedDate | null 
   }
 
   // Pattern 2: MM-DD-YYYY or MM_DD_YYYY (high confidence)
-  const usPattern = /(\d{1,2})[-_.\/](\d{1,2})[-_.\/](\d{4})/;
+  const usPattern = /(\d{1,2})[-_./](\d{1,2})[-_./](\d{4})/;
   const usMatch = nameWithoutExt.match(usPattern);
   if (usMatch) {
     const [, month, day, year] = usMatch;

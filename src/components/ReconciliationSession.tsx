@@ -104,21 +104,24 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
         case 'expected':
           comparison = (a.expected_quantity || 0) - (b.expected_quantity || 0);
           break;
-        case 'actual':
+        case 'actual': {
           const aActual = a.actual_quantity ?? -Infinity;
           const bActual = b.actual_quantity ?? -Infinity;
           comparison = aActual - bActual;
           break;
-        case 'variance':
+        }
+        case 'variance': {
           const aVariance = a.variance ?? -Infinity;
           const bVariance = b.variance ?? -Infinity;
           comparison = aVariance - bVariance;
           break;
-        case 'status':
+        }
+        case 'status': {
           const aStatus = a.actual_quantity === null ? 0 : 1;
           const bStatus = b.actual_quantity === null ? 0 : 1;
           comparison = aStatus - bStatus;
           break;
+        }
       }
       
       return sortDirection === 'asc' ? comparison : -comparison;

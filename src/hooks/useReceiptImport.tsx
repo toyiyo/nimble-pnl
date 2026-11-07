@@ -10,7 +10,7 @@ import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storage
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
   // Access the base URL from the Supabase client's internal configuration
-  // @ts-ignore - accessing internal property for URL
+  // @ts-expect-error - accessing internal property for URL
   const url = supabase?.supabaseUrl;
   
   if (!url) {
@@ -303,7 +303,7 @@ export const useReceiptImport = () => {
             imageData,
             isPDF
           },
-          // @ts-ignore - signal option is supported but not in types yet
+          // @ts-expect-error - signal option is supported but not in types yet
           signal: controller.signal
         });
 

@@ -54,6 +54,7 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { BroadcastOpenShiftsDialog } from '@/components/scheduling/BroadcastOpenShiftsDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
+import { TradeHistorySection } from '@/components/schedule/TradeHistorySection';
 import { ShiftProtectionSettingsDialog } from '@/components/scheduling/ShiftProtectionSettingsDialog';
 import { ScheduleMetricsRibbon } from '@/components/scheduling/ScheduleMetricsRibbon';
 import { useScheduleLaborBudget } from '@/hooks/useScheduleLaborBudget';
@@ -1777,6 +1778,9 @@ const Scheduling = () => {
               </CardHeader>
               <CardContent className="p-0">
                 <TradeApprovalQueue />
+                {restaurantId && (
+                  <TradeHistorySection restaurantId={restaurantId} timezone={restaurantTimezone} />
+                )}
               </CardContent>
             </Card>
           </TabsContent>

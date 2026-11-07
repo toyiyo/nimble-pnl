@@ -75,8 +75,8 @@ The accepted form is strict:
   only when this part exists.
 - No spaces inside the text.
 
-Use `[0-9]` in the regular expression, not `\d`. The function deletes the
-commas and adds a leading `0` when the whole part is empty.
+`\d` in a JavaScript regular expression matches ASCII digits only. The function
+deletes the commas and adds a leading `0` when the whole part is empty.
 
 | Input | Output |
 |---|---|

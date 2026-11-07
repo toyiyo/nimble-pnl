@@ -2,7 +2,8 @@ import { quoteForOrFilter } from '@/lib/utils';
 
 // Accepted forms: optional sign before or after an optional $ (not both),
 // a whole part with or without thousands commas, and up to 2 decimals.
-const AMOUNT_PATTERN = /^(-?)\$?(-?)((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)?)(?:\.([0-9]{1,2}))?$/;
+const AMOUNT_PATTERN = /^(-?)\$?(-?)([\d,]*)(?:\.(\d{1,2}))?$/;
+const WHOLE_PATTERN = /^(?:\d{1,3}(?:,\d{3})+|\d*)$/;
 
 /**
  * Parse search text as a money amount.
@@ -14,6 +15,7 @@ export function parseSearchAmount(text: string): string | null {
   if (!match) return null;
   const [, signBefore, signAfter, whole, fraction] = match;
   if (signBefore && signAfter) return null;
+  if (!WHOLE_PATTERN.test(whole)) return null;
   if (!whole && fraction === undefined) return null;
   const digits = whole.replace(/,/g, '') || '0';
   return fraction === undefined ? digits : `${digits}.${fraction}`;

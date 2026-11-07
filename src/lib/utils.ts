@@ -39,7 +39,7 @@ export function sanitizeForOrFilter(input: string): string {
  * @returns The quoted value
  */
 export function quoteForOrFilter(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return `"${value.replace(/\\/g, String.raw`\\`).replace(/"/g, String.raw`\"`)}"`;
 }
 
 /**

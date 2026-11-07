@@ -181,6 +181,10 @@ const applyStatusFilter = (query: SupabaseQuery, status?: TransactionStatus) => 
   return query;
 };
 
+/**
+ * Apply the search text to the query.
+ * The filter quotes the text and also matches an amount when the text is one.
+ */
 const applySearchFilter = (query: SupabaseQuery, normalizedSearch: string) => {
   if (!normalizedSearch) return query;
   return query.or(buildBankSearchFilter(normalizedSearch));

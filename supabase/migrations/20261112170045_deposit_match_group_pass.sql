@@ -37,6 +37,7 @@ DECLARE
   v_group           RECORD;
   v_state           text;
   v_taken_items     uuid[];
+  v_scope_items     uuid[];
   v_taken_txns      uuid[];
   v_shares          numeric[];
   v_share_sum       numeric;
@@ -66,6 +67,7 @@ BEGIN
       CONTINUE;
     END IF;
 
+    v_scope_items := NULL;
     BEGIN
       SELECT * INTO v_bank
       FROM public.connected_banks
@@ -87,13 +89,32 @@ BEGIN
             computed_at = now();
       END LOOP;
 
+      -- Item scope: items in the range, plus items whose auto link shares a
+      -- deposit with an in-range item. The range then never cuts a group.
+      SELECT COALESCE(array_agg(DISTINCT x.id), '{}') INTO v_scope_items
+      FROM (
+        SELECT i.id
+        FROM public.deposit_match_items i
+        WHERE i.rule_id = v_rule.id
+          AND i.business_date BETWEEN p_start_date AND p_end_date
+        UNION
+        SELECT i2.id
+        FROM public.deposit_match_items i
+        JOIN public.deposit_match_links l ON l.item_id = i.id AND l.method = 'auto'
+        JOIN public.deposit_match_links l2
+          ON l2.bank_transaction_id = l.bank_transaction_id AND l2.method = 'auto'
+        JOIN public.deposit_match_items i2 ON i2.id = l2.item_id AND i2.rule_id = v_rule.id
+        WHERE i.rule_id = v_rule.id
+          AND i.business_date BETWEEN p_start_date AND p_end_date
+      ) x;
+
       -- Step 2: clear this rule's own auto links so re-matching starts
       -- fresh (idempotent). A manual link is never deleted.
       DELETE FROM public.deposit_match_links l
       USING public.deposit_match_items i
       WHERE l.item_id = i.id
         AND i.rule_id = v_rule.id
-        AND i.business_date BETWEEN p_start_date AND p_end_date
+        AND i.id = ANY(v_scope_items)
         AND l.method = 'auto';
 
       -- Step 3: score every open (item, candidate transaction) pair and
@@ -134,7 +155,7 @@ BEGIN
             public.deposit_match_lag_window_end(i.business_date, v_rule.lag_days_max)
           AND (v_rule.descriptor_pattern IS NULL OR bt.description ~* v_rule.descriptor_pattern)
         WHERE i.rule_id = v_rule.id
-          AND i.business_date BETWEEN p_start_date AND p_end_date
+          AND i.id = ANY(v_scope_items)
           AND NOT EXISTS (SELECT 1 FROM public.deposit_match_links l2 WHERE l2.item_id = i.id)
           -- A bank transaction already confirmed for another rule (or a
           -- manual link) is not open capacity: every confirmed link
@@ -243,7 +264,7 @@ BEGIN
                      public.deposit_match_lag_window_end(i.business_date, v_rule.lag_days_max) AS w_hi
               FROM public.deposit_match_items i
               WHERE i.rule_id = v_rule.id
-                AND i.business_date BETWEEN p_start_date AND p_end_date
+                AND i.id = ANY(v_scope_items)
                 AND i.expected_amount > 0
                 AND NOT (i.id = ANY(v_assigned_items))
                 AND NOT EXISTS (SELECT 1 FROM public.deposit_match_links l2 WHERE l2.item_id = i.id)
@@ -428,7 +449,7 @@ BEGIN
       -- resolution) and the bank's freshness.
       FOR v_item IN
         SELECT * FROM public.deposit_match_items
-        WHERE rule_id = v_rule.id AND business_date BETWEEN p_start_date AND p_end_date
+        WHERE rule_id = v_rule.id AND id = ANY(v_scope_items)
       LOOP
         SELECT COALESCE(SUM(allocated_amount), 0) INTO v_received
         FROM public.deposit_match_links
@@ -501,7 +522,9 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN
       UPDATE public.deposit_match_items
       SET status = 'incomplete', status_reason = 'rule_error', computed_at = now()
-      WHERE rule_id = v_rule.id AND business_date BETWEEN p_start_date AND p_end_date;
+      WHERE rule_id = v_rule.id
+        AND (id = ANY(v_scope_items)
+             OR (v_scope_items IS NULL AND business_date BETWEEN p_start_date AND p_end_date));
     END;
   END LOOP;
 END;

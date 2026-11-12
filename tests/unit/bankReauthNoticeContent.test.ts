@@ -4,6 +4,7 @@ import {
   cleanRestaurantName,
   type BankReauthNoticeInput,
 } from '../../supabase/functions/_shared/bankReauthNoticeContent';
+import { SELECT_RESTAURANT_PARAM } from '../../src/lib/restaurantDeepLink';
 
 // Noon UTC deliberately — keeps the rendered date stable regardless of the
 // machine/CI's local timezone (formatDate has no timeZone override, so it
@@ -149,5 +150,23 @@ describe('restaurant name and link', () => {
     const long = cleanRestaurantName('x'.repeat(100));
     expect(long).toBe('x'.repeat(60) + '…');
     expect(cleanRestaurantName('x'.repeat(60))).toBe('x'.repeat(60));
+  });
+  it('cleanRestaurantName: delete bidi controls, keep ZWNJ and ZWJ', () => {
+    expect(cleanRestaurantName('A\u202eB\u200bC\u200eD\u061cE\ufeffF')).toBe('ABCDEF');
+    expect(cleanRestaurantName('\u{1F468}\u200d\u{1F373}')).toBe('\u{1F468}\u200d\u{1F373}');
+    expect(cleanRestaurantName('a\u200cb')).toBe('a\u200cb');
+  });
+
+  it('use the same select_restaurant key as the frontend', () => {
+    const c = buildBankReauthNoticeContent({
+      stage: 'day_1',
+      institutionName: 'Chase',
+      restaurantId: 'rest-1',
+      accountMask: null,
+      deactivatedAt: '2026-11-01T12:00:00Z',
+      elapsedDays: 1,
+      appUrl: 'https://app.easyshifthq.com',
+    });
+    expect(c.html).toContain(`/banking?${SELECT_RESTAURANT_PARAM}=rest-1`);
   });
 });

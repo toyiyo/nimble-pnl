@@ -52,11 +52,12 @@ const SELECT_RESTAURANT_PARAM = 'select_restaurant';
 
 // Clean a restaurant name for a subject line, a push title, and a message.
 // Change each run of whitespace or control characters to one space, trim,
-// delete bidi and zero-width characters, and cut to 60 characters.
+// delete bidi controls and zero-width spaces, and cut to MAX_RESTAURANT_NAME_LENGTH.
+// Keep U+200C and U+200D: names in some scripts and emoji sequences need them.
 // Return null for an empty result.
 export function cleanRestaurantName(name: string | null | undefined): string | null {
   const cleaned = (name ?? '')
-    .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, '')
+    .replace(/[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g, '')
     // eslint-disable-next-line no-control-regex
     .replace(/[\s\u0000-\u001f\u007f]+/g, ' ')
     .trim();

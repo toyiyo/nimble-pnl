@@ -72,7 +72,7 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     // A notice link (`?select_restaurant=<id>`) wins. The memo selects it in the
     // same render where `loading` clears, so no commit has a wrong selection.
     return (
-      byId(linkedId) ??
+      resolveLinkedRestaurant(linkedId, restaurants) ??
       byId(chosenRestaurantId) ??
       byId(localStorage.getItem(storageKey)) ??
       // With several memberships and nothing saved, there is no right answer to

@@ -18,7 +18,7 @@
 
 BEGIN;
 
-SELECT plan(29);
+SELECT plan(37);
 
 SET LOCAL role TO postgres;
 
@@ -411,6 +411,14 @@ SELECT is(
   'cohort A includes the restaurant''s own IANA timezone (restaurants.timezone), not a default the RPC invents'
 );
 
+-- Reauth notice links (design 2026-11-12 §5.1): the notice names the restaurant.
+SELECT is(
+  (SELECT restaurant_name FROM public.bank_reauth_cohort_a_candidates()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000198'),
+  (SELECT name FROM public.restaurants WHERE id = '00000000-0000-0000-0000-0000e0000199'),
+  'cohort A includes the restaurant name (restaurants.name)'
+);
+
 -- ------------------------------------------------------------
 -- Cohort B — recovered. The core RED scenario for this task: the recovery
 -- notice's correlation key comes from bank_reauth_notices, not from
@@ -438,6 +446,13 @@ SELECT is(
      WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'),
   (SELECT timezone FROM public.restaurants WHERE id = '00000000-0000-0000-0000-0000e0000199'),
   'cohort B also includes the restaurant''s own IANA timezone for the recovery-receipt email'
+);
+
+SELECT is(
+  (SELECT restaurant_name FROM public.bank_reauth_cohort_b_recovered()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'),
+  (SELECT name FROM public.restaurants WHERE id = '00000000-0000-0000-0000-0000e0000199'),
+  'cohort B includes the restaurant name (restaurants.name)'
 );
 
 -- Acknowledge the recovery: once a 'recovered' row exists for this exact
@@ -481,6 +496,43 @@ SELECT is(
      '00000000-0000-0000-0000-0000e0000199', ARRAY['owner'])),
   1,
   'bank_reauth_notice_recipients(owner) narrows to owners only, e.g. for the day_10 stage'
+);
+
+-- Grants survive the DROP and CREATE in the restaurant_name migration.
+SELECT is(
+  has_function_privilege('anon', 'public.bank_reauth_cohort_a_candidates()', 'EXECUTE'),
+  false,
+  'bank_reauth_cohort_a_candidates EXECUTE for anon is false'
+);
+
+SELECT is(
+  has_function_privilege('authenticated', 'public.bank_reauth_cohort_a_candidates()', 'EXECUTE'),
+  false,
+  'bank_reauth_cohort_a_candidates EXECUTE for authenticated is false'
+);
+
+SELECT is(
+  has_function_privilege('service_role', 'public.bank_reauth_cohort_a_candidates()', 'EXECUTE'),
+  true,
+  'bank_reauth_cohort_a_candidates EXECUTE for service_role is true'
+);
+
+SELECT is(
+  has_function_privilege('anon', 'public.bank_reauth_cohort_b_recovered()', 'EXECUTE'),
+  false,
+  'bank_reauth_cohort_b_recovered EXECUTE for anon is false'
+);
+
+SELECT is(
+  has_function_privilege('authenticated', 'public.bank_reauth_cohort_b_recovered()', 'EXECUTE'),
+  false,
+  'bank_reauth_cohort_b_recovered EXECUTE for authenticated is false'
+);
+
+SELECT is(
+  has_function_privilege('service_role', 'public.bank_reauth_cohort_b_recovered()', 'EXECUTE'),
+  true,
+  'bank_reauth_cohort_b_recovered EXECUTE for service_role is true'
 );
 
 -- ------------------------------------------------------------

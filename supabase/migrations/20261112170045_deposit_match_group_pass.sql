@@ -235,7 +235,7 @@ BEGIN
         v_taken_items := '{}';
         v_taken_txns := '{}';
 
-        IF v_rule.settlement = 'gross' THEN
+        BEGIN
           FOR v_group IN
             WITH open_items AS (
               SELECT i.id, i.business_date, i.expected_amount,
@@ -322,18 +322,32 @@ BEGIN
               JOIN group_txns t2 ON t2.gid = t1.gid AND t1.id < t2.id
             ),
             candidates AS (
-              SELECT g.item_ids, g.expected_amounts, g.first_date, g.e_sum,
+              SELECT row_number() OVER () AS cid,
+                     g.item_ids, g.expected_amounts, g.first_date, g.e_sum,
                      d.txn_ids, d.txn_amounts, d.d_sum,
-                     abs(g.e_sum - d.d_sum) AS fit_score
+                     CASE WHEN v_rule.settlement = 'gross'
+                          THEN abs(g.e_sum - d.d_sum)
+                          ELSE abs(g.e_sum * (1 - (v_rule.fee_pct_min + v_rule.fee_pct_max) / 2.0 / 100.0) - d.d_sum)
+                     END AS fit_score
               FROM item_groups g
               JOIN deposit_sets d ON d.gid = g.gid
-              WHERE abs(g.e_sum - d.d_sum) <=
-                GREATEST(v_rule.amount_tolerance, g.e_sum * v_rule.amount_tolerance_pct)
+              WHERE CASE WHEN v_rule.settlement = 'gross'
+                         THEN abs(g.e_sum - d.d_sum) <=
+                              GREATEST(v_rule.amount_tolerance, g.e_sum * v_rule.amount_tolerance_pct)
+                         ELSE (g.e_sum - d.d_sum) BETWEEN g.e_sum * v_rule.fee_pct_min / 100.0
+                                                      AND g.e_sum * v_rule.fee_pct_max / 100.0
+                    END
             )
-            SELECT * FROM candidates
-            ORDER BY fit_score ASC,
-                     cardinality(item_ids) + cardinality(txn_ids) ASC,
-                     first_date ASC, txn_ids ASC
+            SELECT c.*,
+                   EXISTS (
+                     SELECT 1 FROM candidates o
+                     WHERE o.cid <> c.cid
+                       AND (o.item_ids && c.item_ids OR o.txn_ids && c.txn_ids)
+                   ) AS is_ambiguous
+            FROM candidates c
+            ORDER BY c.fit_score ASC,
+                     cardinality(c.item_ids) + cardinality(c.txn_ids) ASC,
+                     c.first_date ASC, c.txn_ids ASC
           LOOP
             IF v_group.item_ids && v_taken_items OR v_group.txn_ids && v_taken_txns THEN
               CONTINUE;
@@ -359,8 +373,9 @@ BEGIN
               CONTINUE;
             END IF;
 
-            -- Task 2 replaces this with the group state.
-            v_state := 'confirmed';
+            -- One state for the whole group. A group that shares an item
+            -- or a deposit with another candidate needs review.
+            v_state := CASE WHEN v_group.is_ambiguous THEN 'suggested' ELSE 'confirmed' END;
 
             -- Waterfall: each deposit fills the current item up to its
             -- share. The rest goes to the next item.
@@ -375,7 +390,8 @@ BEGIN
                   (restaurant_id, item_id, bank_transaction_id, allocated_amount, method, state, match_reason)
                 VALUES
                   (p_restaurant_id, v_group.item_ids[v_ii], v_group.txn_ids[v_jj], v_piece,
-                   'auto', v_state, 'group_gross_fit');
+                   'auto', v_state,
+                   CASE WHEN v_rule.settlement = 'gross' THEN 'group_gross_fit' ELSE 'group_net_fee_fit' END);
               END IF;
               v_item_left := v_item_left - v_piece;
               v_dep_left := v_dep_left - v_piece;
@@ -392,7 +408,7 @@ BEGIN
             v_taken_items := v_taken_items || v_group.item_ids;
             v_taken_txns := v_taken_txns || v_group.txn_ids;
           END LOOP;
-        END IF;
+        END;
       EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'refresh_deposit_matches: group pass failed for rule %: %', v_rule.id, SQLERRM;
       END;

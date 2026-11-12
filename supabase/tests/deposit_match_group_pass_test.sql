@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(21);
+SELECT plan(27);
 
 -- Design ref: docs/superpowers/specs/2026-11-11-deposit-match-pair-design.md
 -- Dates: 2026-08-14 is a Friday. Aug 15 Sat, Aug 16 Sun, Aug 17 Mon, Aug 18 Tue.
@@ -14,7 +14,8 @@ SET LOCAL role TO postgres;
 -- Seed helper: one restaurant, bank, gross rule, items and deposits.
 CREATE FUNCTION pg_temp.seed_case(
   p_n int, p_item_dates date[], p_item_amts numeric[],
-  p_dep_dates date[], p_dep_amts numeric[]
+  p_dep_dates date[], p_dep_amts numeric[],
+  p_settlement text DEFAULT 'gross', p_fee_min numeric DEFAULT 0, p_fee_max numeric DEFAULT 0
 ) RETURNS void LANGUAGE plpgsql AS $f$
 DECLARE
   v_rest uuid := ('11111111-7000-0000-0000-00000000000' || p_n)::uuid;
@@ -33,9 +34,9 @@ BEGIN
   INSERT INTO public.deposit_match_rules
     (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
      lag_days_min, lag_days_max, amount_tolerance, amount_tolerance_pct,
-     descriptor_pattern, source_config)
-  VALUES (v_rule, v_rest, 'focus', 'card', v_bank, 'gross', 1, 3, 5, 0.005,
-          'SHIFT4', '{"card_tender_names": ["Visa"]}'::jsonb);
+     descriptor_pattern, source_config, fee_pct_min, fee_pct_max)
+  VALUES (v_rule, v_rest, 'focus', 'card', v_bank, p_settlement, 1, 3, 5, 0.005,
+          'SHIFT4', '{"card_tender_names": ["Visa"]}'::jsonb, p_fee_min, p_fee_max);
   FOR i IN 1..array_length(p_item_dates, 1) LOOP
     INSERT INTO public.deposit_match_items
       (restaurant_id, rule_id, business_date, expected_amount, status)
@@ -74,13 +75,23 @@ SELECT pg_temp.seed_case(6,
   ARRAY['2026-08-14','2026-08-16']::date[], ARRAY[400.00, 600.00],
   ARRAY['2026-08-17']::date[], ARRAY[1000.00]);
 
+-- H: net 2 -> 2
+SELECT pg_temp.seed_case(7,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[1000.00, 1000.00],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[600.00, 1360.00],
+  'net', 1.6, 3.1);
+-- I: ambiguous, each deposit fits as 2 -> 1
+SELECT pg_temp.seed_case(8,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[400.00, 600.00],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.00, 1001.00]);
+
 SET LOCAL role TO authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-7000-0000-0000-000000000001","role":"authenticated"}', true);
 SELECT set_config('request.jwt.claim.sub', 'aaaaaaaa-7000-0000-0000-000000000001', true);
 
 SELECT public.refresh_deposit_matches(
   ('11111111-7000-0000-0000-00000000000' || n)::uuid, '2026-08-01', '2026-08-31')
-FROM generate_series(1, 6) AS n;
+FROM generate_series(1, 8) AS n;
 
 SET LOCAL role TO postgres;
 
@@ -218,6 +229,40 @@ SELECT results_eq(
     ORDER BY 1, 2$$,
   $$SELECT item_id, bank_transaction_id, allocated_amount, state FROM snap_a ORDER BY 1, 2$$,
   'G: a second refresh gives the same links');
+
+-- ---------------------------------------------------------------------
+-- Case H: net group
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000007'),
+  'matched_net,matched_net', 'H: both items are matched_net');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000007'
+     AND match_reason = 'group_net_fee_fit'),
+  3, 'H: 3 links with group_net_fee_fit');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000007' AND fee_amount > 0),
+  2, 'H: both items have a fee');
+
+-- ---------------------------------------------------------------------
+-- Case I: ambiguous group
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT string_agg(DISTINCT state, ',') FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000008'),
+  'suggested', 'I: every link is suggested');
+SELECT is(
+  (SELECT string_agg(status || '/' || status_reason, ',' ORDER BY business_date)
+   FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000008'),
+  'needs_review/ambiguous_match,needs_review/ambiguous_match', 'I: both items need review');
+SELECT is(
+  (SELECT count(DISTINCT state)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000008'),
+  1, 'I: one state for the whole group');
 
 SELECT * FROM finish();
 ROLLBACK;

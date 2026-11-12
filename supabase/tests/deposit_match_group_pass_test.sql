@@ -4,7 +4,7 @@ SELECT plan(40);
 -- Design ref: docs/superpowers/specs/2026-11-11-deposit-match-pair-design.md
 -- Dates: 2026-08-14 is a Friday. Aug 15 Sat, Aug 16 Sun, Aug 17 Mon, Aug 18 Tue.
 -- All dates are in the past, so an unmatched item ends as late.
--- Each case uses its own restaurant (suffix 1..6 = cases A..F).
+-- Each case uses its own restaurant (suffix = cases A..P).
 
 INSERT INTO auth.users (id, email) VALUES
   ('aaaaaaaa-7000-0000-0000-000000000001', 'dm-group-owner@test.local');

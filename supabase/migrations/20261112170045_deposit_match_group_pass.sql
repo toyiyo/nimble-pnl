@@ -38,6 +38,7 @@ DECLARE
   v_state           text;
   v_taken_items     uuid[];
   v_scope_items     uuid[];
+  v_grown_scope     uuid[];
   v_taken_txns      uuid[];
   v_shares          numeric[];
   v_share_sum       numeric;
@@ -89,24 +90,30 @@ BEGIN
             computed_at = now();
       END LOOP;
 
-      -- Item scope: items in the range, plus items whose auto link shares a
-      -- deposit with an in-range item. The range then never cuts a group.
-      SELECT COALESCE(array_agg(DISTINCT x.id), '{}') INTO v_scope_items
-      FROM (
-        SELECT i.id
-        FROM public.deposit_match_items i
-        WHERE i.rule_id = v_rule.id
-          AND i.business_date BETWEEN p_start_date AND p_end_date
-        UNION
-        SELECT i2.id
-        FROM public.deposit_match_items i
-        JOIN public.deposit_match_links l ON l.item_id = i.id AND l.method = 'auto'
-        JOIN public.deposit_match_links l2
-          ON l2.bank_transaction_id = l.bank_transaction_id AND l2.method = 'auto'
-        JOIN public.deposit_match_items i2 ON i2.id = l2.item_id AND i2.rule_id = v_rule.id
-        WHERE i.rule_id = v_rule.id
-          AND i.business_date BETWEEN p_start_date AND p_end_date
-      ) x;
+      -- Item scope: items in the range, plus items linked by auto links
+      -- through shared deposits. The closure repeats, because a 3to2
+      -- group is a chain (a-x, b-x, b-y, c-y). The range then never cuts
+      -- a group. Five rounds are more than any group needs.
+      SELECT COALESCE(array_agg(i.id), '{}') INTO v_scope_items
+      FROM public.deposit_match_items i
+      WHERE i.rule_id = v_rule.id
+        AND i.business_date BETWEEN p_start_date AND p_end_date;
+
+      FOR v_ii IN 1..5 LOOP
+        SELECT COALESCE(array_agg(DISTINCT x.id), '{}') INTO v_grown_scope
+        FROM (
+          SELECT unnest(v_scope_items) AS id
+          UNION
+          SELECT i2.id
+          FROM public.deposit_match_links l
+          JOIN public.deposit_match_links l2
+            ON l2.bank_transaction_id = l.bank_transaction_id AND l2.method = 'auto'
+          JOIN public.deposit_match_items i2 ON i2.id = l2.item_id AND i2.rule_id = v_rule.id
+          WHERE l.item_id = ANY(v_scope_items) AND l.method = 'auto'
+        ) x;
+        EXIT WHEN cardinality(v_grown_scope) = cardinality(v_scope_items);
+        v_scope_items := v_grown_scope;
+      END LOOP;
 
       -- Step 2: clear this rule's own auto links so re-matching starts
       -- fresh (idempotent). A manual link is never deleted.
@@ -302,6 +309,8 @@ BEGIN
               AND bt.connected_bank_id = v_rule.connected_bank_id
               AND bt.amount > 0
               AND bt.is_transfer IS NOT TRUE
+              AND bt.transaction_date >= (SELECT min(w_lo) FROM open_items)
+              AND bt.transaction_date < (SELECT max(w_hi) FROM open_items)
               AND (v_rule.descriptor_pattern IS NULL OR bt.description ~* v_rule.descriptor_pattern)
               AND NOT (bt.id = ANY(v_assigned_txns))
               AND NOT EXISTS (

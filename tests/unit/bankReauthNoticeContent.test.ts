@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildBankReauthNoticeContent,
+  cleanRestaurantName,
   type BankReauthNoticeInput,
 } from '../../supabase/functions/_shared/bankReauthNoticeContent';
 
@@ -15,6 +16,7 @@ const BASE: BankReauthNoticeInput = {
   deactivatedAt: '2026-07-10T12:00:00.000Z',
   elapsedDays: 1,
   appUrl: 'https://app.easyshifthq.com',
+  restaurantId: 'rest-1',
 };
 
 describe('buildBankReauthNoticeContent', () => {
@@ -26,7 +28,7 @@ describe('buildBankReauthNoticeContent', () => {
     expect(content.html).toContain('4242');
     expect(content.html).toContain('July 10, 2026');
     expect(content.push).toBeDefined();
-    expect(content.push?.url).toBe('/banking');
+    expect(content.push?.url).toBe('/banking?select_restaurant=rest-1');
     expect(content.push?.tag).toBe('bank-reauth-day_1');
   });
 
@@ -98,5 +100,54 @@ describe('buildBankReauthNoticeContent', () => {
       const content = buildBankReauthNoticeContent({ ...BASE, stage });
       expect(content.html).toContain('https://app.easyshifthq.com/banking');
     }
+  });
+});
+
+describe('restaurant name and link', () => {
+  const NAMED = { ...BASE, restaurantName: 'Russos Pizzeria' };
+  const stages = [
+    { stage: 'day_1', elapsedDays: 1 },
+    { stage: 'day_4', elapsedDays: 4 },
+    { stage: 'day_10', elapsedDays: 10 },
+    { stage: 'recovered', elapsedDays: undefined },
+  ] as const;
+
+  for (const s of stages) {
+    it(`${s.stage}: shows the name in subject and message`, () => {
+      const c = buildBankReauthNoticeContent({ ...NAMED, ...s });
+      expect(c.subject.startsWith('Russos Pizzeria: ')).toBe(true);
+      expect(c.html).toContain('Chase (••4242) at Russos Pizzeria');
+      if (c.push) expect(c.push.title.startsWith('Russos Pizzeria: ')).toBe(true);
+    });
+  }
+
+  it('keeps the old copy with no name or a blank name', () => {
+    const none = buildBankReauthNoticeContent(BASE);
+    const nul = buildBankReauthNoticeContent({ ...BASE, restaurantName: null });
+    const blank = buildBankReauthNoticeContent({ ...BASE, restaurantName: '  \r\n ' });
+    expect(none.subject).toBe('Reconnect Chase — bank sync paused');
+    expect(none.push?.title).toBe('Chase needs reconnecting');
+    expect(none.html).not.toContain(' at ');
+    expect(nul.subject).toBe(none.subject);
+    expect(blank.subject).toBe(none.subject);
+    expect(blank.html).toBe(none.html);
+  });
+
+  it('uses the same path for push and email, with the id encoded', () => {
+    const c = buildBankReauthNoticeContent({ ...NAMED, restaurantId: 'a b&c' });
+    expect(c.push?.url).toBe('/banking?select_restaurant=a%20b%26c');
+    expect(c.html).toContain('https://app.easyshifthq.com/banking?select_restaurant=a%20b%26c');
+    const r = buildBankReauthNoticeContent({ ...NAMED, stage: 'recovered', elapsedDays: undefined });
+    expect(r.html).toContain('/banking?select_restaurant=rest-1');
+  });
+
+  it('cleanRestaurantName: CR/LF, long name, blank', () => {
+    expect(cleanRestaurantName('Bad\r\nName\t Inc')).toBe('Bad Name Inc');
+    expect(cleanRestaurantName('   ')).toBeNull();
+    expect(cleanRestaurantName(null)).toBeNull();
+    expect(cleanRestaurantName(undefined)).toBeNull();
+    const long = cleanRestaurantName('x'.repeat(100));
+    expect(long).toBe('x'.repeat(60) + '…');
+    expect(cleanRestaurantName('x'.repeat(60))).toBe('x'.repeat(60));
   });
 });

@@ -11,6 +11,8 @@ import type { NoticeStage } from './bankReauthStages.ts';
 export interface BankReauthNoticeInput {
   stage: NoticeStage;
   institutionName: string;
+  restaurantId: string;
+  restaurantName?: string | null;
   accountMask: string | null;
   deactivatedAt: string; // ISO timestamptz — when this outage started
   elapsedDays?: number; // whole UTC days elapsed; unused for 'recovered'
@@ -43,6 +45,17 @@ function formatNoticeDate(value: string, tz: string | null | undefined): string 
   }).format(new Date(value));
 }
 
+// Clean a restaurant name for a subject line, a push title, and a message.
+// Change each run of whitespace or control characters to one space, trim,
+// and cut to 60 characters. Return null for an empty result.
+export function cleanRestaurantName(name: string | null | undefined): string | null {
+  // eslint-disable-next-line no-control-regex
+  const cleaned = (name ?? '').replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim();
+  if (!cleaned) return null;
+  const chars = Array.from(cleaned);
+  return chars.length > 60 ? `${chars.slice(0, 60).join('')}…` : cleaned;
+}
+
 export interface BankReauthNoticePushPayload {
   title: string;
   body: string;
@@ -72,37 +85,45 @@ interface StageCopy {
   push?: BankReauthNoticePushPayload;
 }
 
+function bankingPath(restaurantId: string): string {
+  return `/banking?select_restaurant=${encodeURIComponent(restaurantId)}`;
+}
+
 function copyForStage(input: BankReauthNoticeInput): StageCopy {
   const bankLabel = `${input.institutionName}${maskedParenthetical(input.accountMask)}`;
   const stoppedDate = formatNoticeDate(input.deactivatedAt, input.restaurantTimezone);
+  const name = cleanRestaurantName(input.restaurantName);
+  const prefix = name ? `${name}: ` : '';
+  const at = name ? ` at ${name}` : '';
+  const path = bankingPath(input.restaurantId);
 
   switch (input.stage) {
     case 'day_1':
       return {
-        subject: `Reconnect ${input.institutionName} — bank sync paused`,
+        subject: `${prefix}Reconnect ${input.institutionName} — bank sync paused`,
         heading: 'Your bank connection needs attention',
         statusText: 'Needs reauthorization',
         statusColor: '#f59e0b',
-        message: `${bankLabel} ended its connection to EasyShiftHQ on ${stoppedDate}. Transactions have stopped syncing until you reconnect.`,
+        message: `${bankLabel}${at} ended its connection to EasyShiftHQ on ${stoppedDate}. Transactions have stopped syncing until you reconnect.`,
         push: {
-          title: `${input.institutionName} needs reconnecting`,
+          title: `${prefix}${input.institutionName} needs reconnecting`,
           body: 'Bank sync paused — reconnect to resume transactions.',
-          url: '/banking',
+          url: path,
           tag: `bank-reauth-${input.stage}`,
         },
       };
     case 'day_4': {
       const days = input.elapsedDays ?? 4;
       return {
-        subject: `Still disconnected — ${input.institutionName} needs reauthorization`,
+        subject: `${prefix}Still disconnected — ${input.institutionName} needs reauthorization`,
         heading: 'Your bank connection is still down',
         statusText: 'Needs reauthorization',
         statusColor: '#f59e0b',
-        message: `${bankLabel} has been disconnected since ${stoppedDate} — that is ${days} days of transactions not yet synced. Reconnect to catch up before the gap grows.`,
+        message: `${bankLabel}${at} has been disconnected since ${stoppedDate} — that is ${days} days of transactions not yet synced. Reconnect to catch up before the gap grows.`,
         push: {
-          title: `${input.institutionName} still disconnected`,
+          title: `${prefix}${input.institutionName} still disconnected`,
           body: `${days} days of transactions are missing — reconnect now.`,
-          url: '/banking',
+          url: path,
           tag: `bank-reauth-${input.stage}`,
         },
       };
@@ -111,11 +132,11 @@ function copyForStage(input: BankReauthNoticeInput): StageCopy {
       // No push at day_10 — design §4.6: "Consequence tone; no push, this is
       // not an interrupt."
       return {
-        subject: `Action needed — ${input.institutionName} still disconnected`,
+        subject: `${prefix}Action needed — ${input.institutionName} still disconnected`,
         heading: 'Your bank connection has been down for over a week',
         statusText: 'Needs reauthorization',
         statusColor: '#f59e0b',
-        message: `${bankLabel} has been disconnected since ${stoppedDate}. Your P&L and reconciliation are missing this account's transactions until you reconnect.`,
+        message: `${bankLabel}${at} has been disconnected since ${stoppedDate}. Your P&L and reconciliation are missing this account's transactions until you reconnect.`,
       };
     case 'recovered': {
       // Email-only receipt — design §4.6's recipients table has no push row
@@ -124,11 +145,11 @@ function copyForStage(input: BankReauthNoticeInput): StageCopy {
         ? formatNoticeDate(input.dataCurrentThrough, input.restaurantTimezone)
         : 'today';
       return {
-        subject: `${input.institutionName} reconnected`,
+        subject: `${prefix}${input.institutionName} reconnected`,
         heading: 'Your bank connection is back',
         statusText: 'Reconnected',
         statusColor: '#10b981',
-        message: `${bankLabel} is syncing again. Transaction history has backfilled through ${through}.`,
+        message: `${bankLabel}${at} is syncing again. Transaction history has backfilled through ${through}.`,
       };
     }
   }
@@ -136,7 +157,7 @@ function copyForStage(input: BankReauthNoticeInput): StageCopy {
 
 export function buildBankReauthNoticeContent(input: BankReauthNoticeInput): BankReauthNoticeContent {
   const copy = copyForStage(input);
-  const reconnectUrl = `${input.appUrl.replace(/\/+$/, '')}/banking`;
+  const reconnectUrl = `${input.appUrl.replace(/\/+$/, '')}${bankingPath(input.restaurantId)}`;
 
   const emailData: EmailTemplateData = {
     heading: copy.heading,

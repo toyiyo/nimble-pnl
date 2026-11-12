@@ -7,7 +7,7 @@ export const SELECT_RESTAURANT_PARAM = 'select_restaurant';
 /** Return the linked restaurant id, or null when the key is missing or empty. */
 export function readLinkedRestaurantId(searchParams: URLSearchParams): string | null {
   const value = searchParams.get(SELECT_RESTAURANT_PARAM);
-  return value ? value : null;
+  return value || null;
 }
 
 /** Return the membership with the linked id, or null. */

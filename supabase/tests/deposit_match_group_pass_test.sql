@@ -1,10 +1,11 @@
 BEGIN;
-SELECT plan(43);
+SELECT plan(48);
 
 -- Design ref: docs/superpowers/specs/2026-11-11-deposit-match-pair-design.md
 -- Dates: 2026-08-14 is a Friday. Aug 15 Sat, Aug 16 Sun, Aug 17 Mon, Aug 18 Tue.
 -- All dates are in the past, so an unmatched item ends as late.
--- Each case uses its own restaurant (suffix = cases A..Q).
+-- Each case uses its own restaurant (suffix = cases A..S).
+-- Deposits post at 13:30 UTC, so the test does not depend on the session time zone.
 
 INSERT INTO auth.users (id, email) VALUES
   ('aaaaaaaa-7000-0000-0000-000000000001', 'dm-group-owner@test.local');
@@ -46,7 +47,7 @@ BEGIN
     INSERT INTO public.bank_transactions
       (restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
     VALUES (v_rest, v_bank, 'stxn_group_' || p_n || '_' || i,
-            p_dep_dates[i]::timestamptz, 'SHIFT4 DEPOSIT', p_dep_amts[i]);
+            (p_dep_dates[i] + time '13:30') AT TIME ZONE 'UTC', 'SHIFT4 DEPOSIT', p_dep_amts[i]);
   END LOOP;
 END $f$;
 
@@ -124,7 +125,7 @@ SELECT pg_temp.seed_case(12,
 INSERT INTO public.bank_transactions
   (restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
 VALUES ('11111111-7000-0000-0000-000000000012', '22222222-7000-0000-0000-000000000012',
-        'stxn_group_12_other', '2026-08-20'::timestamptz, 'OTHER DEPOSIT', 55.00);
+        'stxn_group_12_other', (date '2026-08-20' + time '13:30') AT TIME ZONE 'UTC', 'OTHER DEPOSIT', 55.00);
 INSERT INTO public.deposit_match_links
   (restaurant_id, item_id, bank_transaction_id, allocated_amount, method, state, match_reason)
 SELECT '11111111-7000-0000-0000-000000000012', i.id, bt.id, 55.00, 'manual', 'confirmed', 'manual'
@@ -387,6 +388,54 @@ SELECT is(
    WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000003'
      AND i.expected_amount = (SELECT sum(allocated_amount) FROM public.deposit_match_links WHERE item_id = i.id)),
   3, 'Q: allocation per item equals expected_amount');
+
+-- ---------------------------------------------------------------------
+-- Case R: the first refresh starts on the 2nd day of a pair. No link
+-- exists yet. The 2-day margin puts the 1st day in the scope.
+-- ---------------------------------------------------------------------
+SELECT pg_temp.seed_case(14,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1233.89]);
+SET LOCAL role TO authenticated;
+SELECT public.refresh_deposit_matches(
+  '11111111-7000-0000-0000-000000000014', '2026-08-16', '2026-08-31');
+SET LOCAL role TO postgres;
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000014'),
+  'matched,matched', 'R: both items are matched on a first partial refresh');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000014'),
+  3, 'R: 3 links');
+
+-- ---------------------------------------------------------------------
+-- Case S: the K shape plus a 2nd deposit of 0.04. The 0.03 candidate
+-- fails the allocation guard, so it does not make the 0.04 group
+-- ambiguous. The 0.04 group is confirmed.
+-- ---------------------------------------------------------------------
+SELECT pg_temp.seed_case(15,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[0.02, 0.02],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[0.03, 0.04]);
+UPDATE public.deposit_match_rules SET amount_tolerance = 0, amount_tolerance_pct = 0.4
+WHERE id = '33333333-7000-0000-0000-000000000015';
+SET LOCAL role TO authenticated;
+SELECT public.refresh_deposit_matches(
+  '11111111-7000-0000-0000-000000000015', '2026-08-01', '2026-08-31');
+SET LOCAL role TO postgres;
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000015'),
+  'matched,matched', 'S: both items are matched');
+SELECT is(
+  (SELECT string_agg(DISTINCT state, ',') FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000015'),
+  'confirmed', 'S: every link is confirmed');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links l
+   JOIN public.bank_transactions bt ON bt.id = l.bank_transaction_id
+   WHERE l.restaurant_id = '11111111-7000-0000-0000-000000000015' AND bt.amount = 0.04),
+  2, 'S: both links use the 0.04 deposit');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -72,15 +72,21 @@ becomes `late`.
 
 Fix: the function computes a scope of items before Step 2.
 
-1. `v_scope_items` = the rule's items in `p_start_date..p_end_date`.
+1. `v_scope_items` = the rule's existing items in
+   `p_start_date - 2 .. p_end_date + 2`. A group spans at most 3 days,
+   so the margin puts each adjacent day of a group in the scope, also on
+   the first refresh, when no link exists yet.
 2. Add each item of this rule that has an auto link on a bank
-   transaction that an auto link of a step-1 item also uses. These are
-   the group siblings outside the range (at most 2 days away).
-3. Step 2, the 1:1 pass, the group pass, and Step 5 use
+   transaction that an auto link of a scope item also uses. Repeat this
+   step until it adds no new item (maximum 5 rounds). A 3to2 group is a
+   chain (a-x, b-x, b-y, c-y), so one round does not always reach each
+   item. Test case Q covers the chain.
+3. Step 1 (the dispatch) runs after the closure. It covers the range,
+   the margins, and the date of each scope item. Each scope item then
+   has a current `expected_amount`. The new items of the margins go
+   into the scope.
+4. Step 2, the 1:1 pass, the group pass, and Step 5 use
    `id = ANY(v_scope_items)` in place of the date range.
-
-One level is sufficient. All links of a group connect through shared
-deposits, and an item in a group has no other auto link.
 
 ### Where the group pass runs
 

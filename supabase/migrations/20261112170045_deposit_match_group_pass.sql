@@ -38,11 +38,12 @@ DECLARE
   v_state           text;
   v_taken_items     uuid[];
   v_scope_items     uuid[];
+  v_scope_dates     date[];
+  v_dispatch_lo     date;
+  v_dispatch_hi     date;
   v_grown_scope     uuid[];
   v_taken_txns      uuid[];
   v_shares          numeric[];
-  v_share_sum       numeric;
-  v_share_ok        boolean;
   v_ii              int;
   v_round           int;
   v_max_scope_rounds CONSTANT int := 5;
@@ -76,31 +77,17 @@ BEGIN
       FROM public.connected_banks
       WHERE id = v_rule.connected_bank_id;
 
-      -- Step 1: upsert items from the dispatcher. Never touches resolution.
-      FOR v_src IN
-        SELECT * FROM public.deposit_match_dispatch(
-          v_rule.pos_source, p_restaurant_id, p_start_date, p_end_date, v_rule.source_config
-        )
-      LOOP
-        INSERT INTO public.deposit_match_items
-          (restaurant_id, rule_id, business_date, expected_amount, source_row_count, computed_at, status)
-        VALUES
-          (p_restaurant_id, v_rule.id, v_src.business_date, v_src.expected_amount, v_src.row_count, now(), 'pending')
-        ON CONFLICT (restaurant_id, rule_id, business_date) DO UPDATE
-        SET expected_amount = EXCLUDED.expected_amount,
-            source_row_count = EXCLUDED.source_row_count,
-            computed_at = now();
-      END LOOP;
-
-      -- Item scope: items in the range, plus items linked by auto links
-      -- through shared deposits. The closure repeats, because a 3to2
-      -- group is a chain (a-x, b-x, b-y, c-y). The range then never cuts
-      -- a group. Five rounds are more than any group needs. A NOTICE
-      -- shows if round five still grows the scope.
+      -- Item scope. A group spans at most 3 days, so the seed is the
+      -- existing items in the range plus 2 days on each side. The
+      -- closure then adds the items linked by auto links through shared
+      -- deposits. The closure repeats, because a 3to2 group is a chain
+      -- (a-x, b-x, b-y, c-y). The range then never cuts a group. Five
+      -- rounds are more than any group needs. A NOTICE shows if round
+      -- five still grows the scope.
       SELECT COALESCE(array_agg(DISTINCT i.id), '{}') INTO v_scope_items
       FROM public.deposit_match_items i
       WHERE i.rule_id = v_rule.id
-        AND i.business_date BETWEEN p_start_date AND p_end_date;
+        AND i.business_date BETWEEN p_start_date - 2 AND p_end_date + 2;
 
       FOR v_round IN 1..v_max_scope_rounds LOOP
         SELECT COALESCE(array_agg(DISTINCT x.id), '{}') INTO v_grown_scope
@@ -121,6 +108,49 @@ BEGIN
             v_max_scope_rounds, v_rule.id;
         END IF;
       END LOOP;
+
+      -- Step 1: upsert items from the dispatcher. Never touches resolution.
+      -- The dispatch covers the range, the 2-day margins, and each scope
+      -- item. Each item in the scope then has a current expected_amount.
+      -- A date outside the margins and outside the scope is not written.
+      SELECT array_agg(DISTINCT i.business_date),
+             LEAST(p_start_date - 2, min(i.business_date)),
+             GREATEST(p_end_date + 2, max(i.business_date))
+      INTO v_scope_dates, v_dispatch_lo, v_dispatch_hi
+      FROM public.deposit_match_items i
+      WHERE i.id = ANY(v_scope_items);
+      v_dispatch_lo := COALESCE(v_dispatch_lo, p_start_date - 2);
+      v_dispatch_hi := COALESCE(v_dispatch_hi, p_end_date + 2);
+
+      FOR v_src IN
+        SELECT * FROM public.deposit_match_dispatch(
+          v_rule.pos_source, p_restaurant_id, v_dispatch_lo, v_dispatch_hi, v_rule.source_config
+        )
+      LOOP
+        CONTINUE WHEN NOT (
+          v_src.business_date BETWEEN p_start_date - 2 AND p_end_date + 2
+          OR v_src.business_date = ANY(COALESCE(v_scope_dates, '{}'))
+        );
+        INSERT INTO public.deposit_match_items
+          (restaurant_id, rule_id, business_date, expected_amount, source_row_count, computed_at, status)
+        VALUES
+          (p_restaurant_id, v_rule.id, v_src.business_date, v_src.expected_amount, v_src.row_count, now(), 'pending')
+        ON CONFLICT (restaurant_id, rule_id, business_date) DO UPDATE
+        SET expected_amount = EXCLUDED.expected_amount,
+            source_row_count = EXCLUDED.source_row_count,
+            computed_at = now();
+      END LOOP;
+
+      -- Add the items that Step 1 just created in the margins. A new
+      -- item has no link, so the closure above stays complete.
+      SELECT COALESCE(array_agg(DISTINCT x.id), '{}') INTO v_scope_items
+      FROM (
+        SELECT unnest(v_scope_items) AS id
+        UNION
+        SELECT i.id FROM public.deposit_match_items i
+        WHERE i.rule_id = v_rule.id
+          AND i.business_date BETWEEN p_start_date - 2 AND p_end_date + 2
+      ) x;
 
       -- Step 2: clear this rule's own auto links so re-matching starts
       -- fresh (idempotent). A manual link is never deleted.
@@ -375,14 +405,51 @@ BEGIN
                        ELSE (g.e_sum - d.d_sum) BETWEEN g.e_sum * v_rule.fee_pct_min / 100.0
                                                     AND g.e_sum * v_rule.fee_pct_max / 100.0
                   END
+          ),
+          -- Item shares: in proportion to expected_amount. The last item
+          -- takes the rest, so the shares sum to the deposit sum.
+          share_rows AS (
+            SELECT c.cid, e.ord, e.amt, cardinality(c.item_ids) AS n, c.d_sum,
+                   round(c.d_sum * e.amt / c.e_sum, 2) AS raw_share
+            FROM candidates c
+            CROSS JOIN LATERAL unnest(c.expected_amounts) WITH ORDINALITY AS e(amt, ord)
+          ),
+          shares AS (
+            SELECT s.cid, s.ord, s.amt,
+                   CASE WHEN s.ord < s.n THEN s.raw_share
+                        ELSE s.d_sum - sum(s.raw_share) FILTER (WHERE s.ord < s.n)
+                                         OVER (PARTITION BY s.cid)
+                   END AS share
+            FROM share_rows s
+          ),
+          -- Allocation guard: each share is > 0 and inside the exact Step 5
+          -- band. A candidate that Step 5 would not classify as matched is
+          -- not valid. The guard runs before the ambiguity check, so an
+          -- invalid candidate never makes a valid one ambiguous.
+          valid AS (
+            SELECT c.*, v.shares
+            FROM candidates c
+            JOIN (
+              SELECT sh.cid, array_agg(sh.share ORDER BY sh.ord) AS shares
+              FROM shares sh
+              GROUP BY sh.cid
+              HAVING bool_and(
+                sh.share > 0
+                AND (sh.amt - sh.share) BETWEEN
+                      sh.amt * v_rule.fee_pct_min / 100.0
+                        - GREATEST(v_rule.amount_tolerance, sh.amt * v_rule.amount_tolerance_pct)
+                  AND sh.amt * v_rule.fee_pct_max / 100.0
+                        + GREATEST(v_rule.amount_tolerance, sh.amt * v_rule.amount_tolerance_pct)
+              )
+            ) v ON v.cid = c.cid
           )
           SELECT c.*,
                  EXISTS (
-                   SELECT 1 FROM candidates o
+                   SELECT 1 FROM valid o
                    WHERE o.cid <> c.cid
                      AND (o.item_ids && c.item_ids OR o.txn_ids && c.txn_ids)
                  ) AS is_ambiguous
-          FROM candidates c
+          FROM valid c
           ORDER BY c.fit_score ASC,
                    cardinality(c.item_ids) + cardinality(c.txn_ids) ASC,
                    c.first_date ASC, c.txn_ids ASC
@@ -391,36 +458,7 @@ BEGIN
             CONTINUE;
           END IF;
 
-          -- Item shares: in proportion to expected_amount. The last
-          -- item takes the rest, so the shares sum to the deposit sum.
-          v_shares := '{}';
-          v_share_sum := 0;
-          v_share_ok := true;
-          FOR v_ii IN 1..cardinality(v_group.item_ids) LOOP
-            IF v_ii < cardinality(v_group.item_ids) THEN
-              v_shares[v_ii] := round(v_group.d_sum * v_group.expected_amounts[v_ii] / v_group.e_sum, 2);
-              v_share_sum := v_share_sum + v_shares[v_ii];
-            ELSE
-              v_shares[v_ii] := v_group.d_sum - v_share_sum;
-            END IF;
-            IF v_shares[v_ii] <= 0 THEN
-              v_share_ok := false;
-            ELSE
-              -- Band check: the exact Step 5 expressions. A group that
-              -- Step 5 would not classify as matched is skipped.
-              v_tol := GREATEST(v_rule.amount_tolerance,
-                                v_group.expected_amounts[v_ii] * v_rule.amount_tolerance_pct);
-              v_diff := v_group.expected_amounts[v_ii] - v_shares[v_ii];
-              v_fee_lo := v_group.expected_amounts[v_ii] * v_rule.fee_pct_min / 100.0;
-              v_fee_hi := v_group.expected_amounts[v_ii] * v_rule.fee_pct_max / 100.0;
-              IF NOT (v_diff BETWEEN (v_fee_lo - v_tol) AND (v_fee_hi + v_tol)) THEN
-                v_share_ok := false;
-              END IF;
-            END IF;
-          END LOOP;
-          IF NOT v_share_ok THEN
-            CONTINUE;
-          END IF;
+          v_shares := v_group.shares;
 
           -- One state for the whole group. A group that shares an item
           -- or a deposit with another candidate needs review.

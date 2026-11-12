@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(37);
+SELECT plan(40);
 
 -- Design ref: docs/superpowers/specs/2026-11-11-deposit-match-pair-design.md
 -- Dates: 2026-08-14 is a Friday. Aug 15 Sat, Aug 16 Sun, Aug 17 Mon, Aug 18 Tue.
@@ -344,6 +344,27 @@ SELECT is((SELECT count(*)::int FROM public.deposit_match_links l JOIN public.de
 SELECT is((SELECT count(*)::int FROM public.deposit_match_links WHERE restaurant_id = '11111111-7000-0000-0000-000000000013')
           + (SELECT count(*)::int FROM public.deposit_match_items WHERE restaurant_id = '11111111-7000-0000-0000-000000000013' AND status = 'incomplete' AND status_reason = 'bank_stale'),
   2, 'N: 0 group links and both items incomplete / bank_stale');
+
+-- ---------------------------------------------------------------------
+-- Case P: a partial range starts inside a group
+-- ---------------------------------------------------------------------
+SET LOCAL role TO authenticated;
+SELECT public.refresh_deposit_matches(
+  '11111111-7000-0000-0000-000000000001', '2026-08-16', '2026-08-31');
+SET LOCAL role TO postgres;
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000001'),
+  'matched,matched', 'P: both items are matched');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000001'),
+  3, 'P: 3 links');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_items i
+   WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000001'
+     AND i.expected_amount = (SELECT sum(allocated_amount) FROM public.deposit_match_links WHERE item_id = i.id)),
+  2, 'P: allocation per item equals expected_amount');
 
 SELECT * FROM finish();
 ROLLBACK;

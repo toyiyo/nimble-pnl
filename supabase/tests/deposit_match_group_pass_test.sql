@@ -1,0 +1,223 @@
+BEGIN;
+SELECT plan(21);
+
+-- Design ref: docs/superpowers/specs/2026-11-11-deposit-match-pair-design.md
+-- Dates: 2026-08-14 is a Friday. Aug 15 Sat, Aug 16 Sun, Aug 17 Mon, Aug 18 Tue.
+-- All dates are in the past, so an unmatched item ends as late.
+-- Each case uses its own restaurant (suffix 1..6 = cases A..F).
+
+INSERT INTO auth.users (id, email) VALUES
+  ('aaaaaaaa-7000-0000-0000-000000000001', 'dm-group-owner@test.local');
+
+SET LOCAL role TO postgres;
+
+-- Seed helper: one restaurant, bank, gross rule, items and deposits.
+CREATE FUNCTION pg_temp.seed_case(
+  p_n int, p_item_dates date[], p_item_amts numeric[],
+  p_dep_dates date[], p_dep_amts numeric[]
+) RETURNS void LANGUAGE plpgsql AS $f$
+DECLARE
+  v_rest uuid := ('11111111-7000-0000-0000-00000000000' || p_n)::uuid;
+  v_bank uuid := ('22222222-7000-0000-0000-00000000000' || p_n)::uuid;
+  v_rule uuid := ('33333333-7000-0000-0000-00000000000' || p_n)::uuid;
+  i int;
+BEGIN
+  INSERT INTO public.restaurants (id, name) VALUES (v_rest, 'Group Pass ' || p_n);
+  INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id)
+  VALUES ('aaaaaaaa-7000-0000-0000-000000000001', v_rest, 'owner',
+          'b0000000-0000-0000-0000-000000000001');
+  INSERT INTO public.connected_banks
+    (id, restaurant_id, stripe_financial_account_id, institution_name, status, data_current_through)
+  VALUES (v_bank, v_rest, 'fca_group_' || p_n, 'Group Bank', 'connected',
+          (CURRENT_DATE + interval '1 year'));
+  INSERT INTO public.deposit_match_rules
+    (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
+     lag_days_min, lag_days_max, amount_tolerance, amount_tolerance_pct,
+     descriptor_pattern, source_config)
+  VALUES (v_rule, v_rest, 'focus', 'card', v_bank, 'gross', 1, 3, 5, 0.005,
+          'SHIFT4', '{"card_tender_names": ["Visa"]}'::jsonb);
+  FOR i IN 1..array_length(p_item_dates, 1) LOOP
+    INSERT INTO public.deposit_match_items
+      (restaurant_id, rule_id, business_date, expected_amount, status)
+    VALUES (v_rest, v_rule, p_item_dates[i], p_item_amts[i], 'pending');
+  END LOOP;
+  FOR i IN 1..array_length(p_dep_dates, 1) LOOP
+    INSERT INTO public.bank_transactions
+      (restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
+    VALUES (v_rest, v_bank, 'stxn_group_' || p_n || '_' || i,
+            p_dep_dates[i]::timestamptz, 'SHIFT4 DEPOSIT', p_dep_amts[i]);
+  END LOOP;
+END $f$;
+
+-- A: prod shape 2 -> 2
+SELECT pg_temp.seed_case(1,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1233.89]);
+-- B: weekend 2 -> 1
+SELECT pg_temp.seed_case(2,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[400.00, 600.00],
+  ARRAY['2026-08-17']::date[], ARRAY[1000.00]);
+-- C: 3 -> 2
+SELECT pg_temp.seed_case(3,
+  ARRAY['2026-08-14','2026-08-15','2026-08-16']::date[], ARRAY[300.00, 500.00, 700.00],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[640.00, 860.00]);
+-- D: no fit
+SELECT pg_temp.seed_case(4,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1250.00]);
+-- E: 1:1 wins
+SELECT pg_temp.seed_case(5,
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[500.00, 700.00],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[500.00, 690.00]);
+-- F: gap day
+SELECT pg_temp.seed_case(6,
+  ARRAY['2026-08-14','2026-08-16']::date[], ARRAY[400.00, 600.00],
+  ARRAY['2026-08-17']::date[], ARRAY[1000.00]);
+
+SET LOCAL role TO authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-7000-0000-0000-000000000001","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub', 'aaaaaaaa-7000-0000-0000-000000000001', true);
+
+SELECT public.refresh_deposit_matches(
+  ('11111111-7000-0000-0000-00000000000' || n)::uuid, '2026-08-01', '2026-08-31')
+FROM generate_series(1, 6) AS n;
+
+SET LOCAL role TO postgres;
+
+-- Snapshot for the idempotency case (G).
+CREATE TEMP TABLE snap_a AS
+SELECT l.item_id, l.bank_transaction_id, l.allocated_amount, l.state
+FROM public.deposit_match_links l
+WHERE l.restaurant_id = '11111111-7000-0000-0000-000000000001';
+
+-- ---------------------------------------------------------------------
+-- Case A
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000001'),
+  'matched,matched', 'A: both items are matched');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000001'),
+  3, 'A: 3 links');
+SELECT is(
+  (SELECT string_agg(s::text, ',' ORDER BY d) FROM (
+     SELECT i.business_date d, sum(l.allocated_amount) s
+     FROM public.deposit_match_items i JOIN public.deposit_match_links l ON l.item_id = i.id
+     WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000001' GROUP BY i.business_date) q),
+  '971.56,1263.05', 'A: allocation per item equals expected_amount');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_items i
+   WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000001'
+     AND i.expected_amount = (SELECT sum(allocated_amount) FROM public.deposit_match_links WHERE item_id = i.id)),
+  2, 'A: item allocation sum check (count of items that agree)');
+SELECT is(
+  (SELECT string_agg(s::text, ',' ORDER BY d) FROM (
+     SELECT bt.transaction_date d, sum(l.allocated_amount) s
+     FROM public.bank_transactions bt JOIN public.deposit_match_links l ON l.bank_transaction_id = bt.id
+     WHERE bt.restaurant_id = '11111111-7000-0000-0000-000000000001' GROUP BY bt.transaction_date) q),
+  '1000.72,1233.89', 'A: allocation per deposit equals amount');
+SELECT is(
+  (SELECT count(*)::int FROM public.bank_transactions bt
+   WHERE bt.restaurant_id = '11111111-7000-0000-0000-000000000001'
+     AND bt.amount = (SELECT sum(allocated_amount) FROM public.deposit_match_links WHERE bank_transaction_id = bt.id)),
+  2, 'A: deposit allocation sum check (count of deposits that agree)');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000001'
+     AND match_reason = 'group_gross_fit' AND state = 'confirmed' AND method = 'auto'),
+  3, 'A: every link is group_gross_fit, confirmed, auto');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000001'),
+  3, 'A: no extra links');
+
+-- ---------------------------------------------------------------------
+-- Case B
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000002'),
+  'matched,matched', 'B: both items are matched');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000002'),
+  2, 'B: 2 links');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000002' AND match_reason = 'group_gross_fit'),
+  2, 'B: both links are group_gross_fit');
+
+-- ---------------------------------------------------------------------
+-- Case C
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000003'),
+  'matched,matched,matched', 'C: all 3 items are matched');
+SELECT cmp_ok(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000003'),
+  '<=', 4, 'C: at most 4 links');
+
+-- ---------------------------------------------------------------------
+-- Case D
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000004'),
+  'late,late', 'D: both items are late');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000004'),
+  0, 'D: no links');
+
+-- ---------------------------------------------------------------------
+-- Case E
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT l.match_reason FROM public.deposit_match_links l
+   JOIN public.deposit_match_items i ON i.id = l.item_id
+   WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000005' AND i.business_date = '2026-08-15'),
+  'gross_fit', 'E: Saturday links 1:1 with gross_fit');
+SELECT is(
+  (SELECT status FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000005' AND business_date = '2026-08-16'),
+  'late', 'E: Sunday stays late');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links l
+   JOIN public.deposit_match_items i ON i.id = l.item_id
+   WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000005' AND i.business_date = '2026-08-16'),
+  0, 'E: Sunday has 0 links');
+
+-- ---------------------------------------------------------------------
+-- Case F
+-- ---------------------------------------------------------------------
+SELECT is(
+  (SELECT string_agg(status, ',' ORDER BY business_date) FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000006'),
+  'late,late', 'F: gap day, both items are late');
+SELECT is(
+  (SELECT count(*)::int FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000006'),
+  0, 'F: gap day, no links');
+
+-- ---------------------------------------------------------------------
+-- Case G: a second refresh gives the same links
+-- ---------------------------------------------------------------------
+SET LOCAL role TO authenticated;
+SELECT public.refresh_deposit_matches(
+  '11111111-7000-0000-0000-000000000001', '2026-08-01', '2026-08-31');
+SET LOCAL role TO postgres;
+
+SELECT results_eq(
+  $$SELECT item_id, bank_transaction_id, allocated_amount, state
+    FROM public.deposit_match_links
+    WHERE restaurant_id = '11111111-7000-0000-0000-000000000001'
+    ORDER BY 1, 2$$,
+  $$SELECT item_id, bank_transaction_id, allocated_amount, state FROM snap_a ORDER BY 1, 2$$,
+  'G: a second refresh gives the same links');
+
+SELECT * FROM finish();
+ROLLBACK;

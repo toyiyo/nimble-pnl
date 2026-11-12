@@ -367,6 +367,17 @@ BEGIN
               END IF;
               IF v_shares[v_ii] <= 0 THEN
                 v_share_ok := false;
+              ELSE
+                -- Band check: the exact Step 5 expressions. A group that
+                -- Step 5 would not classify as matched is skipped.
+                v_tol := GREATEST(v_rule.amount_tolerance,
+                                  v_group.expected_amounts[v_ii] * v_rule.amount_tolerance_pct);
+                v_diff := v_group.expected_amounts[v_ii] - v_shares[v_ii];
+                v_fee_lo := v_group.expected_amounts[v_ii] * v_rule.fee_pct_min / 100.0;
+                v_fee_hi := v_group.expected_amounts[v_ii] * v_rule.fee_pct_max / 100.0;
+                IF NOT (v_diff BETWEEN (v_fee_lo - v_tol) AND (v_fee_hi + v_tol)) THEN
+                  v_share_ok := false;
+                END IF;
               END IF;
             END LOOP;
             IF NOT v_share_ok THEN

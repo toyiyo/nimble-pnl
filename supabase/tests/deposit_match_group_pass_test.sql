@@ -89,10 +89,14 @@ SELECT pg_temp.seed_case(8,
 SELECT pg_temp.seed_case(9,
   ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[-10.00, 1000.00],
   ARRAY['2026-08-17']::date[], ARRAY[990.00]);
--- K: zero share (allocation guard)
+-- K: shares are positive but the last share is outside the Step 5 band
+-- (allocation guard). Shares are 0.02 and 0.01. The plan case with items
+-- 0.01 and 0.01 cannot reach the guard: the 1:1 pass always matches it.
 SELECT pg_temp.seed_case(10,
-  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[0.01, 0.01],
-  ARRAY['2026-08-17']::date[], ARRAY[0.01]);
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[0.02, 0.02],
+  ARRAY['2026-08-17']::date[], ARRAY[0.03]);
+UPDATE public.deposit_match_rules SET amount_tolerance = 0, amount_tolerance_pct = 0.4
+WHERE id = '33333333-7000-0000-0000-000000000010';
 -- L: deposit confirmed by another rule
 SELECT pg_temp.seed_case(11,
   ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[400.00, 600.00],
@@ -101,7 +105,7 @@ INSERT INTO public.deposit_match_rules
   (id, restaurant_id, pos_source, rail, connected_bank_id, settlement,
    lag_days_min, lag_days_max, amount_tolerance, amount_tolerance_pct,
    descriptor_pattern, source_config, fee_pct_min, fee_pct_max)
-VALUES ('33333333-7000-0000-0001-000000000011', '11111111-7000-0000-0000-000000000011', 'focus', 'cash',
+VALUES ('33333333-7000-0000-0001-000000000011', '11111111-7000-0000-0000-000000000011', 'toast', 'card',
         '22222222-7000-0000-0000-000000000011', 'gross', 1, 3, 5, 0.005,
         'SHIFT4', '{"card_tender_names": ["Visa"]}'::jsonb, 0, 0);
 INSERT INTO public.deposit_match_items

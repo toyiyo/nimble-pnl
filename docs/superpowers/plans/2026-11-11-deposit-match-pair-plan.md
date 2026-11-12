@@ -52,15 +52,15 @@
 - Produces: the new function body with a step 3b block, and new local variables `v_group RECORD`, `v_state text`, `v_taken_items uuid[]`, `v_taken_txns uuid[]`. Later tasks extend this block.
 
 - [ ] **Step 1: Write the failing tests** (gross rule, lag 1–3, `amount_tolerance 5`, `amount_tolerance_pct 0.005`, `descriptor_pattern 'SHIFT4'`)
-  - Case A (prod shape 2→2): items Sat 971.56, Sun 1263.05; deposits Mon 1000.72, Tue 1233.89.
+  - Case A (prod shape 2→2): items Sat 948.37, Sun 1251.63; deposits Mon 978.12, Tue 1221.88.
     - `is(status, 'matched')` for both items.
     - `is(count(links), 3)` for the 2 items.
-    - `is(sum(allocated_amount) per item, expected_amount)` for both items (971.56, 1263.05).
+    - `is(sum(allocated_amount) per item, expected_amount)` for both items (948.37, 1251.63).
     - `is(sum(allocated_amount) per deposit, amount)` for both deposits.
     - every link: `match_reason = 'group_gross_fit'`, `state = 'confirmed'`, `method = 'auto'`.
   - Case B (weekend 2→1): items Sat 400.00, Sun 600.00; deposit Mon 1000.00. Both `matched`; 2 links.
   - Case C (3→2): items Fri 300.00, Sat 500.00, Sun 700.00; deposits Mon 640.00, Tue 860.00. All 3 `matched`; `count(links) <= 4`.
-  - Case D (no fit): items Sat 971.56, Sun 1263.05; deposits Mon 1000.72, Tue 1250.00 (off by 16.28). Both `late`; 0 links.
+  - Case D (no fit): items Sat 948.37, Sun 1251.63; deposits Mon 978.12, Tue 1236.40 (off by 14.52). Both `late`; 0 links.
   - Case E (1:1 wins): items Sat 500.00 and Sun 700.00; deposits Mon 500.00 and Tue 690.00. Sat links 1:1 with `match_reason 'gross_fit'`. Sun stays `late` (690 is 10 off) and has 0 links.
   - Case F (gap day): items Fri 400.00 and Sun 600.00 (no Sat item); deposit Mon 1000.00. Both `late`; 0 links.
   - Case G (idempotent): call refresh a second time on Case A's restaurant. The set of `(item_id, bank_transaction_id, allocated_amount, state)` is the same as after the first call (compare with `results_eq` on a temp table snapshot).

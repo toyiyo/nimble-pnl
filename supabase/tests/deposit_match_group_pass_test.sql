@@ -1,10 +1,10 @@
 BEGIN;
-SELECT plan(48);
+SELECT plan(50);
 
 -- Design ref: docs/superpowers/specs/2026-11-11-deposit-match-pair-design.md
 -- Dates: 2026-08-14 is a Friday. Aug 15 Sat, Aug 16 Sun, Aug 17 Mon, Aug 18 Tue.
 -- All dates are in the past, so an unmatched item ends as late.
--- Each case uses its own restaurant (suffix = cases A..S).
+-- Each case uses its own restaurant (suffix = cases A..T).
 -- Deposits post at 13:30 UTC, so the test does not depend on the session time zone.
 
 INSERT INTO auth.users (id, email) VALUES
@@ -53,8 +53,8 @@ END $f$;
 
 -- A: prod shape 2 -> 2
 SELECT pg_temp.seed_case(1,
-  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
-  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1233.89]);
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[948.37, 1251.63],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[978.12, 1221.88]);
 -- B: weekend 2 -> 1
 SELECT pg_temp.seed_case(2,
   ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[400.00, 600.00],
@@ -65,8 +65,8 @@ SELECT pg_temp.seed_case(3,
   ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[640.00, 860.00]);
 -- D: no fit
 SELECT pg_temp.seed_case(4,
-  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
-  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1250.00]);
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[948.37, 1251.63],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[978.12, 1236.40]);
 -- E: 1:1 wins
 SELECT pg_temp.seed_case(5,
   ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[500.00, 700.00],
@@ -120,8 +120,8 @@ SELECT '11111111-7000-0000-0000-000000000011', '44444444-7000-0000-0000-00000000
 FROM public.bank_transactions bt WHERE bt.restaurant_id = '11111111-7000-0000-0000-000000000011';
 -- M: manual link on one item of a group
 SELECT pg_temp.seed_case(12,
-  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
-  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1233.89]);
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[948.37, 1251.63],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[978.12, 1221.88]);
 INSERT INTO public.bank_transactions
   (restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
 VALUES ('11111111-7000-0000-0000-000000000012', '22222222-7000-0000-0000-000000000012',
@@ -134,8 +134,8 @@ WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000012' AND i.business_da
   AND bt.stripe_transaction_id = 'stxn_group_12_other';
 -- N: stale bank
 SELECT pg_temp.seed_case(13,
-  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
-  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1233.89]);
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[948.37, 1251.63],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[978.12, 1221.88]);
 UPDATE public.connected_banks SET data_current_through = '2026-08-16'
 WHERE id = '22222222-7000-0000-0000-000000000013';
 
@@ -171,7 +171,7 @@ SELECT is(
      SELECT i.business_date d, sum(l.allocated_amount) s
      FROM public.deposit_match_items i JOIN public.deposit_match_links l ON l.item_id = i.id
      WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000001' GROUP BY i.business_date) q),
-  '971.56,1263.05', 'A: allocation per item equals expected_amount');
+  '948.37,1251.63', 'A: allocation per item equals expected_amount');
 SELECT is(
   (SELECT count(*)::int FROM public.deposit_match_items i
    WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000001'
@@ -182,7 +182,7 @@ SELECT is(
      SELECT bt.transaction_date d, sum(l.allocated_amount) s
      FROM public.bank_transactions bt JOIN public.deposit_match_links l ON l.bank_transaction_id = bt.id
      WHERE bt.restaurant_id = '11111111-7000-0000-0000-000000000001' GROUP BY bt.transaction_date) q),
-  '1000.72,1233.89', 'A: allocation per deposit equals amount');
+  '978.12,1221.88', 'A: allocation per deposit equals amount');
 SELECT is(
   (SELECT count(*)::int FROM public.bank_transactions bt
    WHERE bt.restaurant_id = '11111111-7000-0000-0000-000000000001'
@@ -394,8 +394,8 @@ SELECT is(
 -- exists yet. The 2-day margin puts the 1st day in the scope.
 -- ---------------------------------------------------------------------
 SELECT pg_temp.seed_case(14,
-  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[971.56, 1263.05],
-  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[1000.72, 1233.89]);
+  ARRAY['2026-08-15','2026-08-16']::date[], ARRAY[948.37, 1251.63],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[978.12, 1221.88]);
 SET LOCAL role TO authenticated;
 SELECT public.refresh_deposit_matches(
   '11111111-7000-0000-0000-000000000014', '2026-08-16', '2026-08-31');
@@ -436,6 +436,37 @@ SELECT is(
    JOIN public.bank_transactions bt ON bt.id = l.bank_transaction_id
    WHERE l.restaurant_id = '11111111-7000-0000-0000-000000000015' AND bt.amount = 0.04),
   2, 'S: both links use the 0.04 deposit');
+
+-- ---------------------------------------------------------------------
+-- Case T: the Case A shape. An item outside the refresh scope holds a
+-- manual suggested link on the Aug 17 deposit. That link competes, so
+-- the group is suggested, not confirmed.
+-- ---------------------------------------------------------------------
+SELECT pg_temp.seed_case(16,
+  ARRAY['2026-08-15','2026-08-16','2026-07-01']::date[], ARRAY[948.37, 1251.63, 50.00],
+  ARRAY['2026-08-17','2026-08-18']::date[], ARRAY[978.12, 1221.88]);
+INSERT INTO public.deposit_match_links
+  (restaurant_id, item_id, bank_transaction_id, allocated_amount, method, state)
+SELECT i.restaurant_id, i.id, bt.id, 50.00, 'manual', 'suggested'
+FROM public.deposit_match_items i
+JOIN public.bank_transactions bt
+  ON bt.restaurant_id = i.restaurant_id AND bt.amount = 978.12
+WHERE i.restaurant_id = '11111111-7000-0000-0000-000000000016'
+  AND i.business_date = '2026-07-01';
+SET LOCAL role TO authenticated;
+SELECT public.refresh_deposit_matches(
+  '11111111-7000-0000-0000-000000000016', '2026-08-01', '2026-08-31');
+SET LOCAL role TO postgres;
+SELECT is(
+  (SELECT string_agg(DISTINCT state, ',') FROM public.deposit_match_links
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000016' AND method = 'auto'),
+  'suggested', 'T: an outside suggested link makes the group suggested');
+SELECT is(
+  (SELECT string_agg(status || '/' || status_reason, ',' ORDER BY business_date)
+   FROM public.deposit_match_items
+   WHERE restaurant_id = '11111111-7000-0000-0000-000000000016'
+     AND business_date >= '2026-08-01'),
+  'needs_review/ambiguous_match,needs_review/ambiguous_match', 'T: both group items need review');
 
 SELECT * FROM finish();
 ROLLBACK;

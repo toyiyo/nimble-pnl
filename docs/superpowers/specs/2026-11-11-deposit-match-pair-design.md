@@ -10,17 +10,17 @@ The engine links 1 POS item to 1 bank deposit. Shift4 sometimes pays
 2 adjacent business days as 2 deposits. No single deposit matches a
 single day. The sum of the days matches the sum of the deposits.
 
-Production case: restaurant `7c0c76e3-e770-401b-a2a9-c1edd407efed`,
-focus rule `b2dfa8b6-e895-4166-8066-56d74365fce3` (gross, lag 1–3
-business days, tolerance $5.00 or 0.5%, descriptor `SHIFT4`).
+Example: a focus rule (gross, lag 1–3 business days, tolerance $5.00
+or 0.5%, descriptor `SHIFT4`). A production case has this shape. The
+amounts below are synthetic.
 
 | Side | Date | Amount |
 |---|---|---|
-| POS item | Sat Oct 31 | 971.56 |
-| POS item | Sun Nov 1 | 1,263.05 |
-| Deposit | Mon Nov 2 | 1,000.72 |
-| Deposit | Tue Nov 3 | 1,233.89 |
-| **Sum** | | **2,234.61 on both sides** |
+| POS item | Sat Oct 31 | 948.37 |
+| POS item | Sun Nov 1 | 1,251.63 |
+| Deposit | Mon Nov 2 | 978.12 |
+| Deposit | Tue Nov 3 | 1,221.88 |
+| **Sum** | | **2,200.00 on both sides** |
 
 The 2 deposits have no links in production (query on 2026-11-11). The
 2 items show `late` / `past_lag_max`. No money is missing. The engine
@@ -32,8 +32,8 @@ cannot express this case.
   (`supabase/migrations/20260904150000_deposit_match_business_day_lag.sql:205-260`).
 - The match test compares 1 expected amount with 1 deposit amount
   (`…_business_day_lag.sql:265-276`). The best 1:1 fit is
-  |971.56 − 1,000.72| = 29.16. The tolerance is
-  GREATEST(5.00, 971.56 × 0.005) = 5.00. The test fails.
+  |948.37 − 978.12| = 29.75. The tolerance is
+  GREATEST(5.00, 948.37 × 0.005) = 5.00. The test fails.
 - A pair that fails the test consumes nothing
   (`…_business_day_lag.sql:278-283`). Both items stay open.
 - Step 5 finds no confirmed link and no suggested link. After the lag
@@ -182,13 +182,13 @@ split across items.
    (`…_tables.sql:89`). The pieces of a deposit sum to its amount, so
    the cap trigger holds.
 
-Prod case: D = E = 2,234.61, so the shares equal the expected amounts.
+Example case: D = E = 2,200.00, so the shares equal the expected amounts.
 
 | Link | Item | Deposit | allocated_amount |
 |---|---|---|---|
-| 1 | Oct 31 | Nov 2 (1,000.72) | 971.56 |
-| 2 | Nov 1 | Nov 2 (1,000.72) | 29.16 |
-| 3 | Nov 1 | Nov 3 (1,233.89) | 1,233.89 |
+| 1 | Oct 31 | Nov 2 (978.12) | 948.37 |
+| 2 | Nov 1 | Nov 2 (978.12) | 29.75 |
+| 3 | Nov 1 | Nov 3 (1,221.88) | 1,221.88 |
 
 **Why Step 5 needs no change.** Each item's diff is
 `e_i − a_i = e_i × (E − D) / E`. For gross, `|e_i × (E − D) / E| <=

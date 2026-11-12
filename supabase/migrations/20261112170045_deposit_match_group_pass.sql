@@ -443,12 +443,22 @@ BEGIN
               )
             ) v ON v.cid = c.cid
           )
+          -- A group is ambiguous when another valid candidate shares an
+          -- item or a deposit with it. A suggested link that an item
+          -- outside this group still holds on a group deposit also
+          -- competes (for example, an item outside the refresh scope).
           SELECT c.*,
-                 EXISTS (
+                 (EXISTS (
                    SELECT 1 FROM valid o
                    WHERE o.cid <> c.cid
                      AND (o.item_ids && c.item_ids OR o.txn_ids && c.txn_ids)
-                 ) AS is_ambiguous
+                 ) OR EXISTS (
+                   SELECT 1 FROM public.deposit_match_links sl
+                   WHERE sl.restaurant_id = p_restaurant_id
+                     AND sl.state = 'suggested'
+                     AND sl.bank_transaction_id = ANY(c.txn_ids)
+                     AND NOT (sl.item_id = ANY(c.item_ids))
+                 )) AS is_ambiguous
           FROM valid c
           ORDER BY c.fit_score ASC,
                    cardinality(c.item_ids) + cardinality(c.txn_ids) ASC,

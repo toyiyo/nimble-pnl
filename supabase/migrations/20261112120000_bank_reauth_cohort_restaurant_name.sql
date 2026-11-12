@@ -6,7 +6,7 @@
 
 DROP FUNCTION IF EXISTS public.bank_reauth_cohort_a_candidates();
 
-CREATE OR REPLACE FUNCTION public.bank_reauth_cohort_a_candidates()
+CREATE FUNCTION public.bank_reauth_cohort_a_candidates()
 RETURNS TABLE (
   connected_bank_id uuid,
   restaurant_id uuid,
@@ -57,7 +57,7 @@ GRANT EXECUTE ON FUNCTION public.bank_reauth_cohort_a_candidates() TO service_ro
 
 DROP FUNCTION IF EXISTS public.bank_reauth_cohort_b_recovered();
 
-CREATE OR REPLACE FUNCTION public.bank_reauth_cohort_b_recovered()
+CREATE FUNCTION public.bank_reauth_cohort_b_recovered()
 RETURNS TABLE (
   connected_bank_id uuid,
   restaurant_id uuid,

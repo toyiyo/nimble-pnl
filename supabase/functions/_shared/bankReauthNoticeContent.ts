@@ -45,15 +45,26 @@ function formatNoticeDate(value: string, tz: string | null | undefined): string 
   }).format(new Date(value));
 }
 
+const MAX_RESTAURANT_NAME_LENGTH = 60;
+const BANKING_PATH = '/banking';
+// Keep this key equal to SELECT_RESTAURANT_PARAM in src/lib/restaurantDeepLink.ts.
+const SELECT_RESTAURANT_PARAM = 'select_restaurant';
+
 // Clean a restaurant name for a subject line, a push title, and a message.
 // Change each run of whitespace or control characters to one space, trim,
-// and cut to 60 characters. Return null for an empty result.
+// delete bidi and zero-width characters, and cut to 60 characters.
+// Return null for an empty result.
 export function cleanRestaurantName(name: string | null | undefined): string | null {
-  // eslint-disable-next-line no-control-regex
-  const cleaned = (name ?? '').replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim();
+  const cleaned = (name ?? '')
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\s\u0000-\u001f\u007f]+/g, ' ')
+    .trim();
   if (!cleaned) return null;
   const chars = Array.from(cleaned);
-  return chars.length > 60 ? `${chars.slice(0, 60).join('')}…` : cleaned;
+  return chars.length > MAX_RESTAURANT_NAME_LENGTH
+    ? `${chars.slice(0, MAX_RESTAURANT_NAME_LENGTH).join('')}…`
+    : cleaned;
 }
 
 export interface BankReauthNoticePushPayload {
@@ -86,7 +97,7 @@ interface StageCopy {
 }
 
 function bankingPath(restaurantId: string): string {
-  return `/banking?select_restaurant=${encodeURIComponent(restaurantId)}`;
+  return `${BANKING_PATH}?${SELECT_RESTAURANT_PARAM}=${encodeURIComponent(restaurantId)}`;
 }
 
 function copyForStage(input: BankReauthNoticeInput): StageCopy {

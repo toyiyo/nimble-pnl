@@ -411,7 +411,7 @@ SELECT is(
   'cohort A includes the restaurant''s own IANA timezone (restaurants.timezone), not a default the RPC invents'
 );
 
--- Reauth notice links (design 2026-11-12 §5.1): the notice names the restaurant.
+-- The notice names the restaurant.
 SELECT is(
   (SELECT restaurant_name FROM public.bank_reauth_cohort_a_candidates()
      WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000198'),

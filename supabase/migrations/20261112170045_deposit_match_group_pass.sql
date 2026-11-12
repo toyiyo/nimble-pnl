@@ -1,6 +1,6 @@
 -- Deposit Match group pass: link 2 or 3 adjacent open POS items to 1 or 2
--- open bank deposits when the sums agree (gross rules; net rules and the
--- group state follow in later changes).
+-- open bank deposits when the sums agree. Gross and net rules use the same
+-- pass. One state (confirmed or suggested) applies to the whole group.
 -- Design: docs/superpowers/specs/2026-11-11-deposit-match-pair-design.md
 -- The body is the body of 20260904150000_deposit_match_business_day_lag.sql
 -- plus step 3b. No schema change.
@@ -256,191 +256,189 @@ BEGIN
         v_taken_items := '{}';
         v_taken_txns := '{}';
 
-        BEGIN
-          FOR v_group IN
-            WITH open_items AS (
-              SELECT i.id, i.business_date, i.expected_amount,
-                     public.deposit_match_lag_window_start(i.business_date, v_rule.lag_days_min) AS w_lo,
-                     public.deposit_match_lag_window_end(i.business_date, v_rule.lag_days_max) AS w_hi
-              FROM public.deposit_match_items i
-              WHERE i.rule_id = v_rule.id
-                AND i.id = ANY(v_scope_items)
-                AND i.expected_amount > 0
-                AND NOT (i.id = ANY(v_assigned_items))
-                AND NOT EXISTS (SELECT 1 FROM public.deposit_match_links l2 WHERE l2.item_id = i.id)
-                AND v_bank.status = 'connected'
-                AND v_bank.data_current_through IS NOT NULL
-                AND v_bank.data_current_through >=
-                  public.deposit_match_lag_window_start(i.business_date, v_rule.lag_days_max)
-            ),
-            item_groups AS (
-              SELECT row_number() OVER () AS gid, g.*
-              FROM (
-                SELECT ARRAY[a.id, b.id] AS item_ids,
-                       ARRAY[a.expected_amount, b.expected_amount] AS expected_amounts,
-                       ARRAY[a.w_lo, b.w_lo] AS w_los,
-                       ARRAY[a.w_hi, b.w_hi] AS w_his,
-                       a.business_date AS first_date,
-                       a.expected_amount + b.expected_amount AS e_sum
-                FROM open_items a
-                JOIN open_items b ON b.business_date = a.business_date + 1
-                UNION ALL
-                SELECT ARRAY[a.id, b.id, c.id],
-                       ARRAY[a.expected_amount, b.expected_amount, c.expected_amount],
-                       ARRAY[a.w_lo, b.w_lo, c.w_lo],
-                       ARRAY[a.w_hi, b.w_hi, c.w_hi],
-                       a.business_date,
-                       a.expected_amount + b.expected_amount + c.expected_amount
-                FROM open_items a
-                JOIN open_items b ON b.business_date = a.business_date + 1
-                JOIN open_items c ON c.business_date = a.business_date + 2
-              ) g
-            ),
-            open_txns AS (
-              SELECT bt.id, bt.transaction_date, bt.amount
-              FROM public.bank_transactions bt
-              WHERE bt.restaurant_id = p_restaurant_id
-                AND bt.connected_bank_id = v_rule.connected_bank_id
-                AND bt.amount > 0
-                AND bt.is_transfer IS NOT TRUE
-                AND (v_rule.descriptor_pattern IS NULL OR bt.description ~* v_rule.descriptor_pattern)
-                AND NOT (bt.id = ANY(v_assigned_txns))
-                AND NOT EXISTS (
-                  SELECT 1 FROM public.deposit_match_links l3
-                  WHERE l3.bank_transaction_id = bt.id AND l3.state = 'confirmed'
-                    AND l3.restaurant_id = p_restaurant_id
-                )
-            ),
-            group_txns AS (
-              SELECT x.gid, x.id, x.transaction_date, x.amount
-              FROM (
-                SELECT g.gid, ot.id, ot.transaction_date, ot.amount,
-                       row_number() OVER (
-                         PARTITION BY g.gid
-                         ORDER BY abs((ot.transaction_date AT TIME ZONE 'UTC')::date - g.first_date),
-                                  ot.transaction_date, ot.id
-                       ) AS rn
-                FROM item_groups g
-                JOIN open_txns ot ON EXISTS (
-                  SELECT 1 FROM unnest(g.w_los, g.w_his) AS w(lo, hi)
-                  WHERE ot.transaction_date >= w.lo AND ot.transaction_date < w.hi
-                )
-              ) x
-              WHERE x.rn <= 12
-            ),
-            deposit_sets AS (
-              SELECT t.gid, ARRAY[t.id] AS txn_ids, ARRAY[t.amount] AS txn_amounts,
-                     t.amount AS d_sum
-              FROM group_txns t
+        FOR v_group IN
+          WITH open_items AS (
+            SELECT i.id, i.business_date, i.expected_amount,
+                   public.deposit_match_lag_window_start(i.business_date, v_rule.lag_days_min) AS w_lo,
+                   public.deposit_match_lag_window_end(i.business_date, v_rule.lag_days_max) AS w_hi
+            FROM public.deposit_match_items i
+            WHERE i.rule_id = v_rule.id
+              AND i.id = ANY(v_scope_items)
+              AND i.expected_amount > 0
+              AND NOT (i.id = ANY(v_assigned_items))
+              AND NOT EXISTS (SELECT 1 FROM public.deposit_match_links l2 WHERE l2.item_id = i.id)
+              AND v_bank.status = 'connected'
+              AND v_bank.data_current_through IS NOT NULL
+              AND v_bank.data_current_through >=
+                public.deposit_match_lag_window_start(i.business_date, v_rule.lag_days_max)
+          ),
+          item_groups AS (
+            SELECT row_number() OVER () AS gid, g.*
+            FROM (
+              SELECT ARRAY[a.id, b.id] AS item_ids,
+                     ARRAY[a.expected_amount, b.expected_amount] AS expected_amounts,
+                     ARRAY[a.w_lo, b.w_lo] AS w_los,
+                     ARRAY[a.w_hi, b.w_hi] AS w_his,
+                     a.business_date AS first_date,
+                     a.expected_amount + b.expected_amount AS e_sum
+              FROM open_items a
+              JOIN open_items b ON b.business_date = a.business_date + 1
               UNION ALL
-              SELECT t1.gid,
-                     CASE WHEN (t1.transaction_date, t1.id) <= (t2.transaction_date, t2.id)
-                          THEN ARRAY[t1.id, t2.id] ELSE ARRAY[t2.id, t1.id] END,
-                     CASE WHEN (t1.transaction_date, t1.id) <= (t2.transaction_date, t2.id)
-                          THEN ARRAY[t1.amount, t2.amount] ELSE ARRAY[t2.amount, t1.amount] END,
-                     t1.amount + t2.amount
-              FROM group_txns t1
-              JOIN group_txns t2 ON t2.gid = t1.gid AND t1.id < t2.id
-            ),
-            candidates AS (
-              SELECT row_number() OVER () AS cid,
-                     g.item_ids, g.expected_amounts, g.first_date, g.e_sum,
-                     d.txn_ids, d.txn_amounts, d.d_sum,
-                     CASE WHEN v_rule.settlement = 'gross'
-                          THEN abs(g.e_sum - d.d_sum)
-                          ELSE abs(g.e_sum * (1 - (v_rule.fee_pct_min + v_rule.fee_pct_max) / 2.0 / 100.0) - d.d_sum)
-                     END AS fit_score
+              SELECT ARRAY[a.id, b.id, c.id],
+                     ARRAY[a.expected_amount, b.expected_amount, c.expected_amount],
+                     ARRAY[a.w_lo, b.w_lo, c.w_lo],
+                     ARRAY[a.w_hi, b.w_hi, c.w_hi],
+                     a.business_date,
+                     a.expected_amount + b.expected_amount + c.expected_amount
+              FROM open_items a
+              JOIN open_items b ON b.business_date = a.business_date + 1
+              JOIN open_items c ON c.business_date = a.business_date + 2
+            ) g
+          ),
+          open_txns AS (
+            SELECT bt.id, bt.transaction_date, bt.amount
+            FROM public.bank_transactions bt
+            WHERE bt.restaurant_id = p_restaurant_id
+              AND bt.connected_bank_id = v_rule.connected_bank_id
+              AND bt.amount > 0
+              AND bt.is_transfer IS NOT TRUE
+              AND (v_rule.descriptor_pattern IS NULL OR bt.description ~* v_rule.descriptor_pattern)
+              AND NOT (bt.id = ANY(v_assigned_txns))
+              AND NOT EXISTS (
+                SELECT 1 FROM public.deposit_match_links l3
+                WHERE l3.bank_transaction_id = bt.id AND l3.state = 'confirmed'
+                  AND l3.restaurant_id = p_restaurant_id
+              )
+          ),
+          group_txns AS (
+            SELECT x.gid, x.id, x.transaction_date, x.amount
+            FROM (
+              SELECT g.gid, ot.id, ot.transaction_date, ot.amount,
+                     row_number() OVER (
+                       PARTITION BY g.gid
+                       ORDER BY abs((ot.transaction_date AT TIME ZONE 'UTC')::date - g.first_date),
+                                ot.transaction_date, ot.id
+                     ) AS rn
               FROM item_groups g
-              JOIN deposit_sets d ON d.gid = g.gid
-              WHERE CASE WHEN v_rule.settlement = 'gross'
-                         THEN abs(g.e_sum - d.d_sum) <=
-                              GREATEST(v_rule.amount_tolerance, g.e_sum * v_rule.amount_tolerance_pct)
-                         ELSE (g.e_sum - d.d_sum) BETWEEN g.e_sum * v_rule.fee_pct_min / 100.0
-                                                      AND g.e_sum * v_rule.fee_pct_max / 100.0
-                    END
-            )
-            SELECT c.*,
-                   EXISTS (
-                     SELECT 1 FROM candidates o
-                     WHERE o.cid <> c.cid
-                       AND (o.item_ids && c.item_ids OR o.txn_ids && c.txn_ids)
-                   ) AS is_ambiguous
-            FROM candidates c
-            ORDER BY c.fit_score ASC,
-                     cardinality(c.item_ids) + cardinality(c.txn_ids) ASC,
-                     c.first_date ASC, c.txn_ids ASC
-          LOOP
-            IF v_group.item_ids && v_taken_items OR v_group.txn_ids && v_taken_txns THEN
-              CONTINUE;
-            END IF;
+              JOIN open_txns ot ON EXISTS (
+                SELECT 1 FROM unnest(g.w_los, g.w_his) AS w(lo, hi)
+                WHERE ot.transaction_date >= w.lo AND ot.transaction_date < w.hi
+              )
+            ) x
+            WHERE x.rn <= 12
+          ),
+          deposit_sets AS (
+            SELECT t.gid, ARRAY[t.id] AS txn_ids, ARRAY[t.amount] AS txn_amounts,
+                   t.amount AS d_sum
+            FROM group_txns t
+            UNION ALL
+            SELECT t1.gid,
+                   CASE WHEN (t1.transaction_date, t1.id) <= (t2.transaction_date, t2.id)
+                        THEN ARRAY[t1.id, t2.id] ELSE ARRAY[t2.id, t1.id] END,
+                   CASE WHEN (t1.transaction_date, t1.id) <= (t2.transaction_date, t2.id)
+                        THEN ARRAY[t1.amount, t2.amount] ELSE ARRAY[t2.amount, t1.amount] END,
+                   t1.amount + t2.amount
+            FROM group_txns t1
+            JOIN group_txns t2 ON t2.gid = t1.gid AND t1.id < t2.id
+          ),
+          candidates AS (
+            SELECT row_number() OVER () AS cid,
+                   g.item_ids, g.expected_amounts, g.first_date, g.e_sum,
+                   d.txn_ids, d.txn_amounts, d.d_sum,
+                   CASE WHEN v_rule.settlement = 'gross'
+                        THEN abs(g.e_sum - d.d_sum)
+                        ELSE abs(g.e_sum * (1 - (v_rule.fee_pct_min + v_rule.fee_pct_max) / 2.0 / 100.0) - d.d_sum)
+                   END AS fit_score
+            FROM item_groups g
+            JOIN deposit_sets d ON d.gid = g.gid
+            WHERE CASE WHEN v_rule.settlement = 'gross'
+                       THEN abs(g.e_sum - d.d_sum) <=
+                            GREATEST(v_rule.amount_tolerance, g.e_sum * v_rule.amount_tolerance_pct)
+                       ELSE (g.e_sum - d.d_sum) BETWEEN g.e_sum * v_rule.fee_pct_min / 100.0
+                                                    AND g.e_sum * v_rule.fee_pct_max / 100.0
+                  END
+          )
+          SELECT c.*,
+                 EXISTS (
+                   SELECT 1 FROM candidates o
+                   WHERE o.cid <> c.cid
+                     AND (o.item_ids && c.item_ids OR o.txn_ids && c.txn_ids)
+                 ) AS is_ambiguous
+          FROM candidates c
+          ORDER BY c.fit_score ASC,
+                   cardinality(c.item_ids) + cardinality(c.txn_ids) ASC,
+                   c.first_date ASC, c.txn_ids ASC
+        LOOP
+          IF v_group.item_ids && v_taken_items OR v_group.txn_ids && v_taken_txns THEN
+            CONTINUE;
+          END IF;
 
-            -- Item shares: in proportion to expected_amount. The last
-            -- item takes the rest, so the shares sum to the deposit sum.
-            v_shares := '{}';
-            v_share_sum := 0;
-            v_share_ok := true;
-            FOR v_ii IN 1..cardinality(v_group.item_ids) LOOP
-              IF v_ii < cardinality(v_group.item_ids) THEN
-                v_shares[v_ii] := round(v_group.d_sum * v_group.expected_amounts[v_ii] / v_group.e_sum, 2);
-                v_share_sum := v_share_sum + v_shares[v_ii];
-              ELSE
-                v_shares[v_ii] := v_group.d_sum - v_share_sum;
-              END IF;
-              IF v_shares[v_ii] <= 0 THEN
+          -- Item shares: in proportion to expected_amount. The last
+          -- item takes the rest, so the shares sum to the deposit sum.
+          v_shares := '{}';
+          v_share_sum := 0;
+          v_share_ok := true;
+          FOR v_ii IN 1..cardinality(v_group.item_ids) LOOP
+            IF v_ii < cardinality(v_group.item_ids) THEN
+              v_shares[v_ii] := round(v_group.d_sum * v_group.expected_amounts[v_ii] / v_group.e_sum, 2);
+              v_share_sum := v_share_sum + v_shares[v_ii];
+            ELSE
+              v_shares[v_ii] := v_group.d_sum - v_share_sum;
+            END IF;
+            IF v_shares[v_ii] <= 0 THEN
+              v_share_ok := false;
+            ELSE
+              -- Band check: the exact Step 5 expressions. A group that
+              -- Step 5 would not classify as matched is skipped.
+              v_tol := GREATEST(v_rule.amount_tolerance,
+                                v_group.expected_amounts[v_ii] * v_rule.amount_tolerance_pct);
+              v_diff := v_group.expected_amounts[v_ii] - v_shares[v_ii];
+              v_fee_lo := v_group.expected_amounts[v_ii] * v_rule.fee_pct_min / 100.0;
+              v_fee_hi := v_group.expected_amounts[v_ii] * v_rule.fee_pct_max / 100.0;
+              IF NOT (v_diff BETWEEN (v_fee_lo - v_tol) AND (v_fee_hi + v_tol)) THEN
                 v_share_ok := false;
-              ELSE
-                -- Band check: the exact Step 5 expressions. A group that
-                -- Step 5 would not classify as matched is skipped.
-                v_tol := GREATEST(v_rule.amount_tolerance,
-                                  v_group.expected_amounts[v_ii] * v_rule.amount_tolerance_pct);
-                v_diff := v_group.expected_amounts[v_ii] - v_shares[v_ii];
-                v_fee_lo := v_group.expected_amounts[v_ii] * v_rule.fee_pct_min / 100.0;
-                v_fee_hi := v_group.expected_amounts[v_ii] * v_rule.fee_pct_max / 100.0;
-                IF NOT (v_diff BETWEEN (v_fee_lo - v_tol) AND (v_fee_hi + v_tol)) THEN
-                  v_share_ok := false;
-                END IF;
               END IF;
-            END LOOP;
-            IF NOT v_share_ok THEN
-              CONTINUE;
             END IF;
-
-            -- One state for the whole group. A group that shares an item
-            -- or a deposit with another candidate needs review.
-            v_state := CASE WHEN v_group.is_ambiguous THEN 'suggested' ELSE 'confirmed' END;
-
-            -- Waterfall: each deposit fills the current item up to its
-            -- share. The rest goes to the next item.
-            v_ii := 1;
-            v_jj := 1;
-            v_item_left := v_shares[1];
-            v_dep_left := v_group.txn_amounts[1];
-            WHILE v_ii <= cardinality(v_group.item_ids) AND v_jj <= cardinality(v_group.txn_ids) LOOP
-              v_piece := LEAST(v_item_left, v_dep_left);
-              IF v_piece > 0 THEN
-                INSERT INTO public.deposit_match_links
-                  (restaurant_id, item_id, bank_transaction_id, allocated_amount, method, state, match_reason)
-                VALUES
-                  (p_restaurant_id, v_group.item_ids[v_ii], v_group.txn_ids[v_jj], v_piece,
-                   'auto', v_state,
-                   CASE WHEN v_rule.settlement = 'gross' THEN 'group_gross_fit' ELSE 'group_net_fee_fit' END);
-              END IF;
-              v_item_left := v_item_left - v_piece;
-              v_dep_left := v_dep_left - v_piece;
-              IF v_item_left = 0 THEN
-                v_ii := v_ii + 1;
-                v_item_left := v_shares[v_ii];
-              END IF;
-              IF v_dep_left = 0 THEN
-                v_jj := v_jj + 1;
-                v_dep_left := v_group.txn_amounts[v_jj];
-              END IF;
-            END LOOP;
-
-            v_taken_items := v_taken_items || v_group.item_ids;
-            v_taken_txns := v_taken_txns || v_group.txn_ids;
           END LOOP;
-        END;
+          IF NOT v_share_ok THEN
+            CONTINUE;
+          END IF;
+
+          -- One state for the whole group. A group that shares an item
+          -- or a deposit with another candidate needs review.
+          v_state := CASE WHEN v_group.is_ambiguous THEN 'suggested' ELSE 'confirmed' END;
+
+          -- Waterfall: each deposit fills the current item up to its
+          -- share. The rest goes to the next item.
+          v_ii := 1;
+          v_jj := 1;
+          v_item_left := v_shares[1];
+          v_dep_left := v_group.txn_amounts[1];
+          WHILE v_ii <= cardinality(v_group.item_ids) AND v_jj <= cardinality(v_group.txn_ids) LOOP
+            v_piece := LEAST(v_item_left, v_dep_left);
+            IF v_piece > 0 THEN
+              INSERT INTO public.deposit_match_links
+                (restaurant_id, item_id, bank_transaction_id, allocated_amount, method, state, match_reason)
+              VALUES
+                (p_restaurant_id, v_group.item_ids[v_ii], v_group.txn_ids[v_jj], v_piece,
+                 'auto', v_state,
+                 CASE WHEN v_rule.settlement = 'gross' THEN 'group_gross_fit' ELSE 'group_net_fee_fit' END);
+            END IF;
+            v_item_left := v_item_left - v_piece;
+            v_dep_left := v_dep_left - v_piece;
+            IF v_item_left = 0 THEN
+              v_ii := v_ii + 1;
+              v_item_left := v_shares[v_ii];
+            END IF;
+            IF v_dep_left = 0 THEN
+              v_jj := v_jj + 1;
+              v_dep_left := v_group.txn_amounts[v_jj];
+            END IF;
+          END LOOP;
+
+          v_taken_items := v_taken_items || v_group.item_ids;
+          v_taken_txns := v_taken_txns || v_group.txn_ids;
+        END LOOP;
       EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'refresh_deposit_matches: group pass failed for rule %: %', v_rule.id, SQLERRM;
       END;

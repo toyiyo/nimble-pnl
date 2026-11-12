@@ -119,7 +119,7 @@ In `RestaurantProvider` (`src/contexts/RestaurantContext.tsx`):
 1. Read `restaurant` from `useSearchParams()`.
 2. In the `selectedRestaurant` memo, put `byId(linkedRestaurantId)` first.
    The memo selects the linked restaurant in the first render. This keeps the
-   rule in the comment at `RestaurantContext.tsx:42-57`: no commit with a
+   rule in the comment at `RestaurantContext.tsx:45-57`: no commit with a
    wrong or null selection.
 3. In an effect: when the linked id matches a membership, call
    `handleSetSelectedRestaurant` with it. Then remove the `restaurant` key from

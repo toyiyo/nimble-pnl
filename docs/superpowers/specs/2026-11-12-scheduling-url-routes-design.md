@@ -130,7 +130,7 @@ The router is `BrowserRouter` (`src/App.tsx:353`), on `react-router-dom`
   `keepDefault: true`. An explicit choice always writes `group`, also for
   `none`. When the URL has no `group`, the page reads `localStorage` once (lazy
   init, in try/catch) and writes that value to the URL with `replace`, once, from
-  the page only. A copied link then always holds `group`. A change still writes to
+  the page only, and only on the Schedule tab. A copied link then always holds `group`. A change still writes to
   `localStorage`, as today. This is the existing UI preference, not a data cache.
 - **`day`** (`WeekScheduleMobile.tsx:257`, `ShiftTimelineTab.tsx:297`). The value
   is an ISO date (`YYYY-MM-DD`). Each component derives the effective day: if the

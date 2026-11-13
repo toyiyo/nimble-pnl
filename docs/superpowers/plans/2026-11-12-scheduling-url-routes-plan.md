@@ -38,8 +38,10 @@ Files: `src/hooks/useSearchParamState.ts` (new),
    - The setter identity stays the same after a param change (`renderHook` + `rerender`).
    - `useSetSearchParams({ a: 'x', b: null })` sets `a` and deletes `b` in one write.
 2. Write the hooks. The setter builds `new URLSearchParams(window.location.search)`,
-   applies the patch, and calls `navigate({ search }, { replace })`. It keeps
-   `location.pathname` and `location.hash`. The read uses `useSearchParams()` and
+   applies the patch, and calls
+   `navigate({ pathname, search, hash: window.location.hash }, { replace })`.
+   `navigate({ search })` alone drops the hash. Never call the setter during
+   render: `navigate` does nothing before its layout effect runs. The read uses `useSearchParams()` and
    `useMemo` on the raw value.
 3. Commit.
 
@@ -48,7 +50,10 @@ Files: `src/hooks/useSearchParamState.ts` (new),
 Files: `src/hooks/useSharedWeek.ts`, its existing tests (find with
 `grep -rl useSharedWeek tests/unit`).
 
-1. Add a test: `setWeekStart(monday)` and a tab setter call in one handler keep both.
+1. Change `tests/unit/useSharedWeek.test.tsx` from `MemoryRouter` to
+   `BrowserRouter` with `window.history.replaceState`. Under `MemoryRouter`, the
+   router location and `window.location` differ, so the tests are not valid.
+   Add a test: `setWeekStart(monday)` and a tab setter call in one handler keep both.
 2. Change the setter to `useSetSearchParams` with `replace`. Keep the public API.
 3. Run all `useSharedWeek` and `useShiftPlanner` tests. Commit.
 
@@ -65,11 +70,16 @@ Files: `src/pages/Scheduling.tsx`.
    `Skeleton` panel with `aria-busy="true"`.
 6. Add one effect: after `isResolved`, if `effectiveTab !== urlTab` and not
    `leavingDirty`, write `tab=schedule` with `replace`.
-7. Discard dialog (`:1815-1832`): open is `discardOpen`. "Discard" sets
-   `templatesDirty` false. `onOpenChange(false)` without discard writes
-   `tab=templates` with `replace`. Use a ref to tell "Discard" from the other close paths.
+7. Discard dialog (`:1815-1832`): open is `discardOpen`. The "Discard"
+   `onClick` calls `event.preventDefault()`, then `setTemplatesDirty(false)`.
+   Radix `composeEventHandlers` skips `onOpenChange` for a default-prevented
+   event, so no ref is necessary. `onOpenChange(false)` runs only for Esc,
+   Cancel, and an overlay click. It writes `tab=templates` with `replace`.
 8. `handleEditTemplates` (`:347`) uses the tab setter with `push`.
    `handleViewTemplateWeek` (`:348-354`) uses `useSetSearchParams({ week, tab: null }, { history: 'push' })`.
+   The old code did not add a history entry for this week change. `push` is
+   correct now, because the tab changes in the same write. Say this in the
+   commit message.
 9. Run typecheck and the scheduling unit tests. Commit.
 
 ## Task 5 — Schedule tab filters and group by
@@ -81,7 +91,11 @@ Files: `src/pages/Scheduling.tsx`, `src/components/scheduling/WeekScheduleMobile
    Get `isLoading` from `useEmployeeAreas` (`:426`). Delete the effect at `:431-435`.
 2. `group` (`:436-442`, `:573`): use the hook with `keepDefault: true`. Read
    `localStorage` once in a lazy ref (try/catch). Add one page effect: if the URL
-   has no `group`, write the stored value with `replace`. `handleGroupByChange`
+   has no `group` and the tab is `schedule`, write the stored value with
+   `replace`. Test raw presence with
+   `new URLSearchParams(window.location.search).has('group')`. Do not compare the
+   parsed value to the fallback: a stored `none` equals the fallback and the
+   write would repeat. Add a unit test for a stored `none`. `handleGroupByChange`
    writes the URL and `localStorage`.
 3. `WeekScheduleMobile` (`:257-266`): replace the index state with the `day`
    param. Derive the index with `weekDays.findIndex`. Fall back to
@@ -99,7 +113,10 @@ Files: `src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx`,
    `'all'` to `null`. Change the comment at `:216`.
 2. Timeline `day` (`ShiftTimelineTab.tsx:297-301`) and `timelineGroup` (`:302`):
    use the hook. Keep the derive at `:301`.
-3. Run typecheck and tests. Commit.
+3. Open the React Profiler on the Planner tab. Toggle `hidden` and
+   `plannerArea`. If the full `Scheduling` page renders again, wrap the heavy
+   planner children in `memo` and pass primitives.
+4. Run typecheck and tests. Commit.
 
 ## Task 7 — Availability week and selected template
 
@@ -109,9 +126,11 @@ Files: `src/components/scheduling/TeamAvailabilityGrid.tsx`,
 1. Grid: delete `weekStart` state (`:384`). Call `useSharedWeek()`. Change
    `goToPrevWeek`, `goToNextWeek` (`:411-423`), and the "today" handler (`:429`)
    to non-functional calls with `weekStart` in the deps.
-2. Templates: read `template` with the hook. When the list loads, select the
+2. Templates: delete `selectedId` state (`:74`). Derive the selected id from
+   the `template` param. Do not keep a copy in state. The click handler calls
+   `guard()` first, then writes the param. When the list loads, select the
    matching template. If no match, the auto-select effect (`:105-107`) selects
-   the first and writes its id with `replace`. Write the id only after `guard()`
+   the first and writes its id with `replace`. Never write when the list is empty. Write the id only after `guard()`
    confirms. Never write `NEW_DRAFT_ID`.
 3. Run typecheck and tests. Commit.
 
@@ -138,7 +157,8 @@ File: `tests/e2e/scheduling-url-routes.spec.ts` (new).
 
 Cases (design §7): planner timeline deep link; the selected trigger matches
 `?tab=`; tab change then Back; reload keeps `area` and `group`; 375 px `?day=`;
-dirty template draft then Back opens the dialog and keeps the draft. Use
+dirty template draft then Back opens the dialog and keeps the draft; keyboard:
+an arrow key moves focus and does not change `?tab=`, then Enter changes it. Use
 `generateTestUser()` and role queries with `{ exact: true }`. If local signup
 hangs, use the `page.setContent` harness (lesson in `memory/lessons.md`).
 Run with `npx playwright test tests/e2e/scheduling-url-routes.spec.ts --reporter=line`

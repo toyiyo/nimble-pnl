@@ -6,6 +6,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { quoteForOrFilter } from '@/lib/utils';
 
 export interface InventoryTransactionQuery {
   restaurantId: string;
@@ -134,8 +135,9 @@ export async function fetchInventoryTransactions(
     if (term) {
       // Filter on direct columns: reason, reference_id, performed_by
       // Note: Product and supplier names would require an RPC function for efficient filtering
+      const pattern = quoteForOrFilter(`%${term}%`);
       dbQuery = dbQuery.or(
-        `reason.ilike.%${term}%,reference_id.ilike.%${term}%,performed_by.ilike.%${term}%`
+        `reason.ilike.${pattern},reference_id.ilike.${pattern},performed_by.ilike.${pattern}`
       );
     }
   }

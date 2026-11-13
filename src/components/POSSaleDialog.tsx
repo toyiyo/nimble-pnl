@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/popover';
 import { Check, ChevronsUpDown, CheckCircle2, AlertCircle, Receipt } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSaleDateTimeDefaults } from '@/lib/timezone';
 import Fuse from 'fuse.js';
 
 const saleSchema = z.object({
@@ -62,6 +63,7 @@ interface POSSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
+  timezone: string;
   editingSale?: {
     id: string;
     itemName: string;
@@ -78,6 +80,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   open,
   onOpenChange,
   restaurantId,
+  timezone,
   editingSale = null,
 }) => {
   const { createManualSale, createManualSaleWithAdjustments, updateManualSale } = useUnifiedSales(restaurantId);
@@ -87,26 +90,29 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   const [comboboxOpen, setComboboxOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const blankForm = useCallback((): SaleFormValues => ({
+    itemName: '',
+    quantity: 1,
+    unitPrice: undefined,
+    totalPrice: undefined,
+    ...getSaleDateTimeDefaults(timezone),
+    adjustmentType: 'revenue',
+    taxAmount: undefined,
+    tipAmount: undefined,
+    serviceChargeAmount: undefined,
+    discountAmount: undefined,
+    feeAmount: undefined,
+  }), [timezone]);
+
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleSchema),
-    defaultValues: editingSale || {
-      itemName: '',
-      quantity: 1,
-      unitPrice: undefined,
-      totalPrice: undefined,
-      saleDate: new Date().toISOString().split('T')[0],
-      saleTime: new Date().toTimeString().slice(0, 5),
-      adjustmentType: 'revenue',
-      taxAmount: undefined,
-      tipAmount: undefined,
-      serviceChargeAmount: undefined,
-      discountAmount: undefined,
-      feeAmount: undefined,
-    },
+    defaultValues: editingSale || blankForm(),
   });
 
-  // Update form when editingSale changes
+  // Reset on open so a default from mount time does not go stale past midnight.
   React.useEffect(() => {
+    if (!open) return;
+    setSearchQuery('');
     if (editingSale) {
       form.reset({
         itemName: editingSale.itemName,
@@ -123,22 +129,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         feeAmount: undefined,
       });
     } else {
-      form.reset({
-        itemName: '',
-        quantity: 1,
-        unitPrice: undefined,
-        totalPrice: undefined,
-        saleDate: new Date().toISOString().split('T')[0],
-        saleTime: new Date().toTimeString().slice(0, 5),
-        adjustmentType: 'revenue',
-        taxAmount: undefined,
-        tipAmount: undefined,
-        serviceChargeAmount: undefined,
-        discountAmount: undefined,
-        feeAmount: undefined,
-      });
+      form.reset(blankForm());
     }
-  }, [editingSale, form]);
+  }, [editingSale, form, open, blankForm]);
 
   // Combine recipes and POS items into searchable list
   const searchableItems = useMemo(() => {

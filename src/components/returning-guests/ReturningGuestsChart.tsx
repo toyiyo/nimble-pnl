@@ -51,10 +51,18 @@ export function ReturningGuestsChart({ weeks, campaignStart }: ReturningGuestsCh
               width={56}
             />
             <Tooltip
+              contentStyle={{
+                backgroundColor: 'hsl(var(--popover))',
+                color: 'hsl(var(--popover-foreground))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: 8,
+                fontSize: 13,
+              }}
+              labelStyle={{ color: 'hsl(var(--popover-foreground))' }}
               labelFormatter={(v: number) => `Week ${v}`}
               formatter={(value: number, name: string) => [money(value), name]}
             />
-            <Legend />
+            <Legend wrapperStyle={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }} />
             <ReferenceLine
               x={0}
               stroke="hsl(var(--muted-foreground))"

@@ -27,7 +27,7 @@ import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 const LABEL = 'text-[12px] font-medium text-muted-foreground uppercase tracking-wider';
 
 export default function ReturningGuests() {
-  const { selectedRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, loading: restaurantLoading } = useRestaurantContext();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const role = selectedRestaurant?.role;
@@ -52,7 +52,11 @@ export default function ReturningGuests() {
   if (!selectedRestaurant) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
-        <Skeleton data-testid="rg-skeleton" className="h-28 rounded-xl" />
+        {restaurantLoading ? (
+          <Skeleton data-testid="rg-skeleton" className="h-28 rounded-xl" />
+        ) : (
+          <p className="text-[14px] text-muted-foreground">Select a restaurant to see returning guests.</p>
+        )}
       </div>
     );
   }

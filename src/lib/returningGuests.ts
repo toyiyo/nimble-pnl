@@ -88,15 +88,15 @@ export function canViewReturningGuests(role: string | null | undefined): boolean
 }
 
 export interface ChangeDescription {
-  direction: 'up' | 'down' | 'flat';
-  sign: '+' | '-' | '';
-  word: 'increased' | 'decreased' | 'did not change';
-  rounded: number;
+  readonly direction: 'up' | 'down' | 'flat';
+  readonly sign: '+' | '-' | '';
+  readonly word: 'increased' | 'decreased' | 'did not change';
+  readonly rounded: number;
 }
 
 /** Describe a percent change. A change that rounds to 0 counts as flat. */
 export function describeChange(change: number): ChangeDescription {
-  const rounded = Math.round(Math.abs(change));
+  const rounded = Number.isFinite(change) ? Math.round(Math.abs(change)) : 0;
   if (rounded === 0) return { direction: 'flat', sign: '', word: 'did not change', rounded };
   if (change > 0) return { direction: 'up', sign: '+', word: 'increased', rounded };
   return { direction: 'down', sign: '-', word: 'decreased', rounded };

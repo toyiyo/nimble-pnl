@@ -12,6 +12,12 @@ const PERMISSION_DENIED = '42501';
  * `get_returning_guest_trends` RPC. The query stays disabled until the
  * restaurant, a valid campaign start date and a `weeks` value of 1 to 26 exist.
  */
+const KEY_NAME = 'returning-guest-trends';
+
+function trendsKey(restaurantId: string | null, campaignStart: string | null, weeks: number) {
+  return [KEY_NAME, restaurantId, campaignStart, weeks] as const;
+}
+
 export function useReturningGuestTrends(
   restaurantId: string | null,
   campaignStart: string | null,
@@ -19,12 +25,12 @@ export function useReturningGuestTrends(
 ) {
   const weeksValid = Number.isInteger(weeks) && weeks >= MIN_WEEKS && weeks <= MAX_WEEKS;
   return useQuery({
-    queryKey: ['returning-guest-trends', restaurantId, campaignStart, weeks],
+    queryKey: trendsKey(restaurantId, campaignStart, weeks),
     queryFn: async (): Promise<ReturningGuestTrends> => {
-      // The generated types do not list this RPC yet. Cast the client for this call.
       if (!restaurantId || !campaignStart) {
         throw new Error('restaurantId and campaignStart are required');
       }
+      // The generated types do not list this RPC yet. Cast the client for this call.
       const rpc = supabase.rpc as unknown as (
         fn: string,
         args: Record<string, unknown>,
@@ -42,10 +48,13 @@ export function useReturningGuestTrends(
     refetchOnWindowFocus: true,
     // Keep old data only when the restaurant and the start date are the same.
     // A change of restaurant or start date must show the loading state.
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery?.queryKey[1] === restaurantId && previousQuery?.queryKey[2] === campaignStart
+    placeholderData: (previousData, previousQuery) => {
+      const [, prevRestaurantId, prevStart] = (previousQuery?.queryKey ??
+        []) as Partial<ReturnType<typeof trendsKey>>;
+      return prevRestaurantId === restaurantId && prevStart === campaignStart
         ? previousData
-        : undefined,
+        : undefined;
+    },
     retry: (failureCount, error) =>
       (error as { code?: string } | null)?.code !== PERMISSION_DENIED && failureCount < 2,
   });

@@ -175,9 +175,12 @@ export const TradeHistorySection = ({ restaurantId, timezone }: TradeHistorySect
             </TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value={filter} className="mt-0">
-          {renderBody()}
-        </TabsContent>
+        {/* Mount a panel for each tab, so each aria-controls has a target. Hide the inactive panels. */}
+        {FILTERS.map((f) => (
+          <TabsContent key={f.value} value={f.value} forceMount hidden={f.value !== filter} className="mt-0">
+            {f.value === filter ? renderBody() : null}
+          </TabsContent>
+        ))}
       </Tabs>
     </section>
   );

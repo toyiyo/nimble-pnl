@@ -153,6 +153,26 @@ describe('TradeHistorySection', () => {
     expect(within(panel).getByText('Alice Giver')).toBeInTheDocument();
   });
 
+  it('points each tab to a panel in the DOM before and after a filter change', () => {
+    state.trades = [makeRow()];
+    renderSection();
+    const check = () => {
+      for (const tab of screen.getAllByRole('tab')) {
+        const id = tab.getAttribute('aria-controls');
+        expect(id).toBeTruthy();
+        const panel = document.getElementById(id as string);
+        expect(panel).not.toBeNull();
+        expect(panel?.hidden).toBe(tab.getAttribute('aria-selected') !== 'true');
+      }
+    };
+    check();
+    const rejected = screen.getByRole('tab', { name: /rejected/i });
+    fireEvent.mouseDown(rejected);
+    fireEvent.click(rejected);
+    expect(rejected.getAttribute('aria-selected')).toBe('true');
+    check();
+  });
+
   it('shows Former employee when the poster is not readable', () => {
     state.trades = [makeRow({ offered_by: null })];
     renderSection();

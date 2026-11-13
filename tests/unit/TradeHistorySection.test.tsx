@@ -136,6 +136,29 @@ describe('TradeHistorySection', () => {
     expect(fetchNextPage).toHaveBeenCalled();
   });
 
+  it('keeps Load more when a page has no visible rows but a next page exists', () => {
+    state.hasNextPage = true;
+    renderSection();
+    expect(screen.queryByTestId('history-empty')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }));
+    expect(fetchNextPage).toHaveBeenCalled();
+  });
+
+  it('puts the results in the tab panel of the selected tab', () => {
+    state.trades = [makeRow()];
+    renderSection();
+    const tab = screen.getByRole('tab', { name: /^all$/i });
+    const panel = screen.getByRole('tabpanel');
+    expect(tab.getAttribute('aria-controls')).toBe(panel.id);
+    expect(within(panel).getByText('Alice Giver')).toBeInTheDocument();
+  });
+
+  it('shows Former employee when the poster is not readable', () => {
+    state.trades = [makeRow({ offered_by: null })];
+    renderSection();
+    expect(screen.getByText('Former employee')).toBeInTheDocument();
+  });
+
   it('shows Loading... and disables the button while the next page loads', () => {
     state.trades = [makeRow()];
     state.hasNextPage = true;

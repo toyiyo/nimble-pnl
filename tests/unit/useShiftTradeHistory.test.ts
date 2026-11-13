@@ -120,13 +120,35 @@ describe('useShiftTradeHistory', () => {
   });
 
   it('uses the raw count before the join filter to decide the next page', async () => {
-    const page = manyRows(25).map((r, i) => (i === 0 ? { ...r, offered_by: null } : r));
+    const page = manyRows(25).map((r, i) => (i === 0 ? { ...r, offered_shift: null } : r));
     pages = [{ data: page, error: null }];
     const { result } = renderHook(() => useShiftTradeHistory('r1', 'approved'), {
       wrapper: wrapper(),
     });
     await waitFor(() => expect(result.current.trades).toHaveLength(24));
     expect(result.current.hasNextPage).toBe(true);
+  });
+
+  it('keeps a trade when the poster join is not readable', async () => {
+    pages = [{ data: [row('a', { offered_by: null })], error: null }];
+    const { result } = renderHook(() => useShiftTradeHistory('r1', 'approved'), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(result.current.trades).toHaveLength(1));
+    expect(result.current.trades[0].offered_by).toBeNull();
+  });
+
+  it('puts the restaurant id before history in the query key', async () => {
+    pages = [{ data: [row('a')], error: null }];
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useShiftTradeHistory('r1', 'approved'), {
+      wrapper: ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client }, children),
+    });
+    await waitFor(() => expect(result.current.trades).toHaveLength(1));
+    // useSchedulePublish invalidates ['shift_trades', restaurantId].
+    const matches = client.getQueryCache().findAll({ queryKey: ['shift_trades', 'r1'] });
+    expect(matches).toHaveLength(1);
   });
 
   it('adds the reviewer full name, then email, then former team member', async () => {

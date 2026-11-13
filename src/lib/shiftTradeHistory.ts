@@ -62,7 +62,9 @@ export function getTradeHistoryOutcome(
   return {
     label: 'Cancelled',
     tone: 'muted',
-    actorText: 'Cancelled before anyone took it',
+    actorText: trade.accepted_by
+      ? `Cancelled after ${trade.accepted_by.name} took it`
+      : 'Cancelled before anyone took it',
     instant: trade.updated_at,
   };
 }

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { hasValidJoins, type ShiftTrade } from '@/hooks/useShiftTrades';
+import type { ShiftTrade } from '@/hooks/useShiftTrades';
 import {
   CLOSED_TRADE_STATUSES,
   type ClosedTradeStatus,
@@ -72,7 +72,8 @@ export const useShiftTradeHistory = (
   filter: TradeHistoryFilter,
 ) => {
   const query = useInfiniteQuery({
-    queryKey: ['shift_trades', 'history', restaurantId, filter],
+    // restaurantId comes second so that ['shift_trades', restaurantId] invalidations match.
+    queryKey: ['shift_trades', restaurantId, 'history', filter],
     initialPageParam: 0,
     queryFn: async ({ pageParam }): Promise<HistoryPage> => {
       const from = pageParam as number;
@@ -91,7 +92,8 @@ export const useShiftTradeHistory = (
       if (error) throw error;
 
       const raw = (data ?? []) as unknown as ShiftTrade[];
-      const valid = raw.filter(hasValidJoins);
+      // Keep a trade with an unreadable poster. The row shows 'Former employee' for it.
+      const valid = raw.filter((t) => t.offered_shift != null);
       const reviewerIds = [
         ...new Set(valid.map((t) => t.reviewed_by).filter((id): id is string => !!id)),
       ];

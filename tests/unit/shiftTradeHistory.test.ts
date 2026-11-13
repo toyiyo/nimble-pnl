@@ -54,13 +54,17 @@ describe('getTradeHistoryOutcome', () => {
     });
   });
   it('cancelled uses updated_at', () => {
-    const t = { ...base, status: 'cancelled' as const };
+    const t = { ...base, status: 'cancelled' as const, accepted_by: null };
     expect(getTradeHistoryOutcome(t, 'Cy')).toEqual({
       label: 'Cancelled',
       tone: 'muted',
       actorText: 'Cancelled before anyone took it',
       instant: t.updated_at,
     });
+  });
+  it('cancelled after acceptance does not say no one took it', () => {
+    const t = { ...base, status: 'cancelled' as const };
+    expect(getTradeHistoryOutcome(t, 'Cy').actorText).toBe('Cancelled after Ben took it');
   });
 });
 

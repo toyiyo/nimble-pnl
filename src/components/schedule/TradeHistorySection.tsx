@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useShiftTradeHistory, type ShiftTradeHistoryRow } from '@/hooks/useShiftTradeHistory';
 import {
   getTradeHistoryOutcome,
@@ -127,7 +127,7 @@ export const TradeHistorySection = ({ restaurantId, timezone }: TradeHistorySect
       );
     }
     if (error && trades.length === 0) return errorBlock;
-    if (trades.length === 0) {
+    if (trades.length === 0 && !hasNextPage) {
       return (
         <p data-testid="history-empty" className="py-6 text-center text-[13px] text-muted-foreground">
           {EMPTY_MESSAGES[filter]}
@@ -175,9 +175,10 @@ export const TradeHistorySection = ({ restaurantId, timezone }: TradeHistorySect
             </TabsTrigger>
           ))}
         </TabsList>
+        <TabsContent value={filter} className="mt-0">
+          {renderBody()}
+        </TabsContent>
       </Tabs>
-
-      {renderBody()}
     </section>
   );
 };

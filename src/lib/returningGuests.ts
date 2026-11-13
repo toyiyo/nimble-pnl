@@ -65,14 +65,15 @@ function toUtcMs(date: string): number {
   return Date.UTC(y, m - 1, d);
 }
 
+/** Return true when the value is a real calendar date in YYYY-MM-DD form. */
+export function isCalendarDate(value: string | null | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return new Date(toUtcMs(value)).toISOString().slice(0, 10) === value;
+}
+
 /** Parse the `start` URL param. Return null if it is not a real date or is after today. */
 export function parseCampaignStart(raw: string | null | undefined, today: string): string | null {
-  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const ms = toUtcMs(raw);
-  const roundTrip = new Date(ms).toISOString().slice(0, 10);
-  if (roundTrip !== raw) return null;
-  if (raw > today) return null;
-  return raw;
+  return isCalendarDate(raw) && raw <= today ? raw : null;
 }
 
 /** Parse the `weeks` URL param. Fall back to 8. */

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   percentChange,
+  describeChange,
+  canViewReturningGuests,
   parseCampaignStart,
   parseWeeks,
   noteForQuality,
@@ -111,5 +113,25 @@ describe('toChartRows', () => {
   });
   it('returns an empty list for no weeks', () => {
     expect(toChartRows([], '2026-10-01')).toEqual([]);
+  });
+});
+
+describe('describeChange', () => {
+  it('describes an increase and a decrease', () => {
+    expect(describeChange(12.4)).toEqual({ direction: 'up', sign: '+', word: 'increased', rounded: 12 });
+    expect(describeChange(-7)).toEqual({ direction: 'down', sign: '-', word: 'decreased', rounded: 7 });
+  });
+  it('treats a change that rounds to 0 as flat', () => {
+    expect(describeChange(0.3).direction).toBe('flat');
+    expect(describeChange(-0.4).sign).toBe('');
+  });
+});
+
+describe('canViewReturningGuests', () => {
+  it('allows owner and manager only', () => {
+    expect(canViewReturningGuests('owner')).toBe(true);
+    expect(canViewReturningGuests('manager')).toBe(true);
+    expect(canViewReturningGuests('chef')).toBe(false);
+    expect(canViewReturningGuests(undefined)).toBe(false);
   });
 });

@@ -82,6 +82,26 @@ export function parseWeeks(raw: string | null | undefined): number {
   return (ALLOWED_WEEKS as readonly number[]).includes(n) ? n : DEFAULT_WEEKS;
 }
 
+/** Return true when the role may see the Returning Guests page. */
+export function canViewReturningGuests(role: string | null | undefined): boolean {
+  return role === 'owner' || role === 'manager';
+}
+
+export interface ChangeDescription {
+  direction: 'up' | 'down' | 'flat';
+  sign: '+' | '-' | '';
+  word: 'increased' | 'decreased' | 'did not change';
+  rounded: number;
+}
+
+/** Describe a percent change. A change that rounds to 0 counts as flat. */
+export function describeChange(change: number): ChangeDescription {
+  const rounded = Math.round(Math.abs(change));
+  if (rounded === 0) return { direction: 'flat', sign: '', word: 'did not change', rounded };
+  if (change > 0) return { direction: 'up', sign: '+', word: 'increased', rounded };
+  return { direction: 'down', sign: '-', word: 'decreased', rounded };
+}
+
 const CASH_NOTE = 'Cash payments are not included.';
 
 /** Return the note text for a match quality, or null when there is no data. */

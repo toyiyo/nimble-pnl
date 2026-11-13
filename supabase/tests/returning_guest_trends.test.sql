@@ -6,7 +6,7 @@
 -- Campaign start C of restaurant T = rg_d(-28). Card A is VISA 411111 ending 7391.
 
 BEGIN;
-SELECT plan(65);
+SELECT plan(67);
 
 SET LOCAL role TO postgres;
 
@@ -38,7 +38,8 @@ INSERT INTO restaurants (id, name, timezone) VALUES
   ('c0000000-0000-0000-0000-000000000005', 'RG Mixed',      'America/Chicago'),
   ('c0000000-0000-0000-0000-000000000006', 'RG Square',     'America/Chicago'),
   ('c0000000-0000-0000-0000-000000000007', 'RG None',       'America/Chicago'),
-  ('c0000000-0000-0000-0000-000000000008', 'RG BadZone',    'Not/AZone');
+  ('c0000000-0000-0000-0000-000000000008', 'RG BadZone',    'Not/AZone'),
+  ('c0000000-0000-0000-0000-000000000009', 'RG Toast95',     'America/Chicago');
 
 -- Owner has all restaurants. Manager, staff and chef belong to T only.
 INSERT INTO user_restaurants (user_id, restaurant_id, role)
@@ -91,6 +92,16 @@ INSERT INTO toast_payments (restaurant_id, toast_payment_guid, toast_order_guid,
      '{"cardType":"VISA","first6Digits":"411111","last4Digits":"9999"}'),
   ('c0000000-0000-0000-0000-000000000002', gen_random_uuid()::text, gen_random_uuid()::text, 'CREDIT', 20, 0, public.rg_d(-27), 'CAPTURED',
      '{"cardType":"VISA","last4Digits":"9999"}');
+
+-- Toast restaurant T3: first 6 on 20 of 21 card rows (95 percent or more).
+-- The row without first 6 must still count in spend (21st row, $20, in week 0).
+INSERT INTO toast_payments (restaurant_id, toast_payment_guid, toast_order_guid, payment_type, amount, tip_amount, payment_date, payment_status, raw_json)
+SELECT 'c0000000-0000-0000-0000-000000000009', gen_random_uuid()::text, gen_random_uuid()::text, 'CREDIT', 1, 0, public.rg_d(-37), 'CAPTURED',
+       '{"cardType":"VISA","first6Digits":"411111","last4Digits":"8888"}'::jsonb
+FROM generate_series(1, 20);
+INSERT INTO toast_payments (restaurant_id, toast_payment_guid, toast_order_guid, payment_type, amount, tip_amount, payment_date, payment_status, raw_json) VALUES
+  ('c0000000-0000-0000-0000-000000000009', gen_random_uuid()::text, gen_random_uuid()::text, 'CREDIT', 20, 0, public.rg_d(-27), 'CAPTURED',
+     '{"cardType":"VISA","last4Digits":"8888"}');
 
 -- Revel restaurant V (C = rg_d(-14)): X first at C-5, returns C+1. Y NULL status at C-6, then C+2.
 INSERT INTO revel_payments (restaurant_id, revel_payment_id, revel_order_id, payment_type, amount, tip_amount, payment_date, payment_status, raw_json) VALUES
@@ -227,6 +238,7 @@ INSERT INTO res VALUES
   ('T_20',   public.get_returning_guest_trends('c0000000-0000-0000-0000-000000000001', public.rg_d(-20), 8)),
   ('T_cap',  public.get_returning_guest_trends('c0000000-0000-0000-0000-000000000001', public.rg_d(-28), 2)),
   ('T2',     public.get_returning_guest_trends('c0000000-0000-0000-0000-000000000002', public.rg_d(-28), 8)),
+  ('T3',     public.get_returning_guest_trends('c0000000-0000-0000-0000-000000000009', public.rg_d(-28), 8)),
   ('V',      public.get_returning_guest_trends('c0000000-0000-0000-0000-000000000003', public.rg_d(-14), 8)),
   ('F',      public.get_returning_guest_trends('c0000000-0000-0000-0000-000000000004', public.rg_d(-14), 8)),
   ('M',      public.get_returning_guest_trends('c0000000-0000-0000-0000-000000000005', public.rg_d(-14), 8)),
@@ -296,6 +308,11 @@ SELECT is((SELECT j->>'match_quality' FROM res WHERE k = 'T2'), 'fair',
   'T2: first 6 under 95 percent gives fair');
 SELECT is((SELECT rs FROM wk WHERE k = 'T2' AND week_start = public.rg_d(-28)), 20::numeric,
   'T2: same card with and without first 6 is one key (returning)');
+
+SELECT is((SELECT j->>'match_quality' FROM res WHERE k = 'T3'), 'good',
+  'T3: first 6 on 95 percent of card rows gives good');
+SELECT is((SELECT rs + ns FROM wk WHERE k = 'T3' AND week_start = public.rg_d(-28)), 20::numeric,
+  'T3: a row without first 6 still counts in spend');
 
 -- ============================================================
 -- Group 10: empty-string last 4 does not count

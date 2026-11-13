@@ -16,6 +16,7 @@ import { useReturningGuestTrends } from '@/hooks/useReturningGuestTrends';
 
 import {
   ALLOWED_WEEKS,
+  canViewReturningGuests,
   noteForQuality,
   parseCampaignStart,
   parseWeeks,
@@ -30,7 +31,7 @@ export default function ReturningGuests() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const role = selectedRestaurant?.role;
-  const allowed = role === 'owner' || role === 'manager';
+  const allowed = canViewReturningGuests(role);
   const restaurantId = allowed ? (selectedRestaurant?.restaurant_id ?? null) : null;
   const today = toBusinessDay(new Date(), safeTz(selectedRestaurant?.restaurant?.timezone));
   const start = parseCampaignStart(searchParams.get('start'), today);
@@ -47,6 +48,14 @@ export default function ReturningGuests() {
     if (patch.weeks !== undefined) next.set('weeks', String(patch.weeks));
     setSearchParams(next, { replace: true });
   };
+
+  if (!selectedRestaurant) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <Skeleton data-testid="rg-skeleton" className="h-28 rounded-xl" />
+      </div>
+    );
+  }
 
   if (!allowed) {
     return (
@@ -85,7 +94,7 @@ export default function ReturningGuests() {
     </div>
   );
 
-  const hasWarmup = !!data?.weeks.some((w) => w.warmup);
+  const hasWarmup = !!data?.weeks.some((w) => w.period === 'before' && w.warmup);
   const quality = data ? noteForQuality(data.match_quality) : null;
   const noteParts = [quality, hasWarmup && data?.history_start ? warmupNote(data.history_start) : null]
     .filter(Boolean)
@@ -114,7 +123,7 @@ export default function ReturningGuests() {
       <div className="space-y-3" role="alert">
         <p className="text-[14px] text-foreground">We could not load the returning guest data.</p>
         <Button
-          onClick={() => refetch()}
+          onClick={() => void refetch()}
           className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
         >
           Retry

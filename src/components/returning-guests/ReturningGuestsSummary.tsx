@@ -1,7 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
 
 import type { ReturningGuestTrends } from '@/lib/returningGuests';
-import { percentChange } from '@/lib/returningGuests';
+import { describeChange, percentChange } from '@/lib/returningGuests';
 
 interface ReturningGuestsSummaryProps {
   readonly summary: ReturningGuestTrends['summary'];
@@ -27,6 +27,8 @@ function format(value: number | null | undefined, kind: Kind): string {
   return kind === 'money' ? `$${NUM.format(value)}` : NUM.format(value);
 }
 
+const CHANGE_ICONS = { up: ArrowUpRight, down: ArrowDownRight, flat: Minus } as const;
+
 function ChangeText({ change }: { readonly change: number | null }) {
   if (change === null) {
     return (
@@ -35,15 +37,14 @@ function ChangeText({ change }: { readonly change: number | null }) {
       </span>
     );
   }
-  const rounded = Math.round(Math.abs(change));
-  const word = change > 0 ? 'increased' : change < 0 ? 'decreased' : 'did not change';
-  const Icon = change > 0 ? ArrowUpRight : change < 0 ? ArrowDownRight : Minus;
+  const { direction, sign, word, rounded } = describeChange(change);
+  const Icon = CHANGE_ICONS[direction];
   return (
     <span className="inline-flex items-center gap-1 text-[13px] font-medium text-foreground">
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      <span aria-hidden="true">{change > 0 ? '+' : change < 0 ? '-' : ''}{rounded}%</span>
+      <span aria-hidden="true">{sign}{rounded}%</span>
       <span className="sr-only">
-        {change === 0 ? word : `${word} ${rounded} percent`}
+        {direction === 'flat' ? word : `${word} ${rounded} percent`}
       </span>
     </span>
   );

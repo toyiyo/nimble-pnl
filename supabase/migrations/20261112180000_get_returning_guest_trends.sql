@@ -65,7 +65,7 @@ BEGIN
   toast_rows AS (
     SELECT tr.d, tr.amt, 'toast'::text AS src,
            CASE WHEN ts.n_card > 0 AND ts.n_f6 >= 0.95 * ts.n_card
-                THEN tr.brand || '|' || tr.f6 || '|' || tr.l4
+                THEN tr.brand || '|' || COALESCE(tr.f6 || '|', '') || tr.l4
                 ELSE tr.brand || '|' || tr.l4 END AS k,
            CASE WHEN ts.n_card > 0 AND ts.n_f6 >= 0.95 * ts.n_card THEN 3 ELSE 2 END AS qr
     FROM toast_raw tr CROSS JOIN toast_stat ts

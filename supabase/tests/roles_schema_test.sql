@@ -382,21 +382,21 @@ SELECT throws_ok(
 RESET row_security;
 
 -- ============================================================================
--- 14. area_catalog shape: thirty-one areas (one per gateable sidebar page)
+-- 14. area_catalog shape: thirty-two areas (one per gateable sidebar page)
 --     that collapse onto the five ui_groups of the approved design.
 --     20260915120000_decommission_weekly_brief_ops_inbox.sql deletes the
---     ops_inbox and weekly_brief rows, so the count is 31, not 33.
+--     ops_inbox and weekly_brief rows, so the returning_guests area then adds one, so the count is 32.
 -- ============================================================================
 SELECT is(
   (SELECT count(*)::int FROM public.area_catalog),
-  31,
-  'area_catalog holds thirty-one areas'
+  32,
+  'area_catalog holds thirty-two areas'
 );
 
 SELECT is(
   (SELECT count(DISTINCT ui_group)::int FROM public.area_catalog),
   5,
-  'the thirty-one areas collapse onto the five ui_groups of the approved design'
+  'the thirty-two areas collapse onto the five ui_groups of the approved design'
 );
 
 -- Under the bundle model the editor rendered ONE level control per ui_group,

@@ -75,7 +75,7 @@ Banking page showed no reconnect banner, and the user found no way to reconnect.
 ### 5.1 Database: return the restaurant name
 
 Add the migration
-`supabase/migrations/20261112120000_bank_reauth_cohort_restaurant_name.sql`.
+`supabase/migrations/20261112180000_bank_reauth_cohort_restaurant_name.sql`.
 It drops and creates `bank_reauth_cohort_a_candidates()` and
 `bank_reauth_cohort_b_recovered()` again. The body stays the same as in
 `20260731020000_bank_reauth_cohort_restaurant_timezone.sql`, with one more

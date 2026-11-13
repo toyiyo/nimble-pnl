@@ -12,7 +12,7 @@ Commit after each task with explicit paths.
 1. In `supabase/tests/bank_reauth_notices.sql`, change `plan(29)` to `plan(37)`.
    Add 2 `restaurant_name` checks and 6 grant checks (design §6).
 2. Run `npm run test:db` and see the new checks fail.
-3. Add `supabase/migrations/20261112120000_bank_reauth_cohort_restaurant_name.sql`.
+3. Add `supabase/migrations/20261112180000_bank_reauth_cohort_restaurant_name.sql`.
    Copy both RPCs from `20260731020000_...`. Add `r.name AS restaurant_name`.
    Keep `STABLE`, `SECURITY DEFINER`, `search_path`, REVOKE, GRANT, and both
    comments.

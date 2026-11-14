@@ -28,7 +28,7 @@ test.describe('Signup and Create Restaurant Flow', () => {
     await expect(mainContent.getByText(testUser.restaurantName).first()).toBeVisible({ timeout: 10000 });
 
     // Confirm dashboard is usable (main container present)
-    const dashboardContent = page.locator('main, [role=\"main\"], .dashboard, .content');
+    const dashboardContent = page.locator('main, [role="main"], .dashboard, .content');
     await expect(dashboardContent).toBeVisible();
   });
 

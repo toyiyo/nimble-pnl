@@ -249,49 +249,44 @@ export const useQuickCook = (restaurantId: string | null) => {
 
         // Step 3: Create production run ingredients
         const ingredients = recipe.ingredients || [];
-        try {
-          if (ingredients.length > 0) {
-            const ingredientRows = ingredients.map((ing) => ({
-              production_run_id: run.id,
-              product_id: ing.product_id,
-              expected_quantity: ing.quantity,
-              actual_quantity: ing.quantity,
-              unit: ing.unit,
-              variance_percent: 0,
-            }));
-
-            const { error: ingredientError } = await (supabase
-              .from('production_run_ingredients')
-              .insert(ingredientRows as any) as any);
-
-            if (ingredientError) {
-              await cleanupOrphanedRun(run.id);
-              throw ingredientError;
-            }
-          }
-
-          // Step 4: Complete the production run (this handles all inventory transactions)
-          const ingredientPayload = ingredients.map((ing) => ({
+        if (ingredients.length > 0) {
+          const ingredientRows = ingredients.map((ing) => ({
+            production_run_id: run.id,
             product_id: ing.product_id,
             expected_quantity: ing.quantity,
             actual_quantity: ing.quantity,
             unit: ing.unit,
+            variance_percent: 0,
           }));
 
-          const { error: completeError } = await (supabase.rpc as any)('complete_production_run', {
-            p_run_id: run.id,
-            p_actual_yield: recipe.default_yield,
-            p_actual_yield_unit: recipe.default_yield_unit,
-            p_ingredients: ingredientPayload,
-          });
+          const { error: ingredientError } = await (supabase
+            .from('production_run_ingredients')
+            .insert(ingredientRows as any) as any);
 
-          if (completeError) {
+          if (ingredientError) {
             await cleanupOrphanedRun(run.id);
-            throw completeError;
+            throw ingredientError;
           }
-        } catch (stepError) {
-          // Re-throw after cleanup was attempted in the specific step
-          throw stepError;
+        }
+
+        // Step 4: Complete the production run (this handles all inventory transactions)
+        const ingredientPayload = ingredients.map((ing) => ({
+          product_id: ing.product_id,
+          expected_quantity: ing.quantity,
+          actual_quantity: ing.quantity,
+          unit: ing.unit,
+        }));
+
+        const { error: completeError } = await (supabase.rpc as any)('complete_production_run', {
+          p_run_id: run.id,
+          p_actual_yield: recipe.default_yield,
+          p_actual_yield_unit: recipe.default_yield_unit,
+          p_ingredients: ingredientPayload,
+        });
+
+        if (completeError) {
+          await cleanupOrphanedRun(run.id);
+          throw completeError;
         }
 
         toast({

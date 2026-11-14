@@ -76,7 +76,7 @@ INSERT INTO storage.objects (bucket_id, name) VALUES
   ('receipt-images', 'e3000000-0000-0000-0000-0000000000a1/move-me.pdf'),
   ('receipt-images', 'e3000000-0000-0000-0000-0000000000a1/dual-move.pdf'),
   ('receipt-images', 'e3000000-0000-0000-0000-0000000000b1/receipt-b.pdf')
-ON CONFLICT (bucket_id, name) DO UPDATE SET name = EXCLUDED.name;
+ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- 1. The 4 permissive policies do not exist.
@@ -131,6 +131,8 @@ SELECT is(
 -- ============================================================================
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims = '{"sub":"e3000000-0000-0000-0000-000000000001","role":"authenticated"}';
+-- The protect_objects_delete trigger stops a direct DELETE. Turn it off so that RLS decides.
+SET LOCAL storage.allow_delete_query = 'true';
 
 SELECT is(
   (SELECT count(*)::int FROM storage.objects

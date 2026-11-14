@@ -41,7 +41,7 @@ interface RestaurantProviderProps {
 
 export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children }) => {
   const { user } = useAuth();
-  const { restaurants, loading, createRestaurant } = useRestaurants();
+  const { restaurants, loading, fetching, createRestaurant } = useRestaurants();
   // Only an *explicit* pick lives in state. The automatic pick (a saved choice,
   // or the sole membership) is derived during render below.
   const [chosenRestaurantId, setChosenRestaurantId] = useState<string | null>(null);
@@ -133,12 +133,16 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     }
     if (loading || restaurants.length === 0) return;
     if (handledLinkRef.current === linkedId) return;
-    handledLinkRef.current = linkedId;
 
     const linked = resolveLinkedRestaurant(linkedId, restaurants);
+    // The cache can be older than a new membership. Do not reject an unknown
+    // id until the background refetch ends.
+    if (!linked && fetching) return;
+    handledLinkRef.current = linkedId;
+
     if (linked) handleSetSelectedRestaurant(linked);
     setSearchParams(withoutLinkedRestaurant(searchParams), { replace: true });
-  }, [linkedId, loading, restaurants, searchParams, setSearchParams, handleSetSelectedRestaurant]);
+  }, [linkedId, loading, fetching, restaurants, searchParams, setSearchParams, handleSetSelectedRestaurant]);
 
   // Centralized logic: Allow creation if user has no restaurants (first-time) OR is an owner
   const canCreateRestaurant = canUserCreateRestaurant(restaurants);

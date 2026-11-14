@@ -50,11 +50,15 @@ function Probe({ states }: { states: State[] }) {
   return null;
 }
 
-function renderAt(entry: string) {
+function renderAt(entry: string, cachedMemberships?: unknown[]) {
   const states: State[] = [];
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  if (cachedMemberships) {
+    // A stale cache entry: the provider renders it, and a refetch runs in the background.
+    queryClient.setQueryData(['restaurants', 'user-123'], cachedMemberships, { updatedAt: 0 });
+  }
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[entry]}>
       <QueryClientProvider client={queryClient}>
@@ -125,5 +129,16 @@ describe('RestaurantContext - select_restaurant deep link', () => {
     expect(states.at(-1)?.search).toBe('?trade=T&restaurant=B&from=reminder');
     expect(states.at(-1)?.id).toBe('A');
     expect(localStorage.getItem(KEY)).toBe('A');
+  });
+
+  it('waits for the refetch before it rejects an id that the cache does not have', async () => {
+    localStorage.setItem(KEY, 'A');
+    stubMemberships([membershipRow('A'), membershipRow('B')]);
+
+    const states = renderAt('/banking?select_restaurant=B', [membershipRow('A')]);
+
+    await waitFor(() => expect(states.at(-1)?.search).toBe(''));
+    expect(states.at(-1)?.id).toBe('B');
+    expect(localStorage.getItem(KEY)).toBe('B');
   });
 });

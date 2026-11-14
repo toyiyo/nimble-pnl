@@ -73,6 +73,13 @@ import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useSharedWeek } from '@/hooks/useSharedWeek';
+import { useSearchParamState, useSetSearchParams } from '@/hooks/useSearchParamState';
+import {
+  SCHEDULING_PARAMS,
+  tabParam,
+  parseTab,
+  type SchedulingTab,
+} from '@/lib/schedulingUrlParams';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatDayLabel, formatLocalDate } from '@/lib/shiftInterval';
@@ -265,19 +272,24 @@ const Scheduling = () => {
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
   const { guardShiftChange, notifyAfterDeferredCommit, dialog: publishedShiftChangeDialog } =
     usePublishedShiftGuard();
-  const [activeTab, setActiveTab] = useState('schedule');
+  const [urlTab, setTab] = useSearchParamState(tabParam);
+  const setSearchParams = useSetSearchParams();
   // Week Templates keeps an unsaved draft. The page asks before it leaves that tab.
   const [templatesDirty, setTemplatesDirty] = useState(false);
-  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  // Gated tabs need edit:scheduling. Wait for isResolved, so the first-paint false does not act.
+  const gatedTab = urlTab === 'trades' || urlTab === 'templates';
+  const effectiveTab: SchedulingTab =
+    gatedTab && isResolved && !canManageSchedule ? 'schedule' : urlTab;
+  // The Back button can leave a dirty draft without a tab click. Keep the draft tab mounted.
+  const leavingDirty = templatesDirty && urlTab !== 'templates';
+  const renderedTab: SchedulingTab = leavingDirty ? 'templates' : effectiveTab;
+  const discardOpen = leavingDirty;
   const handleTabChange = useCallback(
     (next: string) => {
-      if (activeTab === 'templates' && next !== 'templates' && templatesDirty) {
-        setPendingTab(next);
-        return;
-      }
-      setActiveTab(next);
+      const parsed = parseTab(next);
+      if (parsed) setTab(parsed, { history: 'push' });
     },
-    [activeTab, templatesDirty],
+    [setTab],
   );
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
@@ -326,31 +338,24 @@ const Scheduling = () => {
     }
   }, [unpublishDialogOpen]);
 
-  // The trades tab hides for a viewer without edit:scheduling. If that
-  // viewer is on the trades tab when the gate closes (role change, or the
-  // capability resolves after first paint), fall back to the schedule tab
-  // instead of showing a blank panel.
+  // After the permissions load, replace a gated tab the viewer cannot open.
+  // Back then does not return to a tab that the viewer cannot open.
   useEffect(() => {
-    if (activeTab === 'trades' && !canManageSchedule) {
-      setActiveTab('schedule');
+    if (isResolved && effectiveTab !== urlTab && !leavingDirty) {
+      setTab('schedule', { history: 'replace' });
     }
-  }, [activeTab, canManageSchedule]);
+  }, [isResolved, effectiveTab, urlTab, leavingDirty, setTab]);
 
-  // Week Templates: leave the tab when the user cannot manage the schedule.
-  // Wait for isResolved, so the check does not act on the first-paint false.
-  useEffect(() => {
-    if (activeTab === 'templates' && isResolved && !canManageSchedule) {
-      setActiveTab('schedule');
-    }
-  }, [activeTab, isResolved, canManageSchedule]);
-
-  const handleEditTemplates = useCallback(() => setActiveTab('templates'), []);
+  const handleEditTemplates = useCallback(() => setTab('templates', { history: 'push' }), [setTab]);
+  // The tab changes in the same write as the week, so this entry is a push.
   const handleViewTemplateWeek = useCallback(
     (monday: Date) => {
-      setCurrentWeekStart(getMondayOfWeek(monday));
-      setActiveTab('schedule');
+      setSearchParams(
+        { [SCHEDULING_PARAMS.week]: formatLocalDate(getMondayOfWeek(monday)), [SCHEDULING_PARAMS.tab]: null },
+        { history: 'push' },
+      );
     },
-    [setCurrentWeekStart],
+    [setSearchParams],
   );
 
   // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
@@ -954,7 +959,12 @@ const Scheduling = () => {
       />
 
       {/* Tabs for Schedule, Time-Off, and Availability */}
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+      <Tabs
+        value={renderedTab}
+        onValueChange={handleTabChange}
+        activationMode="manual"
+        className="space-y-4"
+      >
         <TabsList className="bg-muted/50 p-1 h-auto gap-1">
           <TabsTrigger
             value="schedule"
@@ -1742,6 +1752,13 @@ const Scheduling = () => {
           </Card>
         </TabsContent>
 
+        {!isResolved && gatedTab && (
+          <div aria-busy="true" className="space-y-3" data-testid="gated-tab-skeleton">
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        )}
+
         {/* Shift Trades Tab */}
         {canManageSchedule && (
           <TabsContent value="trades">
@@ -1812,7 +1829,12 @@ const Scheduling = () => {
         )}
       </Tabs>
 
-      <AlertDialog open={pendingTab !== null} onOpenChange={(open) => !open && setPendingTab(null)}>
+      <AlertDialog open={discardOpen}
+        onOpenChange={(open) => {
+          // Esc, Cancel, and an overlay click come here. Discard does not.
+          if (!open) setTab('templates', { history: 'replace' });
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard unsaved template changes?</AlertDialogTitle>
@@ -1823,11 +1845,10 @@ const Scheduling = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                const next = pendingTab;
-                setPendingTab(null);
+              onClick={(event) => {
+                // preventDefault stops Radix from calling onOpenChange.
+                event.preventDefault();
                 setTemplatesDirty(false);
-                if (next) setActiveTab(next);
               }}
             >
               Discard changes

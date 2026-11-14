@@ -1,8 +1,14 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePostHog } from 'posthog-js/react';
 import { useRestaurants, UserRestaurant } from '@/hooks/useRestaurants';
 import { useAuth } from '@/hooks/useAuth';
 import { canUserCreateRestaurant } from '@/lib/restaurantPermissions';
+import {
+  readLinkedRestaurantId,
+  resolveLinkedRestaurant,
+  withoutLinkedRestaurant,
+} from '@/lib/restaurantDeepLink';
 
 interface RestaurantContextType {
   selectedRestaurant: UserRestaurant | null;
@@ -35,10 +41,13 @@ interface RestaurantProviderProps {
 
 export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children }) => {
   const { user } = useAuth();
-  const { restaurants, loading, createRestaurant } = useRestaurants();
+  const { restaurants, loading, fetching, createRestaurant } = useRestaurants();
   // Only an *explicit* pick lives in state. The automatic pick (a saved choice,
   // or the sole membership) is derived during render below.
   const [chosenRestaurantId, setChosenRestaurantId] = useState<string | null>(null);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedId = readLinkedRestaurantId(searchParams);
 
   const storageKey = user ? `selectedRestaurant_${user.id}` : null;
 
@@ -60,7 +69,10 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
     const byId = (id: string | null) =>
       (id ? restaurants.find(r => r.restaurant_id === id) : undefined) ?? null;
 
+    // A notice link (`?select_restaurant=<id>`) wins. The memo selects it in the
+    // same render where `loading` clears, so no commit has a wrong selection.
     return (
+      resolveLinkedRestaurant(linkedId, restaurants) ??
       byId(chosenRestaurantId) ??
       byId(localStorage.getItem(storageKey)) ??
       // With several memberships and nothing saved, there is no right answer to
@@ -68,7 +80,7 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
       // exactly this state.
       (restaurants.length === 1 ? restaurants[0] : null)
     );
-  }, [storageKey, restaurants, chosenRestaurantId]);
+  }, [storageKey, restaurants, chosenRestaurantId, linkedId]);
 
   const posthog = usePostHog();
 
@@ -110,6 +122,27 @@ export const RestaurantProvider: React.FC<RestaurantProviderProps> = ({ children
       localStorage.removeItem(storageKey);
     }
   }, [storageKey]);
+
+  // Save the linked restaurant, then delete the key from the URL.
+  // The ref guard stops a StrictMode double effect from running the write twice.
+  const handledLinkRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!linkedId) {
+      handledLinkRef.current = null;
+      return;
+    }
+    if (loading || restaurants.length === 0) return;
+    if (handledLinkRef.current === linkedId) return;
+
+    const linked = resolveLinkedRestaurant(linkedId, restaurants);
+    // The cache can be older than a new membership. Do not reject an unknown
+    // id until the background refetch ends.
+    if (!linked && fetching) return;
+    handledLinkRef.current = linkedId;
+
+    if (linked) handleSetSelectedRestaurant(linked);
+    setSearchParams(withoutLinkedRestaurant(searchParams), { replace: true });
+  }, [linkedId, loading, fetching, restaurants, searchParams, setSearchParams, handleSetSelectedRestaurant]);
 
   // Centralized logic: Allow creation if user has no restaurants (first-time) OR is an owner
   const canCreateRestaurant = canUserCreateRestaurant(restaurants);

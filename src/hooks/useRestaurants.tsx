@@ -263,6 +263,8 @@ export function useRestaurants() {
     // (StaffRoleChecker holds the route until the role is known), so a `true`
     // that never clears is a permanent spinner rather than a brief one.
     loading: query.isLoading,
+    // True during any fetch, also a background refetch over cached data.
+    fetching: query.isFetching,
     createRestaurant,
     updateRestaurant,
     refetch: invalidate,

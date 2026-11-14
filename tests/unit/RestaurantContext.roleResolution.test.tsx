@@ -22,6 +22,7 @@ import React, { ReactNode } from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { RestaurantProvider, useRestaurantContext } from '@/contexts/RestaurantContext';
 
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -68,15 +69,17 @@ function Probe({ samples }: { samples: Sample[] }) {
   return null;
 }
 
-function renderProvider() {
+function renderProvider(initialEntry = '/') {
   const samples: Sample[] = [];
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>
-      <RestaurantProvider>{children}</RestaurantProvider>
-    </QueryClientProvider>
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <QueryClientProvider client={queryClient}>
+        <RestaurantProvider>{children}</RestaurantProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
   const utils = render(<Probe samples={samples} />, { wrapper });
   return { samples, queryClient, ...utils };
@@ -148,5 +151,24 @@ describe('RestaurantContext — role resolution vs. the loading flag', () => {
     // state, so the provider must not block or auto-pick on the user's behalf.
     await waitFor(() => expect(samples.at(-1)?.loading).toBe(false));
     expect(samples.at(-1)?.role).toBeUndefined();
+  });
+
+  it('never reports loading:false with an unresolved role when a linked id differs from the saved choice', async () => {
+    localStorage.setItem('selectedRestaurant_user-123', 'restaurant-1');
+    stubMemberships({
+      data: [
+        membershipRow('restaurant-1', 'owner'),
+        membershipRow('restaurant-2', 'kiosk'),
+      ],
+      error: null,
+    });
+
+    const { samples } = renderProvider('/banking?select_restaurant=restaurant-2');
+
+    await waitFor(() => expect(samples.at(-1)?.role).toBe('kiosk'));
+
+    // No commit may show the saved restaurant, or none, once loading clears.
+    const wrong = samples.filter((s) => !s.loading && s.role !== 'kiosk');
+    expect(wrong).toEqual([]);
   });
 });

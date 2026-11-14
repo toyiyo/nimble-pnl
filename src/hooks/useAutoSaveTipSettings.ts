@@ -7,6 +7,7 @@ import type {
   TipSource,
 } from '@/hooks/useTipPoolSettings';
 import type { RoleAllocationRule } from '@/utils/tipPooling';
+import { stableStringify } from '@/utils/tipSettingsSync';
 
 type Params = {
   settings: TipPoolSettings | null;
@@ -17,27 +18,10 @@ type Params = {
   rolePercentages: Record<string, RoleAllocationRule>;
   selectedEmployees: Set<string>;
   poolingModel?: PoolingModel;
+  /** True while a save is in flight. No new save starts until it settles. */
+  isSaving?: boolean;
   onSave: () => void;
 };
-
-/**
- * `JSON.stringify` with object keys emitted in sorted order.
- *
- * Postgres `jsonb` does not preserve key insertion order — it stores keys sorted
- * by length then bytewise — so a map that round-trips through the database comes
- * back reordered. Comparing raw `JSON.stringify` output would read that
- * reordering as a change and schedule a pointless save every time settings load.
- */
-const stableStringify = (value: unknown): string =>
-  JSON.stringify(value, (_key, val) => {
-    if (!val || typeof val !== 'object' || Array.isArray(val)) return val;
-    const source = val as Record<string, unknown>;
-    return Object.fromEntries(
-      Object.keys(source)
-        .sort((a, b) => a.localeCompare(b))
-        .map(key => [key, source[key]]),
-    );
-  });
 
 /**
  * Debounced auto-save for tip pooling settings.
@@ -52,9 +36,15 @@ export function useAutoSaveTipSettings({
   rolePercentages,
   selectedEmployees,
   poolingModel,
+  isSaving = false,
   onSave,
 }: Params) {
   useEffect(() => {
+    // Wait for the save in flight. Its result gives `settings` an id, so the
+    // next save updates that row instead of inserting a second one. This
+    // effect runs again when `isSaving` goes back to false.
+    if (isSaving) return;
+
     const sortedIds = (ids: Iterable<string>) => [...ids].sort((a, b) => a.localeCompare(b)).join(',');
 
     const hasChanges = settings
@@ -79,5 +69,5 @@ export function useAutoSaveTipSettings({
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [settings, tipSource, shareMethod, splitCadence, roleWeights, rolePercentages, selectedEmployees, poolingModel, onSave]);
+  }, [settings, tipSource, shareMethod, splitCadence, roleWeights, rolePercentages, selectedEmployees, poolingModel, isSaving, onSave]);
 }

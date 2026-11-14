@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { useSetSearchParams } from '@/hooks/useSearchParamState';
 import { getMondayOfWeek } from '@/hooks/useShiftPlanner';
 
 const WEEK_PARAM = 'week';
@@ -30,7 +31,8 @@ export interface UseSharedWeekReturn {
 }
 
 export function useSharedWeek(): UseSharedWeekReturn {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const setParams = useSetSearchParams();
   const rawWeek = searchParams.get(WEEK_PARAM);
 
   const weekStart = useMemo(() => parseWeekParam(rawWeek), [rawWeek]);
@@ -38,16 +40,9 @@ export function useSharedWeek(): UseSharedWeekReturn {
   const setWeekStart = useCallback(
     (date: Date) => {
       const monday = getMondayOfWeek(date);
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set(WEEK_PARAM, formatIsoDate(monday));
-          return next;
-        },
-        { replace: true },
-      );
+      setParams({ [WEEK_PARAM]: formatIsoDate(monday) }, { history: 'replace' });
     },
-    [setSearchParams],
+    [setParams],
   );
 
   return { weekStart, setWeekStart };

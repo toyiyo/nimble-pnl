@@ -9,6 +9,7 @@ import {
   reminderWhen,
   formatTimeRange,
   type ReminderShiftInfo,
+  SCHEDULER_REMINDER_PATH,
 } from '../../supabase/functions/_shared/shiftTradeReminderContent';
 import { TENTATIVE_NOTE } from '../../supabase/functions/_shared/draftTradeNote';
 import { tradeLinkHref } from '../../supabase/functions/_shared/tradeDeepLinkUrl';
@@ -163,7 +164,7 @@ describe('buildSchedulerUnclaimedPush', () => {
     expect(push).toEqual({
       title: "Nobody took Maria's shift yet",
       body: 'Server, Fri 5–11 PM, still open. Tap to assign it.',
-      url: '/scheduling',
+      url: SCHEDULER_REMINDER_PATH,
       tag: 'trade-unclaimed-trade-1',
     });
   });
@@ -196,10 +197,12 @@ describe('buildPosterUnclaimedPush', () => {
 describe('buildSchedulerUnclaimedEmail', () => {
   const APP_URL = 'https://app.easyshifthq.com';
 
-  it('uses the scheduler subject and links to /scheduling', () => {
+  it('uses the scheduler subject and links to the trades tab', () => {
     const email = buildSchedulerUnclaimedEmail(info(), NOW, APP_URL);
     expect(email.subject).toBe("Nobody took Maria's shift yet");
-    expect(email.html).toContain(`${APP_URL}/scheduling`);
+    expect(email.html).toContain(`${APP_URL}${SCHEDULER_REMINDER_PATH}`);
+    expect(SCHEDULER_REMINDER_PATH).toBe('/scheduling?tab=trades');
+    expect(email.html).toContain(`${APP_URL}/scheduling?tab=trades`);
     expect(email.html).toContain('Blue Fig');
     expect(email.html).toContain('5–11 PM');
   });

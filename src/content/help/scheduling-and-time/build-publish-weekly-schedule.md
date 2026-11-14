@@ -21,7 +21,7 @@ This article walks owners and managers through every step of building the weekly
 
 ## Navigate to the schedule and move between weeks
 
-1. In the left sidebar, click **Scheduling** (route `/scheduling`). The page opens on the **Schedule** tab showing the current week.
+1. In the left sidebar, click **Scheduling** (route `/scheduling`). The page opens on the **Schedule** tab showing the current week. The page address holds the tab and the week, so you can copy it to share the same view or bookmark it.
 2. Use the navigation bar at the top of the schedule grid:
    - Click the left arrow (**‹**) to go to the previous week.
    - Click **Today** to jump back to the current week.

@@ -69,11 +69,6 @@ export const tabParam: ParamSpec<SchedulingTab> = {
   fallback: 'schedule',
   parse: parseTab,
 };
-export const weekParam: ParamSpec<string> = {
-  key: SCHEDULING_PARAMS.week,
-  fallback: '',
-  parse: parseIsoDay,
-};
 export const areaParam: ParamSpec<string> = {
   key: SCHEDULING_PARAMS.area,
   fallback: 'all',

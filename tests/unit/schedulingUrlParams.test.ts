@@ -18,7 +18,6 @@ import {
   hiddenParam,
   timelineGroupParam,
   templateParam,
-  weekParam,
 } from '@/lib/schedulingUrlParams';
 
 describe('schedulingUrlParams', () => {
@@ -90,7 +89,6 @@ describe('schedulingUrlParams', () => {
     expect(hiddenParam).toMatchObject({ key: 'hidden', fallback: '' });
     expect(timelineGroupParam).toMatchObject({ key: 'timelineGroup', fallback: 'area' });
     expect(templateParam).toMatchObject({ key: 'template', fallback: '' });
-    expect(weekParam).toMatchObject({ key: 'week', fallback: '' });
   });
 
   it('uses module-level parse functions with stable identity', () => {

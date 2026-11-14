@@ -3,7 +3,10 @@ import { createElement, type ReactNode } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { renderHook, act } from '@testing-library/react';
 import { useSearchParamState, useSetSearchParams } from '@/hooks/useSearchParamState';
-import { tabParam, groupParam, weekParam } from '@/lib/schedulingUrlParams';
+import { tabParam, groupParam, parseIsoDay } from '@/lib/schedulingUrlParams';
+import type { ParamSpec } from '@/lib/schedulingUrlParams';
+
+const weekParam: ParamSpec<string> = { key: 'week', fallback: '', parse: parseIsoDay };
 
 const wrapper = ({ children }: { children: ReactNode }) =>
   createElement(BrowserRouter, null, children);

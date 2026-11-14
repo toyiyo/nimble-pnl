@@ -1,6 +1,4 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useSearchParamState } from '@/hooks/useSearchParamState';
-import { hiddenParam, plannerAreaParam, viewParam } from '@/lib/schedulingUrlParams';
 
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
@@ -25,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
 
 import type { Shift, ShiftTemplate, ConflictCheck, SlotCoverage, CoverageShift } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
@@ -36,7 +35,8 @@ import { safeTz } from '@/lib/restaurantClock';
 import { formatDayLabel, formatLocalDateInTz } from '@/lib/shiftInterval';
 
 import { cn } from '@/lib/utils';
-import { getTemplateAreas } from '@/lib/templateAreaGrouping';
+import { hiddenParam, plannerAreaParam, viewParam } from '@/lib/schedulingUrlParams';
+import { getTemplateAreas, UNASSIGNED } from '@/lib/templateAreaGrouping';
 import { computeAllocationStatuses, type AllocationStatus } from '@/lib/shiftAllocation';
 
 import { AssignmentPopover } from './AssignmentPopover';
@@ -315,7 +315,10 @@ export function ShiftPlannerTab({
   // Derive against the real areas so a stale URL value never hides every row.
   // 'all' maps to null.
   const areaFilter =
-    plannerAreaRaw !== 'all' && templateAreas.includes(plannerAreaRaw) ? plannerAreaRaw : null;
+    plannerAreaRaw !== 'all' &&
+    (templateAreas.includes(plannerAreaRaw) || (plannerAreaRaw === UNASSIGNED && hasUnassigned))
+      ? plannerAreaRaw
+      : null;
   const setAreaFilter = useCallback(
     (next: string | null) => setPlannerAreaRaw(next ?? 'all'),
     [setPlannerAreaRaw],

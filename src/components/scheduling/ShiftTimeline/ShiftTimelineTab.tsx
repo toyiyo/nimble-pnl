@@ -1,6 +1,6 @@
+import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { dayParam, timelineGroupParam } from '@/lib/schedulingUrlParams';
-import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';

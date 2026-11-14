@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { PageHeader } from '@/components/PageHeader';
@@ -39,6 +40,12 @@ export default function ReturningGuests() {
 
   const { data, isLoading, error, refetch } = useReturningGuestTrends(restaurantId, start, weeks);
 
+  // The input keeps a draft. A partial date from the keyboard does not clear the URL.
+  const [draftStart, setDraftStart] = useState(start ?? '');
+  useEffect(() => {
+    setDraftStart(start ?? '');
+  }, [start]);
+
   const update = (patch: { start?: string; weeks?: number }) => {
     const next = new URLSearchParams(searchParams);
     if (patch.start !== undefined) {
@@ -77,8 +84,16 @@ export default function ReturningGuests() {
           id="rg-start"
           type="date"
           max={today}
-          value={start ?? ''}
-          onChange={(e) => update({ start: e.target.value })}
+          value={draftStart}
+          onChange={(e) => {
+            const value = e.target.value;
+            setDraftStart(value);
+            if (parseCampaignStart(value, today)) update({ start: value });
+          }}
+          onBlur={() => {
+            if (draftStart === '') update({ start: '' });
+            else if (!parseCampaignStart(draftStart, today)) setDraftStart(start ?? '');
+          }}
           className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
         />
       </div>

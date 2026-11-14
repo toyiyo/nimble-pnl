@@ -6,7 +6,7 @@
 -- Campaign start C of restaurant T = rg_d(-28). Card A is VISA 411111 ending 7391.
 
 BEGIN;
-SELECT plan(67);
+SELECT plan(68);
 
 SET LOCAL role TO postgres;
 
@@ -313,6 +313,8 @@ SELECT is((SELECT j->>'match_quality' FROM res WHERE k = 'T3'), 'good',
   'T3: first 6 on 95 percent of card rows gives good');
 SELECT is((SELECT rs + ns FROM wk WHERE k = 'T3' AND week_start = public.rg_d(-28)), 20::numeric,
   'T3: a row without first 6 still counts in spend');
+SELECT is((SELECT rs FROM wk WHERE k = 'T3' AND week_start = public.rg_d(-28)), 20::numeric,
+  'T3: a row without first 6 matches the full key of its card (returning)');
 
 -- ============================================================
 -- Group 10: empty-string last 4 does not count

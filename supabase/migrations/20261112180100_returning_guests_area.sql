@@ -8,5 +8,5 @@
 -- ============================================================================
 
 INSERT INTO public.area_catalog (area_key, ui_group, band, sort_order, max_level_collaborator)
-VALUES ('returning_guests', 'Main', 'Main', 6, 'view')
+VALUES ('returning_guests', 'Main', 'Main', 6, NULL)
 ON CONFLICT (area_key) DO NOTHING;

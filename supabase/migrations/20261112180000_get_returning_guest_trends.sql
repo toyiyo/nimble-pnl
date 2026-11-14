@@ -62,13 +62,35 @@ BEGIN
            count(*) FILTER (WHERE (brand || '|' || f6 || '|' || l4) IS NOT NULL) AS n_f6
     FROM toast_raw
   ),
+  -- The first-6 values seen for each brand + last 4. A row without first 6
+  -- uses this value when it is the only one, so one card keeps one key.
+  toast_f6 AS (
+    SELECT brand, l4, min(f6) AS f6, count(DISTINCT f6) AS n_f6
+    FROM toast_raw
+    WHERE brand IS NOT NULL AND f6 IS NOT NULL AND l4 IS NOT NULL
+    GROUP BY brand, l4
+  ),
   toast_rows AS (
     SELECT tr.d, tr.amt, 'toast'::text AS src,
-           CASE WHEN ts.n_card > 0 AND ts.n_f6 >= 0.95 * ts.n_card
-                THEN tr.brand || '|' || COALESCE(tr.f6 || '|', '') || tr.l4
-                ELSE tr.brand || '|' || tr.l4 END AS k,
+           CASE
+             WHEN NOT (ts.n_card > 0 AND ts.n_f6 >= 0.95 * ts.n_card)
+               THEN tr.brand || '|' || tr.l4
+             WHEN tr.f6 IS NOT NULL
+               THEN tr.brand || '|' || tr.f6 || '|' || tr.l4
+             -- No first 6 on this row and none for this brand + last 4:
+             -- the whole group uses brand + last 4.
+             WHEN tf.n_f6 IS NULL
+               THEN tr.brand || '|' || tr.l4
+             -- Exactly one first 6 for this brand + last 4: use it.
+             WHEN tf.n_f6 = 1
+               THEN tr.brand || '|' || tf.f6 || '|' || tr.l4
+             -- More than one first 6: the card is not known. Do not count it.
+             ELSE NULL
+           END AS k,
            CASE WHEN ts.n_card > 0 AND ts.n_f6 >= 0.95 * ts.n_card THEN 3 ELSE 2 END AS qr
-    FROM toast_raw tr CROSS JOIN toast_stat ts
+    FROM toast_raw tr
+    CROSS JOIN toast_stat ts
+    LEFT JOIN toast_f6 tf ON tf.brand = tr.brand AND tf.l4 = tr.l4
   ),
   revel_rows AS (
     SELECT rp.payment_date AS d, rp.amount::numeric AS amt, 'revel'::text AS src,

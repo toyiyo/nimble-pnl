@@ -37,7 +37,10 @@ describe('useReturningGuestTrends', () => {
 
   it.each([
     ['no restaurant', null, '2026-09-01', 8],
+    ['an empty restaurant ID', '', '2026-09-01', 8],
     ['no start date', 'rest-1', null, 8],
+    ['an empty start date', 'rest-1', '', 8],
+    ['negative weeks', 'rest-1', '2026-09-01', -4],
     ['bad start date', 'rest-1', '2026-13-45', 8],
     ['zero weeks', 'rest-1', '2026-09-01', 0],
     ['27 weeks', 'rest-1', '2026-09-01', 27],

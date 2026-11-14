@@ -38,12 +38,12 @@ describe('areas.ts derives from the sidebar', () => {
     }
   });
 
-  it('defines the returning_guests area as a view-only Main page after reviews', () => {
+  it('defines the returning_guests area as an ungrantable Main page after reviews', () => {
     const area = AREA_DEFINITIONS.find((a) => a.key === 'returning_guests');
     expect(area?.path).toBe('/returning-guests');
     expect(area?.uiGroup).toBe('Main');
     expect(area?.hasManageTier).toBe(false);
-    expect(area?.maxLevelForCollaborator).toBe('view');
+    expect(area?.maxLevelForCollaborator).toBeNull();
     const keys = AREA_DEFINITIONS.map((a) => a.key);
     expect(keys.indexOf('returning_guests')).toBe(keys.indexOf('reviews') + 1);
   });

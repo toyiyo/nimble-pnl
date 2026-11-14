@@ -42,7 +42,7 @@ export const PAGE_AREA_ROWS: readonly PageAreaRow[] = [
   ['integrations', '/integrations', true, 'view', 'POS, bank and payroll connections', 'connect and disconnect systems'],
   ['sales', '/pos-sales', false, 'view', 'Ticket-level sales from your POS'],
   ['reviews', '/reviews', true, 'view', 'Review pages, QR codes, guest feedback', 'edit QR pages and reply'],
-  ['returning_guests', '/returning-guests', false, 'view', 'Do guests come back more often after a campaign'],
+  ['returning_guests', '/returning-guests', false, null, 'Do guests come back more often after a campaign'],
 
   // Operations
   ['scheduling', '/scheduling', true, 'manage', 'Shifts, templates, open-shift broadcasts', 'publish and edit schedules'],

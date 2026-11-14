@@ -156,6 +156,8 @@ export async function loadScheduledLaborCost(
           fromTable(client, 'shifts')
             .select(SHIFT_COLUMNS)
             .eq('restaurant_id', restaurantId)
+            // A cancelled shift costs nothing, as on the Scheduling page (costedShifts).
+            .neq('status', 'cancelled')
             .gte('start_time', windowStart.toISOString())
             .lte('start_time', windowEnd.toISOString()),
         'start_time',

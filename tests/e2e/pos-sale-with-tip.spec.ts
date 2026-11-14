@@ -17,15 +17,26 @@ test.describe('POS Sale with Tip — No Doubling', () => {
     // Seed unified_sales rows: sale $50, tip $10, tax $4
     await exposeSupabaseHelpers(page);
 
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-    await page.evaluate(async ({ saleDate }) => {
+    await page.evaluate(async () => {
       const supabase = (window as any).__supabase;
       const user = await (window as any).__getAuthUser();
       if (!user?.id) throw new Error('No user session');
       const restaurantId = await (window as any).__getRestaurantId(user.id);
       if (!restaurantId) throw new Error('No restaurant');
+
+      // The page ends its default range on the restaurant day, not the runner day.
+      // Seed on the restaurant day so the sale is in range after 00:00 UTC.
+      const { data: restaurant } = await supabase
+        .from('restaurants')
+        .select('timezone')
+        .eq('id', restaurantId)
+        .single();
+      const saleDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: restaurant?.timezone || 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
 
       const orderId = `e2e-tip-test-${Date.now()}`;
 
@@ -68,7 +79,7 @@ test.describe('POS Sale with Tip — No Doubling', () => {
       ]);
 
       if (error) throw new Error(`Seed failed: ${error.message}`);
-    }, { saleDate: today });
+    });
 
     // Navigate to POS Sales and verify totals
     await page.goto('/pos-sales');

@@ -1,4 +1,5 @@
 import { format, toZonedTime } from 'date-fns-tz';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 /**
  * Converts a UTC date to the restaurant's local timezone for display
@@ -50,4 +51,71 @@ export function isDateInTimezone(utcDate: Date | string, localDateStr: string, t
   const dateObj = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
   const localDate = formatDateInTimezone(dateObj, timezone, 'yyyy-MM-dd');
   return localDate === localDateStr;
+}
+
+/**
+ * Gets the default sale date (yyyy-MM-dd) and time (HH:mm) for a new sale.
+ * Both values come from the same zone, the restaurant timezone.
+ */
+export function getSaleDateTimeDefaults(
+  timezone: string,
+  now: Date = new Date(),
+): { saleDate: string; saleTime: string } {
+  return {
+    saleDate: formatDateInTimezone(now, timezone, 'yyyy-MM-dd'),
+    saleTime: formatDateInTimezone(now, timezone, 'HH:mm'),
+  };
+}
+
+/**
+ * Gives the end date of a default date range for the restaurant day.
+ * An end date that differs from the default is a user choice, so it stays.
+ */
+export function alignDefaultEndDate(
+  currentEnd: string,
+  defaultEnd: string,
+  timezone: string,
+  now: Date = new Date(),
+): string {
+  return currentEnd === defaultEnd ? getSaleDateTimeDefaults(timezone, now).saleDate : currentEnd;
+}
+
+// Group 1 is the date text. Group 2 is its day of the month.
+const NON_ISO_DATE_PATTERNS = [
+  /^(\d{1,2}[/-](\d{1,2})[/-]\d{2,4})\b/,
+  /^([a-z]+\.?\s+(\d{1,2}),?\s+\d{4})\b/i,
+  /^((\d{1,2})\s+[a-z]+\.?,?\s+\d{4})\b/i,
+];
+
+/** Date parsers roll 02/31 over to March, so the parsed day differs from the stated day. */
+function hasRolledOverDay(text: string): boolean {
+  for (const pattern of NON_ISO_DATE_PATTERNS) {
+    const match = pattern.exec(text);
+    if (match) return new Date(match[1]).getDate() !== Number(match[2]);
+  }
+  return false;
+}
+
+/**
+ * Converts imported date text to a YYYY-MM-DD sale day.
+ * ISO text keeps its stated day, also with a time, Z, or an offset.
+ * An impossible day gives ''. Other text uses the local fields of the
+ * parsed date. Bad text gives ''.
+ */
+export function toImportedSaleDate(text: string | null | undefined): string {
+  const trimmed = (text ?? '').trim();
+  if (!trimmed) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].+)?$/.exec(trimmed);
+  if (match) {
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const check = new Date(Date.UTC(year, month - 1, day));
+    const isRealDay =
+      check.getUTCFullYear() === year &&
+      check.getUTCMonth() === month - 1 &&
+      check.getUTCDate() === day;
+    return isRealDay && !Number.isNaN(new Date(trimmed).getTime()) ? trimmed.slice(0, 10) : '';
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime()) || hasRolledOverDay(trimmed)) return '';
+  return toDateOnlyString(parsed);
 }

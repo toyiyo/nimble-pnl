@@ -13,6 +13,7 @@
  */
 import { ShiftInterval } from './shiftInterval';
 import type { Shift } from '@/types/scheduling';
+import { intervalsOverlap, MIN_REST_HOURS, restHoursBetween } from '../../supabase/functions/_shared/shiftWarnings';
 
 export interface ValidationIssue {
   code: string;
@@ -28,8 +29,6 @@ export interface ValidationResult {
 export interface ValidateOptions {
   excludeShiftId?: string;
 }
-
-const MIN_REST_HOURS = 8;
 
 /** Check if rest gap triggers a clopen warning. */
 function checkRestGap(
@@ -73,15 +72,30 @@ export function validateShift(
       existing.start_time.split('T')[0],
     );
 
-    if (proposed.interval.overlapsWith(existingInterval)) {
+    if (
+      intervalsOverlap(
+        proposed.interval.startAt.getTime(),
+        proposed.interval.endAt.getTime(),
+        existingInterval.startAt.getTime(),
+        existingInterval.endAt.getTime(),
+      )
+    ) {
       warnings.push({
         code: 'OVERLAP',
         message: `Overlaps with existing shift (${formatTime(existing.start_time)} - ${formatTime(existing.end_time)})`,
       });
     }
 
-    checkRestGap(existingInterval.restHoursUntil(proposed.interval), 'after', warnings);
-    checkRestGap(proposed.interval.restHoursUntil(existingInterval), 'before', warnings);
+    checkRestGap(
+      restHoursBetween(existingInterval.endAt.getTime(), proposed.interval.startAt.getTime()),
+      'after',
+      warnings,
+    );
+    checkRestGap(
+      restHoursBetween(proposed.interval.endAt.getTime(), existingInterval.startAt.getTime()),
+      'before',
+      warnings,
+    );
   }
 
   return {

@@ -137,3 +137,18 @@ function isValidDate(date: Date): boolean {
   
   return date >= minDate && date <= maxDate;
 }
+
+/**
+ * Sets the filename date on rows with no sale date.
+ * A row with an invalid source date stays empty, so the review asks for a date.
+ */
+export function applyFilenameDate(
+  sales: Array<{ saleDate: string; hasInvalidSaleDate?: boolean }>,
+  date: string,
+): void {
+  sales.forEach(sale => {
+    if (!sale.saleDate && !sale.hasInvalidSaleDate) {
+      sale.saleDate = date;
+    }
+  });
+}

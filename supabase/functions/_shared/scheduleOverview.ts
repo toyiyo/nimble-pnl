@@ -18,6 +18,7 @@ export interface ScheduleShiftInput {
   status: string;
   position?: string | null;
   employee?: { name?: string | null; position?: string | null } | null;
+  conflicts?: unknown[];
 }
 
 export interface ScheduleShiftRow {
@@ -27,6 +28,7 @@ export interface ScheduleShiftRow {
   start_time: string;
   end_time: string;
   status: string;
+  conflicts?: unknown[];
 }
 
 /**
@@ -50,6 +52,7 @@ export function groupShiftsByRestaurantDay(
       start_time: shift.start_time,
       end_time: shift.end_time,
       status: shift.status,
+      ...(shift.conflicts ? { conflicts: shift.conflicts } : {}),
     });
   }
   return byDate;

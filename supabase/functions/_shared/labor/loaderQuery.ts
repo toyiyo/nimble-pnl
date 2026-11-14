@@ -20,6 +20,7 @@ import {
 export interface LoaderQuery {
   select(columns: string): LoaderQuery;
   eq(column: string, value: unknown): LoaderQuery;
+  neq(column: string, value: unknown): LoaderQuery;
   in(column: string, values: readonly unknown[]): LoaderQuery;
   gt(column: string, value: string): LoaderQuery;
   gte(column: string, value: string): LoaderQuery;

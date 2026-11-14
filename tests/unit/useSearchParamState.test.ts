@@ -6,7 +6,8 @@ import { useSearchParamState, useSetSearchParams } from '@/hooks/useSearchParamS
 import { tabParam, groupParam, parseIsoDay } from '@/lib/schedulingUrlParams';
 import type { ParamSpec } from '@/lib/schedulingUrlParams';
 
-const weekParam: ParamSpec<string> = { key: 'week', fallback: '', parse: parseIsoDay };
+// Local spec: tests an ISO-day param with a generic key.
+const isoDayParam: ParamSpec<string> = { key: 'week', fallback: '', parse: parseIsoDay };
 
 const wrapper = ({ children }: { children: ReactNode }) =>
   createElement(BrowserRouter, null, children);
@@ -82,7 +83,7 @@ describe('useSearchParamState', () => {
   it('keeps both values for two setter calls in one handler', () => {
     const { result } = renderHook(
       () => ({
-        week: useSearchParamState(weekParam),
+        week: useSearchParamState(isoDayParam),
         tab: useSearchParamState(tabParam),
       }),
       { wrapper },

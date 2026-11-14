@@ -314,11 +314,9 @@ export function ShiftPlannerTab({
   const hasUnassigned = useMemo(() => templates.some((t) => !t.area), [templates]);
   // Derive against the real areas so a stale URL value never hides every row.
   // 'all' maps to null.
-  const areaFilter =
-    plannerAreaRaw !== 'all' &&
-    (templateAreas.includes(plannerAreaRaw) || (plannerAreaRaw === UNASSIGNED && hasUnassigned))
-      ? plannerAreaRaw
-      : null;
+  const isKnownArea =
+    templateAreas.includes(plannerAreaRaw) || (plannerAreaRaw === UNASSIGNED && hasUnassigned);
+  const areaFilter = plannerAreaRaw !== 'all' && isKnownArea ? plannerAreaRaw : null;
   const setAreaFilter = useCallback(
     (next: string | null) => setPlannerAreaRaw(next ?? 'all'),
     [setPlannerAreaRaw],

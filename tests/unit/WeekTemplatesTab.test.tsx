@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter } from 'react-router-dom';
 
 import type { Employee, SchedulePlanTemplate } from '@/types/scheduling';
 
@@ -79,12 +80,16 @@ function renderTab(onDirtyChange = vi.fn()) {
     <QueryClientProvider client={qc}>
       <WeekTemplatesTab restaurantId="r1" timezone="UTC" onDirtyChange={onDirtyChange} onViewWeek={vi.fn()} />
     </QueryClientProvider>,
+    { wrapper: BrowserRouter },
   );
   return { ...utils, qc, onDirtyChange };
 }
 
 describe('WeekTemplatesTab', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.history.replaceState({}, '', '/');
+  });
 
   it('shows the empty state when there are no templates', () => {
     setHook([]);
@@ -242,5 +247,45 @@ describe('WeekTemplatesTab', () => {
       </QueryClientProvider>,
     );
     expect(screen.getByLabelText('Template name')).toHaveValue('Theirs');
+  });
+
+  it('selects the template from the URL', () => {
+    window.history.replaceState({}, '', '/?template=t2');
+    setHook([tmpl('t1', 'Lunch'), tmpl('t2', 'Dinner')]);
+    renderTab();
+    expect(screen.getByLabelText('Template name')).toHaveValue('Dinner');
+    expect(window.location.search).toBe('?template=t2');
+  });
+
+  it('selects the first template and writes its id when the URL id has no match', () => {
+    window.history.replaceState({}, '', '/?template=gone');
+    setHook([tmpl('t1', 'Lunch'), tmpl('t2', 'Dinner')]);
+    renderTab();
+    expect(screen.getByLabelText('Template name')).toHaveValue('Lunch');
+    expect(window.location.search).toBe('?template=t1');
+  });
+
+  it('writes the id after a confirmed switch, not before', () => {
+    setHook([tmpl('t1', 'Lunch'), tmpl('t2', 'Dinner')]);
+    renderTab();
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Lunch v2' } });
+    fireEvent.click(screen.getByRole('button', { name: /Dinner/ }));
+    expect(window.location.search).toBe('?template=t1');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(window.location.search).toBe('?template=t2');
+  });
+
+  it('does not write the URL when the list is empty', () => {
+    setHook([]);
+    renderTab();
+    expect(window.location.search).toBe('');
+  });
+
+  it('does not write the new draft id to the URL', () => {
+    setHook([tmpl('t1', 'Lunch')]);
+    renderTab();
+    fireEvent.click(screen.getByRole('button', { name: /New template/i }));
+    expect(window.location.search).toBe('?template=t1');
+    expect(window.location.search).not.toContain('new');
   });
 });

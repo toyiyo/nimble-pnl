@@ -38,6 +38,16 @@ describe('areas.ts derives from the sidebar', () => {
     }
   });
 
+  it('defines the returning_guests area as an ungrantable Main page after reviews', () => {
+    const area = AREA_DEFINITIONS.find((a) => a.key === 'returning_guests');
+    expect(area?.path).toBe('/returning-guests');
+    expect(area?.uiGroup).toBe('Main');
+    expect(area?.hasManageTier).toBe(false);
+    expect(area?.maxLevelForCollaborator).toBeNull();
+    const keys = AREA_DEFINITIONS.map((a) => a.key);
+    expect(keys.indexOf('returning_guests')).toBe(keys.indexOf('reviews') + 1);
+  });
+
   it('keeps team and collaborators ungrantable to collaborator roles', () => {
     for (const key of ['team', 'collaborators'] as const) {
       expect(PAGE_AREAS.find((a) => a.key === key)?.maxLevelForCollaborator).toBeNull();
@@ -57,6 +67,7 @@ const ALL_AREA_KEYS: AreaKey[] = [
   'integrations',
   'sales',
   'reviews',
+  'returning_guests',
   'scheduling',
   'time_punches',
   'tips',
@@ -87,7 +98,7 @@ const ALL_AREA_KEYS: AreaKey[] = [
 ];
 
 /** Areas with no capability at all (spec §3.4) — gated purely by routing. */
-const CAPABILITYLESS_AREAS: AreaKey[] = ['budget', 'labor', 'stripe_account'];
+const CAPABILITYLESS_AREAS: AreaKey[] = ['budget', 'labor', 'stripe_account', 'returning_guests'];
 
 function grantsAt(level: AreaLevel, keys: AreaKey[] = ALL_AREA_KEYS): Partial<Record<AreaKey, AreaLevel>> {
   const grants: Partial<Record<AreaKey, AreaLevel>> = {};
@@ -96,8 +107,8 @@ function grantsAt(level: AreaLevel, keys: AreaKey[] = ALL_AREA_KEYS): Partial<Re
 }
 
 describe('AREA_DEFINITIONS', () => {
-  it('defines exactly 31 areas', () => {
-    expect(AREA_DEFINITIONS).toHaveLength(31);
+  it('defines exactly 32 areas', () => {
+    expect(AREA_DEFINITIONS).toHaveLength(32);
   });
 
   it('caps Team & Access at no grantable level (privilege-escalation guard)', () => {

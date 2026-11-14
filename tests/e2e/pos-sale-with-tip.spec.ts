@@ -24,16 +24,13 @@ test.describe('POS Sale with Tip — No Doubling', () => {
       const restaurantId = await (window as any).__getRestaurantId(user.id);
       if (!restaurantId) throw new Error('No restaurant');
 
-      // Seed the sale on the RESTAURANT's calendar day, not the host's. The POS
-      // Sales list ends its default range on the restaurant day (#861). From
-      // 00:00 to 06:00 UTC the UTC day is one day after the Chicago day, so a
-      // host-day sale on a UTC runner falls after the range end.
-      const { data: restaurant, error: tzError } = await supabase
+      // The page ends its default range on the restaurant day, not the runner day.
+      // Seed on the restaurant day so the sale is in range after 00:00 UTC.
+      const { data: restaurant } = await supabase
         .from('restaurants')
         .select('timezone')
         .eq('id', restaurantId)
         .single();
-      if (tzError) throw tzError;
       const saleDate = new Intl.DateTimeFormat('en-CA', {
         timeZone: restaurant?.timezone || 'America/Chicago',
         year: 'numeric',

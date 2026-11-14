@@ -433,13 +433,11 @@ const Scheduling = () => {
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
   const { areas, isLoading: areasLoading } = useEmployeeAreas(restaurantId);
-  const [position, setPositionParam] = useSearchParamState(positionParam);
-  const [area, setAreaParam] = useSearchParamState(areaParam);
+  const [position, setPositionFilter] = useSearchParamState(positionParam);
+  const [area, setAreaFilter] = useSearchParamState(areaParam);
   // A value that is not in the loaded list gives 'all'. The URL stays as it is.
   const areaFilter = !areasLoading && !areas.includes(area) ? 'all' : area;
   const positionFilter = !positionsLoading && !positions.includes(position) ? 'all' : position;
-  const setAreaFilter = setAreaParam;
-  const setPositionFilter = setPositionParam;
   const [groupBy, setGroupParam] = useSearchParamState(groupParam);
   // Read the stored group preference once. It seeds the URL when the URL has no group.
   const storedGroupRef = useRef<GroupByMode | null | undefined>(undefined);

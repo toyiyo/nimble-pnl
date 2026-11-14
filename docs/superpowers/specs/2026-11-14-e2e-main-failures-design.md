@@ -22,8 +22,8 @@ to 06:00 UTC, the UTC day is one day after the restaurant day. The sale is
 then out of range, and the page shows "No sales in this range."
 
 **Fix.** The spec reads `restaurants.timezone` and seeds the sale on the
-restaurant day (`tests/e2e/pos-sale-with-tip.spec.ts`). The product code does
-not change.
+restaurant day. Commit 9830e660 (#869) on `main` has this fix, so this branch
+does not change the spec.
 
 ## 2. Overnight shift hours on the Tips page
 

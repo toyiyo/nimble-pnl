@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -77,6 +77,10 @@ import { useSearchParamState, useSetSearchParams } from '@/hooks/useSearchParamS
 import {
   SCHEDULING_PARAMS,
   tabParam,
+  areaParam,
+  positionParam,
+  groupParam,
+  parseGroupBy,
   parseTab,
   type SchedulingTab,
 } from '@/lib/schedulingUrlParams';
@@ -428,23 +432,31 @@ const Scheduling = () => {
   // Separate active employees for creating new shifts
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
-  const { areas } = useEmployeeAreas(restaurantId);
-  const [positionFilter, setPositionFilter] = useState<string>('all');
-  const [areaFilter, setAreaFilter] = useState<string>('all');
-
-  // Reset area filter when selected value is no longer available
-  useEffect(() => {
-    if (areaFilter !== 'all' && !areas.includes(areaFilter)) {
-      setAreaFilter('all');
-    }
-  }, [areaFilter, areas]);
-  const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
+  const { areas, isLoading: areasLoading } = useEmployeeAreas(restaurantId);
+  const [position, setPositionParam] = useSearchParamState(positionParam);
+  const [area, setAreaParam] = useSearchParamState(areaParam);
+  // A value that is not in the loaded list gives 'all'. The URL stays as it is.
+  const areaFilter = !areasLoading && !areas.includes(area) ? 'all' : area;
+  const positionFilter = !positionsLoading && !positions.includes(position) ? 'all' : position;
+  const setAreaFilter = setAreaParam;
+  const setPositionFilter = setPositionParam;
+  const [groupBy, setGroupParam] = useSearchParamState(groupParam);
+  // Read the stored group preference once. It seeds the URL when the URL has no group.
+  const storedGroupRef = useRef<GroupByMode | null | undefined>(undefined);
+  if (storedGroupRef.current === undefined) {
+    let stored: GroupByMode | null = null;
     try {
-      const saved = localStorage.getItem('schedule-group-by');
-      if (saved === 'area' || saved === 'position' || saved === 'none') return saved;
+      stored = parseGroupBy(localStorage.getItem('schedule-group-by'));
     } catch { /* ignore */ }
-    return 'none';
-  });
+    storedGroupRef.current = stored;
+  }
+  useEffect(() => {
+    if (effectiveTab !== 'schedule') return;
+    // Test raw presence. A stored 'none' equals the fallback, so a value compare repeats the write.
+    if (new URLSearchParams(window.location.search).has(SCHEDULING_PARAMS.group)) return;
+    const stored = storedGroupRef.current;
+    if (stored) setGroupParam(stored, { history: 'replace' });
+  }, [effectiveTab, setGroupParam]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // A cancelled shift costs nothing. Without this filter, a cancel does not
@@ -573,10 +585,10 @@ const Scheduling = () => {
   );
 
   const handleGroupByChange = useCallback((mode: GroupByMode) => {
-    setGroupBy(mode);
+    setGroupParam(mode, { history: 'replace' });
     setCollapsedGroups(new Set());
     try { localStorage.setItem('schedule-group-by', mode); } catch { /* ignore */ }
-  }, []);
+  }, [setGroupParam]);
 
   const toggleGroupCollapse = useCallback((label: string) => {
     setCollapsedGroups(prev => {

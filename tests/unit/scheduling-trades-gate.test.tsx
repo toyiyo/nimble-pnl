@@ -413,6 +413,22 @@ describe('Scheduling page — tab in the URL', () => {
     await waitFor(() => expect(screen.getByTestId('loc')).not.toHaveTextContent('tab='));
   });
 
+  it('writes a stored group once when the URL has no group', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    localStorage.setItem('schedule-group-by', 'area');
+    render(null, '/scheduling');
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('group=area'));
+    localStorage.removeItem('schedule-group-by');
+  });
+
+  it('writes a stored none group to the URL', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    localStorage.setItem('schedule-group-by', 'none');
+    render(null, '/scheduling');
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('group=none'));
+    localStorage.removeItem('schedule-group-by');
+  });
+
   it('keeps the dirty templates tab and asks before it leaves', async () => {
     hasCapabilityMock.mockImplementation(() => true);
     render(null, '/scheduling?tab=templates');

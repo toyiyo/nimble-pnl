@@ -518,7 +518,7 @@ const Scheduling = () => {
     } catch {
       // onError in useCopyWeekShifts already shows a toast
     }
-  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId, restaurantTimezone]);
+  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId, restaurantTimezone, setCurrentWeekStart]);
 
   // Apply position and area filters to active employees for new shift creation
   const filteredActiveEmployees = useMemo(() => {

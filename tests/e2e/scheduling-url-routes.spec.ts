@@ -7,9 +7,9 @@ import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } fr
 async function openScheduling(page: Page, query: string, prefix: string) {
   await signUpAndCreateRestaurant(page, generateTestUser(prefix));
   await exposeSupabaseHelpers(page);
-  const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+  const restaurantId = await page.evaluate(() => (window as unknown as { __getRestaurantId: () => string }).__getRestaurantId());
   await page.evaluate(
-    ({ emps, restId }) => (window as any).__insertEmployees(emps, restId),
+    ({ emps, restId }) => (window as unknown as { __insertEmployees: (e: unknown[], r: string) => unknown }).__insertEmployees(emps, restId),
     {
       emps: [
         { name: 'Alice Johnson', position: 'Server', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500 },

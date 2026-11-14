@@ -8,6 +8,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -138,14 +139,22 @@ const DEFAULT_PROPS = {
   notifyAfterDeferredCommit: vi.fn(),
 } as const;
 
-function renderTab(props = DEFAULT_PROPS) {
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="loc">{loc.search}</div>;
+}
+
+function renderTab(props = DEFAULT_PROPS, url = '/scheduling') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
-      <TooltipProvider>
-        <ShiftPlannerTab {...props} />
-      </TooltipProvider>
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={[url]}>
+      <QueryClientProvider client={qc}>
+        <TooltipProvider>
+          <ShiftPlannerTab {...props} />
+          <LocationProbe />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -178,6 +187,23 @@ describe('ShiftPlannerTab — Plan|Timeline view toggle', () => {
 
     // In Timeline mode with no shifts, ShiftTimelineTab renders its empty state
     expect(screen.getByText(/no shifts scheduled/i)).toBeInTheDocument();
+  });
+
+  it('writes view=timeline to the URL when Timeline is clicked', () => {
+    renderTab();
+    fireEvent.click(screen.getByRole('radio', { name: /^timeline$/i }));
+    expect(screen.getByTestId('loc').textContent).toBe('?view=timeline');
+  });
+
+  it('opens in Timeline view when the URL has view=timeline', () => {
+    renderTab(DEFAULT_PROPS, '/scheduling?view=timeline');
+    expect(screen.getByText(/no shifts scheduled/i)).toBeInTheDocument();
+  });
+
+  it('deletes the view param when Plan is selected again', () => {
+    renderTab(DEFAULT_PROPS, '/scheduling?view=timeline');
+    fireEvent.click(screen.getByRole('radio', { name: /^plan$/i }));
+    expect(screen.getByTestId('loc').textContent).toBe('');
   });
 
   it('hides the editing tree in Timeline mode — DnD editing content is not rendered', () => {

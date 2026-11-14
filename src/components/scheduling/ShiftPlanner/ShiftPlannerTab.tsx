@@ -1,4 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
+import { hiddenParam, plannerAreaParam, viewParam } from '@/lib/schedulingUrlParams';
 
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
@@ -214,9 +216,14 @@ export function ShiftPlannerTab({
     isDeleting,
   } = useShiftTemplates(restaurantId, { status: 'all' });
 
-  // View filter — never persisted (CLAUDE.md: no manual caching). Determines whether
+  // View filter — kept in the URL (param `hidden`), not in storage. Determines whether
   // hidden (is_active === false) template rows render inline in the grid.
-  const [showHidden, setShowHidden] = useState(false);
+  const [hiddenParamValue, setHiddenParam] = useSearchParamState(hiddenParam);
+  const showHidden = hiddenParamValue === '1';
+  const setShowHidden = useCallback(
+    (next: boolean) => setHiddenParam(next ? '1' : ''),
+    [setHiddenParam],
+  );
 
   const { activeTemplates, hiddenTemplates, displayTemplates } = useMemo(
     () => partitionTemplatesForDisplay(allTemplates, showHidden),
@@ -228,8 +235,8 @@ export function ShiftPlannerTab({
   // template can never change labor numbers or open-shift affordances.
   const templates = activeTemplates;
 
-  const handleShowHidden = useCallback(() => setShowHidden(true), []);
-  const handleToggleShowHidden = useCallback(() => setShowHidden((prev) => !prev), []);
+  const handleShowHidden = useCallback(() => setShowHidden(true), [setShowHidden]);
+  const handleToggleShowHidden = useCallback(() => setShowHidden(!showHidden), [setShowHidden, showHidden]);
 
   const {
     availability,
@@ -302,7 +309,17 @@ export function ShiftPlannerTab({
   const generateSchedule = useGenerateSchedule();
 
   const { toast } = useToast();
-  const [areaFilter, setAreaFilter] = useState<string | null>(null);
+  const [plannerAreaRaw, setPlannerAreaRaw] = useSearchParamState(plannerAreaParam);
+  const templateAreas = useMemo(() => getTemplateAreas(templates), [templates]);
+  const hasUnassigned = useMemo(() => templates.some((t) => !t.area), [templates]);
+  // Derive against the real areas so a stale URL value never hides every row.
+  // 'all' maps to null.
+  const areaFilter =
+    plannerAreaRaw !== 'all' && templateAreas.includes(plannerAreaRaw) ? plannerAreaRaw : null;
+  const setAreaFilter = useCallback(
+    (next: string | null) => setPlannerAreaRaw(next ?? 'all'),
+    [setPlannerAreaRaw],
+  );
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
   const [activeDragEmployee, setActiveDragEmployee] = useState<{ id: string; name: string } | null>(null);
   const [pendingAssignment, setPendingAssignment] = useState<{
@@ -463,8 +480,6 @@ export function ShiftPlannerTab({
     return Array.from(posSet).sort((a, b) => a.localeCompare(b));
   }, [employees, templates]);
 
-  const templateAreas = useMemo(() => getTemplateAreas(templates), [templates]);
-  const hasUnassigned = useMemo(() => templates.some((t) => !t.area), [templates]);
 
   // DnD setup — PointerSensor for mouse, TouchSensor for touch devices
   // TouchSensor uses press-and-hold (200ms) to distinguish drag from scroll
@@ -649,7 +664,7 @@ export function ShiftPlannerTab({
   );
 
   // Plan | Timeline view toggle
-  const [view, setView] = useState<'plan' | 'timeline'>('plan');
+  const [view, setView] = useSearchParamState(viewParam);
 
   // Labor efficiency (SPLH) panel — collapsed by default
   const [laborEffOpen, setLaborEffOpen] = useState(false);

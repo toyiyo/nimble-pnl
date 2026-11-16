@@ -152,7 +152,7 @@ describe('WeekScheduleMobile — day-picker strip', () => {
     render(<WeekScheduleMobile {...defaultProps()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Mon 13' }));
     expect(window.location.search).toBe('?day=2026-07-13');
-    expect(window.history.length).toBe(before);
+    expect(window.history).toHaveLength(before);
   });
 
   it('selects the day from the day param', () => {

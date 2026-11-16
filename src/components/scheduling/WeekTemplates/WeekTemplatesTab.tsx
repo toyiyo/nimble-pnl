@@ -82,7 +82,9 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
    * Template id, NEW_DRAFT_ID for an unsaved draft, or null. Derived, not stored.
    * A dirty draft keeps its own template, so a URL change from Back or Forward cannot move the selection.
    */
-  const selectedId = draft && !baseline ? NEW_DRAFT_ID : isDirty && baseline ? baseline.id : templateId || null;
+  let selectedId: string | null = templateId || null;
+  if (draft && !baseline) selectedId = NEW_DRAFT_ID;
+  else if (isDirty && baseline) selectedId = baseline.id;
   const [mobileView, setMobileView] = useState<'list' | 'editor'>('list');
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);

@@ -59,14 +59,14 @@ describe('useSearchParamState', () => {
     const { result } = renderHook(() => useSearchParamState(tabParam), { wrapper });
     const before = window.history.length;
     act(() => result.current[1]('planner', { history: 'push' }));
-    expect(window.history.length).toBe(before + 1);
+    expect(window.history).toHaveLength(before + 1);
   });
 
   it('replace does not add a history entry', () => {
     const { result } = renderHook(() => useSearchParamState(tabParam), { wrapper });
     const before = window.history.length;
     act(() => result.current[1]('planner'));
-    expect(window.history.length).toBe(before);
+    expect(window.history).toHaveLength(before);
   });
 
   it('keeps other params and the hash', () => {

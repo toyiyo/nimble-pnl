@@ -9,7 +9,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { renderWithRouter as render } from '../helpers/renderWithRouter';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee } from '@/types/scheduling';
 

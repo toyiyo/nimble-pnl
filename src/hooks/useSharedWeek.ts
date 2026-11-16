@@ -1,16 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { useSetSearchParams } from '@/hooks/useSearchParamState';
 import { getMondayOfWeek } from '@/hooks/useShiftPlanner';
-
-const WEEK_PARAM = 'week';
-
-function formatIsoDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = (date.getMonth() + 1).toString().padStart(2, '0');
-  const d = date.getDate().toString().padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+import { SCHEDULING_PARAMS } from '@/lib/schedulingUrlParams';
+import { formatLocalDate } from '@/lib/shiftInterval';
 
 function parseWeekParam(value: string | null): Date {
   if (!value) return getMondayOfWeek(new Date());
@@ -30,24 +24,18 @@ export interface UseSharedWeekReturn {
 }
 
 export function useSharedWeek(): UseSharedWeekReturn {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const rawWeek = searchParams.get(WEEK_PARAM);
+  const [searchParams] = useSearchParams();
+  const setParams = useSetSearchParams();
+  const rawWeek = searchParams.get(SCHEDULING_PARAMS.week);
 
   const weekStart = useMemo(() => parseWeekParam(rawWeek), [rawWeek]);
 
   const setWeekStart = useCallback(
     (date: Date) => {
       const monday = getMondayOfWeek(date);
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set(WEEK_PARAM, formatIsoDate(monday));
-          return next;
-        },
-        { replace: true },
-      );
+      setParams({ [SCHEDULING_PARAMS.week]: formatLocalDate(monday) }, { history: 'replace' });
     },
-    [setSearchParams],
+    [setParams],
   );
 
   return { weekStart, setWeekStart };

@@ -13,6 +13,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useEmployees } from '@/hooks/useEmployees';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
 import { MAX_SCHEDULE_PLAN_TEMPLATES, useSchedulePlanTemplates } from '@/hooks/useSchedulePlanTemplates';
 
 import type { SchedulePlanTemplate, TemplateDraft, TemplateMergeMode } from '@/types/scheduling';
@@ -29,6 +30,7 @@ import {
   isDraftDirty,
   toSnapshot,
 } from '@/lib/weekTemplateDraft';
+import { templateParam } from '@/lib/schedulingUrlParams';
 import { cn } from '@/lib/utils';
 
 interface WeekTemplatesTabProps {
@@ -70,17 +72,23 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
     refetch: refetchEmployees,
   } = useEmployees(restaurantId);
 
-  /** Template id, NEW_DRAFT_ID for an unsaved draft, or null. */
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** The selected template id lives in the URL. An unsaved new draft never writes its id there. */
+  const [templateId, setTemplateId] = useSearchParamState(templateParam);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
   /** The saved version the draft compares against. null for a new draft. */
   const [baseline, setBaseline] = useState<SchedulePlanTemplate | null>(null);
+  const isDirty = useMemo(() => (draft ? isDraftDirty(draft, baseline) : false), [draft, baseline]);
+  /**
+   * Template id, NEW_DRAFT_ID for an unsaved draft, or null. Derived, not stored.
+   * A dirty draft keeps its own template, so a URL change from Back or Forward cannot move the selection.
+   */
+  let selectedId: string | null = templateId || null;
+  if (draft && !baseline) selectedId = NEW_DRAFT_ID;
+  else if (isDirty && baseline) selectedId = baseline.id;
   const [mobileView, setMobileView] = useState<'list' | 'editor'>('list');
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
-
-  const isDirty = useMemo(() => (draft ? isDraftDirty(draft, baseline) : false), [draft, baseline]);
   // Blocks a second save while the first one runs (isPending updates one render later).
   const saveInFlight = useRef(false);
   // Changes each time the editor gets a different draft (select, new, discard).
@@ -94,17 +102,36 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
   const changedElsewhere =
     isDirty && !!serverTemplate && !!baseline && isNewer(serverTemplate.updated_at, baseline.updated_at);
 
-  const loadTemplate = useCallback((t: SchedulePlanTemplate) => {
-    draftGeneration.current += 1;
-    setSelectedId(t.id);
-    setBaseline(t);
-    setDraft(draftFromTemplate(t));
-  }, []);
+  const loadTemplate = useCallback(
+    (t: SchedulePlanTemplate) => {
+      draftGeneration.current += 1;
+      if (t.id !== templateId) setTemplateId(t.id, { history: 'replace' });
+      setBaseline(t);
+      setDraft(draftFromTemplate(t));
+    },
+    [templateId, setTemplateId],
+  );
 
-  // Select the first template once the list loads.
+  // Select the template from the URL once the list loads.
+  // If no template has that id, select the first one and write its id.
   useEffect(() => {
-    if (selectedId === null && templates.length > 0) loadTemplate(templates[0]);
-  }, [selectedId, templates, loadTemplate]);
+    if (draft !== null || templates.length === 0) return;
+    loadTemplate(templates.find((t) => t.id === templateId) ?? templates[0]);
+  }, [draft, templates, templateId, loadTemplate]);
+
+  // The URL id changed (Back or Forward) while the draft is clean. Load that template.
+  useEffect(() => {
+    if (!baseline || isDirty || !templateId || templateId === baseline.id) return;
+    const match = templates.find((t) => t.id === templateId);
+    if (match) loadTemplate(match);
+  }, [baseline, isDirty, templateId, templates, loadTemplate]);
+
+  // The URL id changed while the draft is dirty. Back, Forward, or a cancelled tab change can do this.
+  // Write the draft's id back, so the URL and the list show the template in the editor.
+  useEffect(() => {
+    if (!isDirty || !baseline || templateId === baseline.id) return;
+    setTemplateId(baseline.id, { history: 'replace' });
+  }, [isDirty, baseline, templateId, setTemplateId]);
 
   // The server copy changed in another session. A clean draft takes the new version. A dirty draft keeps the user's edits
   // and shows the changed-elsewhere notice instead.
@@ -155,7 +182,6 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
   const handleNew = () =>
     guard(() => {
       draftGeneration.current += 1;
-      setSelectedId(NEW_DRAFT_ID);
       setBaseline(null);
       setDraft(emptyDraft());
       setMobileView('editor');
@@ -175,7 +201,7 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
       // The user moved to another draft while the save ran. The list refetch
       // shows the saved template; do not put its id on the current draft.
       if (generation !== draftGeneration.current) return;
-      setSelectedId(saved.id);
+      setTemplateId(saved.id, { history: 'replace' });
       setBaseline(saved);
       // Functional update: keep edits made while the save ran. Those edits
       // differ from the new baseline, so the draft stays dirty.
@@ -195,7 +221,6 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
     }
     draftGeneration.current += 1;
     setDraft(null);
-    setSelectedId(null);
     setMobileView('list');
   };
 
@@ -220,7 +245,7 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
         if (rest.length > 0) loadTemplate(rest[0]);
         else {
           draftGeneration.current += 1;
-          setSelectedId(null);
+          setTemplateId('', { history: 'replace' });
           setDraft(null);
           setBaseline(null);
         }

@@ -1,9 +1,10 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Zap, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RestaurantTzNotice } from '@/components/RestaurantTzNotice';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeEffectiveAvailability, EffectiveAvailability, availabilityColorClasses } from '@/lib/effectiveAvailability';
@@ -381,7 +382,7 @@ export function TeamAvailabilityGrid({
   const { selectedRestaurant } = useRestaurantContext();
   const timezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const today = new Date();
-  const [weekStart, setWeekStart] = useState<Date>(() => getMondayOfWeek(today));
+  const { weekStart, setWeekStart } = useSharedWeek();
 
   // Data fetching
   const { employees, loading: employeesLoading } = useEmployees(restaurantId);
@@ -410,24 +411,20 @@ export function TeamAvailabilityGrid({
 
   // Navigation handlers
   const goToPrevWeek = useCallback(() => {
-    setWeekStart((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() - 7);
-      return d;
-    });
-  }, []);
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() - 7);
+    setWeekStart(d);
+  }, [weekStart, setWeekStart]);
 
   const goToNextWeek = useCallback(() => {
-    setWeekStart((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + 7);
-      return d;
-    });
-  }, []);
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + 7);
+    setWeekStart(d);
+  }, [weekStart, setWeekStart]);
 
   const goToToday = useCallback(() => {
     setWeekStart(getMondayOfWeek(new Date()));
-  }, []);
+  }, [setWeekStart]);
 
   // Determine if today is in the displayed week
   const todayStr = toDateStr(today);

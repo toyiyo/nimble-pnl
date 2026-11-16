@@ -1,18 +1,14 @@
 import React, { ReactNode } from 'react';
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, useSearchParams } from 'react-router-dom';
 
 import { useSharedWeek } from '@/hooks/useSharedWeek';
+import { useSetSearchParams } from '@/hooks/useSearchParamState';
 
 function wrap(initialUrl: string) {
-  return ({ children }: { children: ReactNode }) => (
-    <MemoryRouter initialEntries={[initialUrl]}>
-      <Routes>
-        <Route path="/scheduling" element={<>{children}</>} />
-      </Routes>
-    </MemoryRouter>
-  );
+  window.history.replaceState(null, '', initialUrl);
+  return ({ children }: { children: ReactNode }) => <BrowserRouter>{children}</BrowserRouter>;
 }
 
 describe('useSharedWeek', () => {
@@ -65,5 +61,20 @@ describe('useSharedWeek', () => {
     expect(result.current.shared.weekStart.getFullYear()).toBe(2026);
     expect(result.current.shared.weekStart.getMonth()).toBe(4); // May (0-indexed)
     expect(result.current.shared.weekStart.getDate()).toBe(4);
+  });
+
+  it('keeps the week and a tab param when both setters run in one handler', () => {
+    const wrapper = wrap('/scheduling?week=2026-04-20');
+    const { result } = renderHook(
+      () => ({ shared: useSharedWeek(), setParams: useSetSearchParams() }),
+      { wrapper },
+    );
+    act(() => {
+      result.current.shared.setWeekStart(new Date(2026, 4, 4));
+      result.current.setParams({ tab: 'planner' });
+    });
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get('week')).toBe('2026-05-04');
+    expect(params.get('tab')).toBe('planner');
   });
 });

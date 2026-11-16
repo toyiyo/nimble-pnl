@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
 import { format, isToday as isDateToday } from 'date-fns';
 import { Edit, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatLocalDate } from '@/lib/shiftInterval';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
+import { dayParam } from '@/lib/schedulingUrlParams';
 import { pickDefaultMobileDay } from '@/lib/scheduleMobile';
 import { type WeekAvailabilitySummary } from '@/lib/effectiveAvailability';
 import type { EmployeeWeekTimeOff } from '@/lib/scheduleTimeOff';
@@ -254,17 +256,16 @@ export function WeekScheduleMobile({
   onDeleteShift,
   onToggleSelectShift,
 }: Readonly<WeekScheduleMobileProps>) {
-  const [selectedDayIndex, setSelectedDayIndex] = useState(() =>
-    pickDefaultMobileDay(weekDays, new Date()),
-  );
-
-  // Re-derive the default selected day whenever the displayed week changes
-  // (prev/next week navigation), so the picker doesn't stay on a stale date.
-  const weekKey = weekDays[0]?.getTime();
-  useEffect(() => {
-    setSelectedDayIndex(pickDefaultMobileDay(weekDays, new Date()));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- weekKey is the stable proxy for weekDays
-  }, [weekKey]);
+  const [dayParamValue, setDayParam] = useSearchParamState(dayParam);
+  const paramIndex = dayParamValue
+    ? weekDays.findIndex((d) => formatLocalDate(d) === dayParamValue)
+    : -1;
+  const selectedDayIndex =
+    paramIndex >= 0 ? paramIndex : pickDefaultMobileDay(weekDays, new Date());
+  const setSelectedDayIndex = (index: number) => {
+    const day = weekDays[index];
+    if (day) setDayParam(formatLocalDate(day));
+  };
 
   const selectedDay = weekDays[selectedDayIndex] ?? weekDays[0];
 
@@ -272,7 +273,7 @@ export function WeekScheduleMobile({
     return null;
   }
 
-  const selectedDayKey = format(selectedDay, 'yyyy-MM-dd');
+  const selectedDayKey = formatLocalDate(selectedDay);
 
   return (
     <div data-testid="week-schedule-mobile" className="md:hidden">

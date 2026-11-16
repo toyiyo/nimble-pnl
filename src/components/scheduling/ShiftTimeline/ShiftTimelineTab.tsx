@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { useSearchParamState } from '@/hooks/useSearchParamState';
+import { dayParam, timelineGroupParam } from '@/lib/schedulingUrlParams';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -294,12 +296,12 @@ export function ShiftTimelineTab({
   renderDayFooter,
 }: ShiftTimelineTabProps) {
   // ── Local state ────────────────────────────────────────────────────────────
-  const [selectedDayState, setSelectedDay] = useState<string>(() => defaultDay(weekDays));
+  const [selectedDayState, setSelectedDay] = useSearchParamState(dayParam);
   // Derive the effective day so navigating to a different week (weekDays prop
   // changes) never leaves a stale date selected — fall back to the week's default
   // when the stored day is outside the current week.
   const selectedDay = weekDays.includes(selectedDayState) ? selectedDayState : defaultDay(weekDays);
-  const [groupBy, setGroupBy] = useState<GroupByMode>('area');
+  const [groupBy, setGroupBy] = useSearchParamState(timelineGroupParam);
   // Single union overlay state (design doc "Overlay state machine") — edit mode is
   // wired here; create mode's producer (paint/gap-click) lands in Stage C.
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null);

@@ -13,7 +13,8 @@
  * network call or QueryClientProvider is needed.
  */
 import React from 'react';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, within, fireEvent } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
@@ -32,7 +33,12 @@ vi.mock('@/hooks/useConflictDetection', () => ({
   useCheckConflicts: (...args: unknown[]) => mockUseCheckConflicts(...args),
 }));
 
+function render(ui: React.ReactElement) {
+  return rtlRender(ui, { wrapper: BrowserRouter });
+}
+
 beforeEach(() => {
+  window.history.replaceState(null, '', '/scheduling');
   mockUseCheckConflicts.mockReturnValue({ conflicts: [], hasConflicts: false });
 });
 
@@ -139,6 +145,28 @@ describe('WeekScheduleMobile — day-picker strip', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mon 13' }));
     expect(screen.queryByTestId('shift-card')).not.toBeInTheDocument();
     expect(screen.getByText('No shift scheduled.')).toBeInTheDocument();
+  });
+
+  it('writes the day param with replace when a day is picked', () => {
+    const before = window.history.length;
+    render(<WeekScheduleMobile {...defaultProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mon 13' }));
+    expect(window.location.search).toBe('?day=2026-07-13');
+    expect(window.history).toHaveLength(before);
+  });
+
+  it('selects the day from the day param', () => {
+    window.history.replaceState(null, '', '/scheduling?day=2026-07-17');
+    render(<WeekScheduleMobile {...defaultProps()} />);
+    const pressed = screen.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true');
+    expect(within(pressed[0]).getByText('17')).toBeInTheDocument();
+  });
+
+  it('uses the default day when the day param is outside the week', () => {
+    window.history.replaceState(null, '', '/scheduling?day=2026-08-17');
+    render(<WeekScheduleMobile {...defaultProps()} />);
+    const pressed = screen.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true');
+    expect(within(pressed[0]).getByText('15')).toBeInTheDocument();
   });
 
   it('falls back to the first day when today is outside the displayed week', () => {

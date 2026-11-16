@@ -130,13 +130,27 @@ export const staffNav: NavGroup[] = [
   },
 ];
 
-// Operations Manager: full internal nav minus Accounting group and Integrations.
-export const operationsManagerNav: NavGroup[] = navigationGroups
-  .filter((group) => group.label !== 'Accounting')
-  .map((group) => ({
+// Returning Guests is for owner and manager only. Every other nav that
+// derives from navigationGroups must drop it.
+const RETURNING_GUESTS_PATH = '/returning-guests';
+
+function withoutReturningGuests(groups: NavGroup[]): NavGroup[] {
+  return groups.map((group) => ({
     ...group,
-    items: group.items.filter((item) => item.path !== '/integrations'),
+    items: group.items.filter((item) => item.path !== RETURNING_GUESTS_PATH),
   }));
+}
+
+// Operations Manager: full internal nav minus Accounting group, Integrations
+// and Returning Guests.
+export const operationsManagerNav: NavGroup[] = withoutReturningGuests(
+  navigationGroups
+    .filter((group) => group.label !== 'Accounting')
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.path !== '/integrations'),
+    }))
+);
 
 // Collaborator Operations Manager: bespoke, scoped nav for the external ops
 // collaborator role. DERIVED from navigationGroups (same pattern as
@@ -153,7 +167,7 @@ export const operationsManagerNav: NavGroup[] = navigationGroups
 //   - Inventory: kept, minus /reports — the Reports page is P&L (defaults to
 //     P&L Trends), which this accounting-excluded role must not reach
 //     (Codex P1, PR #596).
-export const collaboratorOperationsManagerNav: NavGroup[] = navigationGroups
+export const collaboratorOperationsManagerNav: NavGroup[] = withoutReturningGuests(navigationGroups)
   .filter((group) => group.label !== 'Accounting')
   .map((group) => {
     if (group.label === 'Main') {
@@ -197,7 +211,7 @@ export function getNavigationForAreas(
   const allowed = new Set(allowedPathsForAreas(grants));
   const hidden = new Set(NAV_HIDDEN_PATHS);
 
-  return navigationGroups
+  return withoutReturningGuests(navigationGroups)
     .map((group) => {
       const items = [...group.items, ...(SUPPLEMENTAL_NAV_ITEMS[group.label] ?? [])].filter(
         (item) => allowed.has(item.path) && !hidden.has(item.path)
@@ -241,6 +255,8 @@ export function getNavigationForRole(
       return collaboratorOperationsManagerNav;
     case 'operations_manager':
       return operationsManagerNav;
+    case 'chef':
+      return withoutReturningGuests(navigationGroups);
     default:
       // A `collaborator_*` string that matched no case above is a custom
       // role ('collaborator_custom'): derive its sidebar from its areas, and

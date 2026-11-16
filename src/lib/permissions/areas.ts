@@ -41,6 +41,7 @@ export type AreaKey =
   | 'integrations'
   | 'sales'
   | 'reviews'
+  | 'returning_guests'
   | 'scheduling'
   | 'time_punches'
   | 'tips'
@@ -238,6 +239,10 @@ const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
     manageAdds: ['edit:payroll'],
   },
   labor: {
+    view: [],
+    manageAdds: [],
+  },
+  returning_guests: {
     view: [],
     manageAdds: [],
   },

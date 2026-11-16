@@ -454,7 +454,7 @@ const Scheduling = () => {
     // Test raw presence. A stored 'none' equals the fallback, so a value compare repeats the write.
     if (new URLSearchParams(window.location.search).has(SCHEDULING_PARAMS.group)) return;
     const stored = storedGroupRef.current;
-    if (stored) setGroupParam(stored, { history: 'replace' });
+    setGroupParam(stored ?? 'none', { history: 'replace' });
   }, [effectiveTab, setGroupParam]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
@@ -634,6 +634,13 @@ const Scheduling = () => {
   const clearSelection = useCallback(() => {
     setSelectedShiftIds(new Set());
   }, []);
+
+  // The week can change from the URL (back/forward, a shared link), not only
+  // from the week buttons. Clear the selection so a bulk action never reaches
+  // shifts that are not on the screen.
+  useEffect(() => {
+    setSelectedShiftIds((prev) => (prev.size ? new Set() : prev));
+  }, [weekStartKey]);
 
   const exitSelectionMode = useCallback(() => {
     setSelectionMode(false);

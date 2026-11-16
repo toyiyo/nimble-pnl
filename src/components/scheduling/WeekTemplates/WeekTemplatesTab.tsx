@@ -77,14 +77,16 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
   /** The saved version the draft compares against. null for a new draft. */
   const [baseline, setBaseline] = useState<SchedulePlanTemplate | null>(null);
-  /** Template id, NEW_DRAFT_ID for an unsaved draft, or null. Derived, not stored. */
-  const selectedId = draft && !baseline ? NEW_DRAFT_ID : templateId || null;
+  const isDirty = useMemo(() => (draft ? isDraftDirty(draft, baseline) : false), [draft, baseline]);
+  /**
+   * Template id, NEW_DRAFT_ID for an unsaved draft, or null. Derived, not stored.
+   * A dirty draft keeps its own template, so a URL change from Back or Forward cannot move the selection.
+   */
+  const selectedId = draft && !baseline ? NEW_DRAFT_ID : isDirty && baseline ? baseline.id : templateId || null;
   const [mobileView, setMobileView] = useState<'list' | 'editor'>('list');
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
-
-  const isDirty = useMemo(() => (draft ? isDraftDirty(draft, baseline) : false), [draft, baseline]);
   // Blocks a second save while the first one runs (isPending updates one render later).
   const saveInFlight = useRef(false);
   // Changes each time the editor gets a different draft (select, new, discard).
@@ -121,6 +123,13 @@ export function WeekTemplatesTab({ restaurantId, timezone, onDirtyChange, onView
     const match = templates.find((t) => t.id === templateId);
     if (match) loadTemplate(match);
   }, [baseline, isDirty, templateId, templates, loadTemplate]);
+
+  // The URL id changed while the draft is dirty. Back, Forward, or a cancelled tab change can do this.
+  // Write the draft's id back, so the URL and the list show the template in the editor.
+  useEffect(() => {
+    if (!isDirty || !baseline || templateId === baseline.id) return;
+    setTemplateId(baseline.id, { history: 'replace' });
+  }, [isDirty, baseline, templateId, setTemplateId]);
 
   // The server copy changed in another session. A clean draft takes the new version. A dirty draft keeps the user's edits
   // and shows the changed-elsewhere notice instead.

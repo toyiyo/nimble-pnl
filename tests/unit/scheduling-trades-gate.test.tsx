@@ -455,6 +455,13 @@ describe('Scheduling page — tab in the URL', () => {
     localStorage.removeItem('schedule-group-by');
   });
 
+  it('writes group=none when no group is stored and the URL has none', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    localStorage.removeItem('schedule-group-by');
+    render(null, '/scheduling');
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('group=none'));
+  });
+
   it('keeps the dirty templates tab and asks before it leaves', async () => {
     hasCapabilityMock.mockImplementation(() => true);
     render(null, '/scheduling?tab=templates');

@@ -76,4 +76,21 @@ describe('TeamAvailabilityGrid week param', () => {
     fireEvent.click(screen.getByRole('button', { name: /Today/ }));
     expect(screen.getByTestId('search').textContent).toContain('week=2026-03-02');
   });
+
+  it.each([
+    ['no week param', '/'],
+    ['an empty week param', '/?week='],
+    ['an invalid week param', '/?week=not-a-date'],
+  ])('falls back to this week with %s', (_label, url) => {
+    renderGrid(url);
+    expect(screen.getByText(/Mar 2/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Next week'));
+    expect(screen.getByTestId('search').textContent).toContain('week=2026-03-09');
+  });
+
+  it('writes the week before this week from a fallback week', () => {
+    renderGrid('/?week=not-a-date');
+    fireEvent.click(screen.getByLabelText('Previous week'));
+    expect(screen.getByTestId('search').textContent).toContain('week=2026-02-23');
+  });
 });

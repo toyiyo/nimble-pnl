@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -273,6 +273,26 @@ describe('WeekTemplatesTab', () => {
     expect(window.location.search).toBe('?template=t1');
     fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
     expect(window.location.search).toBe('?template=t2');
+  });
+
+  it('keeps the dirty draft selected and writes its id back when the URL id changes', async () => {
+    setHook([tmpl('t1', 'Lunch'), tmpl('t2', 'Dinner')]);
+    renderTab();
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Lunch v2' } });
+
+    // Back, Forward, or a cancelled tab change puts another id in the URL.
+    act(() => {
+      window.history.pushState({}, '', '/?template=t2');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    await waitFor(() => expect(window.location.search).toBe('?template=t1'));
+    expect(screen.getByLabelText('Template name')).toHaveValue('Lunch v2');
+    expect(screen.getByRole('button', { name: /Lunch/, current: true })).toBeInTheDocument();
+
+    // A click on the other template still asks first.
+    fireEvent.click(screen.getByRole('button', { name: /Dinner/ }));
+    expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument();
   });
 
   it('does not write the URL when the list is empty', () => {

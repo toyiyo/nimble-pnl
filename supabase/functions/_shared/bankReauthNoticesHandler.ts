@@ -18,6 +18,7 @@ import { buildBankReauthNoticeContent } from './bankReauthNoticeContent.ts';
 export interface CohortARow {
   connected_bank_id: string;
   restaurant_id: string;
+  restaurant_name?: string | null;
   institution_name: string;
   account_mask: string | null;
   deactivated_at: string;
@@ -33,6 +34,7 @@ export interface CohortARow {
 export interface CohortBRow {
   connected_bank_id: string;
   restaurant_id: string;
+  restaurant_name?: string | null;
   institution_name: string;
   account_mask: string | null;
   deactivated_at: string;
@@ -113,6 +115,7 @@ export interface BankReauthNoticesRunResult {
 
 interface NoticeTarget {
   restaurantId: string;
+  restaurantName?: string | null;
   connectedBankId: string;
   institutionName: string;
   accountMask: string | null;
@@ -153,6 +156,8 @@ async function processTarget(
 
   const content = buildBankReauthNoticeContent({
     stage: target.stage,
+    restaurantId: target.restaurantId,
+    restaurantName: target.restaurantName,
     institutionName: target.institutionName,
     accountMask: target.accountMask,
     deactivatedAt: target.deactivatedAt,
@@ -257,6 +262,7 @@ export async function runBankReauthNotices(
       if (!stage) return null;
       return processTarget(deps, {
         restaurantId: row.restaurant_id,
+        restaurantName: row.restaurant_name,
         connectedBankId: row.connected_bank_id,
         institutionName: row.institution_name,
         accountMask: row.account_mask,
@@ -272,6 +278,7 @@ export async function runBankReauthNotices(
     cohortB.map((row) =>
       processTarget(deps, {
         restaurantId: row.restaurant_id,
+        restaurantName: row.restaurant_name,
         connectedBankId: row.connected_bank_id,
         institutionName: row.institution_name,
         accountMask: row.account_mask,

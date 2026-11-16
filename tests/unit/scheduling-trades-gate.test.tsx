@@ -1,8 +1,8 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { BrowserRouter, useLocation } from 'react-router-dom';
 
 // The Scheduling page showed the "Shift Trades" tab and its approval queue
 // to every viewer, regardless of role — a chef with only `view:scheduling`
@@ -315,14 +315,20 @@ function LocationProbe() {
   return <div data-testid="loc">{location.search}</div>;
 }
 
+// BrowserRouter shares window.location with the URL setter, as the app does.
 function render(_ui?: unknown, url = '/scheduling') {
+  window.history.replaceState({}, '', url);
   return rtlRender(
-    <MemoryRouter initialEntries={[url]}>
+    <BrowserRouter>
       <Scheduling />
       <LocationProbe />
-    </MemoryRouter>,
+    </BrowserRouter>,
   );
 }
+
+afterEach(() => {
+  window.history.replaceState({}, '', '/');
+});
 
 describe('Scheduling page — Shift Trades tab capability gate', () => {
   beforeEach(() => {

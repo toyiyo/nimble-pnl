@@ -279,7 +279,7 @@ test.describe('Roles & Areas', () => {
     // hand-kept priority list. 'scheduling' (Operations) precedes
     // 'inventory' (Inventory) in that order, so a role holding both lands
     // on /scheduling, not /inventory as under the old bundle model.
-    await expect(page).toHaveURL('/scheduling', { timeout: 15000 });
+    await expect(page).toHaveURL(/\/scheduling(\?|$)/, { timeout: 15000 });
 
     const sidebar = page.locator('aside[role="navigation"], [data-sidebar]').first();
     await expect(sidebar).toBeVisible();

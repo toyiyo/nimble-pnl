@@ -112,8 +112,9 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
 
     for (const route of ownerRoutes) {
       await navigateInApp(page, route);
-      // Owner should stay on the requested route (has full access)
-      await expect(page).toHaveURL(route);
+      // Owner should stay on the requested route (has full access).
+      // Compare the path only: some pages write view state to the query.
+      await expect.poll(() => new URL(page.url()).pathname).toBe(route);
     }
   });
 

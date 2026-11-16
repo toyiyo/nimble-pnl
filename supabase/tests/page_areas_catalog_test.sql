@@ -1,7 +1,7 @@
 BEGIN;
 SELECT plan(8);
 
-SELECT is((SELECT count(*)::int FROM public.area_catalog), 31,
+SELECT is((SELECT count(*)::int FROM public.area_catalog), 32,
   'area_catalog has one row per gateable sidebar page');
 
 SELECT is((SELECT array_agg(DISTINCT ui_group ORDER BY ui_group) FROM public.area_catalog),

@@ -3744,6 +3744,26 @@
 - **Mistake:** The plan code had a nested ternary in the policy button text, a toast helper with high cognitive complexity, and props that were not read-only. Reviewers and SonarCloud sent the code back three times.
 - **Rule:** In plan code, use no nested ternaries. Split a text helper with more than 3 branches. Mark component props `Readonly<>`. Use `void` on a promise that the code does not await.
 
+## Category: Development Workflow (shift trade history)
+
+### [2026-11-05] Compare a full lint failure with main before a stop (PR #865)
+- **Mistake:** Verify stopped on 1506 `npm run lint` errors. The user answered "Fix them first" before the session knew the size and the cause. 1475 errors were `no-explicit-any` in files that the branch did not touch.
+- **Correction:** The session counted errors by rule and by file. It told the user that no CI job and no required check runs lint. The user chose to open the PR and clean up later.
+- **Rule:** When a gate fails, group the errors by rule and by file. Check if CI enforces the gate. Give these facts to the user with the first question.
+
+### [2026-11-05] Check the local migrations before a pgTAP diagnosis (PR #865)
+- **Mistake:** `receipt_images_storage_rls.test.sql` failed 13 of 21 checks after the seed fix. The result looked like a real RLS hole. The cause was a local database with 6 migrations not applied.
+- **Correction:** The session compared `supabase_migrations.schema_migrations` with `supabase/migrations`. It ran the test with the migration in the same rolled-back transaction, and 21 of 21 passed.
+- **Rule:** Before you diagnose a pgTAP failure, compare the local migration list with the repo. A long-running local stack falls behind `main`.
+
+### [2026-11-05] Compare each design field with the row in the test (PR #865)
+- **Mistake:** The design shows `manager_note` unless it is `AUTO_EXPIRED_NOTE`. The history row did not show it. Unit tests and 4 reviewers did not find this. QA found it as bug B1.
+- **Rule:** Write one test for each field that the design lists for a row, also for an optional field.
+
+### [2026-11-05] The Bash tool runs zsh here (PR #865)
+- **Mistake:** `echo == text` and an unmatched glob such as `.lintstagedrc*` stopped the command, and the later lines did not run.
+- **Rule:** Wrap a multi-line diagnostic script in `bash -c`. Do not use a bare `==` in an `echo`.
+
 ## Category: Development Workflow (remote container, PR #853)
 
 ### [2026-10-27] A cloud session can start local Supabase through the Docker Hub mirror (PR #853)

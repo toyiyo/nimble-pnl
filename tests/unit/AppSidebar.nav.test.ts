@@ -50,7 +50,7 @@ describe('AppSidebar.nav – operations_manager', () => {
     for (const opsGroup of nav) {
       const fullGroup = navigationGroups.find((g) => g.label === opsGroup.label);
       if (!fullGroup) continue; // only check groups carried over from full nav
-      const expectedItems = fullGroup.items.filter((i) => i.path !== '/integrations');
+      const expectedItems = fullGroup.items.filter((i) => i.path !== '/integrations' && i.path !== '/returning-guests');
       expect(opsGroup.items).toEqual(expectedItems);
     }
   });
@@ -164,7 +164,7 @@ describe('AppSidebar.nav – custom roles derive their nav from granted areas', 
     const grants: Grants = { books: 'manage' };
     expect(getNavigationForRole('owner', undefined, grants)).toEqual(navigationGroups);
     expect(getNavigationForRole('manager', undefined, grants)).toEqual(navigationGroups);
-    expect(getNavigationForRole('chef', undefined, grants)).toEqual(navigationGroups);
+    expect(getNavigationForRole('chef', undefined, grants)).toEqual(getNavigationForRole('chef'));
     expect(getNavigationForRole('operations_manager', undefined, grants)).toEqual(operationsManagerNav);
     expect(getNavigationForRole('staff', undefined, grants)).toEqual(staffNav);
     expect(getNavigationForRole('kiosk', undefined, grants)).toEqual([]);
@@ -304,5 +304,37 @@ describe('AppSidebar.nav – staffNav shift marketplace', () => {
     expect(scheduleIndex).toBeGreaterThanOrEqual(0);
     expect(paths[scheduleIndex + 1]).toBe('/employee/shifts');
     expect(employee?.items[scheduleIndex + 1].label).toBe('Shift Marketplace');
+  });
+});
+
+describe('AppSidebar.nav – Returning Guests entry', () => {
+  const paths = (groups: ReturnType<typeof getNavigationForRole>) =>
+    groups.flatMap((g) => g.items.map((i) => i.path));
+
+  it('shows the item after Reviews for owner and manager', () => {
+    for (const role of ['owner', 'manager']) {
+      const all = paths(getNavigationForRole(role));
+      expect(all).toContain('/returning-guests');
+      expect(all.indexOf('/returning-guests')).toBe(all.indexOf('/reviews') + 1);
+    }
+  });
+
+  it('hides the item for every other role', () => {
+    for (const role of [
+      'chef',
+      'operations_manager',
+      'staff',
+      'kiosk',
+      'collaborator_accountant',
+      'collaborator_inventory',
+      'collaborator_chef',
+      'collaborator_operations_manager',
+    ]) {
+      expect(paths(getNavigationForRole(role))).not.toContain('/returning-guests');
+    }
+  });
+
+  it('hides the item in work mode', () => {
+    expect(paths(getNavigationForRole('owner', 'work'))).not.toContain('/returning-guests');
   });
 });

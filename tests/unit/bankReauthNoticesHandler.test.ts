@@ -38,7 +38,7 @@ function cohortBRow(over: Partial<CohortBRow> = {}): CohortBRow {
 interface Env {
   deps: BankReauthNoticesDeps;
   emailCalls: Array<{ to: string; subject: string }>;
-  pushCalls: Array<{ userIds: string[]; restaurantId: string }>;
+  pushCalls: Array<{ userIds: string[]; restaurantId: string; url: string }>;
   recordCalls: Array<{ restaurant_id: string; connected_bank_id: string; stage: string; deactivated_at: string }>;
   recipientCalls: Array<{ restaurantId: string; roles: string[] }>;
 }
@@ -67,8 +67,8 @@ function makeDeps(opts: {
       emailCalls.push({ to: msg.to, subject: msg.subject });
       return { id: `resend-${emailCalls.length}`, error: null };
     }),
-    sendPush: vi.fn(async (userIds: string[], restaurantId: string) => {
-      pushCalls.push({ userIds, restaurantId });
+    sendPush: vi.fn(async (userIds: string[], restaurantId: string, payload) => {
+      pushCalls.push({ userIds, restaurantId, url: payload.url });
       return { sent: userIds.length };
     }),
     recordNotice: vi.fn(async (row) => {
@@ -108,6 +108,25 @@ describe('runBankReauthNotices', () => {
       stage: 'day_1',
       deactivated_at: '2026-07-10T12:00:00.000Z',
     });
+  });
+
+  it('cohort A: puts the restaurant name in the email subject and the id in the push url', async () => {
+    const env = makeDeps({
+      cohortA: [cohortARow({ elapsed_days: 1, restaurant_name: 'Cafe Uno' })],
+    });
+    await runBankReauthNotices(env.deps);
+
+    expect(env.emailCalls[0].subject).toContain('Cafe Uno: ');
+    expect(env.pushCalls[0].url).toContain('select_restaurant=rest-1');
+  });
+
+  it('cohort B: puts the restaurant name in the email subject', async () => {
+    const env = makeDeps({
+      cohortB: [cohortBRow({ restaurant_name: 'Cafe Dos' })],
+    });
+    await runBankReauthNotices(env.deps);
+
+    expect(env.emailCalls[0].subject).toContain('Cafe Dos: ');
   });
 
   it('cohort A: a bank at day 6 with only day_1 already sent jumps straight to day_4, not a backfill of both', async () => {

@@ -175,7 +175,7 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
     // Read actual payroll total (source of truth) and validate it's reasonable
     const grossWagesCard = page
       .getByText('Gross Wages')
-      .locator('xpath=ancestor::div[contains(@class,\"rounded-lg\")][1]');
+      .locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]');
     const grossWagesText = await grossWagesCard.locator('.text-2xl').first().innerText();
     const payrollTotal = parseCurrency(grossWagesText);
     const payrollRounded = Math.round(payrollTotal);

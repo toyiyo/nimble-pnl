@@ -46,7 +46,7 @@ function transformSupabaseUrl(
 
   // Convert object URL to render/image URL for transforms
   // /storage/v1/object/public/ -> /storage/v1/render/image/public/
-  let transformedUrl = url.replace(
+  const transformedUrl = url.replace(
     '/storage/v1/object/public/',
     '/storage/v1/render/image/public/'
   );

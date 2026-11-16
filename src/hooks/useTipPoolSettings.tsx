@@ -110,7 +110,11 @@ export function useTipPoolSettings(restaurantId: string | null) {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // Put the saved row in the cache at once. The next autosave then sees
+      // its id and updates it. Without this, a save that starts before the
+      // refetch completes inserts a second active row.
+      queryClient.setQueryData(['tip-pool-settings', restaurantId], saved);
       queryClient.invalidateQueries({ queryKey: ['tip-pool-settings', restaurantId] });
       toast({
         title: 'Settings saved',

@@ -25,7 +25,7 @@ describe('fetchInventoryTransactions search term', () => {
       searchTerm: 'Smith, John',
     });
     expect(calls).toContain(
-      'reason.ilike."%Smith, John%",reference_id.ilike."%Smith, John%",performed_by.ilike."%Smith, John%"'
+      'reason.ilike."%Smith, John%",reference_id.ilike."%Smith, John%"'
     );
   });
 
@@ -36,5 +36,15 @@ describe('fetchInventoryTransactions search term', () => {
       searchTerm: 'a"b',
     });
     expect(calls[0]).toContain('reason.ilike."%a\\"b%"');
+  });
+
+  it('does not run ilike on the performed_by uuid column', async () => {
+    const { client, calls } = makeClient();
+    await fetchInventoryTransactions(client, {
+      restaurantId: 'r1',
+      searchTerm: 'flour',
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toContain('performed_by');
   });
 });

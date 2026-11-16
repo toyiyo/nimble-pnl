@@ -390,4 +390,29 @@ describe('useAutoSaveTipSettings', () => {
     vi.advanceTimersByTime(1000);
     expect(onSave).toHaveBeenCalledTimes(1);
   });
+
+  it('does not schedule a save while a previous save is in flight', () => {
+    // A second save that starts before the first INSERT returns sees no
+    // settings id and inserts a second active row.
+    const props = {
+      settings: null,
+      tipSource: 'manual' as const,
+      shareMethod: 'hours' as const,
+      splitCadence: 'daily' as const,
+      roleWeights: {},
+      rolePercentages: { Manager: { mode: 'at_least' as const, percentage: 30 } },
+      selectedEmployees: new Set<string>(),
+      onSave,
+    };
+    const { rerender } = renderHook((p: { isSaving: boolean }) =>
+      useAutoSaveTipSettings({ ...props, isSaving: p.isSaving }),
+    { initialProps: { isSaving: true } });
+
+    vi.advanceTimersByTime(1500);
+    expect(onSave).not.toHaveBeenCalled();
+
+    rerender({ isSaving: false });
+    vi.advanceTimersByTime(1500);
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
 });

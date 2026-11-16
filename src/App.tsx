@@ -46,6 +46,7 @@ import Unsubscribe from "./pages/Unsubscribe";
 // route here is a static import, so adding this one the same way would
 // silently defeat the isolation.
 const ReviewPage = lazy(() => import("./pages/ReviewPage"));
+const ReturningGuests = lazy(() => import("./pages/ReturningGuests"));
 const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
 import Transactions from "./pages/Transactions";
 import ChartOfAccounts from "./pages/ChartOfAccounts";
@@ -427,6 +428,23 @@ const App = () => (
             <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
             <Route path="/reviews" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
+            <Route
+              path="/returning-guests"
+              element={
+                <ProtectedRoute>
+                  <Suspense
+                    fallback={
+                      <div className="p-6 max-w-6xl mx-auto space-y-4">
+                        <Skeleton className="h-10 w-64 rounded-lg" />
+                        <Skeleton className="h-56 rounded-xl" />
+                      </div>
+                    }
+                  >
+                    <ReturningGuests />
+                  </Suspense>
+                </ProtectedRoute>
+              }
+            />
             <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
             <Route path="/help/:slug" element={<ProtectedRoute allowStaff={true}><HelpArticle /></ProtectedRoute>} />

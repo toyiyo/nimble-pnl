@@ -7,7 +7,7 @@
  *  - focusApiBaseUrl: production vs sandbox URL selection
  *  - buildLynkRequest: correct body shape (category, type, request_id, business_date)
  *  - fetchDatafeed:
- *      - POSTs LegacyDatafeed to /api/lynk/async (Status polls to /api/lynk/sync) with Basic auth header + focuspos-restaurant-id header
+ *      - POSTs LegacyDatafeed and Status polls to /api/lynk/async with Basic auth header + focuspos-restaurant-id header
  *      - Sends correct LegacyDatafeed request body with MM/DD/YYYY business date
  *      - Downloads blob_url via GET and returns XML string
  *      - Returns ok:false kind=inprogress when error_condition is "InProgress"
@@ -534,7 +534,7 @@ describe('fetchDatafeed', () => {
       const [initialUrl, initInitial] = fetchFn.mock.calls[0] as [string, RequestInit];
       const [pollUrl, initPoll] = fetchFn.mock.calls[1] as [string, RequestInit];
       expect(initialUrl).toBe(`${PROD_BASE}/api/lynk/async`);
-      expect(pollUrl).toBe(`${PROD_BASE}/api/lynk/sync`);
+      expect(pollUrl).toBe(`${PROD_BASE}/api/lynk/async`);
       const initialBody = JSON.parse(initInitial.body as string);
       const pollBody = JSON.parse(initPoll.body as string);
       expect(pollBody.pos_request.header.category).toBe('Status');

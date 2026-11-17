@@ -14,9 +14,9 @@
  *
  * Focus removed the SYNC endpoint for LegacyDatafeed (it returns 403 since
  * 2026-11-16). The ASYNC endpoint returns InProgress with no blob_url. The
- * client then polls POST {baseUrl}/api/lynk/sync with Status requests that
- * reference the initial request_id. The Focus docs send Status requests to
- * the synchronous endpoint. The poll response wraps the referenced message in
+ * client then polls POST {baseUrl}/api/lynk/async with Status requests that
+ * reference the initial request_id. Focus told us that SYNC does not work, so
+ * every call goes to the ASYNC endpoint. The poll response wraps the referenced message in
  * `pos_response.payload.repeated_message_response`. After STATUS_POLL_MAX
  * polls the client returns kind = "inprogress"; the caller retries on the
  * next cron pass.
@@ -314,14 +314,12 @@ export async function fetchDatafeed(
 
   // ── 3. POST helper for the Lynk endpoints ───────────────────────────────────
 
-  // LegacyDatafeed goes to /async: Focus removed /sync for this category.
-  // Status polls go to /sync, as the Focus Lynk docs specify.
+  // Every Lynk call goes to /async: Focus told us that /sync does not work.
   const lynkBase = config.baseUrl.replace(/\/+$/, '');
   const asyncUrl = `${lynkBase}/api/lynk/async`;
-  const syncUrl = `${lynkBase}/api/lynk/sync`;
 
   /**
-   * POST one body to the Lynk sync endpoint.
+   * POST one body to the Lynk async endpoint.
    * Maps terminal HTTP statuses and a non-JSON body to a FocusLynkResult.
    * On 2xx JSON, returns the parsed body.
    */
@@ -422,7 +420,7 @@ export async function fetchDatafeed(
       await sleepFn(STATUS_POLL_DELAY_MS);
 
       const statusBody = buildStatusRequest(initialRequestId, `${requestIdBase}.${poll + 1}`);
-      const pollRes = await postLynk(syncUrl, statusBody);
+      const pollRes = await postLynk(asyncUrl, statusBody);
       if (!pollRes.ok) {
         return pollRes.result;
       }

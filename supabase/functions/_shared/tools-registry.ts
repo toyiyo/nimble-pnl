@@ -280,7 +280,7 @@ export function getTools(
     // Schedule overview - available to all users
     {
       name: 'get_schedule_overview',
-      description: `Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts, conflicts, and estimated labor cost based on scheduled hours. ${PAY_HIDDEN_TOOL_HINT}`,
+      description: `Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts and estimated labor cost based on scheduled hours. Each shift lists its conflicts: time off and availability (shown on the schedule grid), and overlap and short rest (checked in the shift editor). ${PAY_HIDDEN_TOOL_HINT}`,
       parameters: {
         type: 'object',
         properties: {
@@ -306,6 +306,26 @@ export function getTools(
           }
         },
         required: ['period']
+      }
+    },
+
+    {
+      name: 'get_scheduling_context',
+      description: 'Everything the Scheduling page shows for a period: roster, availability, time off, conflicts, coverage, pending requests, publish state, and labor targets. It helps plan or change a schedule.',
+      parameters: {
+        type: 'object',
+        properties: {
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'First day of the period (YYYY-MM-DD). Default: Monday of the current restaurant week.'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Last day of the period (YYYY-MM-DD). The period is 31 days at most.'
+          }
+        }
       }
     },
 
@@ -1062,7 +1082,7 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
  * dispatcher gate must match that RLS predicate instead of a second,
  * independently-maintained role list.
  */
-export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview', 'get_hourly_sales'] as const;
+export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview', 'get_hourly_sales', 'get_scheduling_context'] as const;
 
 type CapabilityRpcResult = { data: boolean | null; error: unknown };
 
@@ -1153,6 +1173,44 @@ export async function hasPayRatesCapability(
 
   if (result.error) {
     console.error('hasPayRatesCapability: view:pay_rates RPC failed', {
+      restaurantId,
+      error: result.error,
+    });
+  }
+
+  return Boolean(result.data);
+}
+
+/**
+ * Resolves view:pos_sales for the calling user. Fails closed and logs an RPC failure, as hasPayRatesCapability does.
+ */
+export async function hasPosSalesCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  const result = await callCapabilityRpc(supabase, restaurantId, 'view:pos_sales');
+
+  if (result.error) {
+    console.error('hasPosSalesCapability: view:pos_sales RPC failed', {
+      restaurantId,
+      error: result.error,
+    });
+  }
+
+  return Boolean(result.data);
+}
+
+/**
+ * Resolves edit:scheduling for the calling user. Fails closed and logs an RPC failure, as hasPayRatesCapability does.
+ */
+export async function hasEditSchedulingCapability(
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  const result = await callCapabilityRpc(supabase, restaurantId, 'edit:scheduling');
+
+  if (result.error) {
+    console.error('hasEditSchedulingCapability: edit:scheduling RPC failed', {
       restaurantId,
       error: result.error,
     });

@@ -1247,6 +1247,29 @@ export async function signUpAndCreateRestaurant(
 }
 
 /**
+ * Create a second restaurant for the signed-in user.
+ * Call the same RPC as the app. Return the new restaurant id.
+ * Set the tier to Pro with the service-role helper, as the sign-up flow does.
+ */
+export async function addSecondRestaurant(page: Page, name: string): Promise<string> {
+  await exposeSupabaseHelpers(page);
+  const restaurantId = await page.evaluate(async (restaurantName: string) => {
+    const w = window as unknown as E2EHelperWindow;
+    const { data, error } = await w.__supabase.rpc('create_restaurant_with_owner', {
+      restaurant_name: restaurantName,
+      restaurant_address: '456 Second St',
+      restaurant_phone: '555-987-6543',
+      restaurant_cuisine_type: 'american',
+      restaurant_timezone: 'America/Chicago',
+    });
+    if (error) throw new Error(`Failed to create second restaurant: ${error.message}`);
+    return data as string;
+  }, name);
+  await setSubscriptionTier(restaurantId, 'pro', 'active');
+  return restaurantId;
+}
+
+/**
  * Change the role of the signed-in user in their restaurant, then reload.
  * The membership guard lets a user change their own role to 'staff' or 'kiosk'.
  */

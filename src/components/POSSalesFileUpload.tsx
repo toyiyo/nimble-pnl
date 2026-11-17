@@ -10,8 +10,10 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import Papa from 'papaparse';
 import { ColumnMappingDialog, ColumnMapping } from './ColumnMappingDialog';
 import { suggestColumnMappings, isSummaryRow } from '@/utils/csvColumnMapping';
-import { extractDateFromFilename } from '@/utils/filenameDateExtraction';
+import { applyFilenameDate, extractDateFromFilename } from '@/utils/filenameDateExtraction';
 import { loadMappingTemplates, findBestMatchingTemplate, applyTemplate } from '@/utils/mappingTemplates';
+import { toImportedSaleDate } from '@/lib/timezone';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 interface POSSalesFileUploadProps {
   onFileProcessed: (data: ParsedSale[]) => void;
@@ -23,6 +25,7 @@ export interface ParsedSale {
   totalPrice?: number;
   unitPrice?: number;
   saleDate: string;
+  hasInvalidSaleDate?: boolean;
   saleTime?: string;
   orderId?: string;
   category?: string;  // Added for Toast's "Sales Category"
@@ -127,15 +130,9 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
       const unitPrice = unitPriceRaw ?? (totalPrice !== undefined ? totalPrice / quantity : undefined);
 
       // Parse date and time
-      let saleDate = getMappedValue('saleDate') || '';
-      if (saleDate) {
-        const dateObj = new Date(saleDate);
-        if (!isNaN(dateObj.getTime())) {
-          saleDate = dateObj.toISOString().split('T')[0];
-        } else {
-          saleDate = '';
-        }
-      }
+      const rawSaleDate = (getMappedValue('saleDate') || '').trim();
+      const saleDate = toImportedSaleDate(rawSaleDate);
+      const hasInvalidSaleDate = rawSaleDate !== '' && !saleDate;
 
       const saleTime = getMappedValue('saleTime');
       const orderId = getMappedValue('orderId');
@@ -149,6 +146,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
         totalPrice,
         unitPrice,
         saleDate,
+        hasInvalidSaleDate,
         saleTime: saleTime || undefined,
         orderId: orderId || `manual_upload_${Date.now()}_${index}`,
         category: category || department || undefined,
@@ -182,6 +180,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
             totalPrice: adjMapping.adjustmentType === 'discount' ? -Math.abs(adjAmount) : Math.abs(adjAmount),
             unitPrice: adjMapping.adjustmentType === 'discount' ? -Math.abs(adjAmount) : Math.abs(adjAmount),
             saleDate,
+            hasInvalidSaleDate,
             saleTime: saleTime || undefined,
             orderId: orderId || `manual_upload_${Date.now()}_${index}_adj`,
             category: `Adjustment - ${adjMapping.adjustmentType}`,
@@ -346,12 +345,7 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
 
       // If we detected a date from the filename, set it on all rows that don't have dates
       if (detectedDate) {
-        const dateStr = detectedDate.date.toISOString().split('T')[0];
-        parsedSales.forEach(sale => {
-          if (!sale.saleDate) {
-            sale.saleDate = dateStr;
-          }
-        });
+        applyFilenameDate(parsedSales, toDateOnlyString(detectedDate.date));
       }
 
       // Check if any rows are missing dates (after filename date application)

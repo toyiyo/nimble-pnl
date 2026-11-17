@@ -46,9 +46,9 @@ describe('Faro Integration', () => {
     }).not.toThrow();
   });
 
-  it('should include required instrumentations in config', () => {
-    const { getWebInstrumentations } = require('@grafana/faro-web-sdk');
-    const { TracingInstrumentation } = require('@grafana/faro-web-tracing');
+  it('should include required instrumentations in config', async () => {
+    const { getWebInstrumentations } = await import('@grafana/faro-web-sdk');
+    const { TracingInstrumentation } = await import('@grafana/faro-web-tracing');
     
     // Verify the mocks are set up correctly
     expect(getWebInstrumentations).toBeDefined();

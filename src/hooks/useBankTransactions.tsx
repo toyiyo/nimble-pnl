@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { buildBankSearchFilter } from "@/lib/bankTransactionSearch";
 import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
 import type { BankTransactionSort, TransactionFilters } from "@/types/transactions";
 import type { PaymentMethod } from "@/types/pending-outflows";
@@ -180,11 +181,13 @@ const applyStatusFilter = (query: SupabaseQuery, status?: TransactionStatus) => 
   return query;
 };
 
+/**
+ * Apply the search text to the query.
+ * The filter quotes the text and also matches an amount when the text is one.
+ */
 const applySearchFilter = (query: SupabaseQuery, normalizedSearch: string) => {
   if (!normalizedSearch) return query;
-  return query.or(
-    `description.ilike.%${normalizedSearch}%,merchant_name.ilike.%${normalizedSearch}%,normalized_payee.ilike.%${normalizedSearch}%`
-  );
+  return query.or(buildBankSearchFilter(normalizedSearch));
 };
 
 const applyDateFilters = (query: SupabaseQuery, filters: TransactionFilters) => {

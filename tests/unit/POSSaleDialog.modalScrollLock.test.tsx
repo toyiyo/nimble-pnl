@@ -47,6 +47,7 @@ describe('POSSaleDialog — item combobox modal resolution', () => {
         open
         onOpenChange={vi.fn()}
         restaurantId="rest-1"
+        timezone="America/New_York"
         editingSale={null}
       />,
     );

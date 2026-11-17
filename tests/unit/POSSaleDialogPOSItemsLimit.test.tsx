@@ -43,6 +43,7 @@ describe('POSSaleDialog — usePOSItems list-mode wiring', () => {
         open
         onOpenChange={vi.fn()}
         restaurantId="rest-1"
+        timezone="America/New_York"
         editingSale={null}
       />
     );

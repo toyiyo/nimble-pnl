@@ -13,7 +13,7 @@ test.describe('Planner shared week state', () => {
     await nextWeekBtn.click();
 
     // URL should have ?week=YYYY-MM-DD
-    await page.waitForURL(/\?week=\d{4}-\d{2}-\d{2}/);
+    await page.waitForURL(/[?&]week=\d{4}-\d{2}-\d{2}/);
     const schedUrl = page.url();
     const weekParam = new URL(schedUrl).searchParams.get('week');
     expect(weekParam).toMatch(/\d{4}-\d{2}-\d{2}/);

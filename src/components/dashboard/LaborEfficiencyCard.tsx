@@ -128,7 +128,7 @@ function LaborEfficiencyCardBase({ restaurantId }: LaborEfficiencyCardProps) {
       )}
       <button
         type="button"
-        onClick={() => navigate('/scheduling')}
+        onClick={() => navigate('/scheduling?tab=planner')}
         className="text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         View in Scheduling →

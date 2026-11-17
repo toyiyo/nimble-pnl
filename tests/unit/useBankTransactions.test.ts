@@ -164,7 +164,7 @@ describe('useBankTransactions (paginated)', () => {
     expect(transactionBuilder.eq).toHaveBeenCalledWith('is_categorized', false);
     expect(transactionBuilder.is).toHaveBeenCalledWith('excluded_reason', null);
     expect(transactionBuilder.or).toHaveBeenCalledWith(
-      expect.stringContaining('description.ilike.%coffee%')
+      expect.stringContaining('description.ilike."%coffee%"')
     );
     expect(transactionBuilder.gte).toHaveBeenCalledWith('transaction_date', '2024-01-01');
     expect(transactionBuilder.lte).toHaveBeenCalledWith('transaction_date', '2024-01-31');
@@ -390,6 +390,35 @@ describe('useBankTransactions (paginated)', () => {
     expect(mockSupabase.from).not.toHaveBeenCalled();
 
     mockRestaurantContext.selectedRestaurant = { restaurant_id: 'rest-123' }; // restore for other tests
+  });
+
+  it('quotes a search term that contains a comma and matches the amount', async () => {
+    const accountBalanceBuilder = createAccountBalanceBuilder({
+      data: { stripe_financial_account_id: 'fca_stripe_123' },
+      error: null,
+    });
+    const transactionBuilder = createQueryBuilder([], 0);
+    mockSupabase.from.mockImplementation((tableName: string) =>
+      tableName === 'bank_account_balances' ? accountBalanceBuilder : transactionBuilder
+    );
+
+    const { result } = renderHook(
+      () =>
+        useBankTransactions('for_review', {
+          searchTerm: '$1,260.05',
+          filters: {},
+          sortBy: 'date',
+          sortDirection: 'desc',
+          pageSize: 2,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(transactionBuilder.or).toHaveBeenCalledWith(
+      'description.ilike."%$1,260.05%",merchant_name.ilike."%$1,260.05%",normalized_payee.ilike."%$1,260.05%",amount.eq.1260.05,amount.eq.-1260.05'
+    );
   });
 });
 

@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { renderWithRouter as render } from '../helpers/renderWithRouter';
 import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
 import type { Employee, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 

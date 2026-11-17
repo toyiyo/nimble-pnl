@@ -203,16 +203,18 @@ export const Inventory: React.FC = () => {
         case 'cost':
           comparison = (a.cost_per_unit || 0) - (b.cost_per_unit || 0);
           break;
-        case 'inventoryCost':
+        case 'inventoryCost': {
           const aCost = inventoryMetrics.productMetrics[a.id]?.inventoryCost || 0;
           const bCost = inventoryMetrics.productMetrics[b.id]?.inventoryCost || 0;
           comparison = aCost - bCost;
           break;
-        case 'inventoryValue':
+        }
+        case 'inventoryValue': {
           const aValue = inventoryMetrics.productMetrics[a.id]?.inventoryValue || 0;
           const bValue = inventoryMetrics.productMetrics[b.id]?.inventoryValue || 0;
           comparison = aValue - bValue;
           break;
+        }
         case 'category':
           comparison = (a.category || '').localeCompare(b.category || '');
           if (comparison === 0) {

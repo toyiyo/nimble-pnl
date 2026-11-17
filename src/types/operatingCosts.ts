@@ -1,27 +1,9 @@
 // Types for restaurant operating costs and break-even analysis
 
-import type { MonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
+import type { OperatingCost, BreakEvenData, CostBreakdownItem, CostType, EntryType } from '../../supabase/functions/_shared/labor/breakEven.ts';
 
-export type CostType = 'fixed' | 'semi_variable' | 'variable' | 'custom';
-export type EntryType = 'value' | 'percentage';
+export type { OperatingCost, BreakEvenData, CostBreakdownItem, CostType, EntryType };
 
-export interface OperatingCost {
-  id: string;
-  restaurantId: string;
-  costType: CostType;
-  category: string;
-  name: string;
-  entryType: EntryType;
-  monthlyValue: number; // in cents
-  percentageValue: number; // decimal (0.05 = 5%)
-  isAutoCalculated: boolean;
-  manualOverride: boolean;
-  averagingMonths: number;
-  displayOrder: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface OperatingCostInput {
   costType: CostType;
@@ -34,75 +16,6 @@ export interface OperatingCostInput {
   manualOverride?: boolean;
   averagingMonths?: number;
   displayOrder?: number;
-}
-
-export interface CostBreakdownItem {
-  id: string;
-  name: string;
-  category: string;
-  daily: number;
-  monthly: number;
-  percentage?: number;
-  isPercentage: boolean;
-  source: 'manual' | 'calculated';
-}
-
-export interface BreakEvenData {
-  // Break-even by period
-  dailyBreakEven: number;
-  monthlyBreakEven: number;
-  yearlyBreakEven: number;
-
-  // Contribution margin
-  totalVariablePercent: number;  // sum of all percentage-based costs (0.61 = 61%)
-  contributionMargin: number;    // 1 - totalVariablePercent (0.39 = 39%)
-
-  // Today's comparison
-  todaySales: number;
-  todayStatus: 'above' | 'at' | 'below';
-  todayDelta: number;
-
-  // Cost breakdown — 2 groups only
-  fixedCosts: {
-    items: CostBreakdownItem[];
-    totalDaily: number;
-    totalMonthly: number;
-    totalYearly: number;
-  };
-  variableCosts: {
-    items: CostBreakdownItem[];
-    totalDaily: number;
-    avgDailySales: number;
-  };
-
-  // Historical comparison (configurable days)
-  history: {
-    date: string;
-    sales: number;
-    breakEven: number;
-    delta: number;
-    status: 'above' | 'at' | 'below';
-    // True for today's row when today is still in progress — the day's
-    // sales are a running partial total, not a final figure. Consumers
-    // must branch on `isPartial` before `status` when rendering.
-    isPartial: boolean;
-  }[];
-
-  // Summary stats
-  daysAbove: number;
-  daysBelow: number;
-  avgSurplus: number;
-  avgShortfall: number;
-
-  // Sum of `delta` over complete (non-partial) days only.
-  netDelta: number;
-  // Count of complete (non-partial) days in `history`.
-  completeDays: number;
-
-  // Month-to-date progress against the monthly break-even target. Always
-  // present once `BreakEvenData` is materialised; `status === 'no_target'`
-  // when `monthlyBreakEven` is 0 or non-finite.
-  monthlyProgress: MonthlyProgress;
 }
 
 // Default cost items to seed for new restaurants

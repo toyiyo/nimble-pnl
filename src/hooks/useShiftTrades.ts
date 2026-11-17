@@ -74,7 +74,7 @@ export type MarketplaceTrade = Omit<
  * Structurally typed (not `ShiftTrade`) because useMarketplaceTrades filters
  * supabase-inferred rows whose `status: string` is wider than the union.
  */
-const hasValidJoins = (t: { offered_by?: unknown; offered_shift?: unknown }) =>
+export const hasValidJoins = (t: { offered_by?: unknown; offered_shift?: unknown }) =>
   t.offered_by != null && t.offered_shift != null;
 
 type ShiftTradeNotificationAction =

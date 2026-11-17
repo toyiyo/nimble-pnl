@@ -10,6 +10,7 @@ import {
   type ReminderCandidateRow,
   type UnclaimedRecipientRow,
 } from '../../supabase/functions/_shared/shiftTradeRemindersHandler';
+import { SCHEDULER_REMINDER_PATH } from '../../supabase/functions/_shared/shiftTradeReminderContent';
 
 // Friday 2026-09-25 10:00 in Chicago.
 const START_MS = Date.parse('2026-09-25T15:00:00Z');
@@ -432,7 +433,7 @@ describe('runShiftTradeReminders: unclaimed stage', () => {
       recipients: [...schedulers, { user_id: 'user-poster', email: null, kind: 'poster' }],
     });
     const result = await runShiftTradeReminders(env.deps);
-    const schedulerCalls = env.pushCalls.filter((p) => p.url === '/scheduling');
+    const schedulerCalls = env.pushCalls.filter((p) => p.url === SCHEDULER_REMINDER_PATH);
     expect(schedulerCalls.map((p) => p.userIds.length)).toEqual([500, 500, 200]);
     expect(new Set(schedulerCalls.flatMap((p) => p.userIds)).size).toBe(1_200);
     expect(result).toMatchObject({ claimed: 1, pushed: 1_201 });
@@ -442,7 +443,7 @@ describe('runShiftTradeReminders: unclaimed stage', () => {
     const env = makeEnv({ candidates: [candidate({ stage: 'unclaimed' })] });
     const result = await runShiftTradeReminders(env.deps);
 
-    const scheduler = env.pushCalls.find((p) => p.url === '/scheduling');
+    const scheduler = env.pushCalls.find((p) => p.url === SCHEDULER_REMINDER_PATH);
     const poster = env.pushCalls.find((p) => p.url === '/employee/schedule');
     expect(scheduler?.userIds).toEqual(['user-owner', 'user-mgr']);
     expect(scheduler?.title).toBe("Nobody took Maria's shift yet");
@@ -451,7 +452,7 @@ describe('runShiftTradeReminders: unclaimed stage', () => {
 
     expect(env.emailCalls.map((e) => e.to)).toEqual(['owner@example.com', 'mgr@example.com']);
     expect(env.emailCalls[0].subject).toBe("Nobody took Maria's shift yet");
-    expect(env.emailCalls[0].html).toContain('https://app.easyshifthq.com/scheduling');
+    expect(env.emailCalls[0].html).toContain(`https://app.easyshifthq.com${SCHEDULER_REMINDER_PATH}`);
     expect(result).toMatchObject({ claimed: 1, pushed: 3, emailed: 2 });
   });
 
@@ -465,7 +466,7 @@ describe('runShiftTradeReminders: unclaimed stage', () => {
       return { sent: userIds.length, skipped: 0 };
     });
     await runShiftTradeReminders(env.deps);
-    expect(events.slice(0, 2).sort()).toEqual(['start:/employee/schedule', 'start:/scheduling']);
+    expect(events.slice(0, 2).sort()).toEqual(['start:/employee/schedule', `start:${SCHEDULER_REMINDER_PATH}`]);
   });
 
   it('sends email only when push is off, and the poster gets nothing', async () => {

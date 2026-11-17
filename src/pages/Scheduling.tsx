@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,6 +54,7 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { BroadcastOpenShiftsDialog } from '@/components/scheduling/BroadcastOpenShiftsDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
+import { TradeHistorySection } from '@/components/schedule/TradeHistorySection';
 import { ShiftProtectionSettingsDialog } from '@/components/scheduling/ShiftProtectionSettingsDialog';
 import { ScheduleMetricsRibbon } from '@/components/scheduling/ScheduleMetricsRibbon';
 import { useScheduleLaborBudget } from '@/hooks/useScheduleLaborBudget';
@@ -73,6 +74,17 @@ import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useSharedWeek } from '@/hooks/useSharedWeek';
+import { useSearchParamState, useSetSearchParams } from '@/hooks/useSearchParamState';
+import {
+  SCHEDULING_PARAMS,
+  tabParam,
+  areaParam,
+  positionParam,
+  groupParam,
+  parseGroupBy,
+  parseTab,
+  type SchedulingTab,
+} from '@/lib/schedulingUrlParams';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatDayLabel, formatLocalDate } from '@/lib/shiftInterval';
@@ -265,19 +277,24 @@ const Scheduling = () => {
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
   const { guardShiftChange, notifyAfterDeferredCommit, dialog: publishedShiftChangeDialog } =
     usePublishedShiftGuard();
-  const [activeTab, setActiveTab] = useState('schedule');
+  const [urlTab, setTab] = useSearchParamState(tabParam);
+  const setSearchParams = useSetSearchParams();
   // Week Templates keeps an unsaved draft. The page asks before it leaves that tab.
   const [templatesDirty, setTemplatesDirty] = useState(false);
-  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  // Gated tabs need edit:scheduling. Wait for isResolved, so the first-paint false does not act.
+  const gatedTab = urlTab === 'trades' || urlTab === 'templates';
+  const effectiveTab: SchedulingTab =
+    gatedTab && isResolved && !canManageSchedule ? 'schedule' : urlTab;
+  // The Back button can leave a dirty draft without a tab click. Keep the draft tab mounted.
+  const leavingDirty = templatesDirty && urlTab !== 'templates';
+  const renderedTab: SchedulingTab = leavingDirty ? 'templates' : effectiveTab;
+  const discardOpen = leavingDirty;
   const handleTabChange = useCallback(
     (next: string) => {
-      if (activeTab === 'templates' && next !== 'templates' && templatesDirty) {
-        setPendingTab(next);
-        return;
-      }
-      setActiveTab(next);
+      const parsed = parseTab(next);
+      if (parsed) setTab(parsed, { history: 'push' });
     },
-    [activeTab, templatesDirty],
+    [setTab],
   );
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
@@ -326,31 +343,24 @@ const Scheduling = () => {
     }
   }, [unpublishDialogOpen]);
 
-  // The trades tab hides for a viewer without edit:scheduling. If that
-  // viewer is on the trades tab when the gate closes (role change, or the
-  // capability resolves after first paint), fall back to the schedule tab
-  // instead of showing a blank panel.
+  // After the permissions load, replace a gated tab the viewer cannot open.
+  // Back then does not return to a tab that the viewer cannot open.
   useEffect(() => {
-    if (activeTab === 'trades' && !canManageSchedule) {
-      setActiveTab('schedule');
+    if (isResolved && effectiveTab !== urlTab && !leavingDirty) {
+      setTab('schedule', { history: 'replace' });
     }
-  }, [activeTab, canManageSchedule]);
+  }, [isResolved, effectiveTab, urlTab, leavingDirty, setTab]);
 
-  // Week Templates: leave the tab when the user cannot manage the schedule.
-  // Wait for isResolved, so the check does not act on the first-paint false.
-  useEffect(() => {
-    if (activeTab === 'templates' && isResolved && !canManageSchedule) {
-      setActiveTab('schedule');
-    }
-  }, [activeTab, isResolved, canManageSchedule]);
-
-  const handleEditTemplates = useCallback(() => setActiveTab('templates'), []);
+  const handleEditTemplates = useCallback(() => setTab('templates', { history: 'push' }), [setTab]);
+  // The tab changes in the same write as the week, so this entry is a push.
   const handleViewTemplateWeek = useCallback(
     (monday: Date) => {
-      setCurrentWeekStart(getMondayOfWeek(monday));
-      setActiveTab('schedule');
+      setSearchParams(
+        { [SCHEDULING_PARAMS.week]: formatLocalDate(getMondayOfWeek(monday)), [SCHEDULING_PARAMS.tab]: null },
+        { history: 'push' },
+      );
     },
-    [setCurrentWeekStart],
+    [setSearchParams],
   );
 
   // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
@@ -423,23 +433,29 @@ const Scheduling = () => {
   // Separate active employees for creating new shifts
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
-  const { areas } = useEmployeeAreas(restaurantId);
-  const [positionFilter, setPositionFilter] = useState<string>('all');
-  const [areaFilter, setAreaFilter] = useState<string>('all');
-
-  // Reset area filter when selected value is no longer available
-  useEffect(() => {
-    if (areaFilter !== 'all' && !areas.includes(areaFilter)) {
-      setAreaFilter('all');
-    }
-  }, [areaFilter, areas]);
-  const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
+  const { areas, isLoading: areasLoading } = useEmployeeAreas(restaurantId);
+  const [position, setPositionFilter] = useSearchParamState(positionParam);
+  const [area, setAreaFilter] = useSearchParamState(areaParam);
+  // A value that is not in the loaded list gives 'all'. The URL stays as it is.
+  const areaFilter = !areasLoading && !areas.includes(area) ? 'all' : area;
+  const positionFilter = !positionsLoading && !positions.includes(position) ? 'all' : position;
+  const [groupBy, setGroupParam] = useSearchParamState(groupParam);
+  // Read the stored group preference once. It seeds the URL when the URL has no group.
+  const storedGroupRef = useRef<GroupByMode | null | undefined>(undefined);
+  if (storedGroupRef.current === undefined) {
+    let stored: GroupByMode | null = null;
     try {
-      const saved = localStorage.getItem('schedule-group-by');
-      if (saved === 'area' || saved === 'position' || saved === 'none') return saved;
+      stored = parseGroupBy(localStorage.getItem('schedule-group-by'));
     } catch { /* ignore */ }
-    return 'none';
-  });
+    storedGroupRef.current = stored;
+  }
+  useEffect(() => {
+    if (effectiveTab !== 'schedule') return;
+    // Test raw presence. A stored 'none' equals the fallback, so a value compare repeats the write.
+    if (new URLSearchParams(window.location.search).has(SCHEDULING_PARAMS.group)) return;
+    const stored = storedGroupRef.current;
+    setGroupParam(stored ?? 'none', { history: 'replace' });
+  }, [effectiveTab, setGroupParam]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // A cancelled shift costs nothing. Without this filter, a cancel does not
@@ -501,7 +517,7 @@ const Scheduling = () => {
     } catch {
       // onError in useCopyWeekShifts already shows a toast
     }
-  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId, restaurantTimezone]);
+  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId, restaurantTimezone, setCurrentWeekStart]);
 
   // Apply position and area filters to active employees for new shift creation
   const filteredActiveEmployees = useMemo(() => {
@@ -568,10 +584,10 @@ const Scheduling = () => {
   );
 
   const handleGroupByChange = useCallback((mode: GroupByMode) => {
-    setGroupBy(mode);
+    setGroupParam(mode, { history: 'replace' });
     setCollapsedGroups(new Set());
     try { localStorage.setItem('schedule-group-by', mode); } catch { /* ignore */ }
-  }, []);
+  }, [setGroupParam]);
 
   const toggleGroupCollapse = useCallback((label: string) => {
     setCollapsedGroups(prev => {
@@ -618,6 +634,13 @@ const Scheduling = () => {
   const clearSelection = useCallback(() => {
     setSelectedShiftIds(new Set());
   }, []);
+
+  // The week can change from the URL (back/forward, a shared link), not only
+  // from the week buttons. Clear the selection so a bulk action never reaches
+  // shifts that are not on the screen.
+  useEffect(() => {
+    setSelectedShiftIds((prev) => (prev.size ? new Set() : prev));
+  }, [weekStartKey]);
 
   const exitSelectionMode = useCallback(() => {
     setSelectionMode(false);
@@ -954,7 +977,12 @@ const Scheduling = () => {
       />
 
       {/* Tabs for Schedule, Time-Off, and Availability */}
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+      <Tabs
+        value={renderedTab}
+        onValueChange={handleTabChange}
+        activationMode="manual"
+        className="space-y-4"
+      >
         <TabsList className="bg-muted/50 p-1 h-auto gap-1">
           <TabsTrigger
             value="schedule"
@@ -1742,6 +1770,13 @@ const Scheduling = () => {
           </Card>
         </TabsContent>
 
+        {!isResolved && gatedTab && (
+          <div aria-busy="true" className="space-y-3" data-testid="gated-tab-skeleton">
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        )}
+
         {/* Shift Trades Tab */}
         {canManageSchedule && (
           <TabsContent value="trades">
@@ -1777,6 +1812,9 @@ const Scheduling = () => {
               </CardHeader>
               <CardContent className="p-0">
                 <TradeApprovalQueue />
+                {restaurantId && (
+                  <TradeHistorySection restaurantId={restaurantId} timezone={restaurantTimezone} />
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1812,7 +1850,12 @@ const Scheduling = () => {
         )}
       </Tabs>
 
-      <AlertDialog open={pendingTab !== null} onOpenChange={(open) => !open && setPendingTab(null)}>
+      <AlertDialog open={discardOpen}
+        onOpenChange={(open) => {
+          // Esc, Cancel, and an overlay click come here. Discard does not.
+          if (!open) setTab('templates', { history: 'replace' });
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard unsaved template changes?</AlertDialogTitle>
@@ -1823,11 +1866,10 @@ const Scheduling = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                const next = pendingTab;
-                setPendingTab(null);
+              onClick={(event) => {
+                // preventDefault stops Radix from calling onOpenChange.
+                event.preventDefault();
                 setTemplatesDirty(false);
-                if (next) setActiveTab(next);
               }}
             >
               Discard changes

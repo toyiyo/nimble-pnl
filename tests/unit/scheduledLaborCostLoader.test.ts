@@ -144,6 +144,17 @@ describe('loadScheduledLaborCost', () => {
     expect(result.capped).toBe(false);
   });
 
+  // QA on the preview branch: the connector priced a cancelled shift. The
+  // Scheduling page prices only costedShifts (no cancelled shifts).
+  it('does not price a cancelled shift', async () => {
+    const cancelled = { ...shift('sh9', 'e1', '2026-07-21T14:00:00.000Z', '2026-07-21T22:00:00.000Z'), status: 'cancelled' };
+    const client = makeLaborStubClient({ ...tables, shifts: [...shifts, cancelled] });
+    const result = await loadScheduledLaborCost(client, week);
+    expect(filterValue(client.recordsFor('shifts')[0], 'neq', 'status')).toBe('cancelled');
+    expect(result.breakdown.hourly.hours).toBeCloseTo(11.5, 6);
+    expect(result.totalCost).toBeCloseTo(930, 6);
+  });
+
   it('pages the shifts with the keyset loop', async () => {
     const many = Array.from({ length: 1001 }, (_, i) =>
       shift(`sh${String(i).padStart(5, '0')}`, 'x1', '2026-07-21T15:00:00.000Z', '2026-07-21T16:00:00.000Z'),

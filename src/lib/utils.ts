@@ -30,6 +30,22 @@ export function sanitizeForOrFilter(input: string): string {
     .replace(/"/g, '');
 }
 
+const ESCAPED_BACKSLASH = String.raw`\\`;
+const ESCAPED_QUOTE = String.raw`\"`;
+
+/**
+ * Quote a value for use inside a Supabase .or() filter.
+ * Escape backslash and double quote, then wrap the value in double quotes.
+ * A quoted value keeps commas and parentheses as plain text.
+ *
+ * @param value - The user-provided string to quote
+ * @returns The quoted value
+ */
+export function quoteForOrFilter(value: string): string {
+  const escaped = value.replace(/\\/g, ESCAPED_BACKSLASH).replace(/"/g, ESCAPED_QUOTE);
+  return `"${escaped}"`;
+}
+
 /**
  * Format a time string (HH:MM:SS) to display format (HH:MM)
  * @param time - Time string in HH:MM:SS or HH:MM format

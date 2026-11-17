@@ -14,7 +14,8 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { screen, within, fireEvent } from '@testing-library/react';
+import { renderWithRouter as render } from '../helpers/renderWithRouter';
 import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
 import type { Employee, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 

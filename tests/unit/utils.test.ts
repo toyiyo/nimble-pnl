@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { sanitizeForOrFilter, formatTime, cn } from '@/lib/utils';
+import { sanitizeForOrFilter, quoteForOrFilter, formatTime, cn } from '@/lib/utils';
 
 describe('Utility Functions', () => {
   describe('sanitizeForOrFilter', () => {
@@ -79,6 +79,36 @@ describe('Utility Functions', () => {
       expect(sanitizeForOrFilter('),(or')).toBe('or');
       // Semicolons are safe in PostgREST filters, quotes are the danger
       expect(sanitizeForOrFilter("'; DROP TABLE users; --")).toBe('; DROP TABLE users; --');
+    });
+  });
+
+  describe('quoteForOrFilter', () => {
+    it('wraps a plain value in double quotes', () => {
+      expect(quoteForOrFilter('Margarita')).toBe('"Margarita"');
+    });
+
+    it('keeps a comma inside the quotes', () => {
+      expect(quoteForOrFilter('$1,260.05')).toBe('"$1,260.05"');
+    });
+
+    it('keeps parentheses and single quotes unchanged', () => {
+      expect(quoteForOrFilter("(it's)")).toBe('"(it\'s)"');
+    });
+
+    it('escapes a double quote with a backslash', () => {
+      expect(quoteForOrFilter('say "hi"')).toBe('"say \\"hi\\""');
+    });
+
+    it('escapes a backslash with a backslash', () => {
+      expect(quoteForOrFilter('a\\b')).toBe('"a\\\\b"');
+    });
+
+    it('escapes the backslash before the double quote', () => {
+      expect(quoteForOrFilter('\\"')).toBe('"\\\\\\""');
+    });
+
+    it('returns two quotes for an empty string', () => {
+      expect(quoteForOrFilter('')).toBe('""');
     });
   });
 

@@ -46,7 +46,8 @@ describe('POSSaleDialog — POS load failure is visible even when recipes exist'
 
     const user = userEvent.setup();
     render(
-      <POSSaleDialog open onOpenChange={vi.fn()} restaurantId="rest-1" editingSale={null} />
+      <POSSaleDialog open onOpenChange={vi.fn()} restaurantId="rest-1"
+        timezone="America/New_York" editingSale={null} />
     );
 
     await user.click(screen.getByRole('combobox'));
@@ -74,7 +75,8 @@ describe('POSSaleDialog — POS load failure is visible even when recipes exist'
 
     const user = userEvent.setup();
     render(
-      <POSSaleDialog open onOpenChange={vi.fn()} restaurantId="rest-1" editingSale={null} />
+      <POSSaleDialog open onOpenChange={vi.fn()} restaurantId="rest-1"
+        timezone="America/New_York" editingSale={null} />
     );
 
     await user.click(screen.getByRole('combobox'));
@@ -97,7 +99,8 @@ describe('POSSaleDialog — POS load failure is visible even when recipes exist'
 
     const user = userEvent.setup();
     render(
-      <POSSaleDialog open onOpenChange={vi.fn()} restaurantId="rest-1" editingSale={null} />
+      <POSSaleDialog open onOpenChange={vi.fn()} restaurantId="rest-1"
+        timezone="America/New_York" editingSale={null} />
     );
 
     await user.click(screen.getByRole('combobox'));

@@ -40,7 +40,7 @@ export interface ReminderEmail {
 
 const MS_PER_MINUTE = 60_000;
 
-export const SCHEDULER_REMINDER_PATH = '/scheduling';
+export const SCHEDULER_REMINDER_PATH = '/scheduling?tab=trades';
 export const POSTER_REMINDER_PATH = '/employee/schedule';
 
 /** The first word of the poster name, or "A teammate". */

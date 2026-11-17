@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrencyFromCents, formatAppliedRuleLabel, ruleAppliesTo, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, calculateTipSplitWithGuarantees, type PercentageAllocationResult, type GuaranteedParticipant, type RoleAllocationRule, type TipShare } from '@/utils/tipPooling';
-import { mergeManualHours } from '@/utils/tipHours';
+import { hoursFromPunches, mergeManualHours } from '@/utils/tipHours';
+import { shouldHydrateTipSettings, tipSettingsKey, type TipSettingsFields } from '@/utils/tipSettingsSync';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
 import { useTipContributionPools } from '@/hooks/useTipContributionPools';
@@ -35,7 +36,6 @@ import { TipPayoutSheet } from '@/components/tips/TipPayoutSheet';
 import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
 import { TipDistribution } from '@/components/tips/TipDistribution';
-import { calculateWorkedHoursForClockInDay } from '@/utils/payrollCalculations';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { Info, Settings, RefreshCw, Clock, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -98,7 +98,12 @@ export function Tips() {
 
   // ============ Data Fetching Hooks ============
   const { employees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'active' });
-  const { settings, updateSettings, isLoading: settingsLoading } = useTipPoolSettings(restaurantId);
+  const {
+    settings,
+    updateSettings,
+    isUpdating: isUpdatingSettings,
+    isLoading: settingsLoading,
+  } = useTipPoolSettings(restaurantId);
   const {
     pools: contributionPools,
     createPool,
@@ -266,14 +271,59 @@ export function Tips() {
 
   const eligibleEmployees = useMemo(() => filterTipEligible(employees), [employees]);
 
+  // Key of the local settings state, synced in the render body (the same
+  // "latest ref" idiom as autoCalculatedHoursRef) so the hydration effect can
+  // read it without a re-run on every edit.
+  const localSettingsKeyRef = useRef('');
+  localSettingsKeyRef.current = tipSettingsKey({
+    tipSource,
+    shareMethod,
+    splitCadence,
+    poolingModel,
+    roleWeights,
+    rolePercentages,
+    enabledEmployeeIds: selectedEmployees,
+  });
+  // Key of the last settings row copied into local state. null = none yet for
+  // this restaurant.
+  const hydratedSettingsKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    hydratedSettingsKeyRef.current = null;
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (settings === undefined) return; // query not resolved yet
+
+    const incoming = {
+      tipSource: settings?.tip_source || 'manual',
+      shareMethod: settings?.share_method || 'hours',
+      splitCadence: settings?.split_cadence || 'daily',
+      poolingModel: settings?.pooling_model || 'full_pool',
+      roleWeights: settings?.role_weights || defaultWeights,
+      rolePercentages: settings?.role_percentages || {},
+      enabledEmployeeIds: settings?.enabled_employee_ids ?? [],
+    } satisfies TipSettingsFields;
+    const incomingKey = tipSettingsKey(incoming);
+
+    // Do not copy a refetched row over an edit the autosave has not written yet.
+    if (
+      !shouldHydrateTipSettings({
+        lastHydratedKey: hydratedSettingsKeyRef.current,
+        localKey: localSettingsKeyRef.current,
+        incomingKey,
+      })
+    ) {
+      return;
+    }
+    hydratedSettingsKeyRef.current = incomingKey;
+
     if (settings) {
-      setTipSource(settings.tip_source || 'manual');
-      setShareMethod(settings.share_method || 'hours');
-      setSplitCadence(settings.split_cadence || 'daily');
-      setRoleWeights(settings.role_weights || defaultWeights);
-      setRolePercentages(settings.role_percentages || {});
-      setPoolingModel(settings.pooling_model || 'full_pool');
+      setTipSource(incoming.tipSource);
+      setShareMethod(incoming.shareMethod);
+      setSplitCadence(incoming.splitCadence);
+      setRoleWeights(incoming.roleWeights);
+      setRolePercentages(incoming.rolePercentages);
+      setPoolingModel(incoming.poolingModel);
       if (settings.enabled_employee_ids?.length) {
         setSelectedEmployees(new Set(settings.enabled_employee_ids));
       }
@@ -284,21 +334,12 @@ export function Tips() {
   useEffect(() => {
     if (shareMethod !== 'hours' || !punches?.length) return;
 
-    const calculatedHours: Record<string, string> = {};
-    const autoFlags: Record<string, boolean> = {};
-
-    eligibleEmployees.forEach(emp => {
-      // Get punches for this employee on the selected date
-      const employeePunches = punches.filter(p => p.employee_id === emp.id);
-      
-      if (employeePunches.length > 0) {
-        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
-        const roundedHours = Math.round(hours * 10) / 10; // Round to 1 decimal
-        
-        calculatedHours[emp.id] = roundedHours.toString();
-        autoFlags[emp.id] = true;
-      }
-    });
+    const calculatedHours = hoursFromPunches(
+      eligibleEmployees.map(emp => emp.id),
+      punches,
+      todayStart,
+      todayEnd,
+    );
 
     if (Object.keys(calculatedHours).length > 0) {
       // Track which entries are actually written vs preserved (manual).
@@ -323,7 +364,7 @@ export function Tips() {
         setAutoCalculatedHours(prev => ({ ...prev, ...writtenFlags }));
       }
     }
-  }, [punches, shareMethod, selectedDate, eligibleEmployees]);
+  }, [punches, shareMethod, todayStart, todayEnd, eligibleEmployees]);
 
   useEffect(() => {
     if (eligibleEmployees.length && !settings?.enabled_employee_ids?.length) {
@@ -335,40 +376,23 @@ export function Tips() {
       return;
     }
     
-    // Calculate actual hours from time punches
-    const hoursFromPunches: Record<string, string> = {};
-    eligibleEmployees.forEach(emp => {
-      const employeePunches = punches.filter(p => p.employee_id === emp.id);
-      let totalMinutes = 0;
-      
-      // Match clock-in with clock-out pairs
-      for (let i = 0; i < employeePunches.length; i++) {
-        const punch = employeePunches[i];
-        if (punch.punch_type === 'clock_in') {
-          // Find corresponding clock_out
-          const clockOut = employeePunches.find((p, idx) => 
-            idx > i && p.punch_type === 'clock_out' && 
-            new Date(p.punch_time) > new Date(punch.punch_time)
-          );
-          
-          if (clockOut) {
-            const start = new Date(punch.punch_time);
-            const end = new Date(clockOut.punch_time);
-            totalMinutes += (end.getTime() - start.getTime()) / (1000 * 60);
-          }
-        }
-      }
-      
-      hoursFromPunches[emp.id] = (totalMinutes / 60).toFixed(2);
-    });
-    
+    // Refresh punch-derived hours with the SAME rule as Effect 1 and the
+    // Recalculate button. A second pairing rule here once wrote "0.00" over
+    // their values: useTimePunches returns punches newest first, and that rule
+    // looked for each clock_out after its clock_in in array order.
+    // An employee with no punches gets '0'.
+    const punchDerived: Record<string, string> = {
+      ...Object.fromEntries(eligibleEmployees.map(emp => [emp.id, '0'])),
+      ...hoursFromPunches(eligibleEmployees.map(emp => emp.id), punches, todayStart, todayEnd),
+    };
+
     // Refresh punch-derived hours but NEVER clobber a value the manager typed.
     // (Effect 1 uses a value-based bootstrap guard; this flag-based guard is the
     // full-refresh equivalent — intentionally different predicates.)
     setHoursByEmployee(prev =>
-      mergeManualHours(hoursFromPunches, prev, autoCalculatedHoursRef.current),
+      mergeManualHours(punchDerived, prev, autoCalculatedHoursRef.current),
     );
-  }, [eligibleEmployees, settings, punches, isResumingDraft]);
+  }, [eligibleEmployees, settings, punches, isResumingDraft, todayStart, todayEnd]);
 
   const shareMethodLabels: Record<ShareMethod, string> = {
     hours: 'By hours worked',
@@ -644,6 +668,7 @@ export function Tips() {
     rolePercentages,
     selectedEmployees,
     poolingModel,
+    isSaving: isUpdatingSettings,
     onSave: handleSaveSettings,
   });
 
@@ -707,20 +732,19 @@ export function Tips() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    const fromPunches = hoursFromPunches(
+                      participants.map(emp => emp.id),
+                      punches,
+                      todayStart,
+                      todayEnd,
+                    );
                     const calculatedHours: Record<string, string> = {};
                     const autoFlags: Record<string, boolean> = {};
 
                     participants.forEach(emp => {
-                      const employeePunches = punches?.filter(p => p.employee_id === emp.id) || [];
-                      if (employeePunches.length > 0) {
-                        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
-                        const roundedHours = Math.round(hours * 10) / 10;
-                        calculatedHours[emp.id] = roundedHours.toString();
-                        autoFlags[emp.id] = true;
-                      } else {
-                        calculatedHours[emp.id] = '0';
-                        autoFlags[emp.id] = false;
-                      }
+                      const hasPunches = emp.id in fromPunches;
+                      calculatedHours[emp.id] = hasPunches ? fromPunches[emp.id] : '0';
+                      autoFlags[emp.id] = hasPunches;
                     });
 
                     setHoursByEmployee(calculatedHours);

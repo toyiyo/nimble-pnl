@@ -12,6 +12,7 @@
  * (src/lib/permissions/areas.ts) fails tests/unit/areas.test.ts.
  */
 import {
+  Repeat,
   Home,
   Plug,
   ShoppingCart,
@@ -60,6 +61,7 @@ export const navigationGroups: NavGroup[] = [
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
       { path: '/reviews', label: 'Reviews', icon: Star },
+      { path: '/returning-guests', label: 'Returning Guests', icon: Repeat },
     ],
   },
   {

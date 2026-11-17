@@ -170,6 +170,6 @@ describe('LaborEfficiencyCard — loaded', () => {
     mockUseSplhSummary.mockReturnValue(mockHookReturn());
     renderCard();
     fireEvent.click(screen.getByRole('button', { name: /view in scheduling/i }));
-    expect(mockNavigate).toHaveBeenCalledWith('/scheduling');
+    expect(mockNavigate).toHaveBeenCalledWith('/scheduling?tab=planner');
   });
 });

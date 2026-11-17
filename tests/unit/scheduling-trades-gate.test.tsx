@@ -1,6 +1,8 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { BrowserRouter, useLocation } from 'react-router-dom';
 
 // The Scheduling page showed the "Shift Trades" tab and its approval queue
 // to every viewer, regardless of role — a chef with only `view:scheduling`
@@ -27,8 +29,12 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }));
 
-vi.mock('react-router-dom', () => ({
-  useNavigate: () => vi.fn(),
+vi.mock('@/components/scheduling/WeekTemplates/WeekTemplatesTab', () => ({
+  WeekTemplatesTab: ({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) => (
+    <div data-testid="templates-tab">
+      <button onClick={() => onDirtyChange(true)}>make dirty</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
@@ -90,6 +96,11 @@ vi.mock('@/pages/SchedulingWeeklyAvailabilityChip', () => ({
 vi.mock('@/pages/SchedulingShiftCard', () => ({
   ShiftCard: () => null,
   getShiftStatusClass: () => '',
+}));
+
+// The real section needs a QueryClientProvider that these tests lack.
+vi.mock('@/components/schedule/TradeHistorySection', () => ({
+  TradeHistorySection: () => <div data-testid="trade-history-section" />,
 }));
 
 vi.mock('@/components/schedule/TradeRequestDialog', () => ({
@@ -299,6 +310,26 @@ vi.mock('@/hooks/use-toast', () => ({
 
 import Scheduling from '@/pages/Scheduling';
 
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="loc">{location.search}</div>;
+}
+
+// BrowserRouter shares window.location with the URL setter, as the app does.
+function render(_ui?: unknown, url = '/scheduling') {
+  window.history.replaceState({}, '', url);
+  return rtlRender(
+    <BrowserRouter>
+      <Scheduling />
+      <LocationProbe />
+    </BrowserRouter>,
+  );
+}
+
+afterEach(() => {
+  window.history.replaceState({}, '', '/');
+});
+
 describe('Scheduling page — Shift Trades tab capability gate', () => {
   beforeEach(() => {
     hasCapabilityMock.mockReset();
@@ -312,6 +343,26 @@ describe('Scheduling page — Shift Trades tab capability gate', () => {
     render(<Scheduling />);
 
     expect(screen.getByRole('tab', { name: /shift trades/i })).toBeInTheDocument();
+  });
+
+  it('shows the trade history section with edit:scheduling', async () => {
+    isResolvedMock = true;
+    hasCapabilityMock.mockImplementation((cap: string) => cap === 'edit:scheduling');
+
+    render(<Scheduling />);
+    await userEvent.click(screen.getByRole('tab', { name: /shift trades/i }));
+
+    expect(screen.getByTestId('trade-history-section')).toBeInTheDocument();
+  });
+
+  it('hides the trade history section with only view:scheduling', () => {
+    isResolvedMock = true;
+    hasCapabilityMock.mockImplementation((cap: string) => cap === 'view:scheduling');
+
+    render(<Scheduling />);
+
+    expect(screen.queryByRole('tab', { name: /shift trades/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trade-history-section')).not.toBeInTheDocument();
   });
 
   it('hides the Shift Trades tab with only view:scheduling', () => {
@@ -365,5 +416,77 @@ describe('Scheduling page — daily labor percent', () => {
     render(<Scheduling />);
     const costedShifts = useScheduledLaborCostsSpy.mock.calls.at(-1)?.[0] as Array<{ id: string }>;
     expect(costedShifts.map((shift) => shift.id)).toEqual(['s1']);
+  });
+});
+
+describe('Scheduling page — tab in the URL', () => {
+  beforeEach(() => {
+    hasCapabilityMock.mockReset();
+    isResolvedMock = true;
+  });
+
+  it('opens the tab named in the URL', () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    render(null, '/scheduling?tab=planner');
+    expect(screen.getByRole('tab', { name: /planner/i })).toHaveAttribute('data-state', 'active');
+  });
+
+  it('shows a busy skeleton for a gated tab while permissions load', () => {
+    isResolvedMock = false;
+    hasCapabilityMock.mockImplementation(() => true);
+    const { container } = render(null, '/scheduling?tab=trades');
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.getByTestId('loc')).toHaveTextContent('tab=trades');
+  });
+
+  it('writes tab=schedule when the viewer cannot open the gated tab', async () => {
+    hasCapabilityMock.mockImplementation((cap: string) => cap === 'view:scheduling');
+    render(null, '/scheduling?tab=templates');
+    await waitFor(() => expect(screen.getByTestId('loc')).not.toHaveTextContent('tab='));
+  });
+
+  it('writes a stored group once when the URL has no group', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    localStorage.setItem('schedule-group-by', 'area');
+    render(null, '/scheduling');
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('group=area'));
+    localStorage.removeItem('schedule-group-by');
+  });
+
+  it('writes a stored none group to the URL', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    localStorage.setItem('schedule-group-by', 'none');
+    render(null, '/scheduling');
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('group=none'));
+    localStorage.removeItem('schedule-group-by');
+  });
+
+  it('writes group=none when no group is stored and the URL has none', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    localStorage.removeItem('schedule-group-by');
+    render(null, '/scheduling');
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('group=none'));
+  });
+
+  it('keeps the dirty templates tab and asks before it leaves', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    render(null, '/scheduling?tab=templates');
+    fireEvent.click(screen.getByText('make dirty'));
+    fireEvent.mouseDown(screen.getAllByRole('tab')[0], { button: 0 });
+    expect(await screen.findByText(/discard unsaved template changes/i)).toBeInTheDocument();
+    expect(screen.getByTestId('templates-tab')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /keep editing/i }));
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('tab=templates'));
+    expect(screen.queryByText(/discard unsaved template changes/i)).not.toBeInTheDocument();
+  });
+
+  it('leaves the tab after Discard changes', async () => {
+    hasCapabilityMock.mockImplementation(() => true);
+    render(null, '/scheduling?tab=templates');
+    fireEvent.click(screen.getByText('make dirty'));
+    fireEvent.mouseDown(screen.getAllByRole('tab')[0], { button: 0 });
+    fireEvent.click(await screen.findByRole('button', { name: /discard changes/i }));
+    await waitFor(() => expect(screen.queryByTestId('templates-tab')).not.toBeInTheDocument());
+    expect(screen.getByTestId('loc')).not.toHaveTextContent('tab=templates');
   });
 });

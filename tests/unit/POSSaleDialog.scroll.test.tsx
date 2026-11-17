@@ -33,6 +33,7 @@ describe('POSSaleDialog layout — sticky footer', () => {
         open
         onOpenChange={vi.fn()}
         restaurantId="r-1"
+        timezone="America/New_York"
         editingSale={null}
       />,
     );
@@ -49,6 +50,7 @@ describe('POSSaleDialog layout — sticky footer', () => {
         open
         onOpenChange={vi.fn()}
         restaurantId="r-1"
+        timezone="America/New_York"
         editingSale={null}
       />,
     );
@@ -65,6 +67,7 @@ describe('POSSaleDialog layout — sticky footer', () => {
         open
         onOpenChange={vi.fn()}
         restaurantId="r-1"
+        timezone="America/New_York"
         editingSale={null}
       />,
     );

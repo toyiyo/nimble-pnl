@@ -4,7 +4,7 @@
  * Focus POS "Lynk Legacy Datafeed" client.
  *
  * For a given business date, calls:
- *   POST {baseUrl}/api/lynk/sync
+ *   POST {baseUrl}/api/lynk/async
  *     body: LegacyDatafeed request with business_date in MM/DD/YYYY
  *     auth: HTTP Basic (apiKey:apiSecret)
  *     header: focuspos-restaurant-id: {restaurantGuid}
@@ -12,9 +12,11 @@
  * When the response contains `pos_response.payload.blob_url` (a time-limited
  * Azure SAS URL), the client GETs that URL and returns the XML string.
  *
- * When the response has no blob_url, the datafeed is queued. The client polls
- * the same endpoint with Status requests that reference the initial
- * request_id. The poll response wraps the referenced message in
+ * Focus removed the SYNC endpoint for LegacyDatafeed (it returns 403 since
+ * 2026-11-16). The ASYNC endpoint returns InProgress with no blob_url. The
+ * client then polls POST {baseUrl}/api/lynk/sync with Status requests that
+ * reference the initial request_id. The Focus docs send Status requests to
+ * the synchronous endpoint. The poll response wraps the referenced message in
  * `pos_response.payload.repeated_message_response`. After STATUS_POLL_MAX
  * polls the client returns kind = "inprogress"; the caller retries on the
  * next cron pass.
@@ -255,7 +257,7 @@ export function buildStatusRequest(
  *
  * Steps:
  *  1. SSRF-guard the baseUrl and restaurantGuid.
- *  2. POST /api/lynk/sync (LegacyDatafeed) → look for
+ *  2. POST /api/lynk/async (LegacyDatafeed) → look for
  *     `pos_response.payload.blob_url`.
  *  3. When blob_url is absent: poll with Status requests that reference the
  *     initial request_id (STATUS_POLL_DELAY_MS between polls, STATUS_POLL_MAX
@@ -310,9 +312,13 @@ export async function fetchDatafeed(
     };
   }
 
-  // ── 3. POST helper for /api/lynk/sync ───────────────────────────────────────
+  // ── 3. POST helper for the Lynk endpoints ───────────────────────────────────
 
-  const syncUrl = `${config.baseUrl.replace(/\/+$/, '')}/api/lynk/sync`;
+  // LegacyDatafeed goes to /async: Focus removed /sync for this category.
+  // Status polls go to /sync, as the Focus Lynk docs specify.
+  const lynkBase = config.baseUrl.replace(/\/+$/, '');
+  const asyncUrl = `${lynkBase}/api/lynk/async`;
+  const syncUrl = `${lynkBase}/api/lynk/sync`;
 
   /**
    * POST one body to the Lynk sync endpoint.
@@ -320,13 +326,13 @@ export async function fetchDatafeed(
    * On 2xx JSON, returns the parsed body.
    */
   // `any`: the parsed Lynk API response body is untyped vendor JSON with no schema.
-  async function postLynk(body: unknown): Promise<
+  async function postLynk(url: string, body: unknown): Promise<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     { ok: true; json: any; status: number } | { ok: false; result: FocusLynkResult }
   > {
     let res: Response;
     try {
-      res = await deps.fetch(syncUrl, {
+      res = await deps.fetch(url, {
         method: 'POST',
         headers: {
           Authorization: basicAuth(config.apiKey, config.apiSecret),
@@ -394,7 +400,7 @@ export async function fetchDatafeed(
 
   // ── 4. Initial LegacyDatafeed request ───────────────────────────────────────
 
-  const initial = await postLynk(requestBody);
+  const initial = await postLynk(asyncUrl, requestBody);
   if (!initial.ok) {
     return initial.result;
   }
@@ -416,7 +422,7 @@ export async function fetchDatafeed(
       await sleepFn(STATUS_POLL_DELAY_MS);
 
       const statusBody = buildStatusRequest(initialRequestId, `${requestIdBase}.${poll + 1}`);
-      const pollRes = await postLynk(statusBody);
+      const pollRes = await postLynk(syncUrl, statusBody);
       if (!pollRes.ok) {
         return pollRes.result;
       }

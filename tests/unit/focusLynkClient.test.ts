@@ -7,7 +7,7 @@
  *  - focusApiBaseUrl: production vs sandbox URL selection
  *  - buildLynkRequest: correct body shape (category, type, request_id, business_date)
  *  - fetchDatafeed:
- *      - POSTs to /api/lynk/sync with Basic auth header + focuspos-restaurant-id header
+ *      - POSTs LegacyDatafeed to /api/lynk/async (Status polls to /api/lynk/sync) with Basic auth header + focuspos-restaurant-id header
  *      - Sends correct LegacyDatafeed request body with MM/DD/YYYY business date
  *      - Downloads blob_url via GET and returns XML string
  *      - Returns ok:false kind=inprogress when error_condition is "InProgress"
@@ -242,11 +242,12 @@ describe('fetchDatafeed', () => {
 
   // ── Lynk POST shape ─────────────────────────────────────────────────────────
 
-  it('POSTs to {baseUrl}/api/lynk/sync', async () => {
+  it('POSTs the LegacyDatafeed request to {baseUrl}/api/lynk/async', async () => {
     const fetchFn = makeFetch({});
     await fetchDatafeed({ fetch: fetchFn }, CONFIG, BUSINESS_DATE);
     const [url] = fetchFn.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${PROD_BASE}/api/lynk/sync`);
+    // Focus removed /api/lynk/sync for LegacyDatafeed; it returns 403.
+    expect(url).toBe(`${PROD_BASE}/api/lynk/async`);
   });
 
   it('sends Basic auth header derived from apiKey:apiSecret', async () => {
@@ -530,8 +531,9 @@ describe('fetchDatafeed', () => {
       expect(sleepMock).toHaveBeenCalledWith(5000);
 
       // The second POST is a Status request that references the initial request_id.
-      const [, initInitial] = fetchFn.mock.calls[0] as [string, RequestInit];
+      const [initialUrl, initInitial] = fetchFn.mock.calls[0] as [string, RequestInit];
       const [pollUrl, initPoll] = fetchFn.mock.calls[1] as [string, RequestInit];
+      expect(initialUrl).toBe(`${PROD_BASE}/api/lynk/async`);
       expect(pollUrl).toBe(`${PROD_BASE}/api/lynk/sync`);
       const initialBody = JSON.parse(initInitial.body as string);
       const pollBody = JSON.parse(initPoll.body as string);

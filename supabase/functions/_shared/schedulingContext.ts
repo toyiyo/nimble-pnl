@@ -3,8 +3,6 @@
 import { toZonedTime } from "date-fns-tz";
 import {
   convertExceptionsToLocal,
-  convertRecurringToLocal,
-  type LocalAvail,
   type RawExceptionAvail,
   type RawRecurringAvail,
 } from "./availability-tz.ts";
@@ -158,12 +156,14 @@ function mergeWindows(list: Window[]): Window[] {
   return out;
 }
 
-function toWindow(a: LocalAvail): Window | "unavailable" {
-  if (!a.is_available) return "unavailable";
-  if (a.start_time === null || a.end_time === null) {
+// The local columns hold the wall-clock time that the user entered.
+// An overnight window stays as one window on its start day.
+function toWindow(r: RecurringRow): Window | "unavailable" {
+  if (!r.is_available) return "unavailable";
+  if (r.start_time_local === null || r.end_time_local === null) {
     return { start: "00:00", end: "24:00" };
   }
-  return { start: hhmm(a.start_time), end: hhmm(a.end_time) };
+  return { start: hhmm(r.start_time_local), end: hhmm(r.end_time_local) };
 }
 
 export function buildAvailability(
@@ -173,7 +173,6 @@ export function buildAvailability(
   tz: string,
   period: Period,
 ): AvailabilityEntry[] {
-  const refWeek = period.start;
   const inPeriod = (d: string) => d >= period.start && d <= period.end;
   const recByEmployee = groupBy(recurringRows, (r) => r.employee_id);
   const excByEmployee = groupBy(exceptionRows, (r) => r.employee_id);
@@ -198,13 +197,13 @@ export function buildAvailability(
     }
     const windowsByDay = new Map<number, Window[]>();
     const dayRows = new Set<number>();
-    for (const a of convertRecurringToLocal(rec, tz, refWeek)) {
-      dayRows.add(a.day_of_week);
-      const next = toWindow(a);
+    for (const r of rec) {
+      dayRows.add(r.day_of_week);
+      const next = toWindow(r);
       if (next === "unavailable") continue;
-      const list = windowsByDay.get(a.day_of_week) ?? [];
+      const list = windowsByDay.get(r.day_of_week) ?? [];
       list.push(next);
-      windowsByDay.set(a.day_of_week, list);
+      windowsByDay.set(r.day_of_week, list);
     }
     const weekly: Record<number, Window | Window[] | "unavailable"> = {};
     for (const day of dayRows) {

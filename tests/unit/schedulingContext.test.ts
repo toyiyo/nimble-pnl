@@ -35,8 +35,8 @@ const rec = (employee_id: string, day_of_week: number, extra: Record<string, unk
   employee_id,
   day_of_week,
   is_available: true,
-  start_time: '09:00:00',
-  end_time: '17:00:00',
+  start_time_local: '09:00:00',
+  end_time_local: '17:00:00',
   ...extra,
 });
 
@@ -91,8 +91,8 @@ describe('buildAvailability', () => {
     const out = buildAvailability(
       [{ id: 'a' }],
       [
-        rec('a', 1, { start_time: '09:00:00', end_time: '00:00:00' }),
-        rec('a', 1, { start_time: '18:00:00', end_time: '23:00:00' }),
+        rec('a', 1, { start_time_local: '09:00:00', end_time_local: '00:00:00' }),
+        rec('a', 1, { start_time_local: '18:00:00', end_time_local: '23:00:00' }),
       ],
       [],
       'UTC',
@@ -104,8 +104,8 @@ describe('buildAvailability', () => {
     const out = buildAvailability(
       [{ id: 'a' }],
       [
-        rec('a', 1, { start_time: '17:00:00', end_time: '21:00:00' }),
-        rec('a', 1, { start_time: '09:00:00', end_time: '12:00:00' }),
+        rec('a', 1, { start_time_local: '17:00:00', end_time_local: '21:00:00' }),
+        rec('a', 1, { start_time_local: '09:00:00', end_time_local: '12:00:00' }),
       ],
       [],
       'UTC',
@@ -119,10 +119,20 @@ describe('buildAvailability', () => {
     const out = buildAvailability([{ id: 'a' }], [], [], 'UTC', period);
     expect(out[0].weekly).toBe('not_set');
   });
+  it('reads the local columns and does not shift them across a time change', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [rec('a', 1, { start_time: '15:00:00', end_time: '23:00:00' })],
+      [],
+      'America/Chicago',
+      { start: '2026-11-02', end: '2026-11-08' },
+    );
+    expect(out[0].weekly).toEqual({ 1: { start: '09:00', end: '17:00' } });
+  });
   it('keeps the local times of an overnight window', () => {
     const out = buildAvailability(
       [{ id: 'a' }],
-      [rec('a', 5, { start_time: '22:00:00', end_time: '02:00:00' })],
+      [rec('a', 5, { start_time_local: '22:00:00', end_time_local: '02:00:00' })],
       [],
       'UTC',
       period,
@@ -215,7 +225,7 @@ describe('fitToLimit', () => {
     const emps = Array.from({ length: 40 }, (_, i) => emp(`e${i}`));
     const recs = emps.flatMap((e) =>
       [0, 1, 2, 3, 4, 5, 6].map((d) =>
-        rec(e.id, d, { start_time: `${String(8 + d).padStart(2, '0')}:00:00`, end_time: `${String(14 + d).padStart(2, '0')}:00:00` }),
+        rec(e.id, d, { start_time_local: `${String(8 + d).padStart(2, '0')}:00:00`, end_time_local: `${String(14 + d).padStart(2, '0')}:00:00` }),
       ),
     );
     const excs = emps.flatMap((e) =>

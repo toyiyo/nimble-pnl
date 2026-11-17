@@ -18,7 +18,7 @@ export interface RawRecurringAvail {
   /** 0=Sun..6=Sat in the user's restaurant-local calendar */
   day_of_week: number;
   is_available: boolean;
-  /** Restaurant-local clock time HH:MM:SS. Null for a closed day or for a row with no window. */
+  /** Restaurant-local clock time HH:MM:SS. The value is null for a closed day or for a row with no window. */
   start_time_local: string | null;
   end_time_local: string | null;
 }

@@ -213,7 +213,12 @@ export function useReviewPages(restaurantId?: string) {
       const extension = file.name.split('.').pop()?.toLowerCase() ?? 'png';
       const path = `${restaurantId}/${pageId}/${crypto.randomUUID()}.${extension}`;
 
-      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('review-page-logos'), path, file, { contentType: file.type, upsert: false });
+      const { error: uploadError } = await uploadBlobBytes(
+        supabase.storage.from('review-page-logos'),
+        path,
+        file,
+        { contentType: file.type, upsert: false },
+      );
       if (uploadError) throw uploadError;
 
       const { data, error: updateError } = await updateReviewPageRow(pageId, restaurantId, {

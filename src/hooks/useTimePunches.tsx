@@ -202,10 +202,12 @@ export const useCreateTimePunch = () => {
           const filename = `punch-${timestamp}.jpg`;
           const filePath = `${punch.restaurant_id}/${punch.employee_id}/${filename}`;
 
-          uploadPromise = uploadBlobBytes(supabase.storage.from('time-clock-photos'), filePath, punch.photoBlob, {
-              contentType: 'image/jpeg',
-              upsert: false,
-            });
+          uploadPromise = uploadBlobBytes(
+            supabase.storage.from('time-clock-photos'),
+            filePath,
+            punch.photoBlob,
+            { contentType: 'image/jpeg', upsert: false },
+          );
 
           const timeoutPromise = new Promise<never>((_, reject) => {
             controller.signal.addEventListener('abort', () => {

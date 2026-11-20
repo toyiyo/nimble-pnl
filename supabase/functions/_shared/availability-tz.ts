@@ -176,10 +176,9 @@ export function convertRecurringToLocal(rows: RawRecurringAvail[]): LocalAvail[]
       out.push(localWindow(employee_id, dow, start, endIsMidnight ? END_OF_DAY : end));
       continue;
     }
-    out.push(
-      localWindow(employee_id, dow, start, END_OF_DAY),
-      localWindow(employee_id, (dow + 1) % 7, "00:00:00", end),
-    );
+    // Overnight: keep one window on its start day. withinWindow reads
+    // end < start as overnight, and setSlot keeps one window per day.
+    out.push({ ...localWindow(employee_id, dow, start, end), isOvernight: true });
   }
   return out;
 }

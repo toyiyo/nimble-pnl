@@ -70,8 +70,8 @@ values.
 - A change to the storage of `availability_exceptions`.
 - A change to the limit of one slot for each day in `setSlot`
   (`supabase/functions/generate-schedule/index.ts:326-336`). `setSlot` is
-  last-wins, so an overnight piece on D+1 can overwrite the own window of D+1.
-  This limit exists today and stays.
+  last-wins. This limit exists today and stays. For this reason, an overnight
+  window stays one window on day D (see the overnight rule below).
 - Exceptions with more than one slot.
 - A visual change. The UI stays the same.
 - A global detector that reloads stale bundles.
@@ -278,10 +278,19 @@ End the migration with `NOTIFY pgrst, 'reload schema';`.
   `start_time_local` and `end_time_local`.
 - `convertRecurringToLocal` (`supabase/functions/_shared/availability-tz.ts:163`)
   does no timezone conversion. It trusts the stored `day_of_week`.
-- A window with local `end <= start` is overnight. Split it into day D (start
-  to `24:00:00`) and day D+1 (`00:00:00` to end).
-- If the end is `00:00:00`, do not make an empty row on day D+1.
-- A window occupies D and D+1. It never occupies D-1. This follows the lesson
+- A window with local `end < start` is overnight. Keep it as one window on
+  day D, with `isOvernight: true`. Do not split it. `withinWindow` reads
+  `end < start` as overnight, and `setSlot` keeps one window for each day.
+  A split D+1 piece replaces the own window of D+1, and an overnight shift
+  then fails `withinWindow` (Codex review on PR #874).
+- This follows the rule of the other overnight features: business hours,
+  `ShiftInterval`, clock-in attribution, and `check_availability_conflict`
+  keep one interval on its start day.
+- Known limit: the solver does not look at the window of the day before. A
+  shift from 00:00 to 02:00 on day D+1 does not match an overnight window on
+  day D. The same limit exists on main for the `UTC` zone.
+- If the end is `00:00:00`, write `24:00:00` on day D.
+- A window never occupies D-1. This follows the lesson
   of 2026-07-12 in `memory/lessons.md`.
 - `convertOne` and `convertExceptionsToLocal` stay for exceptions. `convertOne`
   recomputes the weekday with `getDay()`, so it is not a reference for the new

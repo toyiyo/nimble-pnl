@@ -4,6 +4,7 @@ import {
   convertExceptionsToLocal,
   type RawExceptionAvail,
 } from '../../supabase/functions/_shared/availability-tz';
+import { withinWindow } from '../../supabase/functions/_shared/schedule-validator';
 
 const CST = 'America/Chicago'; // UTC-6 standard, UTC-5 DST
 
@@ -22,15 +23,31 @@ describe('convertRecurringToLocal', () => {
     ]);
   });
 
-  it('splits an overnight window into D and D+1', () => {
+  it('keeps an overnight window as one window on its start day', () => {
     const out = convertRecurringToLocal([row('18:00:00', '02:00:00')]);
-    expect(out).toHaveLength(2);
-    expect(out[0]).toMatchObject({ day_of_week: 5, start_time: '18:00:00', end_time: '24:00:00' });
-    expect(out[1]).toMatchObject({ day_of_week: 6, start_time: '00:00:00', end_time: '02:00:00' });
+    expect(out).toEqual([
+      expect.objectContaining({
+        day_of_week: 5,
+        start_time: '18:00:00',
+        end_time: '02:00:00',
+        isOvernight: true,
+      }),
+    ]);
   });
 
-  it('wraps Saturday to Sunday', () => {
-    expect(convertRecurringToLocal([row('18:00:00', '02:00:00', 6)])[1]).toMatchObject({ day_of_week: 0 });
+  it('keeps a Saturday overnight window on Saturday', () => {
+    const out = convertRecurringToLocal([row('18:00:00', '02:00:00', 6)]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ day_of_week: 6 });
+  });
+
+  it('lets the solver fill an overnight shift inside an overnight window', () => {
+    const [w] = convertRecurringToLocal([row('18:00:00', '02:00:00')]);
+    const min = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    expect(withinWindow(min('22:00'), min('02:00'), min(w.start_time!), min(w.end_time!))).toBe(true);
   });
 
   it('makes no D+1 row for a midnight end', () => {

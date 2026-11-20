@@ -56,6 +56,18 @@ describe('convertRecurringToLocal', () => {
     expect(out[0]).toMatchObject({ day_of_week: 5, end_time: '24:00:00' });
   });
 
+  it('keeps seconds when it classifies a window', () => {
+    expect(convertRecurringToLocal([row('09:00:00', '09:00:30')])).toEqual([
+      expect.objectContaining({ start_time: '09:00:00', end_time: '09:00:30', isOvernight: false }),
+    ]);
+  });
+
+  it('does not treat 00:00:30 as midnight', () => {
+    expect(convertRecurringToLocal([row('18:00:00', '00:00:30')])).toEqual([
+      expect.objectContaining({ end_time: '00:00:30', isOvernight: true }),
+    ]);
+  });
+
   it('never writes to D-1', () => {
     const days = convertRecurringToLocal([row('20:00:00', '23:00:00')]).map((r) => r.day_of_week);
     expect(days).toEqual([5]);

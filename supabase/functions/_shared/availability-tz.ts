@@ -150,6 +150,11 @@ function addDays(date: string, days: number): string {
 
 const END_OF_DAY = "24:00:00";
 
+/** Pads "HH:MM" to "HH:MM:SS" so that string order is clock order. */
+function toClock(t: string): string {
+  return t.length === 5 ? `${t}:00` : t.substring(0, 8);
+}
+
 function localWindow(
   employee_id: string,
   day_of_week: number,
@@ -171,8 +176,11 @@ export function convertRecurringToLocal(rows: RawRecurringAvail[]): LocalAvail[]
       continue;
     }
     if (start === null || end === null) continue;
-    const endIsMidnight = timeToMinutes(end) === 0;
-    if (endIsMidnight || timeToMinutes(end) > timeToMinutes(start)) {
+    // Compare full "HH:MM:SS" values. Minutes alone drop the seconds.
+    const startClock = toClock(start);
+    const endClock = toClock(end);
+    const endIsMidnight = endClock === "00:00:00";
+    if (endIsMidnight || endClock > startClock) {
       out.push(localWindow(employee_id, dow, start, endIsMidnight ? END_OF_DAY : end));
       continue;
     }

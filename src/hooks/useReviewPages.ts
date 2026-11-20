@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { withCollisionSuffix } from '@/lib/reviews/reviewSlug';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 export interface ReviewPage {
   id: string;
@@ -212,9 +213,7 @@ export function useReviewPages(restaurantId?: string) {
       const extension = file.name.split('.').pop()?.toLowerCase() ?? 'png';
       const path = `${restaurantId}/${pageId}/${crypto.randomUUID()}.${extension}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('review-page-logos')
-        .upload(path, file, { contentType: file.type, upsert: false });
+      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('review-page-logos'), path, file, { contentType: file.type, upsert: false });
       if (uploadError) throw uploadError;
 
       const { data, error: updateError } = await updateReviewPageRow(pageId, restaurantId, {

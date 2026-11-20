@@ -5,6 +5,7 @@ import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storage
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import type { Attachment } from '@/components/attachments';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 export type AttachmentContext =
   | { type: 'expense'; expenseId: string }
@@ -203,9 +204,7 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
         const filePath = `${restaurantId}/expense-invoices/${finalFileName}`;
 
         // Upload to storage
-        const { error: uploadError } = await supabase.storage
-          .from('receipt-images')
-          .upload(filePath, file);
+        const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('receipt-images'), filePath, file);
 
         if (uploadError) throw uploadError;
 

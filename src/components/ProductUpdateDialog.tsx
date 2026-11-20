@@ -52,6 +52,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Star, Trash2, Plus, DollarSign } from 'lucide-react';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 const updateSchema = z.object({
   quantity_to_add: z.coerce.number().min(0, 'Quantity must be positive').optional(),
@@ -265,9 +266,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
       const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${product.restaurant_id}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(filePath, file);
+      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('product-images'), filePath, file);
 
       if (uploadError) throw uploadError;
 

@@ -13,6 +13,7 @@ import type {
 } from '@/types/assetImport';
 import { createAssetLineItem, parseCSVRowToLineItem, REQUIRED_CSV_COLUMNS } from '@/types/assetImport';
 import { parseCSVLine } from '@/utils/assetColumnMapping';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 
 export interface UseAssetImportReturn {
@@ -70,9 +71,7 @@ export function useAssetImport(): UseAssetImportReturn {
       const filePath = `${selectedRestaurant.restaurant_id}/asset-imports/${finalFileName}`;
 
       // Upload to asset-images bucket (reuse existing bucket)
-      const { error: uploadError } = await supabase.storage
-        .from('asset-images')
-        .upload(filePath, file);
+      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('asset-images'), filePath, file);
 
       if (uploadError) {
         throw uploadError;
@@ -409,9 +408,7 @@ export function useAssetImport(): UseAssetImportReturn {
         const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
         documentStoragePath = `${selectedRestaurant.restaurant_id}/assets/imports/${finalFileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('asset-images')
-          .upload(documentStoragePath, documentFile);
+        const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('asset-images'), documentStoragePath, documentFile);
 
         if (uploadError) {
           console.error(describeStorageError(uploadError).logLine);

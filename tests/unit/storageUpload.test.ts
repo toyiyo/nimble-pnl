@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { EmptyUploadError, uploadBlobBytes } from '@/lib/storageUpload';
 import { describeStorageError } from '@/lib/storageError';
@@ -72,5 +74,24 @@ describe('uploadBlobBytes', () => {
 
   it('maps EmptyUploadError to code empty in describeStorageError', () => {
     expect(describeStorageError(new EmptyUploadError('empty')).code).toBe('empty');
+  });
+});
+
+function listSourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) return listSourceFiles(full);
+    return /\.(ts|tsx)$/.test(name) ? [full] : [];
+  });
+}
+
+describe('storage upload guard', () => {
+  it('has no direct storage .upload() call outside src/lib/storageUpload.ts', () => {
+    const srcDir = join(process.cwd(), 'src');
+    const offenders = listSourceFiles(srcDir)
+      .filter((file) => relative(srcDir, file) !== join('lib', 'storageUpload.ts'))
+      .filter((file) => /\.storage\s*\.from\([^)]*\)\s*\.upload\(/.test(readFileSync(file, 'utf8')))
+      .map((file) => relative(srcDir, file));
+    expect(offenders).toEqual([]);
   });
 });

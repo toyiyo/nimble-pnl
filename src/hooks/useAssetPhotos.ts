@@ -5,6 +5,7 @@ import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storage
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import type { AssetPhoto } from '@/types/assets';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -125,9 +126,7 @@ export function useAssetPhotos({ assetId }: UseAssetPhotosOptions) {
         const filePath = `${restaurantId}/assets/${assetId}/${finalFileName}`;
 
         // Upload to storage
-        const { error: uploadError } = await supabase.storage
-          .from('asset-images')
-          .upload(filePath, file);
+        const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('asset-images'), filePath, file);
 
         if (uploadError) throw uploadError;
 

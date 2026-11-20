@@ -44,6 +44,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAssetPhotos } from '@/hooks/useAssetPhotos';
 import type { Asset, AssetFormData } from '@/types/assets';
 import { DEFAULT_ASSET_CATEGORIES, getDefaultUsefulLife, formatAssetCurrency } from '@/types/assets';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 interface AssetDialogProps {
   open: boolean;
@@ -146,9 +147,7 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
     const filePath = `${restaurantId}/assets/${assetId}/${finalFileName}`;
 
     // Upload to storage
-    const { error: uploadError } = await supabase.storage
-      .from('asset-images')
-      .upload(filePath, file);
+    const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('asset-images'), filePath, file);
 
     if (uploadError) {
       console.error(describeStorageError(uploadError).logLine);

@@ -39,6 +39,29 @@ describe('describeStorageError', () => {
     expect(info.logLine).toContain(rls);
   });
 
+  it('status "empty" → curated empty-file message', () => {
+    const info = describeStorageError({ status: 'empty', message: 'x' });
+    expect(info.code).toBe('empty');
+    expect(info.userMessage).toBe(
+      'This file is empty or your browser could not read it. Try again, or use a different browser.',
+    );
+  });
+
+  it('400 "No content provided" → code empty, raw text kept in logLine', () => {
+    const info = describeStorageError(apiError(400, 'No content provided'));
+    expect(info.code).toBe('empty');
+    expect(info.userMessage).toBe(
+      'This file is empty or your browser could not read it. Try again, or use a different browser.',
+    );
+    expect(info.logLine).toBe('[400] No content provided');
+  });
+
+  it('400 with a different message keeps the generic text and code 400', () => {
+    const info = describeStorageError(apiError(400, 'new row violates row-level security policy'));
+    expect(info.code).toBe('400');
+    expect(info.userMessage).toContain('400');
+  });
+
   it('5xx → generic message, code preserved', () => {
     const info = describeStorageError(apiError(503, 'upstream unavailable'));
     expect(info.code).toBe('503');

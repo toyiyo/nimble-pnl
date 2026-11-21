@@ -72,6 +72,29 @@ describe('uploadBlobBytes', () => {
     expect(res).toBe(result);
   });
 
+  it('does not upload when the signal aborts during the read', async () => {
+    const bucket = makeBucket();
+    const controller = new AbortController();
+    const blob = new Blob(['x'], { type: 'image/jpeg' });
+    const realRead = blob.arrayBuffer.bind(blob);
+    blob.arrayBuffer = async () => {
+      const bytes = await realRead();
+      controller.abort();
+      return bytes;
+    };
+    const result = await uploadBlobBytes(bucket as never, 'p', blob, undefined, controller.signal);
+    expect(bucket.upload).not.toHaveBeenCalled();
+    expect(result.data).toBeNull();
+    expect(result.error?.name).toBe('AbortError');
+  });
+
+  it('uploads when the signal is not aborted', async () => {
+    const bucket = makeBucket();
+    const controller = new AbortController();
+    await uploadBlobBytes(bucket as never, 'p', new Blob(['x']), undefined, controller.signal);
+    expect(bucket.upload).toHaveBeenCalledTimes(1);
+  });
+
   it('maps EmptyUploadError to code empty in describeStorageError', () => {
     expect(describeStorageError(new EmptyUploadError('empty')).code).toBe('empty');
   });

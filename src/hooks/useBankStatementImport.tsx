@@ -129,7 +129,7 @@ export function useBankStatementImport() {
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/bank-statements/${finalFileName}`;
       
-      const { data: uploadData, error: uploadError } = await uploadBlobBytes(supabase.storage.from('receipt-images'), filePath, file);
+      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('receipt-images'), filePath, file);
 
       if (uploadError) {
         throw uploadError;

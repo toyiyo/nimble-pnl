@@ -207,6 +207,8 @@ export const useCreateTimePunch = () => {
             filePath,
             punch.photoBlob,
             { contentType: 'image/jpeg', upsert: false },
+            // A timeout during the file read stops the upload, so no orphan photo stays in Storage.
+            controller.signal,
           );
 
           const timeoutPromise = new Promise<never>((_, reject) => {

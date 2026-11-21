@@ -2,8 +2,9 @@ BEGIN;
 SELECT plan(16);
 
 -- Setup: create restaurant, employee
+-- The restaurant uses UTC so the local window columns match the UTC shift times below.
 INSERT INTO restaurants (id, name, timezone)
-VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Test Overnight Restaurant', 'America/Chicago')
+VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Test Overnight Restaurant', 'UTC')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO employees (id, restaurant_id, name, position)
@@ -12,21 +13,21 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Test 1: Normal availability (start < end) should still work
 SELECT lives_ok(
-  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
     VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 0, true, '09:00:00', '17:00:00')$$,
   'Normal availability (09:00-17:00) should succeed'
 );
 
 -- Test 2: Overnight UTC availability (end < start) should now work
 SELECT lives_ok(
-  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
     VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 1, true, '13:00:00', '04:00:00')$$,
   'Overnight UTC availability (13:00-04:00) should succeed'
 );
 
 -- Test 3: Same start and end time should be rejected (zero-length window)
 SELECT throws_ok(
-  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
     VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, true, '09:00:00', '09:00:00')$$,
   '23514',
   NULL,
@@ -133,7 +134,7 @@ SELECT is(
 -- Test 12: Multiple availability windows — shift in second window should pass
 -- Add a second window for Sunday (day_of_week=0): 18:00-22:00 UTC
 -- (Test 1 already added 09:00-17:00 for Sunday)
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
 VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 0, true, '18:00:00', '22:00:00');
 -- April 5, 2026 is a Sunday (DOW=0)
 SELECT is(
@@ -162,7 +163,7 @@ SELECT is(
 -- Test 14: Previous-day overnight carry-over — shift in Tuesday's early hours
 -- covered by Monday's overnight window even when Tuesday has its own availability.
 -- Add Tuesday availability (day_of_week=2): 13:00-22:00 UTC (normal daytime)
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
 VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, true, '13:00:00', '22:00:00');
 -- April 7, 2026 is a Tuesday (DOW=2)
 -- Shift Tue 02:00-03:00 UTC should be covered by Monday's 13:00-04:00 carry-over

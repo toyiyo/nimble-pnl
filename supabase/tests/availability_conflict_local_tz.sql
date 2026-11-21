@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(14);
+SELECT plan(32);
 
 SET LOCAL client_min_messages TO WARNING;
 
@@ -30,14 +30,14 @@ ON CONFLICT (id) DO UPDATE SET status = 'active';
 -- Summer fixed date 2027-07-13 is a Tuesday (EDT). Available Tue 2:00 PM-10:30 PM local.
 -- Store start/end as the UTC clock the writer would produce, DERIVED via SQL so it is
 -- DST-correct regardless of when CI runs.
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
 VALUES (
   (SELECT rid FROM t_ids), (SELECT eid FROM t_ids), 2, true,
-  (('2027-07-13 14:00'::timestamp AT TIME ZONE 'America/New_York') AT TIME ZONE 'UTC')::time,
-  (('2027-07-13 22:30'::timestamp AT TIME ZONE 'America/New_York') AT TIME ZONE 'UTC')::time
+  ('2027-07-13 14:00'::timestamp)::time,
+  ('2027-07-13 22:30'::timestamp)::time
 );
 -- Marked UNAVAILABLE Wednesday (day_of_week = 3) — the day the old UTC bug bled into.
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
 VALUES ((SELECT rid FROM t_ids), (SELECT eid FROM t_ids), 3, false, '00:00:00', '23:59:59');
 
 -- CASE 1 (the reported bug): Tue 5:00 PM-9:00 PM local shift => NO conflict.
@@ -72,11 +72,11 @@ UPDATE restaurants SET timezone = 'America/Los_Angeles' WHERE id = (SELECT rid F
 DELETE FROM employee_availability WHERE restaurant_id = (SELECT rid FROM t_ids);
 -- 2027-07-12 is a Monday (PDT). 6:00 PM PDT -> 01:00 UTC (next day) — the case the
 -- old convertOne-mirroring formula misattributed to Sunday.
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
 VALUES (
   (SELECT rid FROM t_ids), (SELECT eid FROM t_ids), 1, true,
-  (('2027-07-12 18:00'::timestamp AT TIME ZONE 'America/Los_Angeles') AT TIME ZONE 'UTC')::time,
-  (('2027-07-12 19:00'::timestamp AT TIME ZONE 'America/Los_Angeles') AT TIME ZONE 'UTC')::time
+  ('2027-07-12 18:00'::timestamp)::time,
+  ('2027-07-12 19:00'::timestamp)::time
 );
 SELECT is(
   (SELECT count(*)::int FROM check_availability_conflict(
@@ -90,7 +90,7 @@ SELECT is(
 -- CASE 4 (invalid timezone falls back to UTC, no throw): garbage tz, UTC-stored window.
 UPDATE restaurants SET timezone = 'Not/AZone' WHERE id = (SELECT rid FROM t_ids);
 DELETE FROM employee_availability WHERE restaurant_id = (SELECT rid FROM t_ids);
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
 VALUES ((SELECT rid FROM t_ids), (SELECT eid FROM t_ids), 1, true, '09:00:00', '17:00:00');
 SELECT lives_ok(
   $$ SELECT * FROM check_availability_conflict(
@@ -103,11 +103,11 @@ SELECT lives_ok(
 -- 2027-07-16 is a Friday (day_of_week=5), 2027-07-17 is the following Saturday.
 UPDATE restaurants SET timezone = 'America/Chicago' WHERE id = (SELECT rid FROM t_ids);
 DELETE FROM employee_availability WHERE restaurant_id = (SELECT rid FROM t_ids);
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
 VALUES (
   (SELECT rid FROM t_ids), (SELECT eid FROM t_ids), 5, true,
-  (('2027-07-16 18:00'::timestamp AT TIME ZONE 'America/Chicago') AT TIME ZONE 'UTC')::time,
-  (('2027-07-17 02:00'::timestamp AT TIME ZONE 'America/Chicago') AT TIME ZONE 'UTC')::time
+  ('2027-07-16 18:00'::timestamp)::time,
+  ('2027-07-17 02:00'::timestamp)::time
 );
 
 -- 10:00 PM-1:00 AM local shift is fully inside the Fri 6PM-2AM window => no conflict.
@@ -228,6 +228,98 @@ SELECT is(
   || 'Sunday''s available window) rather than staying on Mon (fully unavailable exception), '
   || 'proving the offset is applied rather than coerced to UTC'
 );
+
+-- ===== Local column cases (restaurant-local frame, America/Chicago) =====
+UPDATE restaurants SET timezone = 'America/Chicago' WHERE id = (SELECT rid FROM t_ids);
+
+CREATE FUNCTION pg_temp.reset_fixture() RETURNS void LANGUAGE sql AS $f$
+  DELETE FROM availability_exceptions WHERE restaurant_id = '11111111-1111-1111-1111-111111111111';
+  DELETE FROM employee_availability WHERE restaurant_id = '11111111-1111-1111-1111-111111111111';
+$f$;
+CREATE FUNCTION pg_temp.add_win(p_dow int, p_start time, p_end time) RETURNS void LANGUAGE sql AS $f$
+  INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
+  VALUES ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', p_dow, true, p_start, p_end);
+$f$;
+CREATE FUNCTION pg_temp.chk(p_start text, p_end text, p_tz text DEFAULT 'America/Chicago')
+RETURNS TABLE (has_conflict boolean, conflict_type text, message text, available_start time, available_end time, available_start_local time, available_end_local time) LANGUAGE sql AS $f$
+  SELECT * FROM check_availability_conflict(
+    '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111',
+    (p_start::timestamp AT TIME ZONE p_tz), (p_end::timestamp AT TIME ZONE p_tz));
+$f$;
+
+-- July and December agree: Fri 10:00-22:00 local.
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(5, '10:00', '22:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-07-17 10:00', '2026-07-17 22:00')), 0, 'July Fri 10-22 local: no conflict');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-12-18 10:00', '2026-12-18 22:00')), 0, 'December Fri 10-22 local: no conflict');
+
+-- Real conflict stays on both dates.
+SELECT is((SELECT conflict_type FROM pg_temp.chk('2026-07-17 09:00', '2026-07-17 22:00')), 'recurring', 'July Fri 09-22 local: conflict');
+SELECT is((SELECT conflict_type FROM pg_temp.chk('2026-12-18 09:00', '2026-12-18 22:00')), 'recurring', 'December Fri 09-22 local: conflict');
+
+-- Review Focus 1: legacy looks overnight, local does not. Sat has a closed row.
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
+VALUES ((SELECT rid FROM t_ids), (SELECT eid FROM t_ids), 6, false, '00:00', '23:59:59');
+SELECT is(
+  (SELECT message FROM pg_temp.chk('2026-07-18 01:00', '2026-07-18 02:00')),
+  'Employee is not available on this day of the week',
+  'Fri 10-22 does not spill into Sat 01-02: Sat closed row conflicts');
+
+-- True overnight: Fri 18:00-02:00, Sat 01:00-02:00 has no conflict.
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(5, '18:00', '02:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-07-18 01:00', '2026-07-18 02:00')), 0, 'True overnight Fri 18-02 covers Sat 01-02');
+
+-- Midnight end: Fri 18:00-00:00 does not spill into Sat; Sat has no rows.
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(5, '18:00', '00:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-07-18 09:00', '2026-07-18 10:00')), 0, 'Midnight end: no window for Sat, no conflict');
+
+-- Past 24:00 UTC.
+UPDATE restaurants SET timezone = 'America/Los_Angeles' WHERE id = (SELECT rid FROM t_ids);
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(5, '17:00', '23:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-07-17 18:00', '2026-07-17 20:00', 'America/Los_Angeles')), 0, 'Los Angeles 17-23 local window: inside shift has no conflict');
+UPDATE restaurants SET timezone = 'America/New_York' WHERE id = (SELECT rid FROM t_ids);
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(5, '20:00', '23:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-07-17 21:00', '2026-07-17 22:00', 'America/New_York')), 0, 'New York 20-23 local window: inside shift has no conflict');
+
+-- Review Focus 3: timezone change does not move the local window.
+UPDATE restaurants SET timezone = 'America/Chicago' WHERE id = (SELECT rid FROM t_ids);
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(5, '10:00', '22:00');
+UPDATE restaurants SET timezone = 'America/New_York' WHERE id = (SELECT rid FROM t_ids);
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-07-17 10:00', '2026-07-17 22:00', 'America/New_York')), 0, 'Timezone change: local window is the same wall clock');
+
+-- Local fields, recurring.
+UPDATE restaurants SET timezone = 'America/Chicago' WHERE id = (SELECT rid FROM t_ids);
+SELECT is((SELECT available_start_local FROM pg_temp.chk('2026-07-17 09:00', '2026-07-17 22:00')), '10:00'::time, 'available_start_local is the local start');
+SELECT is((SELECT available_end_local FROM pg_temp.chk('2026-07-17 09:00', '2026-07-17 22:00')), '22:00'::time, 'available_end_local is the local end');
+
+-- Local fields, exception: 15:00-23:00 UTC on a CST date is 09:00-17:00 local.
+SELECT pg_temp.reset_fixture();
+INSERT INTO availability_exceptions (restaurant_id, employee_id, date, is_available, start_time, end_time)
+VALUES ((SELECT rid FROM t_ids), (SELECT eid FROM t_ids), '2026-12-18', true, '15:00', '23:00');
+SELECT is((SELECT available_start_local FROM pg_temp.chk('2026-12-18 06:00', '2026-12-18 07:00')), '09:00'::time, 'Exception: available_start_local is the local time');
+SELECT is((SELECT available_start FROM pg_temp.chk('2026-12-18 06:00', '2026-12-18 07:00')), '15:00'::time, 'Exception: available_start keeps the UTC value');
+
+-- Review Focus 5: two windows, both fields come from the same row.
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(5, '10:00', '12:00');
+SELECT pg_temp.add_win(5, '14:00', '16:00');
+SELECT is(
+  (SELECT available_start_local FROM pg_temp.chk('2026-07-17 17:00', '2026-07-17 18:00')),
+  (SELECT start_time_local FROM employee_availability WHERE start_time = (SELECT available_start FROM pg_temp.chk('2026-07-17 17:00', '2026-07-17 18:00')) AND restaurant_id = (SELECT rid FROM t_ids)),
+  'Two windows: available_start_local and available_start come from the same row');
+SELECT is(
+  (SELECT available_end_local FROM pg_temp.chk('2026-07-17 17:00', '2026-07-17 18:00')),
+  (SELECT end_time_local FROM employee_availability WHERE end_time = (SELECT available_end FROM pg_temp.chk('2026-07-17 17:00', '2026-07-17 18:00')) AND restaurant_id = (SELECT rid FROM t_ids)),
+  'Two windows: available_end_local and available_end come from the same row');
+
+-- Grants.
+SELECT ok(NOT has_function_privilege('anon', 'public.check_availability_conflict(uuid, uuid, timestamptz, timestamptz)', 'EXECUTE'), 'anon has no EXECUTE');
+SELECT ok(has_function_privilege('authenticated', 'public.check_availability_conflict(uuid, uuid, timestamptz, timestamptz)', 'EXECUTE'), 'authenticated has EXECUTE');
 
 SELECT * FROM finish();
 ROLLBACK;

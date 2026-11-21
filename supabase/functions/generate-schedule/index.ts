@@ -163,7 +163,7 @@ serve(async (req) => {
       // 3. Recurring availability
       supabase
         .from("employee_availability")
-        .select("employee_id, day_of_week, is_available, start_time, end_time")
+        .select("employee_id, day_of_week, is_available, start_time_local, end_time_local")
         .eq("restaurant_id", restaurant_id),
 
       // 4. Availability exceptions for the target week
@@ -298,17 +298,16 @@ serve(async (req) => {
           : 1,
     }));
 
-    // ── Build availability map (TZ-converted to restaurant local) ────────────
+    // ── Build availability map. Recurring rows are already restaurant-local;
+    //    only exception rows are converted with the restaurant timezone. ─────
     const recurringLocal: LocalAvail[] = convertRecurringToLocal(
       (recurringAvailResult.data ?? []).map((r) => ({
         employee_id: r.employee_id,
         day_of_week: r.day_of_week,
         is_available: r.is_available,
-        start_time: r.start_time ?? null,
-        end_time: r.end_time ?? null,
+        start_time_local: r.start_time_local,
+        end_time_local: r.end_time_local,
       })),
-      restaurantTimezone,
-      week_start,
     );
 
     const exceptionsLocal: LocalAvail[] = convertExceptionsToLocal(

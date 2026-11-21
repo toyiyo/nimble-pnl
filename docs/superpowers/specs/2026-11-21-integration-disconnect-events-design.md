@@ -107,38 +107,57 @@ safety net.
 
 ## 4. Design
 
+Revision 2 adds the findings of the Supabase and frontend design reviews.
+
+### 4.0 Scope of integrations
+
+- PR 1 covers revel, toast, square, clover, shift4, focus, and bank.
+- Sling (`sling-scheduling`) uses the same Disconnect button
+  (`IntegrationCard.tsx:209-212`). Sling is a scheduling integration, not a
+  sales source. It keeps its current direct path, with no dialog and no event.
+  Sling events are a follow-up.
+- A card with no hook keeps the current generic toast.
+
 ### 4.1 Table `public.integration_events`
 
 ```sql
-id             uuid PK DEFAULT gen_random_uuid()
-restaurant_id  uuid NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE
-integration    text NOT NULL CHECK (integration IN
-                 ('revel','toast','square','clover','shift4','focus','bank'))
-event          text NOT NULL CHECK (event IN
-                 ('connect','disconnect','pause','resume','auth_failure'))
-actor_user_id  uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL
-reason         text NULL CHECK (reason IN ('switching_pos','credentials_changed',
-                 'temporary_close','no_value','too_expensive','other'))
-reason_text    text NULL CHECK (char_length(reason_text) <= 500)
-details        jsonb NOT NULL DEFAULT '{}'   -- e.g. bank institution name
-alerted_at     timestamptz NULL              -- set when the Day-0 alert is claimed
-created_at     timestamptz NOT NULL DEFAULT now()
+id               uuid PK DEFAULT gen_random_uuid()
+restaurant_id    uuid NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE
+integration      text NOT NULL CHECK (integration IN
+                   ('revel','toast','square','clover','shift4','focus','bank'))
+event            text NOT NULL CHECK (event IN
+                   ('connect','disconnect','pause','resume','auth_failure'))
+actor_user_id    uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL
+reason           text NULL CHECK (reason IN ('switching_pos','credentials_changed',
+                   'temporary_close','no_value','too_expensive','other'))
+reason_text      text NULL CHECK (char_length(reason_text) <= 500)
+details          jsonb NOT NULL DEFAULT '{}'
+alert_claimed_at timestamptz NULL   -- lease start for the Day-0 alert
+alerted_at       timestamptz NULL   -- set only after the alert sends finish
+created_at       timestamptz NOT NULL DEFAULT now()
 ```
 
-- Use `text` with `CHECK`, not a Postgres enum. A new value then needs only a
-  new constraint, not `ALTER TYPE`.
-- `reason` is NULL when the user skips the reason, or when the event is not a
-  disconnect.
-- Add an index on `(restaurant_id, created_at DESC)`.
-- The table has no FK to a connection row. Square, Clover, and Shift4 delete
-  their row, and the event must stay.
-- RLS is on. One SELECT policy uses
-  `user_has_role(restaurant_id, ARRAY['owner','manager'])`.
-- There is no INSERT, UPDATE, or DELETE policy. Also
-  `REVOKE INSERT, UPDATE, DELETE ON integration_events FROM anon, authenticated`.
-- `GRANT SELECT TO authenticated` and `GRANT ALL TO service_role`.
-- PR 1 writes `disconnect` events only. The other event values are for PR 2 and
-  later.
+- Use `text` with `CHECK`, not a Postgres enum.
+- `reason` is NULL when the user skips the reason.
+- `details` holds a snapshot that stays after a DELETE. Examples:
+  `rows_affected`, `merchant_ids` or `establishment_ids`, `location_count`,
+  `connected_at`, and the bank institution name. It never holds tokens or
+  secrets.
+- Index `(restaurant_id, created_at DESC)`. PR 3 adds a partial index for the
+  alert sweep.
+- The table has no FK to a connection row, so the event stays after a DELETE.
+- `ON DELETE CASCADE` on `restaurant_id` is intentional. When a restaurant is
+  deleted, its audit rows go with it, the same as all other tenant data.
+- RLS is on. One policy: `FOR SELECT TO authenticated USING
+  (user_has_role(restaurant_id, ARRAY['owner','manager']))`. No write policy.
+- Grants (the repo lesson in
+  `20260804120000_review_funnel_service_role_grants.sql`):
+  - `REVOKE ALL ON integration_events FROM PUBLIC, anon, authenticated, service_role`.
+  - `GRANT SELECT ON integration_events TO authenticated`.
+  - `GRANT SELECT, INSERT ON integration_events TO service_role`.
+  - `GRANT UPDATE (alert_claimed_at, alerted_at) ON integration_events TO service_role`.
+- PR 1 writes `disconnect` events only.
+- Regenerate `src/integrations/supabase/types.ts` (the sync-types skill).
 
 ### 4.2 RPC `public.disconnect_integration`
 
@@ -156,21 +175,29 @@ Steps, in one transaction:
 1. If `auth.uid()` is NULL, raise `42501`.
 2. If `user_has_role(p_restaurant_id, ARRAY['owner','manager'])` is false, raise
    `42501`. This matches the current RLS write rule (§2.2).
-3. If `p_integration = 'bank'`, raise `22023`. The bank uses its edge function
-   (§4.4).
-4. Change the connection:
-   - revel, toast, focus: `UPDATE ... SET is_active = false, updated_at = now()
-     WHERE restaurant_id = p_restaurant_id AND is_active`.
-   - square, clover, shift4: `DELETE ... WHERE restaurant_id = p_restaurant_id`.
-     This keeps the current behavior and its cascades.
-5. If the row count is 0, raise `P0002` with the message
-   `no active <integration> connection`. This fixes the false success in §2.2.
-6. Set `p_reason_text` to NULL when it is blank. Trim it.
-7. Insert the event with `actor_user_id = auth.uid()`. Return its id.
+3. Check `p_integration` against a fixed map. Raise `22023` for `bank` and for
+   any value not in the map.
+4. Treat `''` as NULL for `p_reason`. Raise `22023` for a reason not in the
+   list. Trim `p_reason_text`. Set it to NULL when blank. Raise `22023` when it
+   is longer than 500 characters.
+5. Read the snapshot for `details` (ids and `connected_at`) before the change.
+6. Change the connection. All rows for the restaurant change:
+   - revel, toast, focus: `UPDATE public.<tbl> SET is_active = false,
+     updated_at = now() WHERE restaurant_id = p_restaurant_id AND is_active`.
+   - square, clover, shift4: `DELETE FROM public.<tbl> WHERE restaurant_id =
+     p_restaurant_id`. This keeps the current cascades.
+   - Shift4 change: the hook deletes one row by `id` today
+     (`useShift4Integration.tsx:147-180`). A restaurant can have more than one
+     Shift4 row (`UNIQUE(restaurant_id, merchant_id)`). The card shows one
+     connection, so "Disconnect Shift4" deletes all rows for the restaurant.
+     `details.rows_affected` and `details.merchant_ids` record them.
+7. `GET DIAGNOSTICS v_rows = ROW_COUNT`. If it is 0, raise `P0002` with the
+   message `no active <integration> connection`.
+8. Insert the event with `actor_user_id = auth.uid()`. Return its id.
 
 - `REVOKE ALL ... FROM PUBLIC, anon`. `GRANT EXECUTE ... TO authenticated`.
-- Use dynamic SQL only with `format('%I', ...)` on a fixed table map. Do not
-  pass user text into identifiers.
+- Build the dynamic SQL with `format('%I.%I', 'public', tbl)` from the fixed
+  map only. The migration comment states "no EXECUTE with concatenated input".
 
 ### 4.3 RPC `public.record_integration_event` (service role only)
 
@@ -178,79 +205,125 @@ Steps, in one transaction:
 record_integration_event(p_restaurant_id uuid, p_integration text, p_event text,
   p_actor_user_id uuid, p_reason text, p_reason_text text, p_details jsonb)
 RETURNS uuid
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp
 ```
 
-- `stripe-disconnect-bank` calls it after the Stripe call succeeds.
-- `GRANT EXECUTE ... TO service_role` only.
+- `REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon, authenticated`.
+  `GRANT EXECUTE ON FUNCTION ... TO service_role`. Without the REVOKE, any
+  signed-in user could forge an event and send an alert to another tenant.
+- SECURITY INVOKER is enough, because only service_role calls it.
+- It does the same reason checks as §4.2 step 4.
+- Dedupe: if an event with the same restaurant, integration, event, and actor
+  exists from the last 60 seconds, it returns that id and inserts nothing.
 
 ### 4.4 Bank flow
 
 - `stripe-disconnect-bank` accepts the optional fields `reason`, `reasonText`,
-  and `recordEvent` in the body.
-- When `recordEvent` is true, it calls `record_integration_event` with
-  `details = { institution_name, bank_ids }`, and returns `eventId`.
+  and `recordEvent`.
+- It checks `reason` against the list and trims `reasonText` to at most 500
+  characters. It returns 400 for a bad value. It does not rely on the CHECK.
+- When `recordEvent` is true and the Stripe call succeeds, it calls
+  `record_integration_event` with
+  `details = { institution_name, stripe_financial_connections_account_id }`.
+  It returns `eventId`.
+- If `record_integration_event` fails, the disconnect still succeeds. The
+  function logs the error and returns `eventId: null`.
 - `DisconnectBankDialog` loops over the bank ids of one institution. It sends
-  `recordEvent: true` only on the first id. Result: one event and one alert for
-  each institution disconnect.
+  `recordEvent: true` until one call returns an `eventId`. It stops the loop at
+  the first failure. Result: one event for each institution, also when the
+  first id fails.
+- The 60-second dedupe (§4.3) stops a client that sends `recordEvent` on every
+  id from making many alerts.
 
 ### 4.5 Edge function `notify-integration-disconnect`
 
-- Input: `{ eventId }`. It uses the user JWT (`verify_jwt` default).
+- Input: `{ eventId }`. `config.toml` gets
+  `[functions.notify-integration-disconnect] verify_jwt = true`.
+- CORS handling follows `notify-schedule-published`.
 - Logic lives in `_shared/integrationDisconnectAlertHandler.ts` with injected
   deps. The content lives in `_shared/integrationDisconnectAlertContent.ts`.
   `index.ts` only wires real clients.
 
 Steps:
-1. Get the caller with `auth.getUser()`.
-2. Load the event with the service client. If `actor_user_id` is not the
-   caller, return 403. Only the person who disconnected can start the alert.
-3. Claim the alert atomically:
-   `UPDATE integration_events SET alerted_at = now() WHERE id = $1 AND alerted_at IS NULL RETURNING id`.
+1. Check that `eventId` is a UUID. Else return 400.
+2. Get the caller with `auth.getUser()`.
+3. Load the event with the service client. Return the same 404 when the event
+   does not exist, when `actor_user_id` is not the caller, when `event` is not
+   `disconnect`, or when the event is older than 1 hour. This stops id probes.
+4. Claim the alert with a lease:
+   `UPDATE integration_events SET alert_claimed_at = now() WHERE id = $1 AND
+   alerted_at IS NULL AND (alert_claimed_at IS NULL OR alert_claimed_at <
+   now() - interval '5 minutes') RETURNING id`.
    If no row returns, return `{ skipped: 'already_alerted' }`.
-4. Load the owners with `bank_reauth_notice_recipients(restaurant_id, ARRAY['owner'])`.
-   Load the restaurant name and the actor name.
-5. Send one email to each owner with `sendPaced` and `sendEmailResult`.
+5. Load the owners with a new service-role-only wrapper
+   `integration_alert_recipients(p_restaurant_id)`. It calls
+   `bank_reauth_notice_recipients(p_restaurant_id, ARRAY['owner'])`. A comment
+   on both functions names the dependency.
+6. Load the restaurant name and time zone, and the actor name and email. If the
+   actor is NULL, use "A team member".
+7. Send one email to each owner with `sendPaced` and `sendEmailResult`.
+   - This is a security alert. It ignores notification preferences.
    - Subject: `<Integration> was disconnected from <restaurant>`.
-   - Body: who, when (restaurant time zone if known, else UTC), the
-     integration, and the reason label. Add the reason text if it exists.
+   - Body: who, when (restaurant time zone), the integration, the reason
+     label, and the reason text if it exists.
    - CTA: "Reconnect" to `${APP_URL}/integrations`.
-6. If `CS_SLACK_WEBHOOK_URL` is set, post one message to it:
-   restaurant name, restaurant id, integration, actor email, reason, and reason
-   text. If it is not set, log `slack_skipped` and continue.
-7. Return a summary: emails sent, emails failed, Slack status.
+8. If `CS_SLACK_WEBHOOK_URL` is set, post one message:
+   - Use `blocks` with `plain_text` fields for the restaurant name and the
+     reason text. Escape `&`, `<`, and `>` in any `mrkdwn` text. Set
+     `link_names: false`. Cap the reason text at 500 characters again.
+   - Use a 3-second `AbortController` timeout.
+   - If the variable is not set, log `slack_skipped` and continue.
+9. If at least one email or the Slack post succeeds, set `alerted_at = now()`.
+   If all sends fail, leave `alerted_at` NULL. The lease then expires, and the
+   PR 3 sweep can retry the row.
+10. Return counts only: emails sent, emails failed, Slack status. No emails.
 
-- A failed send does not clear `alerted_at`. The function logs the failure. PR 3
-  can add a retry.
-- The Slack message holds tenant data. It goes to an internal channel only. The
-  PR body names the secret but no channel URL.
-- Function secret to add: `CS_SLACK_WEBHOOK_URL`. The PR body states this.
+- Zero owners is not an error. Slack still goes out.
+- The Slack message holds the restaurant id, the actor email, and free text.
+  It goes to an internal CS channel only.
+- Function secret to add: `CS_SLACK_WEBHOOK_URL`. It stays out of
+  `config.toml`, `.env.example`, tests, and the PR body (only its name).
 
 ### 4.6 Client: shared helper and hooks
 
 - New file `src/lib/integrationDisconnect.ts`:
   - `disconnectIntegration({ restaurantId, integration, reason, reasonText })`
-    calls the RPC. It throws on error. It returns the event id.
+    calls the RPC. It throws on error. It returns the event id. A `P0002` error
+    becomes an `AlreadyDisconnectedError`.
   - `notifyIntegrationDisconnect(eventId)` invokes the edge function. It
-    catches all errors and logs them. It never throws.
+    checks the returned `error` (invoke does not throw for non-2xx), logs it,
+    and never throws. `skipped` results are not errors.
   - Shared types `IntegrationKey` and `DisconnectReason`, and the reason labels.
-- Each POS hook keeps its public function name. The function takes an optional
-  `{ reason, reasonText }` argument and calls the helper. It keeps its current
-  state resets, query invalidations, and toasts.
-- Square and Clover rethrow the error. Today they only show a toast. The dialog
-  must know about the failure so that it stays open.
-- The Revel wizard rollback (§2.1) gets a new hook function,
-  `rollbackRevelConnection`. It keeps the direct UPDATE and writes no event. A
-  failed setup is not a disconnect.
-- The unused `useToastIntegration.disconnectToast` stays as it is. It is a
-  follow-up to delete it.
+  - The helper never invalidates queries. The hook does.
+- Each POS hook keeps its public function name and takes an optional
+  `{ reason, reasonText }` argument. It calls the helper, then calls
+  `notifyIntegrationDisconnect` without `await`.
+- Toasts: the hook shows the one success toast. The hook shows no error toast
+  for a disconnect. It rethrows, and the dialog shows the error in an `Alert`.
+  `AlreadyDisconnectedError` counts as success: the hook resets its state and
+  shows "Already disconnected".
+- State and cache, per hook:
+  - Revel: invalidate `['revel-connection', restaurantId]`.
+  - Toast: invalidate `['toast-connection', restaurantId]`. Delete the
+    `throw error` inside `onError` (`useToastConnection.tsx:182-189`).
+  - Focus: invalidate `['focus-connection', restaurantId]`.
+  - Square, Clover, Shift4: keep the local `setConnection(null)` and
+    `setIsConnected(false)` after the RPC succeeds. They use no React Query.
+- The Revel wizard rollback changes. `RevelSetupWizard.tsx:26,49` calls a new
+  hook function, `rollbackRevelConnection`. It keeps the direct UPDATE,
+  invalidates `['revel-connection', restaurantId]`, writes no event, and shows
+  no toast. A failed setup is not a disconnect.
+- Delete the unused `useToastIntegration.disconnectToast`
+  (`useToastIntegration.tsx:101-128`). It is a hard DELETE with no callers and
+  no event.
 - `useStripeFinancialConnections.disconnectBank(bankId, deleteData, opts?)`
-  passes `reason`, `reasonText`, and `recordEvent`, and invokes the notice when
-  `eventId` returns.
+  with `type DisconnectBankOptions = { reason?, reasonText?, recordEvent? }`.
+  It returns `{ eventId }`. It invalidates `['connectedBanks', restaurantId]`.
+  `Banking.tsx:495` and `Accounting.tsx:230` pass the new signature through.
 
 ### 4.7 Shared dialog `DisconnectIntegrationDialog`
 
-File: `src/components/integrations/DisconnectIntegrationDialog.tsx`. Use the
-Dialog structure from CLAUDE.md, semantic tokens only, and `DialogDescription`.
+File: `src/components/integrations/DisconnectIntegrationDialog.tsx`.
 
 Props:
 
@@ -258,96 +331,187 @@ Props:
 {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  integrationName: string;        // "Revel", "Chase"
+  integrationName: string;          // "Revel", "Chase"
   restaurantName: string;
   kind: 'pos' | 'bank';
   onConfirm: (r: { reason: DisconnectReason | null; reasonText: string | null }) => Promise<void>;
-  onReconnect?: () => void;       // credentials_changed next step
-  extraConfirmContent?: ReactNode; // bank: the delete-data checkbox
+  onReconnect?: () => void;         // credentials_changed next step
+  extraConfirmContent?: ReactNode;  // bank: the delete-data checkbox
+  confirmDisabled?: boolean;        // bank: true until the second checkbox is set
+  confirmLabel?: string;            // default "Disconnect anyway"
 }
 ```
 
-Steps (a step indicator shows Impact, Reason, Confirm):
+Structure and style:
+- Use `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, and
+  `DialogDescription` with the CLAUDE.md classes: `p-0 gap-0
+  border-border/40`, `text-[17px]` title, `text-[13px]` description,
+  `text-[12px] uppercase tracking-wider` labels.
+- Layout: `max-h-[80vh] flex flex-col`. Header and footer are `shrink-0`. The
+  body is `overflow-y-auto`. Footer buttons stack below `sm`. The primary
+  button is always visible at 375x667.
+- Semantic tokens only. No amber. "Skip", "Back", and "Cancel" use the ghost
+  style. The confirm button uses `variant="destructive"`.
+
+Steps. A step indicator shows three labelled steps with `aria-current="step"`
+and the screen-reader text "Step N of 3". It does not use color alone.
 
 1. **Impact.**
-   - POS: "Sales stop on <today>. These reports stop updating:" P&L and daily
-     sales, food cost % and labor %, tip pooling and break-even.
-   - Bank: "Transactions stop on <today>." Bank balances, cash flow, and
+   - POS: "Sales stop syncing today. These reports stop updating:" P&L and
+     daily sales, food cost % and labor %, tip pooling and break-even.
+   - Bank: "Transactions stop syncing today." Bank balances, cash flow, and
      expense categorization.
    - Buttons: "Cancel" and "Continue".
-2. **Reason.** A `RadioGroup` with the six labels from the concept page. Each
-   choice shows a next-step panel:
-   - switching_pos: "Keep your history when you switch". Button "Connect new
-     POS" closes the dialog. The connection stays.
-   - credentials_changed: "Reconnect instead". Button "Update credentials" calls
-     `onReconnect`.
-   - temporary_close: "Pause the sync instead". A note says "Pause is coming
-     soon." No button.
-   - no_value: "Talk to us for 15 minutes". Button "Book a call" opens
-     `import.meta.env.VITE_CS_BOOKING_URL` in a new tab. If the env var is not
-     set, the button does not show.
-   - too_expensive: "See a smaller plan". Button "Compare plans" goes to
-     `/settings?tab=subscription` (the same target as
-     `src/components/AppHeader.tsx:269`).
-   - other: "Tell us more". A `Textarea` with a 500-character limit and a label.
-   - "Skip" moves on with `reason = null`. "Continue" moves on with the choice.
+2. **Reason.** A `RadioGroup` with six choices. Each row has `min-h-11`. The
+   next-step panel shows below the selected row:
+   - `switching_pos` "I am switching to a different POS": "Keep your history
+     when you switch." Button "Keep my connection" closes the dialog with no
+     change.
+   - `credentials_changed` "My credentials changed": "Reconnect instead."
+     Button "Update credentials" closes the dialog, then calls `onReconnect`.
+   - `temporary_close` "We are closed for a while": "Pause the sync instead.
+     Pause is coming soon." No button.
+   - `no_value` "I do not get value from it": "Talk to us for 15 minutes."
+     Button "Book a call" opens `VITE_CS_BOOKING_URL` in a new tab with
+     `rel="noopener noreferrer"`. The button does not show when the variable is
+     not set. `.env.example` gets the variable name with an empty value.
+   - `too_expensive` "It costs too much": "See a smaller plan." Button "Compare
+     plans" closes the dialog and calls `navigate('/settings?tab=subscription')`
+     (the same target as `src/components/AppHeader.tsx:269`).
+   - `other` "Other": a labelled `Textarea` with `maxLength={500}` and a
+     visible "N/500" counter.
+   - Buttons: "Back", "Skip" (moves on with `reason = null`), and "Continue".
+     Continue works for every choice.
 3. **Confirm.** A summary: integration, restaurant, reason. The
-   `extraConfirmContent` slot shows here. Buttons: "Back" and a small
-   destructive "Disconnect anyway".
-   - While the call runs, the buttons are disabled and the dialog cannot close.
-   - On error, the dialog stays open and shows the error text in an `Alert`.
-   - On success, it closes and resets its state.
+   `extraConfirmContent` slot shows here. Buttons: "Back" (returns to step 2
+   and keeps the choice) and the confirm button.
+   - While the call runs, the confirm button shows a `Loader2` spinner and
+     "Disconnecting…". All buttons are disabled. A `useRef` in-flight flag
+     blocks a second call before React renders again.
+   - While the call runs, the dialog does not close. `onOpenChange(false)` is
+     ignored, and `onEscapeKeyDown` and `onInteractOutside` call
+     `preventDefault`.
+   - On error, the dialog stays open. It shows the error text in an `Alert`
+     with `role="alert"`.
+   - On success, it closes. Each close resets the step, the reason, the text,
+     and the error.
 
-Accessibility: each radio has a label. The step indicator has
-`aria-current="step"`. Focus moves to the step heading on each step change.
+Accessibility: each radio has a label. Each step heading has `tabIndex={-1}`.
+Focus moves to the heading on each step change.
 
 ### 4.8 `IntegrationCard` and `Integrations` page
 
-- The Disconnect button opens the dialog. It does not call the hook directly.
-- Show the button only when `selectedRestaurant.role` is `owner` or `manager`.
-  This matches RLS and the RPC. Other roles see the "Connected" badge only.
-- `onReconnect` closes the dialog and calls the current `handleConnect`.
-- `restaurantName` comes from `useRestaurantContext`.
+- For the six POS keys, the Disconnect button opens the dialog. Sling keeps its
+  current direct call (§4.0).
+- The card reads `selectedRestaurant` from `useRestaurantContext()`. It does
+  not take a new prop.
+- The role is the legacy text column `selectedRestaurant.role`
+  (`src/hooks/useRestaurants.tsx:105`), the same value that `user_has_role`
+  checks. A custom role record lives in `roleRecord` and is not used here.
+- Show the button only when the role is `owner` or `manager`. While the context
+  loads, `role` is `undefined`, so the button does not show and does not
+  flash.
+- Other roles see the "Connected" badge and the text "Ask an owner or manager
+  to disconnect." The role gate does not hide "Configure".
+- When the dialog opens, the card stores `restaurantId` and the restaurant
+  name. `onConfirm` uses the stored id, not the context at confirm time. A
+  restaurant switch while the dialog is open cannot disconnect the wrong
+  tenant.
+- `onReconnect` calls the current `handleConnect`.
 
 ### 4.9 Bank UI
 
-- `DisconnectBankDialog` keeps its file and its props. Inside, it renders
-  `DisconnectIntegrationDialog` with `kind='bank'`.
-- The delete-data checkbox and its second confirmation move into
-  `extraConfirmContent`.
-- Its loop sends `recordEvent: true` and the reason only on the first id.
+- `DisconnectBankDialog` keeps its file. It renders `DisconnectIntegrationDialog`
+  with `kind='bank'`.
+- It drops `AlertDialogTrigger`, `children`, and the uncontrolled mode. The
+  only caller, `BankConnectionCard.tsx:377-386`, is controlled.
+- The `onDisconnect` prop type changes to
+  `(bankId: string, deleteData: boolean, opts?: DisconnectBankOptions) => Promise<{ eventId: string | null }>`.
+- The delete-data checkbox and its second confirmation checkbox move into
+  `extraConfirmContent`. `confirmDisabled` gets `!canProceed`.
+  `confirmLabel` is "Disconnect and delete data" when `deleteData` is set.
+- The wrapper resets `deleteData` and `confirmDelete` on each close.
+- `restaurantName` comes from `selectedRestaurant.restaurant.name`.
 
 ## 5. Tests
 
-- **pgTAP** `supabase/tests/integration_events.sql`:
+- **pgTAP** `supabase/tests/integration_events.sql`. Role tests use
+  `SET LOCAL ROLE authenticated` plus `request.jwt.claims`. Service tests use
+  `SET LOCAL ROLE service_role`. The default `postgres` role hides grant bugs.
   - The table, the columns, and the CHECK constraints exist.
-  - RLS: an owner and a manager can read rows. A chef and an outside user read 0
-    rows. `authenticated` cannot INSERT, UPDATE, or DELETE.
+  - `table_privs_are`: anon has none, authenticated has SELECT only.
+  - RLS: an owner and a manager read rows. A chef, staff, kiosk, a
+    collaborator, and an outside user read 0 rows. An owner of restaurant A
+    reads 0 rows of restaurant B.
+  - `function_privs_are`: anon cannot execute `disconnect_integration`.
+    anon and authenticated cannot execute `record_integration_event`.
+    service_role can.
+  - Both functions have `search_path` in `proconfig`.
   - The RPC as an owner:
-    - Revel: `is_active` changes to false, and one event row has the reason.
-    - Square: the row is deleted, and the event stays.
-  - The RPC as a chef raises `42501`.
-  - With no active connection, the RPC raises `P0002`.
-  - `p_integration = 'bank'` raises `22023`. An unknown value also fails.
-  - `record_integration_event` is not executable by `authenticated`.
+    - Revel, Toast, Focus: `is_active` changes to false, and one event row has
+      the reason and `actor_user_id = auth.uid()`.
+    - Square: the row and its `square_locations` rows are deleted. The event
+      row stays.
+    - Shift4 with two rows: both rows are deleted, and `details.rows_affected`
+      is 2.
+  - The RPC as a manager works. As a chef, staff, kiosk, or collaborator it
+    raises `42501`. With no `auth.uid()` it raises `42501`.
+  - Cross-tenant: an owner of A calls it for B and gets `42501`. B's row does
+    not change.
+  - A second disconnect raises `P0002`.
+  - `bank` and an unknown integration raise `22023`. An invalid reason raises
+    `22023`. `''` becomes NULL. A blank reason text becomes NULL, and the text
+    is trimmed. 501 characters raises `22023`.
+  - `record_integration_event` as service_role inserts a row. A second call
+    within 60 seconds returns the same id.
   - Each test creates its own restaurant row and users.
 - **Vitest:**
-  - `tests/unit/integrationDisconnect.test.ts`: the helper RPC args, the error
-    pass-through, and the notice that never throws.
-  - One hook test file for each changed hook. Each checks the RPC call and that
-    the old direct `.update` or `.delete` is gone.
-  - `tests/unit/integrationDisconnectAlertHandler.test.ts`: the actor check, the
-    claim skip, one email to each owner, Slack on and off, and the escaped HTML.
-  - `tests/unit/DisconnectIntegrationDialog.test.tsx`: the steps, each
-    next-step panel, skip, the 500-character limit, the error state, and the
-    double-click guard.
+  - `tests/unit/integrationDisconnect.test.ts`: the RPC args, the error
+    pass-through, the `AlreadyDisconnectedError` mapping, and the notice that
+    checks `error` and never throws.
+  - New hook test files: `useRevelConnection.test.tsx`,
+    `useSquareIntegration.test.tsx`, `useCloverIntegration.test.tsx`. Each
+    checks the RPC call, the state reset, the one success toast, and the
+    rethrow.
+  - Tests to rewrite: `useToastConnection.test.tsx:294-340`,
+    `useShift4Integration.test.tsx:271-356`, and the disconnect cases in
+    `useFocusConnection.test.tsx`. They assert the old direct `.update` and
+    `.delete`.
+  - The Revel wizard rollback calls `rollbackRevelConnection` and never calls
+    the RPC.
+  - `useStripeFinancialConnections`: the options pass through, and `eventId`
+    triggers the notice.
+  - `tests/unit/integrationDisconnectAlertHandler.test.ts`: the UUID check,
+    the same 404 for a missing event and a wrong actor, the 1-hour window, the
+    lease claim and skip, one email to each owner, zero owners, the
+    null-actor fallback, Slack on and off, Slack escape with `<!channel>` and
+    `<script>` input, the Slack timeout, and `alerted_at` stays NULL when all
+    sends fail.
+  - `tests/unit/DisconnectIntegrationDialog.test.tsx`: the steps, Back keeps the
+    choice, each next-step panel, the booking button hidden without the
+    variable, skip, the 500-character limit, the error `Alert`, the double-click
+    guard, no close while pending, reset on close, and `confirmDisabled`. Check
+    that the test setup mocks `ResizeObserver` and `scrollIntoView`.
+  - `IntegrationCard` role gate: owner and manager see Disconnect. Chef and
+    `collaborator_*` do not. An undefined role does not show it.
+  - `DisconnectBankDialog`: the loop sends `recordEvent` until it gets an
+    `eventId`, and stops at the first failure.
 - **E2E** `tests/e2e/integration-disconnect.spec.ts`:
-  - Seed a Revel connection for a new test restaurant.
-  - Open `/integrations`, click Disconnect, and go through the three steps with
-    the reason "other".
-  - Check that the card shows "Connect". Check that one `integration_events`
-    row exists with the reason.
-  - The alert function call can fail locally. The test does not depend on it.
+  - New helper `seedRevelConnection(page, restaurantId)` in
+    `tests/helpers/e2e-supabase.ts`. It inserts through `window.__supabase` as
+    the signed-in owner: `revel_instance: 'e2e-test'`, `establishment_id: ''`,
+    `is_active: true`. The key columns are nullable.
+  - Intercept `notify-integration-disconnect` with `page.route` and return
+    200.
+  - Owner path: open `/integrations`, wait for the Disconnect button, and go
+    through the three steps with the reason "other". Check that the card shows
+    "Connect". Read the event row through `window.__supabase` and check the
+    reason.
+  - Chef path: `setUserRole(page, 'chef')`. Check that no Disconnect button
+    shows.
+  - Mobile: run the owner path at 375x667. The confirm button is reachable.
+  - Use `getByRole('dialog')`, `getByRole('radio', { name })`, and
+    `getByLabel`. Use no fixed delays.
 
 ## 6. Risks and open points
 
@@ -358,8 +522,13 @@ Accessibility: each radio has a label. The step indicator has
 - **Booking URL.** No booking link exists in the repo. The "Book a call" button
   needs `VITE_CS_BOOKING_URL`. Without it, the button does not show.
 - **Slack.** No Slack webhook secret exists. The alert skips Slack until
-  `CS_SLACK_WEBHOOK_URL` is set in the function secrets.
-- **Lost alert.** If the browser closes after the RPC, no alert goes out. The
-  row keeps `alerted_at IS NULL` for the PR 3 sweep.
-- **Public repo.** The docs, tests, and PR body contain no tenant ids, names, or
-  amounts.
+  `CS_SLACK_WEBHOOK_URL` is set in the function secrets. The message sends
+  tenant data to Slack. CS must accept this for an internal channel.
+- **Lost alert.** If the browser closes after the RPC, no alert goes out. If
+  all sends fail, `alerted_at` stays NULL. PR 3 adds a sweep for rows with
+  `alerted_at IS NULL`.
+- **Shift4 behavior change.** Disconnect now deletes all Shift4 rows for the
+  restaurant, not one row by id (§4.2 step 6).
+- **Sling.** Sling keeps its old path and records no event (§4.0).
+- **Public repo.** The docs, tests, and PR body contain no tenant ids, names,
+  emails, or amounts.

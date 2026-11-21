@@ -14,6 +14,8 @@ const CURATED_MESSAGES: Record<string, string> = {
   '413': 'This file is too large to upload.',
   '415': "That file type isn't supported.",
   '409': 'A file with that name already exists.',
+  empty:
+    'This file is empty or your browser could not read it. Try again, or use a different browser.',
 };
 
 function generic(code: string): string {
@@ -33,12 +35,18 @@ export function describeStorageError(error: unknown): StorageErrorInfo {
   ) {
     const e = error as { status?: unknown; statusCode?: unknown; message?: unknown };
     const rawStatus = e.status ?? e.statusCode;
-    const code = rawStatus === undefined || rawStatus === null ? 'unknown' : String(rawStatus);
+    const rawCode =
+      typeof rawStatus === 'string' || typeof rawStatus === 'number' ? String(rawStatus) : 'unknown';
+    let code = rawCode;
     const rawMessage = typeof e.message === 'string' ? e.message : code;
+    // Safari can send an empty body. Storage then answers 400 "No content provided".
+    if (code === '400' && rawMessage.toLowerCase().includes('no content provided')) {
+      code = 'empty';
+    }
     return {
       code,
       userMessage: CURATED_MESSAGES[code] ?? generic(code),
-      logLine: oneLine(`[${code}] ${rawMessage}`),
+      logLine: oneLine(`[${rawCode}] ${rawMessage}`),
     };
   }
 

@@ -318,7 +318,10 @@ describe('useReviewPages', () => {
 
     expect(mockSupabase.storage.from).toHaveBeenCalledWith('review-page-logos');
     expect(path).toMatch(/^rest-1\/page-1\/[0-9a-f-]{36}\.png$/);
-    expect(upload).toHaveBeenCalledWith(path, file, { contentType: 'image/png', upsert: false });
+    expect(upload).toHaveBeenCalledWith(path, expect.any(ArrayBuffer), {
+      contentType: 'image/png',
+      upsert: false,
+    });
     expect(update).toHaveBeenCalledWith({ logo_path: path });
   });
 
@@ -335,7 +338,7 @@ describe('useReviewPages', () => {
     mockSupabase.from.mockReturnValue(stub);
 
     await expect(
-      result.current.uploadLogo('page-1', new File([''], 'a.png', { type: 'image/png' }))
+      result.current.uploadLogo('page-1', new File([new Uint8Array([1, 2, 3])], 'a.png', { type: 'image/png' }))
     ).rejects.toThrow('storage full');
     expect(update).not.toHaveBeenCalled();
   });
@@ -356,7 +359,7 @@ describe('useReviewPages', () => {
 
     mockSupabase.from.mockReturnValue(stub);
     await expect(
-      result.current.uploadLogo('page-1', new File([''], 'a.png', { type: 'image/png' }))
+      result.current.uploadLogo('page-1', new File([new Uint8Array([1, 2, 3])], 'a.png', { type: 'image/png' }))
     ).rejects.toThrow(/no longer available/);
 
     expect(remove).toHaveBeenCalledWith([upload.mock.calls[0][0]]);

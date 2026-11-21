@@ -50,6 +50,7 @@ import { formatInventoryLevel } from '@/lib/inventoryDisplay';
 import { exportToCSV, generateCSVFilename } from '@/utils/csvExport';
 import { generateTablePDF } from '@/utils/pdfExport';
 import { buildQuickInventoryAudit, type QuickEntrySource } from '@/utils/quickInventoryAudit';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -749,9 +750,7 @@ export const Inventory: React.FC = () => {
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `${selectedRestaurant?.restaurant_id}/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('product-images')
-      .upload(filePath, imageBlob);
+    const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('product-images'), filePath, imageBlob);
 
     if (uploadError) {
       console.error(describeStorageError(uploadError).logLine);

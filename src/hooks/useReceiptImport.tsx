@@ -6,6 +6,7 @@ import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { calculateImportedTotal, calculateUnitPrice, resolveLineItemBarcode, resolveBarcodeWriteBack } from '@/utils/receiptImportUtils';
 import { sha256Hex } from '@/lib/fileHash';
 import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
@@ -222,9 +223,7 @@ export const useReceiptImport = () => {
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/${finalFileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('receipt-images')
-        .upload(filePath, file);
+      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('receipt-images'), filePath, file);
 
       if (uploadError) {
         throw uploadError;

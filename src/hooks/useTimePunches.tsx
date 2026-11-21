@@ -5,6 +5,7 @@ import { TimePunch, PunchStatus, EmployeeTip } from '@/types/timeTracking';
 import { useToast } from '@/hooks/use-toast';
 import { TimePunchInsert, EmployeeTipInsert } from '@/utils/timePunchImport';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 // Stable reference for the "no data yet" case. `data || []` would otherwise
 // allocate a fresh empty array on every render while the query is loading,
@@ -201,12 +202,14 @@ export const useCreateTimePunch = () => {
           const filename = `punch-${timestamp}.jpg`;
           const filePath = `${punch.restaurant_id}/${punch.employee_id}/${filename}`;
 
-          uploadPromise = supabase.storage
-            .from('time-clock-photos')
-            .upload(filePath, punch.photoBlob, {
-              contentType: 'image/jpeg',
-              upsert: false,
-            });
+          uploadPromise = uploadBlobBytes(
+            supabase.storage.from('time-clock-photos'),
+            filePath,
+            punch.photoBlob,
+            { contentType: 'image/jpeg', upsert: false },
+            // A timeout during the file read stops the upload, so no orphan photo stays in Storage.
+            controller.signal,
+          );
 
           const timeoutPromise = new Promise<never>((_, reject) => {
             controller.signal.addEventListener('abort', () => {

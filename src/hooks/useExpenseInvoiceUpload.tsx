@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 import type { Json } from '@/integrations/supabase/types';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 export interface ExpenseInvoiceUpload {
   id: string;
@@ -76,9 +77,7 @@ export const useExpenseInvoiceUpload = () => {
       const finalFileName = `${Date.now()}-${sanitizedBaseName}${fileExt ? `.${fileExt}` : ''}`;
       const filePath = `${selectedRestaurant.restaurant_id}/expense-invoices/${finalFileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('receipt-images')
-        .upload(filePath, file);
+      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('receipt-images'), filePath, file);
 
       if (uploadError) {
         throw uploadError;

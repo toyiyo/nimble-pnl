@@ -1,0 +1,120 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { describe, it, expect, vi } from 'vitest';
+import { EmptyUploadError, uploadBlobBytes } from '@/lib/storageUpload';
+import { describeStorageError } from '@/lib/storageError';
+
+function makeBucket(result: unknown = { data: { path: 'a/b.png' }, error: null }) {
+  return { upload: vi.fn().mockResolvedValue(result) };
+}
+
+describe('uploadBlobBytes', () => {
+  it('sends an ArrayBuffer with the same bytes', async () => {
+    const bucket = makeBucket();
+    const blob = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/png' });
+    await uploadBlobBytes(bucket as never, 'a/b.png', blob);
+    const arg = bucket.upload.mock.calls[0][1];
+    expect(Object.prototype.toString.call(arg)).toBe('[object ArrayBuffer]');
+    expect(arg.byteLength).toBe(4);
+    expect(Array.from(new Uint8Array(arg))).toEqual([1, 2, 3, 4]);
+  });
+
+  it('sets contentType from blob.type', async () => {
+    const bucket = makeBucket();
+    await uploadBlobBytes(bucket as never, 'p', new Blob(['x'], { type: 'image/jpeg' }));
+    expect(bucket.upload.mock.calls[0][2]).toMatchObject({ contentType: 'image/jpeg' });
+  });
+
+  it('keeps an explicit contentType and other options', async () => {
+    const bucket = makeBucket();
+    await uploadBlobBytes(bucket as never, 'p', new Blob(['x'], { type: 'image/jpeg' }), {
+      contentType: 'application/pdf',
+      upsert: false,
+      cacheControl: '60',
+    });
+    expect(bucket.upload.mock.calls[0][2]).toEqual({
+      contentType: 'application/pdf',
+      upsert: false,
+      cacheControl: '60',
+    });
+  });
+
+  it('falls back to application/octet-stream for empty types', async () => {
+    const bucket = makeBucket();
+    await uploadBlobBytes(bucket as never, 'p', new Blob(['x']), { contentType: '' });
+    expect(bucket.upload.mock.calls[0][2]).toMatchObject({
+      contentType: 'application/octet-stream',
+    });
+  });
+
+  it('returns EmptyUploadError for a 0-byte blob and does not upload', async () => {
+    const bucket = makeBucket();
+    const res = await uploadBlobBytes(bucket as never, 'p', new Blob([], { type: 'image/png' }));
+    expect(res.data).toBeNull();
+    expect(res.error).toBeInstanceOf(EmptyUploadError);
+    expect(bucket.upload).not.toHaveBeenCalled();
+  });
+
+  it('returns EmptyUploadError when arrayBuffer() rejects', async () => {
+    const bucket = makeBucket();
+    const blob = new Blob(['x']);
+    blob.arrayBuffer = () => Promise.reject(new Error('NotReadableError'));
+    const res = await uploadBlobBytes(bucket as never, 'p', blob);
+    expect(res.data).toBeNull();
+    expect(res.error).toBeInstanceOf(EmptyUploadError);
+    expect(bucket.upload).not.toHaveBeenCalled();
+  });
+
+  it('returns the upload result unchanged', async () => {
+    const result = { data: null, error: new Error('boom') };
+    const bucket = makeBucket(result);
+    const res = await uploadBlobBytes(bucket as never, 'p', new Blob(['x']));
+    expect(res).toBe(result);
+  });
+
+  it('does not upload when the signal aborts during the read', async () => {
+    const bucket = makeBucket();
+    const controller = new AbortController();
+    const blob = new Blob(['x'], { type: 'image/jpeg' });
+    const realRead = blob.arrayBuffer.bind(blob);
+    blob.arrayBuffer = async () => {
+      const bytes = await realRead();
+      controller.abort();
+      return bytes;
+    };
+    const result = await uploadBlobBytes(bucket as never, 'p', blob, undefined, controller.signal);
+    expect(bucket.upload).not.toHaveBeenCalled();
+    expect(result.data).toBeNull();
+    expect(result.error?.name).toBe('AbortError');
+  });
+
+  it('uploads when the signal is not aborted', async () => {
+    const bucket = makeBucket();
+    const controller = new AbortController();
+    await uploadBlobBytes(bucket as never, 'p', new Blob(['x']), undefined, controller.signal);
+    expect(bucket.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps EmptyUploadError to code empty in describeStorageError', () => {
+    expect(describeStorageError(new EmptyUploadError('empty')).code).toBe('empty');
+  });
+});
+
+function listSourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) return listSourceFiles(full);
+    return /\.(ts|tsx)$/.test(name) ? [full] : [];
+  });
+}
+
+describe('storage upload guard', () => {
+  it('has no direct storage .upload() call outside src/lib/storageUpload.ts', () => {
+    const srcDir = join(process.cwd(), 'src');
+    const offenders = listSourceFiles(srcDir)
+      .filter((file) => relative(srcDir, file) !== join('lib', 'storageUpload.ts'))
+      .filter((file) => /\.storage\s*\.from\([^)]*\)\s*\.upload\(/.test(readFileSync(file, 'utf8')))
+      .map((file) => relative(srcDir, file));
+    expect(offenders).toEqual([]);
+  });
+});

@@ -41,6 +41,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
 import { convertUnits } from '@/lib/enhancedUnitConversion';
 import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
+import { uploadBlobBytes } from '@/lib/storageUpload';
 
 const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
@@ -292,9 +293,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
       const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${restaurantId}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(filePath, file);
+      const { error: uploadError } = await uploadBlobBytes(supabase.storage.from('product-images'), filePath, file);
 
       if (uploadError) throw uploadError;
 

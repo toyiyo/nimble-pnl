@@ -11,6 +11,12 @@ function unknownError(message: string) {
 }
 
 describe('describeStorageError', () => {
+  it('uses code unknown when status is not a string or a number', () => {
+    const info = describeStorageError({ status: { nested: 1 }, message: 'odd' });
+    expect(info.code).toBe('unknown');
+    expect(info.logLine).toBe('[unknown] odd');
+  });
+
   it('413 payload-too-large → curated size message, code 413', () => {
     const info = describeStorageError(apiError(413, 'The object exceeded the maximum allowed size'));
     expect(info.code).toBe('413');
@@ -37,6 +43,29 @@ describe('describeStorageError', () => {
     expect(info.userMessage).not.toContain('row-level');
     expect(info.userMessage).toContain('400');
     expect(info.logLine).toContain(rls);
+  });
+
+  it('status "empty" → curated empty-file message', () => {
+    const info = describeStorageError({ status: 'empty', message: 'x' });
+    expect(info.code).toBe('empty');
+    expect(info.userMessage).toBe(
+      'This file is empty or your browser could not read it. Try again, or use a different browser.',
+    );
+  });
+
+  it('400 "No content provided" → code empty, raw text kept in logLine', () => {
+    const info = describeStorageError(apiError(400, 'No content provided'));
+    expect(info.code).toBe('empty');
+    expect(info.userMessage).toBe(
+      'This file is empty or your browser could not read it. Try again, or use a different browser.',
+    );
+    expect(info.logLine).toBe('[400] No content provided');
+  });
+
+  it('400 with a different message keeps the generic text and code 400', () => {
+    const info = describeStorageError(apiError(400, 'new row violates row-level security policy'));
+    expect(info.code).toBe('400');
+    expect(info.userMessage).toContain('400');
   });
 
   it('5xx → generic message, code preserved', () => {

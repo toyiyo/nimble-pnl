@@ -65,7 +65,7 @@ const mockPhotosWithUrl: AssetPhotoWithUrl[] = [{
 
 // Mock File
 const createMockFile = (name: string = 'test.jpg', size: number = 1024, type: string = 'image/jpeg'): File => {
-  const file = new File([''], name, { type });
+  const file = new File([new Uint8Array([1, 2, 3, 4])], name, { type });
   Object.defineProperty(file, 'size', { value: size });
   return file;
 };
@@ -195,7 +195,8 @@ describe('useAssetPhotos Hook', () => {
       expect(mockSupabase.storage.from).toHaveBeenCalledWith('asset-images');
       expect(mockStorageChain.upload).toHaveBeenCalledWith(
         expect.stringMatching(/^rest-123\/assets\/asset-1\/\d+-test\.jpg$/),
-        mockFile
+        expect.any(ArrayBuffer),
+        { contentType: 'image/jpeg' }
       );
       expect(mockSupabase.from).toHaveBeenCalledWith('asset_photos');
       expect(mockFromChain.insert).toHaveBeenCalledWith({

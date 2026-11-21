@@ -11,6 +11,12 @@ function unknownError(message: string) {
 }
 
 describe('describeStorageError', () => {
+  it('uses code unknown when status is not a string or a number', () => {
+    const info = describeStorageError({ status: { nested: 1 }, message: 'odd' });
+    expect(info.code).toBe('unknown');
+    expect(info.logLine).toBe('[unknown] odd');
+  });
+
   it('413 payload-too-large → curated size message, code 413', () => {
     const info = describeStorageError(apiError(413, 'The object exceeded the maximum allowed size'));
     expect(info.code).toBe('413');

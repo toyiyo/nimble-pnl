@@ -35,7 +35,8 @@ export function describeStorageError(error: unknown): StorageErrorInfo {
   ) {
     const e = error as { status?: unknown; statusCode?: unknown; message?: unknown };
     const rawStatus = e.status ?? e.statusCode;
-    const rawCode = rawStatus === undefined || rawStatus === null ? 'unknown' : String(rawStatus);
+    const rawCode =
+      typeof rawStatus === 'string' || typeof rawStatus === 'number' ? String(rawStatus) : 'unknown';
     let code = rawCode;
     const rawMessage = typeof e.message === 'string' ? e.message : code;
     // Safari can send an empty body. Storage then answers 400 "No content provided".

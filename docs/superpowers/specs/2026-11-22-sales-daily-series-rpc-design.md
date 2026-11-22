@@ -7,9 +7,9 @@ Stacks on PR 879 (`feature/sales-period-comparison`).
 The POS Sales trends panel runs `useSalesTrends` two times. The second call
 gets the prior period (`src/components/pos-sales/SalesTrendsPanel.tsx:81-90`).
 Each call runs the full `get_sales_trends` RPC
-(`src/hooks/useSalesTrends.ts:43`). That RPC builds five aggregates:
+(`src/hooks/useSalesTrends.ts:44`). That RPC builds five aggregates:
 `pos_systems`, `by_day`, `by_hour`, `by_weekday`, and `by_product`
-(`supabase/migrations/20260720010000_get_sales_trends.sql:99-177`).
+(`supabase/migrations/20260720010000_get_sales_trends.sql:95-176`).
 
 The panel reads only `by_day` and `pos_systems` from the prior result
 (`SalesTrendsPanel.tsx:108-119`). `computeKpis` also reads `by_hour`
@@ -31,7 +31,7 @@ p_end_date DATE) RETURNS JSONB`.
   client then reuses the existing `parseDayRow` guard.
 - Copy the revenue predicate exactly: `restaurant_id = p_restaurant_id`,
   `parent_sale_id IS NULL`, `adjustment_type IS NULL`, `item_type = 'sale'`,
-  `sale_date` between the two dates (`20260720010000_get_sales_trends.sql:84-95`).
+  `sale_date` between the two dates (`20260720010000_get_sales_trends.sql:84-93`).
 - Copy the security model: `LANGUAGE plpgsql STABLE SECURITY DEFINER
   SET search_path = public`, and the `user_restaurants` membership check on
   `auth.uid()` that raises `Access denied to restaurant`
@@ -45,9 +45,21 @@ p_end_date DATE) RETURNS JSONB`.
   available" state (`priorFailed`, `SalesTrendsPanel.tsx:128`).
 - `p_end_date < p_start_date` returns empty arrays. It does not raise.
 - `REVOKE ALL ... FROM PUBLIC, anon` and `GRANT EXECUTE ... TO authenticated`.
-- The query uses `idx_unified_sales_restaurant_date`
-  (`supabase/migrations/20250925125415_2d2eb8de-f634-4fac-b444-1683592a7b2a.sql:53`).
-  The function does one grouped scan, not five.
+- The range scan can use `idx_unified_sales_restaurant_keyset`
+  `(restaurant_id, sale_date, created_at, id)`. The old
+  `idx_unified_sales_restaurant_date` is deleted
+  (`supabase/migrations/20260720120001_bulk_deduction_keyset_batching.sql:158-160`).
+  A pgTAP `has_index` check pins the index. The function does one grouped
+  scan, not five.
+- Order of checks: the membership check runs first. The NULL-date check and
+  the cap check run after it. A non-member learns nothing about the arguments.
+- Role scope: any member of the restaurant can call the function, the same as
+  `get_sales_trends`. The check does not read `role`
+  (`20260720010000_get_sales_trends.sql:52-58`). This is intended.
+- Cap edge case: `get_sales_trends` has no cap. A current range of more than
+  731 days gives a prior range of the same length, and the prior call raises
+  `22023`. The panel then shows "comparison not available". The hook does not
+  retry a `22023` error, because a retry cannot succeed.
 
 ## Client
 
@@ -55,6 +67,8 @@ p_end_date DATE) RETURNS JSONB`.
   `by_day`) and `parseSalesDailySeries`. Add `toTrendsData(series)`. It fills
   the three other arrays with `[]`, so `filterByPos` and `computeKpis` work
   with no change.
+- `src/integrations/supabase/types.ts` and `src/types/supabase.ts`: add the
+  new function to the generated types.
 - `src/hooks/useSalesDailySeries.ts`: React Query hook. Query key
   `['sales-daily-series', restaurantId, start, end]`. `staleTime: 60_000`,
   `retry: 1`, `refetchOnWindowFocus: true`. It runs only when `enabled`,
@@ -68,7 +82,9 @@ p_end_date DATE) RETURNS JSONB`.
   `pos_systems` equal the `get_sales_trends` result for the same seed and
   range. Exclusion rows do not count. A non-member gets `Access denied`.
   Rows of a second restaurant do not appear. An empty range returns empty
-  arrays. A NULL date and a range over 731 days raise `22023`.
+  arrays. A NULL date and a range over 731 days raise `22023`. Exactly 731
+  days passes. A `staff` member can call it. A call with no `auth.uid()`
+  raises `Access denied`. `anon` has no EXECUTE grant.
 - Vitest: parser, `toTrendsData`, and the hook (RPC name and arguments,
   `enabled` gate, error path).
 

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -27,9 +27,14 @@ export function usePaymentSetup(restaurantId: string | null) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const accountQueryKey = useMemo(
+    () => ['stripe-connected-account', restaurantId],
+    [restaurantId],
+  );
+
   const refetch = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', restaurantId] }),
-    [queryClient, restaurantId],
+    () => queryClient.invalidateQueries({ queryKey: accountQueryKey }),
+    [queryClient, accountQueryKey],
   );
 
   const checkStatus = useCallback(async () => {
@@ -41,11 +46,8 @@ export function usePaymentSetup(restaurantId: string | null) {
         body: { restaurantId, statusOnly: true },
       });
       if (invokeError) throw invokeError;
-      await queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', restaurantId] });
-      const fresh = queryClient.getQueryData<StripeConnectedAccount | null>([
-        'stripe-connected-account',
-        restaurantId,
-      ]);
+      await refetch();
+      const fresh = queryClient.getQueryData<StripeConnectedAccount | null>(accountQueryKey);
       const current = fresh === undefined ? stateRef.current : getPaymentSetupState(fresh);
       if (current === 'ready') {
         toast({ title: 'Payments are on' });
@@ -62,7 +64,7 @@ export function usePaymentSetup(restaurantId: string | null) {
       checkingRef.current = false;
       setIsChecking(false);
     }
-  }, [restaurantId, queryClient, toast]);
+  }, [restaurantId, queryClient, accountQueryKey, refetch, toast]);
 
   const openSetup = useCallback(async () => {
     if (!restaurantId || startingRef.current) return;

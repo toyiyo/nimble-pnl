@@ -57,6 +57,18 @@ export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSet
 
   const titleId = 'payment-setup-title';
 
+  const startButton = (label: string) => (
+    <Button
+      className={primaryButton}
+      onClick={() => void openSetup()}
+      disabled={isStarting}
+      aria-busy={isStarting}
+    >
+      {isStarting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />}
+      {label}
+    </Button>
+  );
+
   return (
     <section
       role="region"
@@ -83,28 +95,10 @@ export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSet
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {canManage && state === 'not_started' && (
-          <Button
-            className={primaryButton}
-            onClick={() => void openSetup()}
-            disabled={isStarting}
-            aria-busy={isStarting}
-          >
-            {isStarting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />}
-            Turn on payments
-          </Button>
-        )}
+        {canManage && state === 'not_started' && startButton('Turn on payments')}
         {canManage && state === 'pending' && (
           <>
-            <Button
-              className={primaryButton}
-              onClick={() => void openSetup()}
-              disabled={isStarting}
-              aria-busy={isStarting}
-            >
-              {isStarting && <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />}
-              Continue setup
-            </Button>
+            {startButton('Continue setup')}
             <Button
               variant="ghost"
               className={secondaryButton}

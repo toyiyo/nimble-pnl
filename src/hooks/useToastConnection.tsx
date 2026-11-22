@@ -4,12 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
 
-import {
-  disconnectIntegration,
-  notifyIntegrationDisconnect,
-  AlreadyDisconnectedError,
-  type DisconnectOptions,
-} from '@/lib/integrationDisconnect';
+import type { DisconnectOptions } from '@/lib/integrationDisconnect';
+import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
 
 // Use proper type from generated schema (or define manually to match actual DB)
 type ToastConnection = {
@@ -170,24 +166,17 @@ export function useToastConnection(restaurantId?: string | null) {
 
   // Real disconnect: writes an event through the RPC and sends the alert.
   async function disconnectToast(restaurantId: string, opts?: DisconnectOptions): Promise<void> {
-    try {
-      const eventId = await disconnectIntegration({
-        restaurantId,
-        integration: 'toast',
-        reason: opts?.reason ?? null,
-        reasonText: opts?.reasonText ?? null,
-      });
-      queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
-      toast({ title: 'Disconnected', description: 'Toast connection has been disabled' });
-      void notifyIntegrationDisconnect(eventId);
-    } catch (err) {
-      if (err instanceof AlreadyDisconnectedError) {
-        void queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
-        toast({ title: 'Already disconnected', description: 'Toast connection was already disabled' });
-        return;
-      }
-      throw err;
-    }
+    await runIntegrationDisconnect({
+      restaurantId: restaurantId,
+      integration: 'toast',
+      opts,
+      onDisconnected: () => void queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] }),
+      toast,
+      messages: {
+        success: 'Toast connection has been disabled',
+        already: 'Toast connection was already disabled',
+      },
+    });
   }
 
   async function triggerManualSync(

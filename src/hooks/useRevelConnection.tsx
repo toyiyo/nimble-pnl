@@ -1,12 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import {
-  disconnectIntegration,
-  notifyIntegrationDisconnect,
-  AlreadyDisconnectedError,
-  type DisconnectOptions,
-} from '@/lib/integrationDisconnect';
+import type { DisconnectOptions } from '@/lib/integrationDisconnect';
+import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
 
 export type RevelConnection = {
   id: string;
@@ -107,24 +103,17 @@ export function useRevelConnection(restaurantId?: string | null) {
 
   // Real disconnect: writes an event through the RPC and sends the alert.
   async function disconnectRevel(id: string, opts?: DisconnectOptions): Promise<void> {
-    try {
-      const eventId = await disconnectIntegration({
-        restaurantId: id,
-        integration: 'revel',
-        reason: opts?.reason ?? null,
-        reasonText: opts?.reasonText ?? null,
-      });
-      queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
-      toast({ title: 'Disconnected', description: 'Revel connection has been disabled' });
-      void notifyIntegrationDisconnect(eventId);
-    } catch (err) {
-      if (err instanceof AlreadyDisconnectedError) {
-        void queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
-        toast({ title: 'Already disconnected', description: 'Revel connection was already disabled' });
-        return;
-      }
-      throw err;
-    }
+    await runIntegrationDisconnect({
+      restaurantId: id,
+      integration: 'revel',
+      opts,
+      onDisconnected: () => void queryClient.invalidateQueries({ queryKey: ['revel-connection', id] }),
+      toast,
+      messages: {
+        success: 'Revel connection has been disabled',
+        already: 'Revel connection was already disabled',
+      },
+    });
   }
 
   // Setup rollback: a failed setup is not a disconnect. No event, no toast.

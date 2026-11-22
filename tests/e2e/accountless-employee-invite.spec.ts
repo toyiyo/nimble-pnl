@@ -164,7 +164,9 @@ test('the employee dialog invites into a custom role, and says so', async ({ pag
   // there are two on the page and an unnamed locator is ambiguous.
   const dialog = page.getByRole('dialog', { name: /add new employee/i });
 
-  await page.getByRole('button', { name: 'Add Employee' }).click();
+  // A new restaurant has no employees, so the empty state can show a second
+  // Add Employee button. The header button comes first in the DOM.
+  await page.getByRole('button', { name: 'Add Employee' }).first().click();
   await expect(dialog).toBeVisible();
 
   // Both fields carry an aria-label that overrides their visible <Label>, so

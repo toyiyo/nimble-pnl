@@ -4,12 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
 
-import {
-  disconnectIntegration,
-  notifyIntegrationDisconnect,
-  AlreadyDisconnectedError,
-  type DisconnectOptions,
-} from '@/lib/integrationDisconnect';
+import type { DisconnectOptions } from '@/lib/integrationDisconnect';
+import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
 
 // Mirrors focus_connections DB columns — explicit list keeps select leaner than select('*').
 // api_key / api_secret_encrypted are intentionally omitted: credentials must stay server-side.
@@ -209,24 +205,17 @@ export function useFocusConnection(restaurantId?: string | null) {
 
   // Real disconnect: writes an event through the RPC and sends the alert.
   async function disconnect(restaurantId: string, opts?: DisconnectOptions): Promise<void> {
-    try {
-      const eventId = await disconnectIntegration({
-        restaurantId,
-        integration: 'focus',
-        reason: opts?.reason ?? null,
-        reasonText: opts?.reasonText ?? null,
-      });
-      queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
-      toast({ title: 'Disconnected', description: 'Focus POS connection has been disabled' });
-      void notifyIntegrationDisconnect(eventId);
-    } catch (err) {
-      if (err instanceof AlreadyDisconnectedError) {
-        void queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
-        toast({ title: 'Already disconnected', description: 'Focus POS connection was already disabled' });
-        return;
-      }
-      throw err;
-    }
+    await runIntegrationDisconnect({
+      restaurantId: restaurantId,
+      integration: 'focus',
+      opts,
+      onDisconnected: () => void queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] }),
+      toast,
+      messages: {
+        success: 'Focus POS connection has been disabled',
+        already: 'Focus POS connection was already disabled',
+      },
+    });
   }
 
   // ---- triggerManualSync ----

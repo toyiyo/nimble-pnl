@@ -1,12 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import {
-  disconnectIntegration,
-  notifyIntegrationDisconnect,
-  AlreadyDisconnectedError,
-  type DisconnectOptions,
-} from '@/lib/integrationDisconnect';
+import type { DisconnectOptions } from '@/lib/integrationDisconnect';
+import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
 
 interface CloverConnection {
   id: string;
@@ -131,30 +127,22 @@ export const useCloverIntegration = (restaurantId: string | null) => {
     if (!rid || (!targetId && !connection)) return;
     const isCurrent = rid === restaurantId;
 
-    try {
-      const eventId = await disconnectIntegration({
-        restaurantId: rid,
-        integration: 'clover',
-        reason: opts?.reason ?? null,
-        reasonText: opts?.reasonText ?? null,
-      });
-      if (isCurrent) {
-        setConnection(null);
-        setIsConnected(false);
-      }
-      toast({ title: "Disconnected", description: "Successfully disconnected from Clover" });
-      void notifyIntegrationDisconnect(eventId);
-    } catch (error) {
-      if (error instanceof AlreadyDisconnectedError) {
+    await runIntegrationDisconnect({
+      restaurantId: rid,
+      integration: 'clover',
+      opts,
+      onDisconnected: () => {
         if (isCurrent) {
           setConnection(null);
           setIsConnected(false);
         }
-        toast({ title: "Already disconnected", description: "Clover was already disconnected" });
-        return;
-      }
-      throw error;
-    }
+      },
+      toast,
+      messages: {
+        success: 'Successfully disconnected from Clover',
+        already: 'Clover was already disconnected',
+      },
+    });
   };
 
   return {

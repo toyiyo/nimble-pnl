@@ -23,7 +23,7 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
   const [establishmentId, setEstablishmentId] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { connect, testConnection, disconnectRevel } = useRevelConnection();
+  const { connect, testConnection, rollbackRevelConnection } = useRevelConnection();
 
   const handleConnect = async () => {
     if (!instance.trim() || !apiKey.trim() || !apiSecret.trim()) {
@@ -46,7 +46,7 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
       setCurrentStep('complete');
     } catch (err) {
       if (connected) {
-        try { await disconnectRevel(restaurantId); } catch { /* best-effort rollback */ }
+        try { await rollbackRevelConnection(restaurantId); } catch { /* best-effort rollback */ }
       }
       toast({
         title: 'Error',

@@ -3,6 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, useInvoice } from "@/hooks/useInvoices";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
+import { usePaymentSetup } from "@/hooks/usePaymentSetup";
+import { PaymentSetupCard } from "@/components/invoicing/PaymentSetupCard";
+import { PaymentSetupSheet } from "@/components/invoicing/PaymentSetupSheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +61,8 @@ export default function InvoiceDetail() {
   const { sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
   const { isReadyForInvoicing } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const paymentSetup = usePaymentSetup(selectedRestaurant?.restaurant_id || null);
+  const canManage = selectedRestaurant?.role === 'owner';
   const { formatInstant } = useRestaurantClock();
   const { toast } = useToast();
   const [showPreview, setShowPreview] = useState(false);
@@ -262,11 +267,21 @@ export default function InvoiceDetail() {
                   <Send className="h-4 w-4 mr-2" />
                   {getSendButtonLabel()}
                 </Button>
-              ) : (
-                <Button disabled className="bg-primary/50">
+              ) : canManage ? (
+                <Button onClick={paymentSetup.openSetup} className="bg-primary hover:bg-primary/90">
                   <Send className="h-4 w-4 mr-2" />
-                  Send Invoice
+                  Turn on payments to send
                 </Button>
+              ) : (
+                <>
+                  <Button disabled aria-describedby="send-payments-hint" className="bg-primary/50">
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Invoice
+                  </Button>
+                  <span id="send-payments-hint" className="text-[13px] text-muted-foreground">
+                    Ask the restaurant owner to turn on payments.
+                  </span>
+                </>
               )}
             </>
           )}
@@ -560,24 +575,8 @@ export default function InvoiceDetail() {
             </Alert>
           )}
 
-          {invoice.status === 'draft' && !isReadyForInvoicing && (
-            <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
-                <h3 className="text-[13px] font-semibold text-foreground">Payment Processing</h3>
-              </div>
-              <div className="p-4 space-y-3">
-                <p className="text-[13px] text-muted-foreground">
-                  Set up payment processing to send invoices and collect payments from customers.
-                </p>
-                <Button
-                  size="sm"
-                  className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium w-full"
-                  onClick={() => navigate('/stripe-account')}
-                >
-                  Set up payment processing
-                </Button>
-              </div>
-            </div>
+          {invoice.status === 'draft' && (
+            <PaymentSetupCard setup={paymentSetup} canManage={canManage} hideWhenReady />
           )}
         </div>
       </div>
@@ -589,6 +588,7 @@ export default function InvoiceDetail() {
         invoice={invoice}
         restaurant={selectedRestaurant?.restaurant ?? null}
       />
+      <PaymentSetupSheet setup={paymentSetup} restaurantId={selectedRestaurant?.restaurant_id || null} />
     </div>
   );
 }

@@ -84,6 +84,7 @@ SELECT throws_ok(
   $$INSERT INTO integration_events (restaurant_id, integration, event) VALUES ('00000000-0000-0000-0000-00000000e001', 'toast', 'disconnect')$$,
   '42501', NULL, 'authenticated cannot INSERT');
 
+RESET ROLE;
 -- ===== disconnect_integration RPC =====
 SELECT ok(NOT has_function_privilege('anon', 'public.disconnect_integration(uuid,text,text,text)', 'EXECUTE'), 'anon cannot execute disconnect_integration');
 SELECT ok(has_function_privilege('authenticated', 'public.disconnect_integration(uuid,text,text,text)', 'EXECUTE'), 'authenticated can execute disconnect_integration');

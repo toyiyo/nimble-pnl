@@ -20,7 +20,9 @@ export function PaymentSetupSheet({ setup, restaurantId }: PaymentSetupSheetProp
   };
 
   return (
-    <Sheet open={isSheetOpen} onOpenChange={handleOpenChange}>
+    // modal={false}: Radix modal mode locks pointer events outside the sheet.
+    // Stripe popups attach to document.body and need those events.
+    <Sheet open={isSheetOpen} onOpenChange={handleOpenChange} modal={false}>
       <SheetContent
         className="w-full sm:max-w-xl p-0 flex flex-col h-[100dvh]"
         onInteractOutside={(e) => e.preventDefault()}

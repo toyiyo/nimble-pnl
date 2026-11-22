@@ -64,9 +64,21 @@ describe('buildIntegrationDisconnectSlackPayload', () => {
   it('sets link_names false and uses plain_text for free text', () => {
     const p = buildIntegrationDisconnectSlackPayload({ ...base, reasonText: '<!channel>' });
     expect(p.link_names).toBe(false);
-    const json = JSON.stringify(p.blocks);
-    expect(json).toContain('plain_text');
+    const fields = (p.blocks[1] as { fields: { type: string; text: string }[] }).fields;
+    const details = fields.find((f) => f.text.startsWith('Details:'));
+    expect(details?.type).toBe('plain_text');
+    expect(details?.text).toContain('<!channel>');
     expect(p.text).not.toContain('<!channel>');
+  });
+
+  it.each([
+    ['null', null],
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])('omits the Details field for %s reason text', (_label, reasonText) => {
+    const p = buildIntegrationDisconnectSlackPayload({ ...base, reasonText });
+    const fields = (p.blocks[1] as { fields: { text: string }[] }).fields;
+    expect(fields.some((f) => f.text.startsWith('Details:'))).toBe(false);
   });
 
   it('caps the reason text at 500 characters', () => {

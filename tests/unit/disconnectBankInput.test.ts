@@ -38,6 +38,40 @@ describe('parseDisconnectBankInput', () => {
     expect(parseDisconnectBankInput({ bankId: 'b1', recordEvent: 'yes' }).ok).toBe(false);
   });
 
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+  ])('treats %s in every optional field as absent', (_label, v) => {
+    const r = parseDisconnectBankInput({ bankId: 'b1', reason: v, reasonText: v, recordEvent: v });
+    expect(r.ok && r.value).toEqual({ reason: null, reasonText: null, recordEvent: false });
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   \n\t '],
+  ])('stores null for %s reasonText', (_label, reasonText) => {
+    const r = parseDisconnectBankInput({ bankId: 'b1', reasonText });
+    expect(r.ok && r.value.reasonText).toBeNull();
+  });
+
+  it.each([
+    ['reason', 0],
+    ['reason', -1],
+    ['reasonText', 0],
+    ['reasonText', -1],
+    ['recordEvent', 0],
+    ['recordEvent', -1],
+  ])('returns an error when %s is the number %s', (field, v) => {
+    expect(parseDisconnectBankInput({ bankId: 'b1', [field]: v }).ok).toBe(false);
+  });
+
+  it('sets recordEvent only for the literal true', () => {
+    const on = parseDisconnectBankInput({ bankId: 'b1', recordEvent: true });
+    const off = parseDisconnectBankInput({ bankId: 'b1', recordEvent: false });
+    expect(on.ok && on.value.recordEvent).toBe(true);
+    expect(off.ok && off.value.recordEvent).toBe(false);
+  });
+
   it('defaults optional fields', () => {
     const r = parseDisconnectBankInput({ bankId: 'b1' });
     expect(r.ok && r.value).toEqual({

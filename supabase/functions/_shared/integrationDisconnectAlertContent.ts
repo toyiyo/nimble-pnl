@@ -50,8 +50,9 @@ export function reasonLabel(reason: string | null): string | null {
 }
 
 function capReasonText(text: string | null): string | null {
-  if (!text) return null;
-  return Array.from(text).slice(0, MAX_REASON_TEXT_LENGTH).join('');
+  const trimmed = text?.trim();
+  if (!trimmed) return null;
+  return Array.from(trimmed).slice(0, MAX_REASON_TEXT_LENGTH).join('');
 }
 
 export function escapeSlackText(value: string): string {

@@ -40,9 +40,21 @@ function makeDeps(over: Partial<AlertDeps> = {}): AlertDeps {
 }
 
 describe('handleIntegrationDisconnectAlert', () => {
-  it('returns 400 for a bad UUID', async () => {
-    const res = await handleIntegrationDisconnectAlert(makeDeps(), { eventId: 'nope' });
+  it.each([
+    ['a bad UUID', 'nope'],
+    ['an empty string', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['zero', 0],
+    ['a negative number', -1],
+  ])('returns 400 for %s and makes no other call', async (_label, eventId) => {
+    const deps = makeDeps();
+    const res = await handleIntegrationDisconnectAlert(deps, { eventId });
     expect(res.status).toBe(400);
+    expect(deps.getCallerId).not.toHaveBeenCalled();
+    expect(deps.claimAlert).not.toHaveBeenCalled();
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+    expect(deps.fetch).not.toHaveBeenCalled();
   });
 
   it('returns 401 when there is no caller', async () => {
@@ -143,6 +155,9 @@ describe('handleIntegrationDisconnectAlert', () => {
     expect(body.link_names).toBe(false);
     expect(body.text).not.toContain('<!channel>');
     expect(body.text).not.toContain('<script>');
+    const details = body.blocks[1].fields.find((f: { text: string }) => f.text.startsWith('Details:'));
+    expect(details.type).toBe('plain_text');
+    expect(details.text).toContain('<!channel> <script>');
   });
 
   it('aborts a slow Slack post and reports failed', async () => {

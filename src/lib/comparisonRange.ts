@@ -1,6 +1,8 @@
 // Prior-period range for the sales comparison.
 // All math uses YYYY-MM-DD strings and Date.UTC. No host time zone is used.
 
+import { toDateOnlyString } from '@/lib/dateOnly';
+
 export type ComparisonKind = 'week' | 'month' | 'quarter' | 'shift';
 export type ComparisonHint = 'week' | 'month' | 'quarter' | 'shift';
 
@@ -133,4 +135,37 @@ export function describeComparison(range: ComparisonRange): string {
 
 export function comparisonLabel(range: ComparisonRange): string {
   return `vs ${describeComparison(range)}`;
+}
+
+const HINT_BY_PERIOD: Record<string, ComparisonHint | undefined> = {
+  today: 'shift',
+  last30: 'shift',
+  last90: 'shift',
+  week: 'week',
+  month: 'month',
+  quarter: 'quarter',
+};
+
+function fromDateOnly(value: string, endOfDay: boolean): Date {
+  const [y, m, d] = value.split('-').map(Number);
+  return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999) : new Date(y, m - 1, d, 0, 0, 0, 0);
+}
+
+// Adapter for the dashboard. Convert a Period to the local Date pair of the prior range.
+export function periodComparison(period: {
+  type: string;
+  from: Date;
+  to: Date;
+}): { from: Date; to: Date; label: string } | null {
+  const range = getComparisonRange(
+    toDateOnlyString(period.from),
+    toDateOnlyString(period.to),
+    HINT_BY_PERIOD[period.type],
+  );
+  if (!range) return null;
+  return {
+    from: fromDateOnly(range.start, false),
+    to: fromDateOnly(range.end, true),
+    label: comparisonLabel(range),
+  };
 }

@@ -3,6 +3,7 @@ import {
   getComparisonRange,
   describeComparison,
   comparisonLabel,
+  periodComparison,
 } from '@/lib/comparisonRange';
 
 const r = (s: string, e: string, h?: 'week' | 'month' | 'quarter' | 'shift') =>
@@ -138,5 +139,67 @@ describe('describeComparison and comparisonLabel', () => {
     expect(comparisonLabel(r('2026-11-16', '2026-11-21')!)).toBe('vs same days, last week');
     expect(comparisonLabel(r('2026-11-21', '2026-11-21')!)).toBe('vs same day, last week');
     expect(comparisonLabel(r('2026-10-23', '2026-11-21')!)).toBe('vs 5 weeks earlier');
+  });
+});
+
+describe('periodComparison', () => {
+  const ymd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  it('maps a partial week to the same days last week', () => {
+    const out = periodComparison({
+      type: 'week',
+      from: new Date(2026, 10, 16),
+      to: new Date(2026, 10, 21, 15, 30),
+    });
+    expect(out).not.toBeNull();
+    expect(ymd(out!.from)).toBe('2026-11-09');
+    expect(ymd(out!.to)).toBe('2026-11-14');
+    expect(out!.from.getHours()).toBe(0);
+    expect(out!.to.getHours()).toBe(23);
+    expect(out!.to.getMinutes()).toBe(59);
+    expect(out!.to.getSeconds()).toBe(59);
+    expect(out!.to.getMilliseconds()).toBe(999);
+    expect(out!.label).toBe('vs same days, last week');
+  });
+
+  it('maps today to the same weekday last week', () => {
+    const out = periodComparison({
+      type: 'today',
+      from: new Date(2026, 10, 21),
+      to: new Date(2026, 10, 21),
+    });
+    expect(ymd(out!.from)).toBe('2026-11-14');
+    expect(ymd(out!.to)).toBe('2026-11-14');
+    expect(out!.label).toBe('vs same day, last week');
+  });
+
+  it('uses the shift rule for last30 that starts on the 1st', () => {
+    const out = periodComparison({
+      type: 'last30',
+      from: new Date(2026, 10, 1),
+      to: new Date(2026, 10, 30),
+    });
+    // 30 days rounds up to 35 days.
+    expect(ymd(out!.from)).toBe('2026-09-27');
+    expect(ymd(out!.to)).toBe('2026-10-26');
+    expect(out!.label).toBe('vs 5 weeks earlier');
+  });
+
+  it('maps the quarter preset on a one-month range to the prior quarter', () => {
+    const out = periodComparison({
+      type: 'quarter',
+      from: new Date(2026, 9, 1),
+      to: new Date(2026, 9, 31),
+    });
+    expect(ymd(out!.from)).toBe('2026-07-01');
+    expect(ymd(out!.to)).toBe('2026-07-31');
+    expect(out!.label).toBe('vs same days, last quarter');
+  });
+
+  it('returns null for an invalid range', () => {
+    expect(
+      periodComparison({ type: 'custom', from: new Date(2026, 10, 21), to: new Date(2026, 10, 1) }),
+    ).toBeNull();
   });
 });

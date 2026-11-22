@@ -1,5 +1,6 @@
--- pgTAP tests for get_sales_daily_series(p_restaurant_id, p_start_date, p_end_date)
+-- pgTAP tests for get_sales_daily_series(p_restaurant_id, p_start_date, p_end_date, p_time_zone, p_include_hours)
 -- Design: docs/superpowers/specs/2026-11-22-sales-daily-series-rpc-design.md
+-- Design (by_hour): docs/superpowers/specs/2026-11-22-sales-hourly-comparison-design.md
 --
 -- The function must return the same `pos_systems` and `by_day` as
 -- get_sales_trends for the same restaurant and range. It must not show rows
@@ -10,7 +11,7 @@
 -- belongs to another user. Its rows use pos_system 'clover', so a leak is
 -- easy to see.
 BEGIN;
-SELECT plan(25);
+SELECT plan(36);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000011"}';
@@ -90,24 +91,24 @@ ON CONFLICT (id) DO UPDATE SET
 -- Tests 1-4: signature, security model, grants
 -- ============================================================
 SELECT has_function(
-  'public', 'get_sales_daily_series', ARRAY['uuid', 'date', 'date'],
-  'get_sales_daily_series(uuid, date, date) exists'
+  'public', 'get_sales_daily_series', ARRAY['uuid', 'date', 'date', 'text', 'boolean'],
+  'get_sales_daily_series(uuid, date, date, text, boolean) exists'
 );
 
 SELECT is(
   (SELECT p.prosecdef FROM pg_proc p
-   WHERE p.oid = 'public.get_sales_daily_series(uuid, date, date)'::regprocedure),
+   WHERE p.oid = 'public.get_sales_daily_series(uuid, date, date, text, boolean)'::regprocedure),
   true,
   'get_sales_daily_series is SECURITY DEFINER, like get_sales_trends'
 );
 
 SELECT ok(
-  has_function_privilege('authenticated', 'public.get_sales_daily_series(uuid, date, date)', 'EXECUTE'),
+  has_function_privilege('authenticated', 'public.get_sales_daily_series(uuid, date, date, text, boolean)', 'EXECUTE'),
   'authenticated can execute get_sales_daily_series'
 );
 
 SELECT ok(
-  NOT has_function_privilege('anon', 'public.get_sales_daily_series(uuid, date, date)', 'EXECUTE'),
+  NOT has_function_privilege('anon', 'public.get_sales_daily_series(uuid, date, date, text, boolean)', 'EXECUTE'),
   'anon cannot execute get_sales_daily_series'
 );
 
@@ -278,14 +279,108 @@ SELECT throws_ok(
 );
 
 SELECT ok(
-  NOT has_function_privilege('public', 'public.get_sales_daily_series(uuid, date, date)', 'EXECUTE'),
+  NOT has_function_privilege('public', 'public.get_sales_daily_series(uuid, date, date, text, boolean)', 'EXECUTE'),
   'PUBLIC has no EXECUTE grant'
 );
 
 SELECT ok(
   (SELECT 'search_path=public, pg_temp' = ANY(proconfig)
-     FROM pg_proc WHERE oid = 'public.get_sales_daily_series(uuid, date, date)'::regprocedure),
+     FROM pg_proc WHERE oid = 'public.get_sales_daily_series(uuid, date, date, text, boolean)'::regprocedure),
   'search_path is pinned to public, pg_temp'
+);
+
+-- ============================================================
+-- Tests 26-36: the optional by_hour section
+-- Hour buckets of the fixture, America/Chicago (CDT, UTC-5):
+--   1f1, 1f2 (08-01 19:30Z, 19:35Z) -> 14 toast; 1f5 (08-02 19:00Z) -> 14 toast
+--   1f3 (08-01 23:00Z) -> 18 toast; 1f8 (sale_date 08-03, sold_at 08-02 23:00Z) -> 18 toast
+--   1f4 (08-01 20:00Z) -> 15 square
+--   1f6 (no sold_at, sale_time 10:15) -> 10 toast (the sale_time fallback)
+--   1f7 (no sold_at, no sale_time) -> no bucket, not in by_hour
+-- In UTC the sold_at rows move to 19, 20, and 23. 1f6 stays at 10.
+-- ============================================================
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000011"}';
+
+SELECT hasnt_function(
+  'public', 'get_sales_daily_series', ARRAY['uuid', 'date', 'date'],
+  'the 3-argument overload is dropped, so a named 3-argument call is not ambiguous'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','America/Chicago',true)->'by_hour',
+  get_sales_trends('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','America/Chicago')->'by_hour',
+  'by_hour equals the get_sales_trends by_hour for America/Chicago'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','America/Chicago',true)->'by_hour',
+  '[
+    {"hour": 10, "pos_system": "toast",  "revenue": 3.00,  "day_count": 1},
+    {"hour": 14, "pos_system": "toast",  "revenue": 40.00, "day_count": 2},
+    {"hour": 15, "pos_system": "square", "revenue": 8.00,  "day_count": 1},
+    {"hour": 18, "pos_system": "toast",  "revenue": 50.00, "day_count": 2}
+  ]'::jsonb,
+  'by_hour has the pinned buckets: sold_at in the time zone, else sale_time, else left out'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','UTC',true)->'by_hour',
+  get_sales_trends('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','UTC')->'by_hour',
+  'by_hour equals the get_sales_trends by_hour for UTC'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','UTC',true)->'by_hour',
+  '[
+    {"hour": 10, "pos_system": "toast",  "revenue": 3.00,  "day_count": 1},
+    {"hour": 19, "pos_system": "toast",  "revenue": 40.00, "day_count": 2},
+    {"hour": 20, "pos_system": "square", "revenue": 8.00,  "day_count": 1},
+    {"hour": 23, "pos_system": "toast",  "revenue": 50.00, "day_count": 2}
+  ]'::jsonb,
+  'p_time_zone moves the sold_at buckets and does not move the sale_time bucket'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03',NULL,true)->'by_hour',
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','America/Chicago',true)->'by_hour',
+  'a NULL p_time_zone falls back to America/Chicago, the same as get_sales_trends'
+);
+
+SELECT is(
+  (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(
+    get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','America/Chicago',true)
+  ) k),
+  ARRAY['by_day', 'by_hour', 'pos_systems'],
+  'p_include_hours = true adds only the by_hour key'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','America/Chicago',false),
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03'),
+  'p_include_hours = false gives the same payload as the default call'
+);
+
+SELECT is(
+  get_sales_daily_series(
+    p_restaurant_id => '00000000-0000-0000-0000-000000000199'::uuid,
+    p_start_date => '2024-08-01', p_end_date => '2024-08-03', p_include_hours => NULL
+  ) ? 'by_hour',
+  false,
+  'a NULL p_include_hours leaves out by_hour'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2023-01-01','2023-01-31','America/Chicago',true),
+  '{"pos_systems": [], "by_day": [], "by_hour": []}'::jsonb,
+  'a range with no sales and hours requested returns three empty arrays'
+);
+
+SELECT is(
+  (SELECT COUNT(*)::int FROM jsonb_array_elements(
+    get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','America/Chicago',true)->'by_hour'
+  ) e WHERE e->>'pos_system' = 'clover'),
+  0,
+  'rows of restaurant B do not appear in the restaurant A by_hour'
 );
 
 SELECT * FROM finish();

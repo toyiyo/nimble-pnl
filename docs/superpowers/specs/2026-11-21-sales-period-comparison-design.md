@@ -46,7 +46,7 @@ Reason: CI runs in UTC. date-fns `startOfWeek` and `format` use the host zone
 ```ts
 // src/lib/comparisonRange.ts
 export type ComparisonKind = 'week' | 'month' | 'quarter' | 'shift';
-export type ComparisonHint = 'week' | 'month' | 'quarter';
+export type ComparisonHint = 'week' | 'month' | 'quarter' | 'shift';
 
 export interface ComparisonRange {
   start: string;      // YYYY-MM-DD
@@ -90,13 +90,25 @@ A `hint` of `'week'` or `'month'` does not change the result. The date checks gi
 The `hint` of `'quarter'` is necessary for one case: on Oct 1 to Oct 31 the
 "This quarter" preset must compare to Jul 1 to Jul 31, not Sep 1 to Sep 30.
 
+The hint type is `ComparisonHint = 'week' | 'month' | 'quarter' | 'shift'`.
+- The dashboard passes `'shift'` for `today`, `last30`, and `last90`. Rules 2-4 do not apply.
+  Thus "Last 30 days" uses rule 5, also when the range starts on the 1st of a month.
+- The dashboard passes `'week'`, `'month'`, or `'quarter'` for those presets.
+- The dashboard passes no hint for `custom`. POS Sales passes no hint. The date checks decide.
+
 `describeComparison` returns the caption suffix:
 `week` → "same days, last week"; `month` → "same days, last month";
-`quarter` → "same days, last quarter"; `shift` → "N weeks earlier" ("1 week earlier" when N = 1).
+`quarter` → "same days, last quarter"; `shift` → "same day, last week" for a 1-day range,
+else "N weeks earlier" ("1 week earlier" when N = 1).
+
+`comparisonLabel(range)` returns the short card label: "vs " + the suffix.
+Examples: "vs same days, last week", "vs same day, last week", "vs 5 weeks earlier".
 
 Tests: `tests/unit/comparisonRange.test.ts`. Cover each rule, the clamps
 (Mar 31 → Feb 28, Feb 29 in a leap year), a year boundary (Jan 1-15 → Dec 1-15),
-the quarter hint, invalid input, and `describeComparison`.
+the quarter hint, Oct 1-31 with no hint (gives Sep 1-30, rule 4),
+Oct 1-31 with hint `'quarter'` (gives Jul 1-31), a `'shift'` hint on Nov 1-21 (gives a 21-day shift),
+invalid input, `describeComparison`, and `comparisonLabel`.
 
 ## 4. Dashboard fix
 
@@ -119,7 +131,10 @@ New code:
 3. Parse the result back to local `Date` values (start of day, end of day).
    Pass them to `usePeriodMetrics`.
 
-The metric cards keep the label "vs previous period" (`src/pages/Index.tsx:871`, 897, 911, 932).
+The metric cards now use `comparisonLabel(range)` as the trend label
+(`src/pages/Index.tsx:871`, 897, 911, 932), in place of "vs previous period".
+Reason: "Today" now compares to the same weekday last week, and the old label does not tell this.
+If `range` is `null`, keep "vs previous period".
 No other dashboard change. `previousPeriodData` (lines 273-282) and the
 food-cost insights (lines 537-548) take the new range with no other change.
 
@@ -161,15 +176,18 @@ export interface KpiDelta {
 export function computeKpiDelta(current: number, prior: number): KpiDelta;
 ```
 
-`percent` is `null` when `prior` is 0. The UI then shows "New" and no percent.
+`percent` is `null` when `prior` is 0. The UI then shows "No prior sales" and no percent.
 Tests go in the existing `tests/unit/salesTrends.test.ts`, or a new file if none exists.
 
 ### 5.3 Header switch
 
 In the header row (`SalesTrendsPanel.tsx:108-125`), next to `PosFilterControl`:
 
+Add imports: `Switch` from `@/components/ui/switch`, `Label` from `@/components/ui/label`.
+The wrapper has `min-h-[44px] sm:min-h-0` for the touch size on a phone.
+
 ```tsx
-<div className="flex items-center gap-2">
+<div className="flex items-center gap-2 min-h-[44px] sm:min-h-0">
   <Switch id={compareId} checked={compareOn} onCheckedChange={setCompareOn}
           className="data-[state=checked]:bg-foreground" />
   <Label htmlFor={compareId} className="text-[13px] text-muted-foreground">
@@ -188,9 +206,8 @@ Under the header, when `compareOn` and the prior data is loaded:
 `vs Mon, Nov 9 – Sat, Nov 14 · same days, last week`
 
 Class: `text-[13px] text-muted-foreground`.
-Format the dates with a UTC-safe formatter. If `formatShortDate`
-(`src/components/pos-sales/salesTrendsFormat.ts:9`) is not UTC-safe for a
-`YYYY-MM-DD` string, add one in `comparisonRange.ts` and test it.
+Format the dates with `formatShortDate` (`src/lib/salesTrends.ts:510`). It is UTC-safe.
+The caption appears one time only, under the panel header. The chart does not repeat it.
 
 ### 5.5 KPI deltas
 
@@ -199,11 +216,14 @@ File: `src/components/pos-sales/TrendKpiRow.tsx`.
 - New optional prop `deltas?: { netSales?: KpiDelta; orders?: KpiDelta; avgOrder?: KpiDelta }`.
 - `KpiTile` (lines 24-31) gets an optional `delta` prop.
   It renders a third line under the value:
-  - Up: `ArrowUpRight` icon, `text-success`, text "+12.4% · +$1,240".
-  - Down: `ArrowDownRight` icon, `text-destructive`, text "−8.1% · −$640".
+  - Up: `ArrowUpRight` icon, `text-success-strong`, text "+12.4% · +$1,240".
+    `--success` fails 4.5:1 on white; `--success-strong` passes AA (`src/index.css:38-40`).
+  - Down: `ArrowDownRight` icon, `text-destructive-strong` if it exists and passes AA, else `text-destructive`.
+    Check the contrast in light and dark mode during the UI review.
   - Flat (|percent| < 0.05): `Minus` icon, `text-muted-foreground`, text "0.0%".
-  - `percent === null`: text "New", `text-muted-foreground`.
-  - Class: `text-[12px] font-medium tabular-nums flex items-center gap-1 mt-1`.
+  - `percent === null`: text "No prior sales", `text-muted-foreground`.
+  - Class: `text-[12px] font-medium tabular-nums flex items-center gap-1 mt-1 min-h-[16px]`.
+    The `min-h` keeps the tile height stable while the prior data loads.
   - Icons get `aria-hidden="true"`. The line gets an `sr-only` prefix
     "Up 12.4 percent versus previous period" (or "Down"), so the meaning does not depend on color.
 - Orders show the count change ("+14"), not dollars.
@@ -211,7 +231,8 @@ File: `src/components/pos-sales/TrendKpiRow.tsx`.
 - While the prior query loads, the delta line shows a `Skeleton` with `h-3 w-16`.
   The KPI value does not wait for the prior data.
 - If the prior query fails, show no deltas and show the caption
-  "Could not load the previous period." in `text-[13px] text-muted-foreground`.
+  "Could not load the previous period." in `text-[13px] text-muted-foreground`,
+  with an `AlertCircle` icon (`aria-hidden`), in a `role="status"` element.
   The current-period panel stays usable.
 - Keep the component `memo`. Pass `deltas` from a `useMemo` in the panel.
 
@@ -225,20 +246,29 @@ File: `src/components/pos-sales/SalesByDayChart.tsx`.
 - Alignment is by index. Day *i* of the current range pairs with day *i* of the prior range.
   The comparison rule keeps the weekdays aligned for week and shift ranges.
   For month and quarter ranges the pair is "same day number", which is the standard calendar view.
-- If the prior range is shorter (month clamp), the missing items are `undefined` and draw no bar.
-- The panel adds `prior` to each `daily` row: `{ ...row, prior: priorTotals[i] }`.
-- Add one more `<Bar dataKey="prior">` before the stacked POS bars, with no `stackId`:
-  `fill="transparent"`, `stroke="hsl(var(--muted-foreground))"`,
-  `strokeDasharray="3 3"`, `strokeOpacity={0.6}`, `radius={[2, 2, 0, 0]}`.
-  The prior bar sits beside the current stacked bar in the same day slot.
-  Set `barGap={2}` on the `BarChart`.
-- With more than one POS, the prior bar is one total. It does not split by POS.
+- If the prior range is shorter (month clamp), the row has no `prior` key and draws no mark.
+- New type `DailySeriesRowWithPrior = DailySeriesRow & { prior?: number; priorDate?: string }`.
+  `DailySeriesRow` allows only `number | string` values, so the rows omit the key, never set `undefined`.
+- The panel builds the rows with a pure, tested function
+  `attachPriorSeries(daily, priorDaily): DailySeriesRowWithPrior[]` in `src/lib/salesTrends.ts`.
+- Change `BarChart` to `ComposedChart`, so the chart can hold a bar series and a line series.
+- **Range of 14 days or fewer:** add one `<Bar dataKey="prior">` before the stacked POS bars, with no `stackId`.
+  Style: `fill="hsl(var(--muted-foreground))"`, `fillOpacity={0.15}`,
+  `stroke="hsl(var(--muted-foreground))"`, `strokeOpacity={1}`, `strokeDasharray="3 3"`,
+  `radius={[2, 2, 0, 0]}`. Set `barGap={2}`.
+  Recharts gives a bar with no `stackId` its own slot, so it sits beside the stacked bar.
+- **Range of more than 14 days:** two bars per day are too thin on a 375 px screen.
+  Show the prior series as `<Line dataKey="prior" type="monotone" dot={false}
+  stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="4 3" />`.
+- With more than one POS, the prior series is one total. It does not split by POS.
 - Add `prior: { label: 'Previous period', color: 'hsl(var(--muted-foreground))' }`
   to the chart config, so the tooltip and the legend name it.
-- The tooltip shows the prior date for the day. The panel adds `priorDate` to each row,
-  and the tooltip label formatter shows "Prev: Mon, Nov 9".
-- Update the `aria-label` on the `role="img"` wrapper (line 27):
-  "Sales by day, with the previous period as dashed bars".
+  The legend swatch for `prior` must look dashed. Give the config entry an `icon`
+  (a small inline SVG with a dashed outline), which `ChartLegendContent` draws in place of the solid swatch.
+- Tooltip: the title stays the current date. The `prior` row shows the value and the prior date,
+  for example "$1,240 (Mon, Nov 9)". Use the `formatter` of `ChartTooltipContent` for the `prior` key.
+- Update the `aria-label` on the `role="img"` wrapper (line 27). It includes both totals:
+  "Sales by day. This period $X total. Previous period $Y total, shown dashed."
 - When `priorTotals` is `undefined` (switch off, loading, or error), the chart is the same as today.
 
 ### 5.7 States
@@ -250,7 +280,7 @@ File: `src/components/pos-sales/SalesByDayChart.tsx`.
 | Current empty | Existing empty state (lines 151-153) | Not shown |
 | Prior loading | Normal | Delta skeletons; no ghost bars; no caption |
 | Prior error | Normal | No deltas; error caption |
-| Prior empty | Normal | Deltas show "New"; ghost bars at 0 are not drawn |
+| Prior empty | Normal | Deltas show "No prior sales"; prior marks at 0 |
 | Switch off | Normal | No query (`enabled: false`); nothing shown |
 
 ### 5.8 Mobile
@@ -286,5 +316,7 @@ in the PR body and rely on the unit tests and a manual check.
 - **Dashboard numbers change.** The "vs previous period" percentages change for
   partial weeks, partial months, and "Today". This is the intended fix.
   Mention it in the PR body.
+- **Switch state is not kept.** The switch is on by default. A page reload sets it on again.
+  This is intentional. Record it in the PR body.
 - **Time zone.** The helper uses string math only. The dashboard conversion uses
   local date parts, the same as `toDateOnlyString`.

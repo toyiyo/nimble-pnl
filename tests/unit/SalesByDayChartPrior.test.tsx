@@ -79,14 +79,14 @@ describe('SalesByDayChart prior series', () => {
     const { container } = render(
       <SalesByDayChart data={rows(PRIOR_BAR_MAX_DAYS, true)} showPrior posSystems={['square']} ariaLabel="Daily sales." />,
     );
-    expect(container.querySelectorAll('.recharts-bar').length).toBe(2);
+    expect(container.querySelectorAll('.recharts-bar')).toHaveLength(2);
     expect(container.querySelector('.recharts-line')).toBeNull();
   });
   it('shows the prior series as a line above the 14-day limit', () => {
     const { container } = render(
       <SalesByDayChart data={rows(PRIOR_BAR_MAX_DAYS + 1, true)} showPrior posSystems={['square']} ariaLabel="Daily sales." />,
     );
-    expect(container.querySelectorAll('.recharts-bar').length).toBe(1);
+    expect(container.querySelectorAll('.recharts-bar')).toHaveLength(1);
     // The Recharts entry animation sets its own stroke-dasharray in jsdom, so check the series type only.
     expect(container.querySelector('.recharts-line')).not.toBeNull();
   });

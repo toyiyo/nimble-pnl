@@ -195,10 +195,10 @@ export function SalesTrendsPanel({
       {showComparisonNote && (
         <div className="px-4 pb-2">
           {priorFailed ? (
-            <p role="status" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <output className="flex items-center gap-2 text-[13px] text-muted-foreground">
               <AlertCircle className="h-4 w-4 text-destructive shrink-0" aria-hidden="true" />
               <span>Could not load the previous period.</span>
-            </p>
+            </output>
           ) : (
             <p className="text-[13px] text-muted-foreground">
               {`vs ${formatShortDate(comparison.start)} – ${formatShortDate(comparison.end)} · ${describeComparison(comparison)}`}

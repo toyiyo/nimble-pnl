@@ -4,7 +4,6 @@
 import { toDateOnlyString } from '@/lib/dateOnly';
 
 export type ComparisonKind = 'week' | 'month' | 'quarter' | 'shift';
-export type ComparisonHint = ComparisonKind;
 
 export interface ComparisonRange {
   start: string; // YYYY-MM-DD
@@ -72,10 +71,28 @@ function build(start: Ymd, priorStart: Ymd, priorEnd: Ymd, kind: ComparisonKind)
   };
 }
 
+// Rules 3 and 4: the calendar quarter and the calendar month. Return null when neither rule applies.
+function calendarRange(s: Ymd, e: Ymd, hint?: ComparisonKind): ComparisonRange | null {
+  const sameMonth = s.y === e.y && s.m === e.m;
+
+  // Rule 3: quarter.
+  const isQuarterStart = s.d === 1 && (s.m - 1) % 3 === 0;
+  const sameQuarter = s.y === e.y && quarterOf(s.m) === quarterOf(e.m);
+  if (isQuarterStart && sameQuarter && (hint === 'quarter' || !sameMonth)) {
+    return build(s, monthsBack(s, 3), monthsBack(e, 3), 'quarter');
+  }
+
+  // Rule 4: month.
+  if (s.d === 1 && sameMonth) {
+    return build(s, monthsBack(s, 1), monthsBack(e, 1), 'month');
+  }
+  return null;
+}
+
 export function getComparisonRange(
   start: string,
   end: string,
-  hint?: ComparisonHint,
+  hint?: ComparisonKind,
 ): ComparisonRange | null {
   const s = parse(start);
   const e = parse(end);
@@ -100,20 +117,9 @@ export function getComparisonRange(
     if (weekAllowed && isMonday && lengthDays <= 7) return shiftRange('week', 7);
 
     // The 'week' hint allows rule 2 only, then rule 5.
-    if (hint === 'week') return shiftRange('shift', Math.ceil(lengthDays / 7) * 7);
-
-    const sameMonth = s.y === e.y && s.m === e.m;
-
-    // Rule 3: quarter.
-    const isQuarterStart = s.d === 1 && (s.m - 1) % 3 === 0;
-    const sameQuarter = s.y === e.y && quarterOf(s.m) === quarterOf(e.m);
-    if (isQuarterStart && sameQuarter && (hint === 'quarter' || !sameMonth)) {
-      return build(s, monthsBack(s, 3), monthsBack(e, 3), 'quarter');
-    }
-
-    // Rule 4: month.
-    if (s.d === 1 && sameMonth) {
-      return build(s, monthsBack(s, 1), monthsBack(e, 1), 'month');
+    if (hint !== 'week') {
+      const calendar = calendarRange(s, e, hint);
+      if (calendar) return calendar;
     }
   }
 
@@ -142,7 +148,7 @@ export function comparisonLabel(range: ComparisonRange): string {
   return `vs ${describeComparison(range)}`;
 }
 
-const HINT_BY_PERIOD: Record<string, ComparisonHint | undefined> = {
+const HINT_BY_PERIOD: Record<string, ComparisonKind | undefined> = {
   today: 'shift',
   last30: 'shift',
   last90: 'shift',

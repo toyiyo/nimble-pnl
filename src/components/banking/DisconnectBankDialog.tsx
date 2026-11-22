@@ -21,6 +21,7 @@ interface DisconnectBankDialogProps {
   ) => Promise<{ eventId: string | null }>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onReconnect?: () => void;
 }
 
 export const DisconnectBankDialog = ({
@@ -29,6 +30,7 @@ export const DisconnectBankDialog = ({
   onDisconnect,
   open,
   onOpenChange,
+  onReconnect,
 }: DisconnectBankDialogProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const [deleteData, setDeleteData] = useState(false);
@@ -165,6 +167,7 @@ export const DisconnectBankDialog = ({
       restaurantName={selectedRestaurant?.restaurant?.name ?? ''}
       kind="bank"
       onConfirm={handleConfirm}
+      onReconnect={onReconnect}
       extraConfirmContent={extra}
       confirmDisabled={!canProceed}
       confirmLabel={deleteData ? 'Disconnect and delete data' : 'Disconnect anyway'}

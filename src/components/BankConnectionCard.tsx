@@ -383,6 +383,13 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
           bankName={disconnectTarget.name}
           bankIds={disconnectTarget.ids}
           onDisconnect={onDisconnect}
+          onReconnect={
+            onReconnect
+              ? () => {
+                  void handleReconnect((Array.isArray(disconnectTarget.ids) ? disconnectTarget.ids[0] : disconnectTarget.ids) ?? bank.id);
+                }
+              : undefined
+          }
           open={disconnectDialogOpen}
           onOpenChange={(open) => {
             setDisconnectDialogOpen(open);

@@ -14,6 +14,23 @@
 export type SubscriptionTier = 'starter' | 'growth' | 'pro';
 export type SubscriptionPeriod = 'monthly' | 'annual';
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'grandfathered';
+export type EffectiveSubscriptionStatus = SubscriptionStatus | 'trial_expired';
+
+/**
+ * Derive the effective status. A trial that ended (trialEndsAt <= now) is 'trial_expired'.
+ * A null or invalid trialEndsAt keeps the stored status. Mirrors the SQL
+ * effective_subscription_status function, which is authoritative.
+ */
+export function getEffectiveSubscriptionStatus(
+  status: SubscriptionStatus,
+  trialEndsAt: string | null | undefined,
+  now: Date = new Date(),
+): EffectiveSubscriptionStatus {
+  if (status !== 'trialing' || !trialEndsAt) return status;
+  const end = new Date(trialEndsAt).getTime();
+  if (Number.isNaN(end)) return status;
+  return end <= now.getTime() ? 'trial_expired' : status;
+}
 
 export interface SubscriptionPlan {
   id: SubscriptionTier;

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
@@ -25,6 +26,8 @@ import { SlingSetupWizard } from '@/components/pos/SlingSetupWizard';
 import { FocusSetupWizard } from '@/components/pos/FocusSetupWizard';
 import { RevelSetupWizard } from '@/components/pos/RevelSetupWizard';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
+import { DisconnectIntegrationDialog } from '@/components/integrations/DisconnectIntegrationDialog';
+import type { DisconnectReason } from '@/lib/integrationDisconnect';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -53,6 +56,10 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const [showRevelSetup, setShowRevelSetup] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { selectedRestaurant } = useRestaurantContext();
+  const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
+  const role = selectedRestaurant?.role;
+  const canDisconnect = role === 'owner' || role === 'manager';
   
   // Square-specific integration hook
   const squareIntegration = useSquareIntegration(restaurantId);
@@ -185,24 +192,20 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     setShowShift4Dialog(false);
   };
 
-  const handleDisconnect = async () => {
-    if (isSquareIntegration) {
-      await squareIntegration.disconnectSquare();
-      return;
-    }
-    
-    if (isCloverIntegration) {
-      await cloverIntegration.disconnectClover();
-      return;
-    }
-    
-    if (isShift4Integration) {
-      await shift4Integration.disconnectShift4();
-      return;
-    }
-    
-    if (isToastIntegration) {
-      await toastConnection.disconnectToast(restaurantId);
+  const isPosDisconnect =
+    isSquareIntegration ||
+    isCloverIntegration ||
+    isShift4Integration ||
+    isToastIntegration ||
+    isFocusIntegration ||
+    isRevelIntegration;
+
+  const handleDisconnectClick = async () => {
+    if (isPosDisconnect) {
+      setDisconnectTarget({
+        id: restaurantId,
+        name: selectedRestaurant?.restaurant?.name ?? '',
+      });
       return;
     }
 
@@ -211,20 +214,24 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
       return;
     }
 
-    if (isFocusIntegration) {
-      await focusConnection.disconnect(restaurantId);
-      return;
-    }
-
-    if (isRevelIntegration) {
-      await revelConnection.disconnectRevel(restaurantId);
-      return;
-    }
-
     toast({
       title: "Disconnected",
       description: `Successfully disconnected from ${integration.name}`,
     });
+  };
+
+  const handleConfirmDisconnect = async (r: {
+    reason: DisconnectReason | null;
+    reasonText: string | null;
+  }) => {
+    const targetId = disconnectTarget?.id ?? restaurantId;
+    const opts = { reason: r.reason, reasonText: r.reasonText };
+    if (isSquareIntegration) await squareIntegration.disconnectSquare(opts);
+    else if (isCloverIntegration) await cloverIntegration.disconnectClover(opts);
+    else if (isShift4Integration) await shift4Integration.disconnectShift4(opts);
+    else if (isToastIntegration) await toastConnection.disconnectToast(targetId, opts);
+    else if (isFocusIntegration) await focusConnection.disconnect(targetId, opts);
+    else if (isRevelIntegration) await revelConnection.disconnectRevel(targetId, opts);
   };
 
   const getConnectionDateLabel = (): string => {
@@ -331,14 +338,20 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 <Settings className="h-4 w-4 mr-2" />
                 Configure
               </Button>
-              <Button 
-                variant="destructive" 
-                size="sm" 
-                className="w-full" 
-                onClick={handleDisconnect}
-              >
-                Disconnect
-              </Button>
+              {canDisconnect ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="w-full"
+                  onClick={handleDisconnectClick}
+                >
+                  Disconnect
+                </Button>
+              ) : (
+                <p className="text-[12px] text-muted-foreground text-center">
+                  Ask an owner or manager to disconnect.
+                </p>
+              )}
             </>
           ) : (
             <Button
@@ -463,6 +476,17 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
           />
         </DialogContent>
       </Dialog>
+      <DisconnectIntegrationDialog
+        open={disconnectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisconnectTarget(null);
+        }}
+        integrationName={integration.name}
+        restaurantName={disconnectTarget?.name ?? ''}
+        kind="pos"
+        onConfirm={handleConfirmDisconnect}
+        onReconnect={handleConnect}
+      />
     </Card>
   );
 };

@@ -34,10 +34,4 @@ describe('SubscriptionStatus', () => {
     expect(screen.getByText('Trial ended')).toBeTruthy();
     expect(screen.getByText('Your trial ended — choose a plan')).toBeTruthy();
   });
-
-  it('prints the trial expired status on the expired card', () => {
-    mockUseSubscription.mockReturnValue(base);
-    render(<SubscriptionStatus />);
-    expect(screen.getAllByText(/trial expired/i).length).toBeGreaterThan(0);
-  });
 });

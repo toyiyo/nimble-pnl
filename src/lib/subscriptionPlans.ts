@@ -16,6 +16,9 @@ export type SubscriptionPeriod = 'monthly' | 'annual';
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'grandfathered';
 export type EffectiveSubscriptionStatus = SubscriptionStatus | 'trial_expired';
 
+/** Tier a running trial gives. Matches the SQL tier function. */
+export const TRIAL_TIER: SubscriptionTier = 'growth';
+
 /**
  * Derive the effective status. A trial that ended (trialEndsAt < now) is 'trial_expired'.
  * A null or invalid trialEndsAt keeps the stored status. Mirrors the SQL

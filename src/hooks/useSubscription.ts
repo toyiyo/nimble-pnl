@@ -12,6 +12,7 @@ import {
   calculatePrice,
   getVolumeDiscountPercent,
   getEffectiveSubscriptionStatus,
+  TRIAL_TIER,
   type EffectiveSubscriptionStatus,
 } from '@/lib/subscriptionPlans';
 
@@ -70,7 +71,7 @@ export function useSubscription() {
     }
 
     // A running trial gives Growth. This matches the SQL tier function.
-    if (effectiveStatus === 'trialing') return 'growth';
+    if (effectiveStatus === 'trialing') return TRIAL_TIER;
 
     // An expired trial gives no tier. The SQL gates deny it too.
     if (effectiveStatus === 'trial_expired') return null;

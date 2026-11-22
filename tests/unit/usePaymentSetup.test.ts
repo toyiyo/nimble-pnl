@@ -126,9 +126,41 @@ describe('usePaymentSetup', () => {
     expect(invoke).toHaveBeenCalledWith('stripe-create-connected-account', {
       body: { restaurantId: RID, statusOnly: true },
     });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ['stripe-connected-account', RID],
+    expect(invalidate).toHaveBeenCalledWith(
+      { queryKey: ['stripe-connected-account', RID] },
+      { throwOnError: true },
+    );
+  });
+
+  it('shows an error toast and no status toast when the refetch fails', async () => {
+    connectState.value = {
+      ...connectState.value,
+      connectedAccount: account({ charges_enabled: true, onboarding_complete: true }),
+    };
+    const { result, invalidate } = setup();
+    invalidate.mockRejectedValue(new Error('refetch failed'));
+    await act(async () => {
+      await result.current.checkStatus();
     });
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
+  });
+
+  it('closes the sheet when the restaurant changes', async () => {
+    connectState.value = { ...connectState.value, connectedAccount: account() };
+    const queryClient = new QueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children);
+    const { result, rerender } = renderHook(({ id }) => usePaymentSetup(id), {
+      wrapper,
+      initialProps: { id: RID },
+    });
+    await act(async () => {
+      await result.current.openSetup();
+    });
+    expect(result.current.isSheetOpen).toBe(true);
+    rerender({ id: 'rest-2' });
+    expect(result.current.isSheetOpen).toBe(false);
   });
 
   it('does not run checkStatus in parallel', async () => {

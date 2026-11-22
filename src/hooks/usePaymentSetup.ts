@@ -51,7 +51,9 @@ export function usePaymentSetup(restaurantId: string | null) {
   const queryClient = useQueryClient();
   const { connectedAccount, loading, error } = useStripeConnect(restaurantId);
 
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  // Store the restaurant that opened the sheet. A restaurant change closes the sheet.
+  const [sheetRestaurantId, setSheetRestaurantId] = useState<string | null>(null);
+  const isSheetOpen = restaurantId !== null && sheetRestaurantId === restaurantId;
 
   const state: PaymentSetupState = getPaymentSetupState(connectedAccount);
 
@@ -62,14 +64,20 @@ export function usePaymentSetup(restaurantId: string | null) {
     [queryClient, accountQueryKey],
   );
 
+  // throwOnError makes a failed refetch fail the action. Stale cache is not fresh data.
+  const refetchOrThrow = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: accountQueryKey }, { throwOnError: true }),
+    [queryClient, accountQueryKey],
+  );
+
   // Call the edge function, then refresh the account row.
   const invokeAndRefetch = useCallback(
     async (body: Record<string, unknown>) => {
       const { error: invokeError } = await supabase.functions.invoke(FUNCTION_NAME, { body });
       if (invokeError) throw invokeError;
-      await refetch();
+      await refetchOrThrow();
     },
-    [refetch],
+    [refetchOrThrow],
   );
 
   const { run: runStart, isRunning: isStarting } = useGuardedAction('Could not start payment setup');
@@ -98,12 +106,12 @@ export function usePaymentSetup(restaurantId: string | null) {
       if (state === 'not_started') {
         await invokeAndRefetch({ restaurantId, accountType: 'express' });
       }
-      setIsSheetOpen(true);
+      setSheetRestaurantId(restaurantId);
     });
   }, [restaurantId, loading, error, runStart, invokeAndRefetch, state]);
 
   const closeSetup = useCallback(() => {
-    setIsSheetOpen(false);
+    setSheetRestaurantId(null);
     void checkStatus();
   }, [checkStatus]);
 

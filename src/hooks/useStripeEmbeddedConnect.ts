@@ -22,6 +22,16 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
     onReadyRef.current = options.onReady;
   }, [options.onReady]);
 
+  // Track the current restaurant. A start for an earlier restaurant must not set state.
+  const activeRestaurantRef = useRef(restaurantId);
+  useEffect(() => {
+    activeRestaurantRef.current = restaurantId;
+    setConnectInstance(null);
+    setClientSecret(null);
+    setError(null);
+    setIsLoading(false);
+  }, [restaurantId]);
+
   const start = useCallback(async () => {
     if (!restaurantId) {
       setError("Restaurant is not selected");
@@ -45,6 +55,7 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
         throw new Error("Missing client secret from Stripe Account Session");
       }
 
+      if (activeRestaurantRef.current !== restaurantId) return null;
       setClientSecret(secret);
       onReadyRef.current?.(secret);
 
@@ -64,14 +75,16 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
         },
       });
 
+      if (activeRestaurantRef.current !== restaurantId) return null;
       setConnectInstance(connect);
       return connect;
     } catch (err) {
+      if (activeRestaurantRef.current !== restaurantId) return null;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       return null;
     } finally {
-      setIsLoading(false);
+      if (activeRestaurantRef.current === restaurantId) setIsLoading(false);
     }
   }, [restaurantId]);
 

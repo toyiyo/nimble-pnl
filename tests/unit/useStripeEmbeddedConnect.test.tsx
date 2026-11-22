@@ -367,4 +367,41 @@ describe('useStripeEmbeddedConnect', () => {
 
     expect(mockLoadConnectAndInitialize).toHaveBeenCalled();
   });
+
+  it('clears state when the restaurant changes', async () => {
+    mockSupabaseInvoke.mockResolvedValue({ data: { clientSecret: 'cs_1' }, error: null });
+    mockLoadConnectAndInitialize.mockResolvedValue({ id: 'connect-1' });
+    const { result, rerender } = renderHook(({ id }) => useStripeEmbeddedConnect(id), {
+      wrapper,
+      initialProps: { id: 'rest-1' as string | null },
+    });
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(result.current.clientSecret).toBe('cs_1');
+    rerender({ id: 'rest-2' });
+    await waitFor(() => expect(result.current.clientSecret).toBeNull());
+    expect(result.current.connectInstance).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  it('discards a start that finishes after the restaurant changes', async () => {
+    let resolveInvoke!: (v: unknown) => void;
+    mockSupabaseInvoke.mockReturnValue(new Promise((r) => (resolveInvoke = r)));
+    const { result, rerender } = renderHook(({ id }) => useStripeEmbeddedConnect(id), {
+      wrapper,
+      initialProps: { id: 'rest-1' as string | null },
+    });
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current.start();
+    });
+    rerender({ id: 'rest-2' });
+    await act(async () => {
+      resolveInvoke({ data: { clientSecret: 'cs_old' }, error: null });
+      await pending;
+    });
+    expect(result.current.clientSecret).toBeNull();
+    expect(result.current.connectInstance).toBeNull();
+  });
 });

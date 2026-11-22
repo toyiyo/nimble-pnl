@@ -19,7 +19,7 @@ interface SalesByDayChartProps {
 /** Up to this many days the prior series is a bar. Above it, a dashed line. */
 export const PRIOR_BAR_MAX_DAYS = 14;
 
-const PRIOR_LABEL = 'Prior period';
+const PRIOR_LABEL = 'Previous period';
 
 function DashedSwatch() {
   return (

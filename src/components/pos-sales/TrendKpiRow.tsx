@@ -92,8 +92,8 @@ function DeltaLine({ delta, countUnit }: Readonly<{ delta: KpiDelta; countUnit?:
   const showCount = countUnit !== undefined && direction !== 'flat';
   const visible = showCount ? `${sign}${count} ${countUnit}` : percentText;
   const srText = showCount
-    ? `${word} ${count} ${countUnit}, ${percent} percent, versus prior period`
-    : `${word} ${percent} percent versus prior period`;
+    ? `${word} ${count} ${countUnit}, ${percent} percent, versus previous period`
+    : `${word} ${percent} percent versus previous period`;
   return (
     <span className={cn('inline-flex items-center gap-0.5', tone)}>
       <Icon className="h-3 w-3" aria-hidden="true" />

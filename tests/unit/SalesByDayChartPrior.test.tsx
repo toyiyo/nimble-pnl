@@ -6,6 +6,8 @@ import {
   PRIOR_BAR_MAX_DAYS,
   buildPriorAriaLabel,
   formatPriorTooltip,
+  priorLastSorter,
+  renderTooltipRow,
 } from '@/components/pos-sales/SalesByDayChart';
 import type { DailySeriesRowWithPrior } from '@/lib/salesTrends';
 
@@ -62,6 +64,34 @@ describe('formatPriorTooltip', () => {
     const out = formatPriorTooltip(50, rows(1, true)[0]);
     expect(out).toContain('$50');
     expect(out).toContain('Feb');
+  });
+});
+
+describe('renderTooltipRow', () => {
+  it('shows this period total above the previous period total', () => {
+    const row = { date: '2026-11-21', total: 2468.11, focus: 1910.56, toast: 557.55, prior: 2354.81, priorDate: '2026-10-17' } as unknown as DailySeriesRowWithPrior;
+    render(<div>{renderTooltipRow(2354.81, 'prior', { color: '#888', payload: row })}</div>);
+    const current = screen.getByText('This period');
+    const prior = screen.getByText('Previous period');
+    expect(current.parentElement).toHaveTextContent('$2,468.11');
+    expect(prior.parentElement).toHaveTextContent('$2,354.81');
+    expect(current.compareDocumentPosition(prior) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps the swatch and the text of a POS row in one row container', () => {
+    const { container } = render(<div>{renderTooltipRow(557.55, 'Toast', { color: '#f00' })}</div>);
+    const row = container.firstElementChild?.firstElementChild as HTMLElement;
+    expect(row).toHaveClass('flex', 'items-center');
+    expect(row.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(row).toHaveTextContent('Toast$557.55');
+  });
+});
+
+describe('priorLastSorter', () => {
+  it('sorts the prior row after the POS rows', () => {
+    const items = [{ name: 'prior' }, { name: 'Focus' }, { name: 'Toast' }];
+    const sorted = [...items].sort((a, b) => priorLastSorter(a) - priorLastSorter(b));
+    expect(sorted.map((i) => i.name)).toEqual(['Focus', 'Toast', 'prior']);
   });
 });
 

@@ -35,6 +35,12 @@ vi.mock('@/hooks/useSalesTrends', () => ({
   useSalesTrends: (restaurantId: string | null, options: unknown) => mockUseSalesTrends(restaurantId, options),
 }));
 
+const mockUseSalesDailySeries = vi.fn();
+vi.mock('@/hooks/useSalesDailySeries', () => ({
+  useSalesDailySeries: (restaurantId: string | null, options: unknown) =>
+    mockUseSalesDailySeries(restaurantId, options),
+}));
+
 import { SalesTrendsPanel } from '@/components/pos-sales/SalesTrendsPanel';
 
 function fixtureData(overrides: Partial<SalesTrendsData> = {}): SalesTrendsData {
@@ -90,8 +96,20 @@ function mockHookReturn(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function mockSeriesReturn(overrides: Record<string, unknown> = {}) {
+  const { pos_systems, by_day } = fixtureData();
+  return {
+    data: { pos_systems, by_day },
+    isLoading: false,
+    error: null,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   mockUseSalesTrends.mockReset();
+  mockUseSalesDailySeries.mockReset();
+  mockUseSalesDailySeries.mockReturnValue(mockSeriesReturn());
 });
 
 describe('SalesTrendsPanel — loading/error/empty states', () => {
@@ -211,15 +229,14 @@ describe('SalesTrendsPanel — prior period comparison', () => {
   const range = { startDate: '2026-07-01', endDate: '2026-07-02' };
 
   function mockByRange(prior: Record<string, unknown>) {
-    mockUseSalesTrends.mockImplementation((_id: string | null, opts: { startDate?: string }) =>
-      opts.startDate === range.startDate ? mockHookReturn() : mockHookReturn(prior),
-    );
+    mockUseSalesTrends.mockReturnValue(mockHookReturn());
+    mockUseSalesDailySeries.mockReturnValue(mockSeriesReturn(prior));
   }
   function priorCalls() {
-    return mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== range.startDate);
+    return mockUseSalesDailySeries.mock.calls;
   }
 
-  it('requests the prior range with the comparison dates and enables it by default', () => {
+  it('requests the prior range from the daily series hook and enables it by default', () => {
     mockByRange({});
     render(<SalesTrendsPanel restaurantId="rest-1" timeZone="UTC" {...range} />);
     const [restaurantId, last] = priorCalls().at(-1)! as [string, Record<string, unknown>];
@@ -228,27 +245,30 @@ describe('SalesTrendsPanel — prior period comparison', () => {
     expect(last).toMatchObject({
       startDate: '2026-06-01',
       endDate: '2026-06-02',
-      timeZone: 'UTC',
       enabled: true,
-      retry: 1,
     });
   });
 
   it('sends the full prior month for a full 30-day month', () => {
     const june = { startDate: '2026-06-01', endDate: '2026-06-30' };
-    mockUseSalesTrends.mockImplementation(() => mockHookReturn());
+    mockByRange({});
     render(<SalesTrendsPanel restaurantId="rest-1" {...june} />);
-    const prior = mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== june.startDate);
-    expect(prior.at(-1)![1]).toMatchObject({ startDate: '2026-05-01', endDate: '2026-05-31' });
+    expect(priorCalls().at(-1)![1]).toMatchObject({ startDate: '2026-05-01', endDate: '2026-05-31' });
   });
 
   it('uses the comparison hint for a preset range', () => {
     const month = { startDate: '2026-11-01', endDate: '2026-11-30' };
-    mockUseSalesTrends.mockImplementation(() => mockHookReturn());
+    mockByRange({});
     render(<SalesTrendsPanel restaurantId="rest-1" comparisonHint="shift" {...month} />);
-    const prior = mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== month.startDate);
     // 30 days moves back 35 days, the same as the dashboard "Last 30 days".
-    expect(prior.at(-1)![1]).toMatchObject({ startDate: '2026-09-27', endDate: '2026-10-26' });
+    expect(priorCalls().at(-1)![1]).toMatchObject({ startDate: '2026-09-27', endDate: '2026-10-26' });
+  });
+
+  it('calls the full trends hook only for the current range', () => {
+    mockByRange({});
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    const starts = mockUseSalesTrends.mock.calls.map(([, o]) => (o as { startDate?: string }).startDate);
+    expect(new Set(starts)).toEqual(new Set([range.startDate]));
   });
 
   it('shows the caption one time when the prior data is loaded', () => {

@@ -4,6 +4,7 @@ import { AlertCircle, ChevronDown } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { useSalesDailySeries } from '@/hooks/useSalesDailySeries';
 import { useSalesTrends } from '@/hooks/useSalesTrends';
 import { describeComparison, getComparisonRange, type ComparisonKind } from '@/lib/comparisonRange';
 import {
@@ -18,6 +19,7 @@ import {
   filterByPos,
   formatShortDate,
   hourCoverage,
+  toTrendsData,
   type PosFilter,
 } from '@/lib/salesTrends';
 
@@ -88,13 +90,12 @@ export function SalesTrendsPanel({
     data: priorData,
     isLoading: priorLoading,
     error: priorError,
-  } = useSalesTrends(restaurantId, {
+  } = useSalesDailySeries(restaurantId, {
+    // The prior period needs only the daily totals, so it uses the narrow RPC.
     startDate: comparison?.start,
     endDate: comparison?.end,
-    timeZone,
+    // The hook retries one time, so the skeleton does not stay for 7 seconds.
     enabled: expanded && compareOn && comparison !== null,
-    // The prior period is optional. Fail fast so the skeleton does not stay for 7 seconds.
-    retry: 1,
   });
   useEffect(() => {
     if (priorError) console.error('Could not load the previous-period sales trends', priorError);
@@ -117,7 +118,7 @@ export function SalesTrendsPanel({
     [data, effectivePosFilter],
   );
   const priorFiltered = useMemo(
-    () => (compareOn && comparison !== null && priorData ? filterByPos(priorData, effectivePosFilter) : null),
+    () => (compareOn && comparison !== null && priorData ? filterByPos(toTrendsData(priorData), effectivePosFilter) : null),
     [compareOn, comparison, priorData, effectivePosFilter],
   );
   const priorKpis = useMemo(() => (priorFiltered ? computeKpis(priorFiltered) : null), [priorFiltered]);

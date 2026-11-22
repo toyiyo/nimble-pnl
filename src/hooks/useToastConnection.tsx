@@ -4,6 +4,15 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
 
+import {
+  disconnectIntegration,
+  notifyIntegrationDisconnect,
+  AlreadyDisconnectedError,
+  type DisconnectReason,
+} from '@/lib/integrationDisconnect';
+
+type DisconnectOptions = { reason?: DisconnectReason | null; reasonText?: string | null };
+
 // Use proper type from generated schema (or define manually to match actual DB)
 type ToastConnection = {
   id: string;
@@ -161,37 +170,26 @@ export function useToastConnection(restaurantId?: string | null) {
     return data;
   }
 
-  // Mutation for disconnecting Toast
-  const disconnectMutation = useMutation({
-    mutationFn: async (restaurantId: string) => {
-      const { error } = await supabase
-        .from('toast_connections')
-        .update({ is_active: false })
-        .eq('restaurant_id', restaurantId);
-
-      if (error) {
-        throw error;
-      }
-    },
-    onSuccess: (_, restaurantId) => {
+  // Real disconnect: writes an event through the RPC and sends the alert.
+  async function disconnectToast(restaurantId: string, opts?: DisconnectOptions): Promise<void> {
+    try {
+      const eventId = await disconnectIntegration({
+        restaurantId,
+        integration: 'toast',
+        reason: opts?.reason ?? null,
+        reasonText: opts?.reasonText ?? null,
+      });
       queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
-      toast({
-        title: 'Disconnected',
-        description: 'Toast connection has been disabled'
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to disconnect from Toast',
-        variant: 'destructive'
-      });
-      throw error;
+      toast({ title: 'Disconnected', description: 'Toast connection has been disabled' });
+      void notifyIntegrationDisconnect(eventId);
+    } catch (err) {
+      if (err instanceof AlreadyDisconnectedError) {
+        queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
+        toast({ title: 'Already disconnected', description: 'Toast connection was already disabled' });
+        return;
+      }
+      throw err;
     }
-  });
-
-  async function disconnectToast(restaurantId: string): Promise<void> {
-    return disconnectMutation.mutateAsync(restaurantId);
   }
 
   async function triggerManualSync(

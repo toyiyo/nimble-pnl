@@ -4,6 +4,15 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
 
+import {
+  disconnectIntegration,
+  notifyIntegrationDisconnect,
+  AlreadyDisconnectedError,
+  type DisconnectReason,
+} from '@/lib/integrationDisconnect';
+
+type DisconnectOptions = { reason?: DisconnectReason | null; reasonText?: string | null };
+
 // Mirrors focus_connections DB columns — explicit list keeps select leaner than select('*').
 // api_key / api_secret_encrypted are intentionally omitted: credentials must stay server-side.
 type FocusConnection = {
@@ -199,43 +208,27 @@ export function useFocusConnection(restaurantId?: string | null) {
   }
 
   // ---- disconnect ----
-  // Uses the Supabase JS client directly (RLS FOR ALL owner/manager policy covers this)
 
-  const disconnectMutation = useMutation({
-    mutationFn: async (restaurantId: string) => {
-      // focus_connections is not yet in the generated Supabase types — same pattern
-      // as useSlingConnection.ts.
-
-      const { error } = await supabase
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('focus_connections' as any)
-        .update({ is_active: false })
-        .eq('restaurant_id', restaurantId);
-
-      if (error) {
-        throw error;
-      }
-    },
-    onSettled: (_data, _error, restaurantId) => {
+  // Real disconnect: writes an event through the RPC and sends the alert.
+  async function disconnect(restaurantId: string, opts?: DisconnectOptions): Promise<void> {
+    try {
+      const eventId = await disconnectIntegration({
+        restaurantId,
+        integration: 'focus',
+        reason: opts?.reason ?? null,
+        reasonText: opts?.reasonText ?? null,
+      });
       queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Disconnected',
-        description: 'Focus POS connection has been disabled',
-      });
-    },
-    onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to disconnect from Focus POS',
-        variant: 'destructive',
-      });
-    },
-  });
-
-  async function disconnect(restaurantId: string): Promise<void> {
-    return disconnectMutation.mutateAsync(restaurantId);
+      toast({ title: 'Disconnected', description: 'Focus POS connection has been disabled' });
+      void notifyIntegrationDisconnect(eventId);
+    } catch (err) {
+      if (err instanceof AlreadyDisconnectedError) {
+        queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
+        toast({ title: 'Already disconnected', description: 'Focus POS connection was already disabled' });
+        return;
+      }
+      throw err;
+    }
   }
 
   // ---- triggerManualSync ----

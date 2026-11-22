@@ -4,6 +4,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { type ConnectedBank, type GroupedBank, groupBanks, totalBalance as computeTotalBalance, accountCount as computeAccountCount, quarantinedBalance as computeQuarantinedBalance } from '@/utils/financialConnections';
 
+import type { DisconnectReason } from '@/lib/integrationDisconnect';
+
+export type DisconnectBankOptions = {
+  reason?: DisconnectReason | null;
+  reasonText?: string | null;
+  recordEvent?: boolean;
+};
+
 interface FinancialConnectionSession {
   clientSecret: string;
   sessionId: string;
@@ -139,7 +147,11 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
   };
 
   // Disconnect a bank and optionally delete data
-  const disconnectBank = async (bankId: string, deleteData: boolean = false) => {
+  const disconnectBank = async (
+    bankId: string,
+    deleteData: boolean = false,
+    opts: DisconnectBankOptions = {},
+  ): Promise<{ eventId: string | null }> => {
     // Show loading toast
     const loadingToast = toast({
       title: deleteData ? "Disconnecting Bank..." : "Disconnecting...",
@@ -153,7 +165,13 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       const { data, error } = await supabase.functions.invoke(
         'stripe-disconnect-bank',
         {
-          body: { bankId, deleteData }
+          body: {
+            bankId,
+            deleteData,
+            reason: opts.reason ?? null,
+            reasonText: opts.reasonText ?? null,
+            recordEvent: opts.recordEvent ?? false,
+          }
         }
       );
 
@@ -184,6 +202,8 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
         queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
         queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       }
+
+      return { eventId: (data?.eventId as string | null | undefined) ?? null };
     } catch (error) {
       // Dismiss loading toast
       loadingToast.dismiss();

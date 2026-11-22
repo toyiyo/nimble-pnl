@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { useMemo, useState, type CSSProperties } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { DisconnectBankDialog } from '@/components/banking/DisconnectBankDialog';
+import type { DisconnectBankOptions } from '@/hooks/useStripeFinancialConnections';
 import { FreshnessStamp } from '@/components/banking/FreshnessStamp';
 import type { GroupedBank } from '@/utils/financialConnections';
 
@@ -16,7 +17,11 @@ interface BankConnectionCardProps {
   bank: GroupedBank;
   onRefreshBalance?: (bankId: string) => Promise<void>;
   onSyncTransactions?: (bankId: string) => Promise<void>;
-  onDisconnect?: (bankId: string, deleteData: boolean) => Promise<void>;
+  onDisconnect?: (
+    bankId: string,
+    deleteData: boolean,
+    opts?: DisconnectBankOptions,
+  ) => Promise<{ eventId: string | null }>;
   onReconnect?: (connectedBankId: string) => Promise<void>;
 }
 

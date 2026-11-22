@@ -22,10 +22,10 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
     onReadyRef.current = options.onReady;
   }, [options.onReady]);
 
-  // Track the current restaurant. A start for an earlier restaurant must not set state.
-  const activeRestaurantRef = useRef(restaurantId);
+  // Identify the latest start. A restaurant change or a newer start makes earlier starts stale.
+  const startIdRef = useRef(0);
   useEffect(() => {
-    activeRestaurantRef.current = restaurantId;
+    startIdRef.current += 1;
     setConnectInstance(null);
     setClientSecret(null);
     setError(null);
@@ -33,6 +33,7 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
   }, [restaurantId]);
 
   const start = useCallback(async () => {
+    const startId = ++startIdRef.current;
     if (!restaurantId) {
       setError("Restaurant is not selected");
       return null;
@@ -55,7 +56,7 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
         throw new Error("Missing client secret from Stripe Account Session");
       }
 
-      if (activeRestaurantRef.current !== restaurantId) return null;
+      if (startIdRef.current !== startId) return null;
       setClientSecret(secret);
       onReadyRef.current?.(secret);
 
@@ -75,16 +76,16 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
         },
       });
 
-      if (activeRestaurantRef.current !== restaurantId) return null;
+      if (startIdRef.current !== startId) return null;
       setConnectInstance(connect);
       return connect;
     } catch (err) {
-      if (activeRestaurantRef.current !== restaurantId) return null;
+      if (startIdRef.current !== startId) return null;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       return null;
     } finally {
-      if (activeRestaurantRef.current === restaurantId) setIsLoading(false);
+      if (startIdRef.current === startId) setIsLoading(false);
     }
   }, [restaurantId]);
 

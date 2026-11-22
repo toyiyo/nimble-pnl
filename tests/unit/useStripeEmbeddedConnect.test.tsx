@@ -404,4 +404,23 @@ describe('useStripeEmbeddedConnect', () => {
     expect(result.current.clientSecret).toBeNull();
     expect(result.current.connectInstance).toBeNull();
   });
+  it('ignores a failed start after the restaurant changes and changes back', async () => {
+    let rejectInvoke!: (e: unknown) => void;
+    mockSupabaseInvoke.mockReturnValue(new Promise((_, rej) => (rejectInvoke = rej)));
+    const { result, rerender } = renderHook(({ id }) => useStripeEmbeddedConnect(id), {
+      wrapper,
+      initialProps: { id: 'rest-1' as string | null },
+    });
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current.start();
+    });
+    rerender({ id: 'rest-2' });
+    rerender({ id: 'rest-1' });
+    await act(async () => {
+      rejectInvoke(new Error('stale failure'));
+      await pending;
+    });
+    expect(result.current.error).toBeNull();
+  });
 });

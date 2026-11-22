@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -54,6 +54,10 @@ export function usePaymentSetup(restaurantId: string | null) {
   // Store the restaurant that opened the sheet. A restaurant change closes the sheet.
   const [sheetRestaurantId, setSheetRestaurantId] = useState<string | null>(null);
   const isSheetOpen = restaurantId !== null && sheetRestaurantId === restaurantId;
+  // Clear the stored restaurant on a change. Return to a restaurant must not reopen its sheet.
+  useEffect(() => {
+    setSheetRestaurantId(null);
+  }, [restaurantId]);
 
   const state: PaymentSetupState = getPaymentSetupState(connectedAccount);
 

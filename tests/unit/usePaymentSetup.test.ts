@@ -163,6 +163,24 @@ describe('usePaymentSetup', () => {
     expect(result.current.isSheetOpen).toBe(false);
   });
 
+  it('keeps the sheet closed when the user returns to the first restaurant', async () => {
+    connectState.value = { ...connectState.value, connectedAccount: account() };
+    const queryClient = new QueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children);
+    const { result, rerender } = renderHook(({ id }) => usePaymentSetup(id), {
+      wrapper,
+      initialProps: { id: RID },
+    });
+    await act(async () => {
+      await result.current.openSetup();
+    });
+    expect(result.current.isSheetOpen).toBe(true);
+    rerender({ id: 'rest-2' });
+    rerender({ id: RID });
+    expect(result.current.isSheetOpen).toBe(false);
+  });
+
   it('does not run checkStatus in parallel', async () => {
     let resolve!: (v: unknown) => void;
     invoke.mockReturnValue(new Promise((r) => (resolve = r)));

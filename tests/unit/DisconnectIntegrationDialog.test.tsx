@@ -180,8 +180,8 @@ describe('DisconnectIntegrationDialog', () => {
     await click('Continue');
     await click('Skip');
     const btn = screen.getByRole('button', { name: 'Disconnect anyway' });
-    fireEvent.click(btn);
-    fireEvent.click(btn);
+    await userEvent.click(btn);
+    await userEvent.click(btn);
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Disconnecting…')).toBeInTheDocument();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });

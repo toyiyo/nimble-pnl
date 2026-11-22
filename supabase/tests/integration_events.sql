@@ -1,6 +1,6 @@
 -- Test: integration_events table, grants, and RLS
 BEGIN;
-SELECT plan(24);
+SELECT plan(20);
 
 SELECT has_table('public', 'integration_events', 'table exists');
 SELECT has_column('public', 'integration_events', 'alert_claimed_at', 'alert_claimed_at exists');

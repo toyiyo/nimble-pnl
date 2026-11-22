@@ -11,6 +11,9 @@ import {
   tierHasFeature,
   calculatePrice,
   getVolumeDiscountPercent,
+  getEffectiveSubscriptionStatus,
+  TRIAL_TIER,
+  type EffectiveSubscriptionStatus,
 } from '@/lib/subscriptionPlans';
 
 export interface SubscriptionInfo {
@@ -47,43 +50,48 @@ export function useSubscription() {
     };
   }, [selectedRestaurant]);
 
+  // Calculate effective status once. A trial past its end date is 'trial_expired'.
+  const effectiveStatus: EffectiveSubscriptionStatus | null = useMemo(() => {
+    if (!subscription) return null;
+    return getEffectiveSubscriptionStatus(subscription.status, subscription.trialEndsAt);
+  }, [subscription]);
+
   // Calculate effective tier (accounting for grandfathering and trials)
   const effectiveTier: SubscriptionTier | null = useMemo(() => {
-    if (!subscription) return null;
+    if (!subscription || !effectiveStatus) return null;
 
-    const { tier, status, grandfatheredUntil, trialEndsAt } = subscription;
+    const { tier, grandfatheredUntil } = subscription;
 
     // Grandfathered = Pro until expiry
-    if (status === 'grandfathered') {
+    if (effectiveStatus === 'grandfathered') {
       if (!grandfatheredUntil || new Date(grandfatheredUntil) > new Date()) {
         return 'pro';
       }
       return 'starter'; // Grace period expired
     }
 
-    // Trialing = Pro until expiry (users get full access during trial)
-    if (status === 'trialing') {
-      if (!trialEndsAt || new Date(trialEndsAt) > new Date()) {
-        return 'pro';
-      }
-      return null; // Trial expired
-    }
+    // A running trial gives Growth. This matches the SQL tier function.
+    if (effectiveStatus === 'trialing') return TRIAL_TIER;
+
+    // An expired trial gives no tier. The SQL gates deny it too.
+    if (effectiveStatus === 'trial_expired') return null;
 
     // Active or past_due = actual tier
-    if (status === 'active' || status === 'past_due') {
+    if (effectiveStatus === 'active' || effectiveStatus === 'past_due') {
       return tier;
     }
 
     // Canceled = starter (basic access)
-    if (status === 'canceled') {
+    if (effectiveStatus === 'canceled') {
       return 'starter';
     }
 
     return tier;
-  }, [subscription]);
+  }, [subscription, effectiveStatus]);
 
   // Status checks
-  const isTrialing = subscription?.status === 'trialing';
+  const isTrialing = effectiveStatus === 'trialing';
+  const isTrialExpired = effectiveStatus === 'trial_expired';
   const isGrandfathered = subscription?.status === 'grandfathered';
   const isPastDue = subscription?.status === 'past_due';
   const isCanceled = subscription?.status === 'canceled';
@@ -255,9 +263,11 @@ export function useSubscription() {
     // Subscription info
     subscription,
     effectiveTier,
+    effectiveStatus,
 
     // Status checks
     isTrialing,
+    isTrialExpired,
     isGrandfathered,
     isPastDue,
     isCanceled,

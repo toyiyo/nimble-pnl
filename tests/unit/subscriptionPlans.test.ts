@@ -7,6 +7,7 @@ import {
   getRequiredTier,
   SUBSCRIPTION_PLANS,
   SUBSCRIPTION_FEATURES,
+  getEffectiveSubscriptionStatus,
 } from '@/lib/subscriptionPlans';
 
 describe('subscriptionPlans utilities', () => {
@@ -456,6 +457,40 @@ describe('subscriptionPlans utilities', () => {
       expect(SUBSCRIPTION_PLANS.growth.recommended).toBe(true);
       expect(SUBSCRIPTION_PLANS.starter.recommended).toBeUndefined();
       expect(SUBSCRIPTION_PLANS.pro.recommended).toBeUndefined();
+    });
+  });
+
+  // ============================================================
+  // getEffectiveSubscriptionStatus
+  // ============================================================
+  describe('getEffectiveSubscriptionStatus', () => {
+    const now = new Date('2026-11-21T12:00:00.000Z');
+
+    it('returns trial_expired when trialing and trial end is in the past', () => {
+      expect(getEffectiveSubscriptionStatus('trialing', '2026-11-20T12:00:00.000Z', now)).toBe('trial_expired');
+    });
+
+    it('returns trialing when trial end is in the future', () => {
+      expect(getEffectiveSubscriptionStatus('trialing', '2026-11-22T12:00:00.000Z', now)).toBe('trialing');
+    });
+
+    it('returns trialing when trial end equals now', () => {
+      expect(getEffectiveSubscriptionStatus('trialing', now.toISOString(), now)).toBe('trialing');
+    });
+
+    it('returns trialing when trialEndsAt is null', () => {
+      expect(getEffectiveSubscriptionStatus('trialing', null, now)).toBe('trialing');
+    });
+
+    it('returns trialing when trialEndsAt is an invalid string', () => {
+      expect(getEffectiveSubscriptionStatus('trialing', 'not-a-date', now)).toBe('trialing');
+    });
+
+    it('returns other statuses unchanged', () => {
+      const past = '2020-01-01T00:00:00.000Z';
+      for (const s of ['active', 'past_due', 'canceled', 'grandfathered'] as const) {
+        expect(getEffectiveSubscriptionStatus(s, past, now)).toBe(s);
+      }
     });
   });
 });

@@ -1,7 +1,7 @@
 ---
 title: "Sign In or Create Your EasyShiftHQ Account"
 category: "getting-started"
-summary: "Create a new EasyShiftHQ account or sign back in using email/password or Google, and start your 14-day Pro trial."
+summary: "Create a new EasyShiftHQ account or sign back in using email/password or Google, and start your 14-day Growth trial."
 audience: ["owner", "manager", "chef", "staff"]
 order: 10
 keywords: ["sign in", "login", "sign up", "register", "Google", "account", "password", "trial"]
@@ -97,7 +97,7 @@ The modal only appears once. You can still review plan details and upgrade at an
 ## Frequently asked questions
 
 **Do I need a credit card to sign up?**
-No. Your 14-day Pro trial starts the moment you create your account, with no payment information required upfront.
+No. Your 14-day Growth trial starts the moment you create your account, with no payment information required upfront.
 
 **Can I use both Google and email/password to sign in?**
 If you created your account with Google, continue using Google to sign in. If you registered with an email and password, use those credentials. Mixing the two methods for the same account is not supported.

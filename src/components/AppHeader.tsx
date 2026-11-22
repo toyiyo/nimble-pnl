@@ -144,7 +144,7 @@ function BillingPreview({
 
 export const AppHeader = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, createRestaurant, canCreateRestaurant } = useRestaurantContext();
-  const { isTrialing, trialDaysRemaining, effectiveTier, subscription } = useSubscription();
+  const { isTrialing, isTrialExpired, trialDaysRemaining, effectiveTier, subscription } = useSubscription();
   const navigate = useNavigate();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -260,6 +260,18 @@ export const AppHeader = () => {
 
             {/* Right: Trial Countdown + User Profile */}
             <div className="flex items-center gap-3">
+              {isTrialExpired && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive transition-colors"
+                  onClick={() => navigate('/settings?tab=subscription')}
+                  aria-label="Trial ended. Open subscription settings"
+                >
+                  <Clock className="mr-1.5 h-3 w-3" />
+                  Trial ended
+                </Button>
+              )}
               {/* Trial Countdown Badge */}
               {isTrialing && trialDaysRemaining !== null && (
                 <Button

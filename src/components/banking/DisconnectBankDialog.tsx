@@ -55,9 +55,10 @@ export const DisconnectBankDialog = ({
   }) => {
     const ids = Array.isArray(bankIds) ? bankIds : [bankIds];
     let recorded = false;
-    // A failed call throws and stops the loop.
+    // Run the calls in sequence. Each call needs the result of the call before it
+    // to set recordEvent. A failed call throws and stops the loop.
     for (const id of ids) {
-      const result = await onDisconnect(id, deleteData, {
+      const result = await onDisconnect(id, deleteData, { // NOSONAR: the order is required
         reason,
         reasonText,
         recordEvent: !recorded,

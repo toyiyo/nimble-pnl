@@ -268,7 +268,7 @@ export default function InvoiceDetail() {
                   {getSendButtonLabel()}
                 </Button>
               ) : canManage ? (
-                <Button onClick={paymentSetup.openSetup} className="bg-primary hover:bg-primary/90">
+                <Button onClick={() => void paymentSetup.openSetup()} className="bg-primary hover:bg-primary/90">
                   <Send className="h-4 w-4 mr-2" />
                   Turn on payments to send
                 </Button>

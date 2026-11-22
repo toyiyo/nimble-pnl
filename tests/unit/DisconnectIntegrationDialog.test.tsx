@@ -155,7 +155,7 @@ describe('DisconnectIntegrationDialog', () => {
     await pick('Other');
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'moving' } });
     await click('Continue');
-    expect(screen.getByText('Test Cafe')).toBeInTheDocument();
+    expect(screen.getAllByText('Test Cafe')).toHaveLength(2);
     await click('Disconnect anyway');
     await waitFor(() =>
       expect(props.onConfirm).toHaveBeenCalledWith({ reason: 'other', reasonText: 'moving' }),

@@ -50,4 +50,9 @@ describe('TrendKpiRow delta line', () => {
     const { container } = render(<TrendKpiRow kpis={kpis} deltasLoading />);
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
   });
+
+  it('shows a small order count change as a count, not as flat', () => {
+    render(<TrendKpiRow kpis={kpis} deltas={{ orders: { change: 1, percent: 0.02 } }} />);
+    expect(screen.getByText(/\+1 orders/)).toBeTruthy();
+  });
 });

@@ -149,6 +149,10 @@ export function SalesTrendsPanel({
 
   const isEmpty = !isLoading && !error && !!data && data.pos_systems.length === 0;
 
+  const showComparisonNote =
+    expanded && !isLoading && !error && !isEmpty && comparison !== null && compareOn &&
+    (priorFailed || (priorData && !priorLoading));
+
   return (
     <div className="rounded-xl border border-border/40 bg-background">
       <div className="flex items-center justify-between gap-2 px-4 py-3 flex-wrap">
@@ -184,7 +188,7 @@ export function SalesTrendsPanel({
           )}
         </div>
       </div>
-      {expanded && !isLoading && !error && !isEmpty && comparison !== null && compareOn && (priorFailed || (priorData && !priorLoading)) && (
+      {showComparisonNote && (
         <div className="px-4 pb-2">
           {priorFailed ? (
             <p role="status" className="flex items-center gap-2 text-[13px] text-muted-foreground">

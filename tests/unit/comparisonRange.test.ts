@@ -236,3 +236,10 @@ describe('periodComparison', () => {
     ).toBeNull();
   });
 });
+
+describe('week hint', () => {
+  it('uses a 7-day shift for a non-Monday start on the 1st', () => {
+    // Sun Nov 1 to Sat Nov 7, 2026.
+    expect(r('2026-11-01', '2026-11-07', 'week')).toMatchObject({ kind: 'shift', offsetDays: 7 });
+  });
+});

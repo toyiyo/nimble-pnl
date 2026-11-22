@@ -74,17 +74,21 @@ const DELTA_STYLE: Record<DeltaDirection, { Icon: typeof Minus; tone: string; si
   flat: { Icon: Minus, tone: 'text-muted-foreground', sign: '', word: 'unchanged' },
 };
 
-/** A change under 0.05 percent shows as flat. */
-function deltaDirection(delta: KpiDelta & { percent: number }): DeltaDirection {
-  if (Math.abs(delta.percent) < 0.05) return 'flat';
-  return delta.change > 0 ? 'up' : 'down';
+/** A percent change under this value rounds to 0.0 and shows as flat. */
+const FLAT_PERCENT_THRESHOLD = 0.05;
+
+/** A count tile shows flat only when the count does not change. */
+function deltaDirection(change: number, percent: number, isCount: boolean): DeltaDirection {
+  const isFlat = isCount ? change === 0 : Math.abs(percent) < FLAT_PERCENT_THRESHOLD;
+  if (isFlat) return 'flat';
+  return change > 0 ? 'up' : 'down';
 }
 
 function DeltaLine({ delta, countUnit }: Readonly<{ delta: KpiDelta; countUnit?: string }>) {
   if (delta.percent === null) {
     return <span className="text-muted-foreground">No prior sales</span>;
   }
-  const direction = deltaDirection({ ...delta, percent: delta.percent });
+  const direction = deltaDirection(delta.change, delta.percent, countUnit !== undefined);
   const { Icon, tone, sign, word } = DELTA_STYLE[direction];
   const percent = Math.abs(delta.percent).toFixed(1);
   const percentText = `${sign}${percent}%`;

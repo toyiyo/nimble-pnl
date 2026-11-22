@@ -99,6 +99,9 @@ export function getComparisonRange(
     const weekAllowed = hint === undefined || hint === 'week';
     if (weekAllowed && isMonday && lengthDays <= 7) return shiftRange('week', 7);
 
+    // The 'week' hint allows rule 2 only, then rule 5.
+    if (hint === 'week') return shiftRange('shift', Math.ceil(lengthDays / 7) * 7);
+
     const sameMonth = s.y === e.y && s.m === e.m;
 
     // Rule 3: quarter.

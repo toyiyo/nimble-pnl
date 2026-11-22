@@ -350,7 +350,7 @@ describe('useSubscription Hook', () => {
           },
         },
         restaurants: mockRestaurants,
-      } as any);
+      } as unknown as ReturnType<typeof useRestaurantContext>);
 
       const { result } = renderHook(() => useSubscription(), {
         wrapper: createWrapper(),

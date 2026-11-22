@@ -75,7 +75,7 @@ export function DisconnectIntegrationDialog({
   extraConfirmContent,
   confirmDisabled = false,
   confirmLabel = 'Disconnect anyway',
-}: DisconnectIntegrationDialogProps) {
+}: Readonly<DisconnectIntegrationDialogProps>) {
   const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [reason, setReason] = useState<DisconnectReason | null>(null);
@@ -386,7 +386,7 @@ function GhostButton(props: React.ComponentProps<typeof Button>) {
   );
 }
 
-function NextStep({ text, children }: { text: string; children?: ReactNode }) {
+function NextStep({ text, children }: Readonly<{ text: string; children?: ReactNode }>) {
   return (
     <div className="mt-2 flex flex-col gap-2 rounded-lg border border-border/40 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-[13px] text-muted-foreground">{text}</p>
@@ -395,7 +395,7 @@ function NextStep({ text, children }: { text: string; children?: ReactNode }) {
   );
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+function SummaryRow({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div>
       <dt className={labelClass}>{label}</dt>

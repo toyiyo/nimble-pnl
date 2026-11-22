@@ -3,13 +3,15 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { posLabel } from '@/lib/posColors';
-import type { DailySeriesRow } from '@/lib/salesTrends';
+import type { DailySeriesRowWithPrior } from '@/lib/salesTrends';
 
 import { formatShortDate } from './salesTrendsFormat';
 import { buildPosChartConfig } from './chartConfig';
 
 interface SalesByDayChartProps {
-  data: DailySeriesRow[];
+  data: DailySeriesRowWithPrior[];
+  /** Show the prior series. Task 6 renders it. */
+  showPrior?: boolean;
   posSystems: string[];
   ariaLabel: string;
 }

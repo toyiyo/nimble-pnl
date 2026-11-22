@@ -1,16 +1,22 @@
 import { useId, useMemo, useState } from 'react';
 import { AlertCircle, ChevronDown } from 'lucide-react';
 
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { useSalesTrends } from '@/hooks/useSalesTrends';
+import { describeComparison, getComparisonRange } from '@/lib/comparisonRange';
 import {
+  attachPriorSeries,
   buildDailySeries,
   buildHourlySeries,
   buildTopProducts,
   buildWeekdaySeries,
+  computeKpiDelta,
   computeKpis,
   deriveInsights,
   filterByPos,
+  formatShortDate,
   hourCoverage,
   type PosFilter,
 } from '@/lib/salesTrends';
@@ -19,7 +25,7 @@ import { PosFilterControl } from './PosFilterControl';
 import { SalesByDayChart } from './SalesByDayChart';
 import { TimeOfDayChart } from './TimeOfDayChart';
 import { TopProductsList } from './TopProductsList';
-import { TrendKpiRow } from './TrendKpiRow';
+import { TrendKpiRow, type TrendKpiDeltas } from './TrendKpiRow';
 import { WeekdayChart } from './WeekdayChart';
 
 interface SalesTrendsPanelProps {
@@ -66,6 +72,22 @@ export function SalesTrendsPanel({
   });
   const [posFilter, setPosFilter] = useState<PosFilter>('all');
   const contentId = useId();
+  const compareId = useId();
+  const [compareOn, setCompareOn] = useState(true);
+  const comparison = useMemo(
+    () => (startDate && endDate ? getComparisonRange(startDate, endDate) : null),
+    [startDate, endDate],
+  );
+  const {
+    data: priorData,
+    isLoading: priorLoading,
+    error: priorError,
+  } = useSalesTrends(restaurantId, {
+    startDate: comparison?.start,
+    endDate: comparison?.end,
+    timeZone,
+    enabled: expanded && compareOn && comparison !== null,
+  });
 
   // Guard against a stale `posFilter`: if the page's date range (or
   // restaurant) changes and the previously-selected POS system is no longer
@@ -83,6 +105,18 @@ export function SalesTrendsPanel({
     () => (data ? filterByPos(data, effectivePosFilter) : null),
     [data, effectivePosFilter],
   );
+  const priorFiltered = useMemo(
+    () => (compareOn && priorData ? filterByPos(priorData, effectivePosFilter) : null),
+    [compareOn, priorData, effectivePosFilter],
+  );
+  const priorKpis = useMemo(() => (priorFiltered ? computeKpis(priorFiltered) : null), [priorFiltered]);
+  const priorDaily = useMemo(() => {
+    if (!priorFiltered || !comparison) return undefined;
+    return buildDailySeries(priorFiltered.by_day, priorFiltered.pos_systems, {
+      start: comparison.start,
+      end: comparison.end,
+    });
+  }, [priorFiltered, comparison]);
   const kpis = useMemo(() => (filtered ? computeKpis(filtered) : null), [filtered]);
   const insights = useMemo(() => (filtered ? deriveInsights(filtered) : null), [filtered]);
   const daily = useMemo(() => {
@@ -90,6 +124,18 @@ export function SalesTrendsPanel({
     const range = startDate && endDate ? { start: startDate, end: endDate } : undefined;
     return buildDailySeries(filtered.by_day, filtered.pos_systems, range);
   }, [filtered, startDate, endDate]);
+  const dailyWithPrior = useMemo(() => attachPriorSeries(daily, priorDaily), [daily, priorDaily]);
+  const priorFailed = compareOn && comparison !== null && !!priorError;
+  const deltas = useMemo<TrendKpiDeltas | undefined>(() => {
+    if (!kpis || !priorKpis || priorFailed) return undefined;
+    return {
+      netSales: computeKpiDelta(kpis.netSales, priorKpis.netSales),
+      orders: computeKpiDelta(kpis.orders, priorKpis.orders),
+      avgOrder: computeKpiDelta(kpis.avgOrder, priorKpis.avgOrder),
+    };
+  }, [kpis, priorKpis, priorFailed]);
+  const deltasLoading = compareOn && comparison !== null && priorLoading;
+  const showPrior = !!priorDaily && !priorFailed;
   const hourly = useMemo(
     () => (filtered ? buildHourlySeries(filtered.by_hour, filtered.pos_systems) : []),
     [filtered],
@@ -105,7 +151,7 @@ export function SalesTrendsPanel({
 
   return (
     <div className="rounded-xl border border-border/40 bg-background">
-      <div className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
@@ -119,10 +165,39 @@ export function SalesTrendsPanel({
           </button>
           <h2 className="text-[17px] font-semibold text-foreground truncate">Sales Trends</h2>
         </div>
-        {data && data.pos_systems.length > 1 && (
-          <PosFilterControl posSystems={data.pos_systems} value={effectivePosFilter} onChange={setPosFilter} />
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          {expanded && comparison !== null && (
+            <div className="flex items-center gap-2 min-h-[44px] sm:min-h-0">
+              <Switch
+                id={compareId}
+                checked={compareOn}
+                onCheckedChange={setCompareOn}
+                className="data-[state=checked]:bg-foreground"
+              />
+              <Label htmlFor={compareId} className="text-[13px] text-muted-foreground">
+                Compare to previous period
+              </Label>
+            </div>
+          )}
+          {data && data.pos_systems.length > 1 && (
+            <PosFilterControl posSystems={data.pos_systems} value={effectivePosFilter} onChange={setPosFilter} />
+          )}
+        </div>
       </div>
+      {expanded && comparison !== null && compareOn && (priorFailed || (priorData && !priorLoading)) && (
+        <div className="px-4 pb-2">
+          {priorFailed ? (
+            <p role="status" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <AlertCircle className="h-4 w-4 text-destructive shrink-0" aria-hidden="true" />
+              <span>Could not load the previous period.</span>
+            </p>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">
+              {`vs ${formatShortDate(comparison.start)} – ${formatShortDate(comparison.end)} · ${describeComparison(comparison)}`}
+            </p>
+          )}
+        </div>
+      )}
 
       {expanded ? (
         <div id={contentId} className="px-4 pb-4 space-y-4">
@@ -154,7 +229,7 @@ export function SalesTrendsPanel({
 
           {!isLoading && !error && !isEmpty && filtered && kpis && insights && (
             <>
-              <TrendKpiRow kpis={kpis} />
+              <TrendKpiRow kpis={kpis} deltas={deltas} deltasLoading={deltasLoading} />
               {coverage < 1 && (
                 <p className="text-[12px] text-muted-foreground">
                   Hour-of-day data is partial for this range — some sales lack a recorded time.
@@ -162,7 +237,7 @@ export function SalesTrendsPanel({
               )}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <ChartSection title="Sales by day" caption={insights.daily}>
-                  <SalesByDayChart data={daily} posSystems={filtered.pos_systems} ariaLabel={insights.daily} />
+                  <SalesByDayChart data={dailyWithPrior} showPrior={showPrior} posSystems={filtered.pos_systems} ariaLabel={insights.daily} />
                 </ChartSection>
                 <ChartSection title="Time of day" caption={insights.hourly}>
                   <TimeOfDayChart data={hourly} posSystems={filtered.pos_systems} ariaLabel={insights.hourly} />

@@ -1,11 +1,20 @@
 import { memo } from 'react';
 
-import type { SalesTrendsKpis } from '@/lib/salesTrends';
+import type { KpiDelta, SalesTrendsKpis } from '@/lib/salesTrends';
 
 import { formatCurrency, formatHour, formatShortDate } from './salesTrendsFormat';
 
+export interface TrendKpiDeltas {
+  netSales?: KpiDelta;
+  orders?: KpiDelta;
+  avgOrder?: KpiDelta;
+}
+
 interface TrendKpiRowProps {
   kpis: SalesTrendsKpis;
+  /** Prior-period deltas. Task 5 renders them. */
+  deltas?: TrendKpiDeltas;
+  deltasLoading?: boolean;
 }
 
 /** KPI strip above the four charts — net sales, orders, avg order, busiest day, peak hour. */

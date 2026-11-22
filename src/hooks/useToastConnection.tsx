@@ -182,7 +182,7 @@ export function useToastConnection(restaurantId?: string | null) {
       void notifyIntegrationDisconnect(eventId);
     } catch (err) {
       if (err instanceof AlreadyDisconnectedError) {
-        queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
+        void queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
         toast({ title: 'Already disconnected', description: 'Toast connection was already disabled' });
         return;
       }

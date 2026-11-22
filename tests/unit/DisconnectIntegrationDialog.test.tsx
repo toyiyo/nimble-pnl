@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -180,8 +180,8 @@ describe('DisconnectIntegrationDialog', () => {
     await click('Continue');
     await click('Skip');
     const btn = screen.getByRole('button', { name: 'Disconnect anyway' });
-    fireEvent.click(btn);
-    fireEvent.click(btn);
+    await act(async () => { fireEvent.click(btn); });
+    await act(async () => { fireEvent.click(btn); });
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Disconnecting…')).toBeInTheDocument();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });

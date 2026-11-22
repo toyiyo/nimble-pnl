@@ -221,7 +221,7 @@ export function useFocusConnection(restaurantId?: string | null) {
       void notifyIntegrationDisconnect(eventId);
     } catch (err) {
       if (err instanceof AlreadyDisconnectedError) {
-        queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
+        void queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
         toast({ title: 'Already disconnected', description: 'Focus POS connection was already disabled' });
         return;
       }

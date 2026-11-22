@@ -119,7 +119,7 @@ export function useRevelConnection(restaurantId?: string | null) {
       void notifyIntegrationDisconnect(eventId);
     } catch (err) {
       if (err instanceof AlreadyDisconnectedError) {
-        queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
+        void queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
         toast({ title: 'Already disconnected', description: 'Revel connection was already disabled' });
         return;
       }
@@ -131,7 +131,7 @@ export function useRevelConnection(restaurantId?: string | null) {
   async function rollbackRevelConnection(id: string): Promise<void> {
     const { error } = await supabase.from('revel_connections').update({ is_active: false }).eq('restaurant_id', id);
     if (error) throw error;
-    queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
+    void queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
   }
 
   return { isConnected, connection, loading, connect, testConnection, triggerManualSync, triggerBackfill, disconnectRevel, rollbackRevelConnection, checkConnectionStatus };

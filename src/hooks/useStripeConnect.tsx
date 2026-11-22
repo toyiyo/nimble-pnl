@@ -82,7 +82,7 @@ export const useStripeConnect = (restaurantId: string | null) => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: stripeConnectedAccountKey(restaurantId) });
+      void queryClient.invalidateQueries({ queryKey: stripeConnectedAccountKey(restaurantId) });
       toast({
         title: "Account Created",
         description: "Stripe Connect account created. Complete the onboarding process to start accepting payments.",

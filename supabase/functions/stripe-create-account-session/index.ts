@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { HttpError, toErrorResponse } from "../_shared/httpError.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,19 +22,19 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      throw new Error("No authorization header provided");
+      throw new HttpError(401, "Not authenticated");
     }
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
     if (authError || !user) {
-      throw new Error("User not authenticated");
+      throw new HttpError(401, "Not authenticated");
     }
 
-    const { restaurantId, components } = await req.json();
+    const { restaurantId } = await req.json();
     if (!restaurantId) {
-      throw new Error("Restaurant ID is required");
+      throw new HttpError(400, "Restaurant ID is required");
     }
 
     // Use service role for privileged checks
@@ -51,7 +52,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!userRestaurant || userRestaurant.role !== "owner") {
-      throw new Error("Only restaurant owners can manage Stripe onboarding");
+      throw new HttpError(403, "Only restaurant owners can manage Stripe onboarding");
     }
 
     // Fetch connected account
@@ -80,7 +81,6 @@ serve(async (req) => {
       balances: { enabled: true },
       tax_registrations: { enabled: true },
       tax_settings: { enabled: true },
-      ...components, // allow overriding/enabling specific components from client
     };
 
     const session = await stripe.accountSessions.create({
@@ -98,9 +98,10 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[CREATE-ACCOUNT-SESSION] Error:", message);
-    return new Response(JSON.stringify({ error: message }), {
+    const { status, body } = toErrorResponse(error);
+    return new Response(JSON.stringify(body), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
+      status,
     });
   }
 });

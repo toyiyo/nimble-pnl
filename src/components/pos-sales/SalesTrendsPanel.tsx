@@ -8,6 +8,7 @@ import { useSalesDailySeries } from '@/hooks/useSalesDailySeries';
 import { useSalesTrends } from '@/hooks/useSalesTrends';
 import { describeComparison, getComparisonRange, type ComparisonKind } from '@/lib/comparisonRange';
 import {
+  attachPriorHourlySeries,
   attachPriorSeries,
   buildDailySeries,
   buildHourlySeries,
@@ -19,6 +20,7 @@ import {
   filterByPos,
   formatShortDate,
   hourCoverage,
+  priorDayScale,
   toTrendsData,
   type PosFilter,
 } from '@/lib/salesTrends';
@@ -91,9 +93,12 @@ export function SalesTrendsPanel({
     isLoading: priorLoading,
     error: priorError,
   } = useSalesDailySeries(restaurantId, {
-    // The prior period needs only the daily totals, so it uses the narrow RPC.
+    // The prior period needs the daily and hourly totals, so it uses the narrow RPC.
+    // The same time zone gives the same hour buckets in the two periods.
     startDate: comparison?.start,
     endDate: comparison?.end,
+    timeZone,
+    includeHours: true,
     // The hook retries one time, so the skeleton does not stay for 7 seconds.
     enabled: expanded && compareOn && comparison !== null,
   });
@@ -153,6 +158,15 @@ export function SalesTrendsPanel({
   const hourly = useMemo(
     () => (filtered ? buildHourlySeries(filtered.by_hour, filtered.pos_systems) : []),
     [filtered],
+  );
+  // The prior hour totals are scaled to the days of this period, so the line and the bars compare per-day averages.
+  const priorScale = useMemo(
+    () => (startDate && endDate && comparison ? priorDayScale({ start: startDate, end: endDate }, comparison) : 1),
+    [startDate, endDate, comparison],
+  );
+  const hourlyWithPrior = useMemo(
+    () => (showPrior && priorFiltered ? attachPriorHourlySeries(hourly, priorFiltered.by_hour, priorScale) : hourly),
+    [showPrior, priorFiltered, hourly, priorScale],
   );
   const weekday = useMemo(() => (filtered ? buildWeekdaySeries(filtered.by_weekday) : []), [filtered]);
   const products = useMemo(
@@ -258,7 +272,13 @@ export function SalesTrendsPanel({
                   <SalesByDayChart data={dailyWithPrior} showPrior={showPrior} priorTotal={priorTotal} posSystems={filtered.pos_systems} ariaLabel={insights.daily} />
                 </ChartSection>
                 <ChartSection title="Time of day" caption={insights.hourly}>
-                  <TimeOfDayChart data={hourly} posSystems={filtered.pos_systems} ariaLabel={insights.hourly} />
+                  <TimeOfDayChart
+                    data={hourlyWithPrior}
+                    showPrior={showPrior}
+                    priorScale={priorScale}
+                    posSystems={filtered.pos_systems}
+                    ariaLabel={insights.hourly}
+                  />
                 </ChartSection>
                 <ChartSection title="Day of week" caption={insights.weekday}>
                   <WeekdayChart data={weekday} ariaLabel={insights.weekday} />

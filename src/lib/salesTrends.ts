@@ -450,7 +450,8 @@ export function attachPriorHourlySeries(
   for (const row of priorRows) {
     byHour.set(row.hour, (byHour.get(row.hour) ?? 0) + row.revenue);
   }
-  return hourly.map((row) => ({ ...row, prior: (byHour.get(row.hour) ?? 0) * scale }));
+  // Round to cents, so the tooltip does not show a long fraction.
+  return hourly.map((row) => ({ ...row, prior: Math.round((byHour.get(row.hour) ?? 0) * scale * 100) / 100 }));
 }
 
 // ---------------------------------------------------------------------------

@@ -134,6 +134,12 @@ describe('attachPriorHourlySeries', () => {
     expect(attachPriorHourlySeries(hourly, undefined, 1)).toBe(hourly);
   });
 
+  it('rounds the scaled prior value to cents', () => {
+    const out = attachPriorHourlySeries(hourly, priorRows, 31 / 30);
+    // 80 x 31 / 30 = 82.6666...
+    expect(out[11].prior).toBe(82.67);
+  });
+
   it('returns an empty series when the current period has no hour rows', () => {
     expect(attachPriorHourlySeries([], priorRows, 1)).toEqual([]);
   });

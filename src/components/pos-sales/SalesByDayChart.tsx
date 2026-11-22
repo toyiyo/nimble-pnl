@@ -22,9 +22,9 @@ interface SalesByDayChartProps {
 /** Up to this many days the prior series is a bar. Above it, a dashed line. */
 export const PRIOR_BAR_MAX_DAYS = 14;
 
-const PRIOR_LABEL = 'Previous period';
+export const PRIOR_LABEL = 'Previous period';
 
-function DashedSwatch() {
+export function DashedSwatch() {
   return (
     <svg width="14" height="2" aria-hidden="true">
       <line x1="0" y1="1" x2="14" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />

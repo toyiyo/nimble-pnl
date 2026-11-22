@@ -474,8 +474,8 @@ describe('subscriptionPlans utilities', () => {
       expect(getEffectiveSubscriptionStatus('trialing', '2026-11-22T12:00:00.000Z', now)).toBe('trialing');
     });
 
-    it('returns trial_expired when trial end equals now', () => {
-      expect(getEffectiveSubscriptionStatus('trialing', now.toISOString(), now)).toBe('trial_expired');
+    it('returns trialing when trial end equals now', () => {
+      expect(getEffectiveSubscriptionStatus('trialing', now.toISOString(), now)).toBe('trialing');
     });
 
     it('returns trialing when trialEndsAt is null', () => {

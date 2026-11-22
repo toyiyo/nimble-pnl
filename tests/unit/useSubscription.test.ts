@@ -153,7 +153,7 @@ describe('useSubscription Hook', () => {
       expect(result.current.effectiveTier).toBe('growth');
     });
 
-    it('returns pro tier for trialing users with valid trial', () => {
+    it('returns growth tier for trialing users with valid trial', () => {
       const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       mockUseRestaurantContext.mockReturnValue({
         selectedRestaurant: {
@@ -172,11 +172,11 @@ describe('useSubscription Hook', () => {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.effectiveTier).toBe('pro');
+      expect(result.current.effectiveTier).toBe('growth');
       expect(result.current.isTrialing).toBe(true);
     });
 
-    it('returns growth tier for trialing users with expired trial', () => {
+    it('returns null tier for trialing users with expired trial', () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       mockUseRestaurantContext.mockReturnValue({
         selectedRestaurant: {
@@ -195,7 +195,7 @@ describe('useSubscription Hook', () => {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.effectiveTier).toBe('growth');
+      expect(result.current.effectiveTier).toBeNull();
       expect(result.current.effectiveStatus).toBe('trial_expired');
     });
 
@@ -338,7 +338,7 @@ describe('useSubscription Hook', () => {
       expect(result.current.isTrialExpired).toBe(true);
     });
 
-    it('expired trial has growth features but not banking or invoicing', () => {
+    it('expired trial has no features', () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       mockUseRestaurantContext.mockReturnValue({
         selectedRestaurant: {
@@ -356,7 +356,7 @@ describe('useSubscription Hook', () => {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.hasFeature('inventory_automation')).toBe(true);
+      expect(result.current.hasFeature('inventory_automation')).toBe(false);
       expect(result.current.hasFeature('banking')).toBe(false);
       expect(result.current.hasFeature('invoicing')).toBe(false);
     });
@@ -564,7 +564,7 @@ describe('useSubscription Hook', () => {
       expect(result.current.needsUpgrade('payroll')).toBe(false);
     });
 
-    it('trialing users have pro features', () => {
+    it('trialing users have growth features but not banking or invoicing', () => {
       const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       mockUseRestaurantContext.mockReturnValue({
         selectedRestaurant: {
@@ -583,8 +583,9 @@ describe('useSubscription Hook', () => {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.hasFeature('banking')).toBe(true);
-      expect(result.current.hasFeature('invoicing')).toBe(true);
+      expect(result.current.hasFeature('inventory_automation')).toBe(true);
+      expect(result.current.hasFeature('banking')).toBe(false);
+      expect(result.current.hasFeature('invoicing')).toBe(false);
     });
   });
 

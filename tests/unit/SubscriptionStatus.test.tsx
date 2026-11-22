@@ -24,7 +24,9 @@ const base = {
 };
 
 describe('SubscriptionStatus', () => {
-  beforeEach(() => mockUseSubscription.mockReset());
+  beforeEach(() => {
+    mockUseSubscription.mockReset();
+  });
 
   it('shows the expired card when the trial ended', () => {
     mockUseSubscription.mockReturnValue(base);
@@ -33,12 +35,8 @@ describe('SubscriptionStatus', () => {
     expect(screen.getByText('Your trial ended — choose a plan')).toBeTruthy();
   });
 
-  it('prints the effective status in the status line', () => {
-    mockUseSubscription.mockReturnValue({
-      ...base,
-      effectiveTier: 'growth',
-      isTrialExpired: true,
-    });
+  it('prints the trial expired status on the expired card', () => {
+    mockUseSubscription.mockReturnValue(base);
     render(<SubscriptionStatus />);
     expect(screen.getAllByText(/trial expired/i).length).toBeGreaterThan(0);
   });

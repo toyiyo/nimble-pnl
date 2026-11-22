@@ -69,11 +69,11 @@ export function useSubscription() {
       return 'starter'; // Grace period expired
     }
 
-    // Trialing = Pro until expiry (users get full access during trial)
-    if (effectiveStatus === 'trialing') return 'pro';
+    // A running trial gives Growth. This matches the SQL tier function.
+    if (effectiveStatus === 'trialing') return 'growth';
 
-    // Expired trial = Growth (limited access)
-    if (effectiveStatus === 'trial_expired') return 'growth';
+    // An expired trial gives no tier. The SQL gates deny it too.
+    if (effectiveStatus === 'trial_expired') return null;
 
     // Active or past_due = actual tier
     if (effectiveStatus === 'active' || effectiveStatus === 'past_due') {

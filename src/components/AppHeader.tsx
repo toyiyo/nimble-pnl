@@ -260,7 +260,6 @@ export const AppHeader = () => {
 
             {/* Right: Trial Countdown + User Profile */}
             <div className="flex items-center gap-3">
-              {/* Trial Ended Badge */}
               {isTrialExpired && (
                 <Button
                   variant="outline"

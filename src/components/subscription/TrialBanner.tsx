@@ -15,7 +15,6 @@ export function TrialBanner() {
   } = useSubscription();
   const navigate = useNavigate();
 
-  // Expired trial banner
   if (isTrialExpired) {
     return (
       <Alert variant="destructive" className="mb-4">

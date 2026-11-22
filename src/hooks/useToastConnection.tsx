@@ -8,10 +8,8 @@ import {
   disconnectIntegration,
   notifyIntegrationDisconnect,
   AlreadyDisconnectedError,
-  type DisconnectReason,
+  type DisconnectOptions,
 } from '@/lib/integrationDisconnect';
-
-type DisconnectOptions = { reason?: DisconnectReason | null; reasonText?: string | null };
 
 // Use proper type from generated schema (or define manually to match actual DB)
 type ToastConnection = {

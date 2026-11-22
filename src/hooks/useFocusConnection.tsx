@@ -8,10 +8,8 @@ import {
   disconnectIntegration,
   notifyIntegrationDisconnect,
   AlreadyDisconnectedError,
-  type DisconnectReason,
+  type DisconnectOptions,
 } from '@/lib/integrationDisconnect';
-
-type DisconnectOptions = { reason?: DisconnectReason | null; reasonText?: string | null };
 
 // Mirrors focus_connections DB columns — explicit list keeps select leaner than select('*').
 // api_key / api_secret_encrypted are intentionally omitted: credentials must stay server-side.

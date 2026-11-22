@@ -33,6 +33,11 @@ export class AlreadyDisconnectedError extends Error {
   }
 }
 
+export interface DisconnectOptions {
+  reason?: DisconnectReason | null;
+  reasonText?: string | null;
+}
+
 export interface DisconnectIntegrationArgs {
   restaurantId: string;
   integration: IntegrationKey;

@@ -5,10 +5,8 @@ import {
   disconnectIntegration,
   notifyIntegrationDisconnect,
   AlreadyDisconnectedError,
-  type DisconnectReason,
+  type DisconnectOptions,
 } from '@/lib/integrationDisconnect';
-
-type DisconnectOptions = { reason?: DisconnectReason | null; reasonText?: string | null };
 
 interface CloverConnection {
   id: string;

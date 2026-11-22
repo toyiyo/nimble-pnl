@@ -52,7 +52,8 @@ import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenSt
 import { focusDashboardSection } from '@/lib/focusDashboardSection';
 import { getRunwayWindow, buildCashRunwayAlert } from '@/lib/cashRunway';
 import { periodStatusMessage } from '@/utils/periodAnnouncement';
-import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
+import { previousPeriodQuery } from '@/lib/comparisonRange';
+import { format, startOfDay, endOfDay, startOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
   TrendingUp,
@@ -258,16 +259,16 @@ const Index = () => {
   }, [user?.id, user?.created_at, periodData]);
 
   // Calculate previous period data for comparison
-  const periodLength = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;
-  const prevTo = new Date(selectedPeriod.from);
-  prevTo.setDate(prevTo.getDate() - 1);
-  const prevFrom = new Date(prevTo);
-  prevFrom.setDate(prevFrom.getDate() - periodLength + 1);
+  const previousQuery = useMemo(
+    () => previousPeriodQuery(selectedPeriod, selectedRestaurant?.restaurant_id || null),
+    [selectedPeriod, selectedRestaurant?.restaurant_id],
+  );
+  const comparisonLabelText = previousQuery.label;
 
   const { data: previousPeriodMetrics } = usePeriodMetrics(
-    selectedRestaurant?.restaurant_id || null,
-    prevFrom,
-    prevTo
+    previousQuery.restaurantId,
+    previousQuery.from,
+    previousQuery.to
   );
 
   const previousPeriodData = useMemo(() => {
@@ -868,7 +869,7 @@ const Index = () => {
                     value={periodData ? currencyFormatter.format(periodData.net_revenue) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.net_revenue, previousPeriodData.net_revenue),
-                      label: 'vs previous period'
+                      label: comparisonLabelText
                     } : undefined}
                     icon={DollarSign}
                     variant={periodData && previousPeriodData && periodData.net_revenue > previousPeriodData.net_revenue ? 'success' : 'default'}
@@ -894,7 +895,7 @@ const Index = () => {
                     value={periodData ? currencyFormatter.format(periodData.food_cost) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.food_cost_percentage, previousPeriodData.food_cost_percentage),
-                      label: 'vs previous period'
+                      label: comparisonLabelText
                     } : undefined}
                     icon={ShoppingCart}
                     variant={periodData && periodData.food_cost_percentage > 35 ? 'warning' : 'default'}
@@ -908,7 +909,7 @@ const Index = () => {
                     value={periodData ? currencyFormatter.format(periodData.labor_cost) : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.labor_cost_percentage, previousPeriodData.labor_cost_percentage),
-                      label: 'vs previous period'
+                      label: comparisonLabelText
                     } : undefined}
                     icon={Clock}
                     variant={periodData && periodData.labor_cost_percentage > 35 ? 'warning' : 'default'}
@@ -929,7 +930,7 @@ const Index = () => {
                         value={periodData ? currencyFormatter.format(profit) : '--'}
                         trend={periodData && previousPeriodData ? {
                           value: getTrendValue(profit, previousProfit),
-                          label: 'vs previous period'
+                          label: comparisonLabelText
                         } : undefined}
                         icon={TrendingUp}
                         variant={

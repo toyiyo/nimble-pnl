@@ -259,6 +259,43 @@ export function buildDailySeries(
 }
 
 // ---------------------------------------------------------------------------
+// Comparison helpers: KPI delta and prior-period series pairing.
+// ---------------------------------------------------------------------------
+
+export interface KpiDelta {
+  change: number;
+  /** Percent change against the prior value. `null` when the prior value is 0. */
+  percent: number | null;
+}
+
+export function computeKpiDelta(current: number, prior: number): KpiDelta {
+  const change = current - prior;
+  const percent = prior === 0 ? null : (change / prior) * 100;
+  return { change, percent };
+}
+
+export interface DailySeriesRowWithPrior extends DailySeriesRow {
+  prior?: number;
+  priorDate?: string;
+}
+
+/**
+ * Pair each current row with the prior row at the same index.
+ * A current row with no prior row at that index gets no `prior` key.
+ */
+export function attachPriorSeries(
+  daily: DailySeriesRow[],
+  priorDaily: DailySeriesRow[] | undefined,
+): DailySeriesRowWithPrior[] {
+  if (!priorDaily) return daily;
+  return daily.map((row, i) => {
+    const priorRow = priorDaily[i];
+    if (!priorRow) return row;
+    return { ...row, prior: priorRow.total, priorDate: priorRow.date };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // buildHourlySeries — flat POS keys + cumulativePct (right-axis overlay).
 // Always a full 0-23 axis (when there is any data) so the chart's x-axis is
 // stable regardless of which hours actually had sales.

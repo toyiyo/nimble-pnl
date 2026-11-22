@@ -181,6 +181,10 @@ export default function POSSales() {
   );
   const [startDate, setStartDate] = useState(initialDateRange.startDate);
   const [endDate, setEndDate] = useState(initialDateRange.endDate);
+  // The default range is a rolling window, like the dashboard "Last 30 days" preset.
+  // It uses the same 'shift' comparison hint, so both pages give the same prior range.
+  const isDefaultRange =
+    startDate === initialDateRange.startDate && !parseDateRangeFromSearchParams(searchParams);
   // Re-apply when the params change on an already-mounted page (not just at
   // first mount) — matches Recipes.tsx/Inventory.tsx's convention for consuming
   // incoming query params. The lazy initializer above covers the fresh-mount
@@ -1133,6 +1137,7 @@ export default function POSSales() {
             endDate={endDate}
             timeZone={selectedRestaurant?.restaurant?.timezone}
             defaultExpanded={trendsPanelDefaultExpanded}
+            comparisonHint={isDefaultRange ? 'shift' : undefined}
           />
 
           {/* Apple/Notion-style filter bar */}

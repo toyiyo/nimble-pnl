@@ -12,6 +12,8 @@ interface SalesByDayChartProps {
   data: DailySeriesRowWithPrior[];
   /** Show the prior series. */
   showPrior?: boolean;
+  /** Total of the full prior period. Rows are index-paired, so a longer prior period loses days. */
+  priorTotal?: number;
   posSystems: string[];
   ariaLabel: string;
 }
@@ -41,10 +43,10 @@ function TooltipRow({ label, value, color }: Readonly<{ label: string; value: st
   );
 }
 
-export function buildPriorAriaLabel(base: string, data: DailySeriesRowWithPrior[], showPrior: boolean): string {
+export function buildPriorAriaLabel(base: string, data: DailySeriesRowWithPrior[], showPrior: boolean, priorTotal?: number): string {
   if (!showPrior || !data.some((row) => row.prior != null)) return base;
   const current = data.reduce((sum, row) => sum + (row.total ?? 0), 0);
-  const prior = data.reduce((sum, row) => sum + (row.prior ?? 0), 0);
+  const prior = priorTotal ?? data.reduce((sum, row) => sum + (row.prior ?? 0), 0);
   return `${base} Current period total ${formatCurrency(current)}. ${PRIOR_LABEL} total ${formatCurrency(prior)}.`;
 }
 
@@ -59,7 +61,7 @@ export function formatPriorTooltip(value: number, row?: DailySeriesRowWithPrior)
  * §4.2 FE major). Wrapped in `role="img"` with `ariaLabel` (reused from
  * `deriveInsights`) so the visual and the accessible name stay in sync.
  */
-export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, posSystems, ariaLabel }: SalesByDayChartProps) {
+export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, priorTotal, posSystems, ariaLabel }: SalesByDayChartProps) {
   const hasPrior = !!showPrior && data.some((row) => row.prior != null);
   const priorAsBar = data.length <= PRIOR_BAR_MAX_DAYS;
   const config = useMemo(() => {
@@ -67,7 +69,7 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, 
     if (!hasPrior) return base;
     return { ...base, prior: { label: PRIOR_LABEL, color: 'hsl(var(--muted-foreground))', icon: DashedSwatch } };
   }, [posSystems, hasPrior]);
-  const label = useMemo(() => buildPriorAriaLabel(ariaLabel, data, hasPrior), [ariaLabel, data, hasPrior]);
+  const label = useMemo(() => buildPriorAriaLabel(ariaLabel, data, hasPrior, priorTotal), [ariaLabel, data, hasPrior, priorTotal]);
 
   return (
     <div role="img" aria-label={label}>

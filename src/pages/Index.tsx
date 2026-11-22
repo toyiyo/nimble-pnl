@@ -53,7 +53,7 @@ import { focusDashboardSection } from '@/lib/focusDashboardSection';
 import { getRunwayWindow, buildCashRunwayAlert } from '@/lib/cashRunway';
 import { periodStatusMessage } from '@/utils/periodAnnouncement';
 import { periodComparison } from '@/lib/comparisonRange';
-import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
   TrendingUp,

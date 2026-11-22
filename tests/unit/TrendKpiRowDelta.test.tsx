@@ -40,6 +40,17 @@ describe('TrendKpiRow delta line', () => {
     expect(screen.getByText(/\+5 orders/)).toBeTruthy();
   });
 
+  it('shows a negative orders count change', () => {
+    render(<TrendKpiRow kpis={kpis} deltas={{ orders: { change: -4, percent: -9.5 } }} />);
+    expect(screen.getByText(/-4 orders/)).toBeTruthy();
+  });
+
+  it('shows a zero orders count change as unchanged', () => {
+    render(<TrendKpiRow kpis={kpis} deltas={{ orders: { change: 0, percent: 0 } }} />);
+    expect(screen.queryByText(/\+0 orders/)).toBeNull();
+    expect(screen.getByText(/unchanged/i)).toBeTruthy();
+  });
+
   it('shows a flat delta for a change under 0.05 percent', () => {
     render(<TrendKpiRow kpis={kpis} deltas={{ netSales: { change: 0.01, percent: 0.01 } }} />);
     expect(screen.getByText('0.0%')).toBeTruthy();

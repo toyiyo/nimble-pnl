@@ -106,8 +106,8 @@ export function SalesTrendsPanel({
     [data, effectivePosFilter],
   );
   const priorFiltered = useMemo(
-    () => (compareOn && priorData ? filterByPos(priorData, effectivePosFilter) : null),
-    [compareOn, priorData, effectivePosFilter],
+    () => (compareOn && comparison !== null && priorData ? filterByPos(priorData, effectivePosFilter) : null),
+    [compareOn, comparison, priorData, effectivePosFilter],
   );
   const priorKpis = useMemo(() => (priorFiltered ? computeKpis(priorFiltered) : null), [priorFiltered]);
   const priorDaily = useMemo(() => {
@@ -136,6 +136,10 @@ export function SalesTrendsPanel({
   }, [kpis, priorKpis, priorFailed]);
   const deltasLoading = compareOn && comparison !== null && priorLoading;
   const showPrior = !!priorDaily && !priorFailed;
+  const priorTotal = useMemo(
+    () => (priorDaily ? priorDaily.reduce((sum, row) => sum + (row.total ?? 0), 0) : undefined),
+    [priorDaily],
+  );
   const hourly = useMemo(
     () => (filtered ? buildHourlySeries(filtered.by_hour, filtered.pos_systems) : []),
     [filtered],
@@ -241,7 +245,7 @@ export function SalesTrendsPanel({
               )}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <ChartSection title="Sales by day" caption={insights.daily}>
-                  <SalesByDayChart data={dailyWithPrior} showPrior={showPrior} posSystems={filtered.pos_systems} ariaLabel={insights.daily} />
+                  <SalesByDayChart data={dailyWithPrior} showPrior={showPrior} priorTotal={priorTotal} posSystems={filtered.pos_systems} ariaLabel={insights.daily} />
                 </ChartSection>
                 <ChartSection title="Time of day" caption={insights.hourly}>
                   <TimeOfDayChart data={hourly} posSystems={filtered.pos_systems} ariaLabel={insights.hourly} />

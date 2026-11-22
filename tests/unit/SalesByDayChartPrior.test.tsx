@@ -29,6 +29,11 @@ function rows(n: number, withPrior: boolean): DailySeriesRowWithPrior[] {
 }
 
 describe('buildPriorAriaLabel', () => {
+  it('uses the full prior total when given', () => {
+    const label = buildPriorAriaLabel('Daily sales.', rows(2, true), true, 100);
+    expect(label).toContain('$100.00');
+  });
+
   it('adds both totals when showPrior is true', () => {
     const label = buildPriorAriaLabel('Daily sales.', rows(2, true), true);
     expect(label).toContain('Daily sales.');

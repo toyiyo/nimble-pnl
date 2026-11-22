@@ -1,13 +1,15 @@
+import { useId } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CreditCard, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { CreditCard, Clock, CheckCircle2, Loader2, type LucideIcon } from 'lucide-react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import type { usePaymentSetup } from '@/hooks/usePaymentSetup';
+import type { PaymentSetup } from '@/hooks/usePaymentSetup';
+import type { PaymentSetupState } from '@/lib/paymentSetupState';
 import { cn } from '@/lib/utils';
 
 interface PaymentSetupCardProps {
-  setup: ReturnType<typeof usePaymentSetup>;
+  setup: PaymentSetup;
   canManage: boolean;
   hideWhenReady?: boolean;
 }
@@ -17,8 +19,27 @@ const primaryButton =
 const secondaryButton =
   'h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground';
 
+const COPY: Record<PaymentSetupState, { title: string; text: string; Icon: LucideIcon }> = {
+  not_started: {
+    title: 'Turn on payments',
+    text: 'Customers pay invoices by card or bank (ACH). Setup takes about 5 minutes.',
+    Icon: CreditCard,
+  },
+  pending: {
+    title: 'Finish payment setup',
+    text: 'Stripe needs more details, or Stripe is checking them.',
+    Icon: Clock,
+  },
+  ready: {
+    title: 'Payments are on',
+    text: 'Customers can pay your invoices online.',
+    Icon: CheckCircle2,
+  },
+};
+
 export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSetupCardProps) {
   const { selectedRestaurant } = useRestaurantContext();
+  const titleId = useId();
   const { state, isLoading, error, refetch, openSetup, checkStatus, isStarting, isChecking } = setup;
 
   if (!selectedRestaurant?.restaurant_id) return null;
@@ -26,7 +47,7 @@ export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSet
   if (error) {
     return (
       <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border/40 bg-background">
-        <p className="text-[13px] text-muted-foreground" aria-live="polite">
+        <p className="text-[13px] text-muted-foreground" role="status">
           Payment status is not available.
         </p>
         <Button variant="ghost" className={secondaryButton} onClick={() => void refetch()}>
@@ -37,25 +58,7 @@ export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSet
   }
   if (state === 'ready' && hideWhenReady) return null;
 
-  const copy = {
-    not_started: {
-      title: 'Turn on payments',
-      text: 'Customers pay invoices by card or bank (ACH). Setup takes about 5 minutes.',
-      Icon: CreditCard,
-    },
-    pending: {
-      title: 'Finish payment setup',
-      text: 'Stripe needs more details, or Stripe is checking them.',
-      Icon: Clock,
-    },
-    ready: {
-      title: 'Payments are on',
-      text: 'Customers can pay your invoices online.',
-      Icon: CheckCircle2,
-    },
-  }[state];
-
-  const titleId = 'payment-setup-title';
+  const copy = COPY[state];
 
   const startButton = (label: string) => (
     <Button
@@ -71,7 +74,6 @@ export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSet
 
   return (
     <section
-      role="region"
       aria-labelledby={titleId}
       className={cn(
         'flex flex-col gap-4 p-4 rounded-xl border border-border/40 sm:flex-row sm:items-center sm:justify-between',

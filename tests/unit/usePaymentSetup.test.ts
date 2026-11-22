@@ -74,6 +74,16 @@ describe('usePaymentSetup', () => {
     expect(result.current.isSheetOpen).toBe(true);
   });
 
+  it('openSetup does nothing while the account row loads', async () => {
+    connectState.value = { ...connectState.value, loading: true };
+    const { result } = setup();
+    await act(async () => {
+      await result.current.openSetup();
+    });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(result.current.isSheetOpen).toBe(false);
+  });
+
   it('ignores a second openSetup while isStarting', async () => {
     let resolve!: (v: unknown) => void;
     invoke.mockReturnValue(new Promise((r) => (resolve = r)));

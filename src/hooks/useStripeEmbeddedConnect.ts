@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -18,7 +18,9 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
 
   // Read onReady through a ref so a new options object keeps start stable.
   const onReadyRef = useRef(options.onReady);
-  onReadyRef.current = options.onReady;
+  useEffect(() => {
+    onReadyRef.current = options.onReady;
+  }, [options.onReady]);
 
   const start = useCallback(async () => {
     if (!restaurantId) {

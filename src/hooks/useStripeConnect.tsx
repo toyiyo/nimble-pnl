@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { stripeConnectedAccountKey } from "@/lib/stripeConnectKeys";
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 
@@ -27,7 +28,7 @@ export const useStripeConnect = (restaurantId: string | null) => {
     isLoading: loading,
     error: queryError,
   } = useQuery({
-    queryKey: ['stripe-connected-account', restaurantId],
+    queryKey: stripeConnectedAccountKey(restaurantId),
     queryFn: async () => {
       if (!restaurantId) {
         return null;
@@ -81,7 +82,7 @@ export const useStripeConnect = (restaurantId: string | null) => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: stripeConnectedAccountKey(restaurantId) });
       toast({
         title: "Account Created",
         description: "Stripe Connect account created. Complete the onboarding process to start accepting payments.",

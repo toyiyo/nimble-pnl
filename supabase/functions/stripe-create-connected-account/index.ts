@@ -51,7 +51,12 @@ serve(async (req) => {
     console.log("[CREATE-CONNECTED-ACCOUNT] User authenticated:", user.id);
 
     // Get request body
-    const { restaurantId, statusOnly = false } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      throw new HttpError(400, "Invalid request body");
+    }
+    const { restaurantId } = body;
+    const statusOnly = body.statusOnly === true;
     
     if (!restaurantId) {
       throw new HttpError(400, "Restaurant ID is required");
@@ -131,6 +136,10 @@ serve(async (req) => {
 
       if (updateError) {
         console.error("[CREATE-CONNECTED-ACCOUNT] Failed to update account status:", updateError);
+        // Status-only callers read the row. Fail so they do not show old data.
+        if (statusOnly) {
+          throw new Error(`Database error: ${updateError.message}`);
+        }
       }
 
       // Status-only mode: return the statuses and create no account link

@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, type InvoiceStatus } from "@/hooks/useInvoices";
 import { usePaymentSetup } from "@/hooks/usePaymentSetup";
+import { stripeConnectedAccountKey } from "@/lib/stripeConnectKeys";
 import { PaymentSetupCard } from "@/components/invoicing/PaymentSetupCard";
 import { PaymentSetupSheet } from "@/components/invoicing/PaymentSetupSheet";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +41,7 @@ export default function Invoices() {
         title: "Payment Setup Complete",
         description: "Your payment processing account has been successfully configured. You can now create and send invoices.",
       });
-      queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
+      queryClient.invalidateQueries({ queryKey: stripeConnectedAccountKey(selectedRestaurant?.restaurant_id) });
       searchParams.delete('success');
     }
 

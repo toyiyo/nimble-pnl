@@ -6,10 +6,10 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { StripeEmbeddedConnect } from '@/components/StripeEmbeddedConnect';
-import type { usePaymentSetup } from '@/hooks/usePaymentSetup';
+import type { PaymentSetup } from '@/hooks/usePaymentSetup';
 
 interface PaymentSetupSheetProps {
-  setup: ReturnType<typeof usePaymentSetup>;
+  setup: PaymentSetup;
   restaurantId: string | null;
 }
 
@@ -17,7 +17,9 @@ export function PaymentSetupSheet({ setup, restaurantId }: PaymentSetupSheetProp
   const { isSheetOpen, closeSetup } = setup;
 
   return (
-    <Sheet open={isSheetOpen} onOpenChange={(open) => !open && closeSetup()}>
+    <Sheet open={isSheetOpen} onOpenChange={(open) => {
+        if (!open) closeSetup();
+      }}>
       <SheetContent
         className="w-full sm:max-w-xl p-0 flex flex-col h-[100dvh]"
         onInteractOutside={(e) => e.preventDefault()}

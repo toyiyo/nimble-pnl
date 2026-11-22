@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, useInvoice } from "@/hooks/useInvoices";
-import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { usePaymentSetup } from "@/hooks/usePaymentSetup";
 import { PaymentSetupCard } from "@/components/invoicing/PaymentSetupCard";
 import { PaymentSetupSheet } from "@/components/invoicing/PaymentSetupSheet";
@@ -60,12 +59,13 @@ export default function InvoiceDetail() {
   const { selectedRestaurant } = useRestaurantContext();
   const { sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
-  const { isReadyForInvoicing } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const paymentSetup = usePaymentSetup(selectedRestaurant?.restaurant_id || null);
   const canManage = selectedRestaurant?.role === 'owner';
+  const isReadyForInvoicing = paymentSetup.state === 'ready';
   const { formatInstant } = useRestaurantClock();
   const { toast } = useToast();
   const [showPreview, setShowPreview] = useState(false);
+  const sendHintId = useId();
 
   // Auto-sync status for open invoices with Stripe ID
   const hasSyncedRef = useRef(false);
@@ -126,6 +126,44 @@ export default function InvoiceDetail() {
     if (isSending) return 'Sending...';
     if (invoice.stripe_invoice_id) return 'Send Invoice';
     return 'Create & Send Invoice';
+  }
+
+  function renderSendAction() {
+    if (isReadyForInvoicing) {
+      return (
+        <Button
+          onClick={handleSendInvoice}
+          disabled={isSending}
+          className="bg-primary hover:bg-primary/90"
+        >
+          <Send className="h-4 w-4 mr-2" />
+          {getSendButtonLabel()}
+        </Button>
+      );
+    }
+    if (canManage) {
+      return (
+        <Button
+          onClick={() => void paymentSetup.openSetup()}
+          disabled={paymentSetup.isLoading || paymentSetup.isStarting}
+          className="bg-primary hover:bg-primary/90"
+        >
+          <Send className="h-4 w-4 mr-2" />
+          Turn on payments to send
+        </Button>
+      );
+    }
+    return (
+      <>
+        <Button disabled aria-describedby={sendHintId} className="bg-primary/50">
+          <Send className="h-4 w-4 mr-2" />
+          Send Invoice
+        </Button>
+        <span id={sendHintId} className="text-[13px] text-muted-foreground">
+          Ask the restaurant owner to turn on payments.
+        </span>
+      </>
+    );
   }
 
   const handleSendInvoice = async () => {
@@ -258,31 +296,7 @@ export default function InvoiceDetail() {
                 <Edit className="h-4 w-4 mr-2" />
                 Edit
               </Button>
-              {isReadyForInvoicing ? (
-                <Button
-                  onClick={handleSendInvoice}
-                  disabled={isSending}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  {getSendButtonLabel()}
-                </Button>
-              ) : canManage ? (
-                <Button onClick={() => void paymentSetup.openSetup()} className="bg-primary hover:bg-primary/90">
-                  <Send className="h-4 w-4 mr-2" />
-                  Turn on payments to send
-                </Button>
-              ) : (
-                <>
-                  <Button disabled aria-describedby="send-payments-hint" className="bg-primary/50">
-                    <Send className="h-4 w-4 mr-2" />
-                    Send Invoice
-                  </Button>
-                  <span id="send-payments-hint" className="text-[13px] text-muted-foreground">
-                    Ask the restaurant owner to turn on payments.
-                  </span>
-                </>
-              )}
+              {renderSendAction()}
             </>
           )}
 

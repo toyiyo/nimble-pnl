@@ -16,7 +16,7 @@ import {
   disconnectIntegration,
   notifyIntegrationDisconnect,
 } from '@/lib/integrationDisconnect';
-import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
+import { disconnectProvider, runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
 
 const rpc = vi.mocked(disconnectIntegration);
 const notify = vi.mocked(notifyIntegrationDisconnect);
@@ -93,5 +93,59 @@ describe('runIntegrationDisconnect', () => {
     const { onDisconnected, toast } = setup();
     await runIntegrationDisconnect({ restaurantId: 'r1', integration: 'revel', onDisconnected, toast, messages });
     expect(notify).toHaveBeenCalledWith('evt-3');
+  });
+});
+
+describe('disconnectProvider', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    notify.mockReset();
+  });
+
+  function args(over: Partial<Parameters<typeof disconnectProvider>[0]> = {}) {
+    return {
+      integration: 'square' as const,
+      name: 'Square',
+      currentId: 'r1',
+      hasConnection: true,
+      clearLocalState: vi.fn(),
+      toast: vi.fn(),
+      ...over,
+    };
+  }
+
+  it('disconnects the current restaurant and clears the local state', async () => {
+    rpc.mockResolvedValue('evt-1');
+    const a = args();
+    await disconnectProvider(a);
+    expect(rpc).toHaveBeenCalledWith(expect.objectContaining({ restaurantId: 'r1', integration: 'square' }));
+    expect(a.clearLocalState).toHaveBeenCalledTimes(1);
+    expect(a.toast).toHaveBeenCalledWith({ title: 'Disconnected', description: 'Successfully disconnected from Square' });
+  });
+
+  it('keeps the local state when the target is another restaurant', async () => {
+    rpc.mockResolvedValue('evt-2');
+    const a = args({ targetId: 'r2', hasConnection: false });
+    await disconnectProvider(a);
+    expect(rpc).toHaveBeenCalledWith(expect.objectContaining({ restaurantId: 'r2' }));
+    expect(a.clearLocalState).not.toHaveBeenCalled();
+  });
+
+  it('clears the local state when the current restaurant is already disconnected', async () => {
+    rpc.mockRejectedValue(new AlreadyDisconnectedError());
+    const a = args({ name: 'Clover', integration: 'clover' });
+    await disconnectProvider(a);
+    expect(a.clearLocalState).toHaveBeenCalledTimes(1);
+    expect(a.toast).toHaveBeenCalledWith({ title: 'Already disconnected', description: 'Clover was already disconnected' });
+  });
+
+  it.each([
+    ['no restaurant', { currentId: null }],
+    ['no connection and no target', { hasConnection: false }],
+  ])('does nothing with %s', async (_label, over) => {
+    const a = args(over);
+    await disconnectProvider(a);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(a.toast).not.toHaveBeenCalled();
   });
 });

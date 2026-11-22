@@ -50,3 +50,45 @@ export async function runIntegrationDisconnect({
   toast({ title: 'Disconnected', description: messages.success });
   void notifyIntegrationDisconnect(eventId);
 }
+
+export interface DisconnectProviderArgs {
+  integration: IntegrationKey;
+  /** The name in the toasts, for example "Square". */
+  name: string;
+  opts?: DisconnectOptions;
+  /** The restaurant the dialog named. It can differ from the current restaurant. */
+  targetId?: string;
+  currentId: string | null;
+  hasConnection: boolean;
+  /** Clears the hook state. Runs only when the target is the current restaurant. */
+  clearLocalState: () => void;
+  toast: RunIntegrationDisconnectArgs['toast'];
+}
+
+/** The disconnect for hooks that keep the connection in local state (Square, Clover). */
+export async function disconnectProvider({
+  integration,
+  name,
+  opts,
+  targetId,
+  currentId,
+  hasConnection,
+  clearLocalState,
+  toast,
+}: DisconnectProviderArgs): Promise<void> {
+  const rid = targetId ?? currentId;
+  if (!rid || (!targetId && !hasConnection)) return;
+  await runIntegrationDisconnect({
+    restaurantId: rid,
+    integration,
+    opts,
+    toast,
+    onDisconnected: () => {
+      if (rid === currentId) clearLocalState();
+    },
+    messages: {
+      success: `Successfully disconnected from ${name}`,
+      already: `${name} was already disconnected`,
+    },
+  });
+}

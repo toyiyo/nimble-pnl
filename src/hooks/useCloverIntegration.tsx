@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { DisconnectOptions } from '@/lib/integrationDisconnect';
-import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
+import { disconnectProvider } from '@/lib/runIntegrationDisconnect';
 
 interface CloverConnection {
   id: string;
@@ -121,29 +121,20 @@ export const useCloverIntegration = (restaurantId: string | null) => {
     }
   };
 
-  const disconnectClover = async (opts?: DisconnectOptions, targetId?: string) => {
-    // targetId is the restaurant the dialog named. It can differ from the current restaurant.
-    const rid = targetId ?? restaurantId;
-    if (!rid || (!targetId && !connection)) return;
-    const isCurrent = rid === restaurantId;
-
-    await runIntegrationDisconnect({
-      restaurantId: rid,
+  const disconnectClover = (opts?: DisconnectOptions, targetId?: string) =>
+    disconnectProvider({
       integration: 'clover',
+      name: 'Clover',
       opts,
-      onDisconnected: () => {
-        if (isCurrent) {
-          setConnection(null);
-          setIsConnected(false);
-        }
+      targetId,
+      currentId: restaurantId,
+      hasConnection: !!connection,
+      clearLocalState: () => {
+        setConnection(null);
+        setIsConnected(false);
       },
       toast,
-      messages: {
-        success: 'Successfully disconnected from Clover',
-        already: 'Clover was already disconnected',
-      },
     });
-  };
 
   return {
     isConnected,

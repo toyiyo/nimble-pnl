@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { DisconnectOptions } from '@/lib/integrationDisconnect';
-import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
+import { disconnectProvider } from '@/lib/runIntegrationDisconnect';
 
 interface SquareConnection {
   id: string;
@@ -90,29 +90,20 @@ export const useSquareIntegration = (restaurantId: string | null) => {
     }
   };
 
-  const disconnectSquare = async (opts?: DisconnectOptions, targetId?: string) => {
-    // targetId is the restaurant the dialog named. It can differ from the current restaurant.
-    const rid = targetId ?? restaurantId;
-    if (!rid || (!targetId && !connection)) return;
-    const isCurrent = rid === restaurantId;
-
-    await runIntegrationDisconnect({
-      restaurantId: rid,
+  const disconnectSquare = (opts?: DisconnectOptions, targetId?: string) =>
+    disconnectProvider({
       integration: 'square',
+      name: 'Square',
       opts,
-      onDisconnected: () => {
-        if (isCurrent) {
-          setConnection(null);
-          setIsConnected(false);
-        }
+      targetId,
+      currentId: restaurantId,
+      hasConnection: !!connection,
+      clearLocalState: () => {
+        setConnection(null);
+        setIsConnected(false);
       },
       toast,
-      messages: {
-        success: 'Successfully disconnected from Square',
-        already: 'Square was already disconnected',
-      },
     });
-  };
 
   return {
     isConnected,

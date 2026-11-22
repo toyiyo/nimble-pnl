@@ -105,13 +105,13 @@ SELECT ok(
   'stripe_connected_accounts SELECT policy should exist'
 );
 SELECT ok(
-  EXISTS(
+  NOT EXISTS(
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename = 'stripe_connected_accounts'
       AND policyname = 'Owners can manage connected accounts'
   ),
-  'stripe_connected_accounts ALL policy should exist'
+  'stripe_connected_accounts ALL policy should not exist'
 );
 
 SELECT ok(
@@ -276,31 +276,26 @@ SELECT results_eq(
   'Customer updated_at should change on update by manager'
 );
 
--- Stripe connected accounts: owner can manage, manager cannot
-SET LOCAL role TO authenticated;
-SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000A001","role":"authenticated"}', true);
-SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000A001', true);
-SELECT set_config('request.jwt.claim.role', 'authenticated', true);
-SELECT lives_ok(
-  $$INSERT INTO stripe_connected_accounts (id, restaurant_id, stripe_account_id, account_type) VALUES ('00000000-0000-0000-0000-00000000a101', '00000000-0000-0000-0000-00000000AAAA', 'acct_test_123', 'standard') ON CONFLICT (id) DO NOTHING$$,
-  'Owner should be able to manage connected accounts'
+-- Stripe connected accounts: written by the postgres role only
+RESET ROLE;
+INSERT INTO stripe_connected_accounts (id, restaurant_id, stripe_account_id, account_type) VALUES ('00000000-0000-0000-0000-00000000a101', '00000000-0000-0000-0000-00000000AAAA', 'acct_test_123', 'standard') ON CONFLICT (id) DO NOTHING;
+SELECT ok(
+  EXISTS(SELECT 1 FROM stripe_connected_accounts WHERE id = '00000000-0000-0000-0000-00000000a101'),
+  'Connected account row is seeded by the postgres role'
 );
 
 SET LOCAL role TO authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000A002","role":"authenticated"}', true);
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000A002', true);
 SELECT set_config('request.jwt.claim.role', 'authenticated', true);
-UPDATE stripe_connected_accounts SET account_type = 'express' WHERE id = '00000000-0000-0000-0000-00000000a101';
-SELECT is(
-  (SELECT account_type FROM stripe_connected_accounts WHERE id = '00000000-0000-0000-0000-00000000a101'),
-  'standard',
+SELECT throws_ok(
+  $$UPDATE stripe_connected_accounts SET account_type = 'express' WHERE id = '00000000-0000-0000-0000-00000000a101'$$,
+  '42501',
+  NULL,
   'Manager should not be able to manage connected accounts'
 );
 
-SET LOCAL role TO authenticated;
-SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000A001","role":"authenticated"}', true);
-SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000A001', true);
-SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+RESET ROLE;
 SELECT results_eq(
   $$WITH before_ts AS (
       SELECT updated_at FROM stripe_connected_accounts WHERE id = '00000000-0000-0000-0000-00000000a101'
@@ -309,7 +304,7 @@ SELECT results_eq(
     )
     SELECT (upd.updated_at >= before_ts.updated_at) FROM upd, before_ts$$,
   $$VALUES (true)$$,
-  'Connected account updated_at should change on owner update'
+  'Connected account updated_at should change on postgres role update'
 );
 
 -- Invoices: manager can insert, staff cannot; updates change updated_at

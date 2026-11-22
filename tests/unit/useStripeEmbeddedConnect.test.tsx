@@ -75,6 +75,37 @@ describe('useStripeEmbeddedConnect', () => {
     expect(typeof result.current.start).toBe('function');
   });
 
+  it('keeps the start identity when options change on rerender', () => {
+    const { result, rerender } = renderHook(
+      ({ opts }) => useStripeEmbeddedConnect('restaurant-123', opts),
+      { wrapper, initialProps: { opts: { onReady: vi.fn() } } }
+    );
+    const first = result.current.start;
+
+    rerender({ opts: { onReady: vi.fn() } });
+
+    expect(result.current.start).toBe(first);
+  });
+
+  it('calls the latest onReady after a rerender', async () => {
+    mockSupabaseInvoke.mockResolvedValue({ data: { clientSecret: 'cs_1' }, error: null });
+    mockLoadConnectAndInitialize.mockResolvedValue({});
+    const oldReady = vi.fn();
+    const newReady = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ opts }) => useStripeEmbeddedConnect('restaurant-123', opts),
+      { wrapper, initialProps: { opts: { onReady: oldReady } } }
+    );
+
+    rerender({ opts: { onReady: newReady } });
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(newReady).toHaveBeenCalledWith('cs_1');
+    expect(oldReady).not.toHaveBeenCalled();
+  });
+
   it('returns error when restaurant is not selected', async () => {
     const { result } = renderHook(
       () => useStripeEmbeddedConnect(null),

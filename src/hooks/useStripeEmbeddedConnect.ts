@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -15,6 +15,10 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Read onReady through a ref so a new options object keeps start stable.
+  const onReadyRef = useRef(options.onReady);
+  onReadyRef.current = options.onReady;
 
   const start = useCallback(async () => {
     if (!restaurantId) {
@@ -40,7 +44,7 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
       }
 
       setClientSecret(secret);
-      options.onReady?.(secret);
+      onReadyRef.current?.(secret);
 
       const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
       if (!publishableKey) {
@@ -67,7 +71,7 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
     } finally {
       setIsLoading(false);
     }
-  }, [restaurantId, options]);
+  }, [restaurantId]);
 
   return {
     connectInstance,

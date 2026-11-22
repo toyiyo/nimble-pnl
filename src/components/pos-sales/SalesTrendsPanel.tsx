@@ -184,7 +184,7 @@ export function SalesTrendsPanel({
           )}
         </div>
       </div>
-      {expanded && comparison !== null && compareOn && (priorFailed || (priorData && !priorLoading)) && (
+      {expanded && !isLoading && !error && !isEmpty && comparison !== null && compareOn && (priorFailed || (priorData && !priorLoading)) && (
         <div className="px-4 pb-2">
           {priorFailed ? (
             <p role="status" className="flex items-center gap-2 text-[13px] text-muted-foreground">

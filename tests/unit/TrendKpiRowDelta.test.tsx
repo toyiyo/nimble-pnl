@@ -40,6 +40,12 @@ describe('TrendKpiRow delta line', () => {
     expect(screen.getByText(/\+5 orders/)).toBeTruthy();
   });
 
+  it('shows a flat delta for a change under 0.05 percent', () => {
+    render(<TrendKpiRow kpis={kpis} deltas={{ netSales: { change: 0.01, percent: 0.01 } }} />);
+    expect(screen.getByText('0.0%')).toBeTruthy();
+    expect(screen.getByText(/unchanged 0\.0 percent/i)).toBeTruthy();
+  });
+
   it('shows a skeleton while loading', () => {
     const { container } = render(<TrendKpiRow kpis={kpis} deltasLoading />);
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);

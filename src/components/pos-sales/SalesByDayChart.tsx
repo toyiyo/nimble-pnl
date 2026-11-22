@@ -19,11 +19,33 @@ interface SalesByDayChartProps {
 /** Up to this many days the prior series is a bar. Above it, a dashed line. */
 export const PRIOR_BAR_MAX_DAYS = 14;
 
+const PRIOR_LABEL = 'Prior period';
+
+function DashedSwatch() {
+  return (
+    <svg width="14" height="2" aria-hidden="true">
+      <line x1="0" y1="1" x2="14" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />
+    </svg>
+  );
+}
+
+function TooltipRow({ label, value, color }: Readonly<{ label: string; value: string; color?: string }>) {
+  return (
+    <>
+      <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: color }} aria-hidden="true" />
+      <span className="flex w-full justify-between gap-4">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono font-medium tabular-nums text-foreground">{value}</span>
+      </span>
+    </>
+  );
+}
+
 export function buildPriorAriaLabel(base: string, data: DailySeriesRowWithPrior[], showPrior: boolean): string {
   if (!showPrior || !data.some((row) => row.prior != null)) return base;
   const current = data.reduce((sum, row) => sum + (row.total ?? 0), 0);
   const prior = data.reduce((sum, row) => sum + (row.prior ?? 0), 0);
-  return `${base} Current period total ${formatCurrency(current)}. Prior period total ${formatCurrency(prior)}.`;
+  return `${base} Current period total ${formatCurrency(current)}. ${PRIOR_LABEL} total ${formatCurrency(prior)}.`;
 }
 
 export function formatPriorTooltip(value: number, row?: DailySeriesRowWithPrior): string {
@@ -42,18 +64,8 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, 
   const priorAsBar = data.length <= PRIOR_BAR_MAX_DAYS;
   const config = useMemo(() => {
     const base = buildPosChartConfig(posSystems);
-    if (hasPrior) {
-      base.prior = {
-        label: 'Prior period',
-        color: 'hsl(var(--muted-foreground))',
-        icon: () => (
-          <svg width="14" height="2" aria-hidden="true">
-            <line x1="0" y1="1" x2="14" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />
-          </svg>
-        ),
-      };
-    }
-    return base;
+    if (!hasPrior) return base;
+    return { ...base, prior: { label: PRIOR_LABEL, color: 'hsl(var(--muted-foreground))', icon: DashedSwatch } };
   }, [posSystems, hasPrior]);
   const label = useMemo(() => buildPriorAriaLabel(ariaLabel, data, hasPrior), [ariaLabel, data, hasPrior]);
 
@@ -76,17 +88,13 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, 
                 labelFormatter={(v) => formatShortDate(String(v))}
                 formatter={(value, name, item) =>
                   name === 'prior' ? (
-                    <span className="flex w-full justify-between gap-4">
-                      <span className="text-muted-foreground">Prior period</span>
-                      <span className="font-mono font-medium tabular-nums text-foreground">
-                        {formatPriorTooltip(Number(value), item?.payload as DailySeriesRowWithPrior)}
-                      </span>
-                    </span>
+                    <TooltipRow
+                      label={PRIOR_LABEL}
+                      value={formatPriorTooltip(Number(value), item?.payload as DailySeriesRowWithPrior | undefined)}
+                      color={item?.color}
+                    />
                   ) : (
-                    <span className="flex w-full justify-between gap-4">
-                      <span className="text-muted-foreground">{posLabel(String(name))}</span>
-                      <span className="font-mono font-medium tabular-nums text-foreground">{formatCurrency(Number(value))}</span>
-                    </span>
+                    <TooltipRow label={String(name)} value={formatCurrency(Number(value))} color={item?.color} />
                   )
                 }
               />

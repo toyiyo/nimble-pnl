@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
 
 import type { KpiDelta, SalesTrendsKpis } from '@/lib/salesTrends';
+import { cn } from '@/lib/utils';
 
 import { formatCurrency, formatHour, formatShortDate } from './salesTrendsFormat';
 
@@ -57,32 +58,44 @@ function KpiTile({ label, value, delta, loading, countUnit }: Readonly<KpiTilePr
       <dd className="text-[22px] font-semibold text-foreground tabular-nums">{value}</dd>
       {hasDeltaSlot && (
         <dd className="min-h-[16px] text-[12px] tabular-nums">
-          {loading ? <Skeleton className="h-3 w-16" /> : delta && <DeltaLine delta={delta} countUnit={countUnit} />}
+          {loading && <Skeleton className="h-3 w-16" />}
+          {!loading && delta && <DeltaLine delta={delta} countUnit={countUnit} />}
         </dd>
       )}
     </div>
   );
 }
 
+type DeltaDirection = 'up' | 'down' | 'flat';
+
+const DELTA_STYLE: Record<DeltaDirection, { Icon: typeof Minus; tone: string; sign: string; word: string }> = {
+  up: { Icon: ArrowUpRight, tone: 'text-success-strong', sign: '+', word: 'up' },
+  down: { Icon: ArrowDownRight, tone: 'text-destructive-strong', sign: '-', word: 'down' },
+  flat: { Icon: Minus, tone: 'text-muted-foreground', sign: '', word: 'unchanged' },
+};
+
+/** A change under 0.05 percent shows as flat. */
+function deltaDirection(delta: KpiDelta & { percent: number }): DeltaDirection {
+  if (Math.abs(delta.percent) < 0.05) return 'flat';
+  return delta.change > 0 ? 'up' : 'down';
+}
+
 function DeltaLine({ delta, countUnit }: Readonly<{ delta: KpiDelta; countUnit?: string }>) {
   if (delta.percent === null) {
     return <span className="text-muted-foreground">No prior sales</span>;
   }
-  const up = delta.change > 0;
-  const down = delta.change < 0;
-  const Icon = up ? ArrowUpRight : down ? ArrowDownRight : Minus;
-  const tone = up ? 'text-success-strong' : down ? 'text-destructive' : 'text-muted-foreground';
-  const sign = up ? '+' : down ? '-' : '';
-  const percentText = `${sign}${Math.abs(delta.percent).toFixed(1)}%`;
-  const visible = countUnit
-    ? `${sign}${Math.abs(delta.change).toLocaleString()} ${countUnit}`
-    : percentText;
-  const direction = up ? 'up' : down ? 'down' : 'unchanged';
-  const srText = countUnit
-    ? `${direction} ${Math.abs(delta.change).toLocaleString()} ${countUnit}, ${Math.abs(delta.percent).toFixed(1)} percent, versus prior period`
-    : `${direction} ${Math.abs(delta.percent).toFixed(1)} percent versus prior period`;
+  const direction = deltaDirection({ ...delta, percent: delta.percent });
+  const { Icon, tone, sign, word } = DELTA_STYLE[direction];
+  const percent = Math.abs(delta.percent).toFixed(1);
+  const percentText = `${sign}${percent}%`;
+  const count = Math.abs(delta.change).toLocaleString();
+  const showCount = countUnit !== undefined && direction !== 'flat';
+  const visible = showCount ? `${sign}${count} ${countUnit}` : percentText;
+  const srText = showCount
+    ? `${word} ${count} ${countUnit}, ${percent} percent, versus prior period`
+    : `${word} ${percent} percent versus prior period`;
   return (
-    <span className={`inline-flex items-center gap-0.5 ${tone}`}>
+    <span className={cn('inline-flex items-center gap-0.5', tone)}>
       <Icon className="h-3 w-3" aria-hidden="true" />
       <span aria-hidden="true">{visible}</span>
       <span className="sr-only">{srText}</span>

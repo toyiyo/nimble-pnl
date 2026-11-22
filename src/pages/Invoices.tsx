@@ -2,15 +2,15 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, type InvoiceStatus } from "@/hooks/useInvoices";
-import { useStripeConnect } from "@/hooks/useStripeConnect";
-import { useCustomers } from "@/hooks/useCustomers";
+import { usePaymentSetup } from "@/hooks/usePaymentSetup";
+import { PaymentSetupCard } from "@/components/invoicing/PaymentSetupCard";
+import { PaymentSetupSheet } from "@/components/invoicing/PaymentSetupSheet";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileText, AlertCircle, CheckCircle, Clock, XCircle, Ban, Users, Info } from "lucide-react";
+import { Plus, Search, FileText, AlertCircle, CheckCircle, Clock, XCircle, Ban } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatCurrency } from "@/lib/utils";
 import { formatDateOnly } from "@/lib/dateOnly";
@@ -20,8 +20,8 @@ import { FeatureGate } from "@/components/subscription";
 export default function Invoices() {
   const { selectedRestaurant } = useRestaurantContext();
   const { invoices, loading } = useInvoices(selectedRestaurant?.restaurant_id || null);
-  const { connectedAccount, isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
-  const { customers } = useCustomers(selectedRestaurant?.restaurant_id || null);
+  const paymentSetup = usePaymentSetup(selectedRestaurant?.restaurant_id || null);
+  const canManage = selectedRestaurant?.role === 'owner';
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const navigate = useNavigate();
@@ -98,44 +98,6 @@ export default function Invoices() {
       );
     }
 
-    if (customers.length === 0) {
-      // Show initial setup message when no customers exist
-      return (
-        <div className="space-y-6">
-          <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <FileText className="h-6 w-6 text-primary" />
-                <div>
-                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                    Invoices
-                  </CardTitle>
-                  <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
-
-          <Alert>
-            <Users className="h-4 w-4" />
-            <AlertTitle>Get Started with Invoicing</AlertTitle>
-            <AlertDescription className="space-y-3">
-              <p>
-                To create invoices, you first need to add customers to your directory.
-                Once you have customers, you can create professional invoices with payment collection.
-              </p>
-              <div className="flex gap-3 flex-col md:flex-row">
-                <Button onClick={() => navigate('/customers')} className="flex-1">
-                  <Users className="h-4 w-4 mr-2" />
-                  Add Customers
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        </div>
-      );
-    }
-
     return (
       <div className="space-y-6">
         {/* Header */}
@@ -159,24 +121,8 @@ export default function Invoices() {
           </CardHeader>
         </Card>
 
-        {/* Info banner when Stripe not ready */}
-        {!isReadyForInvoicing && (
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border/40 text-[13px]">
-            <Info className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground">
-              Invoices can be created as drafts. Set up payment processing to send invoices and collect payments.
-            </span>
-            <Button
-              variant="link"
-              size="sm"
-              className="ml-auto shrink-0 text-[13px] h-auto p-0"
-              onClick={() => createAccount('express')}
-              disabled={isCreatingAccount}
-            >
-              {isCreatingAccount ? 'Setting up...' : 'Set up'}
-            </Button>
-          </div>
-        )}
+        <PaymentSetupCard setup={paymentSetup} canManage={canManage} />
+        <PaymentSetupSheet setup={paymentSetup} restaurantId={selectedRestaurant?.restaurant_id || null} />
 
         {/* Filters */}
         <Card>

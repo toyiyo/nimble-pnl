@@ -19,6 +19,7 @@ vi.mock("@/contexts/RestaurantContext", () => ({
   useRestaurantContext: () => ({
     selectedRestaurant: {
       restaurant_id: "rest-1",
+      role: "owner",
       restaurant: {
         subscription_tier: 'pro',
         subscription_status: 'active',
@@ -51,13 +52,18 @@ vi.mock("@/hooks/useSubscription", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useCustomers", () => ({
-  useCustomers: () => ({
-    customers: [
-      { id: "cust-1", name: "Alice", email: "alice@example.com" },
-      { id: "cust-2", name: "Bob", email: "bob@example.com" },
-    ],
-  }),
+vi.mock("@/hooks/usePaymentSetup", () => ({
+  usePaymentSetup: () => ({ state: "not_started", isSheetOpen: false }),
+}));
+
+vi.mock("@/components/invoicing/PaymentSetupCard", () => ({
+  PaymentSetupCard: ({ canManage }: { canManage: boolean }) => (
+    <div data-testid="setup-card" data-can-manage={String(canManage)} />
+  ),
+}));
+
+vi.mock("@/components/invoicing/PaymentSetupSheet", () => ({
+  PaymentSetupSheet: () => <div data-testid="setup-sheet" />,
 }));
 
 vi.mock("@/hooks/useStripeConnect", () => ({
@@ -126,5 +132,13 @@ describe("Invoices list", () => {
 
     const buttons = screen.getAllByRole("button", { name: /INV-/i });
     expect(buttons.length).toBeGreaterThan(0);
+  });
+
+  it("shows the payment setup card and sheet without customers", () => {
+    renderPage();
+
+    expect(screen.getByTestId("setup-card")).toHaveAttribute("data-can-manage", "true");
+    expect(screen.getByTestId("setup-sheet")).toBeInTheDocument();
+    expect(screen.queryByText(/get started with invoicing/i)).not.toBeInTheDocument();
   });
 });

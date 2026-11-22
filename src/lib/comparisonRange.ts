@@ -94,8 +94,10 @@ export function getComparisonRange(
 
   if (hint !== 'shift') {
     // Rule 2: week. Monday start and the end is on or before that Sunday.
+    // A 'month' or 'quarter' hint skips this rule: "This month" on Mon Jun 1 compares to May.
     const isMonday = new Date(startMs).getUTCDay() === 1;
-    if (isMonday && lengthDays <= 7) return shiftRange('week', 7);
+    const weekAllowed = hint === undefined || hint === 'week';
+    if (weekAllowed && isMonday && lengthDays <= 7) return shiftRange('week', 7);
 
     const sameMonth = s.y === e.y && s.m === e.m;
 

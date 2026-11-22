@@ -86,9 +86,12 @@ Rules, in this order:
 The `hint` comes from the dashboard `Period.type` (`src/components/PeriodSelector.tsx:6`).
 POS Sales has only `startDate` and `endDate` strings (`src/pages/POSSales.tsx:182-183`),
 so it calls the helper with no hint.
-A `hint` of `'week'` or `'month'` does not change the result. The date checks give the same rule.
-The `hint` of `'quarter'` is necessary for one case: on Oct 1 to Oct 31 the
-"This quarter" preset must compare to Jul 1 to Jul 31, not Sep 1 to Sep 30.
+A hint limits the rules that can apply:
+- `'week'` allows rule 2 only, then rule 5.
+- `'month'` and `'quarter'` skip rule 2. Example: "This month" on Mon Jun 1 to Wed Jun 3, 2026
+  compares to May 1-3, not to May 25-27.
+- `'quarter'` also selects rule 3 for a one-month range: on Oct 1 to Oct 31 the
+  "This quarter" preset compares to Jul 1 to Jul 31, not Sep 1 to Sep 30.
 
 The hint type is `ComparisonHint = 'week' | 'month' | 'quarter' | 'shift'`.
 - The dashboard passes `'shift'` for `today`, `last30`, and `last90`. Rules 2-4 do not apply.

@@ -72,6 +72,28 @@ describe('getComparisonRange', () => {
     });
   });
 
+  describe('hint limits the rules', () => {
+    // 2026-06-01 and 2024-04-01 are Mondays.
+    it('month hint skips the week rule on a Monday 1st', () => {
+      expect(r('2026-06-01', '2026-06-03', 'month')).toMatchObject({
+        start: '2026-05-01', end: '2026-05-03', kind: 'month',
+      });
+    });
+    it('quarter hint skips the week rule on a Monday quarter start', () => {
+      expect(r('2024-04-01', '2024-04-03', 'quarter')).toMatchObject({
+        start: '2024-01-01', end: '2024-01-03', kind: 'quarter',
+      });
+    });
+    it('no hint keeps the week rule on a Monday 1st', () => {
+      expect(r('2026-06-01', '2026-06-03')).toMatchObject({
+        start: '2026-05-25', end: '2026-05-27', kind: 'week',
+      });
+    });
+    it('week hint uses the week rule', () => {
+      expect(r('2026-06-01', '2026-06-03', 'week')?.kind).toBe('week');
+    });
+  });
+
   describe('shift', () => {
     it('moves 1 day back to the same weekday last week', () => {
       expect(r('2026-11-21', '2026-11-21')).toEqual({
@@ -195,6 +217,17 @@ describe('periodComparison', () => {
     expect(ymd(out!.from)).toBe('2026-07-01');
     expect(ymd(out!.to)).toBe('2026-07-31');
     expect(out!.label).toBe('vs same days, last quarter');
+  });
+
+  it('maps the month preset on Mon Jun 1 to the prior month', () => {
+    const out = periodComparison({
+      type: 'month',
+      from: new Date(2026, 5, 1),
+      to: new Date(2026, 5, 3),
+    });
+    expect(ymd(out!.from)).toBe('2026-05-01');
+    expect(ymd(out!.to)).toBe('2026-05-03');
+    expect(out!.label).toBe('vs same days, last month');
   });
 
   it('returns null for an invalid range', () => {

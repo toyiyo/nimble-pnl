@@ -22,20 +22,28 @@ export type ParseResult =
   | { ok: true; value: DisconnectBankOptions }
   | { ok: false; error: string };
 
+const isPresent = (value: unknown): boolean => value !== null && value !== undefined;
+
+// Cut by code point to match the SQL char_length check. Slice a bounded prefix first.
+// Each code point uses at most 2 UTF-16 units, so 2 * max units keep enough code points.
+function truncateByCodePoints(text: string, max: number): string {
+  return Array.from(text.trim().slice(0, max * 2)).slice(0, max).join('');
+}
+
 export function parseDisconnectBankInput(body: Record<string, unknown>): ParseResult {
   const { reason, reasonText, recordEvent } = body;
 
-  if (reason !== null && reason !== undefined && !(DISCONNECT_REASONS as readonly string[]).includes(reason as string)) {
+  if (isPresent(reason) && !(DISCONNECT_REASONS as readonly string[]).includes(reason as string)) {
     return { ok: false, error: 'Invalid reason' };
   }
-  if (reasonText !== null && reasonText !== undefined && typeof reasonText !== 'string') {
+  if (isPresent(reasonText) && typeof reasonText !== 'string') {
     return { ok: false, error: 'Invalid reasonText' };
   }
-  if (recordEvent !== null && recordEvent !== undefined && typeof recordEvent !== 'boolean') {
+  if (isPresent(recordEvent) && typeof recordEvent !== 'boolean') {
     return { ok: false, error: 'Invalid recordEvent' };
   }
 
-  const trimmed = typeof reasonText === 'string' ? Array.from(reasonText.trim()).slice(0, REASON_TEXT_MAX).join('') : '';
+  const trimmed = typeof reasonText === 'string' ? truncateByCodePoints(reasonText, REASON_TEXT_MAX) : '';
   return {
     ok: true,
     value: {

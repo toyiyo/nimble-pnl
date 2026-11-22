@@ -129,6 +129,15 @@ export default function InvoiceDetail() {
   }
 
   function renderSendAction() {
+    // Wait for the account row. On error, the state is unknown and the hint would be wrong.
+    if (paymentSetup.isLoading || paymentSetup.error) {
+      return (
+        <Button disabled className="bg-primary/50">
+          <Send className="h-4 w-4 mr-2" />
+          Send Invoice
+        </Button>
+      );
+    }
     if (isReadyForInvoicing) {
       return (
         <Button

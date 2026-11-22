@@ -9,6 +9,39 @@ import { getPaymentSetupState, PaymentSetupState } from '@/lib/paymentSetupState
 const FUNCTION_NAME = 'stripe-create-connected-account';
 
 /**
+ * Run one async action at a time. Show a destructive toast when it fails.
+ * The ref blocks a second call while the first call runs.
+ */
+function useGuardedAction(errorTitle: string) {
+  const { toast } = useToast();
+  const [isRunning, setIsRunning] = useState(false);
+  const guardRef = useRef(false);
+
+  const run = useCallback(
+    async (action: () => Promise<void>) => {
+      if (guardRef.current) return;
+      guardRef.current = true;
+      setIsRunning(true);
+      try {
+        await action();
+      } catch (e) {
+        toast({
+          title: errorTitle,
+          description: e instanceof Error ? e.message : 'An unexpected error occurred',
+          variant: 'destructive',
+        });
+      } finally {
+        guardRef.current = false;
+        setIsRunning(false);
+      }
+    },
+    [toast, errorTitle],
+  );
+
+  return { run, isRunning };
+}
+
+/**
  * Own the payment setup flow for one restaurant.
  * Call this hook one time per page. Pass the result to the card and the sheet.
  * There is no timed poll. The webhook and `checkStatus` update the account row.
@@ -19,10 +52,6 @@ export function usePaymentSetup(restaurantId: string | null) {
   const { connectedAccount, loading, error } = useStripeConnect(restaurantId);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
-  const startingRef = useRef(false);
-  const checkingRef = useRef(false);
 
   const state: PaymentSetupState = getPaymentSetupState(connectedAccount);
 
@@ -43,57 +72,35 @@ export function usePaymentSetup(restaurantId: string | null) {
     [refetch],
   );
 
-  // Run one guarded action. The ref blocks a second call while the first call runs.
-  const runGuarded = useCallback(
-    async (
-      guard: { current: boolean },
-      setFlag: (value: boolean) => void,
-      errorTitle: string,
-      action: () => Promise<void>,
-    ) => {
-      if (guard.current) return;
-      guard.current = true;
-      setFlag(true);
-      try {
-        await action();
-      } catch (e) {
-        toast({
-          title: errorTitle,
-          description: e instanceof Error ? e.message : 'An unexpected error occurred',
-          variant: 'destructive',
-        });
-      } finally {
-        guard.current = false;
-        setFlag(false);
-      }
-    },
-    [toast],
-  );
+  const { run: runStart, isRunning: isStarting } = useGuardedAction('Could not start payment setup');
+  const { run: runCheck, isRunning: isChecking } = useGuardedAction('Could not check payment status');
 
   const checkStatus = useCallback(async () => {
     if (!restaurantId) return;
-    await runGuarded(checkingRef, setIsChecking, 'Could not check payment status', async () => {
+    await runCheck(async () => {
       await invokeAndRefetch({ restaurantId, statusOnly: true });
       const fresh = queryClient.getQueryData<StripeConnectedAccount | null>(accountQueryKey);
-      const current = fresh === undefined ? state : getPaymentSetupState(fresh);
+      // Show no toast when the cache has no data. Any value would be stale.
+      if (fresh === undefined) return;
+      const current = getPaymentSetupState(fresh);
       if (current === 'ready') {
         toast({ title: 'Payments are on' });
       } else if (current === 'pending') {
         toast({ title: 'Stripe is still checking your details' });
       }
     });
-  }, [restaurantId, runGuarded, invokeAndRefetch, queryClient, accountQueryKey, state, toast]);
+  }, [restaurantId, runCheck, invokeAndRefetch, queryClient, accountQueryKey, toast]);
 
   const openSetup = useCallback(async () => {
     // Do not write to the server from unknown data. Wait for the account row.
     if (!restaurantId || loading || error) return;
-    await runGuarded(startingRef, setIsStarting, 'Could not start payment setup', async () => {
+    await runStart(async () => {
       if (state === 'not_started') {
         await invokeAndRefetch({ restaurantId, accountType: 'express' });
       }
       setIsSheetOpen(true);
     });
-  }, [restaurantId, loading, error, runGuarded, invokeAndRefetch, state]);
+  }, [restaurantId, loading, error, runStart, invokeAndRefetch, state]);
 
   const closeSetup = useCallback(() => {
     setIsSheetOpen(false);

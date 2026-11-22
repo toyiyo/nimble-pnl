@@ -15,11 +15,12 @@ interface PaymentSetupSheetProps {
 
 export function PaymentSetupSheet({ setup, restaurantId }: PaymentSetupSheetProps) {
   const { isSheetOpen, closeSetup } = setup;
+  const handleOpenChange = (open: boolean) => {
+    if (!open) closeSetup();
+  };
 
   return (
-    <Sheet open={isSheetOpen} onOpenChange={(open) => {
-        if (!open) closeSetup();
-      }}>
+    <Sheet open={isSheetOpen} onOpenChange={handleOpenChange}>
       <SheetContent
         className="w-full sm:max-w-xl p-0 flex flex-col h-[100dvh]"
         onInteractOutside={(e) => e.preventDefault()}

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
+import { stripeConnectedAccountKey } from '@/lib/stripeConnectKeys';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePaymentSetup } from '@/hooks/usePaymentSetup';
 
@@ -22,11 +23,13 @@ const RID = 'rest-1';
 
 function setup() {
   const queryClient = new QueryClient();
+  // Seed the cache. The hook reads fresh data from the cache after the refetch.
+  queryClient.setQueryData(stripeConnectedAccountKey(RID), connectState.value.connectedAccount);
   const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(QueryClientProvider, { client: queryClient }, children);
   const hook = renderHook(() => usePaymentSetup(RID), { wrapper });
-  return { ...hook, invalidate };
+  return { ...hook, invalidate, queryClient };
 }
 
 const account = (over: Record<string, unknown> = {}) => ({
@@ -162,6 +165,15 @@ describe('usePaymentSetup', () => {
     expect(invoke).toHaveBeenCalledWith('stripe-create-connected-account', {
       body: { restaurantId: RID, statusOnly: true },
     });
+  });
+
+  it('shows no toast when the cache has no data after the check', async () => {
+    const { result, queryClient } = setup();
+    queryClient.removeQueries({ queryKey: stripeConnectedAccountKey(RID) });
+    await act(async () => {
+      await result.current.checkStatus();
+    });
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('shows "Payments are on" when the check finds a ready account', async () => {

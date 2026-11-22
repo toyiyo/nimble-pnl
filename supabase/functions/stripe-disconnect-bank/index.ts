@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { parseDisconnectBankInput, recordBankDisconnectEvent } from '../_shared/disconnectBankInput.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,6 +11,9 @@ const corsHeaders = {
 interface DisconnectBankRequest {
   bankId: string;
   deleteData?: boolean; // Whether to delete transactions and journal entries
+  reason?: string;
+  reasonText?: string;
+  recordEvent?: boolean;
 }
 
 const logStep = (step: string, details?: any) => {
@@ -47,11 +51,21 @@ serve(async (req) => {
     logStep("User authenticated", { userId: user.id });
 
     // Parse request body
-    const { bankId, deleteData = false }: DisconnectBankRequest = await req.json();
-    
+    const body: DisconnectBankRequest = await req.json();
+    const { bankId, deleteData = false } = body;
+
     if (!bankId) {
       throw new Error('Bank ID is required');
     }
+
+    const parsed = parseDisconnectBankInput(body as Record<string, unknown>);
+    if (!parsed.ok) {
+      return new Response(
+        JSON.stringify({ error: parsed.error, success: false }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    const { reason, reasonText, recordEvent } = parsed.value;
     logStep("Request parsed", { bankId, deleteData });
 
     // Get the connected bank details
@@ -102,6 +116,19 @@ serve(async (req) => {
       });
       throw new Error(`Failed to disconnect bank in Stripe: ${stripeError.message}`);
     }
+
+    // Record the event only after Stripe succeeds. A failure returns eventId null.
+    const recordDisconnectEvent = async (): Promise<string | null> =>
+      recordEvent
+        ? await recordBankDisconnectEvent(supabaseClient, {
+            restaurantId: bank.restaurant_id,
+            actorUserId: user.id,
+            reason,
+            reasonText,
+            institutionName: bank.institution_name ?? null,
+            stripeAccountId: bank.stripe_financial_account_id,
+          })
+        : null;
 
     // If deleteData is true, delete related data in the background
     if (deleteData) {
@@ -210,8 +237,11 @@ serve(async (req) => {
       // Start the background task without waiting
       void ((globalThis as any).EdgeRuntime?.waitUntil?.(deleteTask()) ?? deleteTask());
 
+      const eventId = await recordDisconnectEvent();
+
       return new Response(
         JSON.stringify({
+          eventId,
           success: true,
           message: 'Bank disconnected. All related data is being deleted in the background.',
           dataDeleted: true,
@@ -238,8 +268,11 @@ serve(async (req) => {
     }
     logStep("Bank connection marked as disconnected");
 
+    const eventId = await recordDisconnectEvent();
+
     return new Response(
       JSON.stringify({
+        eventId,
         success: true,
         message: 'Bank disconnected successfully. Transaction history preserved.',
         dataDeleted: false,

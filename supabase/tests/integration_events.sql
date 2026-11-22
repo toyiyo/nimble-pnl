@@ -1,6 +1,6 @@
 -- Test: integration_events table, grants, and RLS
 BEGIN;
-SELECT plan(55);
+SELECT plan(67);
 
 SELECT has_table('public', 'integration_events', 'table exists');
 SELECT has_column('public', 'integration_events', 'alert_claimed_at', 'alert_claimed_at exists');
@@ -182,6 +182,25 @@ SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 
 SELECT set_config('ie.id', public.disconnect_integration('00000000-0000-0000-0000-00000000e001', 'toast', NULL, '   ')::text, true);
 SELECT is((SELECT reason_text IS NULL FROM integration_events WHERE id = current_setting('ie.id')::uuid), true, 'blank reason text becomes NULL');
+
+-- ===== record_integration_event and integration_alert_recipients =====
+RESET ROLE;
+SELECT ok(NOT has_function_privilege('anon', 'public.record_integration_event(uuid,text,text,uuid,text,text,jsonb)', 'EXECUTE'), 'anon cannot execute record_integration_event');
+SELECT ok(NOT has_function_privilege('authenticated', 'public.record_integration_event(uuid,text,text,uuid,text,text,jsonb)', 'EXECUTE'), 'authenticated cannot execute record_integration_event');
+SELECT ok(has_function_privilege('service_role', 'public.record_integration_event(uuid,text,text,uuid,text,text,jsonb)', 'EXECUTE'), 'service_role can execute record_integration_event');
+SELECT ok(NOT has_function_privilege('anon', 'public.integration_alert_recipients(uuid)', 'EXECUTE'), 'anon cannot execute integration_alert_recipients');
+SELECT ok(NOT has_function_privilege('authenticated', 'public.integration_alert_recipients(uuid)', 'EXECUTE'), 'authenticated cannot execute integration_alert_recipients');
+SELECT ok(has_function_privilege('service_role', 'public.integration_alert_recipients(uuid)', 'EXECUTE'), 'service_role can execute integration_alert_recipients');
+
+SET LOCAL ROLE service_role;
+SELECT set_config('ie.rid', public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', '00000000-0000-0000-0000-00000000e108', 'other', 'note', '{"institution_name":"X"}'::jsonb)::text, true);
+SELECT is((SELECT details->>'institution_name' FROM integration_events WHERE id = current_setting('ie.rid')::uuid), 'X', 'record inserts an event with details');
+SELECT is(public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', '00000000-0000-0000-0000-00000000e108', 'other', 'again', '{}'::jsonb)::text, current_setting('ie.rid'), 'second call within 60 seconds returns the same id');
+SELECT is((SELECT count(*)::int FROM integration_events WHERE restaurant_id = '00000000-0000-0000-0000-00000000e002' AND integration = 'bank'), 1, 'dedupe inserts no second row');
+SELECT throws_ok($$SELECT public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', NULL, 'bogus', NULL, '{}'::jsonb)$$, '22023', NULL, 'record with a bad reason raises 22023');
+SELECT is((SELECT array_agg(email ORDER BY email) FROM public.integration_alert_recipients('00000000-0000-0000-0000-00000000e001')), ARRAY['ie-owner@test.com']::text[], 'recipients returns the owner only');
+RESET ROLE;
+SELECT ok(obj_description('public.bank_reauth_notice_recipients(uuid,text[])'::regprocedure, 'pg_proc') LIKE '%integration_alert_recipients%', 'bank_reauth_notice_recipients comment names the dependency');
 
 RESET ROLE;
 SELECT * FROM finish();

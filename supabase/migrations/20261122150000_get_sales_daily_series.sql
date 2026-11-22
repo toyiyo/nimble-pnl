@@ -9,8 +9,15 @@
 --
 -- Contract: the `pos_systems` and `by_day` arrays are identical to the same
 -- keys of `get_sales_trends` (20260720010000_get_sales_trends.sql) for the
--- same restaurant and dates. The revenue predicate and the security model are
--- copies. If you change one RPC, change the other.
+-- same restaurant and dates. The revenue predicate and the membership check
+-- are copies. If you change one RPC, change the other.
+--
+-- Two differences from get_sales_trends, both safe for the contract:
+--   * search_path is `public, pg_temp`. The pg_temp entry puts temp objects
+--     last, so a temp table cannot shadow a public table.
+--   * pos_systems sorts revenue ties by pos_system. get_sales_trends has no
+--     tie-break, so its order on a tie is not defined. This order is one of
+--     the orders that get_sales_trends can return.
 --
 -- The range scan can use idx_unified_sales_restaurant_keyset
 -- (restaurant_id, sale_date, created_at, id).
@@ -74,7 +81,7 @@ BEGIN
   )
   SELECT jsonb_build_object(
     'pos_systems', (
-      SELECT COALESCE(jsonb_agg(s.pos_system ORDER BY s.rev DESC), '[]'::jsonb)
+      SELECT COALESCE(jsonb_agg(s.pos_system ORDER BY s.rev DESC, s.pos_system), '[]'::jsonb)
       FROM (
         SELECT pos_system, SUM(rev) AS rev
         FROM day_rows

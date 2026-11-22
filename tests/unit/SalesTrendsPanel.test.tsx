@@ -302,6 +302,37 @@ describe('SalesTrendsPanel — prior period comparison', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  // The default mock returns the current data as the prior data, so every
+  // delta is 0. These tests use prior totals that differ from the current
+  // totals, to check that the prior series drives the delta.
+  const distinctPrior = {
+    data: {
+      pos_systems: ['toast', 'square'],
+      by_day: [
+        { sale_date: '2026-06-01', pos_system: 'toast', revenue: 120, orders: 6 },
+        { sale_date: '2026-06-01', pos_system: 'square', revenue: 30, orders: 2 },
+        { sale_date: '2026-06-02', pos_system: 'toast', revenue: 80, orders: 4 },
+        { sale_date: '2026-06-02', pos_system: 'square', revenue: 20, orders: 1 },
+      ],
+    },
+  };
+
+  it('computes the net sales delta from the prior series totals', () => {
+    mockByRange(distinctPrior);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    // Current 750, prior 120 + 30 + 80 + 20 = 250: +500, +200.0%.
+    expect(screen.getByText(/200\.0 percent, \$500\.00, versus previous period/)).toBeInTheDocument();
+  });
+
+  it('filters the prior series by the selected POS before the delta', () => {
+    mockByRange(distinctPrior);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    fireEvent.click(screen.getByRole('button', { name: /^toast$/i }));
+    // Toast only: current 500, prior 120 + 80 = 200: +300, +150.0%.
+    expect(screen.getByText(/150\.0 percent, \$300\.00, versus previous period/)).toBeInTheDocument();
+    expect(screen.queryByText(/200\.0 percent, \$500\.00/)).not.toBeInTheDocument();
+  });
+
   it('shows no switch when there is no date range', () => {
     mockUseSalesTrends.mockReturnValue(mockHookReturn());
     render(<SalesTrendsPanel restaurantId="rest-1" />);

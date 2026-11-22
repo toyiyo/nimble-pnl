@@ -4,7 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { type ReactNode } from 'react';
 
 import { useSalesDailySeries } from '@/hooks/useSalesDailySeries';
-import { parseSalesDailySeries, toTrendsData, computeKpis } from '@/lib/salesTrends';
+import {
+  parseSalesDailySeries,
+  SalesPayloadError,
+  toTrendsData,
+  computeKpis,
+} from '@/lib/salesTrends';
 
 const { rpcMock } = vi.hoisted(() => ({
   rpcMock: vi.fn(),
@@ -128,13 +133,16 @@ describe('useSalesDailySeries', () => {
   });
 
   it('does not retry a 22023 error (invalid parameter)', async () => {
+    // The hook never sends a NULL date (the query is disabled), so the RPC
+    // cannot raise 22023 for real here. The mock forces the error to check
+    // only the retry rule.
     rpcMock.mockResolvedValue({
       data: null,
       error: { code: '22023', message: 'p_start_date and p_end_date are required' },
     });
 
     const { result } = renderHook(
-      () => useSalesDailySeries('rest-1', { startDate: '2020-01-01', endDate: '2026-06-30' }),
+      () => useSalesDailySeries('rest-1', { startDate: '2026-06-01', endDate: '2026-06-30' }),
       { wrapper: makeWrapper() },
     );
 
@@ -142,7 +150,7 @@ describe('useSalesDailySeries', () => {
     expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 
-  it('surfaces a parse error for a bad payload', async () => {
+  it('shows a parse error for a bad payload and does not retry it', async () => {
     rpcMock.mockResolvedValue({ data: { pos_systems: 'toast' }, error: null });
 
     const { result } = renderHook(
@@ -151,6 +159,10 @@ describe('useSalesDailySeries', () => {
     );
 
     await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 3000 });
-    expect((result.current.error as Error).message).toMatch(/parseSalesTrends/);
+    expect(result.current.error).toBeInstanceOf(SalesPayloadError);
+    expect((result.current.error as Error).message).toMatch(
+      /^parseSalesDailySeries: invalid payload at "\$\.pos_systems"/,
+    );
+    expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 });

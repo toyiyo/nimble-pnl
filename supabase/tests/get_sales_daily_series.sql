@@ -10,7 +10,7 @@
 -- belongs to another user. Its rows use pos_system 'clover', so a leak is
 -- easy to see.
 BEGIN;
-SELECT plan(24);
+SELECT plan(25);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000011"}';
@@ -46,7 +46,17 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 --   08-02 toast:  t-3 (15) + t-4 (3) + t-5 (2)                     = 20.00, 3 orders
 --   08-03 toast:  t-6 (40)                                         = 40.00, 1 order
 -- Excluded rows on 08-01: tip, tax, void, discount, and a child split.
+-- Two more excluded rows each fail only one predicate, so each predicate has
+-- its own row:
+--   1ff: item_type 'tip', adjustment_type NULL     -> only item_type = 'sale' excludes it
+--   200: item_type 'sale', adjustment_type 'service_charge' -> only adjustment_type IS NULL excludes it
+-- Restaurant A, 2024-09-01: toast 10.00 and square 10.00 (a revenue tie).
 -- Restaurant B: one clover row of 500.00 on 08-01.
+--
+-- Not tested, because the schema blocks them: external_order_id is NOT NULL
+-- (20250925125415), so the COALESCE(external_order_id, id::text) fallback
+-- cannot run. total_price is NUMERIC(10,2), so ROUND(rev, 2) never changes a
+-- value.
 INSERT INTO unified_sales (
   id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price,
   sale_date, sale_time, sold_at, item_type, adjustment_type, parent_sale_id
@@ -64,6 +74,10 @@ INSERT INTO unified_sales (
   ('00000000-0000-0000-0000-0000000001fb'::uuid,'00000000-0000-0000-0000-000000000199'::uuid,'toast','t-1','Void - Burger',1,-10.00,'2024-08-01',NULL,NULL,'discount','void',NULL),
   ('00000000-0000-0000-0000-0000000001fc'::uuid,'00000000-0000-0000-0000-000000000199'::uuid,'toast','t-1','Discount - Burger',1,-2.00,'2024-08-01',NULL,NULL,'discount','discount',NULL),
   ('00000000-0000-0000-0000-0000000001fd'::uuid,'00000000-0000-0000-0000-000000000199'::uuid,'toast','t-1','Burger',1,999.00,'2024-08-01',NULL,NULL,'sale',NULL,'00000000-0000-0000-0000-0000000001f1'::uuid),
+  ('00000000-0000-0000-0000-0000000001ff'::uuid,'00000000-0000-0000-0000-000000000199'::uuid,'toast','t-1','Tip line',1,77.00,'2024-08-01',NULL,NULL,'tip',NULL,NULL),
+  ('00000000-0000-0000-0000-000000000200'::uuid,'00000000-0000-0000-0000-000000000199'::uuid,'toast','t-1','Service charge',1,88.00,'2024-08-01',NULL,NULL,'sale','service_charge',NULL),
+  ('00000000-0000-0000-0000-000000000201'::uuid,'00000000-0000-0000-0000-000000000199'::uuid,'toast','t-7','Burger',1,10.00,'2024-09-01',NULL,NULL,'sale',NULL,NULL),
+  ('00000000-0000-0000-0000-000000000202'::uuid,'00000000-0000-0000-0000-000000000199'::uuid,'square','sq-2','Burger',1,10.00,'2024-09-01',NULL,NULL,'sale',NULL,NULL),
   ('00000000-0000-0000-0000-0000000001fe'::uuid,'00000000-0000-0000-0000-000000000198'::uuid,'clover','cl-1','Lobster',1,500.00,'2024-08-01',NULL,'2024-08-01T20:00:00+00'::timestamptz,'sale',NULL,NULL)
 ON CONFLICT (id) DO UPDATE SET
   restaurant_id = EXCLUDED.restaurant_id, pos_system = EXCLUDED.pos_system,
@@ -147,6 +161,14 @@ SELECT is(
   'pos_systems is sorted by revenue, highest first'
 );
 
+-- Test 10b: a revenue tie sorts by pos_system name. No parity check here,
+-- because get_sales_trends has no tie-break.
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-09-01','2024-09-01')->'pos_systems',
+  '["square", "toast"]'::jsonb,
+  'pos_systems sorts a revenue tie by pos_system name'
+);
+
 -- ============================================================
 -- Test 11: the result has only the two keys
 -- ============================================================
@@ -216,7 +238,7 @@ SELECT is(
   (SELECT COUNT(*)::int FROM jsonb_array_elements(
     get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid, '2020-01-01', '2026-12-31')->'by_day'
   )),
-  4,
+  6,
   'a range longer than two years is allowed and includes the fixture days'
 );
 
@@ -227,7 +249,9 @@ SELECT is(
 );
 
 -- ============================================================
--- Tests 20-22: index, role scope, no auth.uid()
+-- Tests 20-24: index, role scope, no auth.uid(), grants, search_path
+-- has_index checks only that the index exists. A plan check (EXPLAIN) depends
+-- on table statistics and is not stable in a test transaction.
 -- ============================================================
 SELECT has_index(
   'public', 'unified_sales', 'idx_unified_sales_restaurant_keyset',

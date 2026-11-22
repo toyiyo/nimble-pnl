@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
-import { parseSalesDailySeries, type SalesDailySeriesData } from '@/lib/salesTrends';
+import {
+  parseSalesDailySeries,
+  SalesPayloadError,
+  type SalesDailySeriesData,
+} from '@/lib/salesTrends';
 
 /**
  * React Query hook for the `get_sales_daily_series` RPC. The POS Sales panel
@@ -23,6 +27,8 @@ export interface UseSalesDailySeriesOptions {
 const INVALID_PARAMETER = '22023';
 
 function shouldRetry(failureCount: number, error: unknown): boolean {
+  // A bad payload shape fails the same way on every call.
+  if (error instanceof SalesPayloadError) return false;
   const code = (error as { code?: unknown } | null)?.code;
   return failureCount < 1 && code !== INVALID_PARAMETER;
 }

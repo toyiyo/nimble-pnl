@@ -69,8 +69,53 @@ export type PosFilter = 'all' | (string & {});
 // parseSalesTrends — runtime guard for the untyped RPC `Json` payload
 // ---------------------------------------------------------------------------
 
+/** Thrown by the field guards. `withParserName` changes it into a
+ *  `SalesPayloadError` whose message names the public parser. */
+class PayloadError extends Error {
+  constructor(
+    readonly path: string,
+    readonly detail: string,
+  ) {
+    super(`invalid payload at "${path}" — ${detail}`);
+  }
+}
+
 function fail(path: string, detail: string): never {
-  throw new Error(`parseSalesTrends: invalid payload at "${path}" — ${detail}`);
+  throw new PayloadError(path, detail);
+}
+
+/** A sales RPC payload has the wrong shape. The same payload fails again on
+ *  a retry, so a caller must not retry this error. */
+export class SalesPayloadError extends Error {
+  override name = 'SalesPayloadError';
+}
+
+function withParserName<T>(parserName: string, parse: () => T): T {
+  try {
+    return parse();
+  } catch (err) {
+    if (err instanceof PayloadError) {
+      throw new SalesPayloadError(`${parserName}: invalid payload at "${err.path}" — ${err.detail}`);
+    }
+    throw err;
+  }
+}
+
+function asRootObject(json: unknown): Record<string, unknown> {
+  if (!isPlainObject(json)) {
+    fail('$', `expected an object, got ${Array.isArray(json) ? 'array' : typeof json}`);
+  }
+  return json;
+}
+
+/** The `pos_systems` and `by_day` arrays. Both RPC payloads share them. */
+function parseDailyPart(root: Record<string, unknown>): Pick<SalesTrendsData, 'pos_systems' | 'by_day'> {
+  return {
+    pos_systems: asArray(root.pos_systems, '$.pos_systems').map((v, i) =>
+      asString(v, `$.pos_systems[${i}]`),
+    ),
+    by_day: asArray(root.by_day, '$.by_day').map((v, i) => parseDayRow(v, `$.by_day[${i}]`)),
+  };
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -145,29 +190,19 @@ function parseProductRow(v: unknown, path: string): SalesTrendsProductRow {
  * blind-cast trap, lesson 2026-04-xx).
  */
 export function parseSalesTrends(json: unknown): SalesTrendsData {
-  if (!isPlainObject(json)) {
-    fail('$', `expected an object, got ${Array.isArray(json) ? 'array' : typeof json}`);
-  }
-
-  const posSystems = asArray(json.pos_systems, '$.pos_systems').map((v, i) =>
-    asString(v, `$.pos_systems[${i}]`),
-  );
-  const byDay = asArray(json.by_day, '$.by_day').map((v, i) => parseDayRow(v, `$.by_day[${i}]`));
-  const byHour = asArray(json.by_hour, '$.by_hour').map((v, i) => parseHourRow(v, `$.by_hour[${i}]`));
-  const byWeekday = asArray(json.by_weekday, '$.by_weekday').map((v, i) =>
-    parseWeekdayRow(v, `$.by_weekday[${i}]`),
-  );
-  const byProduct = asArray(json.by_product, '$.by_product').map((v, i) =>
-    parseProductRow(v, `$.by_product[${i}]`),
-  );
-
-  return {
-    pos_systems: posSystems,
-    by_day: byDay,
-    by_hour: byHour,
-    by_weekday: byWeekday,
-    by_product: byProduct,
-  };
+  return withParserName('parseSalesTrends', () => {
+    const root = asRootObject(json);
+    return {
+      ...parseDailyPart(root),
+      by_hour: asArray(root.by_hour, '$.by_hour').map((v, i) => parseHourRow(v, `$.by_hour[${i}]`)),
+      by_weekday: asArray(root.by_weekday, '$.by_weekday').map((v, i) =>
+        parseWeekdayRow(v, `$.by_weekday[${i}]`),
+      ),
+      by_product: asArray(root.by_product, '$.by_product').map((v, i) =>
+        parseProductRow(v, `$.by_product[${i}]`),
+      ),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -180,15 +215,9 @@ export function parseSalesTrends(json: unknown): SalesTrendsData {
 export type SalesDailySeriesData = Pick<SalesTrendsData, 'pos_systems' | 'by_day'>;
 
 export function parseSalesDailySeries(json: unknown): SalesDailySeriesData {
-  if (!isPlainObject(json)) {
-    fail('$', `expected an object, got ${Array.isArray(json) ? 'array' : typeof json}`);
-  }
-  return {
-    pos_systems: asArray(json.pos_systems, '$.pos_systems').map((v, i) =>
-      asString(v, `$.pos_systems[${i}]`),
-    ),
-    by_day: asArray(json.by_day, '$.by_day').map((v, i) => parseDayRow(v, `$.by_day[${i}]`)),
-  };
+  return withParserName('parseSalesDailySeries', () => {
+    return parseDailyPart(asRootObject(json));
+  });
 }
 
 /** Widen a daily series to `SalesTrendsData`, with empty hour, weekday, and

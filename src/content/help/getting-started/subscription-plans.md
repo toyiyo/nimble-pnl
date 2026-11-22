@@ -18,7 +18,7 @@ Only users with the **Owner** role can see the **Subscription** tab in Settings.
 
 ## View your subscription status
 
-At the top of the Subscription tab, a status card shows your current plan, billing period, and how many days remain in your trial or billing cycle. During the 14-day Pro trial, a trial banner also appears at the very top of the Settings page as a reminder.
+At the top of the Subscription tab, a status card shows your current plan, billing period, and how many days remain in your trial or billing cycle. During the 14-day Growth trial, a trial banner also appears at the very top of the Settings page as a reminder. When the trial ends, the banner changes to say that the trial expired. Choose a plan in the Subscription tab to continue.
 
 1. In the left sidebar, click **Settings** (or navigate to `/settings`).
 2. Click the **Subscription** tab.
@@ -107,7 +107,7 @@ Make sure you are signed in as an owner. If you are the owner and the button sti
 ## Frequently asked questions
 
 **Do I need a credit card to start the trial?**
-No. Your 14-day Pro trial begins automatically when you create your account. The Welcome modal confirms "No credit card required to start." You only need to enter payment information when you select a paid plan through the Subscription tab.
+No. Your 14-day Growth trial begins automatically when you create your account. The Welcome modal confirms "No credit card required to start." You only need to enter payment information when you select a paid plan through the Subscription tab.
 
 **What happens when my 14-day trial ends?**
 After the trial period, you will need to choose a plan to continue using EasyShiftHQ. Go to Settings > Subscription tab and select the tier that fits your restaurant. Until you choose a plan, access to paid features may be restricted.

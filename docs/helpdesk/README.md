@@ -10,7 +10,7 @@ Articles live as Markdown files under `src/content/help/`, grouped by category f
 
 ## Getting Started
 
-- [Sign In or Create Your EasyShiftHQ Account](/help/sign-in-create-account) — Create a new EasyShiftHQ account or sign back in using email/password or Google, and start your 14-day Pro trial.  ·  `src/content/help/getting-started/sign-in-create-account.md`
+- [Sign In or Create Your EasyShiftHQ Account](/help/sign-in-create-account) — Create a new EasyShiftHQ account or sign back in using email/password or Google, and start your 14-day Growth trial.  ·  `src/content/help/getting-started/sign-in-create-account.md`
 - [Reset or Change Your Password](/help/reset-change-password) — Recover account access via a forgot-password email link, or update your password inside Settings while logged in.  ·  `src/content/help/getting-started/reset-change-password.md`
 - [Accept a Team Invitation](/help/accept-team-invitation) — Open your invitation link, create or sign into your account, and join a restaurant as a new team member or collaborator.  ·  `src/content/help/getting-started/accept-team-invitation.md`
 - [Roles and What Each One Can Access](/help/roles-and-permissions) — A plain-language guide to all eight roles in EasyShiftHQ — what each can see, what is hidden, and how collaborator roles differ from internal team roles.  ·  `src/content/help/getting-started/roles-and-permissions.md`

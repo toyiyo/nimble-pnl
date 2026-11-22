@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { deriveStatuses } from "../_shared/stripeAccountStatus.ts";
+import { HttpError, toErrorResponse, isUniqueViolation } from "../_shared/httpError.ts";
+import { parseAllowedOrigins, resolveAppOrigin } from "../_shared/oauthState.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,23 +38,23 @@ serve(async (req) => {
     // Authenticate user
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      throw new Error("No authorization header provided");
+      throw new HttpError(401, "Not authenticated");
     }
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     
     if (authError || !user) {
-      throw new Error("User not authenticated");
+      throw new HttpError(401, "Not authenticated");
     }
 
     console.log("[CREATE-CONNECTED-ACCOUNT] User authenticated:", user.id);
 
     // Get request body
-    const { restaurantId, accountType = 'express' } = await req.json();
+    const { restaurantId, statusOnly = false } = await req.json();
     
     if (!restaurantId) {
-      throw new Error("Restaurant ID is required");
+      throw new HttpError(400, "Restaurant ID is required");
     }
 
     const fetchAccount = async (accountId: string) => {
@@ -81,7 +83,7 @@ serve(async (req) => {
     }
 
     if (!userRestaurant || userRestaurant.role !== 'owner') {
-      throw new Error("Only restaurant owners can create Stripe Connect accounts");
+      throw new HttpError(403, "Only restaurant owners can create Stripe Connect accounts");
     }
 
     // Check if account already exists
@@ -97,6 +99,13 @@ serve(async (req) => {
         error: existingAccountError.message,
       });
       throw new Error(`Database error: ${existingAccountError.message}`);
+    }
+
+    if (statusOnly && !existingAccount) {
+      return new Response(
+        JSON.stringify({ success: true, accountId: null, onboardingComplete: false }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
     }
 
     if (existingAccount) {
@@ -122,6 +131,18 @@ serve(async (req) => {
 
       if (updateError) {
         console.error("[CREATE-CONNECTED-ACCOUNT] Failed to update account status:", updateError);
+      }
+
+      // Status-only mode: return the statuses and create no account link
+      if (statusOnly) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            accountId: existingAccount.stripe_account_id,
+            onboardingComplete: liveStatuses.onboardingComplete,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        );
       }
 
       // Check if onboarding is now complete
@@ -158,7 +179,7 @@ serve(async (req) => {
     }
 
     // Use existing account or create new one
-    let account;
+    let account: Stripe.Account;
     if (existingAccount) {
       // Use existing Stripe account
       account = await fetchAccount(existingAccount.stripe_account_id);
@@ -190,7 +211,9 @@ serve(async (req) => {
         },
       };
 
-      account = await stripe.accounts.create(accountParams);
+      account = await stripe.accounts.create(accountParams, {
+        idempotencyKey: "connect-acct-" + restaurantId,
+      });
       console.log("[CREATE-CONNECTED-ACCOUNT] Stripe account created:", account.id);
 
       const accountStatuses = deriveStatuses(account);
@@ -209,14 +232,38 @@ serve(async (req) => {
         });
 
       if (insertError) {
-        console.error("[CREATE-CONNECTED-ACCOUNT] Failed to store account:", insertError);
-        // Don't fail the request - account was created in Stripe
-        // User can try to link it again later
+        if (isUniqueViolation(insertError)) {
+          // A parallel request stored the row first. Use the stored account.
+          const { data: raceRow, error: raceError } = await supabaseAdmin
+            .from("stripe_connected_accounts")
+            .select("stripe_account_id")
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle();
+          if (raceError || !raceRow) {
+            console.error("[CREATE-CONNECTED-ACCOUNT] Unique violation, but no row found:", {
+              restaurantId,
+              stripeAccountId: account.id,
+              error: raceError?.message,
+            });
+            throw new Error("Failed to read existing account after unique violation");
+          }
+          account = await fetchAccount(raceRow.stripe_account_id);
+        } else {
+          console.error("[CREATE-CONNECTED-ACCOUNT] Failed to store account:", {
+            restaurantId,
+            stripeAccountId: account.id,
+            error: insertError.message,
+          });
+          throw new Error("Failed to store connected account");
+        }
       }
     }
 
     // Create account link for onboarding
-    const origin = req.headers.get("origin") || "http://localhost:3000";
+    const { origin } = resolveAppOrigin(
+      req.headers,
+      parseAllowedOrigins(Deno.env.get("OAUTH_ALLOWED_ORIGINS"))
+    );
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
       refresh_url: `${origin}/invoices?refresh=true&account=${account.id}`,
@@ -242,14 +289,14 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[CREATE-CONNECTED-ACCOUNT] Error:", errorMessage);
-    
+    console.error("[CREATE-CONNECTED-ACCOUNT] Error:", error instanceof Error ? error.message : String(error));
+    const { status, body } = toErrorResponse(error);
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify(body),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
+        status,
       }
     );
   }

@@ -10,7 +10,9 @@ export function SubscriptionStatus() {
   const {
     subscription,
     effectiveTier,
+    effectiveStatus,
     isTrialing,
+    isTrialExpired,
     isGrandfathered,
     isPastDue,
     isActive,
@@ -21,7 +23,43 @@ export function SubscriptionStatus() {
     isOpeningPortal,
   } = useSubscription();
 
-  if (!subscription || !effectiveTier) {
+  if (!subscription) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Subscription</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isTrialExpired) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Subscription
+            <Badge variant="destructive" className="gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              Trial ended
+            </Badge>
+          </CardTitle>
+          <CardDescription>Your trial ended — choose a plan</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm">
+            <p className="text-muted-foreground">Status</p>
+            <p className="font-medium capitalize">trial expired</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!effectiveTier) {
     return (
       <Card>
         <CardHeader>
@@ -147,7 +185,7 @@ export function SubscriptionStatus() {
           </div>
           <div>
             <p className="text-muted-foreground">Status</p>
-            <p className="font-medium capitalize">{subscription.status.replace('_', ' ')}</p>
+            <p className="font-medium capitalize">{(effectiveStatus ?? subscription.status).replace('_', ' ')}</p>
           </div>
         </div>
       </CardContent>

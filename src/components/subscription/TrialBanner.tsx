@@ -7,12 +7,32 @@ import { useNavigate } from 'react-router-dom';
 export function TrialBanner() {
   const {
     isTrialing,
+    isTrialExpired,
     isGrandfathered,
     isPastDue,
     trialDaysRemaining,
     grandfatheredDaysRemaining,
   } = useSubscription();
   const navigate = useNavigate();
+
+  // Expired trial banner
+  if (isTrialExpired) {
+    return (
+      <Alert variant="destructive" className="mb-4">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription className="flex items-center justify-between">
+          <span>Your trial ended — choose a plan</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/settings?tab=subscription')}
+          >
+            Choose Plan
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   // Trial banner
   if (isTrialing && trialDaysRemaining !== null) {
@@ -27,7 +47,7 @@ export function TrialBanner() {
         <AlertDescription className="flex items-center justify-between">
           <span>
             <strong>{trialDaysRemaining}</strong> day
-            {trialDaysRemaining === 1 ? '' : 's'} left in your Pro trial
+            {trialDaysRemaining === 1 ? '' : 's'} left in your Growth trial
           </span>
           <Button
             variant={isUrgent ? 'default' : 'outline'}

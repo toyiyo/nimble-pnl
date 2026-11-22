@@ -176,7 +176,7 @@ describe('useSubscription Hook', () => {
       expect(result.current.isTrialing).toBe(true);
     });
 
-    it('returns null for trialing users with expired trial', () => {
+    it('returns growth tier for trialing users with expired trial', () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       mockUseRestaurantContext.mockReturnValue({
         selectedRestaurant: {
@@ -195,7 +195,8 @@ describe('useSubscription Hook', () => {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.effectiveTier).toBeNull();
+      expect(result.current.effectiveTier).toBe('growth');
+      expect(result.current.effectiveStatus).toBe('trial_expired');
     });
 
     it('returns pro tier for grandfathered users with valid period', () => {
@@ -314,7 +315,7 @@ describe('useSubscription Hook', () => {
       expect(result.current.trialDaysRemaining).toBeLessThanOrEqual(8);
     });
 
-    it('returns 0 for expired trial', () => {
+    it('returns null and flags trial expired for expired trial', () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       mockUseRestaurantContext.mockReturnValue({
         selectedRestaurant: {
@@ -332,7 +333,32 @@ describe('useSubscription Hook', () => {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.trialDaysRemaining).toBe(0);
+      expect(result.current.trialDaysRemaining).toBeNull();
+      expect(result.current.isTrialing).toBe(false);
+      expect(result.current.isTrialExpired).toBe(true);
+    });
+
+    it('expired trial has growth features but not banking or invoicing', () => {
+      const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      mockUseRestaurantContext.mockReturnValue({
+        selectedRestaurant: {
+          ...mockSelectedRestaurant,
+          restaurant: {
+            ...mockSelectedRestaurant.restaurant,
+            subscription_status: 'trialing',
+            trial_ends_at: pastDate,
+          },
+        },
+        restaurants: mockRestaurants,
+      } as any);
+
+      const { result } = renderHook(() => useSubscription(), {
+        wrapper: createWrapper(),
+      });
+
+      expect(result.current.hasFeature('inventory_automation')).toBe(true);
+      expect(result.current.hasFeature('banking')).toBe(false);
+      expect(result.current.hasFeature('invoicing')).toBe(false);
     });
 
     it('returns null for non-trialing users', () => {

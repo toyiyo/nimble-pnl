@@ -15,6 +15,7 @@ import {
  */
 const WEEK_START = '2026-11-09';
 const WEEK_END = '2026-11-15';
+const PRIOR_START = '2026-11-02';
 
 test.describe('POS Sales period comparison', () => {
   test('Net sales tile shows the prior period delta and the switch hides it', async ({ page }) => {
@@ -51,19 +52,32 @@ test.describe('POS Sales period comparison', () => {
       if (error) throw new Error(`Seed failed: ${error.message}`);
     });
 
+    // Wait for the prior-period RPC. Its body names the prior week start.
+    const priorResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes('/rpc/get_sales_trends') &&
+        (res.request().postData() ?? '').includes(PRIOR_START),
+      { timeout: 30000 },
+    );
     await page.goto(`/pos-sales?startDate=${WEEK_START}&endDate=${WEEK_END}`);
-    await page.waitForLoadState('networkidle');
 
     const compareSwitch = page.getByRole('switch', { name: /compare to previous period/i });
     await expect(compareSwitch).toBeVisible({ timeout: 15000 });
     await expect(compareSwitch).toBeChecked();
+    expect((await priorResponse).ok()).toBe(true);
 
-    // Net sales $200 against $100 in the prior week is +100.0%.
+    // The caption names the prior range and the rule.
+    const caption = page.getByText(/^vs .+ · same days, last week$/);
+    await expect(caption).toBeVisible();
+
+    // Net sales $200 against $100 in the prior week is +100.0%, or +$100.00.
     const summaryList = page.getByLabel('Sales trend summary');
-    await expect(summaryList.getByText('+100.0%').first()).toBeVisible({ timeout: 15000 });
+    const netSalesDelta = summaryList.getByText('+100.0% · +$100.00');
+    await expect(netSalesDelta).toBeVisible({ timeout: 15000 });
 
     await compareSwitch.click();
     await expect(compareSwitch).not.toBeChecked();
-    await expect(summaryList.getByText('+100.0%')).toHaveCount(0);
+    await expect(caption).toBeHidden();
+    await expect(netSalesDelta).toBeHidden();
   });
 });

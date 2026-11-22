@@ -92,14 +92,21 @@ function DeltaLine({ delta, countUnit }: Readonly<{ delta: KpiDelta; countUnit?:
   const { Icon, tone, sign, word } = DELTA_STYLE[direction];
   const percent = Math.abs(delta.percent).toFixed(1);
   const percentText = `${sign}${percent}%`;
-  const count = Math.abs(delta.change).toLocaleString();
-  const showCount = countUnit !== undefined && direction !== 'flat';
-  const visible = showCount ? `${sign}${count} ${countUnit}` : percentText;
-  const srText = showCount
-    ? `${word} ${count} ${countUnit}, ${percent} percent, versus previous period`
-    : `${word} ${percent} percent versus previous period`;
+  const isCount = countUnit !== undefined;
+  const isFlat = direction === 'flat';
+  const amount = isCount ? Math.abs(delta.change).toLocaleString() : formatCurrency(Math.abs(delta.change));
+  let visible = percentText;
+  let srText = `${word} ${percent} percent versus previous period`;
+  if (isCount && !isFlat) {
+    visible = `${sign}${amount} ${countUnit}`;
+    srText = `${word} ${amount} ${countUnit}, ${percent} percent, versus previous period`;
+  } else if (!isCount && !isFlat) {
+    // Design 5.5: a currency tile shows the percent and the dollar change.
+    visible = `${percentText} · ${sign}${amount}`;
+    srText = `${word} ${percent} percent, ${amount}, versus previous period`;
+  }
   return (
-    <span className={cn('inline-flex items-center gap-0.5', tone)}>
+    <span className={cn('inline-flex flex-wrap items-center gap-0.5', tone)}>
       <Icon className="h-3 w-3" aria-hidden="true" />
       <span aria-hidden="true">{visible}</span>
       <span className="sr-only">{srText}</span>

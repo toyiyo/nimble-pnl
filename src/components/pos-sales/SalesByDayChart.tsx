@@ -13,7 +13,7 @@ interface SalesByDayChartProps {
   data: DailySeriesRowWithPrior[];
   /** Show the prior series. */
   showPrior?: boolean;
-  /** Total of the full prior period. Rows are index-paired, so a longer prior period loses days. */
+  /** Net sales of the full prior period. The panel computes it. Rows pair by index, so they can drop prior days. */
   priorTotal?: number;
   posSystems: string[];
   ariaLabel: string;
@@ -58,11 +58,16 @@ function renderTooltipRow(value: ValueType, name: NameType, item?: { color?: str
   return <TooltipRow label={String(name)} value={formatCurrency(Number(value))} color={item?.color} />;
 }
 
-export function buildPriorAriaLabel(base: string, data: DailySeriesRowWithPrior[], showPrior: boolean, priorTotal?: number): string {
-  if (!showPrior || !data.some((row) => row.prior != null)) return base;
+// Add both totals to the accessible name. With no prior total, keep the base text.
+export function buildPriorAriaLabel(
+  base: string,
+  data: DailySeriesRowWithPrior[],
+  showPrior: boolean,
+  priorTotal: number | undefined,
+): string {
+  if (!showPrior || priorTotal === undefined || !data.some((row) => row.prior != null)) return base;
   const current = data.reduce((sum, row) => sum + (row.total ?? 0), 0);
-  const prior = priorTotal ?? data.reduce((sum, row) => sum + (row.prior ?? 0), 0);
-  return `${base} Current period total ${formatCurrency(current)}. ${PRIOR_LABEL} total ${formatCurrency(prior)}.`;
+  return `${base} This period ${formatCurrency(current)} total. ${PRIOR_LABEL} ${formatCurrency(priorTotal)} total, shown dashed.`;
 }
 
 export function formatPriorTooltip(value: number, row?: DailySeriesRowWithPrior): string {
@@ -89,7 +94,7 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, 
   return (
     <div role="img" aria-label={label}>
       <ChartContainer config={config} className="min-h-[220px] aspect-video w-full">
-        <ComposedChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+        <ComposedChart data={data} barGap={2} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid vertical={false} strokeDasharray="3 3" />
           <XAxis
             dataKey="date"
@@ -107,19 +112,29 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, 
               />
             }
           />
+          {/* The prior bar comes first, so it sits to the left of the current stack. */}
+          {hasPrior && priorAsBar && (
+            <Bar
+              dataKey="prior"
+              name="prior"
+              fill="var(--color-prior)"
+              fillOpacity={0.15}
+              stroke="var(--color-prior)"
+              strokeOpacity={1}
+              strokeDasharray="3 3"
+              radius={[2, 2, 0, 0]}
+            />
+          )}
           {posSystems.map((pos) => (
             <Bar key={pos} dataKey={pos} stackId="day" fill={`var(--color-${pos})`} name={posLabel(pos)} />
           ))}
-          {hasPrior && priorAsBar && (
-            <Bar dataKey="prior" name="prior" fill="var(--color-prior)" fillOpacity={0.35} />
-          )}
           {hasPrior && !priorAsBar && (
             <Line
               dataKey="prior"
               name="prior"
               type="monotone"
               stroke="var(--color-prior)"
-              strokeWidth={2}
+              strokeWidth={1.5}
               strokeDasharray="4 3"
               dot={false}
               connectNulls

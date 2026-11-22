@@ -1,11 +1,11 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { AlertCircle, ChevronDown } from 'lucide-react';
 
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useSalesTrends } from '@/hooks/useSalesTrends';
-import { describeComparison, getComparisonRange } from '@/lib/comparisonRange';
+import { describeComparison, getComparisonRange, type ComparisonKind } from '@/lib/comparisonRange';
 import {
   attachPriorSeries,
   buildDailySeries,
@@ -40,6 +40,11 @@ interface SalesTrendsPanelProps {
    * panel itself.
    */
   defaultExpanded?: boolean;
+  /**
+   * Comparison hint for a preset range, for example 'shift' for a rolling "last N days" range.
+   * Leave it out for a custom range. The dashboard uses the same hints, so both pages give the same prior range.
+   */
+  comparisonHint?: ComparisonKind;
 }
 
 /**
@@ -60,6 +65,7 @@ export function SalesTrendsPanel({
   endDate,
   timeZone,
   defaultExpanded = true,
+  comparisonHint,
 }: Readonly<SalesTrendsPanelProps>) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   // Only fetch when the panel is open — the RPC is heavy and the panel defaults
@@ -75,8 +81,8 @@ export function SalesTrendsPanel({
   const compareId = useId();
   const [compareOn, setCompareOn] = useState(true);
   const comparison = useMemo(
-    () => (startDate && endDate ? getComparisonRange(startDate, endDate) : null),
-    [startDate, endDate],
+    () => (startDate && endDate ? getComparisonRange(startDate, endDate, comparisonHint) : null),
+    [startDate, endDate, comparisonHint],
   );
   const {
     data: priorData,
@@ -87,7 +93,12 @@ export function SalesTrendsPanel({
     endDate: comparison?.end,
     timeZone,
     enabled: expanded && compareOn && comparison !== null,
+    // The prior period is optional. Fail fast so the skeleton does not stay for 7 seconds.
+    retry: 1,
   });
+  useEffect(() => {
+    if (priorError) console.error('Could not load the previous-period sales trends', priorError);
+  }, [priorError]);
 
   // Guard against a stale `posFilter`: if the page's date range (or
   // restaurant) changes and the previously-selected POS system is no longer
@@ -136,10 +147,8 @@ export function SalesTrendsPanel({
   }, [kpis, priorKpis, priorFailed]);
   const deltasLoading = compareOn && comparison !== null && priorLoading;
   const showPrior = !!priorDaily && !priorFailed;
-  const priorTotal = useMemo(
-    () => (priorDaily ? priorDaily.reduce((sum, row) => sum + (row.total ?? 0), 0) : undefined),
-    [priorDaily],
-  );
+  // Net sales of the full prior period. The chart rows pair by index, so they can drop prior days.
+  const priorTotal = priorKpis?.netSales;
   const hourly = useMemo(
     () => (filtered ? buildHourlySeries(filtered.by_hour, filtered.pos_systems) : []),
     [filtered],

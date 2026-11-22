@@ -21,13 +21,13 @@ describe('TrendKpiRow delta line', () => {
 
   it('shows a percent increase with sr-only text', () => {
     render(<TrendKpiRow kpis={kpis} deltas={{ netSales: { change: 200, percent: 20 } }} />);
-    expect(screen.getByText('+20.0%')).toBeTruthy();
-    expect(screen.getByText(/up 20\.0 percent/i)).toBeTruthy();
+    expect(screen.getByText('+20.0% · +$200.00')).toBeTruthy();
+    expect(screen.getByText('up 20.0 percent, $200.00, versus previous period')).toBeTruthy();
   });
 
   it('shows a percent decrease', () => {
     render(<TrendKpiRow kpis={kpis} deltas={{ avgOrder: { change: -2.4, percent: -10 } }} />);
-    expect(screen.getByText('-10.0%')).toBeTruthy();
+    expect(screen.getByText('-10.0% · -$2.40')).toBeTruthy();
     expect(screen.getByText(/down 10\.0 percent/i)).toBeTruthy();
   });
 

@@ -222,10 +222,33 @@ describe('SalesTrendsPanel — prior period comparison', () => {
   it('requests the prior range with the comparison dates and enables it by default', () => {
     mockByRange({});
     render(<SalesTrendsPanel restaurantId="rest-1" timeZone="UTC" {...range} />);
-    const last = priorCalls().at(-1)![1] as { startDate: string; endDate: string; timeZone: string; enabled: boolean };
-    expect(last.startDate < range.startDate).toBe(true);
-    expect(last.timeZone).toBe('UTC');
-    expect(last.enabled).toBe(true);
+    const [restaurantId, last] = priorCalls().at(-1)! as [string, Record<string, unknown>];
+    // Jul 1 to Jul 2 starts on the 1st of the month, so the month rule applies.
+    expect(restaurantId).toBe('rest-1');
+    expect(last).toMatchObject({
+      startDate: '2026-06-01',
+      endDate: '2026-06-02',
+      timeZone: 'UTC',
+      enabled: true,
+      retry: 1,
+    });
+  });
+
+  it('sends the full prior month for a full 30-day month', () => {
+    const june = { startDate: '2026-06-01', endDate: '2026-06-30' };
+    mockUseSalesTrends.mockImplementation(() => mockHookReturn());
+    render(<SalesTrendsPanel restaurantId="rest-1" {...june} />);
+    const prior = mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== june.startDate);
+    expect(prior.at(-1)![1]).toMatchObject({ startDate: '2026-05-01', endDate: '2026-05-31' });
+  });
+
+  it('uses the comparison hint for a preset range', () => {
+    const month = { startDate: '2026-11-01', endDate: '2026-11-30' };
+    mockUseSalesTrends.mockImplementation(() => mockHookReturn());
+    render(<SalesTrendsPanel restaurantId="rest-1" comparisonHint="shift" {...month} />);
+    const prior = mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== month.startDate);
+    // 30 days moves back 35 days, the same as the dashboard "Last 30 days".
+    expect(prior.at(-1)![1]).toMatchObject({ startDate: '2026-09-27', endDate: '2026-10-26' });
   });
 
   it('shows the caption one time when the prior data is loaded', () => {

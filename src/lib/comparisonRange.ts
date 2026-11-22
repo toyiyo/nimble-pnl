@@ -1,7 +1,9 @@
 // Prior-period range for the sales comparison.
 // All math uses YYYY-MM-DD strings and Date.UTC. No host time zone is used.
 
-import { toDateOnlyString } from '@/lib/dateOnly';
+import type { Period } from '@/components/PeriodSelector';
+import { dayTokenEnd, parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
+import type { PresetPeriodType } from '@/lib/periodUrlState';
 
 export type ComparisonKind = 'week' | 'month' | 'quarter' | 'shift';
 
@@ -58,6 +60,15 @@ function monthsBack(value: Ymd, months: number): Ymd {
   return { y, m, d: Math.min(value.d, daysInMonth(y, m)) };
 }
 
+// Move a range end back by whole months.
+// An end on the last day of its month moves to the last day of the target month,
+// so Jun 1-30 gives May 1-31. Other days keep the day number, so Jun 1-15 gives May 1-15.
+function endMonthsBack(value: Ymd, months: number): Ymd {
+  const moved = monthsBack(value, months);
+  if (value.d !== daysInMonth(value.y, value.m)) return moved;
+  return { ...moved, d: daysInMonth(moved.y, moved.m) };
+}
+
 function quarterOf(m: number): number {
   return Math.floor((m - 1) / 3);
 }
@@ -79,12 +90,12 @@ function calendarRange(s: Ymd, e: Ymd, hint?: ComparisonKind): ComparisonRange |
   const isQuarterStart = s.d === 1 && (s.m - 1) % 3 === 0;
   const sameQuarter = s.y === e.y && quarterOf(s.m) === quarterOf(e.m);
   if (isQuarterStart && sameQuarter && (hint === 'quarter' || !sameMonth)) {
-    return build(s, monthsBack(s, 3), monthsBack(e, 3), 'quarter');
+    return build(s, monthsBack(s, 3), endMonthsBack(e, 3), 'quarter');
   }
 
   // Rule 4: month.
   if (s.d === 1 && sameMonth) {
-    return build(s, monthsBack(s, 1), monthsBack(e, 1), 'month');
+    return build(s, monthsBack(s, 1), endMonthsBack(e, 1), 'month');
   }
   return null;
 }
@@ -148,7 +159,8 @@ export function comparisonLabel(range: ComparisonRange): string {
   return `vs ${describeComparison(range)}`;
 }
 
-const HINT_BY_PERIOD: Record<string, ComparisonKind | undefined> = {
+// Every preset period has a hint. A custom period has none, so the range rules decide.
+const HINT_BY_PERIOD: Record<PresetPeriodType, ComparisonKind> = {
   today: 'shift',
   last30: 'shift',
   last90: 'shift',
@@ -157,26 +169,44 @@ const HINT_BY_PERIOD: Record<string, ComparisonKind | undefined> = {
   quarter: 'quarter',
 };
 
-function fromDateOnly(value: string, endOfDay: boolean): Date {
-  const [y, m, d] = value.split('-').map(Number);
-  return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999) : new Date(y, m - 1, d, 0, 0, 0, 0);
+export function hintForPeriod(type: Period['type']): ComparisonKind | undefined {
+  return type === 'custom' ? undefined : HINT_BY_PERIOD[type];
 }
 
 // Adapter for the dashboard. Convert a Period to the local Date pair of the prior range.
-export function periodComparison(period: {
-  type: string;
-  from: Date;
-  to: Date;
-}): { from: Date; to: Date; label: string } | null {
+export function periodComparison(
+  period: Pick<Period, 'type' | 'from' | 'to'>,
+): { from: Date; to: Date; label: string } | null {
   const range = getComparisonRange(
     toDateOnlyString(period.from),
     toDateOnlyString(period.to),
-    HINT_BY_PERIOD[period.type],
+    hintForPeriod(period.type),
   );
   if (!range) return null;
   return {
-    from: fromDateOnly(range.start, false),
-    to: fromDateOnly(range.end, true),
+    from: parseDateOnly(range.start),
+    to: dayTokenEnd(range.end),
     label: comparisonLabel(range),
   };
+}
+
+export interface PreviousPeriodQuery {
+  /** `null` turns off the prior query. */
+  restaurantId: string | null;
+  from: Date;
+  to: Date;
+  label: string;
+}
+
+// The dashboard prior query. With no prior range, send a null restaurant id so the query does not run.
+// The hook call stays unconditional, so the dates fall back to the current period.
+export function previousPeriodQuery(
+  period: Pick<Period, 'type' | 'from' | 'to'>,
+  restaurantId: string | null,
+): PreviousPeriodQuery {
+  const comparison = periodComparison(period);
+  if (!comparison) {
+    return { restaurantId: null, from: period.from, to: period.to, label: 'vs previous period' };
+  }
+  return { restaurantId, ...comparison };
 }

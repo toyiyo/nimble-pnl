@@ -4,7 +4,11 @@ import {
   describeComparison,
   comparisonLabel,
   periodComparison,
+  previousPeriodQuery,
 } from '@/lib/comparisonRange';
+
+const toDateOnly = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const r = (s: string, e: string, h?: 'week' | 'month' | 'quarter' | 'shift') =>
   getComparisonRange(s, e, h);
@@ -44,6 +48,24 @@ describe('getComparisonRange', () => {
         start: '2025-12-01', end: '2025-12-15', kind: 'month',
       });
     });
+    it('moves a full 30-day month to the full prior month', () => {
+      expect(r('2026-06-01', '2026-06-30')).toMatchObject({
+        start: '2026-05-01', end: '2026-05-31', kind: 'month',
+      });
+      expect(r('2026-11-01', '2026-11-30')).toMatchObject({
+        start: '2026-10-01', end: '2026-10-31', kind: 'month',
+      });
+    });
+    it('moves a full February to the full January', () => {
+      expect(r('2026-02-01', '2026-02-28')).toMatchObject({
+        start: '2026-01-01', end: '2026-01-31', kind: 'month',
+      });
+    });
+    it('keeps day 30 for a month to date that ends on day 30', () => {
+      expect(r('2026-01-01', '2026-01-30')).toMatchObject({
+        start: '2025-12-01', end: '2025-12-30', kind: 'month',
+      });
+    });
     it('uses the month rule for Oct 1-31 with no hint', () => {
       expect(r('2026-10-01', '2026-10-31')).toMatchObject({
         start: '2026-09-01', end: '2026-09-30', kind: 'month',
@@ -65,6 +87,11 @@ describe('getComparisonRange', () => {
     it('crosses a year boundary', () => {
       expect(r('2026-01-01', '2026-02-10')).toMatchObject({
         start: '2025-10-01', end: '2025-11-10', kind: 'quarter',
+      });
+    });
+    it('moves a full Q2 to the full Q1', () => {
+      expect(r('2026-04-01', '2026-06-30')).toMatchObject({
+        start: '2026-01-01', end: '2026-03-31', kind: 'quarter',
       });
     });
     it('does not apply when the end is in a later quarter', () => {
@@ -230,10 +257,67 @@ describe('periodComparison', () => {
     expect(out!.label).toBe('vs same days, last month');
   });
 
+  it('keeps local day bounds across the March DST change', () => {
+    // Mon Mar 9 to Sun Mar 15, 2026. The prior week holds Sun Mar 8, the US DST start.
+    const out = periodComparison({
+      type: 'week',
+      from: new Date(2026, 2, 9),
+      to: new Date(2026, 2, 15, 23, 59, 59, 999),
+    });
+    expect(ymd(out!.from)).toBe('2026-03-02');
+    expect(ymd(out!.to)).toBe('2026-03-08');
+    expect(out!.from.getHours()).toBe(0);
+    expect(out!.from.getMinutes()).toBe(0);
+    expect(out!.to.getHours()).toBe(23);
+    expect(out!.to.getMinutes()).toBe(59);
+  });
+
+  it('keeps local day bounds across the November DST change', () => {
+    // Sun Nov 1, 2026 is the US DST end. Mon Nov 2 to Sun Nov 8 compares to Oct 26 to Nov 1.
+    const out = periodComparison({
+      type: 'week',
+      from: new Date(2026, 10, 2),
+      to: new Date(2026, 10, 8),
+    });
+    expect(ymd(out!.from)).toBe('2026-10-26');
+    expect(ymd(out!.to)).toBe('2026-11-01');
+    expect(out!.from.getHours()).toBe(0);
+    expect(out!.to.getHours()).toBe(23);
+  });
+
   it('returns null for an invalid range', () => {
     expect(
       periodComparison({ type: 'custom', from: new Date(2026, 10, 21), to: new Date(2026, 10, 1) }),
     ).toBeNull();
+  });
+});
+
+describe('previousPeriodQuery', () => {
+  it('sends the prior range and the restaurant id', () => {
+    const out = previousPeriodQuery(
+      { type: 'week', from: new Date(2026, 10, 16), to: new Date(2026, 10, 21) },
+      'rest-1',
+    );
+    expect(out.restaurantId).toBe('rest-1');
+    expect(toDateOnly(out.from)).toBe('2026-11-09');
+    expect(toDateOnly(out.to)).toBe('2026-11-14');
+    expect(out.label).toBe('vs same days, last week');
+  });
+
+  it('turns off the query when no prior range exists', () => {
+    const from = new Date(2026, 10, 21);
+    const to = new Date(2026, 10, 1);
+    const out = previousPeriodQuery({ type: 'custom', from, to }, 'rest-1');
+    expect(out).toEqual({ restaurantId: null, from, to, label: 'vs previous period' });
+  });
+
+  it('keeps a null restaurant id', () => {
+    const out = previousPeriodQuery(
+      { type: 'today', from: new Date(2026, 10, 21), to: new Date(2026, 10, 21) },
+      null,
+    );
+    expect(out.restaurantId).toBeNull();
+    expect(out.label).toBe('vs same day, last week');
   });
 });
 

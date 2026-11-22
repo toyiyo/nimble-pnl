@@ -26,10 +26,12 @@ export interface UseSalesTrendsOptions {
    *  case) is wasted DB/network work. Defaults to true. React Query still
    *  serves cached data instantly on re-expand. */
   enabled?: boolean;
+  /** Retry count for a failed RPC. Defaults to the React Query default. */
+  retry?: number;
 }
 
 export function useSalesTrends(restaurantId: string | null, options: UseSalesTrendsOptions = {}) {
-  const { startDate, endDate, timeZone, enabled = true } = options;
+  const { startDate, endDate, timeZone, enabled = true, retry } = options;
   const resolvedTimeZone = safeTz(timeZone);
   // Blank strings (e.g. from a "Clear filters" control resetting date state
   // to "") must become undefined so PostgREST omits the RPC arg rather than
@@ -52,6 +54,7 @@ export function useSalesTrends(restaurantId: string | null, options: UseSalesTre
       return parseSalesTrends(data);
     },
     enabled: enabled && !!restaurantId,
+    ...(retry === undefined ? {} : { retry }),
     staleTime: 60_000,
     refetchOnWindowFocus: true,
   });

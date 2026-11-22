@@ -29,30 +29,31 @@ function rows(n: number, withPrior: boolean): DailySeriesRowWithPrior[] {
 }
 
 describe('buildPriorAriaLabel', () => {
-  it('uses the full prior total, not the paired sum, when given', () => {
-    // The paired prior sum is $100. The full prior total is $250.
-    const label = buildPriorAriaLabel('Daily sales.', rows(2, true), true, 250);
-    expect(label).toContain('Previous period total $250.00');
-    expect(label).not.toContain('Previous period total $100.00');
+  it('uses the design text with both totals', () => {
+    expect(buildPriorAriaLabel('Daily sales.', rows(2, true), true, 250)).toBe(
+      'Daily sales. This period $200.00 total. Previous period $250.00 total, shown dashed.',
+    );
   });
 
-  it('shows a prior total of $0.00 when every prior value is 0', () => {
-    const data = rows(2, true).map((row) => ({ ...row, prior: 0 }));
-    expect(buildPriorAriaLabel('Daily sales.', data, true)).toContain('Previous period total $0.00');
+  it('uses the full prior total, not the paired sum', () => {
+    // The paired prior sum is $100. The full prior total is $250.
+    expect(buildPriorAriaLabel('Daily sales.', rows(2, true), true, 250)).not.toContain('$100.00');
+  });
+
+  it('shows a prior total of $0.00', () => {
+    expect(buildPriorAriaLabel('Daily sales.', rows(2, true), true, 0)).toContain('Previous period $0.00 total');
+  });
+
+  it('returns the base label when there is no prior total', () => {
+    expect(buildPriorAriaLabel('Daily sales.', rows(2, true), true, undefined)).toBe('Daily sales.');
   });
 
   it('returns the base label when there is no data', () => {
-    expect(buildPriorAriaLabel('Daily sales.', [], true)).toBe('Daily sales.');
+    expect(buildPriorAriaLabel('Daily sales.', [], true, 0)).toBe('Daily sales.');
   });
 
-  it('adds both totals when showPrior is true', () => {
-    const label = buildPriorAriaLabel('Daily sales.', rows(2, true), true);
-    expect(label).toContain('Daily sales.');
-    expect(label).toContain('$200');
-    expect(label).toContain('$100');
-  });
   it('returns the base label when showPrior is false', () => {
-    expect(buildPriorAriaLabel('Daily sales.', rows(2, true), false)).toBe('Daily sales.');
+    expect(buildPriorAriaLabel('Daily sales.', rows(2, true), false, 100)).toBe('Daily sales.');
   });
 });
 
@@ -66,13 +67,13 @@ describe('formatPriorTooltip', () => {
 
 describe('SalesByDayChart prior series', () => {
   it('sets the aria-label with both totals', () => {
-    render(<SalesByDayChart data={rows(3, true)} showPrior posSystems={['square']} ariaLabel="Daily sales." />);
-    const el = screen.getByRole('img');
-    expect(el.getAttribute('aria-label')).toContain('$300');
-    expect(el.getAttribute('aria-label')).toContain('$150');
+    render(<SalesByDayChart data={rows(3, true)} showPrior priorTotal={150} posSystems={['square']} ariaLabel="Daily sales." />);
+    expect(screen.getByRole('img').getAttribute('aria-label')).toBe(
+      'Daily sales. This period $300.00 total. Previous period $150.00 total, shown dashed.',
+    );
   });
   it('keeps the base aria-label when no row has prior', () => {
-    render(<SalesByDayChart data={rows(3, false)} showPrior posSystems={['square']} ariaLabel="Daily sales." />);
+    render(<SalesByDayChart data={rows(3, false)} showPrior priorTotal={0} posSystems={['square']} ariaLabel="Daily sales." />);
     expect(screen.getByRole('img').getAttribute('aria-label')).toBe('Daily sales.');
   });
   it('shows the prior series as a bar at the 14-day limit', () => {

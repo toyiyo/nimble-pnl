@@ -74,9 +74,14 @@ Rules, in this order:
    prior start = the 1st of the prior quarter.
    Prior end = the same month offset and day as `end`, clamped to the last day of that month.
    Example: 2026-10-01 → 2026-11-21 gives 2026-07-01 → 2026-08-21.
+   If `end` is the last day of its month, the prior end is the last day of the target month.
+   Example: 2026-04-01 → 2026-06-30 gives 2026-01-01 → 2026-03-31.
 4. **Month.** Start is the 1st of a month and end is in the same month →
    prior = the 1st of the prior month to the same day, clamped to the month end.
    Example: 2026-03-01 → 2026-03-31 gives 2026-02-01 → 2026-02-28.
+   If `end` is the last day of its month, the prior end is the last day of the prior month.
+   Example: 2026-06-01 → 2026-06-30 gives 2026-05-01 → 2026-05-31.
+   A month to date keeps the day number: 2026-01-01 → 2026-01-30 gives 2025-12-01 → 2025-12-30.
 5. **Shift.** Any other range → move back by the range length, rounded up to whole weeks.
    `offsetDays = ceil(lengthDays / 7) * 7`. The weekdays stay aligned.
    - 1 day ("Today") → the same weekday last week.

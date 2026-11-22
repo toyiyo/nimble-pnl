@@ -52,7 +52,7 @@ import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenSt
 import { focusDashboardSection } from '@/lib/focusDashboardSection';
 import { getRunwayWindow, buildCashRunwayAlert } from '@/lib/cashRunway';
 import { periodStatusMessage } from '@/utils/periodAnnouncement';
-import { periodComparison } from '@/lib/comparisonRange';
+import { previousPeriodQuery } from '@/lib/comparisonRange';
 import { format, startOfDay, endOfDay, startOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
@@ -259,13 +259,16 @@ const Index = () => {
   }, [user?.id, user?.created_at, periodData]);
 
   // Calculate previous period data for comparison
-  const comparison = useMemo(() => periodComparison(selectedPeriod), [selectedPeriod]);
-  const comparisonLabelText = comparison?.label ?? 'vs previous period';
+  const previousQuery = useMemo(
+    () => previousPeriodQuery(selectedPeriod, selectedRestaurant?.restaurant_id || null),
+    [selectedPeriod, selectedRestaurant?.restaurant_id],
+  );
+  const comparisonLabelText = previousQuery.label;
 
   const { data: previousPeriodMetrics } = usePeriodMetrics(
-    comparison ? selectedRestaurant?.restaurant_id || null : null,
-    comparison?.from ?? selectedPeriod.from,
-    comparison?.to ?? selectedPeriod.to
+    previousQuery.restaurantId,
+    previousQuery.from,
+    previousQuery.to
   );
 
   const previousPeriodData = useMemo(() => {

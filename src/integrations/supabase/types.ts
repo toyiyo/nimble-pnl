@@ -11583,6 +11583,14 @@ export type Database = {
           revenue: number
         }[]
       }
+      get_sales_daily_series: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: Json
+      }
       get_sales_trends: {
         Args: {
           p_end_date?: string

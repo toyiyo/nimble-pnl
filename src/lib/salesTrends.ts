@@ -171,6 +171,35 @@ export function parseSalesTrends(json: unknown): SalesTrendsData {
 }
 
 // ---------------------------------------------------------------------------
+// parseSalesDailySeries — runtime guard for the `get_sales_daily_series` RPC
+// ---------------------------------------------------------------------------
+
+/** The `get_sales_daily_series` RPC payload. The two arrays have the same
+ *  contract as the same keys of `get_sales_trends`.
+ *  Design: docs/superpowers/specs/2026-11-22-sales-daily-series-rpc-design.md */
+export type SalesDailySeriesData = Pick<SalesTrendsData, 'pos_systems' | 'by_day'>;
+
+export function parseSalesDailySeries(json: unknown): SalesDailySeriesData {
+  if (!isPlainObject(json)) {
+    fail('$', `expected an object, got ${Array.isArray(json) ? 'array' : typeof json}`);
+  }
+  return {
+    pos_systems: asArray(json.pos_systems, '$.pos_systems').map((v, i) =>
+      asString(v, `$.pos_systems[${i}]`),
+    ),
+    by_day: asArray(json.by_day, '$.by_day').map((v, i) => parseDayRow(v, `$.by_day[${i}]`)),
+  };
+}
+
+/** Widen a daily series to `SalesTrendsData`, with empty hour, weekday, and
+ *  product arrays. Then `filterByPos`, `computeKpis`, and `buildDailySeries`
+ *  accept it with no change. The KPIs that need `by_hour` (peak hour) are
+ *  empty for this data. */
+export function toTrendsData(series: SalesDailySeriesData): SalesTrendsData {
+  return { ...series, by_hour: [], by_weekday: [], by_product: [] };
+}
+
+// ---------------------------------------------------------------------------
 // filterByPos — re-scope the whole payload to one POS system (client-side,
 // so the segmented control never refetches).
 // ---------------------------------------------------------------------------

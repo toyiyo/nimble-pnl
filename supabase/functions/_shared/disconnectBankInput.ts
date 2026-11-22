@@ -25,17 +25,17 @@ export type ParseResult =
 export function parseDisconnectBankInput(body: Record<string, unknown>): ParseResult {
   const { reason, reasonText, recordEvent } = body;
 
-  if (reason != null && !(DISCONNECT_REASONS as readonly string[]).includes(reason as string)) {
+  if (reason !== null && reason !== undefined && !(DISCONNECT_REASONS as readonly string[]).includes(reason as string)) {
     return { ok: false, error: 'Invalid reason' };
   }
-  if (reasonText != null && typeof reasonText !== 'string') {
+  if (reasonText !== null && reasonText !== undefined && typeof reasonText !== 'string') {
     return { ok: false, error: 'Invalid reasonText' };
   }
-  if (recordEvent != null && typeof recordEvent !== 'boolean') {
+  if (recordEvent !== null && recordEvent !== undefined && typeof recordEvent !== 'boolean') {
     return { ok: false, error: 'Invalid recordEvent' };
   }
 
-  const trimmed = typeof reasonText === 'string' ? reasonText.trim().slice(0, REASON_TEXT_MAX) : '';
+  const trimmed = typeof reasonText === 'string' ? Array.from(reasonText.trim()).slice(0, REASON_TEXT_MAX).join('') : '';
   return {
     ok: true,
     value: {

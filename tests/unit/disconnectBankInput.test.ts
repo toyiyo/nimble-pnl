@@ -25,6 +25,11 @@ describe('parseDisconnectBankInput', () => {
     expect(t.ok && t.value.reasonText).toBe('hi');
   });
 
+  it('cuts reasonText by code points and keeps a whole emoji at the limit', () => {
+    const r = parseDisconnectBankInput({ bankId: 'b1', reasonText: `${'a'.repeat(499)}😀😀` });
+    expect(r.ok && r.value.reasonText).toBe(`${'a'.repeat(499)}😀`);
+  });
+
   it('returns an error when reasonText is not a string', () => {
     expect(parseDisconnectBankInput({ bankId: 'b1', reasonText: 5 }).ok).toBe(false);
   });

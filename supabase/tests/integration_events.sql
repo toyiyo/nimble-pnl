@@ -1,6 +1,6 @@
 -- Test: integration_events table, grants, and RLS
 BEGIN;
-SELECT plan(67);
+SELECT plan(69);
 
 SELECT has_table('public', 'integration_events', 'table exists');
 SELECT has_column('public', 'integration_events', 'alert_claimed_at', 'alert_claimed_at exists');
@@ -197,6 +197,9 @@ SELECT set_config('ie.rid', public.record_integration_event('00000000-0000-0000-
 SELECT is((SELECT details->>'institution_name' FROM integration_events WHERE id = current_setting('ie.rid')::uuid), 'X', 'record inserts an event with details');
 SELECT is(public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', '00000000-0000-0000-0000-00000000e108', 'other', 'again', '{}'::jsonb)::text, current_setting('ie.rid'), 'second call within 60 seconds returns the same id');
 SELECT is((SELECT count(*)::int FROM integration_events WHERE restaurant_id = '00000000-0000-0000-0000-00000000e002' AND integration = 'bank'), 1, 'dedupe inserts no second row');
+SELECT set_config('ie.b1', public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', '00000000-0000-0000-0000-00000000e108', 'other', NULL, '{"stripe_financial_connections_account_id":"fca_1"}'::jsonb)::text, true);
+SELECT isnt(public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', '00000000-0000-0000-0000-00000000e108', 'other', NULL, '{"stripe_financial_connections_account_id":"fca_2"}'::jsonb)::text, current_setting('ie.b1'), 'a different bank account within 60 seconds inserts its own event');
+SELECT is(public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', '00000000-0000-0000-0000-00000000e108', 'other', NULL, '{"stripe_financial_connections_account_id":"fca_1"}'::jsonb)::text, current_setting('ie.b1'), 'the same bank account within 60 seconds returns the same id');
 SELECT throws_ok($$SELECT public.record_integration_event('00000000-0000-0000-0000-00000000e002', 'bank', 'disconnect', NULL, 'bogus', NULL, '{}'::jsonb)$$, '22023', NULL, 'record with a bad reason raises 22023');
 SELECT is((SELECT array_agg(email ORDER BY email) FROM public.integration_alert_recipients('00000000-0000-0000-0000-00000000e001')), ARRAY['ie-owner@test.com']::text[], 'recipients returns the owner only');
 RESET ROLE;

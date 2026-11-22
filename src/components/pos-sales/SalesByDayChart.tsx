@@ -32,25 +32,38 @@ function DashedSwatch() {
   );
 }
 
-function TooltipRow({ label, value, color }: Readonly<{ label: string; value: string; color?: string }>) {
+const CURRENT_LABEL = 'This period';
+
+// One tooltip row. It fills the row width, so the swatch, the label, and the value stay on one line.
+function TooltipRow({ label, value, color, strong }: Readonly<{ label: string; value: string; color?: string; strong?: boolean }>) {
   return (
-    <>
+    <div className="flex w-full items-center gap-2">
       <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: color }} aria-hidden="true" />
-      <span className="flex w-full justify-between gap-4">
-        <span className="text-muted-foreground">{label}</span>
+      <span className="flex flex-1 justify-between gap-4">
+        <span className={strong ? 'font-medium text-foreground' : 'text-muted-foreground'}>{label}</span>
         <span className="font-mono font-medium tabular-nums text-foreground">{value}</span>
       </span>
-    </>
+    </div>
   );
 }
 
-// Tooltip formatter. Show the prior row with its date. Show the other rows as currency.
-function renderTooltipRow(value: ValueType, name: NameType, item?: { color?: string; payload?: unknown }) {
+// The prior row comes with the day total of this period, so the user can compare the two totals.
+function PriorTooltipRows({ value, row, color }: Readonly<{ value: number; row?: DailySeriesRowWithPrior; color?: string }>) {
+  return (
+    <div className="grid w-full gap-1.5 border-t border-border/50 pt-1.5">
+      <TooltipRow label={CURRENT_LABEL} value={formatCurrency(row?.total ?? 0)} strong />
+      <TooltipRow label={PRIOR_LABEL} value={formatPriorTooltip(value, row)} color={color} strong />
+    </div>
+  );
+}
+
+// Tooltip formatter. Show the prior row with its date and the current total. Show the other rows as currency.
+export function renderTooltipRow(value: ValueType, name: NameType, item?: { color?: string; payload?: unknown }) {
   if (name === 'prior') {
     return (
-      <TooltipRow
-        label={PRIOR_LABEL}
-        value={formatPriorTooltip(Number(value), item?.payload as DailySeriesRowWithPrior | undefined)}
+      <PriorTooltipRows
+        value={Number(value)}
+        row={item?.payload as DailySeriesRowWithPrior | undefined}
         color={item?.color}
       />
     );
@@ -58,7 +71,11 @@ function renderTooltipRow(value: ValueType, name: NameType, item?: { color?: str
   return <TooltipRow label={String(name)} value={formatCurrency(Number(value))} color={item?.color} />;
 }
 
-// Add both totals to the accessible name. With no prior total, keep the base text.
+// Put the prior row last, under the POS rows.
+export function priorLastSorter(item: { name?: unknown }): number {
+  return item.name === 'prior' ? 1 : 0;
+}
+
 export function buildPriorAriaLabel(
   base: string,
   data: DailySeriesRowWithPrior[],
@@ -105,6 +122,7 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, 
           />
           <YAxis tickLine={false} axisLine={false} width={48} />
           <ChartTooltip
+            itemSorter={priorLastSorter}
             content={
               <ChartTooltipContent
                 labelFormatter={(v) => formatShortDate(String(v))}

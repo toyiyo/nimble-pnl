@@ -32,7 +32,8 @@ serve(async (req) => {
       throw new HttpError(401, "Not authenticated");
     }
 
-    const { restaurantId } = await req.json();
+    const body = await req.json().catch(() => null);
+    const restaurantId = body?.restaurantId;
     if (!restaurantId) {
       throw new HttpError(400, "Restaurant ID is required");
     }
@@ -62,8 +63,11 @@ serve(async (req) => {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
 
-    if (accountError || !connectedAccount) {
-      throw new Error("Stripe Connect account not found for this restaurant");
+    if (accountError) {
+      throw new Error(`Connected account lookup failed: ${accountError.message}`);
+    }
+    if (!connectedAccount) {
+      throw new HttpError(404, "Stripe Connect account not found for this restaurant");
     }
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");

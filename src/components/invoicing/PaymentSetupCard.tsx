@@ -37,7 +37,7 @@ const COPY: Record<PaymentSetupState, { title: string; text: string; Icon: Lucid
   },
 };
 
-export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSetupCardProps) {
+export function PaymentSetupCard({ setup, canManage, hideWhenReady }: Readonly<PaymentSetupCardProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const titleId = useId();
   const { state, isLoading, error, refetch, openSetup, checkStatus, isStarting, isChecking } = setup;
@@ -47,9 +47,9 @@ export function PaymentSetupCard({ setup, canManage, hideWhenReady }: PaymentSet
   if (error) {
     return (
       <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border/40 bg-background">
-        <p className="text-[13px] text-muted-foreground" role="status">
+        <output className="text-[13px] text-muted-foreground">
           Payment status is not available.
-        </p>
+        </output>
         <Button variant="ghost" className={secondaryButton} onClick={() => void refetch()}>
           Retry
         </Button>

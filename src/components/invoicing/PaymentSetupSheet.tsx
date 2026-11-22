@@ -13,7 +13,7 @@ interface PaymentSetupSheetProps {
   restaurantId: string | null;
 }
 
-export function PaymentSetupSheet({ setup, restaurantId }: PaymentSetupSheetProps) {
+export function PaymentSetupSheet({ setup, restaurantId }: Readonly<PaymentSetupSheetProps>) {
   const { isSheetOpen, closeSetup } = setup;
   const handleOpenChange = (open: boolean) => {
     if (!open) closeSetup();

@@ -98,6 +98,9 @@ test.describe('AI chat', () => {
 
     const user = generateTestUser('ai-chat');
     await signUpAndCreateRestaurant(page, user);
+    // The sign-up helper sets the tier to Pro after the page loads the trial state.
+    // A trial gives Growth, so reload to read the Pro tier before the chat opens.
+    await page.reload();
 
     await page.getByRole('button', { name: 'Open Chef Assistant' }).click();
     const input = page.getByRole('textbox', { name: 'Chat message input' });

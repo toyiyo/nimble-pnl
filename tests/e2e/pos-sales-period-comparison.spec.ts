@@ -55,7 +55,7 @@ test.describe('POS Sales period comparison', () => {
     // Wait for the prior-period RPC. Its body names the prior week start.
     const priorResponse = page.waitForResponse(
       (res) =>
-        res.url().includes('/rpc/get_sales_trends') &&
+        res.url().includes('/rpc/get_sales_daily_series') &&
         (res.request().postData() ?? '').includes(PRIOR_START),
       { timeout: 30000 },
     );

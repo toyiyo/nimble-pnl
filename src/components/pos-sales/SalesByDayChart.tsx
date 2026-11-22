@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from 'recharts';
+import type { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { posLabel } from '@/lib/posColors';
@@ -44,7 +45,7 @@ function TooltipRow({ label, value, color }: Readonly<{ label: string; value: st
 }
 
 // Tooltip formatter. Show the prior row with its date. Show the other rows as currency.
-function renderTooltipRow(value: unknown, name: unknown, item?: { color?: string; payload?: unknown }) {
+function renderTooltipRow(value: ValueType, name: NameType, item?: { color?: string; payload?: unknown }) {
   if (name === 'prior') {
     return (
       <TooltipRow

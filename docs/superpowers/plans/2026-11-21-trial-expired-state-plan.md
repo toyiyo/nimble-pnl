@@ -60,8 +60,8 @@ Use TDD for each task: write the failing test, run it, write the code, run it ag
 1. Review, simplify, verify, QA, PR, CI (workflow `dev-build-and-ship.js`).
 2. PR body: put the backfill SQL and "expect: UPDATE 1" in a section "Needs approval".
 
-## Task 8. Backfill (only after explicit user approval)
+## After the PR (not a build task): production backfill
 
-1. Check `current_user` on production once.
-2. Run the backfill SQL from the design. Expect `UPDATE 1`.
-3. Do not run it without a clear "yes" from the user in chat.
+The build workflow does not do this step. The main session asks the user after the PR opens.
+The main session runs the backfill SQL from the design only after a clear "yes" in chat.
+Before the run, it checks `current_user` on production once. Expect `UPDATE 1`.

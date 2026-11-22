@@ -29,6 +29,14 @@ const RAW_PAYLOAD = {
   ],
 };
 
+const HOURS_PAYLOAD = {
+  ...RAW_PAYLOAD,
+  by_hour: [
+    { hour: 11, pos_system: 'toast', revenue: 50, day_count: 1 },
+    { hour: 18, pos_system: 'square', revenue: 30, day_count: 1 },
+  ],
+};
+
 function makeWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, retryDelay: 0 } },
@@ -43,9 +51,26 @@ describe('parseSalesDailySeries', () => {
     expect(parseSalesDailySeries(RAW_PAYLOAD)).toEqual(RAW_PAYLOAD);
   });
 
-  it('ignores keys other than pos_systems and by_day', () => {
-    const parsed = parseSalesDailySeries({ ...RAW_PAYLOAD, by_hour: [{ bad: true }] });
+  it('ignores keys other than pos_systems, by_day, and by_hour', () => {
+    const parsed = parseSalesDailySeries({ ...RAW_PAYLOAD, by_weekday: [{ bad: true }] });
     expect(Object.keys(parsed).sort()).toEqual(['by_day', 'pos_systems']);
+  });
+
+  it('returns by_hour when the payload has it', () => {
+    expect(parseSalesDailySeries(HOURS_PAYLOAD)).toEqual(HOURS_PAYLOAD);
+  });
+
+  it('throws on a bad hour row', () => {
+    expect(() =>
+      parseSalesDailySeries({
+        ...RAW_PAYLOAD,
+        by_hour: [{ hour: 24, pos_system: 'toast', revenue: 1, day_count: 1 }],
+      }),
+    ).toThrow(/\$\.by_hour\[0\]\.hour/);
+  });
+
+  it('throws when by_hour is not an array', () => {
+    expect(() => parseSalesDailySeries({ ...RAW_PAYLOAD, by_hour: {} })).toThrow(/\$\.by_hour/);
   });
 
   it('throws on a payload that is not an object', () => {
@@ -71,6 +96,11 @@ describe('toTrendsData', () => {
   it('adds empty hour, weekday, and product arrays', () => {
     const data = toTrendsData(parseSalesDailySeries(RAW_PAYLOAD));
     expect(data).toEqual({ ...RAW_PAYLOAD, by_hour: [], by_weekday: [], by_product: [] });
+  });
+
+  it('keeps by_hour when the series has it', () => {
+    const data = toTrendsData(parseSalesDailySeries(HOURS_PAYLOAD));
+    expect(data.by_hour).toEqual(HOURS_PAYLOAD.by_hour);
   });
 
   it('gives the same net sales and orders KPIs as the by_day rows', () => {
@@ -100,8 +130,70 @@ describe('useSalesDailySeries', () => {
       p_restaurant_id: 'rest-1',
       p_start_date: '2026-06-01',
       p_end_date: '2026-06-30',
+      p_time_zone: 'America/Chicago',
+      p_include_hours: false,
     });
     expect(result.current.data).toEqual(RAW_PAYLOAD);
+  });
+
+  it('sends the time zone and asks for hours when includeHours is true', async () => {
+    rpcMock.mockResolvedValue({ data: HOURS_PAYLOAD, error: null });
+
+    const { result } = renderHook(
+      () =>
+        useSalesDailySeries('rest-1', {
+          startDate: '2026-06-01',
+          endDate: '2026-06-30',
+          timeZone: 'America/New_York',
+          includeHours: true,
+        }),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(rpcMock).toHaveBeenCalledWith('get_sales_daily_series', {
+      p_restaurant_id: 'rest-1',
+      p_start_date: '2026-06-01',
+      p_end_date: '2026-06-30',
+      p_time_zone: 'America/New_York',
+      p_include_hours: true,
+    });
+    expect(result.current.data?.by_hour).toEqual(HOURS_PAYLOAD.by_hour);
+  });
+
+  it('sends the default time zone for a zone that is not valid', async () => {
+    rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
+
+    const { result } = renderHook(
+      () =>
+        useSalesDailySeries('rest-1', {
+          startDate: '2026-06-01',
+          endDate: '2026-06-30',
+          timeZone: 'Not/AZone',
+        }),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(rpcMock.mock.calls[0][1]).toMatchObject({ p_time_zone: 'America/Chicago' });
+  });
+
+  it('keeps a separate cache entry for each time zone and includeHours value', async () => {
+    rpcMock.mockResolvedValue({ data: HOURS_PAYLOAD, error: null });
+    const wrapper = makeWrapper();
+    const base = { startDate: '2026-06-01', endDate: '2026-06-30' };
+
+    const a = renderHook(() => useSalesDailySeries('rest-1', base), { wrapper });
+    await waitFor(() => expect(a.result.current.isSuccess).toBe(true));
+    const b = renderHook(() => useSalesDailySeries('rest-1', { ...base, includeHours: true }), { wrapper });
+    await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
+    const c = renderHook(
+      () => useSalesDailySeries('rest-1', { ...base, includeHours: true, timeZone: 'UTC' }),
+      { wrapper },
+    );
+    await waitFor(() => expect(c.result.current.isSuccess).toBe(true));
+
+    expect(rpcMock).toHaveBeenCalledTimes(3);
   });
 
   it.each([

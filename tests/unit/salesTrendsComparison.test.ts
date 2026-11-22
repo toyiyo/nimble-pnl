@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   computeKpiDelta,
   attachPriorSeries,
+  attachPriorHourlySeries,
+  buildHourlySeries,
+  countDaysInRange,
+  priorDayScale,
   type DailySeriesRow,
+  type SalesTrendsHourRow,
 } from '@/lib/salesTrends';
 
 describe('computeKpiDelta', () => {
@@ -58,5 +63,78 @@ describe('attachPriorSeries', () => {
     const out = attachPriorSeries(daily, []);
     expect(out).toEqual(daily);
     expect(out.some((row) => 'prior' in row)).toBe(false);
+  });
+});
+
+describe('countDaysInRange', () => {
+  it('counts both ends of the range', () => {
+    expect(countDaysInRange('2026-06-01', '2026-06-30')).toBe(30);
+    expect(countDaysInRange('2026-06-01', '2026-06-01')).toBe(1);
+  });
+
+  it('counts a leap day and a DST change as one day each', () => {
+    expect(countDaysInRange('2024-02-01', '2024-02-29')).toBe(29);
+    expect(countDaysInRange('2026-03-01', '2026-03-31')).toBe(31);
+  });
+
+  it('returns 0 for an end date before the start date', () => {
+    expect(countDaysInRange('2026-06-02', '2026-06-01')).toBe(0);
+  });
+});
+
+describe('priorDayScale', () => {
+  it('returns 1 when the two ranges have the same length', () => {
+    expect(
+      priorDayScale({ start: '2026-06-08', end: '2026-06-14' }, { start: '2026-06-01', end: '2026-06-07' }),
+    ).toBe(1);
+  });
+
+  it('scales a 28-day prior period to a 31-day current period', () => {
+    expect(
+      priorDayScale({ start: '2026-03-01', end: '2026-03-31' }, { start: '2026-02-01', end: '2026-02-28' }),
+    ).toBeCloseTo(31 / 28);
+  });
+
+  it('returns 1 when a range is empty', () => {
+    expect(
+      priorDayScale({ start: '2026-03-02', end: '2026-03-01' }, { start: '2026-02-01', end: '2026-02-28' }),
+    ).toBe(1);
+  });
+});
+
+describe('attachPriorHourlySeries', () => {
+  const currentRows: SalesTrendsHourRow[] = [
+    { hour: 11, pos_system: 'toast', revenue: 100, day_count: 2 },
+    { hour: 18, pos_system: 'square', revenue: 50, day_count: 1 },
+  ];
+  const hourly = buildHourlySeries(currentRows, ['toast', 'square']);
+  const priorRows: SalesTrendsHourRow[] = [
+    { hour: 11, pos_system: 'toast', revenue: 60, day_count: 2 },
+    { hour: 11, pos_system: 'square', revenue: 20, day_count: 1 },
+    { hour: 20, pos_system: 'toast', revenue: 10, day_count: 1 },
+  ];
+
+  it('adds the prior total of each hour, summed over POS systems', () => {
+    const out = attachPriorHourlySeries(hourly, priorRows, 1);
+    expect(out).toHaveLength(24);
+    expect(out[11].prior).toBe(80);
+    expect(out[20].prior).toBe(10);
+    expect(out[3].prior).toBe(0);
+    expect(out[11].total).toBe(100);
+  });
+
+  it('multiplies the prior totals by the scale factor', () => {
+    const out = attachPriorHourlySeries(hourly, priorRows, 1.5);
+    expect(out[11].prior).toBe(120);
+    expect(out[20].prior).toBe(15);
+  });
+
+  it('adds no prior key when the prior period has no hour rows', () => {
+    expect(attachPriorHourlySeries(hourly, [], 1)).toBe(hourly);
+    expect(attachPriorHourlySeries(hourly, undefined, 1)).toBe(hourly);
+  });
+
+  it('returns an empty series when the current period has no hour rows', () => {
+    expect(attachPriorHourlySeries([], priorRows, 1)).toEqual([]);
   });
 });

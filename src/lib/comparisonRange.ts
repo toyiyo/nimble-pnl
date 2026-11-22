@@ -4,7 +4,7 @@
 import { toDateOnlyString } from '@/lib/dateOnly';
 
 export type ComparisonKind = 'week' | 'month' | 'quarter' | 'shift';
-export type ComparisonHint = 'week' | 'month' | 'quarter' | 'shift';
+export type ComparisonHint = ComparisonKind;
 
 export interface ComparisonRange {
   start: string; // YYYY-MM-DD

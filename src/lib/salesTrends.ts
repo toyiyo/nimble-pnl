@@ -258,7 +258,6 @@ export function buildDailySeries(
   return result;
 }
 
-
 // ---------------------------------------------------------------------------
 // Comparison helpers: KPI delta and prior-period series pairing.
 // ---------------------------------------------------------------------------
@@ -295,6 +294,7 @@ export function attachPriorSeries(
     return { ...row, prior: priorRow.total, priorDate: priorRow.date };
   });
 }
+
 // ---------------------------------------------------------------------------
 // buildHourlySeries — flat POS keys + cumulativePct (right-axis overlay).
 // Always a full 0-23 axis (when there is any data) so the chart's x-axis is

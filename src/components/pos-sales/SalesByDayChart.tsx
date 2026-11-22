@@ -43,6 +43,20 @@ function TooltipRow({ label, value, color }: Readonly<{ label: string; value: st
   );
 }
 
+// Tooltip formatter. Show the prior row with its date. Show the other rows as currency.
+function renderTooltipRow(value: unknown, name: unknown, item?: { color?: string; payload?: unknown }) {
+  if (name === 'prior') {
+    return (
+      <TooltipRow
+        label={PRIOR_LABEL}
+        value={formatPriorTooltip(Number(value), item?.payload as DailySeriesRowWithPrior | undefined)}
+        color={item?.color}
+      />
+    );
+  }
+  return <TooltipRow label={String(name)} value={formatCurrency(Number(value))} color={item?.color} />;
+}
+
 export function buildPriorAriaLabel(base: string, data: DailySeriesRowWithPrior[], showPrior: boolean, priorTotal?: number): string {
   if (!showPrior || !data.some((row) => row.prior != null)) return base;
   const current = data.reduce((sum, row) => sum + (row.total ?? 0), 0);
@@ -88,17 +102,7 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, showPrior, 
             content={
               <ChartTooltipContent
                 labelFormatter={(v) => formatShortDate(String(v))}
-                formatter={(value, name, item) =>
-                  name === 'prior' ? (
-                    <TooltipRow
-                      label={PRIOR_LABEL}
-                      value={formatPriorTooltip(Number(value), item?.payload as DailySeriesRowWithPrior | undefined)}
-                      color={item?.color}
-                    />
-                  ) : (
-                    <TooltipRow label={String(name)} value={formatCurrency(Number(value))} color={item?.color} />
-                  )
-                }
+                formatter={renderTooltipRow}
               />
             }
           />

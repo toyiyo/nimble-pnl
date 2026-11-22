@@ -70,10 +70,16 @@ serve(async (req: Request): Promise<Response> => {
           return (data?.length ?? 0) > 0;
         },
         markAlerted: async (eventId) => {
-          await service
-            .from('integration_events')
-            .update({ alerted_at: new Date().toISOString() })
-            .eq('id', eventId);
+          let lastError = '';
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const { error } = await service
+              .from('integration_events')
+              .update({ alerted_at: new Date().toISOString() })
+              .eq('id', eventId);
+            if (!error) return;
+            lastError = error.message;
+          }
+          throw new Error(`alerted_at update failed: ${lastError}`);
         },
         loadRecipients: async (restaurantId) => {
           const { data, error } = await service.rpc('integration_alert_recipients', {

@@ -26,6 +26,16 @@ export const DISCONNECT_REASON_LABELS: Record<DisconnectReason, string> = {
   other: 'Other',
 };
 
+export function getDisconnectReasonLabel(
+  reason: DisconnectReason,
+  kind: 'pos' | 'bank',
+): string {
+  if (kind === 'bank' && reason === 'switching_pos') {
+    return 'I am switching to a different bank';
+  }
+  return DISCONNECT_REASON_LABELS[reason];
+}
+
 export class AlreadyDisconnectedError extends Error {
   constructor(message = 'Already disconnected') {
     super(message);

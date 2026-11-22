@@ -226,9 +226,9 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   }) => {
     const targetId = disconnectTarget?.id ?? restaurantId;
     const opts = { reason: r.reason, reasonText: r.reasonText };
-    if (isSquareIntegration) await squareIntegration.disconnectSquare(opts);
-    else if (isCloverIntegration) await cloverIntegration.disconnectClover(opts);
-    else if (isShift4Integration) await shift4Integration.disconnectShift4(opts);
+    if (isSquareIntegration) await squareIntegration.disconnectSquare(opts, targetId);
+    else if (isCloverIntegration) await cloverIntegration.disconnectClover(opts, targetId);
+    else if (isShift4Integration) await shift4Integration.disconnectShift4(opts, targetId);
     else if (isToastIntegration) await toastConnection.disconnectToast(targetId, opts);
     else if (isFocusIntegration) await focusConnection.disconnect(targetId, opts);
     else if (isRevelIntegration) await revelConnection.disconnectRevel(targetId, opts);

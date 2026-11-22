@@ -386,7 +386,20 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
           onReconnect={
             onReconnect
               ? () => {
-                  void handleReconnect((Array.isArray(disconnectTarget.ids) ? disconnectTarget.ids[0] : disconnectTarget.ids) ?? bank.id);
+                  const ids = disconnectTarget.ids;
+                  if (!Array.isArray(ids)) {
+                    void handleReconnect(ids);
+                    return;
+                  }
+                  // Group target: use the reauth selection rule.
+                  const needReauth = ids.filter((id) => bank.reauthBankIds.includes(id));
+                  if (needReauth.length === 1) {
+                    void handleReconnect(needReauth[0]);
+                  } else {
+                    setDisconnectDialogOpen(false);
+                    setDisconnectTarget(null);
+                    setShowAccounts(true);
+                  }
                 }
               : undefined
           }

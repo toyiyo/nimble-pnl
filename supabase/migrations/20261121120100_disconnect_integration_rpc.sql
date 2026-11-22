@@ -64,24 +64,19 @@ BEGIN
     RAISE EXCEPTION 'reason text is too long' USING ERRCODE = '22023';
   END IF;
 
-  -- Snapshot before the change.
-  EXECUTE format(
-    'SELECT %s FROM %I.%I WHERE restaurant_id = $1%s',
-    v_snapshot, 'public', v_tbl,
-    CASE WHEN v_use_flag THEN ' AND is_active' ELSE '' END)
-  INTO v_details USING p_restaurant_id;
-
   -- Change the connection. All rows of the restaurant change.
+  -- One statement builds the details and the row count from the rows the change returns.
   IF v_use_flag THEN
     EXECUTE format(
-      'UPDATE %I.%I SET is_active = false, updated_at = now() WHERE restaurant_id = $1 AND is_active',
-      'public', v_tbl)
-    USING p_restaurant_id;
+      'WITH changed AS (UPDATE %I.%I SET is_active = false, updated_at = now() WHERE restaurant_id = $1 AND is_active RETURNING *) SELECT %s, count(*)::integer FROM changed',
+      'public', v_tbl, v_snapshot)
+    INTO v_details, v_rows USING p_restaurant_id;
   ELSE
-    EXECUTE format('DELETE FROM %I.%I WHERE restaurant_id = $1', 'public', v_tbl)
-    USING p_restaurant_id;
+    EXECUTE format(
+      'WITH changed AS (DELETE FROM %I.%I WHERE restaurant_id = $1 RETURNING *) SELECT %s, count(*)::integer FROM changed',
+      'public', v_tbl, v_snapshot)
+    INTO v_details, v_rows USING p_restaurant_id;
   END IF;
-  GET DIAGNOSTICS v_rows = ROW_COUNT;
 
   IF v_rows = 0 THEN
     RAISE EXCEPTION 'no active % connection', p_integration USING ERRCODE = 'P0002';

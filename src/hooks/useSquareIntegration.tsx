@@ -94,24 +94,31 @@ export const useSquareIntegration = (restaurantId: string | null) => {
     }
   };
 
-  const disconnectSquare = async (opts?: DisconnectOptions) => {
-    if (!restaurantId || !connection) return;
+  const disconnectSquare = async (opts?: DisconnectOptions, targetId?: string) => {
+    // targetId is the restaurant the dialog named. It can differ from the current restaurant.
+    const rid = targetId ?? restaurantId;
+    if (!rid || (!targetId && !connection)) return;
+    const isCurrent = rid === restaurantId;
 
     try {
       const eventId = await disconnectIntegration({
-        restaurantId,
+        restaurantId: rid,
         integration: 'square',
         reason: opts?.reason ?? null,
         reasonText: opts?.reasonText ?? null,
       });
-      setConnection(null);
-      setIsConnected(false);
+      if (isCurrent) {
+        setConnection(null);
+        setIsConnected(false);
+      }
       toast({ title: "Disconnected", description: "Successfully disconnected from Square" });
       void notifyIntegrationDisconnect(eventId);
     } catch (error) {
       if (error instanceof AlreadyDisconnectedError) {
-        setConnection(null);
-        setIsConnected(false);
+        if (isCurrent) {
+          setConnection(null);
+          setIsConnected(false);
+        }
         toast({ title: "Already disconnected", description: "Square was already disconnected" });
         return;
       }

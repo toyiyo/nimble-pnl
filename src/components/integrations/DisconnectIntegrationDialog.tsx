@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
 
 import {
-  DISCONNECT_REASON_LABELS,
+  getDisconnectReasonLabel,
   type DisconnectReason,
 } from '@/lib/integrationDisconnect';
 import { cn } from '@/lib/utils';
@@ -276,7 +276,7 @@ export function DisconnectIntegrationDialog({
                       className="flex min-h-11 items-center gap-3 rounded-lg border border-border/40 px-3 text-[14px] font-medium text-foreground cursor-pointer hover:border-border transition-colors"
                     >
                       <RadioGroupItem id={`disconnect-reason-${r}`} value={r} />
-                      {DISCONNECT_REASON_LABELS[r]}
+                      {getDisconnectReasonLabel(r, kind)}
                     </Label>
                     {reason === r && r !== 'other' && nextStepPanel()}
                     {reason === r && r === 'other' && (
@@ -309,7 +309,7 @@ export function DisconnectIntegrationDialog({
                 <SummaryRow label="Restaurant" value={restaurantName} />
                 <SummaryRow
                   label="Reason"
-                  value={reason ? DISCONNECT_REASON_LABELS[reason] : 'Not given'}
+                  value={reason ? getDisconnectReasonLabel(reason, kind) : 'Not given'}
                 />
               </dl>
               {extraConfirmContent}

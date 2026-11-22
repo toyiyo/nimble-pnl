@@ -81,6 +81,23 @@ describe('useSquareIntegration disconnectSquare', () => {
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: 'Disconnected' }));
   });
 
+  it('disconnects the restaurant named by targetId and keeps the current state', async () => {
+    (disconnectIntegration as ReturnType<typeof vi.fn>).mockResolvedValue('evt-2');
+    const { result } = await renderConnected();
+
+    await act(async () => {
+      await result.current.disconnectSquare({ reason: 'no_value' }, 'rest-2');
+    });
+
+    expect(disconnectIntegration).toHaveBeenCalledWith({
+      restaurantId: 'rest-2',
+      integration: 'square',
+      reason: 'no_value',
+      reasonText: null,
+    });
+    expect(result.current.isConnected).toBe(true);
+  });
+
   it('rethrows the error and shows no error toast', async () => {
     (disconnectIntegration as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
     const { result } = await renderConnected();

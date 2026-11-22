@@ -36,6 +36,12 @@ BEGIN
     RAISE EXCEPTION 'reason text is too long' USING ERRCODE = '22023';
   END IF;
 
+  -- Serialize overlapping calls with the same dedupe identity.
+  PERFORM pg_advisory_xact_lock(hashtext(
+    COALESCE(p_restaurant_id::text, '') || '|' || p_integration || '|' || p_event || '|' ||
+    COALESCE(p_actor_user_id::text, '') || '|' ||
+    COALESCE(p_details->>'stripe_financial_connections_account_id', '')));
+
   -- Dedupe: same restaurant, integration, event, actor, and bank account in the last 60 seconds.
   SELECT e.id INTO v_id
   FROM public.integration_events e

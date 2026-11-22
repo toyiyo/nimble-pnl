@@ -18,6 +18,13 @@ describe('computeKpiDelta', () => {
   it('returns change 0 and a null percent when both values are 0', () => {
     expect(computeKpiDelta(0, 0)).toEqual({ change: 0, percent: null });
   });
+  it('divides by the signed prior value when the prior value is negative', () => {
+    // A refund-heavy prior period: change 50 over prior -100 gives -50%.
+    expect(computeKpiDelta(-50, -100)).toEqual({ change: 50, percent: -50 });
+  });
+  it('returns a decrease above 100 percent when the current value is negative', () => {
+    expect(computeKpiDelta(-20, 100)).toEqual({ change: -120, percent: -120 });
+  });
 });
 
 describe('attachPriorSeries', () => {
@@ -43,5 +50,13 @@ describe('attachPriorSeries', () => {
   });
   it('returns the rows unchanged when the prior series is undefined', () => {
     expect(attachPriorSeries(daily, undefined)).toEqual(daily);
+  });
+  it('returns an empty array when there are no current rows', () => {
+    expect(attachPriorSeries([], prior)).toEqual([]);
+  });
+  it('adds no prior key when the prior series is empty', () => {
+    const out = attachPriorSeries(daily, []);
+    expect(out).toEqual(daily);
+    expect(out.some((row) => 'prior' in row)).toBe(false);
   });
 });

@@ -54,15 +54,16 @@ test.describe('POS Sales period comparison', () => {
     await page.goto(`/pos-sales?startDate=${WEEK_START}&endDate=${WEEK_END}`);
     await page.waitForLoadState('networkidle');
 
-    const compareSwitch = page.getByRole('switch', { name: 'Compare to previous period' });
+    const compareSwitch = page.getByRole('switch', { name: /compare to previous period/i });
     await expect(compareSwitch).toBeVisible({ timeout: 15000 });
     await expect(compareSwitch).toBeChecked();
 
     // Net sales $200 against $100 in the prior week is +100.0%.
-    await expect(page.getByText('+100.0%').first()).toBeVisible({ timeout: 15000 });
+    const summaryList = page.getByLabel('Sales trend summary');
+    await expect(summaryList.getByText('+100.0%').first()).toBeVisible({ timeout: 15000 });
 
     await compareSwitch.click();
     await expect(compareSwitch).not.toBeChecked();
-    await expect(page.getByText('+100.0%')).toHaveCount(0);
+    await expect(summaryList.getByText('+100.0%')).toHaveCount(0);
   });
 });

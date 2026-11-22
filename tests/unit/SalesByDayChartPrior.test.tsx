@@ -29,9 +29,20 @@ function rows(n: number, withPrior: boolean): DailySeriesRowWithPrior[] {
 }
 
 describe('buildPriorAriaLabel', () => {
-  it('uses the full prior total when given', () => {
-    const label = buildPriorAriaLabel('Daily sales.', rows(2, true), true, 100);
-    expect(label).toContain('$100.00');
+  it('uses the full prior total, not the paired sum, when given', () => {
+    // The paired prior sum is $100. The full prior total is $250.
+    const label = buildPriorAriaLabel('Daily sales.', rows(2, true), true, 250);
+    expect(label).toContain('Previous period total $250.00');
+    expect(label).not.toContain('Previous period total $100.00');
+  });
+
+  it('shows a prior total of $0.00 when every prior value is 0', () => {
+    const data = rows(2, true).map((row) => ({ ...row, prior: 0 }));
+    expect(buildPriorAriaLabel('Daily sales.', data, true)).toContain('Previous period total $0.00');
+  });
+
+  it('returns the base label when there is no data', () => {
+    expect(buildPriorAriaLabel('Daily sales.', [], true)).toBe('Daily sales.');
   });
 
   it('adds both totals when showPrior is true', () => {
@@ -64,7 +75,19 @@ describe('SalesByDayChart prior series', () => {
     render(<SalesByDayChart data={rows(3, false)} showPrior posSystems={['square']} ariaLabel="Daily sales." />);
     expect(screen.getByRole('img').getAttribute('aria-label')).toBe('Daily sales.');
   });
-  it('uses 14 as the bar limit', () => {
-    expect(PRIOR_BAR_MAX_DAYS).toBe(14);
+  it('shows the prior series as a bar at the 14-day limit', () => {
+    const { container } = render(
+      <SalesByDayChart data={rows(PRIOR_BAR_MAX_DAYS, true)} showPrior posSystems={['square']} ariaLabel="Daily sales." />,
+    );
+    expect(container.querySelectorAll('.recharts-bar').length).toBe(2);
+    expect(container.querySelector('.recharts-line')).toBeNull();
+  });
+  it('shows the prior series as a line above the 14-day limit', () => {
+    const { container } = render(
+      <SalesByDayChart data={rows(PRIOR_BAR_MAX_DAYS + 1, true)} showPrior posSystems={['square']} ariaLabel="Daily sales." />,
+    );
+    expect(container.querySelectorAll('.recharts-bar').length).toBe(1);
+    // The Recharts entry animation sets its own stroke-dasharray in jsdom, so check the series type only.
+    expect(container.querySelector('.recharts-line')).not.toBeNull();
   });
 });

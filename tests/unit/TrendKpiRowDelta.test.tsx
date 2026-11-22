@@ -4,13 +4,14 @@ import { render, screen } from '@testing-library/react';
 import { TrendKpiRow } from '@/components/pos-sales/TrendKpiRow';
 import type { SalesTrendsKpis } from '@/lib/salesTrends';
 
-const kpis = {
+const kpis: SalesTrendsKpis = {
   netSales: 1200,
   orders: 50,
   avgOrder: 24,
   busiestDay: null,
   peakHour: null,
-} as unknown as SalesTrendsKpis;
+  posSplit: [],
+};
 
 describe('TrendKpiRow delta line', () => {
   it('shows no delta line content without deltas', () => {

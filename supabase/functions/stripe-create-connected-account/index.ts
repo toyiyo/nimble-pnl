@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { deriveStatuses } from "../_shared/stripeAccountStatus.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,20 +32,6 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2025-08-27.basil" as any,
     });
-
-    const deriveStatuses = (acct: any) => {
-      const chargesEnabled = Boolean(acct?.charges_enabled);
-      const payoutsEnabled = Boolean(acct?.payouts_enabled);
-      const detailsSubmitted = Boolean(acct?.details_submitted);
-      const onboardingComplete = Boolean(detailsSubmitted && chargesEnabled);
-
-      return {
-        chargesEnabled,
-        payoutsEnabled,
-        detailsSubmitted,
-        onboardingComplete,
-      };
-    };
 
     // Authenticate user
     const authHeader = req.headers.get("Authorization");

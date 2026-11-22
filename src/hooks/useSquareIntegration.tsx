@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import {
+  disconnectIntegration,
+  notifyIntegrationDisconnect,
+  AlreadyDisconnectedError,
+  type DisconnectReason,
+} from '@/lib/integrationDisconnect';
+
+type DisconnectOptions = { reason?: DisconnectReason | null; reasonText?: string | null };
 
 interface SquareConnection {
   id: string;
@@ -88,33 +96,28 @@ export const useSquareIntegration = (restaurantId: string | null) => {
     }
   };
 
-  const disconnectSquare = async () => {
+  const disconnectSquare = async (opts?: DisconnectOptions) => {
     if (!restaurantId || !connection) return;
 
     try {
-      const { error } = await supabase
-        .from('square_connections')
-        .delete()
-        .eq('restaurant_id', restaurantId);
-
-      if (error) {
-        throw error;
-      }
-
+      const eventId = await disconnectIntegration({
+        restaurantId,
+        integration: 'square',
+        reason: opts?.reason ?? null,
+        reasonText: opts?.reasonText ?? null,
+      });
       setConnection(null);
       setIsConnected(false);
-      
-      toast({
-        title: "Disconnected",
-        description: "Successfully disconnected from Square",
-      });
+      toast({ title: "Disconnected", description: "Successfully disconnected from Square" });
+      void notifyIntegrationDisconnect(eventId);
     } catch (error) {
-      console.error('Error disconnecting from Square:', error);
-      toast({
-        title: "Error",
-        description: "Failed to disconnect from Square",
-        variant: "destructive",
-      });
+      if (error instanceof AlreadyDisconnectedError) {
+        setConnection(null);
+        setIsConnected(false);
+        toast({ title: "Already disconnected", description: "Square was already disconnected" });
+        return;
+      }
+      throw error;
     }
   };
 

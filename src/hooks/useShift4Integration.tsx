@@ -3,6 +3,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+import {
+  disconnectIntegration,
+  notifyIntegrationDisconnect,
+  AlreadyDisconnectedError,
+  type DisconnectReason,
+} from '@/lib/integrationDisconnect';
+
+type DisconnectOptions = { reason?: DisconnectReason | null; reasonText?: string | null };
+
 interface Shift4Connection {
   id: string;
   restaurant_id: string;
@@ -144,7 +153,7 @@ export function useShift4Integration(restaurantId: string | null) {
     }
   }, [restaurantId, toast, checkConnection]);
 
-  const disconnectShift4 = useCallback(async () => {
+  const disconnectShift4 = useCallback(async (opts?: DisconnectOptions) => {
     if (!restaurantId || !connection) {
       throw new Error('No connection to disconnect');
     }
@@ -152,12 +161,12 @@ export function useShift4Integration(restaurantId: string | null) {
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('shift4_connections' as any)
-        .delete()
-        .eq('id', connection.id);
-
-      if (error) throw error;
+      const eventId = await disconnectIntegration({
+        restaurantId,
+        integration: 'shift4',
+        reason: opts?.reason ?? null,
+        reasonText: opts?.reasonText ?? null,
+      });
 
       toast({
         title: "Shift4 Disconnected",
@@ -166,13 +175,17 @@ export function useShift4Integration(restaurantId: string | null) {
 
       setIsConnected(false);
       setConnection(null);
-    } catch (error: any) {
-      console.error('Shift4 disconnection error:', error);
-      toast({
-        title: "Disconnection Failed",
-        description: error.message || "Failed to disconnect from Shift4",
-        variant: "destructive",
-      });
+      void notifyIntegrationDisconnect(eventId);
+    } catch (error) {
+      if (error instanceof AlreadyDisconnectedError) {
+        setIsConnected(false);
+        setConnection(null);
+        toast({
+          title: "Already disconnected",
+          description: "Shift4 was already disconnected",
+        });
+        return;
+      }
       throw error;
     } finally {
       setLoading(false);

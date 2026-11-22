@@ -3,14 +3,14 @@
 --
 -- The function must return the same `pos_systems` and `by_day` as
 -- get_sales_trends for the same restaurant and range. It must not show rows
--- of another restaurant. It must refuse a non-member, a NULL date, and a
--- range longer than 731 days.
+-- of another restaurant. It must refuse a non-member and a NULL date. It has
+-- no range cap, the same as get_sales_trends.
 --
 -- Restaurant A (...0199) is the member restaurant. Restaurant B (...0198)
 -- belongs to another user. Its rows use pos_system 'clover', so a leak is
 -- easy to see.
 BEGIN;
-SELECT plan(22);
+SELECT plan(24);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000011"}';
@@ -194,7 +194,7 @@ SELECT is(
 );
 
 -- ============================================================
--- Tests 16-19: required dates and the 731-day cap
+-- Tests 16-19: required dates, and no range cap
 -- ============================================================
 SELECT throws_ok(
   $$ SELECT get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid, NULL, '2024-08-03') $$,
@@ -210,21 +210,20 @@ SELECT throws_ok(
   'a NULL end date raises invalid_parameter_value'
 );
 
--- 2023-01-01 .. 2025-01-01 inclusive is 732 days.
-SELECT throws_ok(
-  $$ SELECT get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid, '2023-01-01', '2025-01-01') $$,
-  '22023',
-  NULL,
-  'a range of 732 days raises invalid_parameter_value'
-);
-
--- 2023-01-01 .. 2024-12-31 inclusive is 731 days (2024 is a leap year).
+-- 2020-01-01 .. 2026-12-31 is longer than two years. The old prior query
+-- (get_sales_trends) accepted it, so this function must accept it too.
 SELECT is(
   (SELECT COUNT(*)::int FROM jsonb_array_elements(
-    get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid, '2023-01-01', '2024-12-31')->'by_day'
+    get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid, '2020-01-01', '2026-12-31')->'by_day'
   )),
   4,
-  'a range of 731 days is allowed and includes the fixture days'
+  'a range longer than two years is allowed and includes the fixture days'
+);
+
+SELECT is(
+  get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid, '2020-01-01', '2026-12-31')->'by_day',
+  get_sales_trends('00000000-0000-0000-0000-000000000199'::uuid, '2020-01-01', '2026-12-31')->'by_day',
+  'by_day equals get_sales_trends by_day for a long range'
 );
 
 -- ============================================================
@@ -252,6 +251,17 @@ SELECT throws_ok(
   $$ SELECT get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03') $$,
   'Access denied to restaurant',
   'a call with no auth.uid() raises Access denied'
+);
+
+SELECT ok(
+  NOT has_function_privilege('public', 'public.get_sales_daily_series(uuid, date, date)', 'EXECUTE'),
+  'PUBLIC has no EXECUTE grant'
+);
+
+SELECT ok(
+  (SELECT 'search_path=public, pg_temp' = ANY(proconfig)
+     FROM pg_proc WHERE oid = 'public.get_sales_daily_series(uuid, date, date)'::regprocedure),
+  'search_path is pinned to public, pg_temp'
 );
 
 SELECT * FROM finish();

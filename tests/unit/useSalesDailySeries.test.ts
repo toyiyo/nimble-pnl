@@ -127,10 +127,10 @@ describe('useSalesDailySeries', () => {
     expect(result.current.error).toMatchObject({ code: '57014' });
   });
 
-  it('does not retry a 22023 error (range over the cap)', async () => {
+  it('does not retry a 22023 error (invalid parameter)', async () => {
     rpcMock.mockResolvedValue({
       data: null,
-      error: { code: '22023', message: 'Date range is longer than 731 days' },
+      error: { code: '22023', message: 'p_start_date and p_end_date are required' },
     });
 
     const { result } = renderHook(

@@ -24,7 +24,7 @@ RETURNS JSONB
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_result JSONB;
@@ -45,11 +45,8 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  -- Cap the range at 731 days (two years, inclusive).
-  IF (p_end_date - p_start_date) + 1 > 731 THEN
-    RAISE EXCEPTION 'Date range is longer than 731 days'
-      USING ERRCODE = '22023';
-  END IF;
+  -- No range cap: get_sales_trends has none, and the panel compares a prior
+  -- range of the same length as the current range.
 
   WITH revenue_rows AS (
     SELECT
@@ -111,4 +108,4 @@ REVOKE ALL ON FUNCTION public.get_sales_daily_series(UUID, DATE, DATE) FROM anon
 GRANT EXECUTE ON FUNCTION public.get_sales_daily_series(UUID, DATE, DATE) TO authenticated;
 
 COMMENT ON FUNCTION public.get_sales_daily_series(UUID, DATE, DATE) IS
-  'Daily revenue and orders per POS system for one restaurant. Same pos_systems and by_day as get_sales_trends. Range is required and capped at 731 days.';
+  'Daily revenue and orders per POS system for one restaurant. Same pos_systems and by_day as get_sales_trends. Both dates are required.';

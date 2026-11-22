@@ -33,16 +33,17 @@ p_end_date DATE) RETURNS JSONB`.
   `parent_sale_id IS NULL`, `adjustment_type IS NULL`, `item_type = 'sale'`,
   `sale_date` between the two dates (`20260720010000_get_sales_trends.sql:84-93`).
 - Copy the security model: `LANGUAGE plpgsql STABLE SECURITY DEFINER
-  SET search_path = public`, and the `user_restaurants` membership check on
+  SET search_path = public, pg_temp`, and the `user_restaurants` membership check on
   `auth.uid()` that raises `Access denied to restaurant`
   (`20260720010000_get_sales_trends.sql:42-58`).
 - No time zone parameter. `by_day` groups on the `sale_date` column. The time
   zone affects only `by_hour` (`20260720010000_get_sales_trends.sql:76-83`).
 - Both dates are required. The prior range always has two dates
   (`SalesTrendsPanel.tsx:77-80`). A NULL date raises SQLSTATE `22023`.
-- Cap the range at 731 days (two years, inclusive). A longer range raises
-  SQLSTATE `22023`. The panel then shows the existing "comparison not
-  available" state (`priorFailed`, `SalesTrendsPanel.tsx:128`).
+- No range cap. `get_sales_trends` has no cap, so a cap here protects
+  nothing. A cap also breaks the comparison for a current range longer than
+  the cap, because the prior range has the same length. The first draft had a
+  731-day cap. The logic review found this regression, so the cap is deleted.
 - `p_end_date < p_start_date` returns empty arrays. It does not raise.
 - `REVOKE ALL ... FROM PUBLIC, anon` and `GRANT EXECUTE ... TO authenticated`.
 - The range scan can use `idx_unified_sales_restaurant_keyset`
@@ -51,15 +52,12 @@ p_end_date DATE) RETURNS JSONB`.
   (`supabase/migrations/20260720120001_bulk_deduction_keyset_batching.sql:158-160`).
   A pgTAP `has_index` check pins the index. The function does one grouped
   scan, not five.
-- Order of checks: the membership check runs first. The NULL-date check and
-  the cap check run after it. A non-member learns nothing about the arguments.
+- Order of checks: the membership check runs first. The NULL-date check runs
+  after it. A non-member learns nothing about the arguments.
 - Role scope: any member of the restaurant can call the function, the same as
   `get_sales_trends`. The check does not read `role`
   (`20260720010000_get_sales_trends.sql:52-58`). This is intended.
-- Cap edge case: `get_sales_trends` has no cap. A current range of more than
-  731 days gives a prior range of the same length, and the prior call raises
-  `22023`. The panel then shows "comparison not available". The hook does not
-  retry a `22023` error, because a retry cannot succeed.
+- The hook does not retry a `22023` error, because a retry cannot succeed.
 
 ## Client
 
@@ -71,7 +69,7 @@ p_end_date DATE) RETURNS JSONB`.
   new function to the generated types.
 - `src/hooks/useSalesDailySeries.ts`: React Query hook. Query key
   `['sales-daily-series', restaurantId, start, end]`. `staleTime: 60_000`,
-  `retry: 1`, `refetchOnWindowFocus: true`. It runs only when `enabled`,
+  one retry (none on `22023`), `refetchOnWindowFocus: true`. It runs only when `enabled`,
   `restaurantId`, `startDate`, and `endDate` are all set.
 - `SalesTrendsPanel.tsx`: the prior query uses the new hook. This is the last
   step, after a rebase on PR 879.
@@ -82,8 +80,8 @@ p_end_date DATE) RETURNS JSONB`.
   `pos_systems` equal the `get_sales_trends` result for the same seed and
   range. Exclusion rows do not count. A non-member gets `Access denied`.
   Rows of a second restaurant do not appear. An empty range returns empty
-  arrays. A NULL date and a range over 731 days raise `22023`. Exactly 731
-  days passes. A `staff` member can call it. A call with no `auth.uid()`
+  arrays. A NULL date raises `22023`. A range longer than two years passes
+  and equals the `get_sales_trends` result. A `staff` member can call it. A call with no `auth.uid()`
   raises `Access denied`. `anon` has no EXECUTE grant.
 - Vitest: parser, `toTrendsData`, and the hook (RPC name and arguments,
   `enabled` gate, error path).

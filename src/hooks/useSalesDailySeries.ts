@@ -18,8 +18,8 @@ export interface UseSalesDailySeriesOptions {
   enabled?: boolean;
 }
 
-/** SQLSTATE `22023` (invalid_parameter_value): a NULL date or a range longer
- *  than 731 days. A retry cannot succeed, so the hook does not retry it. */
+/** SQLSTATE `22023` (invalid_parameter_value): a NULL date. A retry cannot
+ *  succeed, so the hook does not retry it. */
 const INVALID_PARAMETER = '22023';
 
 function shouldRetry(failureCount: number, error: unknown): boolean {

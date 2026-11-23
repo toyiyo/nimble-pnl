@@ -333,6 +333,59 @@ describe('SalesTrendsPanel — prior period comparison', () => {
     expect(screen.queryByText(/200\.0 percent, \$500\.00/)).not.toBeInTheDocument();
   });
 
+  // The prior hour rows. The default series mock has no by_hour.
+  const priorWithHours = {
+    data: {
+      ...distinctPrior.data,
+      by_hour: [
+        { hour: 12, pos_system: 'toast', revenue: 100, day_count: 2 },
+        { hour: 18, pos_system: 'square', revenue: 50, day_count: 2 },
+      ],
+    },
+  };
+  function hourChartLabels() {
+    return screen.getAllByRole('img').map((el) => el.getAttribute('aria-label') ?? '');
+  }
+
+  it('asks for the prior hours in the restaurant time zone', () => {
+    mockByRange({});
+    render(<SalesTrendsPanel restaurantId="rest-1" timeZone="America/New_York" {...range} />);
+    expect(priorCalls().at(-1)![1]).toMatchObject({ timeZone: 'America/New_York', includeHours: true });
+  });
+
+  it('shows the prior hour line when the prior period has hour rows', () => {
+    mockByRange(priorWithHours);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    const labels = hourChartLabels();
+    // Jul 1-2 and Jun 1-2 have the same day count, so the line is not scaled.
+    expect(labels.some((l) => /Previous period shown dashed\.$/.test(l))).toBe(true);
+    expect(labels.some((l) => /scaled/.test(l))).toBe(false);
+  });
+
+  it('says that the prior hour line is scaled when the day counts differ', () => {
+    mockByRange(priorWithHours);
+    // Jul 1-31 (31 days) compares to Jun 1-30 (30 days).
+    render(<SalesTrendsPanel restaurantId="rest-1" startDate="2026-07-01" endDate="2026-07-31" />);
+    expect(
+      hourChartLabels().some((l) =>
+        /Previous period shown dashed\. The previous period is scaled to the days of this period\.$/.test(l),
+      ),
+    ).toBe(true);
+  });
+
+  it('shows no prior hour line when the prior period has no hour rows', () => {
+    mockByRange(distinctPrior);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    expect(hourChartLabels().some((l) => /Previous period shown dashed\./.test(l))).toBe(false);
+  });
+
+  it('shows no prior hour line when the switch is off', () => {
+    mockByRange(priorWithHours);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    fireEvent.click(screen.getByRole('switch', { name: /compare to previous period/i }));
+    expect(hourChartLabels().some((l) => /Previous period shown dashed\./.test(l))).toBe(false);
+  });
+
   it('shows no switch when there is no date range', () => {
     mockUseSalesTrends.mockReturnValue(mockHookReturn());
     render(<SalesTrendsPanel restaurantId="rest-1" />);

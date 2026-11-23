@@ -16,7 +16,8 @@ import { safeTz } from '@/lib/restaurantClock';
  *
  * `timeZone` goes through `safeTz`, the same as `useSalesTrends`. A missing or
  * bad zone becomes the default zone, because `AT TIME ZONE` fails on a zone
- * that Postgres does not know.
+ * that Postgres does not know. Without `includeHours`, the hook sends only the
+ * restaurant and the two dates.
  *
  * Design: docs/superpowers/specs/2026-11-22-sales-daily-series-rpc-design.md
  * Design (by_hour): docs/superpowers/specs/2026-11-22-sales-hourly-comparison-design.md
@@ -49,7 +50,9 @@ export function useSalesDailySeries(
   options: UseSalesDailySeriesOptions = {},
 ) {
   const { enabled = true, includeHours = false } = options;
-  const timeZone = safeTz(options.timeZone);
+  // The time zone changes only the hour buckets. Without hours, it stays out
+  // of the key and the call. The RPC then uses its defaults.
+  const timeZone = includeHours ? safeTz(options.timeZone) : null;
   // The RPC requires both dates. A blank string is the same as no date.
   const startDate = options.startDate || null;
   const endDate = options.endDate || null;
@@ -61,8 +64,7 @@ export function useSalesDailySeries(
         p_restaurant_id: restaurantId as string,
         p_start_date: startDate as string,
         p_end_date: endDate as string,
-        p_time_zone: timeZone,
-        p_include_hours: includeHours,
+        ...(includeHours ? { p_time_zone: timeZone as string, p_include_hours: true } : {}),
       });
 
       if (error) throw error;

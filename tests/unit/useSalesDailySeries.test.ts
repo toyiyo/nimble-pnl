@@ -115,7 +115,7 @@ describe('useSalesDailySeries', () => {
     rpcMock.mockReset();
   });
 
-  it('calls get_sales_daily_series with the restaurant and the two dates', async () => {
+  it('sends only the restaurant and the two dates when includeHours is false', async () => {
     rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
 
     const { result } = renderHook(
@@ -130,8 +130,6 @@ describe('useSalesDailySeries', () => {
       p_restaurant_id: 'rest-1',
       p_start_date: '2026-06-01',
       p_end_date: '2026-06-30',
-      p_time_zone: 'America/Chicago',
-      p_include_hours: false,
     });
     expect(result.current.data).toEqual(RAW_PAYLOAD);
   });
@@ -170,6 +168,7 @@ describe('useSalesDailySeries', () => {
           startDate: '2026-06-01',
           endDate: '2026-06-30',
           timeZone: 'Not/AZone',
+          includeHours: true,
         }),
       { wrapper: makeWrapper() },
     );
@@ -194,6 +193,21 @@ describe('useSalesDailySeries', () => {
     await waitFor(() => expect(c.result.current.isSuccess).toBe(true));
 
     expect(rpcMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not refetch for a time zone change when includeHours is false', async () => {
+    rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
+    const wrapper = makeWrapper();
+    const base = { startDate: '2026-06-01', endDate: '2026-06-30' };
+
+    const a = renderHook(() => useSalesDailySeries('rest-1', { ...base, timeZone: 'UTC' }), { wrapper });
+    await waitFor(() => expect(a.result.current.isSuccess).toBe(true));
+    const b = renderHook(() => useSalesDailySeries('rest-1', { ...base, timeZone: 'America/New_York' }), {
+      wrapper,
+    });
+    await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
+
+    expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([

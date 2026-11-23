@@ -6,7 +6,7 @@ import type { HourlySeriesRowWithPrior } from '@/lib/salesTrends';
 
 import { formatHour } from './salesTrendsFormat';
 import { buildPosChartConfig } from './chartConfig';
-import { DashedSwatch, PRIOR_LABEL } from './SalesByDayChart';
+import { DashedSwatch, PRIOR_LABEL } from './priorSeries';
 
 interface TimeOfDayChartProps {
   data: HourlySeriesRowWithPrior[];

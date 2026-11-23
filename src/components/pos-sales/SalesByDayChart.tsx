@@ -8,6 +8,7 @@ import type { DailySeriesRowWithPrior } from '@/lib/salesTrends';
 
 import { formatCurrency, formatShortDate } from './salesTrendsFormat';
 import { buildPosChartConfig } from './chartConfig';
+import { DashedSwatch, PRIOR_LABEL } from './priorSeries';
 
 interface SalesByDayChartProps {
   data: DailySeriesRowWithPrior[];
@@ -21,16 +22,6 @@ interface SalesByDayChartProps {
 
 /** Up to this many days the prior series is a bar. Above it, a dashed line. */
 export const PRIOR_BAR_MAX_DAYS = 14;
-
-export const PRIOR_LABEL = 'Previous period';
-
-export function DashedSwatch() {
-  return (
-    <svg width="14" height="2" aria-hidden="true">
-      <line x1="0" y1="1" x2="14" y2="1" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />
-    </svg>
-  );
-}
 
 const CURRENT_LABEL = 'This period';
 

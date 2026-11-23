@@ -11,7 +11,7 @@
 -- belongs to another user. Its rows use pos_system 'clover', so a leak is
 -- easy to see.
 BEGIN;
-SELECT plan(36);
+SELECT plan(38);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000011"}';
@@ -381,6 +381,20 @@ SELECT is(
   ) e WHERE e->>'pos_system' = 'clover'),
   0,
   'rows of restaurant B do not appear in the restaurant A by_hour'
+);
+
+-- An unknown zone raises invalid_parameter_value only when the hours are on.
+-- The UI checks the zone first (safeTz). A direct RPC or MCP caller does not.
+SELECT throws_ok(
+  $$ SELECT get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','Not/AZone',true) $$,
+  '22023',
+  NULL,
+  'an invalid p_time_zone with p_include_hours raises invalid_parameter_value'
+);
+
+SELECT lives_ok(
+  $$ SELECT get_sales_daily_series('00000000-0000-0000-0000-000000000199'::uuid,'2024-08-01','2024-08-03','Not/AZone',false) $$,
+  'an invalid p_time_zone without p_include_hours does not raise'
 );
 
 SELECT * FROM finish();

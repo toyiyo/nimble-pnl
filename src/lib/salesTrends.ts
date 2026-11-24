@@ -69,8 +69,53 @@ export type PosFilter = 'all' | (string & {});
 // parseSalesTrends — runtime guard for the untyped RPC `Json` payload
 // ---------------------------------------------------------------------------
 
+/** Thrown by the field guards. `withParserName` changes it into a
+ *  `SalesPayloadError` whose message names the public parser. */
+class PayloadError extends Error {
+  constructor(
+    readonly path: string,
+    readonly detail: string,
+  ) {
+    super(`invalid payload at "${path}" — ${detail}`);
+  }
+}
+
 function fail(path: string, detail: string): never {
-  throw new Error(`parseSalesTrends: invalid payload at "${path}" — ${detail}`);
+  throw new PayloadError(path, detail);
+}
+
+/** A sales RPC payload has the wrong shape. The same payload fails again on
+ *  a retry, so a caller must not retry this error. */
+export class SalesPayloadError extends Error {
+  override name = 'SalesPayloadError';
+}
+
+function withParserName<T>(parserName: string, parse: () => T): T {
+  try {
+    return parse();
+  } catch (err) {
+    if (err instanceof PayloadError) {
+      throw new SalesPayloadError(`${parserName}: invalid payload at "${err.path}" — ${err.detail}`);
+    }
+    throw err;
+  }
+}
+
+function asRootObject(json: unknown): Record<string, unknown> {
+  if (!isPlainObject(json)) {
+    fail('$', `expected an object, got ${Array.isArray(json) ? 'array' : typeof json}`);
+  }
+  return json;
+}
+
+/** The `pos_systems` and `by_day` arrays. Both RPC payloads share them. */
+function parseDailyPart(root: Record<string, unknown>): Pick<SalesTrendsData, 'pos_systems' | 'by_day'> {
+  return {
+    pos_systems: asArray(root.pos_systems, '$.pos_systems').map((v, i) =>
+      asString(v, `$.pos_systems[${i}]`),
+    ),
+    by_day: asArray(root.by_day, '$.by_day').map((v, i) => parseDayRow(v, `$.by_day[${i}]`)),
+  };
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -145,29 +190,52 @@ function parseProductRow(v: unknown, path: string): SalesTrendsProductRow {
  * blind-cast trap, lesson 2026-04-xx).
  */
 export function parseSalesTrends(json: unknown): SalesTrendsData {
-  if (!isPlainObject(json)) {
-    fail('$', `expected an object, got ${Array.isArray(json) ? 'array' : typeof json}`);
-  }
+  return withParserName('parseSalesTrends', () => {
+    const root = asRootObject(json);
+    return {
+      ...parseDailyPart(root),
+      by_hour: asArray(root.by_hour, '$.by_hour').map((v, i) => parseHourRow(v, `$.by_hour[${i}]`)),
+      by_weekday: asArray(root.by_weekday, '$.by_weekday').map((v, i) =>
+        parseWeekdayRow(v, `$.by_weekday[${i}]`),
+      ),
+      by_product: asArray(root.by_product, '$.by_product').map((v, i) =>
+        parseProductRow(v, `$.by_product[${i}]`),
+      ),
+    };
+  });
+}
 
-  const posSystems = asArray(json.pos_systems, '$.pos_systems').map((v, i) =>
-    asString(v, `$.pos_systems[${i}]`),
-  );
-  const byDay = asArray(json.by_day, '$.by_day').map((v, i) => parseDayRow(v, `$.by_day[${i}]`));
-  const byHour = asArray(json.by_hour, '$.by_hour').map((v, i) => parseHourRow(v, `$.by_hour[${i}]`));
-  const byWeekday = asArray(json.by_weekday, '$.by_weekday').map((v, i) =>
-    parseWeekdayRow(v, `$.by_weekday[${i}]`),
-  );
-  const byProduct = asArray(json.by_product, '$.by_product').map((v, i) =>
-    parseProductRow(v, `$.by_product[${i}]`),
-  );
+// ---------------------------------------------------------------------------
+// parseSalesDailySeries — runtime guard for the `get_sales_daily_series` RPC
+// ---------------------------------------------------------------------------
 
-  return {
-    pos_systems: posSystems,
-    by_day: byDay,
-    by_hour: byHour,
-    by_weekday: byWeekday,
-    by_product: byProduct,
-  };
+/** The `get_sales_daily_series` RPC payload. The arrays have the same
+ *  contract as the same keys of `get_sales_trends`. `by_hour` is present only
+ *  when the caller sets `p_include_hours`.
+ *  Design: docs/superpowers/specs/2026-11-22-sales-daily-series-rpc-design.md
+ *  Design (by_hour): docs/superpowers/specs/2026-11-22-sales-hourly-comparison-design.md */
+export type SalesDailySeriesData = Pick<SalesTrendsData, 'pos_systems' | 'by_day'> & {
+  by_hour?: SalesTrendsHourRow[];
+};
+
+export function parseSalesDailySeries(json: unknown): SalesDailySeriesData {
+  return withParserName('parseSalesDailySeries', () => {
+    const root = asRootObject(json);
+    const daily = parseDailyPart(root);
+    if (root.by_hour === undefined) return daily;
+    return {
+      ...daily,
+      by_hour: asArray(root.by_hour, '$.by_hour').map((v, i) => parseHourRow(v, `$.by_hour[${i}]`)),
+    };
+  });
+}
+
+/** Widen a daily series to `SalesTrendsData`. A series with no `by_hour` gets
+ *  an empty hour array. The weekday and product arrays are always empty. Then
+ *  `filterByPos`, `computeKpis`, and `buildDailySeries` accept it with no
+ *  change. */
+export function toTrendsData(series: SalesDailySeriesData): SalesTrendsData {
+  return { ...series, by_hour: series.by_hour ?? [], by_weekday: [], by_product: [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +289,11 @@ function eachDateInRange(start: string, end: string): string[] {
     dates.push(`${yyyy}-${mm}-${dd}`);
   }
   return dates;
+}
+
+/** The number of calendar days in the inclusive range. 0 when `end` is before `start`. */
+export function countDaysInRange(start: string, end: string): number {
+  return eachDateInRange(start, end).length;
 }
 
 export function buildDailySeries(
@@ -335,6 +408,50 @@ export function buildHourlySeries(rows: SalesTrendsHourRow[], posSystems: string
     entry.cumulativePct = grandTotal > 0 ? (running / grandTotal) * 100 : 0;
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Prior period on the hour chart.
+// Design: docs/superpowers/specs/2026-11-22-sales-hourly-comparison-design.md
+// ---------------------------------------------------------------------------
+
+export interface DateRange {
+  start: string;
+  end: string;
+}
+
+/**
+ * The factor that scales prior hour totals to the length of the current range:
+ * current days / prior days. Then the prior line and the current bars compare
+ * the per-day average of each hour. Returns 1 when a range is empty.
+ */
+export function priorDayScale(current: DateRange, prior: DateRange): number {
+  const currentDays = countDaysInRange(current.start, current.end);
+  const priorDays = countDaysInRange(prior.start, prior.end);
+  if (currentDays === 0 || priorDays === 0) return 1;
+  return currentDays / priorDays;
+}
+
+export type HourlySeriesRowWithPrior = HourlySeriesRow & { prior?: number };
+
+/**
+ * Add a `prior` key to each hour: the sum of the prior rows of that hour over
+ * all POS systems, times `scale`. The caller filters `priorRows` by POS first.
+ * With no prior rows, the function adds no `prior` key, because zeros say
+ * "no sales" and the true state is "no hour data".
+ */
+export function attachPriorHourlySeries(
+  hourly: HourlySeriesRow[],
+  priorRows: SalesTrendsHourRow[] | undefined,
+  scale: number,
+): HourlySeriesRowWithPrior[] {
+  if (!priorRows || priorRows.length === 0 || hourly.length === 0) return hourly;
+  const byHour = new Map<number, number>();
+  for (const row of priorRows) {
+    byHour.set(row.hour, (byHour.get(row.hour) ?? 0) + row.revenue);
+  }
+  // Round to cents, so the tooltip does not show a long fraction.
+  return hourly.map((row) => ({ ...row, prior: Math.round((byHour.get(row.hour) ?? 0) * scale * 100) / 100 }));
 }
 
 // ---------------------------------------------------------------------------

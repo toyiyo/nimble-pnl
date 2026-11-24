@@ -35,6 +35,26 @@ vi.mock('@/hooks/useSalesTrends', () => ({
   useSalesTrends: (restaurantId: string | null, options: unknown) => mockUseSalesTrends(restaurantId, options),
 }));
 
+const mockUseSalesDailySeries = vi.fn();
+vi.mock('@/hooks/useSalesDailySeries', () => ({
+  useSalesDailySeries: (restaurantId: string | null, options: unknown) =>
+    mockUseSalesDailySeries(restaurantId, options),
+}));
+
+// Wrap the real chart and record its props, so a test can check the prior values.
+const mockTimeOfDayProps = vi.fn();
+vi.mock('@/components/pos-sales/TimeOfDayChart', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/pos-sales/TimeOfDayChart')>();
+  const Real = actual.TimeOfDayChart;
+  return {
+    ...actual,
+    TimeOfDayChart: (props: React.ComponentProps<typeof Real>) => {
+      mockTimeOfDayProps(props);
+      return <Real {...props} />;
+    },
+  };
+});
+
 import { SalesTrendsPanel } from '@/components/pos-sales/SalesTrendsPanel';
 
 function fixtureData(overrides: Partial<SalesTrendsData> = {}): SalesTrendsData {
@@ -90,8 +110,21 @@ function mockHookReturn(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function mockSeriesReturn(overrides: Record<string, unknown> = {}) {
+  const { pos_systems, by_day } = fixtureData();
+  return {
+    data: { pos_systems, by_day },
+    isLoading: false,
+    error: null,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   mockUseSalesTrends.mockReset();
+  mockUseSalesDailySeries.mockReset();
+  mockUseSalesDailySeries.mockReturnValue(mockSeriesReturn());
+  mockTimeOfDayProps.mockReset();
 });
 
 describe('SalesTrendsPanel — loading/error/empty states', () => {
@@ -211,15 +244,14 @@ describe('SalesTrendsPanel — prior period comparison', () => {
   const range = { startDate: '2026-07-01', endDate: '2026-07-02' };
 
   function mockByRange(prior: Record<string, unknown>) {
-    mockUseSalesTrends.mockImplementation((_id: string | null, opts: { startDate?: string }) =>
-      opts.startDate === range.startDate ? mockHookReturn() : mockHookReturn(prior),
-    );
+    mockUseSalesTrends.mockReturnValue(mockHookReturn());
+    mockUseSalesDailySeries.mockReturnValue(mockSeriesReturn(prior));
   }
   function priorCalls() {
-    return mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== range.startDate);
+    return mockUseSalesDailySeries.mock.calls;
   }
 
-  it('requests the prior range with the comparison dates and enables it by default', () => {
+  it('requests the prior range from the daily series hook and enables it by default', () => {
     mockByRange({});
     render(<SalesTrendsPanel restaurantId="rest-1" timeZone="UTC" {...range} />);
     const [restaurantId, last] = priorCalls().at(-1)! as [string, Record<string, unknown>];
@@ -228,27 +260,30 @@ describe('SalesTrendsPanel — prior period comparison', () => {
     expect(last).toMatchObject({
       startDate: '2026-06-01',
       endDate: '2026-06-02',
-      timeZone: 'UTC',
       enabled: true,
-      retry: 1,
     });
   });
 
   it('sends the full prior month for a full 30-day month', () => {
     const june = { startDate: '2026-06-01', endDate: '2026-06-30' };
-    mockUseSalesTrends.mockImplementation(() => mockHookReturn());
+    mockByRange({});
     render(<SalesTrendsPanel restaurantId="rest-1" {...june} />);
-    const prior = mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== june.startDate);
-    expect(prior.at(-1)![1]).toMatchObject({ startDate: '2026-05-01', endDate: '2026-05-31' });
+    expect(priorCalls().at(-1)![1]).toMatchObject({ startDate: '2026-05-01', endDate: '2026-05-31' });
   });
 
   it('uses the comparison hint for a preset range', () => {
     const month = { startDate: '2026-11-01', endDate: '2026-11-30' };
-    mockUseSalesTrends.mockImplementation(() => mockHookReturn());
+    mockByRange({});
     render(<SalesTrendsPanel restaurantId="rest-1" comparisonHint="shift" {...month} />);
-    const prior = mockUseSalesTrends.mock.calls.filter(([, o]) => (o as { startDate?: string }).startDate !== month.startDate);
     // 30 days moves back 35 days, the same as the dashboard "Last 30 days".
-    expect(prior.at(-1)![1]).toMatchObject({ startDate: '2026-09-27', endDate: '2026-10-26' });
+    expect(priorCalls().at(-1)![1]).toMatchObject({ startDate: '2026-09-27', endDate: '2026-10-26' });
+  });
+
+  it('calls the full trends hook only for the current range', () => {
+    mockByRange({});
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    const starts = mockUseSalesTrends.mock.calls.map(([, o]) => (o as { startDate?: string }).startDate);
+    expect(new Set(starts)).toEqual(new Set([range.startDate]));
   });
 
   it('shows the caption one time when the prior data is loaded', () => {
@@ -280,6 +315,126 @@ describe('SalesTrendsPanel — prior period comparison', () => {
     render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
     expect(screen.queryByText(/^vs .+ · .+/)).not.toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  // The default mock returns the current data as the prior data, so every
+  // delta is 0. These tests use prior totals that differ from the current
+  // totals, to check that the prior series drives the delta.
+  const distinctPrior = {
+    data: {
+      pos_systems: ['toast', 'square'],
+      by_day: [
+        { sale_date: '2026-06-01', pos_system: 'toast', revenue: 120, orders: 6 },
+        { sale_date: '2026-06-01', pos_system: 'square', revenue: 30, orders: 2 },
+        { sale_date: '2026-06-02', pos_system: 'toast', revenue: 80, orders: 4 },
+        { sale_date: '2026-06-02', pos_system: 'square', revenue: 20, orders: 1 },
+      ],
+    },
+  };
+
+  it('computes the net sales delta from the prior series totals', () => {
+    mockByRange(distinctPrior);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    // Current 750, prior 120 + 30 + 80 + 20 = 250: +500, +200.0%.
+    expect(screen.getByText(/200\.0 percent, \$500\.00, versus previous period/)).toBeInTheDocument();
+  });
+
+  it('filters the prior series by the selected POS before the delta', () => {
+    mockByRange(distinctPrior);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    fireEvent.click(screen.getByRole('button', { name: /^toast$/i }));
+    // Toast only: current 500, prior 120 + 80 = 200: +300, +150.0%.
+    expect(screen.getByText(/150\.0 percent, \$300\.00, versus previous period/)).toBeInTheDocument();
+    expect(screen.queryByText(/200\.0 percent, \$500\.00/)).not.toBeInTheDocument();
+  });
+
+  // The prior hour rows. The default series mock has no by_hour.
+  const priorWithHours = {
+    data: {
+      ...distinctPrior.data,
+      by_hour: [
+        { hour: 12, pos_system: 'toast', revenue: 100, day_count: 2 },
+        { hour: 18, pos_system: 'square', revenue: 50, day_count: 2 },
+      ],
+    },
+  };
+  function hourChartLabels() {
+    return screen.getAllByRole('img').map((el) => el.getAttribute('aria-label') ?? '');
+  }
+
+  it('asks for the prior hours in the restaurant time zone', () => {
+    mockByRange({});
+    render(<SalesTrendsPanel restaurantId="rest-1" timeZone="America/New_York" {...range} />);
+    expect(priorCalls().at(-1)![1]).toMatchObject({ timeZone: 'America/New_York', includeHours: true });
+  });
+
+  it('shows the prior hour line when the prior period has hour rows', () => {
+    mockByRange(priorWithHours);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    const labels = hourChartLabels();
+    // Jul 1-2 and Jun 1-2 have the same day count, so the line is not scaled.
+    expect(labels.some((l) => /Previous period shown dashed\.$/.test(l))).toBe(true);
+    expect(labels.some((l) => /scaled/.test(l))).toBe(false);
+  });
+
+  it('says that the prior hour line is scaled when the day counts differ', () => {
+    mockByRange(priorWithHours);
+    // Jul 1-31 (31 days) compares to Jun 1-30 (30 days).
+    render(<SalesTrendsPanel restaurantId="rest-1" startDate="2026-07-01" endDate="2026-07-31" />);
+    expect(
+      hourChartLabels().some((l) =>
+        /Previous period shown dashed\. The previous period is scaled to the days of this period\.$/.test(l),
+      ),
+    ).toBe(true);
+  });
+
+  function lastHourChartProps() {
+    return mockTimeOfDayProps.mock.calls.at(-1)![0] as {
+      data: { hour: number; prior?: number }[];
+      priorScale: number;
+    };
+  }
+  function priorByHour() {
+    // The chart data has all 24 hours. Check only the two hours with sales.
+    const rows = lastHourChartProps().data;
+    const at = (h: number) => rows.find((r) => r.hour === h)?.prior;
+    return { 12: at(12), 18: at(18) };
+  }
+
+  it('passes the prior hour totals unscaled when the day counts are the same', () => {
+    mockByRange(priorWithHours);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    expect(lastHourChartProps().priorScale).toBe(1);
+    expect(priorByHour()).toEqual({ 12: 100, 18: 50 });
+  });
+
+  it('scales the prior hour totals by current days / prior days', () => {
+    mockByRange(priorWithHours);
+    // Jul 1-31 (31 days) compares to Jun 1-30 (30 days): factor 31/30.
+    render(<SalesTrendsPanel restaurantId="rest-1" startDate="2026-07-01" endDate="2026-07-31" />);
+    expect(lastHourChartProps().priorScale).toBeCloseTo(31 / 30, 10);
+    expect(priorByHour()).toEqual({ 12: 103.33, 18: 51.67 });
+  });
+
+  it('filters the prior hour rows by the selected POS', () => {
+    mockByRange(priorWithHours);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    fireEvent.click(screen.getByRole('button', { name: /^toast$/i }));
+    // Toast only: the square row at 18:00 is out, so the 18:00 prior is 0.
+    expect(priorByHour()).toEqual({ 12: 100, 18: 0 });
+  });
+
+  it('shows no prior hour line when the prior period has no hour rows', () => {
+    mockByRange(distinctPrior);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    expect(hourChartLabels().some((l) => /Previous period shown dashed\./.test(l))).toBe(false);
+  });
+
+  it('shows no prior hour line when the switch is off', () => {
+    mockByRange(priorWithHours);
+    render(<SalesTrendsPanel restaurantId="rest-1" {...range} />);
+    fireEvent.click(screen.getByRole('switch', { name: /compare to previous period/i }));
+    expect(hourChartLabels().some((l) => /Previous period shown dashed\./.test(l))).toBe(false);
   });
 
   it('shows no switch when there is no date range', () => {

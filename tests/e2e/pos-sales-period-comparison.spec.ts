@@ -42,6 +42,8 @@ test.describe('POS Sales period comparison', () => {
         unit_price: amount,
         total_price: amount,
         sale_date: saleDate,
+        // A local hour puts each sale in the "Time of day" chart.
+        sale_time: '12:00:00',
       });
 
       const { error } = await supabase.from('unified_sales').insert([
@@ -55,7 +57,7 @@ test.describe('POS Sales period comparison', () => {
     // Wait for the prior-period RPC. Its body names the prior week start.
     const priorResponse = page.waitForResponse(
       (res) =>
-        res.url().includes('/rpc/get_sales_trends') &&
+        res.url().includes('/rpc/get_sales_daily_series') &&
         (res.request().postData() ?? '').includes(PRIOR_START),
       { timeout: 30000 },
     );
@@ -64,7 +66,15 @@ test.describe('POS Sales period comparison', () => {
     const compareSwitch = page.getByRole('switch', { name: /compare to previous period/i });
     await expect(compareSwitch).toBeVisible({ timeout: 15000 });
     await expect(compareSwitch).toBeChecked();
-    expect((await priorResponse).ok()).toBe(true);
+    const prior = await priorResponse;
+    expect(prior.ok()).toBe(true);
+    // The prior call asks for the hour buckets.
+    expect(prior.request().postDataJSON()).toMatchObject({ p_include_hours: true });
+
+    // The "Time of day" chart draws the prior week as a dashed line.
+    await expect(page.getByRole('img', { name: /previous period shown dashed/i })).toBeVisible({
+      timeout: 15000,
+    });
 
     // The caption names the prior range and the rule.
     const caption = page.getByText(/^vs .+ · same days, last week$/);

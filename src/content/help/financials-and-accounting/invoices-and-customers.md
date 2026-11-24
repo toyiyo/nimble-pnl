@@ -45,17 +45,38 @@ On any customer card, click the **delete icon** (trash can). A confirmation dial
 
 ## Set up payment processing
 
-To send invoices and collect card or bank (ACH) payments, you need to connect a Stripe account.
+To send invoices and collect card or bank (ACH) payments, you must turn on payments through Stripe. Only the restaurant owner can do this. You do not need a customer first. You can open Invoices and set up payments before you add any customer.
 
-**From the Customers page:** If you have customers but payment processing is not yet configured, a banner appears at the top of the customer list: "Enable Invoice Payments." Click **Set up Payment Processing** to begin Stripe Express onboarding.
+### The payment setup card
 
-**From the Invoices page:** A smaller info bar reads "Invoices can be created as drafts. Set up payment processing to send invoices and collect payments." Click **Set up** on that bar.
+The **payment setup card** shows the state of your payment setup. It appears at the top of the **Invoices** page, the **Customers** page, and the invoice page (when the invoice is a draft and payments are not ready). The card has three states:
 
-**From an invoice detail page:** If you open a draft invoice before payment processing is configured, the sidebar shows a "Payment Processing" panel with a **Set up payment processing** button.
+| State | Card title | What it means | Action |
+|---|---|---|---|
+| Not set up | **Turn on payments** | You did not start setup. | Click **Turn on payments**. |
+| Stripe is checking | **Finish payment setup** | Stripe needs more details, or Stripe is checking them. | Click **Continue setup** to add details. Click **Check now** to ask Stripe for the latest status. |
+| Ready | **Payments are on** | Customers can pay your invoices online. | Click **Manage** to open your Stripe account page. |
 
-Once you complete Stripe's onboarding flow, you are returned to the Invoices page with a confirmation message: "Payment Setup Complete — Your payment processing account has been successfully configured. You can now create and send invoices."
+On the Customers page and the invoice page, the card hides when payments are ready. If you are not the owner, the card shows "Ask the restaurant owner to turn on payments." and has no buttons.
 
-If you leave Stripe's onboarding before finishing, you are returned with a message: "Setup Incomplete — Please complete your payment processing onboarding to start creating invoices."
+### Finish the Stripe form in the side panel
+
+1. Click **Turn on payments** (or **Continue setup**). A **Set up payments** panel opens on the right side of the page.
+2. Fill in the Stripe form in the panel. Stripe keeps your bank and tax details. EasyShiftHQ does not see them.
+3. When you finish, or when you close the panel, the app checks your status with Stripe.
+
+You can leave the page open while Stripe checks your details. If the card still shows "Finish payment setup", click **Check now**. The message "Stripe is still checking your details" means that Stripe did not approve the account yet. When Stripe approves it, the card changes to **Payments are on**.
+
+### Send an invoice before payments are ready
+
+On an invoice page, the send button depends on the payment state:
+
+- **Payments are ready:** The button reads **Send Invoice** (or **Create & Send Invoice**) and sends the invoice.
+- **Payments are not set up (owner):** The button reads **Turn on payments to send**. Click it to open the setup panel.
+- **Stripe is checking (owner):** The button reads "Stripe is checking your details". Click it to check the status again.
+- **Not the owner:** The button is off. The text "Ask the restaurant owner to turn on payments." shows next to it.
+
+If you start from the hosted Stripe link on the **Stripe account** page and return to the Invoices page, the page shows "Payment Setup Complete" when setup is done. It shows "Setup Incomplete" when you left before the end.
 
 ## Create an invoice
 

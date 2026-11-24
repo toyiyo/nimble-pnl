@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { stripeConnectedAccountKey } from "@/lib/stripeConnectKeys";
+import { getPaymentSetupState } from "@/lib/paymentSetupState";
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 
@@ -100,7 +101,7 @@ export const useStripeConnect = (restaurantId: string | null) => {
   });
 
   // Check if account is ready for invoicing
-  const isReadyForInvoicing = connectedAccount?.charges_enabled && connectedAccount?.onboarding_complete;
+  const isReadyForInvoicing = getPaymentSetupState(connectedAccount) === 'ready';
 
   // Create a dashboard login link
   const createDashboardLinkMutation = useMutation({

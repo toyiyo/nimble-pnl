@@ -6,6 +6,7 @@ import Invoices from "@/pages/Invoices";
 
 const navigateMock = vi.fn();
 let mockInvoices: any[] = [];
+let mockRole = "owner";
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
@@ -19,7 +20,7 @@ vi.mock("@/contexts/RestaurantContext", () => ({
   useRestaurantContext: () => ({
     selectedRestaurant: {
       restaurant_id: "rest-1",
-      role: "owner",
+      role: mockRole,
       restaurant: {
         subscription_tier: 'pro',
         subscription_status: 'active',
@@ -58,7 +59,9 @@ vi.mock("@/hooks/usePaymentSetup", () => ({
 
 vi.mock("@/components/invoicing/PaymentSetupCard", () => ({
   PaymentSetupCard: ({ canManage }: { canManage: boolean }) => (
-    <div data-testid="setup-card" data-can-manage={String(canManage)} />
+    <div data-testid="setup-card" data-can-manage={String(canManage)}>
+      {canManage && <button type="button">Turn on payments</button>}
+    </div>
   ),
 }));
 
@@ -85,6 +88,7 @@ vi.mock("@/hooks/useInvoices", () => ({
 describe("Invoices list", () => {
   beforeEach(() => {
     navigateMock.mockReset();
+    mockRole = "owner";
     mockInvoices = [
       {
         id: "inv-1",
@@ -140,5 +144,17 @@ describe("Invoices list", () => {
     expect(screen.getByTestId("setup-card")).toHaveAttribute("data-can-manage", "true");
     expect(screen.getByTestId("setup-sheet")).toBeInTheDocument();
     expect(screen.queryByText(/get started with invoicing/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the payment setup button to the owner", () => {
+    renderPage();
+    expect(screen.getByRole("button", { name: /turn on payments/i })).toBeInTheDocument();
+  });
+
+  it("hides the payment setup button from a manager", () => {
+    mockRole = "manager";
+    renderPage();
+    expect(screen.getByTestId("setup-card")).toHaveAttribute("data-can-manage", "false");
+    expect(screen.queryByRole("button", { name: /turn on payments/i })).toBeNull();
   });
 });

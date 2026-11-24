@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useStripeConnect, StripeConnectedAccount } from '@/hooks/useStripeConnect';
@@ -7,6 +8,21 @@ import { stripeConnectedAccountKey } from '@/lib/stripeConnectKeys';
 import { getPaymentSetupState, PaymentSetupState } from '@/lib/paymentSetupState';
 
 const FUNCTION_NAME = 'stripe-create-connected-account';
+
+/**
+ * Turn a FunctionsHttpError into an Error with the server message.
+ * Return the original error when the body cannot be read.
+ */
+async function toServerError(invokeError: unknown): Promise<unknown> {
+  if (!(invokeError instanceof FunctionsHttpError)) return invokeError;
+  try {
+    const body = (await (invokeError.context as Response).json()) as { error?: unknown };
+    if (typeof body?.error === 'string' && body.error) return new Error(body.error);
+  } catch {
+    // The body is not readable. Use the original error.
+  }
+  return invokeError;
+}
 
 /**
  * Run one async action at a time. Show a destructive toast when it fails.
@@ -82,7 +98,7 @@ export function usePaymentSetup(restaurantId: string | null) {
   const invokeAndRefetch = useCallback(
     async (body: Record<string, unknown>) => {
       const { error: invokeError } = await supabase.functions.invoke(FUNCTION_NAME, { body });
-      if (invokeError) throw invokeError;
+      if (invokeError) throw await toServerError(invokeError);
       await refetchOrThrow();
     },
     [refetchOrThrow],
@@ -113,7 +129,7 @@ export function usePaymentSetup(restaurantId: string | null) {
     const generation = generationRef.current;
     await runStart(async () => {
       if (state === 'not_started') {
-        await invokeAndRefetch({ restaurantId, accountType: 'express' });
+        await invokeAndRefetch({ restaurantId });
       }
       if (generation !== generationRef.current) return;
       setSheetRestaurantId(restaurantId);

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { stripeConnectedAccountKey } from '@/lib/stripeConnectKeys';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePaymentSetup } from '@/hooks/usePaymentSetup';
 
@@ -21,15 +22,24 @@ vi.mock('@/hooks/useStripeConnect', () => ({
 
 const RID = 'rest-1';
 
-function setup() {
+// The first row seeds the cache. Each refetch reads the next row from a mocked fetch.
+// The last row repeats.
+function setup(rows: unknown[] = [connectState.value.connectedAccount]) {
   const queryClient = new QueryClient();
-  // Seed the cache. The hook reads fresh data from the cache after the refetch.
-  queryClient.setQueryData(stripeConnectedAccountKey(RID), connectState.value.connectedAccount);
-  const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+  const fetchAccount = vi.fn();
+  const later = rows.length > 1 ? rows.slice(1) : rows;
+  later.forEach((row, i) => {
+    if (i === later.length - 1) fetchAccount.mockResolvedValue(row);
+    else fetchAccount.mockResolvedValueOnce(row);
+  });
+  queryClient.setQueryData(stripeConnectedAccountKey(RID), rows[0]);
+  const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockImplementation(async () => {
+    queryClient.setQueryData(stripeConnectedAccountKey(RID), await fetchAccount());
+  });
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(QueryClientProvider, { client: queryClient }, children);
   const hook = renderHook(() => usePaymentSetup(RID), { wrapper });
-  return { ...hook, invalidate, queryClient };
+  return { ...hook, invalidate, queryClient, fetchAccount };
 }
 
 const account = (over: Record<string, unknown> = {}) => ({
@@ -62,7 +72,7 @@ describe('usePaymentSetup', () => {
       await result.current.openSetup();
     });
     expect(invoke).toHaveBeenCalledWith('stripe-create-connected-account', {
-      body: { restaurantId: RID, accountType: 'express' },
+      body: { restaurantId: RID },
     });
     expect(result.current.isSheetOpen).toBe(true);
   });
@@ -129,6 +139,39 @@ describe('usePaymentSetup', () => {
     expect(invalidate).toHaveBeenCalledWith(
       { queryKey: ['stripe-connected-account', RID] },
       { throwOnError: true },
+    );
+  });
+
+  it('shows the server message when the function returns a 403', async () => {
+    const response = new Response(JSON.stringify({ error: 'Only the owner can set up payments' }), {
+      status: 403,
+    });
+    invoke.mockResolvedValue({
+      data: null,
+      error: new FunctionsHttpError(response),
+    });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.openSetup();
+    });
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'Only the owner can set up payments',
+        variant: 'destructive',
+      }),
+    );
+    expect(result.current.isSheetOpen).toBe(false);
+  });
+
+  it('keeps the original error when the error body cannot be read', async () => {
+    const error = new FunctionsHttpError(new Response('not json', { status: 500 }));
+    invoke.mockResolvedValue({ data: null, error });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.openSetup();
+    });
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ description: error.message, variant: 'destructive' }),
     );
   });
 
@@ -251,15 +294,20 @@ describe('usePaymentSetup', () => {
   });
 
   it('shows "Payments are on" when the check finds a ready account', async () => {
-    connectState.value = {
-      ...connectState.value,
-      connectedAccount: account({ charges_enabled: true, onboarding_complete: true }),
-    };
-    const { result } = setup();
+    connectState.value = { ...connectState.value, connectedAccount: account() };
+    // The first row is pending. Only the refetch returns the ready row.
+    const { result, fetchAccount } = setup([
+      account(),
+      account({ charges_enabled: true, onboarding_complete: true }),
+    ]);
     await act(async () => {
       await result.current.checkStatus();
     });
+    expect(fetchAccount).toHaveBeenCalledTimes(1);
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Payments are on' }));
+    expect(toast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Stripe is still checking your details' }),
+    );
   });
 
   it('shows "Stripe is still checking your details" when the account is pending', async () => {

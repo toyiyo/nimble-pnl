@@ -129,6 +129,32 @@ describe('handleStripeConnectWebhook', () => {
     expect(m.eqUpdate).toHaveBeenCalledWith('stripe_account_id', ACCT);
   });
 
+  it('trusts the live account, not the event payload', async () => {
+    const m = makeDeps({
+      event: makeEvent({ data: { object: { id: ACCT, charges_enabled: true } } }),
+      live: { charges_enabled: false, payouts_enabled: false, details_submitted: true },
+    });
+    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    expect(res.status).toBe(200);
+    const payload = m.update.mock.calls[0][0];
+    expect(payload.charges_enabled).toBe(false);
+    expect(payload.onboarding_complete).toBe(false);
+  });
+
+  it('logs event id, type and account id when processing fails', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const m = makeDeps({
+      event: makeEvent({ id: 'evt_1' }),
+      retrieveError: new Error('boom'),
+    });
+    await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    expect(spy).toHaveBeenCalledWith(
+      '[CONNECT-WEBHOOK] Processing failed:',
+      expect.objectContaining({ eventId: 'evt_1', eventType: 'account.updated', accountId: ACCT }),
+    );
+    spy.mockRestore();
+  });
+
   it('returns 500 with a safe body on a Stripe error', async () => {
     const m = makeDeps({ retrieveError: new Error('stripe secret detail') });
     const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);

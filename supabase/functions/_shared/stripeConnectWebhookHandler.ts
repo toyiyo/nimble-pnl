@@ -86,7 +86,13 @@ export const handleStripeConnectWebhook = async (
 
     return json({ received: true }, 200);
   } catch (err) {
-    console.error("[CONNECT-WEBHOOK] Processing failed:", err);
+    // Log ids for tracing. Never log the payload or secrets.
+    console.error("[CONNECT-WEBHOOK] Processing failed:", {
+      eventId: event?.id,
+      eventType: event?.type,
+      accountId,
+      err,
+    });
     return json({ error: "Webhook processing failed" }, 500);
   }
 };

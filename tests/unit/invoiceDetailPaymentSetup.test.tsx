@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import InvoiceDetail from '@/pages/InvoiceDetail';
 
 const openSetup = vi.fn();
+const checkStatus = vi.fn();
+let setupState: 'not_started' | 'pending' | 'ready' = 'not_started';
+let isChecking = false;
 let role = 'owner';
 let ready = false;
 
@@ -25,7 +28,14 @@ vi.mock('@/hooks/useStripeConnect', () => ({
 }));
 
 vi.mock('@/hooks/usePaymentSetup', () => ({
-  usePaymentSetup: () => ({ state: ready ? 'ready' : 'not_started', openSetup, isSheetOpen: false }),
+  usePaymentSetup: () => ({
+    state: ready ? 'ready' : setupState,
+    openSetup,
+    checkStatus,
+    isChecking,
+    isStarting: false,
+    isSheetOpen: false,
+  }),
 }));
 
 vi.mock('@/components/invoicing/PaymentSetupCard', () => ({
@@ -83,6 +93,9 @@ const renderPage = () =>
 describe('InvoiceDetail payment setup', () => {
   beforeEach(() => {
     openSetup.mockReset();
+    checkStatus.mockReset();
+    setupState = 'not_started';
+    isChecking = false;
     role = 'owner';
     ready = false;
   });
@@ -117,5 +130,24 @@ describe('InvoiceDetail payment setup', () => {
     renderPage();
     expect(screen.queryByText('Ask the restaurant owner to turn on payments.')).toBeNull();
     expect(screen.queryByRole('button', { name: /turn on payments to send/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /send invoice/i })).toBeEnabled();
+  });
+
+  it('checks the status from the send button when the account is pending', () => {
+    setupState = 'pending';
+    renderPage();
+    expect(screen.queryByRole('button', { name: /turn on payments to send/i })).toBeNull();
+    const button = screen.getByRole('button', { name: /stripe is checking your details/i });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(checkStatus).toHaveBeenCalledTimes(1);
+    expect(openSetup).not.toHaveBeenCalled();
+  });
+
+  it('disables the pending button while the check runs', () => {
+    setupState = 'pending';
+    isChecking = true;
+    renderPage();
+    expect(screen.getByRole('button', { name: /stripe is checking your details/i })).toBeDisabled();
   });
 });

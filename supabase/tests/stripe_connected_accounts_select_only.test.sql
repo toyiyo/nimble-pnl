@@ -1,7 +1,7 @@
 -- stripe_connected_accounts is read-only for the authenticated role.
 -- Only the service role writes this table.
 BEGIN;
-SELECT plan(8);
+SELECT plan(10);
 
 SET LOCAL row_security = on;
 
@@ -54,6 +54,13 @@ SELECT throws_ok(
   'Owner INSERT is denied'
 );
 
+SELECT throws_ok(
+  $$DELETE FROM stripe_connected_accounts WHERE id = '00000000-0000-0000-0000-0000000CA101'$$,
+  '42501',
+  NULL,
+  'Owner DELETE is denied'
+);
+
 -- Manager
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000CA002","role":"authenticated"}', true);
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000CA002', true);
@@ -96,6 +103,16 @@ SELECT ok(
   NOT has_table_privilege('authenticated', 'public.stripe_connected_accounts', 'INSERT, UPDATE, DELETE'),
   'authenticated has no INSERT, UPDATE or DELETE privilege'
 );
+
+-- The service role still writes this table.
+SET LOCAL role TO service_role;
+
+SELECT lives_ok(
+  $$UPDATE stripe_connected_accounts SET charges_enabled = true WHERE id = '00000000-0000-0000-0000-0000000CA101'$$,
+  'service_role can UPDATE the connected account'
+);
+
+RESET role;
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -150,11 +150,23 @@ export default function InvoiceDetail() {
         </Button>
       );
     }
+    if (canManage && paymentSetup.state === 'pending') {
+      return (
+        <Button
+          onClick={() => void paymentSetup.checkStatus()}
+          disabled={paymentSetup.isChecking}
+          className="bg-primary hover:bg-primary/90"
+        >
+          <Send className="h-4 w-4 mr-2" />
+          Stripe is checking your details
+        </Button>
+      );
+    }
     if (canManage) {
       return (
         <Button
           onClick={() => void paymentSetup.openSetup()}
-          disabled={paymentSetup.isLoading || paymentSetup.isStarting}
+          disabled={paymentSetup.isStarting}
           className="bg-primary hover:bg-primary/90"
         >
           <Send className="h-4 w-4 mr-2" />

@@ -102,6 +102,24 @@ Note: `src/components/StripeEmbeddedOnboarding.tsx` also exists. It uses
   popups (bank link, document upload) attach to `document.body`, outside the
   sheet. A click in them must not close the sheet. The close button and Esc
   still close it.
+- The sheet is non-modal: `<Sheet modal={false}>`. Radix modal mode sets
+  `pointer-events: none` on everything outside the sheet. Stripe popups attach
+  to `document.body`, outside the sheet. In modal mode, the popups get no
+  pointer events and no focus. Non-modal mode lets them work.
+- Accessibility trade-off of non-modal mode:
+  - There is no focus trap. Radix sets `trapFocus: false` in
+    `DialogContentNonModal` (`@radix-ui/react-dialog` 1.1.14). Tab can leave
+    the sheet and reach the page behind it.
+  - The page behind the sheet stays interactive for pointer and keyboard.
+    Screen readers do not get `aria-hidden` on the page content.
+  - Escape still closes the sheet. `DialogContentNonModal` renders the same
+    `DialogContentImpl` as modal mode, and that component wraps
+    `DismissableLayer`. `DismissableLayer` listens for `keydown` Escape on
+    the document and calls `onDismiss`, which calls `onOpenChange(false)`.
+    The handler acts only when the sheet is the highest layer. Our
+    `onInteractOutside` handler does not stop Escape.
+  - Accepted risk: the form is a short, single task, and the user can close
+    the sheet at any time. The manual check in §7 covers Escape and Tab.
 - The title uses `text-[17px] font-semibold` (the default is `text-lg`,
   `sheet.tsx:88`).
 - The header has the title "Set up payments" and a `SheetDescription`:
@@ -269,6 +287,28 @@ Until step 2 is done, the function returns 500 and changes nothing. The
 | S5 | `stripe-create-connected-account/index.ts:206,224-228` | Pass `{ idempotencyKey: 'connect-acct-' + restaurantId }` to `stripe.accounts.create`. Two parallel calls then get the same Stripe account. If the insert fails with a unique violation on `restaurant_id`, read the row that exists and continue. If it fails for another reason, log the Stripe account id with the error and return 500. Stripe keeps an idempotency key for 24 h; after that, the existing-row path at `:115` covers a new call. |
 | S6 | `stripe-create-connected-account/index.ts:115-156` | Add an optional body flag `statusOnly`. When it is `true` and a row exists, the function updates the statuses and returns `{ success: true, accountId, onboardingComplete }` with no account link. Old callers do not send the flag and get the same response as today. When no row exists, `statusOnly` returns `{ success: true, accountId: null, onboardingComplete: false }` and creates nothing. |
 
+#### 5.2.1 Error codes of the edge functions
+
+Both functions use `HttpError` and `toErrorResponse`
+(`supabase/functions/_shared/httpError.ts`). Only the `publicMessage` of an
+`HttpError` reaches the client. Any other error returns 500 "Request failed".
+`stripe-create-connected-account` keeps its logic in
+`_shared/createConnectedAccountHandler.ts`.
+
+| Status | Function | Message | Cause |
+|---|---|---|---|
+| 400 | `stripe-create-connected-account` | "Invalid request body" | The body is not valid JSON. |
+| 400 | `stripe-create-connected-account` | "Restaurant ID is required" | `restaurantId` is missing. |
+| 400 | `stripe-create-account-session` | "Restaurant ID is required" | `restaurantId` is missing. |
+| 401 | Both | "Not authenticated" | No token, or the token is not valid. |
+| 403 | `stripe-create-connected-account` | "Only restaurant owners can create Stripe Connect accounts" | The user is not an owner of the restaurant. |
+| 403 | `stripe-create-account-session` | "Only restaurant owners can manage Stripe onboarding" | The user is not an owner of the restaurant. |
+| 404 | `stripe-create-account-session` | "Stripe Connect account not found for this restaurant" | The restaurant has no connected account row. The client must call `stripe-create-connected-account` first. |
+| 500 | Both | "Request failed" | Any other error. The detail stays in the log. |
+
+`stripe-create-connected-account` has no 404. When no row exists, it creates
+the account, or (with `statusOnly`) it returns `accountId: null`.
+
 ### 5.3 New migration: owner write path on `stripe_connected_accounts` (S1)
 
 `supabase/migrations/<timestamp>_stripe_connected_accounts_select_only.sql`:
@@ -360,8 +400,9 @@ Out of scope, flag only:
   start two sessions. Decision: fix it (§4.2).
 - R3. The webhook needs a dashboard step. Until then, "Check now" and the
   check on sheet close update the status.
-- R4. The Radix focus trap and the Stripe iframe can conflict. The manual
-  check in §7 covers this.
+- R4. A Radix focus trap and the Stripe iframe can conflict. The sheet is
+  non-modal, so it has no focus trap (§4.2). The manual check in §7 covers
+  this.
 
 ## 9. Files
 

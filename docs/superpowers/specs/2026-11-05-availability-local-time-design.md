@@ -161,11 +161,16 @@ Rules for the trigger:
   writes are possible.
 - Fallback if the expand phase goes past 2027-03-07: before 2027-03-14,
   ship a migration that records each legacy-path write as it occurs. The
-  migration adds a log table and an `AFTER INSERT OR UPDATE` trigger on
-  `employee_availability`. The trigger writes one log row when the legacy
-  columns change and the local columns do not change in the same statement.
-  The log row holds the id, both frames, and `now()`. The log row is written
-  in the same transaction as the edit, so no later edit can hide it. A
+  migration adds a log table. It changes `sync_employee_availability_frames`
+  to write one log row in each legacy branch. An `AFTER` trigger cannot find
+  these writes: the `BEFORE` sync trigger fills the local columns first, so
+  both frames look changed. The legacy branches are the `INSERT` branch that
+  derives the local columns from the legacy columns, and the `UPDATE` branch
+  that runs when the local columns do not change. Only these branches see the
+  original input. The log row holds the id, both frames, and `now()`. The log
+  row is written in the same transaction as the edit, so no later edit can
+  hide it. Add pgTAP tests for a legacy insert, a legacy update, and a local
+  write that does not log. A
   snapshot job that runs after the day can miss rows: a late job start lets
   an edit move `updated_at` first. Do not use a snapshot job. After
   2027-03-14, check each logged row from that local date with the owner

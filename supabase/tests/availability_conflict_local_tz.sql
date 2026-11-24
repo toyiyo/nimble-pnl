@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(32);
+SELECT plan(37);
 
 SET LOCAL client_min_messages TO WARNING;
 
@@ -316,6 +316,23 @@ SELECT is(
   (SELECT available_end_local FROM pg_temp.chk('2026-07-17 17:00', '2026-07-17 18:00')),
   (SELECT end_time_local FROM employee_availability WHERE end_time = (SELECT available_end FROM pg_temp.chk('2026-07-17 17:00', '2026-07-17 18:00')) AND restaurant_id = (SELECT rid FROM t_ids)),
   'Two windows: available_end_local and available_end come from the same row');
+
+-- DST change days in Chicago. 2026-11-01 (fall back) and 2026-03-08
+-- (spring forward) are Sundays. The local window must not move by one hour.
+UPDATE restaurants SET timezone = 'America/Chicago' WHERE id = (SELECT rid FROM t_ids);
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(0, '00:00', '04:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-11-01 00:30', '2026-11-01 03:00')), 0, 'Fall back: Sun 00:30-03:00 inside Sun 00-04 has no conflict');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-03-08 00:30', '2026-03-08 03:30')), 0, 'Spring forward: Sun 00:30-03:30 inside Sun 00-04 has no conflict');
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(0, '01:00', '04:00');
+SELECT is((SELECT conflict_type FROM pg_temp.chk('2026-11-01 00:30', '2026-11-01 03:00')), 'recurring', 'Fall back: Sun 00:30-03:00 starts before Sun 01-04 and conflicts');
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(0, '03:00', '10:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-03-08 03:00', '2026-03-08 09:00')), 0, 'Spring forward: Sun 03:00-09:00 inside Sun 03-10 has no conflict');
+SELECT pg_temp.reset_fixture();
+SELECT pg_temp.add_win(0, '10:00', '22:00');
+SELECT is((SELECT count(*)::int FROM pg_temp.chk('2026-11-01 10:00', '2026-11-01 22:00')), 0, 'Fall back day: Sun 10-22 local window keeps its wall clock');
 
 -- Grants.
 SELECT ok(NOT has_function_privilege('anon', 'public.check_availability_conflict(uuid, uuid, timestamptz, timestamptz)', 'EXECUTE'), 'anon has no EXECUTE');

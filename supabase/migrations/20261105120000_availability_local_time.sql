@@ -6,6 +6,9 @@
 
 BEGIN;
 
+-- Fail fast on a lock wait. The table has about 633 rows in production.
+SET LOCAL lock_timeout = '5s';
+
 -- Helper: UTC offset at noon local time on the local date of p_instant.
 -- local = utc + offset. An invalid or null timezone gives a zero offset.
 CREATE OR REPLACE FUNCTION public.availability_noon_offset(p_instant timestamptz, p_tz text)

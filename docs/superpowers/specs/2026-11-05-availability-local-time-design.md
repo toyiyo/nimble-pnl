@@ -148,12 +148,17 @@ Rules for the trigger:
   local value that is one hour wrong. This occurs only when an old client
   writes the legacy columns on that day. Old clients exist only in the expand
   phase, so the risk stops when PR 2 ships (review on PR #874).
+- Known risk until PR 2: a change to `restaurants.timezone` does not update
+  the legacy columns. The local columns stay correct, and all PR 1 readers
+  use them. Old clients read the legacy columns, so they show the old zone
+  until the next save of the row. The risk stops when PR 2 ships
+  (hardening review on PR #874).
 - Time `24:00` is not a valid input for `time + interval`, because Postgres
   wraps it to the same value as `00:00`. The helper
   `availability_shift_time` reads `24:00` as `23:59:59` before the shift. The
   backfill and the trigger both use it. Production has 0 rows with `24:00`.
 - An available row with null times is available all day. The readers return
-  one window from `00:00` to `24:00`, the same as `toWindow` in
+  one window from `00:00` to `24:00`, the same as `toWindows` in
   `schedulingContext.ts`. Production has 0 available rows with null times.
 - The trigger function is `SECURITY DEFINER` with
   `SET search_path = public, pg_catalog`. It must read `restaurants.timezone`

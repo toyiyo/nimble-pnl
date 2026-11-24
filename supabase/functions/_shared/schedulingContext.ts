@@ -170,13 +170,22 @@ function mergeWindows(list: Window[]): Window[] {
 }
 
 // The local columns hold the wall-clock time that the user entered.
-// An overnight window stays as one window on its start day.
-function toWindow(r: RecurringRow): Window | "unavailable" {
+// The AI client reads each day by itself. So an overnight window splits at
+// midnight: start to 24:00 on its day, and 00:00 to the end on the next day.
+// A midnight end shows as 24:00.
+function toWindows(r: RecurringRow): { day: number; window: Window }[] | "unavailable" {
   if (!r.is_available) return "unavailable";
   if (r.start_time_local === null || r.end_time_local === null) {
-    return { start: "00:00", end: "24:00" };
+    return [{ day: r.day_of_week, window: { start: "00:00", end: "24:00" } }];
   }
-  return { start: hhmm(r.start_time_local), end: hhmm(r.end_time_local) };
+  const start = hhmm(r.start_time_local);
+  const end = hhmm(r.end_time_local);
+  if (end === "00:00") return [{ day: r.day_of_week, window: { start, end: "24:00" } }];
+  if (toMinutes(end) > toMinutes(start)) return [{ day: r.day_of_week, window: { start, end } }];
+  return [
+    { day: r.day_of_week, window: { start, end: "24:00" } },
+    { day: (r.day_of_week + 1) % 7, window: { start: "00:00", end } },
+  ];
 }
 
 export function buildAvailability(
@@ -212,11 +221,14 @@ export function buildAvailability(
     const dayRows = new Set<number>();
     for (const r of rec) {
       dayRows.add(r.day_of_week);
-      const next = toWindow(r);
+      const next = toWindows(r);
       if (next === "unavailable") continue;
-      const list = windowsByDay.get(r.day_of_week) ?? [];
-      list.push(next);
-      windowsByDay.set(r.day_of_week, list);
+      for (const { day, window } of next) {
+        dayRows.add(day);
+        const list = windowsByDay.get(day) ?? [];
+        list.push(window);
+        windowsByDay.set(day, list);
+      }
     }
     const weekly: Record<number, Window | Window[] | "unavailable"> = {};
     for (const day of dayRows) {

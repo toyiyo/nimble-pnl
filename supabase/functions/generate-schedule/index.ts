@@ -221,6 +221,7 @@ serve(async (req) => {
     if (salesResult.error) throw new Error(`Failed to fetch sales history: ${salesResult.error.message}`);
     if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
     if (templatesResult.error) throw new Error(`Failed to fetch templates: ${templatesResult.error.message}`);
+    if (recurringAvailResult.error) throw new Error(`Failed to fetch availability: ${recurringAvailResult.error.message}`);
 
     // ── Resolve restaurant timezone ──────────────────────────────────────────
     const restaurantTimezone: string =

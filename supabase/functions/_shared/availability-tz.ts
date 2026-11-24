@@ -175,7 +175,12 @@ export function convertRecurringToLocal(rows: RawRecurringAvail[]): LocalAvail[]
       out.push(localWindow(employee_id, dow, start, end, false));
       continue;
     }
-    if (start === null || end === null) continue;
+    // An available row with no times is available all day. toWindow in
+    // schedulingContext.ts uses the same rule.
+    if (start === null || end === null) {
+      out.push(localWindow(employee_id, dow, "00:00:00", END_OF_DAY));
+      continue;
+    }
     // Compare full "HH:MM:SS" values. Minutes alone drop the seconds.
     const startClock = toClock(start);
     const endClock = toClock(end);

@@ -115,6 +115,32 @@ describe('buildAvailability', () => {
       1: [{ start: '09:00', end: '12:00' }, { start: '17:00', end: '21:00' }],
     });
   });
+  it('keeps the overnight end when a day window overlaps an overnight window', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [
+        rec('a', 1, { start_time_local: '09:00:00', end_time_local: '17:00:00' }),
+        rec('a', 1, { start_time_local: '16:00:00', end_time_local: '02:00:00' }),
+      ],
+      [],
+      'UTC',
+      period,
+    );
+    expect(out[0].weekly).toEqual({ 1: { start: '09:00', end: '02:00' } });
+  });
+  it('keeps a day window inside an overnight window as one window', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [
+        rec('a', 1, { start_time_local: '08:00:00', end_time_local: '01:00:00' }),
+        rec('a', 1, { start_time_local: '10:00:00', end_time_local: '14:00:00' }),
+      ],
+      [],
+      'UTC',
+      period,
+    );
+    expect(out[0].weekly).toEqual({ 1: { start: '08:00', end: '01:00' } });
+  });
   it('returns not_set for an employee with no rows', () => {
     const out = buildAvailability([{ id: 'a' }], [], [], 'UTC', period);
     expect(out[0].weekly).toBe('not_set');

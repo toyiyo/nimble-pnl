@@ -26,6 +26,20 @@ $$;
 
 REVOKE ALL ON FUNCTION public.availability_noon_offset(timestamptz, text) FROM PUBLIC, anon;
 
+-- Helper: move a time by an offset. time + interval wraps at 24 hours, so
+-- 00:00 and 24:00 would give the same value, and a full-day window would get
+-- equal endpoints. Both checks reject equal endpoints. Read 24:00 as 23:59:59.
+CREATE OR REPLACE FUNCTION public.availability_shift_time(p_time time, p_offset interval)
+RETURNS time
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_catalog
+AS $$
+  SELECT CASE WHEN p_time = TIME '24:00' THEN TIME '23:59:59' ELSE p_time END + p_offset;
+$$;
+
+REVOKE ALL ON FUNCTION public.availability_shift_time(time, interval) FROM PUBLIC, anon;
+
 -- Backfill function. The contract PR deletes it. It exists so that pgTAP can test the backfill.
 CREATE OR REPLACE FUNCTION public.backfill_employee_availability_local()
 RETURNS integer
@@ -36,8 +50,8 @@ DECLARE
   v_count integer;
 BEGIN
   UPDATE public.employee_availability ea
-  SET start_time_local = ea.start_time + public.availability_noon_offset(COALESCE(ea.updated_at, ea.created_at), r.timezone),
-      end_time_local   = ea.end_time   + public.availability_noon_offset(COALESCE(ea.updated_at, ea.created_at), r.timezone)
+  SET start_time_local = public.availability_shift_time(ea.start_time, public.availability_noon_offset(COALESCE(ea.updated_at, ea.created_at), r.timezone)),
+      end_time_local   = public.availability_shift_time(ea.end_time, public.availability_noon_offset(COALESCE(ea.updated_at, ea.created_at), r.timezone))
   FROM public.restaurants r
   WHERE r.id = ea.restaurant_id
     AND ea.start_time IS NOT NULL
@@ -67,12 +81,12 @@ BEGIN
 
   IF TG_OP = 'INSERT' THEN
     IF NEW.start_time_local IS NOT NULL AND NEW.end_time_local IS NOT NULL THEN
-      NEW.start_time := NEW.start_time_local - v_off;
-      NEW.end_time := NEW.end_time_local - v_off;
+      NEW.start_time := public.availability_shift_time(NEW.start_time_local, -v_off);
+      NEW.end_time := public.availability_shift_time(NEW.end_time_local, -v_off);
     ELSIF NEW.start_time_local IS NULL AND NEW.end_time_local IS NULL
       AND NEW.start_time IS NOT NULL AND NEW.end_time IS NOT NULL THEN
-      NEW.start_time_local := NEW.start_time + v_off;
-      NEW.end_time_local := NEW.end_time + v_off;
+      NEW.start_time_local := public.availability_shift_time(NEW.start_time, v_off);
+      NEW.end_time_local := public.availability_shift_time(NEW.end_time, v_off);
     ELSE
       RAISE EXCEPTION 'employee_availability needs a complete pair of start and end times'
         USING ERRCODE = 'not_null_violation';
@@ -90,8 +104,8 @@ BEGIN
     OR NEW.end_time_local IS DISTINCT FROM OLD.end_time_local;
 
   IF v_local_changed THEN
-    NEW.start_time := NEW.start_time_local - v_off;
-    NEW.end_time := NEW.end_time_local - v_off;
+    NEW.start_time := public.availability_shift_time(NEW.start_time_local, -v_off);
+    NEW.end_time := public.availability_shift_time(NEW.end_time_local, -v_off);
     RETURN NEW;
   END IF;
 
@@ -101,10 +115,10 @@ BEGIN
   END IF;
 
   IF NEW.start_time IS DISTINCT FROM OLD.start_time THEN
-    NEW.start_time_local := NEW.start_time + v_off;
+    NEW.start_time_local := public.availability_shift_time(NEW.start_time, v_off);
   END IF;
   IF NEW.end_time IS DISTINCT FROM OLD.end_time THEN
-    NEW.end_time_local := NEW.end_time + v_off;
+    NEW.end_time_local := public.availability_shift_time(NEW.end_time, v_off);
   END IF;
   RETURN NEW;
 END;

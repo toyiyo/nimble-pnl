@@ -23,6 +23,18 @@ describe('convertRecurringToLocal', () => {
     ]);
   });
 
+  it('reads an available row with null times as the full day', () => {
+    expect(convertRecurringToLocal([row(null, null)])).toEqual([
+      expect.objectContaining({
+        day_of_week: 5,
+        is_available: true,
+        start_time: '00:00:00',
+        end_time: '24:00:00',
+        isOvernight: false,
+      }),
+    ]);
+  });
+
   it('keeps an overnight window as one window on its start day', () => {
     const out = convertRecurringToLocal([row('18:00:00', '02:00:00')]);
     expect(out).toEqual([
@@ -86,9 +98,6 @@ describe('convertRecurringToLocal', () => {
     ]);
   });
 
-  it('gives no output for an available row with null local values', () => {
-    expect(convertRecurringToLocal([row(null, null, 2, true)])).toEqual([]);
-  });
 });
 
 describe('convertExceptionsToLocal', () => {

@@ -143,6 +143,18 @@ Rules for the trigger:
 - A stale writer uses the offset of the window time on the browser date. That
   value and the trigger value agree, except on the day of a time change. On
   that day the local value that the trigger derives wins.
+- Known limit of the stale path: on the day of a time change, the trigger uses
+  one noon offset for both times. A window time before the change then gets a
+  local value that is one hour wrong. This occurs only when an old client
+  writes the legacy columns on that day. Old clients exist only in the expand
+  phase, so the risk stops when PR 2 ships (review on PR #874).
+- Time `24:00` is not a valid input for `time + interval`, because Postgres
+  wraps it to the same value as `00:00`. The helper
+  `availability_shift_time` reads `24:00` as `23:59:59` before the shift. The
+  backfill and the trigger both use it. Production has 0 rows with `24:00`.
+- An available row with null times is available all day. The readers return
+  one window from `00:00` to `24:00`, the same as `toWindow` in
+  `schedulingContext.ts`. Production has 0 available rows with null times.
 - The trigger function is `SECURITY DEFINER` with
   `SET search_path = public, pg_catalog`. It must read `restaurants.timezone`
   for every caller. If RLS hides the restaurant from a caller, the fallback to
@@ -286,9 +298,15 @@ End the migration with `NOTIFY pgrst, 'reload schema';`.
 - This follows the rule of the other overnight features: business hours,
   `ShiftInterval`, clock-in attribution, and `check_availability_conflict`
   keep one interval on its start day.
-- Known limit: the solver does not look at the window of the day before. A
-  shift from 00:00 to 02:00 on day D+1 does not match an overnight window on
-  day D. The same limit exists on main for the `UTC` zone.
+- Known regression: the solver does not look at the window of the day
+  before. A shift from 00:00 to 02:00 on day D+1 does not match an overnight
+  window on day D. On main, a restaurant in a non-UTC zone got a split D+1
+  piece, so this shift matched there. On main, the `UTC` zone already has
+  this limit. We accept the regression, because the split piece replaced the
+  own window of D+1 (see above), which is a worse failure. A later PR can add
+  a D+1 match in the validator. The test `keeps an overnight window as one
+  window on its start day` in `tests/unit/availability-tz.test.ts` pins the
+  current behavior.
 - If the end is `00:00:00`, write `24:00:00` on day D.
 - A window never occupies D-1. This follows the lesson
   of 2026-07-12 in `memory/lessons.md`.

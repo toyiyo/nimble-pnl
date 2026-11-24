@@ -368,7 +368,11 @@ A raw `AT TIME ZONE` aborts the read on an invalid timezone. So use `CASE WHEN t
 
 1. The total rows, the available rows, and the closed rows.
 2. For each old pair and new pair: the count of rows, grouped by `start_time`, `end_time`, new local start, new local end.
-3. The rows where `created_at` and `updated_at` have different noon offsets.
+3. The rows that can have a mixed write history: any time change in the
+   restaurant timezone between `created_at` and `updated_at`. An edit between
+   the two dates can write the start with one offset and the end with another.
+   The backfill uses one offset, so one time can be one hour wrong. Put these
+   rows on the owner review list. Production has 1 such row on 2026-11-23.
 4. The rows with an anchor on the day of a time change, and the rows in a restaurant with an invalid timezone.
 
 - [ ] **Step 2: Check that the file has no write**

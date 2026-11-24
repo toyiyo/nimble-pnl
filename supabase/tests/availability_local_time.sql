@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(40);
+SELECT plan(44);
 
 SET LOCAL client_min_messages TO WARNING;
 
@@ -220,6 +220,26 @@ SELECT results_eq(
 SELECT results_eq(
   $$SELECT start_time, end_time, updated_at FROM employee_availability WHERE employee_id = 'b1111111-1111-1111-1111-111111111111' AND day_of_week = 0$$,
   $$VALUES ('15:00'::time, '03:00'::time, '2026-07-15 17:00+00'::timestamptz)$$, 'backfill keeps legacy values and updated_at');
+
+-- A full-day window (00:00 to 24:00) must not collapse to equal endpoints.
+-- time + interval wraps at 24 hours, so 24:00 is read as 23:59:59.
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, start_time, end_time, is_available, created_at, updated_at) VALUES
+  ((SELECT r_chi FROM t_ids), (SELECT e_chi FROM t_ids), 5, '00:00', '24:00', true, '2026-07-01 00:00+00', '2026-07-15 17:00+00');
+SELECT lives_ok($$SELECT backfill_employee_availability_local()$$, 'backfill: a 00:00 to 24:00 row does not fail');
+SELECT results_eq(
+  $$SELECT start_time_local, end_time_local FROM employee_availability WHERE employee_id = 'b1111111-1111-1111-1111-111111111111' AND day_of_week = 5$$,
+  $$VALUES ('19:00'::time, '18:59:59'::time)$$, 'backfill: a 00:00 to 24:00 row keeps a 24-hour window');
+
+ALTER TABLE employee_availability ENABLE TRIGGER sync_employee_availability_frames;
+DELETE FROM employee_availability WHERE employee_id = (SELECT e_chi FROM t_ids) AND day_of_week IN (5, 6);
+SELECT lives_ok(
+  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, start_time_local, end_time_local, is_available)
+    VALUES ('a1111111-1111-1111-1111-111111111111', 'b1111111-1111-1111-1111-111111111111', 5, '00:00', '24:00', true)$$,
+  'trigger: a local 00:00 to 24:00 insert passes both checks');
+SELECT lives_ok(
+  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, start_time, end_time, is_available)
+    VALUES ('a1111111-1111-1111-1111-111111111111', 'b1111111-1111-1111-1111-111111111111', 6, '00:00', '24:00', true)$$,
+  'trigger: a legacy 00:00 to 24:00 insert passes both checks');
 
 SELECT * FROM finish();
 ROLLBACK;

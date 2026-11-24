@@ -139,16 +139,29 @@ function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
 
 const hhmm = (t: string | null): string => (t ?? "").slice(0, 5);
 
+const toMinutes = (t: string): number => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+};
+
+/**
+ * End of a window in minutes from the start of its day. An end at or before
+ * the start is on the next day, so it gets 24 hours more. An end of 00:00 is
+ * midnight at the end of the day.
+ */
+const endMinutes = (w: Window): number => {
+  const end = toMinutes(w.end);
+  return end <= toMinutes(w.start) ? end + 24 * 60 : end;
+};
+
 /** Sort the windows and join the ones that overlap or touch. A gap stays a gap. */
 function mergeWindows(list: Window[]): Window[] {
   const sorted = [...list].sort((a, b) => a.start.localeCompare(b.start));
   const out: Window[] = [];
-  // A close time of 00:00 means midnight at the end of the day, so it compares as 24:00.
-  const endKey = (t: string) => (t === "00:00" ? "24:00" : t);
   for (const w of sorted) {
     const last = out[out.length - 1];
-    if (last && w.start <= endKey(last.end)) {
-      if (endKey(w.end) > endKey(last.end)) last.end = w.end;
+    if (last && toMinutes(w.start) <= endMinutes(last)) {
+      if (endMinutes(w) > endMinutes(last)) last.end = w.end;
     } else {
       out.push({ ...w });
     }

@@ -109,6 +109,32 @@ payload for the contract with `get_sales_trends`.
 - If the prior period has no hour rows, the chart shows no prior line. Zeros
   would say "no sales", but the true state is "no hour data".
 
+## Deploy order and rollback
+
+**Deploy order.** Apply the migration before the frontend. The frontend sends
+`p_time_zone` and `p_include_hours` for the prior call of the panel. Before the
+migration, PostgREST returns `PGRST202` for that call, and the whole trends
+panel shows an error. `deploy-supabase.yml` and Vercel both start on a push to
+`main`, and their order is not fixed. Run the database deploy first, or hold
+the frontend deploy until the migration is applied.
+
+A call without `includeHours` sends only the restaurant and the two dates. That
+call works before and after the migration.
+
+**Rollback.** Revert the frontend first. A 3-argument call works on the new
+function, because the two new parameters have defaults.
+
+To revert the database, add a new migration. Do not edit
+`20261122160000_get_sales_daily_series_by_hour.sql`. The new migration:
+
+1. Drops the 5-argument function:
+   `DROP FUNCTION IF EXISTS public.get_sales_daily_series(UUID, DATE, DATE, TEXT, BOOLEAN);`
+2. Copies the `CREATE FUNCTION`, `REVOKE`, `GRANT`, and `COMMENT` statements
+   from `20261122150000_get_sales_daily_series.sql` without change.
+
+Apply the database rollback only after the frontend revert is live. The
+current frontend sends 5 arguments, and the 3-argument function rejects them.
+
 ## Tests
 
 - pgTAP: the `by_hour` array equals the `by_hour` of `get_sales_trends` for

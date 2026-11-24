@@ -156,10 +156,19 @@ Rules for the trigger:
   day. All restaurants with availability use `America/Chicago` (production,
   2026-11-23). The next time change there is 2027-03-14. Ship PR 2 and the
   contract PR before 2027-03-07, so that old tabs age out before that day.
-  Then no stale write can occur on a time change day. If the expand phase
-  goes past 2027-03-07, save a list of the rows with `updated_at` on
-  2027-03-14 on 2027-03-15. Do this before a person edits them again. Check
-  each listed row with the owner (review on PR #874).
+  Then no stale write can occur on a time change day. This gate is a
+  mitigation, not a fix: the trigger keeps one noon offset while legacy
+  writes are possible.
+- Fallback if the expand phase goes past 2027-03-07: before 2027-03-14,
+  schedule a one-shot `pg_cron` job at 2027-03-15 05:00 UTC (00:00
+  `America/Chicago`). The job copies to a snapshot table every row whose
+  `updated_at` falls on the local date 2027-03-14. It copies the id, both
+  frames, and `updated_at`. The job runs at the end of the time change day.
+  An edit on 2027-03-14 keeps `updated_at` on that day, so the row stays in
+  the list. An edit on 2027-03-15 comes after the snapshot. No later edit
+  can then hide a row. Check each listed row with the owner (review on
+  PR #874). The schedule and the snapshot table are production writes, so
+  they need the explicit consent of the owner.
 - Known risk until PR 2: a change to `restaurants.timezone` does not update
   the legacy columns. The local columns stay correct, and all PR 1 readers
   use them. Old clients read the legacy columns, so they show the old zone

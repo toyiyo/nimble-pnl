@@ -39,18 +39,16 @@ BEGIN
   -- Serialize overlapping calls with the same dedupe identity.
   PERFORM pg_advisory_xact_lock(hashtext(
     COALESCE(p_restaurant_id::text, '') || '|' || p_integration || '|' || p_event || '|' ||
-    COALESCE(p_actor_user_id::text, '') || '|' ||
-    COALESCE(p_details->>'stripe_financial_connections_account_id', '')));
+    COALESCE(p_actor_user_id::text, '')));
 
-  -- Dedupe: same restaurant, integration, event, actor, and bank account in the last 60 seconds.
+  -- Dedupe (design 4.3): same restaurant, integration, event, and actor in the last 60 seconds.
+  -- The bank account id is not in the key. A multi-bank disconnect gives one event.
   SELECT e.id INTO v_id
   FROM public.integration_events e
   WHERE e.restaurant_id = p_restaurant_id
     AND e.integration = p_integration
     AND e.event = p_event
     AND e.actor_user_id IS NOT DISTINCT FROM p_actor_user_id
-    AND (e.details->>'stripe_financial_connections_account_id')
-        IS NOT DISTINCT FROM (p_details->>'stripe_financial_connections_account_id')
     AND e.created_at > now() - interval '60 seconds'
   ORDER BY e.created_at DESC
   LIMIT 1;

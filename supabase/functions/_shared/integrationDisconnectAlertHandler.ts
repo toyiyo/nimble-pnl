@@ -82,7 +82,8 @@ async function postSlack(deps: AlertDeps, input: DisconnectAlertInput): Promise<
     }
     return 'sent';
   } catch (err) {
-    deps.log(`slack_failed ${err instanceof Error ? err.message : String(err)}`);
+    // Log the error name only. A fetch error message can contain the webhook URL, which is a secret.
+    deps.log(`slack_failed ${err instanceof Error ? err.name : 'unknown_error'}`);
     return 'failed';
   } finally {
     clearTimeout(timer);
@@ -147,9 +148,15 @@ export async function handleIntegrationDisconnectAlert(
 
   const slack = await postSlack(deps, input);
 
+  const body = { emailsSent, emailsFailed, slack };
   if (emailsSent > 0 || slack === 'sent') {
     await deps.markAlerted(eventId);
+    return { status: 200, body };
   }
-
-  return { status: 200, body: { emailsSent, emailsFailed, slack } };
+  if (emailsFailed > 0 || slack === 'failed') {
+    // Nothing went out. Log one line and return 502 so the function logs show the lost alert.
+    deps.log(`alert_failed event=${eventId} emails_failed=${emailsFailed} slack=${slack}`);
+    return { status: 502, body };
+  }
+  return { status: 200, body };
 }

@@ -79,6 +79,24 @@ describe('handleIntegrationDisconnectAlert', () => {
     expect(wrong.body).toEqual(missing.body);
   });
 
+  it.each([
+    ['a wrong actor', { getCallerId: vi.fn(async () => 'other') }],
+    ['an event older than 1 hour', {
+      loadEvent: vi.fn(async () => ({
+        id: EVENT_ID, restaurant_id: 'r1', integration: 'toast', event: 'disconnect',
+        actor_user_id: 'u1', reason: null, reason_text: null,
+        created_at: new Date(NOW.getTime() - 61 * 60_000).toISOString(),
+      })),
+    }],
+  ])('makes no claim, email, or Slack call for %s', async (_label, over) => {
+    const deps = makeDeps(over as Partial<AlertDeps>);
+    const res = await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });
+    expect(res.status).toBe(404);
+    expect(deps.claimAlert).not.toHaveBeenCalled();
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+    expect(deps.fetch).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when the event is not a disconnect', async () => {
     const deps = makeDeps();
     (deps.loadEvent as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -177,8 +195,34 @@ describe('handleIntegrationDisconnectAlert', () => {
       fetch: vi.fn(async () => new Response('no', { status: 500 })) as unknown as typeof fetch,
     });
     const res = await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });
+    expect(res.status).toBe(502);
     expect(res.body).toMatchObject({ emailsSent: 0, emailsFailed: 2, slack: 'failed' });
     expect(deps.markAlerted).not.toHaveBeenCalled();
+    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining(`alert_failed event=${EVENT_ID}`));
+  });
+
+  it('marks alerted when one email sends and one email fails', async () => {
+    const sendEmail = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce({ ok: false, status: 500, error: 'x' });
+    const deps = makeDeps({ sendEmail, slackWebhookUrl: undefined });
+    const res = await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ emailsSent: 1, emailsFailed: 1, slack: 'skipped' });
+    expect(deps.markAlerted).toHaveBeenCalledWith(EVENT_ID);
+  });
+
+  it('does not log the webhook URL when the Slack fetch throws', async () => {
+    const deps = makeDeps({
+      fetch: vi.fn(async () => {
+        throw new TypeError('error sending request for url (https://hooks.example/slack)');
+      }) as unknown as typeof fetch,
+    });
+    const res = await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });
+    expect(res.body).toMatchObject({ slack: 'failed' });
+    const logged = (deps.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('slack_failed TypeError');
+    expect(logged).not.toContain('hooks.example');
   });
 
   it('marks alerted when only Slack succeeds', async () => {

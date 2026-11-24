@@ -10,7 +10,7 @@ Put no tenant ids, names, emails, or amounts in code, tests, or commits.
 
 ## Task 1: table `integration_events`
 
-Files: `supabase/migrations/20261121120000_integration_events.sql` (new),
+Files: `supabase/migrations/20261123120000_integration_events.sql` (new),
 `supabase/tests/integration_events.sql` (new)
 
 Tests first (design §5, pgTAP part for the table):
@@ -26,7 +26,7 @@ Run: `npm run db:reset`, then `npm run test:db`.
 
 ## Task 2: RPC `disconnect_integration`
 
-Files: `supabase/migrations/20261121120100_disconnect_integration_rpc.sql`
+Files: `supabase/migrations/20261123120100_disconnect_integration_rpc.sql`
 (new), `supabase/tests/integration_events.sql`
 
 Tests first (design §5, the RPC cases): Revel, Toast, Focus, Square with
@@ -38,7 +38,7 @@ Code: design §4.2.
 
 ## Task 3: RPC `record_integration_event` and `integration_alert_recipients`
 
-Files: `supabase/migrations/20261121120200_record_integration_event.sql` (new),
+Files: `supabase/migrations/20261123120200_record_integration_event.sql` (new),
 `supabase/tests/integration_events.sql`
 
 Tests first: `function_privs_are` for both functions (anon and authenticated

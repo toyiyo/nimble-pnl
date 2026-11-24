@@ -160,15 +160,18 @@ Rules for the trigger:
   mitigation, not a fix: the trigger keeps one noon offset while legacy
   writes are possible.
 - Fallback if the expand phase goes past 2027-03-07: before 2027-03-14,
-  schedule a one-shot `pg_cron` job at 2027-03-15 05:00 UTC (00:00
-  `America/Chicago`). The job copies to a snapshot table every row whose
-  `updated_at` falls on the local date 2027-03-14. It copies the id, both
-  frames, and `updated_at`. The job runs at the end of the time change day.
-  An edit on 2027-03-14 keeps `updated_at` on that day, so the row stays in
-  the list. An edit on 2027-03-15 comes after the snapshot. No later edit
-  can then hide a row. Check each listed row with the owner (review on
-  PR #874). The schedule and the snapshot table are production writes, so
-  they need the explicit consent of the owner.
+  ship a migration that records each legacy-path write as it occurs. The
+  migration adds a log table and an `AFTER INSERT OR UPDATE` trigger on
+  `employee_availability`. The trigger writes one log row when the legacy
+  columns change and the local columns do not change in the same statement.
+  The log row holds the id, both frames, and `now()`. The log row is written
+  in the same transaction as the edit, so no later edit can hide it. A
+  snapshot job that runs after the day can miss rows: a late job start lets
+  an edit move `updated_at` first. Do not use a snapshot job. After
+  2027-03-14, check each logged row from that local date with the owner
+  (review on PR #874). The contract PR deletes the log trigger and the log
+  table. The fallback is not built now. It is a production change, so it
+  needs the explicit consent of the owner.
 - Known risk until PR 2: a change to `restaurants.timezone` does not update
   the legacy columns. The local columns stay correct, and all PR 1 readers
   use them. Old clients read the legacy columns, so they show the old zone

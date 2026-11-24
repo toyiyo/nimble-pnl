@@ -1,5 +1,5 @@
 import Stripe from "https://esm.sh/stripe@20.1.0";
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { captureServerEvent } from "../_shared/posthogServer.ts";
 
 // Volume discount coupon IDs (same as in checkout function)

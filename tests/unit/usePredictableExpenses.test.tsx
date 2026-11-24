@@ -122,7 +122,8 @@ describe('usePredictableExpenses', () => {
 
     const { result } = renderHook(() => usePredictableExpenses(), { wrapper: createWrapper() });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // 20 pages of 1000 rows take more than the 1s waitFor default on slow CI runners.
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), { timeout: 5000 });
 
     expect(txnBuilder.range).toHaveBeenCalledTimes(20);
   });

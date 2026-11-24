@@ -99,14 +99,20 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       await dialog.getByLabel(/hourly rate/i).fill(employee.hourlyRate);
 
-      // Submit
+      // Submit. The Scheduling view hides employees until they have a shift,
+      // so the insert response is the success signal, not a table row.
+      const created = page.waitForResponse(
+        (resp) =>
+          resp.url().includes('rest/v1/employees') &&
+          resp.request().method() === 'POST' &&
+          resp.status() === 201,
+        { timeout: 15000 },
+      );
       await dialog.getByRole('button', { name: /add employee|save/i }).click();
+      await created;
 
       // Verify employee was created
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
-      
-      // Scheduling view hides employees until they have a shift; dialog closure is our success signal.
-      await page.waitForLoadState('networkidle');
     });
 
     test('can view hourly employee on payroll page', async ({ page }) => {
@@ -388,7 +394,8 @@ test.describe('Employee Payroll - Happy Paths', () => {
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
       // Verify all three employees appear on payroll (scheduling hides employees without shifts)
-      await page.goto('/payroll', { waitUntil: 'networkidle' });
+      // Do not wait for 'networkidle': background polls and refetches keep the network busy.
+      await page.goto('/payroll');
       await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
       await expect(page.getByText(hourlyEmployee.name).first()).toBeVisible({ timeout: 10000 });
       await expect(page.getByText(salaryEmployee.name).first()).toBeVisible({ timeout: 10000 });
@@ -766,7 +773,11 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
       await shiftDialog.getByRole('button', { name: /save|create/i }).click();
       await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
-      await page.waitForLoadState('networkidle'); // wait for shift to persist and table to reload
+
+      // Wait for the schedule table to show the new shift row before the labor cost read.
+      // Do not wait for 'networkidle': background polls and refetches keep the network busy.
+      const scheduleRow = page.locator('tr', { has: page.getByText(employee.name) });
+      await expect(scheduleRow).toBeVisible({ timeout: 15000 });
 
       // Note the labor cost before deactivation
       const laborCostCard = page.getByText(/labor cost/i).first();
@@ -775,8 +786,6 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       const laborCostBefore = laborCostBeforeText?.match(/\$[0-9]+\.?[0-9]*/)?.[0] || '$0';
 
       // Step 2: Deactivate employee
-      const scheduleRow = page.locator('tr', { has: page.getByText(employee.name) });
-      await expect(scheduleRow).toBeVisible({ timeout: 10000 });
       await scheduleRow.getByRole('button', { name: /edit/i }).first().click();
 
       const editDialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });

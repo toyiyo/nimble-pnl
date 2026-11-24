@@ -142,11 +142,12 @@ test.describe('Complete Payroll Journey', () => {
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
     // Scheduling view may hide employees without shifts; verify on payroll page
-    await page.goto('/payroll', { waitUntil: 'networkidle' });
-    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(hourlyEmployee.name).first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(salaryEmployee.name).first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(contractor.name).first()).toBeVisible({ timeout: 5000 });
+    // Do not wait for 'networkidle': background polls and refetches keep the network busy.
+    await page.goto('/payroll');
+    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(hourlyEmployee.name).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(salaryEmployee.name).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(contractor.name).first()).toBeVisible({ timeout: 10000 });
 
     // ============================================================================
     // Step 2: View in Dashboard
@@ -360,15 +361,16 @@ test.describe('Complete Payroll Journey', () => {
     await shiftDialog.getByLabel(/end.*time/i).fill(endTimeString);
     await shiftDialog.getByRole('button', { name: /save|create/i }).click();
     await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
-    await page.waitForLoadState('networkidle');
 
     // ============================================================================
     // Edit employee to set termination date
     // ============================================================================
     
-    // Find and click edit button for this employee
+    // Wait for the schedule table to show the new shift row.
+    // Do not wait for 'networkidle': background polls and refetches can keep
+    // the network busy, so the wait can time out.
     const employeeRow = page.locator('tr', { has: page.getByText(employeeName) });
-    await expect(employeeRow).toBeVisible({ timeout: 10000 });
+    await expect(employeeRow).toBeVisible({ timeout: 15000 });
     const editButton = employeeRow.getByRole('button', { name: new RegExp(`^edit ${employeeName}$`, 'i') });
     
     // Button may be hidden until hover

@@ -54,8 +54,12 @@ export function usePaymentSetup(restaurantId: string | null) {
   // Store the restaurant that opened the sheet. A restaurant change closes the sheet.
   const [sheetRestaurantId, setSheetRestaurantId] = useState<string | null>(null);
   const isSheetOpen = restaurantId !== null && sheetRestaurantId === restaurantId;
+  // Each restaurant change makes a new generation. A pending openSetup from an older
+  // generation must not open the sheet, also after a return to the same restaurant.
+  const generationRef = useRef(0);
   // Clear the stored restaurant on a change. Return to a restaurant must not reopen its sheet.
   useEffect(() => {
+    generationRef.current += 1;
     setSheetRestaurantId(null);
   }, [restaurantId]);
 
@@ -106,10 +110,12 @@ export function usePaymentSetup(restaurantId: string | null) {
   const openSetup = useCallback(async () => {
     // Do not write to the server from unknown data. Wait for the account row.
     if (!restaurantId || loading || error) return;
+    const generation = generationRef.current;
     await runStart(async () => {
       if (state === 'not_started') {
         await invokeAndRefetch({ restaurantId, accountType: 'express' });
       }
+      if (generation !== generationRef.current) return;
       setSheetRestaurantId(restaurantId);
     });
   }, [restaurantId, loading, error, runStart, invokeAndRefetch, state]);

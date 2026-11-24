@@ -181,6 +181,30 @@ describe('usePaymentSetup', () => {
     expect(result.current.isSheetOpen).toBe(false);
   });
 
+  it('does not open the sheet when a pending openSetup finishes after A to B to A', async () => {
+    let resolve!: (v: unknown) => void;
+    invoke.mockReturnValue(new Promise((r) => (resolve = r)));
+    const queryClient = new QueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children);
+    const { result, rerender } = renderHook(({ id }) => usePaymentSetup(id), {
+      wrapper,
+      initialProps: { id: RID },
+    });
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.openSetup();
+    });
+    rerender({ id: 'rest-2' });
+    rerender({ id: RID });
+    await act(async () => {
+      resolve({ data: {}, error: null });
+      await pending;
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(result.current.isSheetOpen).toBe(false);
+  });
+
   it('does not run checkStatus in parallel', async () => {
     let resolve!: (v: unknown) => void;
     invoke.mockReturnValue(new Promise((r) => (resolve = r)));

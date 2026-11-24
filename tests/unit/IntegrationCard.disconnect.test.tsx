@@ -6,6 +6,9 @@ const h = vi.hoisted(() => ({
   ctx: { selectedRestaurant: null as unknown },
   disconnectRevel: vi.fn(),
   disconnectSling: vi.fn(),
+  disconnectSquare: vi.fn(),
+  disconnectClover: vi.fn(),
+  disconnectShift4: vi.fn(),
   dialogProps: null as null | Record<string, unknown>,
 }));
 
@@ -16,9 +19,15 @@ vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQue
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 const idle = { isConnected: false, isConnecting: false, loading: false, connection: null };
-vi.mock('@/hooks/useSquareIntegration', () => ({ useSquareIntegration: () => idle }));
-vi.mock('@/hooks/useCloverIntegration', () => ({ useCloverIntegration: () => idle }));
-vi.mock('@/hooks/useShift4Integration', () => ({ useShift4Integration: () => idle }));
+vi.mock('@/hooks/useSquareIntegration', () => ({
+  useSquareIntegration: () => ({ ...idle, isConnected: true, disconnectSquare: h.disconnectSquare }),
+}));
+vi.mock('@/hooks/useCloverIntegration', () => ({
+  useCloverIntegration: () => ({ ...idle, isConnected: true, disconnectClover: h.disconnectClover }),
+}));
+vi.mock('@/hooks/useShift4Integration', () => ({
+  useShift4Integration: () => ({ ...idle, isConnected: true, disconnectShift4: h.disconnectShift4 }),
+}));
 vi.mock('@/hooks/useToastConnection', () => ({ useToastConnection: () => idle }));
 vi.mock('@/hooks/useFocusConnection', () => ({ useFocusConnection: () => idle }));
 vi.mock('@/hooks/useSlingConnection', () => ({
@@ -106,6 +115,28 @@ describe('IntegrationCard disconnect gate', () => {
       expect(h.disconnectRevel).toHaveBeenCalledWith('r1', { reason: 'no_value', reasonText: null }),
     );
   });
+
+  it.each([
+    ['square-pos', 'Square', 'disconnectSquare'],
+    ['clover-pos', 'Clover', 'disconnectClover'],
+    ['shift4-pos', 'Shift4', 'disconnectShift4'],
+  ] as const)(
+    'confirms %s with the restaurant id stored at open',
+    async (id, name, fn) => {
+      h.ctx.selectedRestaurant = restaurant('owner', 'r1', 'Cafe One');
+      h[fn].mockResolvedValue(undefined);
+      const { rerender } = render(<IntegrationCard integration={mk(id, name)} restaurantId="r1" />);
+      await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+      expect(screen.getByTestId('dialog').textContent).toBe('Cafe One');
+
+      h.ctx.selectedRestaurant = restaurant('owner', 'r2', 'Cafe Two');
+      rerender(<IntegrationCard integration={mk(id, name)} restaurantId="r2" />);
+
+      const opts = { reason: 'no_value', reasonText: null };
+      await (h.dialogProps!.onConfirm as (r: unknown) => Promise<void>)(opts);
+      await waitFor(() => expect(h[fn]).toHaveBeenCalledWith(opts, 'r1'));
+    },
+  );
 
   it('keeps the direct call for Sling', async () => {
     h.ctx.selectedRestaurant = restaurant('owner');

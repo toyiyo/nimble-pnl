@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { endOfDay } from 'date-fns';
-import { orderCustomRange, stepCustomRange } from '@/utils/payrollCustomRange';
+import { orderCustomRange, presetPayrollRange, stepCustomRange } from '@/utils/payrollCustomRange';
 import { toDateOnlyString } from '@/lib/dateOnly';
 
 // The Payroll page steps a custom range with "previous" / "next". The range
@@ -69,5 +69,39 @@ describe('orderCustomRange', () => {
     expect(days(ordered)).toEqual(['2026-09-14', '2026-09-20']);
     expect(ordered.start.getTime()).toBe(new Date(2026, 8, 14).getTime());
     expect(ordered.end.getTime()).toBe(endOfDay(new Date(2026, 8, 20)).getTime());
+  });
+});
+
+// The Payroll page must build its preset weeks from the restaurant "today",
+// not from the browser clock. The payroll engine maps `deactivated_at` to the
+// restaurant day. At 00:24 UTC on a Monday, a UTC browser week starts Monday,
+// but a Chicago restaurant is still on Sunday. The engine then dropped an
+// employee that the user deactivated on that Sunday.
+describe('presetPayrollRange', () => {
+  // 2026-11-22 is a Sunday. The week starts on Monday.
+  it('builds the current week from the restaurant today', () => {
+    expect(days(presetPayrollRange('current_week', '2026-11-22'))).toEqual([
+      '2026-11-16',
+      '2026-11-22',
+    ]);
+  });
+
+  it('builds the last week from the restaurant today', () => {
+    expect(days(presetPayrollRange('last_week', '2026-11-22'))).toEqual([
+      '2026-11-09',
+      '2026-11-15',
+    ]);
+  });
+
+  it('builds the last two weeks from the restaurant today', () => {
+    expect(days(presetPayrollRange('last_2_weeks', '2026-11-23'))).toEqual([
+      '2026-11-09',
+      '2026-11-22',
+    ]);
+  });
+
+  it('ends the range at the local end of the last day', () => {
+    const range = presetPayrollRange('current_week', '2026-11-22');
+    expect(range.end.getTime()).toBe(endOfDay(range.end).getTime());
   });
 });

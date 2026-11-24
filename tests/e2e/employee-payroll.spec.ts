@@ -102,11 +102,11 @@ test.describe('Employee Payroll - Happy Paths', () => {
       // Submit
       await dialog.getByRole('button', { name: /add employee|save/i }).click();
 
-      // Verify employee was created
+      // Verify employee was created. The scheduling view hides employees until
+      // they have a shift, so the dialog close is the success signal. Do not
+      // wait for 'networkidle' here: the page can keep a request open, and the
+      // wait then times out with no product failure.
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
-      
-      // Scheduling view hides employees until they have a shift; dialog closure is our success signal.
-      await page.waitForLoadState('networkidle');
     });
 
     test('can view hourly employee on payroll page', async ({ page }) => {

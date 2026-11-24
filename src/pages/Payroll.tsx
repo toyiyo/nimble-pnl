@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePayroll } from '@/hooks/usePayroll';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useScheduleClockAudit } from '@/hooks/useScheduleClockAudit';
 import { FeatureGate } from '@/components/subscription';
@@ -19,7 +20,7 @@ import {
   formatHours,
   EmployeePayroll,
 } from '@/utils/payrollCalculations';
-import { orderCustomRange, stepCustomRange } from '@/utils/payrollCustomRange';
+import { orderCustomRange, presetPayrollRange, stepCustomRange } from '@/utils/payrollCustomRange';
 import { sortPayrollRows, groupPayrollRows, computePayrollTotals, regularPayDisplayValue, type PayrollSortKey, type SortDirection, type PayrollGroupMode } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import {
@@ -173,36 +174,23 @@ const Payroll = () => {
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
   const [periodType, setPeriodType] = useState<PayPeriodType>('current_week');
+  // Build the preset weeks from the restaurant day, not the browser clock.
+  // The payroll engine maps deactivation times to the restaurant day.
+  const { today: restaurantToday } = useRestaurantClock();
   const [customStartDate, setCustomStartDate] = useState<Date>(
-    startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
+    () => presetPayrollRange('current_week', restaurantToday).start
   );
   const [customEndDate, setCustomEndDate] = useState<Date>(
-    endOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
+    () => presetPayrollRange('current_week', restaurantToday).end
   );
 
   // Calculate date range based on period type
   const getDateRange = () => {
-    const today = new Date();
     switch (periodType) {
       case 'current_week':
-        return {
-          start: startOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
-          end: endOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
-        };
-      case 'last_week': {
-        const lastWeek = subWeeks(today, 1);
-        return {
-          start: startOfWeek(lastWeek, { weekStartsOn: WEEK_STARTS_ON }),
-          end: endOfWeek(lastWeek, { weekStartsOn: WEEK_STARTS_ON }),
-        };
-      }
-      case 'last_2_weeks': {
-        const lastWeek = subWeeks(today, 1);
-        return {
-          start: startOfWeek(subWeeks(lastWeek, 1), { weekStartsOn: WEEK_STARTS_ON }),
-          end: endOfWeek(lastWeek, { weekStartsOn: WEEK_STARTS_ON }),
-        };
-      }
+      case 'last_week':
+      case 'last_2_weeks':
+        return presetPayrollRange(periodType, restaurantToday);
       case 'custom':
         return orderCustomRange(customStartDate, customEndDate);
     }

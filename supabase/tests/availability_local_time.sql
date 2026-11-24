@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(44);
+SELECT plan(49);
 
 SET LOCAL client_min_messages TO WARNING;
 
@@ -240,6 +240,34 @@ SELECT lives_ok(
   $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, start_time, end_time, is_available)
     VALUES ('a1111111-1111-1111-1111-111111111111', 'b1111111-1111-1111-1111-111111111111', 6, '00:00', '24:00', true)$$,
   'trigger: a legacy 00:00 to 24:00 insert passes both checks');
+
+-- Accepted limit: 23:59:59 and 24:00 give the same shifted value, so a
+-- 23:59:59 to 24:00 row has equal endpoints. A check rejects it. The UI sends
+-- HH:MM only, so it cannot send 23:59:59.
+ALTER TABLE employee_availability DISABLE TRIGGER sync_employee_availability_frames;
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, start_time, end_time, is_available, created_at, updated_at) VALUES
+  ((SELECT r_chi FROM t_ids), (SELECT e_chi FROM t_ids), 6, '23:59:59', '24:00', true, '2026-07-01 00:00+00', '2026-07-15 17:00+00');
+SELECT throws_ok($$SELECT backfill_employee_availability_local()$$, '23514', NULL,
+  'backfill: a 23:59:59 to 24:00 row collides and the check rejects it');
+DELETE FROM employee_availability WHERE employee_id = (SELECT e_chi FROM t_ids) AND day_of_week = 6;
+ALTER TABLE employee_availability ENABLE TRIGGER sync_employee_availability_frames;
+
+SELECT throws_ok(
+  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, start_time_local, end_time_local, is_available)
+    VALUES ('a1111111-1111-1111-1111-111111111111', 'b1111111-1111-1111-1111-111111111111', 6, '23:59:59', '24:00', true)$$,
+  '23514', NULL, 'trigger: a local 23:59:59 to 24:00 insert collides and the check rejects it');
+SELECT throws_ok(
+  $$INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, start_time, end_time, is_available)
+    VALUES ('a1111111-1111-1111-1111-111111111111', 'b1111111-1111-1111-1111-111111111111', 6, '23:59:59', '24:00', true)$$,
+  '23514', NULL, 'trigger: a legacy 23:59:59 to 24:00 insert collides and the check rejects it');
+SELECT throws_ok(
+  $$UPDATE employee_availability SET start_time_local = '23:59:59', end_time_local = '24:00'
+    WHERE employee_id = 'b1111111-1111-1111-1111-111111111111' AND day_of_week = 5$$,
+  '23514', NULL, 'trigger: a local 23:59:59 to 24:00 update collides and the check rejects it');
+SELECT throws_ok(
+  $$UPDATE employee_availability SET start_time = '23:59:59', end_time = '24:00'
+    WHERE employee_id = 'b1111111-1111-1111-1111-111111111111' AND day_of_week = 5$$,
+  '23514', NULL, 'trigger: a legacy 23:59:59 to 24:00 update collides and the check rejects it');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -147,7 +147,12 @@ Rules for the trigger:
   one noon offset for both times. A window time before the change then gets a
   local value that is one hour wrong. This occurs only when an old client
   writes the legacy columns on that day. Old clients exist only in the expand
-  phase, so the risk stops when PR 2 ships (review on PR #874).
+  phase. The ship of PR 2 does not stop the risk at once: open browser tabs
+  keep the old bundle until they reload. The contract PR waits for those tabs
+  to age out. A wrong local value that a stale writer saves stays until a
+  person corrects the row. To find such rows, run Query 4 of
+  `docs/superpowers/plans/2026-11-05-availability-local-time-dry-run.sql`
+  before the contract PR (review on PR #874).
 - Known risk until PR 2: a change to `restaurants.timezone` does not update
   the legacy columns. The local columns stay correct, and all PR 1 readers
   use them. Old clients read the legacy columns, so they show the old zone
@@ -157,6 +162,15 @@ Rules for the trigger:
   wraps it to the same value as `00:00`. The helper
   `availability_shift_time` reads `24:00` as `23:59:59` before the shift. The
   backfill and the trigger both use it. Production has 0 rows with `24:00`.
+- Accepted loss: a `24:00` end loses one second. A `00:00` to `24:00` window
+  is 23:59:59 long after the shift. A schedule uses minutes, so the loss has
+  no effect.
+- Accepted limit: `23:59:59` and `24:00` give the same shifted value. A row
+  from `23:59:59` to `24:00` then has equal endpoints, and a check constraint
+  rejects it (SQLSTATE `23514`). This applies to the backfill and to both
+  trigger directions. The UI sends HH:MM only, so it cannot send `23:59:59`.
+  Production has 0 such rows. pgTAP tests in
+  `supabase/tests/availability_local_time.sql` lock this behavior.
 - An available row with null times is available all day. The readers return
   one window from `00:00` to `24:00`, the same as `toWindows` in
   `schedulingContext.ts`. Production has 0 available rows with null times.
@@ -458,7 +472,8 @@ Before the merge:
 2. Show the owner the exact row counts: the total rows, the rows for each old
    and new value pair, and the rows that need review.
 3. Show the rows that need review:
-   - Rows where `created_at` and `updated_at` have different offsets.
+   - Rows with any time change between `created_at` and `updated_at`. The
+     check looks at each local day in the range, not only at the two endpoints.
    - Rows with an anchor on the day of a time change.
    - Rows in a restaurant with an invalid timezone.
 4. Wait for an explicit yes from the owner.

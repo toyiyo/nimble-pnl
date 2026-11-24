@@ -37,35 +37,31 @@ WHERE ea.start_time IS NOT NULL
 GROUP BY ea.start_time, ea.end_time, ea.start_time + o.off, ea.end_time + o.off
 ORDER BY row_count DESC, ea.start_time, ea.end_time;
 
--- Query 3: rows where created_at and updated_at have different noon offsets.
+-- Query 3: rows with any time change between created_at and updated_at.
+-- The query checks the noon offset of each local day in that range, so it
+-- also finds a July-December-July history where both endpoints agree.
+-- A row in a restaurant with an invalid or null timezone shows in Query 4.
 SELECT
   ea.id,
   ea.restaurant_id,
   r.timezone,
   ea.created_at,
   ea.updated_at,
-  oc.off AS created_offset,
-  ou.off AS updated_offset
+  ch.distinct_offsets
 FROM public.employee_availability ea
 JOIN public.restaurants r ON r.id = ea.restaurant_id
-LEFT JOIN pg_timezone_names tz ON tz.name = r.timezone
+JOIN pg_timezone_names tz ON tz.name = r.timezone
 CROSS JOIN LATERAL (
-  SELECT CASE WHEN tz.name IS NULL THEN INTERVAL '0'
-    ELSE ((ea.created_at AT TIME ZONE tz.name)::date + TIME '12:00')
-       - ((((ea.created_at AT TIME ZONE tz.name)::date + TIME '12:00')
-           AT TIME ZONE tz.name) AT TIME ZONE 'UTC')
-  END AS off
-) oc
-CROSS JOIN LATERAL (
-  SELECT CASE WHEN tz.name IS NULL THEN INTERVAL '0'
-    ELSE ((ea.updated_at AT TIME ZONE tz.name)::date + TIME '12:00')
-       - ((((ea.updated_at AT TIME ZONE tz.name)::date + TIME '12:00')
-           AT TIME ZONE tz.name) AT TIME ZONE 'UTC')
-  END AS off
-) ou
+  SELECT count(DISTINCT (d::date + TIME '12:00')
+                        - (((d::date + TIME '12:00') AT TIME ZONE tz.name) AT TIME ZONE 'UTC'))
+         AS distinct_offsets
+  FROM generate_series((ea.created_at AT TIME ZONE tz.name)::date,
+                       (ea.updated_at AT TIME ZONE tz.name)::date,
+                       INTERVAL '1 day') AS d
+) ch
 WHERE ea.created_at IS NOT NULL
   AND ea.updated_at IS NOT NULL
-  AND oc.off IS DISTINCT FROM ou.off
+  AND ch.distinct_offsets > 1
 ORDER BY ea.restaurant_id, ea.updated_at;
 
 -- Query 4: rows with an anchor on the day of a time change,

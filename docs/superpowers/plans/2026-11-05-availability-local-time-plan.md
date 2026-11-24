@@ -362,7 +362,7 @@ Add the two `generate-schedule` test files to the `git add` if Step 3 changed th
 
 - [ ] **Step 1: Write the dry-run file**
 
-The file holds these four `SELECT` statements. `LEFT JOIN pg_timezone_names` to find an invalid timezone. That read is slow, but it runs one time here.
+The file holds these five `SELECT` statements. `LEFT JOIN pg_timezone_names` to find an invalid timezone. That read is slow, but it runs one time here.
 
 A raw `AT TIME ZONE` aborts the read on an invalid timezone. So use `CASE WHEN tz.name IS NULL THEN INTERVAL '0' ELSE <offset> END`. A null timezone takes the same path. This matches the helper of Task 1.
 
@@ -374,6 +374,7 @@ A raw `AT TIME ZONE` aborts the read on an invalid timezone. So use `CASE WHEN t
    The backfill uses one offset, so one time can be one hour wrong. Put these
    rows on the owner review list. Production has 1 such row on 2026-11-23.
 4. The rows with an anchor on the day of a time change, and the rows in a restaurant with an invalid timezone.
+5. The rows with a null `created_at` or `updated_at`. Query 3 cannot check them, so they go on the owner review list. Production has 0 such rows on 2026-11-23.
 
 - [ ] **Step 2: Check that the file has no write**
 

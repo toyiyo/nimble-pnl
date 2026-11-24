@@ -41,6 +41,7 @@ ORDER BY row_count DESC, ea.start_time, ea.end_time;
 -- The query checks the noon offset of each local day in that range, so it
 -- also finds a July-December-July history where both endpoints agree.
 -- A row in a restaurant with an invalid or null timezone shows in Query 4.
+-- A row with a null created_at or updated_at shows in Query 5.
 SELECT
   ea.id,
   ea.restaurant_id,
@@ -87,3 +88,18 @@ WHERE tz.name IS NULL
      ((d.noon - INTERVAL '1 day') - (((d.noon - INTERVAL '1 day') AT TIME ZONE tz.name) AT TIME ZONE 'UTC'))
    )
 ORDER BY reason, ea.restaurant_id, anchor;
+
+-- Query 5: rows with a null created_at or updated_at.
+-- Query 3 cannot check the time changes of these rows. The owner reviews
+-- each one. Production has 0 such rows on 2026-11-23.
+SELECT
+  ea.id,
+  ea.restaurant_id,
+  r.timezone,
+  ea.created_at,
+  ea.updated_at
+FROM public.employee_availability ea
+JOIN public.restaurants r ON r.id = ea.restaurant_id
+WHERE ea.created_at IS NULL
+   OR ea.updated_at IS NULL
+ORDER BY ea.restaurant_id, ea.id;

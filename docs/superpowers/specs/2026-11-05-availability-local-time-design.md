@@ -150,9 +150,16 @@ Rules for the trigger:
   phase. The ship of PR 2 does not stop the risk at once: open browser tabs
   keep the old bundle until they reload. The contract PR waits for those tabs
   to age out. A wrong local value that a stale writer saves stays until a
-  person corrects the row. To find such rows, run Query 4 of
-  `docs/superpowers/plans/2026-11-05-availability-local-time-dry-run.sql`
-  before the contract PR (review on PR #874).
+  person corrects the row. Query 4 of the dry run cannot find all such rows,
+  because a later edit moves `updated_at` off the time change day.
+- Gate for the stale path: a stale write can be wrong only on a time change
+  day. All restaurants with availability use `America/Chicago` (production,
+  2026-11-23). The next time change there is 2027-03-14. Ship PR 2 and the
+  contract PR before 2027-03-07, so that old tabs age out before that day.
+  Then no stale write can occur on a time change day. If the expand phase
+  goes past 2027-03-07, save a list of the rows with `updated_at` on
+  2027-03-14 on 2027-03-15. Do this before a person edits them again. Check
+  each listed row with the owner (review on PR #874).
 - Known risk until PR 2: a change to `restaurants.timezone` does not update
   the legacy columns. The local columns stay correct, and all PR 1 readers
   use them. Old clients read the legacy columns, so they show the old zone
@@ -476,6 +483,8 @@ Before the merge:
      check looks at each local day in the range, not only at the two endpoints.
    - Rows with an anchor on the day of a time change.
    - Rows in a restaurant with an invalid timezone.
+   - Rows with a null `created_at` or `updated_at`. Query 3 cannot check
+     these rows. Production has 0 such rows on 2026-11-23.
 4. Wait for an explicit yes from the owner.
 
 Run `get_project_url` on the `supabase-prod` MCP server before the first query.

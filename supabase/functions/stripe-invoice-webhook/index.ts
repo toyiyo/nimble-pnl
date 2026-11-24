@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { updateInvoiceFromStripe } from "../_shared/invoiceSync.ts";
+import { handleAccountUpdated } from "../_shared/stripeAccountUpdatedHandler.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +49,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+
+    // Connect account status. This endpoint listens to connected accounts,
+    // so it also gets account.updated. The signature check above covers it.
+    if (event.type === "account.updated") {
+      return await handleAccountUpdated(event, { stripe, db: supabaseAdmin }, corsHeaders);
+    }
 
     // Only handle invoice events; ignore the noise but return 200 to Stripe
     if (!event.type.startsWith("invoice.")) {

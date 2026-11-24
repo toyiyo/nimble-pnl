@@ -77,12 +77,8 @@ Put the testable logic in pure helpers in `supabase/functions/_shared/`
 
 ## Task 5. Webhook handler (unit tests first)
 
-1. Write `tests/unit/stripeConnectWebhookHandler.test.ts` (design §5.1).
+1. Write `tests/unit/stripeAccountUpdatedHandler.test.ts` (design §5.1).
    Inject a fake Stripe client and a fake DB. Cases:
-   - empty secret → 500;
-   - no `stripe-signature` header → 400;
-   - `constructEventAsync` throws → 400;
-   - event type is not `account.updated` → 200 ignored;
    - `event.account` missing → 200 ignored;
    - `data.object.id` not equal to `event.account` → 200 ignored;
    - no row for the account → 200 `{ received: true, unknown: true }`;
@@ -90,25 +86,18 @@ Put the testable logic in pure helpers in `supabase/functions/_shared/`
      status columns by `stripe_account_id`, returns 200;
    - Stripe error or DB error → 500 "Webhook processing failed".
 2. Run the test. Expect a failure.
-3. Write `supabase/functions/_shared/stripeConnectWebhookHandler.ts` with no
-   Deno globals. It takes `(req, deps)` where `deps` has the secret, the Stripe
-   client, and the DB client. Use `deriveStatuses` from Task 2. Read the body
-   with `req.text()` before the signature check.
+3. Write `supabase/functions/_shared/stripeAccountUpdatedHandler.ts` with no
+   Deno globals. It takes `(event, deps)` where `deps` has the Stripe client
+   and the DB client. Use `deriveStatuses` from Task 2.
 4. Run the test. Expect a pass.
 
-## Task 6. Webhook edge function entry
+## Task 6. Route the event in the existing invoice webhook
 
-1. Write `supabase/functions/stripe-connect-webhook/index.ts`. It is thin:
-   handle CORS/OPTIONS, create the Stripe client with
-   `apiVersion: '2025-08-27.basil'` and the service-role Supabase client,
-   read `STRIPE_CONNECT_WEBHOOK_SECRET`, and call the handler from Task 5.
-   Copy the import style from `supabase/functions/stripe-invoice-webhook/index.ts`.
-2. Add to `supabase/config.toml`:
-   ```toml
-   [functions.stripe-connect-webhook]
-   verify_jwt = false
-   ```
-3. Run `npm run typecheck`.
+1. In `supabase/functions/stripe-invoice-webhook/index.ts`, after the
+   signature check, call `handleAccountUpdated` when
+   `event.type === 'account.updated'`. Keep the invoice path the same.
+   Do not add a new function, a new `config.toml` block, or a new secret.
+2. Run `npm run typecheck`.
 
 ## Task 7. Payment setup state helper
 
@@ -196,6 +185,6 @@ Put the testable logic in pure helpers in `supabase/functions/_shared/`
 ## Task 15. Ship
 
 1. Review, simplify, verify, QA, PR, CI (workflow `dev-build-and-ship.js`).
-   The PR body lists the deploy steps: the Connect webhook endpoint for
-   `account.updated` on connected accounts, `STRIPE_CONNECT_WEBHOOK_SECRET`,
-   `OAUTH_ALLOWED_ORIGINS`, and the function deploy.
+   The PR body lists the deploy steps: add `account.updated` to the existing
+   `stripe-invoice-webhook` endpoint, `OAUTH_ALLOWED_ORIGINS`, and the
+   function deploy.

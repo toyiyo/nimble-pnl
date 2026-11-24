@@ -210,72 +210,66 @@ already refuses other roles
 
 ## 5. Design: backend
 
-### 5.1 New edge function `stripe-connect-webhook`
+### 5.1 `account.updated` in the existing `stripe-invoice-webhook`
+
+Production already has a Stripe webhook endpoint for `stripe-invoice-webhook`
+with the secret `STRIPE_INVOICE_WEBHOOK_SECRET`. `stripe-create-invoice` makes
+invoices on the connected account (`stripeAccount`), so that endpoint listens
+to connected accounts. Thus it can also get `account.updated`. We do not add a
+new function, a new endpoint, or a new secret.
 
 Files:
 
-- `supabase/functions/stripe-connect-webhook/index.ts` (thin: env, Stripe
-  client, service-role client, call the handler).
-- `supabase/functions/_shared/stripeConnectWebhookHandler.ts` (logic, no Deno
-  globals, so Vitest can import it).
+- `supabase/functions/stripe-invoice-webhook/index.ts`: after the signature
+  check, send `account.updated` to the handler. Other events do not change.
+- `supabase/functions/_shared/stripeAccountUpdatedHandler.ts` (logic, no Deno
+  globals, so Vitest can import it). It takes the checked event, not the
+  request.
 - `supabase/functions/_shared/stripeAccountStatus.ts` (the `deriveStatuses`
   logic, moved from `stripe-create-connected-account/index.ts:35-47`. Both
   functions import it. The logic does not change.)
-- `supabase/config.toml`: `[functions.stripe-connect-webhook] verify_jwt = false`.
 
-Pattern: the same as `stripe-invoice-webhook/index.ts`.
+Flow (the invoice webhook already does the secret and signature checks: an
+empty secret gives 500, a missing or bad signature gives 400, and it reads the
+raw body with `req.text()`):
 
-Flow:
-
-1. If `STRIPE_CONNECT_WEBHOOK_SECRET` is empty → 500 "Webhook not configured".
-   No processing.
-2. If the `stripe-signature` header is missing → 400.
-3. `stripe.webhooks.constructEventAsync(rawBody, signature, secret)`. On
-   failure → 400 "Invalid signature". The body is read with `req.text()`
-   before any parse.
-4. If `event.type !== 'account.updated'` → 200 `{ received: true, ignored: true }`.
-5. `accountId = event.account`. If it is missing → 200 `{ received: true, ignored: true }`
+1. If `event.type === 'account.updated'`, call
+   `handleAccountUpdated(event, { stripe, db })`.
+2. `accountId = event.account`. If it is missing → 200 `{ received: true, ignored: true }`
    with a log (a Connect endpoint always sets it). If `event.data.object.id`
    is not equal to `accountId` → 200 `{ received: true, ignored: true }` with
    a log. A retry cannot make a mismatch valid, so no 4xx. (Source binding.)
-6. Find the row: `select id from stripe_connected_accounts where
+3. Find the row: `select id from stripe_connected_accounts where
    stripe_account_id = accountId`. No row → 200 `{ received: true, unknown: true }`.
    The log has the account id only. An event can arrive before the insert in
    `stripe-create-connected-account`. That insert already stores the status at
    creation, and "Check now" and the sheet close cover the gap.
-7. **Do not trust the payload for state.** Call
+4. **Do not trust the payload for state.** Call
    `stripe.accounts.retrieve(accountId)` with the platform key and derive the
-   statuses from the live object. This fixes events that arrive out of order
-   and duplicate deliveries: each update writes the current live state, so the
-   update is idempotent.
-8. `update stripe_connected_accounts set charges_enabled, payouts_enabled,
+   statuses from the live object. Each update writes the current live state,
+   so a duplicate delivery is idempotent.
+5. `update stripe_connected_accounts set charges_enabled, payouts_enabled,
    details_submitted, onboarding_complete, updated_at = now() where
    stripe_account_id = accountId`. The update never changes
    `restaurant_id`, `stripe_account_id`, or `account_type`.
-9. Return 200. On a Stripe or DB error → 500 with the body
+6. Return 200. On a Stripe or DB error → 500 with the body
    `{ error: "Webhook processing failed" }`. The log has the detail. Stripe
    retries a 500.
 
-The Stripe client uses apiVersion `2025-08-27.basil`, the same as
-`stripe-invoice-webhook/index.ts:14`. Do not add a third version.
-
-Unit tests (`tests/unit/stripeConnectWebhookHandler.test.ts`): missing secret,
-missing signature, bad signature, ignored type, missing `event.account`,
-account mismatch, unknown
-account, live re-fetch used (payload says `charges_enabled: false`, live says
-`true` → row gets `true`), DB error → 500, no raw error text in the response.
+Unit tests (`tests/unit/stripeAccountUpdatedHandler.test.ts`): missing
+`event.account`, account mismatch, unknown account, live re-fetch used
+(payload says `charges_enabled: true`, live says `false` → row gets `false`),
+Stripe or DB error → 500, no raw error text in the response.
 
 Deploy steps (the user does these; I cannot do them):
 
-1. In Stripe Dashboard → Developers → Webhooks, add an endpoint with
-   "Listen to events on Connected accounts". URL:
-   `https://<project>.supabase.co/functions/v1/stripe-connect-webhook`.
-   Event: `account.updated`.
-2. Set the secret: `supabase secrets set STRIPE_CONNECT_WEBHOOK_SECRET=whsec_…`.
-3. Deploy the function.
+1. In Stripe Dashboard → Developers → Webhooks, open the existing endpoint for
+   `https://<project>.supabase.co/functions/v1/stripe-invoice-webhook`.
+   Add the event `account.updated`. Do not add a new endpoint or secret.
+2. Deploy `stripe-invoice-webhook`.
 
-Until step 2 is done, the function returns 500 and changes nothing. The
-"Check now" button and the poll still work without the webhook.
+Until step 1 is done, Stripe does not send the event. The "Check now" button
+and the sheet close still sync the status without the webhook.
 
 ### 5.2 Security fixes in existing functions (no change to the success shape)
 
@@ -365,7 +359,7 @@ result.
 | S4 | Low | An attacker who controls a page that an owner visits → account-link return URL | The return URL uses the request `Origin` header. Browsers set `Origin`, so the risk is low, but a raw header must not choose a redirect (`WEB-PROTOCOL-AND-AUTH.md`, "Host, Forwarded, … Origin … are trust decisions"). | §5.2 S4 |
 | S5 | Low | Platform → Stripe accounts | An insert error leaves a Stripe account with no row. Two parallel clicks can create two Stripe accounts. | §5.2 S5 (idempotency key) |
 | S6 | Low | Owner UI → Stripe API | Each status check creates an unused account link. | §5.2 S6 |
-| W1 | Design | Internet → `stripe-connect-webhook` | The endpoint is public (`verify_jwt = false`). The signature check is the only gate. | Fail closed when the secret is empty. Verify with the raw body. Own secret, not shared with the invoice webhook. |
+| W1 | Design | Internet → `stripe-invoice-webhook` | The endpoint is public (`verify_jwt = false`). The signature check is the only gate. | The existing check stays: fail closed when the secret is empty, verify with the raw body. `account.updated` goes to the handler only after that check. |
 | W2 | Design | Stripe redelivery → row state | Events can arrive twice or out of order (`PROTOCOLS-RPC-AND-MESSAGING.md`, "Duplicate delivery", "Older state … overwrites"). | Re-fetch the live account. Do not use the payload state. |
 | W3 | Design | A signed event for account A → row for account B | Source binding. | Require `event.account`. Ignore a mismatch with `data.object.id`. The update changes only status columns. |
 | W4 | Design | Public webhook → service-role client | The handler has the service role. | The handler runs one parameterized update by `stripe_account_id`. It reads no other table. It returns no row data. |
@@ -380,7 +374,7 @@ Out of scope, flag only:
 
 ## 7. Tests
 
-- Vitest: `paymentSetupState`, `usePaymentSetup`, `stripeConnectWebhookHandler`,
+- Vitest: `paymentSetupState`, `usePaymentSetup`, `stripeAccountUpdatedHandler`,
   `stripeAccountStatus` (moved logic, same cases).
 - pgTAP: `stripe_connected_accounts_select_only.test.sql`, and the changed
   `10_invoicing_tables.sql`.
@@ -410,8 +404,7 @@ New:
 `src/lib/paymentSetupState.ts`, `src/hooks/usePaymentSetup.ts`,
 `src/components/invoicing/PaymentSetupCard.tsx`,
 `src/components/invoicing/PaymentSetupSheet.tsx`,
-`supabase/functions/stripe-connect-webhook/index.ts`,
-`supabase/functions/_shared/stripeConnectWebhookHandler.ts`,
+`supabase/functions/_shared/stripeAccountUpdatedHandler.ts`,
 `supabase/functions/_shared/stripeAccountStatus.ts`,
 `supabase/migrations/<ts>_stripe_connected_accounts_select_only.sql`,
 `supabase/tests/stripe_connected_accounts_select_only.test.sql`, unit tests in §7.

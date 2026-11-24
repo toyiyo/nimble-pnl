@@ -1,12 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handleStripeConnectWebhook } from '../../supabase/functions/_shared/stripeConnectWebhookHandler';
+import { handleAccountUpdated } from '../../supabase/functions/_shared/stripeAccountUpdatedHandler';
 
 const ACCT = 'acct_123';
 
-const makeReq = (headers: Record<string, string> = { 'stripe-signature': 'sig' }) =>
-  new Request('https://example.test/hook', { method: 'POST', headers, body: '{"raw":true}' });
-
 const makeEvent = (over: Record<string, unknown> = {}) => ({
+  id: 'evt_1',
   type: 'account.updated',
   account: ACCT,
   data: { object: { id: ACCT, charges_enabled: false } },
@@ -14,14 +12,11 @@ const makeEvent = (over: Record<string, unknown> = {}) => ({
 });
 
 const makeDeps = (opts: {
-  event?: unknown;
-  constructError?: Error;
   row?: { id: string } | null;
   selectError?: unknown;
   updateError?: unknown;
   live?: unknown;
   retrieveError?: Error;
-  secret?: string;
 } = {}) => {
   const eqUpdate = vi.fn().mockResolvedValue({ error: opts.updateError ?? null });
   const update = vi.fn().mockReturnValue({ eq: eqUpdate });
@@ -37,65 +32,27 @@ const makeDeps = (opts: {
     : vi.fn().mockResolvedValue(
         opts.live ?? { charges_enabled: true, payouts_enabled: true, details_submitted: true },
       );
-  const constructEventAsync = opts.constructError
-    ? vi.fn().mockRejectedValue(opts.constructError)
-    : vi.fn().mockResolvedValue(opts.event ?? makeEvent());
   return {
-    deps: {
-      secret: opts.secret ?? 'whsec_test',
-      stripe: { webhooks: { constructEventAsync }, accounts: { retrieve } },
-      db: { from },
-    },
-    from, select, eqSelect, update, eqUpdate, retrieve, constructEventAsync,
+    deps: { stripe: { accounts: { retrieve } }, db: { from } },
+    from, select, eqSelect, update, eqUpdate, retrieve,
   };
 };
 
-describe('handleStripeConnectWebhook', () => {
-  it('returns 500 when the secret is empty', async () => {
-    const m = makeDeps({ secret: '' });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
-    expect(res.status).toBe(500);
-    expect(m.constructEventAsync).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when the signature header is missing', async () => {
-    const m = makeDeps();
-    const res = await handleStripeConnectWebhook(makeReq({}), m.deps as any);
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 400 when signature verification fails', async () => {
-    const m = makeDeps({ constructError: new Error('bad sig detail') });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
-    expect(res.status).toBe(400);
-    expect(await res.text()).not.toContain('bad sig detail');
-  });
-
-  it('reads the raw body before the signature check', async () => {
-    const m = makeDeps();
-    await handleStripeConnectWebhook(makeReq(), m.deps as any);
-    expect(m.constructEventAsync).toHaveBeenCalledWith('{"raw":true}', 'sig', 'whsec_test');
-  });
-
-  it('ignores events that are not account.updated', async () => {
-    const m = makeDeps({ event: makeEvent({ type: 'customer.created' }) });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ received: true, ignored: true });
-    expect(m.from).not.toHaveBeenCalled();
-  });
-
+describe('handleAccountUpdated', () => {
   it('ignores events with no event.account', async () => {
-    const m = makeDeps({ event: makeEvent({ account: undefined }) });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const m = makeDeps();
+    const res = await handleAccountUpdated(makeEvent({ account: undefined }), m.deps);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ received: true, ignored: true });
     expect(m.from).not.toHaveBeenCalled();
   });
 
   it('ignores events when data.object.id differs from event.account', async () => {
-    const m = makeDeps({ event: makeEvent({ data: { object: { id: 'acct_other' } } }) });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const m = makeDeps();
+    const res = await handleAccountUpdated(
+      makeEvent({ data: { object: { id: 'acct_other' } } }),
+      m.deps,
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ received: true, ignored: true });
     expect(m.retrieve).not.toHaveBeenCalled();
@@ -103,7 +60,7 @@ describe('handleStripeConnectWebhook', () => {
 
   it('returns unknown when no row matches the account', async () => {
     const m = makeDeps({ row: null });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const res = await handleAccountUpdated(makeEvent(), m.deps);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ received: true, unknown: true });
     expect(m.retrieve).not.toHaveBeenCalled();
@@ -112,7 +69,7 @@ describe('handleStripeConnectWebhook', () => {
 
   it('uses the live account and updates only the status columns', async () => {
     const m = makeDeps();
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const res = await handleAccountUpdated(makeEvent(), m.deps);
     expect(res.status).toBe(200);
     expect(m.retrieve).toHaveBeenCalledWith(ACCT);
     expect(m.eqSelect).toHaveBeenCalledWith('stripe_account_id', ACCT);
@@ -131,25 +88,31 @@ describe('handleStripeConnectWebhook', () => {
 
   it('trusts the live account, not the event payload', async () => {
     const m = makeDeps({
-      event: makeEvent({ data: { object: { id: ACCT, charges_enabled: true } } }),
       live: { charges_enabled: false, payouts_enabled: false, details_submitted: true },
     });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const res = await handleAccountUpdated(
+      makeEvent({ data: { object: { id: ACCT, charges_enabled: true } } }),
+      m.deps,
+    );
     expect(res.status).toBe(200);
     const payload = m.update.mock.calls[0][0];
     expect(payload.charges_enabled).toBe(false);
     expect(payload.onboarding_complete).toBe(false);
   });
 
+  it('adds the given headers to the response', async () => {
+    const m = makeDeps();
+    const res = await handleAccountUpdated(makeEvent(), m.deps, { 'X-Test': '1' });
+    expect(res.headers.get('X-Test')).toBe('1');
+    expect(res.headers.get('Content-Type')).toBe('application/json');
+  });
+
   it('logs event id, type and account id when processing fails', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const m = makeDeps({
-      event: makeEvent({ id: 'evt_1' }),
-      retrieveError: new Error('boom'),
-    });
-    await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const m = makeDeps({ retrieveError: new Error('boom') });
+    await handleAccountUpdated(makeEvent(), m.deps);
     expect(spy).toHaveBeenCalledWith(
-      '[CONNECT-WEBHOOK] Processing failed:',
+      '[INVOICE-WEBHOOK][account.updated] Processing failed:',
       expect.objectContaining({ eventId: 'evt_1', eventType: 'account.updated', accountId: ACCT }),
     );
     spy.mockRestore();
@@ -157,7 +120,7 @@ describe('handleStripeConnectWebhook', () => {
 
   it('returns 500 with a safe body on a Stripe error', async () => {
     const m = makeDeps({ retrieveError: new Error('stripe secret detail') });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const res = await handleAccountUpdated(makeEvent(), m.deps);
     expect(res.status).toBe(500);
     const text = await res.text();
     expect(text).toContain('Webhook processing failed');
@@ -166,7 +129,7 @@ describe('handleStripeConnectWebhook', () => {
 
   it('returns 500 with a safe body on a DB update error', async () => {
     const m = makeDeps({ updateError: { message: 'db detail' } });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const res = await handleAccountUpdated(makeEvent(), m.deps);
     expect(res.status).toBe(500);
     const text = await res.text();
     expect(text).toContain('Webhook processing failed');
@@ -175,7 +138,7 @@ describe('handleStripeConnectWebhook', () => {
 
   it('returns 500 on a DB select error', async () => {
     const m = makeDeps({ selectError: { message: 'db detail' } });
-    const res = await handleStripeConnectWebhook(makeReq(), m.deps as any);
+    const res = await handleAccountUpdated(makeEvent(), m.deps);
     expect(res.status).toBe(500);
   });
 });

@@ -286,6 +286,3 @@ verify_jwt = false
 
 [functions.revel-bulk-sync]
 verify_jwt = false
-
-[functions.stripe-connect-webhook]
-verify_jwt = false

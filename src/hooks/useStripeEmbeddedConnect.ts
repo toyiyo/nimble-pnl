@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -16,7 +16,24 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Read onReady through a ref so a new options object keeps start stable.
+  const onReadyRef = useRef(options.onReady);
+  useEffect(() => {
+    onReadyRef.current = options.onReady;
+  }, [options.onReady]);
+
+  // Identify the latest start. A restaurant change or a newer start makes earlier starts stale.
+  const startIdRef = useRef(0);
+  useEffect(() => {
+    startIdRef.current += 1;
+    setConnectInstance(null);
+    setClientSecret(null);
+    setError(null);
+    setIsLoading(false);
+  }, [restaurantId]);
+
   const start = useCallback(async () => {
+    const startId = ++startIdRef.current;
     if (!restaurantId) {
       setError("Restaurant is not selected");
       return null;
@@ -39,8 +56,9 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
         throw new Error("Missing client secret from Stripe Account Session");
       }
 
+      if (startIdRef.current !== startId) return null;
       setClientSecret(secret);
-      options.onReady?.(secret);
+      onReadyRef.current?.(secret);
 
       const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
       if (!publishableKey) {
@@ -58,16 +76,18 @@ export function useStripeEmbeddedConnect(restaurantId: string | null, options: U
         },
       });
 
+      if (startIdRef.current !== startId) return null;
       setConnectInstance(connect);
       return connect;
     } catch (err) {
+      if (startIdRef.current !== startId) return null;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       return null;
     } finally {
-      setIsLoading(false);
+      if (startIdRef.current === startId) setIsLoading(false);
     }
-  }, [restaurantId, options]);
+  }, [restaurantId]);
 
   return {
     connectInstance,

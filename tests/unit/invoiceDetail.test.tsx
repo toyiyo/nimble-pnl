@@ -55,7 +55,9 @@ vi.mock('@/hooks/useSubscription', () => ({
 
 vi.mock('@/hooks/useStripeConnect', () => ({
   useStripeConnect: () => ({
-    isReadyForInvoicing: true,
+    connectedAccount: { charges_enabled: true, onboarding_complete: true },
+    loading: false,
+    error: null,
     createAccount: vi.fn(),
     isCreatingAccount: false,
     openDashboard: vi.fn(),

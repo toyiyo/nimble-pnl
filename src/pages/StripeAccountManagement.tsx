@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
+import { stripeConnectedAccountKey } from "@/lib/stripeConnectKeys";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +30,7 @@ export default function StripeAccountManagement() {
   const [activeTab, setActiveTab] = useState("setup");
 
   const refreshStripeStatus = () => {
-    queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id || null] });
+    queryClient.invalidateQueries({ queryKey: stripeConnectedAccountKey(selectedRestaurant?.restaurant_id) });
   };
 
   // Only owners can access financial account management

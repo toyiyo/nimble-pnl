@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useCustomers, type Customer } from "@/hooks/useCustomers";
-import { useStripeConnect } from "@/hooks/useStripeConnect";
+import { usePaymentSetup } from "@/hooks/usePaymentSetup";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, User, Mail, Phone, MapPin, Edit, Trash2, FileText, CreditCard } from "lucide-react";
+import { Plus, Search, User, Mail, Phone, MapPin, Edit, Trash2, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,12 +18,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CustomerFormDialog } from "@/components/invoicing/CustomerFormDialog";
+import { PaymentSetupCard } from "@/components/invoicing/PaymentSetupCard";
+import { PaymentSetupSheet } from "@/components/invoicing/PaymentSetupSheet";
 import { useNavigate } from "react-router-dom";
 
 export default function Customers() {
   const { selectedRestaurant } = useRestaurantContext();
   const { customers, loading, deleteCustomer } = useCustomers(selectedRestaurant?.restaurant_id || null);
-  const { isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const paymentSetup = usePaymentSetup(selectedRestaurant?.restaurant_id || null);
+  const canManage = selectedRestaurant?.role === 'owner';
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -83,26 +85,9 @@ export default function Customers() {
         </CardHeader>
       </Card>
 
-      {/* Payment Processing Setup Banner */}
-      {filteredCustomers.length > 0 && !isReadyForInvoicing && (
-        <Alert>
-          <CreditCard className="h-4 w-4" />
-          <AlertTitle>Enable Invoice Payments</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>
-              Set up payment processing to create and send invoices with payment collection.
-              Your customers can pay by credit card or US bank account (ACH).
-            </p>
-            <Button 
-              onClick={() => createAccount('express')} 
-              disabled={isCreatingAccount}
-              size="sm"
-            >
-              {isCreatingAccount ? "Setting up..." : "Set up Payment Processing"}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* Payment setup */}
+      <PaymentSetupCard setup={paymentSetup} canManage={canManage} hideWhenReady />
+      <PaymentSetupSheet setup={paymentSetup} restaurantId={selectedRestaurant?.restaurant_id || null} />
 
       {/* Search */}
       <Card>

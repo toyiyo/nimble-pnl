@@ -225,6 +225,45 @@ describe('handleIntegrationDisconnectAlert', () => {
     expect(logged).not.toContain('hooks.example');
   });
 
+  it('still posts Slack and marks alerted when the recipients lookup fails', async () => {
+    const deps = makeDeps({
+      loadRecipients: vi.fn(async () => {
+        throw new TypeError('connection reset for owner@example.com');
+      }),
+    });
+    const res = await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ emailsSent: 0, emailsFailed: 0, slack: 'sent' });
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+    expect(deps.markAlerted).toHaveBeenCalledWith(EVENT_ID);
+    const logged = (deps.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('lookup_failed recipients TypeError');
+    expect(logged).not.toContain('@example.com');
+  });
+
+  it('uses the fallbacks when the restaurant and actor lookups fail', async () => {
+    const deps = makeDeps({
+      loadRestaurant: vi.fn(async () => { throw new Error('x'); }),
+      loadActor: vi.fn(async () => { throw new Error('y'); }),
+    });
+    const res = await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ emailsSent: 2, emailsFailed: 0, slack: 'sent' });
+    const html = (deps.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(html).toContain('A team member');
+    expect(deps.log).toHaveBeenCalledWith('lookup_failed restaurant Error');
+    expect(deps.log).toHaveBeenCalledWith('lookup_failed actor Error');
+  });
+
+  it('returns 502 and logs alert_failed when no channel is available', async () => {
+    const deps = makeDeps({ loadRecipients: vi.fn(async () => []), slackWebhookUrl: undefined });
+    const res = await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ emailsSent: 0, emailsFailed: 0, slack: 'skipped' });
+    expect(deps.markAlerted).not.toHaveBeenCalled();
+    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining(`alert_failed event=${EVENT_ID}`));
+  });
+
   it('marks alerted when only Slack succeeds', async () => {
     const deps = makeDeps({ sendEmail: vi.fn(async () => ({ ok: false, status: 500 })) });
     await handleIntegrationDisconnectAlert(deps, { eventId: EVENT_ID });

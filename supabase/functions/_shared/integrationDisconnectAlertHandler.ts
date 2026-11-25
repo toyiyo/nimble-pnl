@@ -90,6 +90,19 @@ async function postSlack(deps: AlertDeps, input: DisconnectAlertInput): Promise<
   }
 }
 
+// One failed lookup must not stop the other channel. Log the error name only and use the fallback.
+function settledValue<T>(
+  deps: AlertDeps,
+  label: string,
+  result: PromiseSettledResult<T>,
+  fallback: T,
+): T {
+  if (result.status === 'fulfilled') return result.value;
+  const err = result.reason;
+  deps.log(`lookup_failed ${label} ${err instanceof Error ? err.name : 'unknown_error'}`);
+  return fallback;
+}
+
 export async function handleIntegrationDisconnectAlert(
   deps: AlertDeps,
   payload: { eventId?: unknown },
@@ -117,11 +130,14 @@ export async function handleIntegrationDisconnectAlert(
     return { status: 200, body: { skipped: 'already_alerted' } };
   }
 
-  const [recipients, restaurant, actor] = await Promise.all([
+  const [recipientsResult, restaurantResult, actorResult] = await Promise.allSettled([
     deps.loadRecipients(event.restaurant_id),
     deps.loadRestaurant(event.restaurant_id),
     event.actor_user_id ? deps.loadActor(event.actor_user_id) : Promise.resolve(null),
   ]);
+  const recipients = settledValue(deps, 'recipients', recipientsResult, []);
+  const restaurant = settledValue(deps, 'restaurant', restaurantResult, null);
+  const actor = settledValue(deps, 'actor', actorResult, null);
 
   const input: DisconnectAlertInput = {
     integration: event.integration,
@@ -153,10 +169,7 @@ export async function handleIntegrationDisconnectAlert(
     await deps.markAlerted(eventId);
     return { status: 200, body };
   }
-  if (emailsFailed > 0 || slack === 'failed') {
-    // Nothing went out. Log one line and return 502 so the function logs show the lost alert.
-    deps.log(`alert_failed event=${eventId} emails_failed=${emailsFailed} slack=${slack}`);
-    return { status: 502, body };
-  }
-  return { status: 200, body };
+  // Nothing went out. Log one line and return 502 so the function logs show the lost alert.
+  deps.log(`alert_failed event=${eventId} emails_failed=${emailsFailed} slack=${slack}`);
+  return { status: 502, body };
 }

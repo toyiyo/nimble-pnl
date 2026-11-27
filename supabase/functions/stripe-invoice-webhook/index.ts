@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { updateInvoiceFromStripe } from "../_shared/invoiceSync.ts";
 import { handleAccountUpdated } from "../_shared/stripeAccountUpdatedHandler.ts";
 

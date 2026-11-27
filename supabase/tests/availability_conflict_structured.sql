@@ -12,12 +12,12 @@ VALUES ('00000000-0000-0000-0000-000000000299', '00000000-0000-0000-0000-0000000
 ON CONFLICT (id) DO NOTHING;
 
 -- Setup: recurring availability Mon (dow=1) 14:00-22:00 UTC
-INSERT INTO employee_availability (employee_id, restaurant_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, restaurant_id, day_of_week, start_time_local, end_time_local, is_available)
 VALUES ('00000000-0000-0000-0000-000000000299', '00000000-0000-0000-0000-000000000099',
         1, '14:00:00', '22:00:00', true);
 
 -- Setup: recurring unavailable Tue (dow=2)
-INSERT INTO employee_availability (employee_id, restaurant_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, restaurant_id, day_of_week, start_time_local, end_time_local, is_available)
 VALUES ('00000000-0000-0000-0000-000000000299', '00000000-0000-0000-0000-000000000099',
         2, '00:00:00', '23:59:59', false);
 
@@ -91,7 +91,7 @@ SELECT results_eq(
 );
 
 -- Setup: overnight window for Sat (dow=6) 22:00-06:00 UTC
-INSERT INTO employee_availability (employee_id, restaurant_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, restaurant_id, day_of_week, start_time_local, end_time_local, is_available)
 VALUES ('00000000-0000-0000-0000-000000000299', '00000000-0000-0000-0000-000000000099',
         6, '22:00:00', '06:00:00', true);
 

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(16);
+SELECT plan(23);
 
 -- ---------- Fixture setup ----------
 -- Two restaurants; one owner per restaurant; one staff at restaurant A.
@@ -241,6 +241,66 @@ SELECT is(
      AND day_of_week = 1),
   1,
   'only one row written despite 3 duplicate IDs'
+);
+
+-- ---------- 11. Local keys (task 3) ----------
+SELECT lives_ok(
+  $sql$ SELECT * FROM bulk_set_employee_availability(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    ARRAY['cccccccc-cccc-cccc-cccc-ccccccccccc2'::uuid],
+    jsonb_build_array(
+      jsonb_build_object('day_of_week', 1, 'start_time_local', '10:00:00', 'end_time_local', '22:00:00', 'is_available', true),
+      jsonb_build_object('day_of_week', 2, 'start_time', '15:00:00', 'end_time', '03:00:00', 'is_available', true),
+      jsonb_build_object('day_of_week', 3, 'start_time_local', '10:00:00', 'end_time_local', '22:00:00',
+                         'start_time', '01:00:00', 'end_time', '02:00:00', 'is_available', true),
+      jsonb_build_object('day_of_week', 4, 'start_time_local', '00:00:00', 'end_time_local', '23:59:00', 'is_available', false)
+    )
+  ) $sql$,
+  'local keys, legacy keys, both frames and a closed day insert'
+);
+SELECT results_eq(
+  $sql$ SELECT start_time_local, end_time_local FROM employee_availability
+        WHERE employee_id = 'cccccccc-cccc-cccc-cccc-ccccccccccc2' AND day_of_week = 1 $sql$,
+  $sql$ VALUES ('10:00:00'::time, '22:00:00'::time) $sql$,
+  'local keys set the local times'
+);
+SELECT ok(
+  (SELECT start_time IS NOT NULL AND end_time IS NOT NULL FROM employee_availability
+   WHERE employee_id = 'cccccccc-cccc-cccc-cccc-ccccccccccc2' AND day_of_week = 1),
+  'local keys fill the legacy columns'
+);
+SELECT results_eq(
+  $sql$ SELECT start_time_local, end_time_local FROM employee_availability
+        WHERE employee_id = 'cccccccc-cccc-cccc-cccc-ccccccccccc2' AND day_of_week = 2 $sql$,
+  $sql$ SELECT '15:00:00'::time + o, '03:00:00'::time + o
+        FROM (SELECT availability_noon_offset(now(), (SELECT timezone FROM restaurants WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')) AS o) x $sql$,
+  'legacy keys give local = legacy + today offset'
+);
+SELECT results_eq(
+  $sql$ SELECT start_time_local FROM employee_availability
+        WHERE employee_id = 'cccccccc-cccc-cccc-cccc-ccccccccccc2' AND day_of_week = 3 $sql$,
+  $sql$ VALUES ('10:00:00'::time) $sql$,
+  'local keys win when both frames are present'
+);
+SELECT ok(
+  (SELECT start_time IS NOT NULL AND end_time IS NOT NULL
+          AND start_time_local IS NOT NULL AND end_time_local IS NOT NULL
+   FROM employee_availability
+   WHERE employee_id = 'cccccccc-cccc-cccc-cccc-ccccccccccc2' AND day_of_week = 4
+     AND is_available = false),
+  'closed day row exists with four values'
+);
+SELECT throws_ok(
+  $sql$ SELECT * FROM bulk_set_employee_availability(
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    ARRAY['cccccccc-cccc-cccc-cccc-ccccccccccc2'::uuid],
+    jsonb_build_array(
+      jsonb_build_object('day_of_week', 5, 'start_time_local', '10:00:00', 'is_available', true)
+    )
+  ) $sql$,
+  '23502',
+  NULL,
+  'incomplete local pair raises not_null_violation'
 );
 
 SELECT * FROM finish();

@@ -1,13 +1,15 @@
 /**
  * availability-tz.ts
  *
- * Pure utility: convert employee availability rows whose times are stored as
- * UTC clock values (TIME columns with no timezone metadata, written by
- * AvailabilityDialog via localTimeToUtcTime) back into restaurant-local clock
- * values for the AI prompt + validator.
+ * Pure utility: prepare employee availability rows for the AI prompt and the
+ * validator.
  *
- * Rows whose conversion crosses local midnight are split into two LocalAvail
- * rows on adjacent local days.
+ * Recurring rows already hold restaurant-local clock values in the
+ * start_time_local and end_time_local columns. A row that crosses local
+ * midnight becomes two LocalAvail rows on adjacent local days.
+ *
+ * Exception rows still hold UTC clock values. Convert them to restaurant-local
+ * values with the restaurant timezone.
  */
 import { toZonedTime } from "date-fns-tz";
 
@@ -16,9 +18,9 @@ export interface RawRecurringAvail {
   /** 0=Sun..6=Sat in the user's restaurant-local calendar */
   day_of_week: number;
   is_available: boolean;
-  /** UTC clock time HH:MM:SS, or null when "all day" / unavailable */
-  start_time: string | null;
-  end_time: string | null;
+  /** Restaurant-local clock time HH:MM:SS. The value is null for a closed day or for a row with no window. */
+  start_time_local: string | null;
+  end_time_local: string | null;
 }
 
 export interface RawExceptionAvail {
@@ -45,20 +47,6 @@ function pad2(n: number): string {
 
 function formatTime(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
-
-/**
- * Compute the YYYY-MM-DD for the given `dayOfWeek` (0=Sun..6=Sat) within the
- * calendar week that contains `weekStart`. `weekStart` may be any day of that
- * week; this function finds the Sunday of the week first, then adds `dayOfWeek`.
- */
-function dateForDayOfWeek(weekStart: string, dayOfWeek: number): string {
-  const [y, m, d] = weekStart.split("-").map(Number);
-  const base = new Date(y, m - 1, d);
-  // Step back to Sunday of the same week, then forward to the target day.
-  const sundayOffset = base.getDay();
-  base.setDate(base.getDate() - sundayOffset + dayOfWeek);
-  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}`;
 }
 
 interface LocalPoint {
@@ -160,25 +148,50 @@ function addDays(date: string, days: number): string {
   return `${base.getUTCFullYear()}-${pad2(base.getUTCMonth() + 1)}-${pad2(base.getUTCDate())}`;
 }
 
-export function convertRecurringToLocal(
-  rows: RawRecurringAvail[],
-  restaurantTimezone: string,
-  weekStart: string,
-): LocalAvail[] {
+const END_OF_DAY = "24:00:00";
+
+/** Pads "HH:MM" to "HH:MM:SS" so that string order is clock order. */
+function toClock(t: string): string {
+  return t.length === 5 ? `${t}:00` : t.substring(0, 8);
+}
+
+function localWindow(
+  employee_id: string,
+  day_of_week: number,
+  start_time: string | null,
+  end_time: string | null,
+  is_available = true,
+): LocalAvail {
+  return { employee_id, day_of_week, is_available, start_time, end_time, isOvernight: false };
+}
+
+export function convertRecurringToLocal(rows: RawRecurringAvail[]): LocalAvail[] {
   const out: LocalAvail[] = [];
   for (const row of rows) {
-    const refDate = dateForDayOfWeek(weekStart, row.day_of_week);
-    out.push(
-      ...convertOne(
-        row.employee_id,
-        refDate,
-        row.day_of_week,
-        row.is_available,
-        row.start_time,
-        row.end_time,
-        restaurantTimezone,
-      ),
-    );
+    const { employee_id, day_of_week: dow, is_available } = row;
+    const start = row.start_time_local;
+    const end = row.end_time_local;
+    if (!is_available) {
+      out.push(localWindow(employee_id, dow, start, end, false));
+      continue;
+    }
+    // An available row with no times is available all day. toWindow in
+    // schedulingContext.ts uses the same rule.
+    if (start === null || end === null) {
+      out.push(localWindow(employee_id, dow, "00:00:00", END_OF_DAY));
+      continue;
+    }
+    // Compare full "HH:MM:SS" values. Minutes alone drop the seconds.
+    const startClock = toClock(start);
+    const endClock = toClock(end);
+    const endIsMidnight = endClock === "00:00:00";
+    if (endIsMidnight || endClock > startClock) {
+      out.push(localWindow(employee_id, dow, start, endIsMidnight ? END_OF_DAY : end));
+      continue;
+    }
+    // Overnight: keep one window on its start day. withinWindow reads
+    // end < start as overnight, and setSlot keeps one window per day.
+    out.push({ ...localWindow(employee_id, dow, start, end), isOvernight: true });
   }
   return out;
 }

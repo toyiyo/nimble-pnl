@@ -12,9 +12,9 @@ INSERT INTO employees (id, restaurant_id, name, position)
 VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'UTC Test Employee', 'staff')
 ON CONFLICT (id) DO NOTHING;
 
--- Insert availability: available Monday 21:30-00:00 UTC (= 4:30 PM - 7:00 PM CDT)
-INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
-VALUES ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'dddddddd-dddd-dddd-dddd-dddddddddddd', 1, true, '21:30:00', '00:00:00');
+-- Insert availability in the local frame: Monday 16:30-19:00 CDT (= 21:30-00:00 UTC)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time_local, end_time_local)
+VALUES ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'dddddddd-dddd-dddd-dddd-dddddddddddd', 1, true, '16:30:00', '19:00:00');
 
 -- Test 1: Shift fully within availability window — no conflict expected
 SELECT is(

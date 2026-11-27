@@ -35,8 +35,8 @@ const rec = (employee_id: string, day_of_week: number, extra: Record<string, unk
   employee_id,
   day_of_week,
   is_available: true,
-  start_time: '09:00:00',
-  end_time: '17:00:00',
+  start_time_local: '09:00:00',
+  end_time_local: '17:00:00',
   ...extra,
 });
 
@@ -91,21 +91,21 @@ describe('buildAvailability', () => {
     const out = buildAvailability(
       [{ id: 'a' }],
       [
-        rec('a', 1, { start_time: '09:00:00', end_time: '00:00:00' }),
-        rec('a', 1, { start_time: '18:00:00', end_time: '23:00:00' }),
+        rec('a', 1, { start_time_local: '09:00:00', end_time_local: '00:00:00' }),
+        rec('a', 1, { start_time_local: '18:00:00', end_time_local: '23:00:00' }),
       ],
       [],
       'UTC',
       period,
     );
-    expect(out[0].weekly).toEqual({ 1: { start: '09:00', end: '00:00' } });
+    expect(out[0].weekly).toEqual({ 1: { start: '09:00', end: '24:00' } });
   });
   it('keeps split availability as separate windows', () => {
     const out = buildAvailability(
       [{ id: 'a' }],
       [
-        rec('a', 1, { start_time: '17:00:00', end_time: '21:00:00' }),
-        rec('a', 1, { start_time: '09:00:00', end_time: '12:00:00' }),
+        rec('a', 1, { start_time_local: '17:00:00', end_time_local: '21:00:00' }),
+        rec('a', 1, { start_time_local: '09:00:00', end_time_local: '12:00:00' }),
       ],
       [],
       'UTC',
@@ -115,19 +115,92 @@ describe('buildAvailability', () => {
       1: [{ start: '09:00', end: '12:00' }, { start: '17:00', end: '21:00' }],
     });
   });
-  it('returns not_set for an employee with no rows', () => {
-    const out = buildAvailability([{ id: 'a' }], [], [], 'UTC', period);
-    expect(out[0].weekly).toBe('not_set');
-  });
-  it('keeps the local times of an overnight window', () => {
+  it('keeps the overnight end when a day window overlaps an overnight window', () => {
     const out = buildAvailability(
       [{ id: 'a' }],
-      [rec('a', 5, { start_time: '22:00:00', end_time: '02:00:00' })],
+      [
+        rec('a', 1, { start_time_local: '09:00:00', end_time_local: '17:00:00' }),
+        rec('a', 1, { start_time_local: '16:00:00', end_time_local: '02:00:00' }),
+      ],
       [],
       'UTC',
       period,
     );
-    expect(out[0].weekly).toEqual({ 5: { start: '22:00', end: '02:00' } });
+    expect(out[0].weekly).toEqual({
+      1: { start: '09:00', end: '24:00' },
+      2: { start: '00:00', end: '02:00' },
+    });
+  });
+  it('keeps a day window inside an overnight window as one window per day', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [
+        rec('a', 1, { start_time_local: '08:00:00', end_time_local: '01:00:00' }),
+        rec('a', 1, { start_time_local: '10:00:00', end_time_local: '14:00:00' }),
+      ],
+      [],
+      'UTC',
+      period,
+    );
+    expect(out[0].weekly).toEqual({
+      1: { start: '08:00', end: '24:00' },
+      2: { start: '00:00', end: '01:00' },
+    });
+  });
+  it('returns not_set for an employee with no rows', () => {
+    const out = buildAvailability([{ id: 'a' }], [], [], 'UTC', period);
+    expect(out[0].weekly).toBe('not_set');
+  });
+  it('reads the local columns and does not shift them across a time change', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      // Legacy values that convert to other local times: the output must
+      // come from the local columns.
+      [rec('a', 1, { start_time: '03:00:00', end_time: '05:00:00' })],
+      [],
+      'America/Chicago',
+      { start: '2026-11-02', end: '2026-11-08' },
+    );
+    expect(out[0].weekly).toEqual({ 1: { start: '09:00', end: '17:00' } });
+  });
+  it('splits an overnight window at midnight in a non-UTC zone', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [rec('a', 5, { start_time_local: '22:00:00', end_time_local: '02:00:00' })],
+      [],
+      'America/Chicago',
+      { start: '2026-11-02', end: '2026-11-08' },
+    );
+    expect(out[0].weekly).toEqual({
+      5: { start: '22:00', end: '24:00' },
+      6: { start: '00:00', end: '02:00' },
+    });
+  });
+  it('moves the next-day piece of a Saturday overnight window to Sunday', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [
+        rec('a', 6, { start_time_local: '20:00:00', end_time_local: '01:00:00' }),
+        rec('a', 0, { start_time_local: '10:00:00', end_time_local: '14:00:00' }),
+      ],
+      [],
+      'UTC',
+      period,
+    );
+    expect(out[0].weekly).toEqual({
+      6: { start: '20:00', end: '24:00' },
+      0: [{ start: '00:00', end: '01:00' }, { start: '10:00', end: '14:00' }],
+    });
+  });
+  it('shows a midnight end as 24:00', () => {
+    const out = buildAvailability(
+      [{ id: 'a' }],
+      [rec('a', 5, { start_time_local: '18:00:00', end_time_local: '00:00:00' })],
+      [],
+      'America/Chicago',
+      period,
+    );
+    expect(out[0].weekly).toEqual({ 5: { start: '18:00', end: '24:00' } });
   });
 });
 
@@ -215,7 +288,7 @@ describe('fitToLimit', () => {
     const emps = Array.from({ length: 40 }, (_, i) => emp(`e${i}`));
     const recs = emps.flatMap((e) =>
       [0, 1, 2, 3, 4, 5, 6].map((d) =>
-        rec(e.id, d, { start_time: `${String(8 + d).padStart(2, '0')}:00:00`, end_time: `${String(14 + d).padStart(2, '0')}:00:00` }),
+        rec(e.id, d, { start_time_local: `${String(8 + d).padStart(2, '0')}:00:00`, end_time_local: `${String(14 + d).padStart(2, '0')}:00:00` }),
       ),
     );
     const excs = emps.flatMap((e) =>

@@ -191,7 +191,7 @@ export async function runGetSchedulingContext(
     fetchShifts(table, startIso, endIso),
     loadShiftConflicts(supabase, restaurantId, startIso, new Date(bounds.end.getTime() + 1).toISOString()),
     loadNeighborShifts(supabase, restaurantId, startIso, endIso),
-    table("employee_availability", "employee_id, day_of_week, is_available, start_time, end_time, notes").limit(CAPS.availability),
+    table("employee_availability", "employee_id, day_of_week, is_available, start_time_local, end_time_local, notes").limit(CAPS.availability),
     table("availability_exceptions", "employee_id, date, is_available, start_time, end_time, reason")
       .gte("date", period.start).lte("date", period.end).limit(CAPS.availability_exceptions),
     table("time_off_requests", "employee_id, start_date, end_date, status, reason")

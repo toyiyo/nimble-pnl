@@ -98,42 +98,11 @@ export const useToastIntegration = (restaurantId: string | null) => {
     }
   };
 
-  const disconnectToast = async () => {
-    if (!restaurantId || !connection) return;
-
-    try {
-      const { error } = await supabase
-        .from('toast_connections' as any)
-        .delete()
-        .eq('restaurant_id', restaurantId);
-
-      if (error) {
-        throw error;
-      }
-
-      setConnection(null);
-      setIsConnected(false);
-      
-      toast({
-        title: "Disconnected",
-        description: "Successfully disconnected from Toast",
-      });
-    } catch (error) {
-      console.error('Error disconnecting from Toast:', error);
-      toast({
-        title: "Error",
-        description: "Failed to disconnect from Toast",
-        variant: "destructive",
-      });
-    }
-  };
-
   return {
     isConnected,
     isConnecting,
     connection,
     connectToast,
-    disconnectToast,
     checkConnectionStatus
   };
 };

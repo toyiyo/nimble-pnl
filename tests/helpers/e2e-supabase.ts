@@ -1333,3 +1333,27 @@ export async function seedEmployeeWithPin(
     { restId: restaurantId, name, pin },
   );
 }
+
+/**
+ * Insert one active Revel connection for the restaurant.
+ * Run it as the signed-in owner. The key columns are nullable, so the row
+ * needs no real credentials.
+ */
+export async function seedRevelConnection(page: Page, restaurantId: string): Promise<string> {
+  await exposeSupabaseHelpers(page);
+  return page.evaluate(async (restId) => {
+    const w = window as unknown as E2EHelperWindow;
+    const { data, error } = await w.__supabase
+      .from('revel_connections')
+      .insert({
+        restaurant_id: restId,
+        revel_instance: 'e2e-test',
+        establishment_id: '',
+        is_active: true,
+      })
+      .select('id')
+      .single();
+    if (error) throw new Error(`Failed to seed Revel connection: ${error.message}`);
+    return data.id as string;
+  }, restaurantId);
+}

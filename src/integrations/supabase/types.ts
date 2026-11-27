@@ -69,6 +69,7 @@ export type Database = {
           {
             foreignKeyName: "ai_chat_messages_session_id_fkey"
             columns: ["session_id"]
+            isOneToOne: false
             referencedRelation: "ai_chat_sessions"
             referencedColumns: ["id"]
           },
@@ -106,6 +107,7 @@ export type Database = {
           {
             foreignKeyName: "ai_chat_sessions_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -179,18 +181,21 @@ export type Database = {
           {
             foreignKeyName: "asset_depreciation_schedule_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "asset_depreciation_schedule_journal_entry_id_fkey"
             columns: ["journal_entry_id"]
+            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "asset_depreciation_schedule_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -237,12 +242,14 @@ export type Database = {
           {
             foreignKeyName: "asset_photos_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "asset_photos_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -334,30 +341,35 @@ export type Database = {
           {
             foreignKeyName: "assets_accumulated_depreciation_account_id_fkey"
             columns: ["accumulated_depreciation_account_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_asset_account_id_fkey"
             columns: ["asset_account_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_depreciation_expense_account_id_fkey"
             columns: ["depreciation_expense_account_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_location_id_fkey"
             columns: ["location_id"]
+            isOneToOne: false
             referencedRelation: "inventory_locations"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "assets_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -395,30 +407,35 @@ export type Database = {
           {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "auth_audit_log_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "auth_audit_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -450,6 +467,7 @@ export type Database = {
           {
             foreignKeyName: "auto_deduction_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -496,30 +514,35 @@ export type Database = {
           {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "availability_exceptions_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "availability_exceptions_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -575,6 +598,7 @@ export type Database = {
           {
             foreignKeyName: "bank_account_balances_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
+            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id"]
           },
@@ -609,12 +633,14 @@ export type Database = {
           {
             foreignKeyName: "bank_reauth_notices_bank_restaurant_fk"
             columns: ["connected_bank_id", "restaurant_id"]
+            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id", "restaurant_id"]
           },
           {
             foreignKeyName: "bank_reauth_notices_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -697,18 +723,21 @@ export type Database = {
           {
             foreignKeyName: "bank_statement_lines_duplicate_transaction_id_fkey"
             columns: ["duplicate_transaction_id"]
+            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_statement_lines_imported_transaction_id_fkey"
             columns: ["imported_transaction_id"]
+            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_statement_lines_statement_upload_id_fkey"
             columns: ["statement_upload_id"]
+            isOneToOne: false
             referencedRelation: "bank_statement_uploads"
             referencedColumns: ["id"]
           },
@@ -794,12 +823,14 @@ export type Database = {
           {
             foreignKeyName: "bank_statement_uploads_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
+            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_statement_uploads_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -834,12 +865,14 @@ export type Database = {
           {
             foreignKeyName: "bank_transaction_splits_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transaction_splits_transaction_id_fkey"
             columns: ["transaction_id"]
+            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
@@ -976,60 +1009,70 @@ export type Database = {
           {
             foreignKeyName: "bank_transactions_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
+            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_expense_invoice_upload_id_fkey"
             columns: ["expense_invoice_upload_id"]
+            isOneToOne: false
             referencedRelation: "expense_invoice_uploads"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_inventory_transaction_id_fkey"
             columns: ["inventory_transaction_id"]
+            isOneToOne: false
             referencedRelation: "inventory_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_receipt_id_fkey"
             columns: ["receipt_id"]
+            isOneToOne: false
             referencedRelation: "receipt_imports"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_statement_upload_id_fkey"
             columns: ["statement_upload_id"]
+            isOneToOne: false
             referencedRelation: "bank_statement_uploads"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_suggested_category_id_fkey"
             columns: ["suggested_category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "bank_transactions_transfer_pair_id_fkey"
             columns: ["transfer_pair_id"]
+            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
@@ -1115,18 +1158,21 @@ export type Database = {
           {
             foreignKeyName: "categorization_rules_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "categorization_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "categorization_rules_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -1194,12 +1240,14 @@ export type Database = {
           {
             foreignKeyName: "chart_of_accounts_parent_account_id_fkey"
             columns: ["parent_account_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "chart_of_accounts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1258,18 +1306,21 @@ export type Database = {
           {
             foreignKeyName: "check_audit_log_check_bank_account_id_fkey"
             columns: ["check_bank_account_id"]
+            isOneToOne: false
             referencedRelation: "check_bank_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "check_audit_log_pending_outflow_id_fkey"
             columns: ["pending_outflow_id"]
+            isOneToOne: false
             referencedRelation: "pending_outflows"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "check_audit_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1328,12 +1379,14 @@ export type Database = {
           {
             foreignKeyName: "check_bank_accounts_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
+            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "check_bank_accounts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1380,6 +1433,7 @@ export type Database = {
           {
             foreignKeyName: "check_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1432,6 +1486,7 @@ export type Database = {
           {
             foreignKeyName: "clover_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1478,12 +1533,14 @@ export type Database = {
           {
             foreignKeyName: "clover_locations_connection_id_fkey"
             columns: ["connection_id"]
+            isOneToOne: false
             referencedRelation: "clover_connections"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "clover_locations_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1548,6 +1605,7 @@ export type Database = {
           {
             foreignKeyName: "clover_order_line_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1621,6 +1679,7 @@ export type Database = {
           {
             foreignKeyName: "clover_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1682,6 +1741,7 @@ export type Database = {
           {
             foreignKeyName: "connected_banks_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1719,6 +1779,7 @@ export type Database = {
           {
             foreignKeyName: "csv_mapping_templates_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1786,6 +1847,7 @@ export type Database = {
           {
             foreignKeyName: "customers_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1829,6 +1891,7 @@ export type Database = {
           {
             foreignKeyName: "daily_food_costs_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1875,30 +1938,35 @@ export type Database = {
           {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "daily_labor_allocations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "daily_labor_allocations_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -1948,6 +2016,7 @@ export type Database = {
           {
             foreignKeyName: "daily_labor_costs_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2003,6 +2072,7 @@ export type Database = {
           {
             foreignKeyName: "daily_pnl_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2052,6 +2122,7 @@ export type Database = {
           {
             foreignKeyName: "daily_sales_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2110,6 +2181,7 @@ export type Database = {
           {
             foreignKeyName: "deleted_bank_transactions_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2177,12 +2249,14 @@ export type Database = {
           {
             foreignKeyName: "deposit_match_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "deposit_match_items_rule_id_fkey"
             columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "deposit_match_rules"
             referencedColumns: ["id"]
           },
@@ -2229,18 +2303,21 @@ export type Database = {
           {
             foreignKeyName: "deposit_match_links_bank_transaction_id_fkey"
             columns: ["bank_transaction_id"]
+            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "deposit_match_links_item_id_fkey"
             columns: ["item_id"]
+            isOneToOne: false
             referencedRelation: "deposit_match_items"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "deposit_match_links_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2308,12 +2385,14 @@ export type Database = {
           {
             foreignKeyName: "deposit_match_rules_connected_bank_id_fkey"
             columns: ["connected_bank_id"]
+            isOneToOne: false
             referencedRelation: "connected_banks"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "deposit_match_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2351,6 +2430,7 @@ export type Database = {
           {
             foreignKeyName: "device_tokens_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2421,30 +2501,35 @@ export type Database = {
           {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_availability_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_availability_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2485,30 +2570,35 @@ export type Database = {
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_compensation_history_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2552,30 +2642,35 @@ export type Database = {
           {
             foreignKeyName: "employee_integration_mappings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_integration_mappings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_integration_mappings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_integration_mappings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_integration_mappings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2625,30 +2720,35 @@ export type Database = {
           {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_pins_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_pins_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2701,36 +2801,42 @@ export type Database = {
           {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "employee_tips_shift_id_fkey"
             columns: ["shift_id"]
+            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
@@ -2861,6 +2967,7 @@ export type Database = {
           {
             foreignKeyName: "employees_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -2979,12 +3086,14 @@ export type Database = {
           {
             foreignKeyName: "expense_invoice_uploads_pending_outflow_id_fkey"
             columns: ["pending_outflow_id"]
+            isOneToOne: false
             referencedRelation: "pending_outflows"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "expense_invoice_uploads_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3022,6 +3131,7 @@ export type Database = {
           {
             foreignKeyName: "expense_suggestion_dismissals_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3059,6 +3169,7 @@ export type Database = {
           {
             foreignKeyName: "financial_statement_cache_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3102,6 +3213,7 @@ export type Database = {
           {
             foreignKeyName: "fiscal_periods_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3202,6 +3314,7 @@ export type Database = {
           {
             foreignKeyName: "focus_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3266,6 +3379,7 @@ export type Database = {
           {
             foreignKeyName: "focus_daily_reports_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3297,6 +3411,7 @@ export type Database = {
           {
             foreignKeyName: "focus_datafeed_state_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3358,6 +3473,7 @@ export type Database = {
           {
             foreignKeyName: "focus_order_items_order_fk"
             columns: ["restaurant_id", "business_date", "focus_check_id"]
+            isOneToOne: false
             referencedRelation: "focus_orders"
             referencedColumns: [
               "restaurant_id",
@@ -3368,6 +3484,7 @@ export type Database = {
           {
             foreignKeyName: "focus_order_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3435,6 +3552,7 @@ export type Database = {
           {
             foreignKeyName: "focus_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3487,6 +3605,7 @@ export type Database = {
           {
             foreignKeyName: "focus_payments_order_fk"
             columns: ["restaurant_id", "business_date", "focus_check_id"]
+            isOneToOne: false
             referencedRelation: "focus_orders"
             referencedColumns: [
               "restaurant_id",
@@ -3497,6 +3616,57 @@ export type Database = {
           {
             foreignKeyName: "focus_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_events: {
+        Row: {
+          actor_user_id: string | null
+          alert_claimed_at: string | null
+          alerted_at: string | null
+          created_at: string
+          details: Json
+          event: string
+          id: string
+          integration: string
+          reason: string | null
+          reason_text: string | null
+          restaurant_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          alert_claimed_at?: string | null
+          alerted_at?: string | null
+          created_at?: string
+          details?: Json
+          event: string
+          id?: string
+          integration: string
+          reason?: string | null
+          reason_text?: string | null
+          restaurant_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          alert_claimed_at?: string | null
+          alerted_at?: string | null
+          created_at?: string
+          details?: Json
+          event?: string
+          id?: string
+          integration?: string
+          reason?: string | null
+          reason_text?: string | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3525,6 +3695,7 @@ export type Database = {
           {
             foreignKeyName: "inventory_locations_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3580,6 +3751,7 @@ export type Database = {
           {
             foreignKeyName: "inventory_reconciliations_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -3644,12 +3816,14 @@ export type Database = {
           {
             foreignKeyName: "inventory_transactions_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "inventory_transactions_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -3711,30 +3885,35 @@ export type Database = {
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invitations_role_id_fkey"
             columns: ["role_id"]
+            isOneToOne: false
             referencedRelation: "roles"
             referencedColumns: ["id"]
           },
@@ -3787,6 +3966,7 @@ export type Database = {
           {
             foreignKeyName: "invoice_line_items_invoice_id_fkey"
             columns: ["invoice_id"]
+            isOneToOne: false
             referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
@@ -3836,6 +4016,7 @@ export type Database = {
           {
             foreignKeyName: "invoice_payments_invoice_id_fkey"
             columns: ["invoice_id"]
+            isOneToOne: false
             referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
@@ -3939,12 +4120,14 @@ export type Database = {
           {
             foreignKeyName: "invoices_customer_id_fkey"
             columns: ["customer_id"]
+            isOneToOne: false
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invoices_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4000,6 +4183,7 @@ export type Database = {
           {
             foreignKeyName: "journal_entries_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4037,12 +4221,14 @@ export type Database = {
           {
             foreignKeyName: "journal_entry_lines_account_id_fkey"
             columns: ["account_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
             columns: ["journal_entry_id"]
+            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
@@ -4077,6 +4263,7 @@ export type Database = {
           {
             foreignKeyName: "kiosk_service_accounts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4117,6 +4304,7 @@ export type Database = {
           {
             foreignKeyName: "manager_pins_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4154,6 +4342,7 @@ export type Database = {
           {
             foreignKeyName: "notification_channel_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4275,6 +4464,7 @@ export type Database = {
           {
             foreignKeyName: "notification_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4327,42 +4517,49 @@ export type Database = {
           {
             foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
             columns: ["claimed_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
             columns: ["claimed_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
             columns: ["claimed_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
             columns: ["claimed_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "open_shift_claims_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "open_shift_claims_resulting_shift_id_fkey"
             columns: ["resulting_shift_id"]
+            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "open_shift_claims_shift_template_id_fkey"
             columns: ["shift_template_id"]
+            isOneToOne: false
             referencedRelation: "shift_templates"
             referencedColumns: ["id"]
           },
@@ -4406,30 +4603,35 @@ export type Database = {
           {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "overtime_adjustments_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "overtime_adjustments_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4479,6 +4681,7 @@ export type Database = {
           {
             foreignKeyName: "overtime_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4555,24 +4758,28 @@ export type Database = {
           {
             foreignKeyName: "pending_outflows_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "pending_outflows_check_bank_account_id_fkey"
             columns: ["check_bank_account_id"]
+            isOneToOne: false
             referencedRelation: "check_bank_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "pending_outflows_linked_bank_transaction_id_fkey"
             columns: ["linked_bank_transaction_id"]
+            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "pending_outflows_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4643,6 +4850,7 @@ export type Database = {
           {
             foreignKeyName: "pos_sales_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4686,12 +4894,14 @@ export type Database = {
           {
             foreignKeyName: "prep_recipe_ingredients_prep_recipe_id_fkey"
             columns: ["prep_recipe_id"]
+            isOneToOne: false
             referencedRelation: "prep_recipes"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "prep_recipe_ingredients_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
@@ -4732,6 +4942,7 @@ export type Database = {
           {
             foreignKeyName: "prep_recipe_procedure_steps_prep_recipe_id_fkey"
             columns: ["prep_recipe_id"]
+            isOneToOne: false
             referencedRelation: "prep_recipes"
             referencedColumns: ["id"]
           },
@@ -4802,18 +5013,21 @@ export type Database = {
           {
             foreignKeyName: "prep_recipes_output_product_id_fkey"
             columns: ["output_product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "prep_recipes_recipe_id_fkey"
             columns: ["recipe_id"]
+            isOneToOne: false
             referencedRelation: "recipes"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "prep_recipes_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -4905,18 +5119,21 @@ export type Database = {
           {
             foreignKeyName: "product_suppliers_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "product_suppliers_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "product_suppliers_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -4966,12 +5183,14 @@ export type Database = {
           {
             foreignKeyName: "production_run_ingredients_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "production_run_ingredients_production_run_id_fkey"
             columns: ["production_run_id"]
+            isOneToOne: false
             referencedRelation: "production_runs"
             referencedColumns: ["id"]
           },
@@ -5060,12 +5279,14 @@ export type Database = {
           {
             foreignKeyName: "production_runs_prep_recipe_id_fkey"
             columns: ["prep_recipe_id"]
+            isOneToOne: false
             referencedRelation: "prep_recipes"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "production_runs_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5178,6 +5399,7 @@ export type Database = {
           {
             foreignKeyName: "products_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -5272,18 +5494,21 @@ export type Database = {
           {
             foreignKeyName: "purchase_order_lines_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_order_lines_purchase_order_id_fkey"
             columns: ["purchase_order_id"]
+            isOneToOne: false
             referencedRelation: "purchase_orders"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_order_lines_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -5342,18 +5567,21 @@ export type Database = {
           {
             foreignKeyName: "purchase_orders_location_id_fkey"
             columns: ["location_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -5445,6 +5673,7 @@ export type Database = {
           {
             foreignKeyName: "receipt_imports_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -5518,12 +5747,14 @@ export type Database = {
           {
             foreignKeyName: "receipt_line_items_matched_product_id_fkey"
             columns: ["matched_product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "receipt_line_items_receipt_id_fkey"
             columns: ["receipt_id"]
+            isOneToOne: false
             referencedRelation: "receipt_imports"
             referencedColumns: ["id"]
           },
@@ -5567,12 +5798,14 @@ export type Database = {
           {
             foreignKeyName: "recipe_ingredients_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "recipe_ingredients_recipe_id_fkey"
             columns: ["recipe_id"]
+            isOneToOne: false
             referencedRelation: "recipes"
             referencedColumns: ["id"]
           },
@@ -5625,6 +5858,7 @@ export type Database = {
           {
             foreignKeyName: "recipes_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5665,12 +5899,14 @@ export type Database = {
           {
             foreignKeyName: "reconciliation_boundaries_opening_balance_journal_entry_id_fkey"
             columns: ["opening_balance_journal_entry_id"]
+            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "reconciliation_boundaries_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5711,6 +5947,7 @@ export type Database = {
           {
             foreignKeyName: "reconciliation_item_finds_reconciliation_item_id_fkey"
             columns: ["reconciliation_item_id"]
+            isOneToOne: false
             referencedRelation: "reconciliation_items"
             referencedColumns: ["id"]
           },
@@ -5763,12 +6000,14 @@ export type Database = {
           {
             foreignKeyName: "reconciliation_items_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "reconciliation_items_reconciliation_id_fkey"
             columns: ["reconciliation_id"]
+            isOneToOne: false
             referencedRelation: "inventory_reconciliations"
             referencedColumns: ["id"]
           },
@@ -5800,6 +6039,7 @@ export type Database = {
           {
             foreignKeyName: "restaurant_financial_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5834,6 +6074,7 @@ export type Database = {
           {
             foreignKeyName: "restaurant_inventory_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5895,6 +6136,7 @@ export type Database = {
           {
             foreignKeyName: "restaurant_operating_costs_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6079,6 +6321,7 @@ export type Database = {
           {
             foreignKeyName: "revel_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6143,12 +6386,14 @@ export type Database = {
           {
             foreignKeyName: "revel_order_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "revel_order_items_revel_order_id_fk_fkey"
             columns: ["revel_order_id_fk"]
+            isOneToOne: false
             referencedRelation: "revel_orders"
             referencedColumns: ["id"]
           },
@@ -6225,6 +6470,7 @@ export type Database = {
           {
             foreignKeyName: "revel_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6277,6 +6523,7 @@ export type Database = {
           {
             foreignKeyName: "revel_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6311,6 +6558,7 @@ export type Database = {
           {
             foreignKeyName: "revel_webhook_events_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6366,6 +6614,7 @@ export type Database = {
           {
             foreignKeyName: "review_pages_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6394,12 +6643,14 @@ export type Database = {
           {
             foreignKeyName: "review_response_contacts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "review_response_contacts_review_response_id_fkey"
             columns: ["review_response_id"]
+            isOneToOne: true
             referencedRelation: "review_responses"
             referencedColumns: ["id"]
           },
@@ -6449,12 +6700,14 @@ export type Database = {
           {
             foreignKeyName: "review_responses_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "review_responses_review_page_id_fkey"
             columns: ["review_page_id"]
+            isOneToOne: false
             referencedRelation: "review_pages"
             referencedColumns: ["id"]
           },
@@ -6480,12 +6733,14 @@ export type Database = {
           {
             foreignKeyName: "role_areas_area_key_fkey"
             columns: ["area_key"]
+            isOneToOne: false
             referencedRelation: "area_catalog"
             referencedColumns: ["area_key"]
           },
           {
             foreignKeyName: "role_areas_role_id_fkey"
             columns: ["role_id"]
+            isOneToOne: false
             referencedRelation: "roles"
             referencedColumns: ["id"]
           },
@@ -6508,6 +6763,7 @@ export type Database = {
           {
             foreignKeyName: "role_flags_role_id_fkey"
             columns: ["role_id"]
+            isOneToOne: false
             referencedRelation: "roles"
             referencedColumns: ["id"]
           },
@@ -6548,6 +6804,7 @@ export type Database = {
           {
             foreignKeyName: "roles_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6594,18 +6851,21 @@ export type Database = {
           {
             foreignKeyName: "rule_application_log_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "rule_application_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "rule_application_log_rule_id_fkey"
             columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "categorization_rules"
             referencedColumns: ["id"]
           },
@@ -6661,30 +6921,35 @@ export type Database = {
           {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_change_logs_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_change_logs_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6722,6 +6987,7 @@ export type Database = {
           {
             foreignKeyName: "schedule_plan_templates_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6774,6 +7040,7 @@ export type Database = {
           {
             foreignKeyName: "schedule_publications_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6823,12 +7090,14 @@ export type Database = {
           {
             foreignKeyName: "schedule_retractions_publication_id_fkey"
             columns: ["publication_id"]
+            isOneToOne: false
             referencedRelation: "schedule_publications"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "schedule_retractions_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -6857,12 +7126,14 @@ export type Database = {
           {
             foreignKeyName: "scim_group_members_group_id_fkey"
             columns: ["group_id"]
+            isOneToOne: false
             referencedRelation: "scim_groups"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "scim_group_members_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "scim_users"
             referencedColumns: ["id"]
           },
@@ -6978,6 +7249,7 @@ export type Database = {
           {
             foreignKeyName: "security_audit_log_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7069,6 +7341,7 @@ export type Database = {
           {
             foreignKeyName: "shift_templates_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7100,12 +7373,14 @@ export type Database = {
           {
             foreignKeyName: "shift_trade_reminders_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trade_reminders_shift_trade_id_fkey"
             columns: ["shift_trade_id"]
+            isOneToOne: false
             referencedRelation: "shift_trades"
             referencedColumns: ["id"]
           },
@@ -7164,90 +7439,105 @@ export type Database = {
           {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_accepted_by_employee_id_fkey"
             columns: ["accepted_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
             columns: ["offered_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
             columns: ["offered_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
             columns: ["offered_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_by_employee_id_fkey"
             columns: ["offered_by_employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_offered_shift_id_fkey"
             columns: ["offered_shift_id"]
+            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_requested_shift_id_fkey"
             columns: ["requested_shift_id"]
+            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_target_employee_id_fkey"
             columns: ["target_employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_target_employee_id_fkey"
             columns: ["target_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_target_employee_id_fkey"
             columns: ["target_employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shift_trades_target_employee_id_fkey"
             columns: ["target_employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
@@ -7321,6 +7611,7 @@ export type Database = {
           {
             foreignKeyName: "shift4_charges_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7400,6 +7691,7 @@ export type Database = {
           {
             foreignKeyName: "shift4_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7464,6 +7756,7 @@ export type Database = {
           {
             foreignKeyName: "shift4_refunds_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7507,6 +7800,7 @@ export type Database = {
           {
             foreignKeyName: "shift4_webhook_events_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7589,42 +7883,49 @@ export type Database = {
           {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_recurrence_parent_id_fkey"
             columns: ["recurrence_parent_id"]
+            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shifts_shift_template_id_fkey"
             columns: ["shift_template_id"]
+            isOneToOne: false
             referencedRelation: "shift_templates"
             referencedColumns: ["id"]
           },
@@ -7692,6 +7993,7 @@ export type Database = {
           {
             foreignKeyName: "sling_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7750,6 +8052,7 @@ export type Database = {
           {
             foreignKeyName: "sling_shifts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7796,6 +8099,7 @@ export type Database = {
           {
             foreignKeyName: "sling_timesheets_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7845,6 +8149,7 @@ export type Database = {
           {
             foreignKeyName: "sling_users_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7900,6 +8205,7 @@ export type Database = {
           {
             foreignKeyName: "square_catalog_objects_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7949,6 +8255,7 @@ export type Database = {
           {
             foreignKeyName: "square_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -7995,12 +8302,14 @@ export type Database = {
           {
             foreignKeyName: "square_locations_connection_id_fkey"
             columns: ["connection_id"]
+            isOneToOne: false
             referencedRelation: "square_connections"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "square_locations_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8056,18 +8365,21 @@ export type Database = {
           {
             foreignKeyName: "square_order_line_items_order_fkey"
             columns: ["order_id", "restaurant_id"]
+            isOneToOne: false
             referencedRelation: "square_orders"
             referencedColumns: ["order_id", "restaurant_id"]
           },
           {
             foreignKeyName: "square_order_line_items_order_id_restaurant_id_fkey"
             columns: ["order_id", "restaurant_id"]
+            isOneToOne: false
             referencedRelation: "square_orders"
             referencedColumns: ["order_id", "restaurant_id"]
           },
           {
             foreignKeyName: "square_order_line_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8138,6 +8450,7 @@ export type Database = {
           {
             foreignKeyName: "square_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8190,6 +8503,7 @@ export type Database = {
           {
             foreignKeyName: "square_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8236,6 +8550,7 @@ export type Database = {
           {
             foreignKeyName: "square_refunds_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8294,6 +8609,7 @@ export type Database = {
           {
             foreignKeyName: "square_shifts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8337,6 +8653,7 @@ export type Database = {
           {
             foreignKeyName: "square_team_members_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8416,6 +8733,7 @@ export type Database = {
           {
             foreignKeyName: "staffing_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8462,6 +8780,7 @@ export type Database = {
           {
             foreignKeyName: "stripe_connected_accounts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8523,18 +8842,21 @@ export type Database = {
           {
             foreignKeyName: "supplier_categorization_rules_default_category_id_fkey"
             columns: ["default_category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "supplier_categorization_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "supplier_categorization_rules_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -8569,12 +8891,14 @@ export type Database = {
           {
             foreignKeyName: "supplier_name_variations_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "supplier_name_variations_supplier_id_fkey"
             columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -8660,12 +8984,14 @@ export type Database = {
           {
             foreignKeyName: "template_hours_cascade_batches_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "template_hours_cascade_batches_shift_template_id_fkey"
             columns: ["shift_template_id"]
+            isOneToOne: false
             referencedRelation: "shift_templates"
             referencedColumns: ["id"]
           },
@@ -8718,30 +9044,35 @@ export type Database = {
           {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_off_requests_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_off_requests_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8806,36 +9137,42 @@ export type Database = {
           {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "time_punches_shift_id_fkey"
             columns: ["shift_id"]
+            isOneToOne: false
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
@@ -8888,12 +9225,14 @@ export type Database = {
           {
             foreignKeyName: "tip_contribution_pools_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_contribution_pools_settings_id_fkey"
             columns: ["settings_id"]
+            isOneToOne: false
             referencedRelation: "tip_pool_settings"
             referencedColumns: ["id"]
           },
@@ -8946,36 +9285,42 @@ export type Database = {
           {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_disputes_tip_split_id_fkey"
             columns: ["tip_split_id"]
+            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -9022,36 +9367,42 @@ export type Database = {
           {
             foreignKeyName: "tip_payouts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_payouts_tip_split_id_fkey"
             columns: ["tip_split_id"]
+            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -9089,12 +9440,14 @@ export type Database = {
           {
             foreignKeyName: "tip_pool_allocations_pool_id_fkey"
             columns: ["pool_id"]
+            isOneToOne: false
             referencedRelation: "tip_contribution_pools"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_pool_allocations_tip_split_id_fkey"
             columns: ["tip_split_id"]
+            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -9150,6 +9503,7 @@ export type Database = {
           {
             foreignKeyName: "tip_pool_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9187,30 +9541,35 @@ export type Database = {
           {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_server_earnings_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_server_earnings_tip_split_id_fkey"
             columns: ["tip_split_id"]
+            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -9251,6 +9610,7 @@ export type Database = {
           {
             foreignKeyName: "tip_split_audit_tip_split_id_fkey"
             columns: ["tip_split_id"]
+            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -9297,30 +9657,35 @@ export type Database = {
           {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "active_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "employees_secure"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_split_items_employee_id_fkey"
             columns: ["employee_id"]
+            isOneToOne: false
             referencedRelation: "inactive_employees"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "tip_split_items_tip_split_id_fkey"
             columns: ["tip_split_id"]
+            isOneToOne: false
             referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
@@ -9376,6 +9741,7 @@ export type Database = {
           {
             foreignKeyName: "tip_splits_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9458,6 +9824,7 @@ export type Database = {
           {
             foreignKeyName: "toast_connections_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9513,6 +9880,7 @@ export type Database = {
           {
             foreignKeyName: "toast_menu_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9577,12 +9945,14 @@ export type Database = {
           {
             foreignKeyName: "toast_order_items_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "toast_order_items_toast_order_id_fkey"
             columns: ["toast_order_id"]
+            isOneToOne: false
             referencedRelation: "toast_orders"
             referencedColumns: ["id"]
           },
@@ -9656,6 +10026,7 @@ export type Database = {
           {
             foreignKeyName: "toast_orders_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9708,6 +10079,7 @@ export type Database = {
           {
             foreignKeyName: "toast_payments_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9742,6 +10114,7 @@ export type Database = {
           {
             foreignKeyName: "toast_webhook_events_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9794,12 +10167,14 @@ export type Database = {
           {
             foreignKeyName: "transaction_categorization_rules_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_categorization_rules_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9846,36 +10221,42 @@ export type Database = {
           {
             foreignKeyName: "transaction_reclassifications_bank_transaction_id_fkey"
             columns: ["bank_transaction_id"]
+            isOneToOne: false
             referencedRelation: "bank_transactions"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_new_category_id_fkey"
             columns: ["new_category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_original_category_id_fkey"
             columns: ["original_category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_original_journal_entry_id_fkey"
             columns: ["original_journal_entry_id"]
+            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_reclass_journal_entry_id_fkey"
             columns: ["reclass_journal_entry_id"]
+            isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "transaction_reclassifications_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -9916,6 +10297,7 @@ export type Database = {
           {
             foreignKeyName: "trial_emails_sent_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -10013,24 +10395,28 @@ export type Database = {
           {
             foreignKeyName: "fk_parent_sale"
             columns: ["parent_sale_id"]
+            isOneToOne: false
             referencedRelation: "unified_sales"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_parent_sale_id_fkey"
             columns: ["parent_sale_id"]
+            isOneToOne: false
             referencedRelation: "unified_sales"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_suggested_category_id_fkey"
             columns: ["suggested_category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
@@ -10065,12 +10451,14 @@ export type Database = {
           {
             foreignKeyName: "unified_sales_splits_category_id_fkey"
             columns: ["category_id"]
+            isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "unified_sales_splits_sale_id_fkey"
             columns: ["sale_id"]
+            isOneToOne: false
             referencedRelation: "unified_sales"
             referencedColumns: ["id"]
           },
@@ -10129,12 +10517,14 @@ export type Database = {
           {
             foreignKeyName: "user_restaurants_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "user_restaurants_role_id_fkey"
             columns: ["role_id"]
+            isOneToOne: false
             referencedRelation: "roles"
             referencedColumns: ["id"]
           },
@@ -10172,6 +10562,7 @@ export type Database = {
           {
             foreignKeyName: "web_push_subscriptions_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -10277,6 +10668,7 @@ export type Database = {
           {
             foreignKeyName: "employees_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -10328,6 +10720,7 @@ export type Database = {
           {
             foreignKeyName: "employees_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -10371,6 +10764,7 @@ export type Database = {
           {
             foreignKeyName: "employees_restaurant_id_fkey"
             columns: ["restaurant_id"]
+            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -10436,7 +10830,6 @@ export type Database = {
       _prokind: { Args: { p_oid: unknown }; Returns: unknown }
       _query: { Args: { "": string }; Returns: string }
       _refine_vol: { Args: { "": string }; Returns: string }
-      _retval: { Args: { "": string }; Returns: string }
       _revel_connection_is_due: {
         Args: { rc: Database["public"]["Tables"]["revel_connections"]["Row"] }
         Returns: boolean
@@ -10592,6 +10985,7 @@ export type Database = {
           elapsed_days: number
           institution_name: string
           restaurant_id: string
+          restaurant_name: string
           restaurant_timezone: string
           sent_stages: string[]
         }[]
@@ -10605,6 +10999,7 @@ export type Database = {
           deactivated_at: string
           institution_name: string
           restaurant_id: string
+          restaurant_name: string
           restaurant_timezone: string
         }[]
       }
@@ -10702,6 +11097,14 @@ export type Database = {
           regular_hours: number
           total_hours: number
         }[]
+      }
+      caller_is_kiosk_service_account: {
+        Args: { p_restaurant_id: string }
+        Returns: boolean
+      }
+      caller_may_invite: {
+        Args: { p_restaurant_id: string; p_role: string }
+        Returns: boolean
       }
       can_invite_custom_role: { Args: { p_inviter: string }; Returns: boolean }
       cancel_shift_trade: {
@@ -11208,6 +11611,15 @@ export type Database = {
             } & "Could not choose the best candidate function between: public.diag(msg => text), public.diag(msg => anyelement). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
           }
       diag_test_name: { Args: { "": string }; Returns: string }
+      disconnect_integration: {
+        Args: {
+          p_integration: string
+          p_reason?: string
+          p_reason_text?: string
+          p_restaurant_id: string
+        }
+        Returns: string
+      }
       dispatch_bank_reauth_notices: { Args: never; Returns: number }
       dispatch_shift_trade_reminders: { Args: never; Returns: number }
       dmetaphone: { Args: { "": string }; Returns: string }
@@ -11270,7 +11682,6 @@ export type Database = {
         Returns: Json
       }
       focus_slug: { Args: { p_text: string }; Returns: string }
-      format_type_string: { Args: { "": string }; Returns: string }
       fulltext_product_search: {
         Args: {
           p_limit?: number
@@ -11553,6 +11964,14 @@ export type Database = {
           item_name: string
         }[]
       }
+      get_returning_guest_trends: {
+        Args: {
+          p_campaign_start: string
+          p_restaurant_id: string
+          p_weeks?: number
+        }
+        Returns: Json
+      }
       get_revenue_by_account: {
         Args: {
           p_date_from: string
@@ -11591,6 +12010,16 @@ export type Database = {
           p_time_zone?: string
         }
         Returns: Json
+      }
+      get_shift_conflicts: {
+        Args: { p_end: string; p_restaurant_id: string; p_start: string }
+        Returns: {
+          conflict_type: string
+          message: string
+          shift_id: string
+          source: string
+          status: string
+        }[]
       }
       get_shift_protection_settings: {
         Args: { p_restaurant_id: string }
@@ -11756,7 +12185,20 @@ export type Database = {
       has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       in_todo: { Args: never; Returns: boolean }
+      integration_alert_recipients: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          email: string
+          full_name: string
+          role: string
+          user_id: string
+        }[]
+      }
       invitable_roles: { Args: { p_inviter: string }; Returns: string[] }
+      inviter_may_invite: {
+        Args: { p_inviter: string; p_restaurant_id: string; p_role: string }
+        Returns: boolean
+      }
       is_current_user_employee: {
         Args: { p_employee_id: string }
         Returns: boolean
@@ -12012,6 +12454,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      record_integration_event: {
+        Args: {
+          p_actor_user_id: string
+          p_details: Json
+          p_event: string
+          p_integration: string
+          p_reason: string
+          p_reason_text: string
+          p_restaurant_id: string
+        }
+        Returns: string
       }
       record_pos_sync_error: {
         Args: { p_message: string; p_pos: string; p_restaurant_id: string }
@@ -12465,6 +12919,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      validate_schedule_plan_template_shifts: {
+        Args: { p_restaurant_id: string; p_shifts: Json }
+        Returns: undefined
+      }
       vendor_text_match: {
         Args: { p_a: string; p_b: string }
         Returns: boolean
@@ -12607,12 +13065,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12636,11 +13094,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12661,11 +13119,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12686,11 +13144,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12703,11 +13161,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -12831,3 +13289,4 @@ export const Constants = {
     },
   },
 } as const
+

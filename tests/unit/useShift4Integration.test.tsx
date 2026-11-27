@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  disconnectIntegration,
+  notifyIntegrationDisconnect,
+  AlreadyDisconnectedError,
+} from '@/lib/integrationDisconnect';
 
 // Mock Supabase client
 vi.mock('@/integrations/supabase/client', () => ({
@@ -20,6 +25,17 @@ vi.mock('@/hooks/use-toast', () => ({
     toast: mockToast,
   }),
 }));
+
+vi.mock('@/lib/integrationDisconnect', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/integrationDisconnect')>(
+    '@/lib/integrationDisconnect',
+  );
+  return {
+    ...actual,
+    disconnectIntegration: vi.fn(),
+    notifyIntegrationDisconnect: vi.fn(),
+  };
+});
 
 describe('useShift4Integration', () => {
   beforeEach(() => {
@@ -281,7 +297,7 @@ describe('useShift4Integration', () => {
       await expect(result.current.disconnectShift4()).rejects.toThrow('No connection to disconnect');
     });
 
-    it('should delete connection and update state', async () => {
+    it('should call the helper, update state, and show one success toast', async () => {
       const mockConnection = {
         id: 'conn-1',
         restaurant_id: 'rest-1',
@@ -290,41 +306,33 @@ describe('useShift4Integration', () => {
         connected_at: '2024-01-01T00:00:00Z',
         last_sync_at: null,
       };
-
-      const mockDelete = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      });
-
-      const mockFrom = vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            maybeSingle: vi.fn().mockResolvedValue({ data: mockConnection, error: null }),
-          }),
-        }),
-        delete: mockDelete,
-      });
-
-      (supabase.from as ReturnType<typeof vi.fn>) = mockFrom;
+      setupMockFrom(mockConnection);
+      (disconnectIntegration as ReturnType<typeof vi.fn>).mockResolvedValue('evt-1');
+      (notifyIntegrationDisconnect as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
       const { result } = renderHook(() => useShift4Integration('rest-1'));
-
-      await waitFor(() => {
-        expect(result.current.isConnected).toBe(true);
-      });
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
 
       await act(async () => {
-        await result.current.disconnectShift4();
+        await result.current.disconnectShift4({ reason: 'no_value', reasonText: 'x' });
       });
 
-      expect(mockDelete).toHaveBeenCalled();
+      expect(disconnectIntegration).toHaveBeenCalledWith({
+        restaurantId: 'rest-1',
+        integration: 'shift4',
+        reason: 'no_value',
+        reasonText: 'x',
+      });
+      expect(notifyIntegrationDisconnect).toHaveBeenCalledWith('evt-1');
       expect(result.current.isConnected).toBe(false);
       expect(result.current.connection).toBeNull();
+      expect(mockToast).toHaveBeenCalledTimes(1);
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Shift4 Disconnected' })
       );
     });
 
-    it('should handle disconnect error', async () => {
+    it('should disconnect the restaurant named by targetId and keep the current state', async () => {
       const mockConnection = {
         id: 'conn-1',
         restaurant_id: 'rest-1',
@@ -333,33 +341,72 @@ describe('useShift4Integration', () => {
         connected_at: '2024-01-01T00:00:00Z',
         last_sync_at: null,
       };
-
-      const mockFrom = vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            maybeSingle: vi.fn().mockResolvedValue({ data: mockConnection, error: null }),
-          }),
-        }),
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ error: { message: 'Delete failed' } }),
-        }),
-      });
-
-      (supabase.from as ReturnType<typeof vi.fn>) = mockFrom;
+      setupMockFrom(mockConnection);
+      (disconnectIntegration as ReturnType<typeof vi.fn>).mockResolvedValue('evt-2');
+      (notifyIntegrationDisconnect as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
       const { result } = renderHook(() => useShift4Integration('rest-1'));
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
 
-      await waitFor(() => {
-        expect(result.current.isConnected).toBe(true);
+      await act(async () => {
+        await result.current.disconnectShift4({ reason: 'no_value' }, 'rest-2');
       });
 
-      await expect(result.current.disconnectShift4()).rejects.toThrow();
+      expect(disconnectIntegration).toHaveBeenCalledWith({
+        restaurantId: 'rest-2',
+        integration: 'shift4',
+        reason: 'no_value',
+        reasonText: null,
+      });
+      expect(result.current.isConnected).toBe(true);
+    });
 
+    it('should rethrow the error and show no error toast', async () => {
+      setupMockFrom({
+        id: 'conn-1',
+        restaurant_id: 'rest-1',
+        merchant_id: 'merchant-123',
+        environment: 'production',
+        connected_at: '2024-01-01T00:00:00Z',
+        last_sync_at: null,
+      });
+      (disconnectIntegration as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+
+      const { result } = renderHook(() => useShift4Integration('rest-1'));
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
+
+      await expect(result.current.disconnectShift4()).rejects.toThrow('boom');
+
+      expect(mockToast).not.toHaveBeenCalled();
+      expect(notifyIntegrationDisconnect).not.toHaveBeenCalled();
+      expect(result.current.isConnected).toBe(true);
+    });
+
+    it('should treat AlreadyDisconnectedError as success', async () => {
+      setupMockFrom({
+        id: 'conn-1',
+        restaurant_id: 'rest-1',
+        merchant_id: 'merchant-123',
+        environment: 'production',
+        connected_at: '2024-01-01T00:00:00Z',
+        last_sync_at: null,
+      });
+      (disconnectIntegration as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new AlreadyDisconnectedError()
+      );
+
+      const { result } = renderHook(() => useShift4Integration('rest-1'));
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
+
+      await act(async () => {
+        await result.current.disconnectShift4();
+      });
+
+      expect(result.current.isConnected).toBe(false);
+      expect(result.current.connection).toBeNull();
+      expect(mockToast).toHaveBeenCalledTimes(1);
       expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Disconnection Failed',
-          variant: 'destructive',
-        })
+        expect.objectContaining({ title: 'Already disconnected' })
       );
     });
   });

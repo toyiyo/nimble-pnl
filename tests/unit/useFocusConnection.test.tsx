@@ -5,6 +5,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useFocusConnection, FocusRestaurantOption } from '@/hooks/useFocusConnection';
 import { supabase } from '@/integrations/supabase/client';
 import React from 'react';
+import {
+  disconnectIntegration,
+  notifyIntegrationDisconnect,
+  AlreadyDisconnectedError,
+} from '@/lib/integrationDisconnect';
 
 // Mock Supabase client
 vi.mock('@/integrations/supabase/client', () => ({
@@ -16,12 +21,21 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-// Mock toast
+const toastMock = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({
-  useToast: () => ({
-    toast: vi.fn(),
-  }),
+  useToast: () => ({ toast: toastMock }),
 }));
+
+vi.mock('@/lib/integrationDisconnect', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/integrationDisconnect')>(
+    '@/lib/integrationDisconnect',
+  );
+  return {
+    ...actual,
+    disconnectIntegration: vi.fn(),
+    notifyIntegrationDisconnect: vi.fn(),
+  };
+});
 
 describe('useFocusConnection', () => {
   let queryClient: QueryClient;
@@ -309,46 +323,57 @@ describe('useFocusConnection', () => {
   // ---- disconnect ----
 
   describe('disconnect', () => {
-    it('sets is_active=false on focus_connections', async () => {
-      const eqMock = vi.fn().mockResolvedValue({ error: null });
-      const updateMock = vi.fn().mockReturnValue({ eq: eqMock });
+    it('calls the helper, invalidates, toasts once, and notifies without await', async () => {
+      vi.mocked(disconnectIntegration).mockResolvedValue('evt-1');
+      let notifyResolve: () => void = () => {};
+      vi.mocked(notifyIntegrationDisconnect).mockImplementation(
+        () => new Promise<void>((r) => { notifyResolve = r; }),
+      );
+      const spy = vi.spyOn(queryClient, 'invalidateQueries');
+      const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
 
-      (supabase.from as any) = vi.fn().mockReturnValue({ update: updateMock });
+      await act(async () => {
+        await result.current.disconnect('rest-1', { reason: 'no_value', reasonText: 'x' });
+      });
 
+      expect(disconnectIntegration).toHaveBeenCalledWith({
+        restaurantId: 'rest-1',
+        integration: 'focus',
+        reason: 'no_value',
+        reasonText: 'x',
+      });
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['focus-connection', 'rest-1'] });
+      expect(notifyIntegrationDisconnect).toHaveBeenCalledWith('evt-1');
+      expect(toastMock).toHaveBeenCalledTimes(1);
+      expect(toastMock.mock.calls[0][0].variant).toBeUndefined();
+      notifyResolve();
+    });
+
+    it('rethrows errors and shows no toast', async () => {
+      vi.mocked(disconnectIntegration).mockRejectedValue(new Error('rpc failed'));
+      const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
+
+      await act(async () => {
+        await expect(result.current.disconnect('rest-1')).rejects.toThrow('rpc failed');
+      });
+
+      expect(toastMock).not.toHaveBeenCalled();
+      expect(notifyIntegrationDisconnect).not.toHaveBeenCalled();
+    });
+
+    it('treats AlreadyDisconnectedError as success', async () => {
+      vi.mocked(disconnectIntegration).mockRejectedValue(new AlreadyDisconnectedError());
+      const spy = vi.spyOn(queryClient, 'invalidateQueries');
       const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
 
       await act(async () => {
         await result.current.disconnect('rest-1');
       });
 
-      expect(updateMock).toHaveBeenCalledWith({ is_active: false });
-    });
-
-    it('throws when disconnect DB update fails (error shape 1 — direct error)', async () => {
-      const eqMock = vi.fn().mockResolvedValue({ error: { message: 'Row not found' } });
-      const updateMock = vi.fn().mockReturnValue({ eq: eqMock });
-
-      (supabase.from as any) = vi.fn().mockReturnValue({ update: updateMock });
-
-      const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
-
-      await act(async () => {
-        await expect(result.current.disconnect('rest-1')).rejects.toThrow();
-      });
-    });
-
-    it('throws when disconnect DB call rejects (error shape 2 — thrown rejection)', async () => {
-      const updateMock = vi.fn().mockReturnValue({
-        eq: vi.fn().mockRejectedValueOnce(new Error('Network error')),
-      });
-
-      (supabase.from as any) = vi.fn().mockReturnValue({ update: updateMock });
-
-      const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
-
-      await act(async () => {
-        await expect(result.current.disconnect('rest-1')).rejects.toThrow('Network error');
-      });
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['focus-connection', 'rest-1'] });
+      expect(toastMock).toHaveBeenCalledTimes(1);
+      expect(toastMock.mock.calls[0][0].title).toBe('Already disconnected');
+      expect(notifyIntegrationDisconnect).not.toHaveBeenCalled();
     });
   });
 

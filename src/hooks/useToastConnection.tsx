@@ -1,8 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
+
+import type { DisconnectOptions } from '@/lib/integrationDisconnect';
+import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
 
 // Use proper type from generated schema (or define manually to match actual DB)
 type ToastConnection = {
@@ -161,37 +164,19 @@ export function useToastConnection(restaurantId?: string | null) {
     return data;
   }
 
-  // Mutation for disconnecting Toast
-  const disconnectMutation = useMutation({
-    mutationFn: async (restaurantId: string) => {
-      const { error } = await supabase
-        .from('toast_connections')
-        .update({ is_active: false })
-        .eq('restaurant_id', restaurantId);
-
-      if (error) {
-        throw error;
-      }
-    },
-    onSuccess: (_, restaurantId) => {
-      queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
-      toast({
-        title: 'Disconnected',
-        description: 'Toast connection has been disabled'
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to disconnect from Toast',
-        variant: 'destructive'
-      });
-      throw error;
-    }
-  });
-
-  async function disconnectToast(restaurantId: string): Promise<void> {
-    return disconnectMutation.mutateAsync(restaurantId);
+  // Real disconnect: writes an event through the RPC and sends the alert.
+  async function disconnectToast(restaurantId: string, opts?: DisconnectOptions): Promise<void> {
+    await runIntegrationDisconnect({
+      restaurantId: restaurantId,
+      integration: 'toast',
+      opts,
+      onDisconnected: () => void queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] }),
+      toast,
+      messages: {
+        success: 'Toast connection has been disabled',
+        already: 'Toast connection was already disabled',
+      },
+    });
   }
 
   async function triggerManualSync(

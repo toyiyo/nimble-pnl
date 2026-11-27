@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useToastConnection } from '@/hooks/useToastConnection';
 import { supabase } from '@/integrations/supabase/client';
 import React from 'react';
+import {
+  disconnectIntegration,
+  notifyIntegrationDisconnect,
+  AlreadyDisconnectedError,
+} from '@/lib/integrationDisconnect';
 
 // Mock Supabase client
 vi.mock('@/integrations/supabase/client', () => ({
@@ -15,12 +20,21 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-// Mock toast
+const toastMock = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({
-  useToast: () => ({
-    toast: vi.fn(),
-  }),
+  useToast: () => ({ toast: toastMock }),
 }));
+
+vi.mock('@/lib/integrationDisconnect', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/integrationDisconnect')>(
+    '@/lib/integrationDisconnect',
+  );
+  return {
+    ...actual,
+    disconnectIntegration: vi.fn(),
+    notifyIntegrationDisconnect: vi.fn(),
+  };
+});
 
 describe('useToastConnection', () => {
   let queryClient: QueryClient;
@@ -292,49 +306,57 @@ describe('useToastConnection', () => {
   });
 
   describe('disconnectToast', () => {
-    it('should set is_active to false', async () => {
-      const mockUpdate = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          error: null,
-        }),
+    it('calls the helper, invalidates, toasts once, and notifies without await', async () => {
+      vi.mocked(disconnectIntegration).mockResolvedValue('evt-1');
+      let notifyResolve: () => void = () => {};
+      vi.mocked(notifyIntegrationDisconnect).mockImplementation(
+        () => new Promise<void>((r) => { notifyResolve = r; }),
+      );
+      const spy = vi.spyOn(queryClient, 'invalidateQueries');
+      const { result } = renderHook(() => useToastConnection('rest-1'), { wrapper });
+
+      await act(async () => {
+        await result.current.disconnectToast('rest-1', { reason: 'no_value', reasonText: 'x' });
       });
 
-      const mockFrom = vi.fn().mockReturnValue({
-        update: mockUpdate,
+      expect(disconnectIntegration).toHaveBeenCalledWith({
+        restaurantId: 'rest-1',
+        integration: 'toast',
+        reason: 'no_value',
+        reasonText: 'x',
+      });
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['toast-connection', 'rest-1'] });
+      expect(notifyIntegrationDisconnect).toHaveBeenCalledWith('evt-1');
+      expect(toastMock).toHaveBeenCalledTimes(1);
+      expect(toastMock.mock.calls[0][0].variant).toBeUndefined();
+      notifyResolve();
+    });
+
+    it('rethrows errors and shows no toast', async () => {
+      vi.mocked(disconnectIntegration).mockRejectedValue(new Error('rpc failed'));
+      const { result } = renderHook(() => useToastConnection('rest-1'), { wrapper });
+
+      await act(async () => {
+        await expect(result.current.disconnectToast('rest-1')).rejects.toThrow('rpc failed');
       });
 
-      (supabase.from as any) = mockFrom;
+      expect(toastMock).not.toHaveBeenCalled();
+      expect(notifyIntegrationDisconnect).not.toHaveBeenCalled();
+    });
 
-      const { result } = renderHook(() => useToastConnection(), { wrapper });
+    it('treats AlreadyDisconnectedError as success', async () => {
+      vi.mocked(disconnectIntegration).mockRejectedValue(new AlreadyDisconnectedError());
+      const spy = vi.spyOn(queryClient, 'invalidateQueries');
+      const { result } = renderHook(() => useToastConnection('rest-1'), { wrapper });
 
       await act(async () => {
         await result.current.disconnectToast('rest-1');
       });
 
-      expect(mockUpdate).toHaveBeenCalledWith({ is_active: false });
-      expect(result.current.isConnected).toBe(false);
-      // connection is undefined when no restaurantId is provided to the hook
-      expect(result.current.connection).toBeUndefined();
-    });
-
-    it('should handle disconnect errors', async () => {
-      const mockUpdate = vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          error: { message: 'Update failed' },
-        }),
-      });
-
-      const mockFrom = vi.fn().mockReturnValue({
-        update: mockUpdate,
-      });
-
-      (supabase.from as any) = mockFrom;
-
-      const { result } = renderHook(() => useToastConnection(), { wrapper });
-
-      await act(async () => {
-        await expect(result.current.disconnectToast('rest-1')).rejects.toThrow();
-      });
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['toast-connection', 'rest-1'] });
+      expect(toastMock).toHaveBeenCalledTimes(1);
+      expect(toastMock.mock.calls[0][0].title).toBe('Already disconnected');
+      expect(notifyIntegrationDisconnect).not.toHaveBeenCalled();
     });
   });
 

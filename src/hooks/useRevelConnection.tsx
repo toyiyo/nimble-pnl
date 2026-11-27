@@ -1,6 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import type { DisconnectOptions } from '@/lib/integrationDisconnect';
+import { runIntegrationDisconnect } from '@/lib/runIntegrationDisconnect';
 
 export type RevelConnection = {
   id: string;
@@ -99,23 +101,27 @@ export function useRevelConnection(restaurantId?: string | null) {
     return data;
   }
 
-  const disconnectMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('revel_connections').update({ is_active: false }).eq('restaurant_id', id);
-      if (error) throw error;
-    },
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
-      toast({ title: 'Disconnected', description: 'Revel connection has been disabled' });
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to disconnect from Revel', variant: 'destructive' });
-    },
-  });
-
-  async function disconnectRevel(id: string): Promise<void> {
-    return disconnectMutation.mutateAsync(id);
+  // Real disconnect: writes an event through the RPC and sends the alert.
+  async function disconnectRevel(id: string, opts?: DisconnectOptions): Promise<void> {
+    await runIntegrationDisconnect({
+      restaurantId: id,
+      integration: 'revel',
+      opts,
+      onDisconnected: () => void queryClient.invalidateQueries({ queryKey: ['revel-connection', id] }),
+      toast,
+      messages: {
+        success: 'Revel connection has been disabled',
+        already: 'Revel connection was already disabled',
+      },
+    });
   }
 
-  return { isConnected, connection, loading, connect, testConnection, triggerManualSync, triggerBackfill, disconnectRevel, checkConnectionStatus };
+  // Setup rollback: a failed setup is not a disconnect. No event, no toast.
+  async function rollbackRevelConnection(id: string): Promise<void> {
+    const { error } = await supabase.from('revel_connections').update({ is_active: false }).eq('restaurant_id', id);
+    if (error) throw error;
+    void queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
+  }
+
+  return { isConnected, connection, loading, connect, testConnection, triggerManualSync, triggerBackfill, disconnectRevel, rollbackRevelConnection, checkConnectionStatus };
 }

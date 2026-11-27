@@ -19,6 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -66,13 +67,26 @@ vi.mock('@/hooks/use-toast', () => ({
 // Stub context so Integrations.tsx renders without providers
 vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: () => ({
-    selectedRestaurant: { restaurant_id: 'rest-1', name: 'Test Restaurant' },
+    selectedRestaurant: { restaurant_id: 'rest-1', name: 'Test Restaurant', role: 'owner', restaurant: { id: 'rest-1', name: 'Test Restaurant' } },
     setSelectedRestaurant: vi.fn(),
     restaurants: [{ restaurant_id: 'rest-1', name: 'Test Restaurant' }],
     loading: false,
     createRestaurant: vi.fn(),
     canCreateRestaurant: false,
   }),
+}));
+
+// Stub the disconnect dialog so the test can confirm it directly
+vi.mock('@/components/integrations/DisconnectIntegrationDialog', () => ({
+  DisconnectIntegrationDialog: (p: {
+    open: boolean;
+    onConfirm: (r: { reason: string; reasonText: null }) => void;
+  }) =>
+    p.open ? (
+      <button onClick={() => p.onConfirm({ reason: 'no_value', reasonText: null })}>
+        Confirm disconnect
+      </button>
+    ) : null,
 }));
 
 // Stub FocusSync and FocusSetupWizard so we can assert they are rendered
@@ -170,7 +184,11 @@ function makeQC() {
 }
 
 function wrapQC(ui: React.ReactElement) {
-  return render(<QueryClientProvider client={makeQC()}>{ui}</QueryClientProvider>);
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={makeQC()}>{ui}</QueryClientProvider>
+    </MemoryRouter>
+  );
 }
 
 // ─── 1. IntegrationLogo ────────────────────────────────────────────────────────
@@ -318,9 +336,10 @@ describe('IntegrationCard — Focus POS (8 Toast-parity touch points)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /disconnect/i })).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole('button', { name: /disconnect/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^disconnect$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm disconnect' }));
     await waitFor(() => {
-      expect(mockDisconnect).toHaveBeenCalledWith('rest-1');
+      expect(mockDisconnect).toHaveBeenCalledWith('rest-1', { reason: 'no_value', reasonText: null });
     });
   });
 

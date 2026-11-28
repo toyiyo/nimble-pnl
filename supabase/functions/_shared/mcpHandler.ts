@@ -312,18 +312,17 @@ async function callTool(
     return toolText(`Unknown tool: ${name}. Call tools/list to see the available tools.`, true);
   }
 
-  const { restaurant_id: requestedId, ...toolArgs } = args;
-  if (requestedId !== undefined && requestedId !== null && (typeof requestedId !== 'string' || requestedId.length === 0)) {
-    return toolText('restaurant_id must be a string id from list_restaurants.', true);
-  }
-  // No fallback, also for a user with one restaurant: the caller must name the restaurant.
-  if (typeof requestedId !== 'string') {
+  const { restaurant_id: restaurantId, ...toolArgs } = args;
+  // The caller must name the restaurant, also a user with one restaurant.
+  if (restaurantId === undefined || restaurantId === null) {
     return toolText(
       'restaurant_id is required for every tool except list_restaurants. Call list_restaurants to get the ids.',
       true,
     );
   }
-  const restaurantId = requestedId;
+  if (typeof restaurantId !== 'string' || restaurantId.length === 0) {
+    return toolText('restaurant_id must be a string id from list_restaurants.', true);
+  }
 
   if (!memberships.some((m) => m.restaurant_id === restaurantId)) {
     return toolText(

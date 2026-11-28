@@ -31,9 +31,13 @@ function makeSupabase() {
       return { data: [], error: null };
     }),
     from: vi.fn((table: string) => {
-      const call = { table, select: '', eqs: [] as [string, unknown][] };
+      const call = { table, select: '', eqs: [] as [string, unknown][], range: null as [number, number] | null };
       state.fromCalls.push(call);
-      const result = () => ({ data: state.rows[table] ?? [], error: null });
+      // range() returns its page, like PostgREST, so paged reads end.
+      const result = () => {
+        const rows = state.rows[table] ?? [];
+        return { data: call.range ? rows.slice(call.range[0], call.range[1] + 1) : rows, error: null };
+      };
       const chain: Record<string, unknown> = {
         select: (s: string) => ((call.select = s), chain),
         eq: (c: string, v: unknown) => (call.eqs.push([c, v]), chain),
@@ -45,7 +49,7 @@ function makeSupabase() {
         neq: () => chain,
         order: () => chain,
         limit: () => chain,
-        range: () => chain,
+        range: (from: number, to: number) => ((call.range = [from, to]), chain),
         maybeSingle: async () => ({ data: (state.rows[table] ?? [])[0] ?? null, error: null }),
         then: (res: (v: unknown) => unknown) => Promise.resolve(result()).then(res),
       };
@@ -236,5 +240,23 @@ describe('runGetSchedulingContext weekly_hours', () => {
     expect(r.data.roster[0].weekly_hours).toEqual([
       { week_start: '2026-10-12', scheduled_hours: 3, partial_week: false, over_max_weekly_hours: false },
     ]);
+  });
+});
+
+describe('runGetSchedulingContext cut shift list', () => {
+  it('gives over_max_weekly_hours null when the shift fetch hits its page cap', async () => {
+    // 10 pages of 1000 rows hit SHIFT_PAGE_MAX.
+    const many = Array.from({ length: 10_000 }, (_, i) => ({
+      id: `s${i}`, employee_id: `x${i}`, start_time: '2026-10-13T15:00:00Z', end_time: '2026-10-13T16:00:00Z',
+      break_duration: 0, position: 'Server', status: 'scheduled', is_published: false, shift_template_id: null,
+      employee: { area: null, position: 'Server' },
+    }));
+    state.rows = {
+      employees_secure: [{ id: 'a', name: 'Ana', position: 'Server', area: null, status: 'active', is_active: true }],
+      shifts: many,
+    };
+    const r = await runGetSchedulingContext({}, 'r1', makeSupabase(), TZ, NOW);
+    expect(r.data.data_limits.sources).toContain('shifts');
+    expect(r.data.roster[0].weekly_hours[0].over_max_weekly_hours).toBeNull();
   });
 });

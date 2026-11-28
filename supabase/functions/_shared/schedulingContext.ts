@@ -75,7 +75,7 @@ export interface WeeklyHours {
   scheduled_hours: number;
   /** True when the period does not hold all 7 days of the week. */
   partial_week: boolean;
-  /** Null on a partial week: the tool loads only the days of the period. */
+  /** Null on a partial week (the tool loads only the days of the period) or when the shift list is cut. */
   over_max_weekly_hours: boolean | null;
 }
 
@@ -102,6 +102,8 @@ export function buildRoster(
   recurringByEmployee: { has(id: string): boolean },
   period: Period,
   tz = "UTC",
+  /** True when the shift fetch hit its cap: the hours can be too low. */
+  opts: { shiftsTruncated?: boolean } = {},
 ): RosterEntry[] {
   const hours = new Map<string, number>();
   const counts = new Map<string, number>();
@@ -142,11 +144,13 @@ export function buildRoster(
         max_weekly_hours_note: "stored, not enforced" as const,
         weekly_hours: weeks.map(({ week_start, partial }) => {
           const h = round2(weekHours.get(`${e.id}|${week_start}`) ?? 0);
+          // The age cap can change inside the period, so use the cap of this week.
+          const cap = computeHourBudget(e.date_of_birth, week_start, e.is_minor === true).max_weekly_hours;
           return {
             week_start,
             scheduled_hours: h,
             partial_week: partial,
-            over_max_weekly_hours: partial ? null : h > budget.max_weekly_hours,
+            over_max_weekly_hours: partial || opts.shiftsTruncated ? null : h > cap,
           };
         }),
       };

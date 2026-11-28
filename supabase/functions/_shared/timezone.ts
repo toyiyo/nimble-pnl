@@ -22,16 +22,28 @@ export const DEFAULT_TIMEZONE = 'America/Chicago';
  * `Intl.DateTimeFormat` THROW a `RangeError` — validate before it reaches
  * `formatToParts`, don't let it crash a sync run.
  */
+// Result cache per zone string. A new Intl formatter costs about 77 µs, and the
+// MCP scheduling tools call safeTz for each shift. The cache clears when full,
+// so memory stays bounded.
+const SAFE_TZ_CACHE_MAX = 500;
+const _safeTzCache = new Map<string, string>();
+
 export function safeTz(tz: string | null | undefined): string {
   if (!tz) return DEFAULT_TIMEZONE;
+  const hit = _safeTzCache.get(tz);
+  if (hit !== undefined) return hit;
+  let out: string;
   try {
     // Constructing the formatter is enough to validate the IANA identifier;
     // an invalid one throws RangeError synchronously.
     new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return tz;
+    out = tz;
   } catch {
-    return DEFAULT_TIMEZONE;
+    out = DEFAULT_TIMEZONE;
   }
+  if (_safeTzCache.size >= SAFE_TZ_CACHE_MAX) _safeTzCache.clear();
+  _safeTzCache.set(tz, out);
+  return out;
 }
 
 /**

@@ -259,7 +259,8 @@ export async function runGetSchedulingContext(
 
   const ctx = {
     period: { start: period.start, end: period.end, timezone: tz },
-    roster: buildRoster(employees, shifts, new Set(recurring.map((r) => r.employee_id)), period, tz),
+    roster: buildRoster(employees, shifts, new Set(recurring.map((r) => r.employee_id)), period, tz,
+      { shiftsTruncated: shiftsRes.truncated }),
     availability: buildAvailability(employees, recurring, exceptions, tz, period),
     conflicts: buildConflictList(shifts, conflictIndex, tz),
     conflicted_shift_count: conflictedShiftCount,

@@ -113,6 +113,22 @@ describe('buildRoster weekly_hours', () => {
     expect(full).toMatchObject({ scheduled_hours: 48, over_max_weekly_hours: true });
   });
 
+  it('uses the age cap of each week, not the age at the period start', () => {
+    // Born 2010-12-09: 15 on 2026-12-07 (cap 18), 16 on 2026-12-14 (cap 40).
+    const p2 = { start: '2026-12-07', end: '2026-12-20' };
+    const days = ['14', '15', '16', '17', '18'];
+    const shifts = days.map((d, i) => s(`s${i}`, `2026-12-${d}T14:00:00Z`, `2026-12-${d}T20:00:00Z`));
+    const [r] = buildRoster([emp('a', { date_of_birth: '2010-12-09' })], shifts, new Map(), p2, CHI);
+    expect(r.max_weekly_hours).toBe(18);
+    const adultWeek = r.weekly_hours.find((w) => w.week_start === '2026-12-14')!;
+    expect(adultWeek).toMatchObject({ scheduled_hours: 30, over_max_weekly_hours: false });
+  });
+
+  it('gives over_max_weekly_hours null when the shift list is cut', () => {
+    const [r] = buildRoster([emp('a')], [], new Map(), p, CHI, { shiftsTruncated: true });
+    expect(r.weekly_hours.every((w) => w.over_max_weekly_hours === null)).toBe(true);
+  });
+
   it('gives over_max_weekly_hours null on a partial week, and false on a full week under the cap', () => {
     const [r] = buildRoster([emp('a')], [s('s1', '2026-12-08T15:00:00Z', '2026-12-08T23:00:00Z')], new Map(), p, CHI);
     expect(r.weekly_hours.find((w) => w.week_start === '2026-11-30')!.over_max_weekly_hours).toBeNull();

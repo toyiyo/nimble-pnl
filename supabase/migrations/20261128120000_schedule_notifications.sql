@@ -15,7 +15,11 @@ CREATE TABLE IF NOT EXISTS public.schedule_notifications (
   employee_id    UUID REFERENCES public.employees(id) ON DELETE SET NULL,
   source         TEXT NOT NULL CHECK (source IN ('publish', 'shift_change')),
   publication_id UUID REFERENCES public.schedule_publications(id) ON DELETE SET NULL,
-  status         TEXT NOT NULL DEFAULT 'claimed' CHECK (status IN ('claimed', 'sent', 'failed')),
+  -- claimed: a notifier holds it. sent: a channel went out. skipped: the
+  -- changes cancel out, so there is nothing to tell. failed: no channel went
+  -- out; uncertain = true when the provider answer did not arrive (a timeout).
+  status         TEXT NOT NULL DEFAULT 'claimed' CHECK (status IN ('claimed', 'sent', 'skipped', 'failed')),
+  uncertain      BOOLEAN NOT NULL DEFAULT false,
   channels       TEXT[] NOT NULL DEFAULT '{}',
   attempts       INTEGER NOT NULL DEFAULT 1,
   last_error     TEXT,

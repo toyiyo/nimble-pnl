@@ -15,7 +15,7 @@ import {
 import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
 import { MAX_TOOL_TEXT_CHARS } from '../_shared/mcpHandler.ts';
 import { runGetSchedulingContext } from '../_shared/schedulingContextTool.ts';
-import { runPublishWeek, runGetWeekChangeLog, runGetPendingNotifications, type PublishToolDeps } from '../_shared/mcpPublishTools.ts';
+import { runPublishWeek, runGetWeekChangeLog, runGetPendingNotifications, type NotifyAnswer, type PublishToolDeps } from '../_shared/mcpPublishTools.ts';
 import { findShiftWarnings } from '../_shared/shiftWarnings.ts';
 import {
   buildConflictIndex, attachConflicts, compactConflictsToFit, loadNeighborShifts, loadShiftConflicts, withNeighbors,
@@ -3779,7 +3779,14 @@ function toolErrorResponse(status: number, error: Record<string, unknown>): Resp
  * notify call forwards the caller's JWT, so notify-schedule-published runs
  * its own owner/manager check: the same path as the UI publish.
  */
-function publishToolDeps(supabase: any, authHeader: string, tz: string): PublishToolDeps {
+// The MCP forward stops at 25 s (FORWARD_TIMEOUT_MS in mcp/index.ts). The
+// tool answers within 18 s of dispatch, so the auth checks before it fit too.
+const PUBLISH_TOOL_ANSWER_MS = 18_000;
+// The notify call keeps on after the tool answers (waitUntil); this bounds it.
+const NOTIFY_FETCH_TIMEOUT_MS = 120_000;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function publishToolDeps(supabase: any, authHeader: string, tz: string): PublishToolDeps { // supabase-js client, untyped in this file
   const url = `${(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '')}/functions/v1/notify-schedule-published`;
   const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
   return {
@@ -3795,9 +3802,10 @@ function publishToolDeps(supabase: any, authHeader: string, tz: string): Publish
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(NOTIFY_FETCH_TIMEOUT_MS),
       });
       const text = await res.text();
-      let parsed: unknown = null;
+      let parsed: NotifyAnswer['body'] = null;
       try {
         parsed = text ? JSON.parse(text) : null;
       } catch {
@@ -3806,6 +3814,7 @@ function publishToolDeps(supabase: any, authHeader: string, tz: string): Publish
       return { status: res.status, body: parsed };
     },
     waitUntil: edgeRuntime ? (p) => edgeRuntime.waitUntil(p) : undefined,
+    answerBy: Date.now() + PUBLISH_TOOL_ANSWER_MS,
   };
 }
 

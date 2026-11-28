@@ -213,6 +213,25 @@ SendOk(w) ==
     /\ UNCHANGED NotifierFixed
     /\ UNCHANGED <<rows, cur, runs, crashes>>
 
+\* The provider accepts, but the answer does not arrive (a timeout). The
+\* worker records an uncertain failure. claim_schedule_notifications takes it
+\* back only inside the idempotency window, so the resend reuses the key.
+SendTimeout(w) ==
+    /\ pc[w] = "claimed"
+    /\ LET r == rows[cur[w]]
+           dup == IdemKey /\ cur[w] \in keysSeen
+       IN /\ received' = IF dup THEN received
+                         ELSE [c \in ChangeIds |->
+                                 [e \in Employees |->
+                                    IF e = r.emp /\ c \in r.chgs
+                                       THEN received[c][e] + 1
+                                       ELSE received[c][e]]]
+          /\ emptySends' = IF ~dup /\ r.chgs = {} THEN emptySends + 1 ELSE emptySends
+    /\ keysSeen' = keysSeen \cup {cur[w]}
+    /\ pc' = [pc EXCEPT ![w] = "sendfail"]
+    /\ UNCHANGED NotifierFixed
+    /\ UNCHANGED <<rows, cur, runs, crashes>>
+
 \* The provider rejects the send. Nothing reaches the employee.
 SendFail(w) ==
     /\ pc[w] = "claimed"
@@ -256,7 +275,7 @@ Next ==
     \/ \E w \in Workers :
           \/ \E e \in Employees : ClaimNew(w, e)
           \/ \E i \in 1..MaxRuns : Reclaim(w, i)
-          \/ SendOk(w) \/ SendFail(w) \/ RecordSent(w) \/ RecordFailed(w)
+          \/ SendOk(w) \/ SendTimeout(w) \/ SendFail(w) \/ RecordSent(w) \/ RecordFailed(w)
           \/ Crash(w)
 
 Spec == Init /\ [][Next]_vars
@@ -284,8 +303,8 @@ NoEmptyNotification == emptySends = 0
 \* notification. Two halves, against what the employee actually received:
 \*  - a 'sent' record is true: the employee got it;
 \*  - a change the employee did not get is always listed as pending.
-\* The one gap is in_doubt: delivered, then a crash before the record step.
-\* The tool shows it as pending with state in_doubt until a Reclaim.
+\* The one gap is in_doubt: delivered, then a crash or a timeout before the
+\* record step. The tool shows it as retrying, then in_doubt, until a Reclaim.
 SentRecordIsTrue ==
     \A i \in 1..Len(rows) :
        rows[i].status = "sent" =>

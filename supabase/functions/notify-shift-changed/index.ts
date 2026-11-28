@@ -17,7 +17,12 @@ import {
 } from "../_shared/notificationHelpers.ts";
 import { safeTz } from "../_shared/timezone.ts";
 import { checkShiftChangeValidity, type ShiftChangeLogRow } from "../_shared/shiftChangedNotification.ts";
-import { claimNotifications, deliverClaimed, type RpcClient } from "../_shared/scheduleNotificationDelivery.ts";
+import {
+  claimNotifications,
+  deliverClaimed,
+  summarizeOutcomes,
+  type RpcClient,
+} from "../_shared/scheduleNotificationDelivery.ts";
 import { makeDeliverDeps } from "../_shared/scheduleNotificationSenders.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -99,7 +104,8 @@ serve(async (req) => {
     });
 
     if (claims.length === 0) {
-      // Already sent, or an open shift with nobody to tell.
+      // Nothing free to claim: already sent, held by a run in flight, or an
+      // open shift with nobody to tell.
       return new Response(JSON.stringify({ sent: 0, failed: 0, alreadyNotified: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -129,11 +135,10 @@ serve(async (req) => {
       }),
     );
 
-    const sent = outcomes.filter((o) => o.status === "sent").length;
-    const failed = outcomes.length - sent;
+    const { sent, failed, skipped, deferred, httpStatus } = summarizeOutcomes(outcomes);
 
-    // notified_at is a record now, not the latch: the first send that reached
-    // somebody stamps it.
+    // The ledger is the latch. notified_at records the first send that
+    // reached an employee.
     if (sent > 0) {
       const { error: stampError } = await serviceClient
         .from("schedule_change_logs")
@@ -145,10 +150,10 @@ serve(async (req) => {
       }
     }
 
-    // Step 9. Reached nobody: 502, and the failed rows stay pending.
-    return new Response(JSON.stringify({ sent, failed }), {
+    // Step 9. 502 when an employee was not reached: the UI shows the shortfall.
+    return new Response(JSON.stringify({ sent, failed: failed + deferred, skipped }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: sent === 0 && failed > 0 ? 502 : 200,
+      status: httpStatus,
     });
   } catch (error: unknown) {
     console.error("Error in notify-shift-changed:", error);

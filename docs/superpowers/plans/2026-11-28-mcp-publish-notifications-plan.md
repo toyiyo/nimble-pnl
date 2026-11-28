@@ -46,9 +46,8 @@ test, commit with explicit paths. Do the tasks in order.
   Add `SET search_path = public, pg_temp`.
 - Add the `published` branch (INSERT with `NEW.is_published`, and the flip).
 - `updated` branch: log only when `start_time`, `end_time`, `employee_id`,
-  `position`, `break_duration`, or `status` is distinct. `notes` stays out:
-  the employee notification does not show it today
-  (`supabase/functions/_shared/shiftChangedNotification.ts:114`).
+  `position`, `break_duration`, `notes`, or a move to or from
+  `status = 'cancelled'` is distinct.
 - Recreate the trigger as `AFTER INSERT OR UPDATE OR DELETE`.
 - Test first: `supabase/tests/log_shift_change_published.test.sql`. Cover the
   flip by `publish_schedule`, an INSERT with `is_published = true`, a draft
@@ -118,8 +117,8 @@ test, commit with explicit paths. Do the tasks in order.
 - File: `supabase/functions/notify-shift-changed/index.ts`.
 - The claim is the only latch. Write `notified_at` after a send that reached
   one recipient or more. Zero claimed rows: 200 `alreadyNotified: true`.
-- Test first: extend `tests/unit/shiftChangedNotification.test.ts` for any
-  helper change.
+- Test first: the claim and delivery tests in
+  `tests/unit/scheduleNotificationDelivery.test.ts`.
 
 ## Task 10: UI follow-ons
 

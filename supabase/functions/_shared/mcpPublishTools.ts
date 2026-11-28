@@ -14,23 +14,23 @@ import { addDaysToDateStr } from "./labor/restaurantClock.ts";
 import { restaurantDayBounds, ymdInTimeZone } from "./restaurantDate.ts";
 import {
   buildChangeLines,
-  formatShiftWindow,
+  describeShift,
   type DeliveryChange,
+  type NotifyScheduleResponse,
 } from "./scheduleNotificationDelivery.ts";
 
 /** The answer of notify-schedule-published, as the tool reads it. */
 export interface NotifyAnswer {
   status: number;
-  // deno-lint-ignore no-explicit-any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  body: any;
+  /** NotifyScheduleResponse on 200/502; an `{ error }` body otherwise. */
+  body: Partial<NotifyScheduleResponse> & { error?: string } | null;
 }
 
 export interface PublishToolDeps {
   /** The user client (the caller's JWT). RLS and the RPC checks apply. */
   // deno-lint-ignore no-explicit-any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any;
+  supabase: any; // supabase-js client: its generic types are not available to this shared module
   tz: string;
   now: Date;
   /** POST to notify-schedule-published with the caller's JWT. */
@@ -38,21 +38,26 @@ export interface PublishToolDeps {
   /** EdgeRuntime.waitUntil, when the runtime has it. */
   waitUntil?: (p: Promise<unknown>) => void;
   /**
-   * How long the confirm waits for the notify answer. The MCP forward
-   * timeout is 25 s (supabase/functions/mcp/index.ts:26), and a large send
-   * can take 90 s (supabase/functions/_shared/emailQueue.ts:41).
+   * The longest wait for the notify answer. The MCP forward stops at
+   * FORWARD_TIMEOUT_MS (supabase/functions/mcp/index.ts), and a large send
+   * runs up to DeliverDeps.budgetMs.
    */
   notifyWaitMs?: number;
+  /** Epoch ms by which the tool must answer. The wait shrinks to fit it. */
+  answerBy?: number;
+  /** Clock for answerBy. */
+  clock?: () => number;
 }
 
-// deno-lint-ignore no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ToolResult = any;
+type ToolResult =
+  | { ok: true; data: Record<string, unknown>; evidence?: { table: string; summary: string }[] }
+  | { ok: false; error: { code: string; message: string } };
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const PENDING_HORIZON_DAYS = 56;
 const MAX_ROWS = 300;
 const DEFAULT_NOTIFY_WAIT_MS = 15_000;
+const MIN_NOTIFY_WAIT_MS = 1_000;
 
 const isRealDate = (s: unknown): s is string =>
   typeof s === "string" && YMD.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
@@ -95,7 +100,7 @@ interface PendingRow {
   shift_id: string | null;
   shift_before: Record<string, unknown> | null;
   shift_after: Record<string, unknown> | null;
-  state: "pending" | "failed" | "in_doubt" | "sending";
+  state: "pending" | "failed" | "retrying" | "in_doubt" | "sending";
 }
 
 const asChange = (r: PendingRow): DeliveryChange => ({
@@ -124,8 +129,9 @@ interface Recipient {
 
 /**
  * What a publish would send, per employee: the pending pairs that a claim
- * takes (pending and failed), plus the drafts that the publish flips.
- * Pairs in flight (sending) are not in it; in-doubt pairs are listed apart.
+ * takes (pending, failed, retrying), plus the drafts that the publish flips
+ * for active employees. Pairs in flight (sending) are not in it; in-doubt
+ * pairs are listed apart.
  */
 async function previewWeek(deps: PublishToolDeps, restaurantId: string, week: { start: string; end: string }, notify: boolean) {
   const bounds = restaurantDayBounds(week.start, week.end, deps.tz);
@@ -179,19 +185,25 @@ async function previewWeek(deps: PublishToolDeps, restaurantId: string, week: { 
     }
   }
 
-  const missingNames = [...changesByEmployee.keys()].filter((id) => !names.get(id));
-  if (missingNames.length > 0) {
+  const draftEmployees = [...new Set(drafts.map((d) => d.employee_id).filter((id): id is string => !!id))];
+  const active = new Set<string>(pending.rows.map((r) => r.employee_id));
+  if (notify && draftEmployees.length > 0) {
     const { data, error } = await deps.supabase
       .from("employees")
-      .select("id, name")
+      .select("id, name, status")
       .eq("restaurant_id", restaurantId)
-      .in("id", missingNames);
+      .in("id", draftEmployees);
     if (error) return { error: `Failed to fetch employees: ${error.message}` };
-    for (const e of (data ?? []) as { id: string; name: string | null }[]) names.set(e.id, e.name);
+    for (const e of (data ?? []) as { id: string; name: string | null; status: string | null }[]) {
+      if (!names.get(e.id)) names.set(e.id, e.name);
+      // The claim notifies active employees only (schedule_change_recipients).
+      if (e.status === "active") active.add(e.id);
+    }
   }
 
   const recipients: Recipient[] = [];
   for (const [employeeId, changes] of changesByEmployee) {
+    if (!active.has(employeeId)) continue;
     const lines = buildChangeLines(changes, employeeId, deps.tz);
     if (lines.length === 0) continue;
     recipients.push({ employee_id: employeeId, employee_name: names.get(employeeId) ?? null, changes: lines.map((l) => l.text) });
@@ -229,35 +241,76 @@ export async function runPublishWeek(
   const week = weekOf(args.week_start);
   if ("error" in week) return invalid(week.error);
 
-  const plan = await previewWeek(deps, restaurantId, week, notify);
-  if ("error" in plan) return { ok: false, error: { code: "PREVIEW_FAILED", message: plan.error } };
+  if (preview) return previewResult(deps, restaurantId, week, notify);
+  return confirmPublish(deps, restaurantId, week, notify);
+}
 
-  if (preview) {
-    let message: string;
-    if (plan.shiftsToPublish === 0 && plan.recipients.length === 0) {
-      message = `Nothing to publish and nobody to notify for ${week.start} to ${week.end}.`;
-    } else if (!notify) {
-      message = `Will publish ${plan.shiftsToPublish} shift(s). No employee gets a notification (notify: false); their changes stay pending. Please confirm to proceed.`;
-    } else {
-      message = `Will publish ${plan.shiftsToPublish} shift(s) and notify ${plan.recipients.length} employee(s). Please confirm to proceed.`;
-    }
-    return {
-      ok: true,
-      data: {
-        action: "publish_week",
-        preview: true,
-        week,
-        tz: deps.tz,
-        notify,
-        shifts_to_publish: plan.shiftsToPublish,
-        open_shifts_to_publish: plan.openShiftsToPublish,
-        recipients: plan.recipients,
-        unconfirmed: plan.unconfirmed,
-        message,
-      },
-      evidence: [{ table: "shifts", summary: `${plan.shiftsToPublish} draft shift(s) in ${week.start}..${week.end}` }],
-    };
+async function previewResult(
+  deps: PublishToolDeps,
+  restaurantId: string,
+  week: { start: string; end: string },
+  notify: boolean,
+): Promise<ToolResult> {
+  const plan = await previewWeek(deps, restaurantId, week, notify);
+  if ("error" in plan) return { ok: false, error: { code: "PREVIEW_FAILED", message: plan.error ?? "Preview failed" } };
+
+  let message: string;
+  if (plan.shiftsToPublish === 0 && plan.recipients.length === 0) {
+    message = `Nothing to publish and nobody to notify for ${week.start} to ${week.end}.`;
+  } else if (!notify) {
+    message = `Will publish ${plan.shiftsToPublish} shift(s). No employee gets a notification (notify: false); their changes stay pending. Please confirm to proceed.`;
+  } else {
+    message = `Will publish ${plan.shiftsToPublish} shift(s) and notify ${plan.recipients.length} employee(s). Please confirm to proceed.`;
   }
+  return {
+    ok: true,
+    data: {
+      action: "publish_week",
+      preview: true,
+      week,
+      tz: deps.tz,
+      notify,
+      shifts_to_publish: plan.shiftsToPublish,
+      open_shifts_to_publish: plan.openShiftsToPublish,
+      recipients: plan.recipients,
+      unconfirmed: plan.unconfirmed,
+      message,
+    },
+    evidence: [{ table: "shifts", summary: `${plan.shiftsToPublish} draft shift(s) in ${week.start}..${week.end}` }],
+  };
+}
+
+async function countDrafts(deps: PublishToolDeps, restaurantId: string, week: { start: string; end: string }) {
+  const bounds = restaurantDayBounds(week.start, week.end, deps.tz);
+  const res = await deps.supabase
+    .from("shifts")
+    .select("id", { count: "exact", head: true })
+    .eq("restaurant_id", restaurantId)
+    .eq("is_published", false)
+    .gte("start_time", bounds.start.toISOString())
+    .lte("start_time", bounds.end.toISOString());
+  if (res.error) return { error: `Failed to count shifts: ${res.error.message}` };
+  return { count: typeof res.count === "number" ? res.count : (res.data ?? []).length };
+}
+
+/** The wait for the notify answer, shrunk so the tool answers in time. */
+function notifyWait(deps: PublishToolDeps): number {
+  const max = deps.notifyWaitMs ?? DEFAULT_NOTIFY_WAIT_MS;
+  if (deps.answerBy === undefined) return max;
+  const left = deps.answerBy - (deps.clock ?? Date.now)();
+  return Math.max(MIN_NOTIFY_WAIT_MS, Math.min(max, left));
+}
+
+async function confirmPublish(
+  deps: PublishToolDeps,
+  restaurantId: string,
+  week: { start: string; end: string },
+  notify: boolean,
+): Promise<ToolResult> {
+  // A count, not the full preview: the confirm must answer inside the MCP
+  // forward timeout.
+  const drafts = await countDrafts(deps, restaurantId, week);
+  if ("error" in drafts) return { ok: false, error: { code: "PUBLISH_FAILED", message: drafts.error ?? "Count failed" } };
 
   const { data: publicationId, error: publishError } = await deps.supabase.rpc("publish_schedule", {
     p_restaurant_id: restaurantId,
@@ -273,7 +326,7 @@ export async function runPublishWeek(
     week,
     tz: deps.tz,
     publication_id: publicationId as string,
-    shifts_published: plan.shiftsToPublish,
+    shifts_published: drafts.count,
   };
 
   if (!notify) {
@@ -283,17 +336,20 @@ export async function runPublishWeek(
     };
   }
 
-  const call = deps.invokeNotify({ publicationId: publicationId as string, restaurantId, weekStart: week.start, weekEnd: week.end });
-  const answer = await withTimeout(call, deps.notifyWaitMs ?? DEFAULT_NOTIFY_WAIT_MS);
+  // A rejection after the publish committed is a notify error, not a tool error.
+  const call: Promise<NotifyAnswer> = deps
+    .invokeNotify({ publicationId: publicationId as string, restaurantId, weekStart: week.start, weekEnd: week.end })
+    .catch((e: unknown) => ({ status: 0, body: { error: e instanceof Error ? e.message : String(e) } }));
+  const answer = await withTimeout(call, notifyWait(deps));
 
   if (!answer.done) {
-    deps.waitUntil?.(call.catch(() => undefined));
+    deps.waitUntil?.(call);
     return {
       ok: true,
       data: {
         ...base,
         notifications: "sending",
-        recipients: plan.recipients,
+        recipients: [],
         message:
           "The schedule is published. Notifications are still sending. Call get_pending_notifications in a minute to see what did not go out.",
       },
@@ -302,7 +358,7 @@ export async function runPublishWeek(
 
   const { status, body } = answer.value;
   const rows = Array.isArray(body?.recipients) ? body.recipients : null;
-  if (!rows) {
+  if (!body || !rows) {
     return {
       ok: true,
       data: {
@@ -314,9 +370,7 @@ export async function runPublishWeek(
     };
   }
 
-  // deno-lint-ignore no-explicit-any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recipients = rows.map((r: any) => ({
+  const recipients = rows.map((r) => ({
     employee_id: r.employeeId,
     employee_name: r.employeeName ?? null,
     status: r.status,
@@ -324,37 +378,50 @@ export async function runPublishWeek(
     changes: r.changes ?? [],
     ...(r.error && r.status !== "sent" ? { error: r.error } : {}),
   }));
-  const sent = recipients.filter((r: { status: string }) => r.status === "sent").length;
-  const failed = recipients.length - sent;
-  const expected = new Set(plan.recipients.map((r) => r.employee_id));
-  const actual = new Set(recipients.map((r: { employee_id: string }) => r.employee_id));
-  const differs = expected.size !== actual.size || [...expected].some((id) => !actual.has(id));
+  const sent = recipients.filter((r) => r.status === "sent").length;
+  const notReached = recipients.filter((r) => r.status === "failed" || r.status === "deferred").length;
 
   let notifications: string;
   let message: string;
-  if (body?.nothingToSend) {
+  if (body.nothingToSend) {
     notifications = "none";
     message = "The schedule is published. Nobody has a change since the last notification, so no notification was sent.";
-  } else if (failed === 0) {
+  } else if (notReached === 0) {
     notifications = "done";
     message = `The schedule is published. ${sent} employee(s) notified.`;
   } else {
     notifications = sent > 0 ? "partial" : "failed";
-    message = `The schedule is published. ${sent} notified, ${failed} failed. The failed ones stay in get_pending_notifications.`;
+    message = `The schedule is published. ${sent} notified, ${notReached} failed. The failed ones stay in get_pending_notifications; publish_week again retries them.`;
   }
-  if (differs) message += " The recipients differ from the preview, because the schedule changed between the two calls.";
 
   return {
     ok: true,
-    data: { ...base, notifications, recipients, differs_from_preview: differs, message },
-    evidence: [{ table: "schedule_notifications", summary: `${sent} sent, ${failed} failed` }],
+    data: { ...base, notifications, recipients, message },
+    evidence: [{ table: "schedule_notifications", summary: `${sent} sent, ${notReached} not reached` }],
   };
 }
 
-// deno-lint-ignore no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const shiftText = (data: any, tz: string): string | null =>
-  data && data.start_time ? `${formatShiftWindow(data, tz)}${data.position ? ` (${data.position})` : ""}` : null;
+interface ChangeLogRow {
+  change_log_id: string;
+  change_type: string;
+  changed_at: string;
+  changed_by: string | null;
+  changed_by_name: string | null;
+  employee_name: string | null;
+  shift_before: Record<string, unknown> | null;
+  shift_after: Record<string, unknown> | null;
+  reason: string | null;
+  tracked: boolean;
+  notified_at: string | null;
+  notifications: {
+    employee_name: string | null;
+    status: string;
+    source: string;
+    channels: string[] | null;
+    sent_at: string | null;
+  }[] | null;
+  pending_employees: { employee_id: string; employee_name: string | null }[] | null;
+}
 
 export async function runGetWeekChangeLog(
   args: { week_start?: unknown },
@@ -371,26 +438,22 @@ export async function runGetWeekChangeLog(
   });
   if (error) return rpcFailure("CHANGE_LOG_FAILED", error.message);
 
-  // deno-lint-ignore no-explicit-any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const all = (data ?? []) as any[];
+  const all = (data ?? []) as ChangeLogRow[];
   const rows = all.slice(0, MAX_ROWS);
   const tz = deps.tz;
 
   const changes = rows.map((r) => {
-    const pendingFor = (r.pending_employees ?? []).map((p: { employee_name: string | null }) => p.employee_name ?? "Unknown");
+    const pendingFor = (r.pending_employees ?? []).map((p) => p.employee_name ?? "Unknown");
     return {
       change_log_id: r.change_log_id,
       change_type: r.change_type,
       changed_at: localDateTime(r.changed_at, tz),
-      changed_by: r.changed_by ? (r.changed_by_name || r.changed_by_email || "Unknown user") : "System",
+      changed_by: r.changed_by ? (r.changed_by_name || "Unknown user") : "System",
       employee: r.employee_name ?? null,
-      before: shiftText(r.shift_before, tz),
-      after: shiftText(r.shift_after, tz),
+      before: describeShift(r.shift_before, tz),
+      after: describeShift(r.shift_after, tz),
       reason: r.reason ?? null,
-      // deno-lint-ignore no-explicit-any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      notifications: (r.notifications ?? []).map((n: any) => ({
+      notifications: (r.notifications ?? []).map((n) => ({
         employee: n.employee_name ?? null,
         status: n.status,
         source: n.source,
@@ -423,7 +486,7 @@ export async function runGetPendingNotifications(
 ): Promise<ToolResult> {
   let from: string;
   let to: string;
-  if (args?.week_start == null || args.week_start === "") {
+  if (args?.week_start === undefined || args.week_start === null || args.week_start === "") {
     from = ymdInTimeZone(deps.now, deps.tz);
     to = addDaysToDateStr(from, PENDING_HORIZON_DAYS);
   } else {
@@ -460,7 +523,7 @@ export async function runGetPendingNotifications(
       ...(pending.rows.length > MAX_ROWS ? { data_limits: [`Only the first ${MAX_ROWS} of ${pending.rows.length} are listed.`] } : {}),
       message: pending.rows.length === 0
         ? `No pending notifications for ${from} to ${to}.`
-        : "pending: never sent. failed: the last send failed. in_doubt: a send started but did not confirm. sending: in flight now. publish_week with notify sends pending and failed ones.",
+        : "pending: never sent. failed: the last send failed. retrying: a send did not confirm; the next publish retries it. in_doubt: a send may have arrived, and nothing retries it. sending: in flight now. publish_week with notify sends pending, failed, and retrying ones.",
     },
   };
 }

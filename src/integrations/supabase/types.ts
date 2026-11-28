@@ -7049,6 +7049,7 @@ export type Database = {
           sent_at: string | null
           source: string
           status: string
+          uncertain: boolean
         }
         Insert: {
           attempts?: number
@@ -7063,6 +7064,7 @@ export type Database = {
           sent_at?: string | null
           source: string
           status?: string
+          uncertain?: boolean
         }
         Update: {
           attempts?: number
@@ -7077,6 +7079,7 @@ export type Database = {
           sent_at?: string | null
           source?: string
           status?: string
+          uncertain?: boolean
         }
         Relationships: [
           {
@@ -12219,12 +12222,12 @@ export type Database = {
           change_type: string
           changed_at: string
           changed_by: string
-          changed_by_email: string
           changed_by_name: string
           employee_id: string
           employee_name: string
           notifications: Json
           notified_at: string
+          pending_employees: Json
           reason: string
           shift_after: Json
           shift_before: Json
@@ -12524,6 +12527,7 @@ export type Database = {
           p_error?: string
           p_id: string
           p_status: string
+          p_uncertain?: boolean
         }
         Returns: boolean
       }
@@ -12807,7 +12811,7 @@ export type Database = {
       }
       schedule_change_recipients: {
         Args: {
-          p_change_log_id?: string
+          p_change_log_ids?: string[]
           p_from: string
           p_restaurant_id: string
           p_to: string
@@ -12817,6 +12821,15 @@ export type Database = {
           employee_id: string
           shift_date: string
         }[]
+      }
+      schedule_notification_state: {
+        Args: {
+          p_claimed_at: string
+          p_created_at: string
+          p_status: string
+          p_uncertain: boolean
+        }
+        Returns: string
       }
       schedule_restaurant_tz: {
         Args: { p_restaurant_id: string }

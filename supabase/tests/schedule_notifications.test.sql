@@ -17,7 +17,7 @@
 
 BEGIN;
 
-SELECT plan(63);
+SELECT plan(75);
 
 SET LOCAL role TO postgres;
 
@@ -56,6 +56,10 @@ ON CONFLICT (id) DO UPDATE SET restaurant_id = EXCLUDED.restaurant_id, name = EX
 SELECT set_config('request.jwt.claims',
   '{"sub":"5c000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
+INSERT INTO profiles (user_id, full_name)
+VALUES ('5c000000-0000-0000-0000-000000000001', 'Olive Owner')
+ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name;
+
 -- ============================================================
 -- 1. Tables, unique link, grants
 -- ============================================================
@@ -77,7 +81,7 @@ SELECT ok(NOT has_function_privilege('authenticated',
   'public.claim_schedule_notifications(uuid, date, date, text, uuid, uuid)', 'EXECUTE'),
   'authenticated cannot execute claim_schedule_notifications');
 SELECT ok(NOT has_function_privilege('authenticated',
-  'public.mark_schedule_notification(uuid, text, text[], text)', 'EXECUTE'),
+  'public.mark_schedule_notification(uuid, text, text[], text, boolean)', 'EXECUTE'),
   'authenticated cannot execute mark_schedule_notification');
 SELECT ok(has_function_privilege('service_role',
   'public.claim_schedule_notifications(uuid, date, date, text, uuid, uuid)', 'EXECUTE'),
@@ -289,10 +293,15 @@ SELECT is((SELECT jsonb_array_length(pending_employees) FROM get_schedule_week_c
   '5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg))
   WHERE change_type = 'updated'), 2,
   'the change log lists both reassignment recipients as pending (no sent row yet)');
-SELECT is((SELECT changed_by_email FROM get_schedule_week_change_log(
+SELECT is((SELECT changed_by_name FROM get_schedule_week_change_log(
   '5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg))
-  WHERE change_type = 'updated'), 'sn-owner@example.com',
-  'the change log names the actor');
+  WHERE change_type = 'updated'), 'Olive Owner',
+  'the change log names a member actor by profile name');
+SELECT ok(NOT EXISTS (
+  SELECT 1 FROM information_schema.routines r
+  JOIN information_schema.parameters p ON p.specific_name = r.specific_name
+  WHERE r.routine_name = 'get_schedule_week_change_log' AND p.parameter_name ILIKE '%email%'),
+  'the change log returns no email column');
 
 -- ============================================================
 -- 9. Access checks
@@ -362,6 +371,82 @@ SET LOCAL role TO authenticated;
 SELECT is((SELECT count(*)::int FROM get_schedule_pending_notifications(
   '5c100000-0000-0000-0000-000000000003', NULL, NULL)), 0,
   'an untracked row is never pending');
+
+
+-- ============================================================
+-- 11. Review fixes: skipped, deferred, uncertain, publication check,
+--     derived dates, void pairs
+-- ============================================================
+SET LOCAL role TO postgres;
+DELETE FROM schedule_notification_changes WHERE restaurant_id = '5c100000-0000-0000-0000-000000000001';
+DELETE FROM schedule_notifications WHERE restaurant_id = '5c100000-0000-0000-0000-000000000001';
+SELECT lives_ok($$
+  SELECT publish_schedule('5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg), NULL)
+$$, 'republish after the unpublish runs');
+
+INSERT INTO schedule_publications (id, restaurant_id, week_start_date, week_end_date, published_by)
+SELECT '5c400000-0000-0000-0000-000000000002', '5c100000-0000-0000-0000-000000000002', ws, ws + 6,
+       '5c000000-0000-0000-0000-000000000003'
+FROM cfg;
+
+SET LOCAL role TO service_role;
+SELECT throws_ok($$
+  SELECT * FROM claim_schedule_notifications('5c100000-0000-0000-0000-000000000001', NULL, NULL, 'publish',
+    '5c400000-0000-0000-0000-000000000002', NULL)
+$$, '22023', NULL, 'a claim refuses a publication of another restaurant');
+
+CREATE TEMP TABLE claim5 AS
+SELECT * FROM claim_schedule_notifications(
+  '5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg), 'publish', NULL, NULL);
+GRANT SELECT ON claim5 TO authenticated;
+SELECT ok((SELECT count(*) FROM claim5) >= 1, 'the republish claims the visible changes again');
+
+SELECT ok(mark_schedule_notification((SELECT notification_id FROM claim5 LIMIT 1), 'skipped', ARRAY[]::text[], 'no visible change'),
+  'a row can be marked skipped');
+SELECT is((SELECT status FROM schedule_notifications WHERE id = (SELECT notification_id FROM claim5 LIMIT 1)), 'skipped',
+  'skipped is stored');
+
+-- deferred gives the attempt back and leaves the row failed.
+SELECT ok(mark_schedule_notification((SELECT notification_id FROM claim5 OFFSET 1 LIMIT 1), 'deferred', ARRAY[]::text[], 'send budget exhausted')
+          OR (SELECT count(*) FROM claim5) = 1,
+  'a row can be marked deferred');
+
+-- An uncertain failure older than the window is not taken back.
+UPDATE schedule_notifications SET status = 'failed', uncertain = true, created_at = now() - interval '2 hours'
+WHERE id = (SELECT notification_id FROM claim5 LIMIT 1);
+SELECT ok(NOT EXISTS (SELECT 1 FROM claim_schedule_notifications(
+  '5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg), 'publish', NULL, NULL)
+  WHERE notification_id = (SELECT notification_id FROM claim5 LIMIT 1)),
+  'an uncertain failure older than 60 minutes is never resent');
+
+SET LOCAL role TO authenticated;
+SELECT ok(EXISTS (SELECT 1 FROM get_schedule_pending_notifications('5c100000-0000-0000-0000-000000000001', NULL, NULL)
+  WHERE notification_id = (SELECT notification_id FROM claim5 LIMIT 1) AND state = 'in_doubt'),
+  'an old uncertain failure shows as in_doubt');
+
+SET LOCAL role TO postgres;
+-- Client-sent dates are ignored.
+INSERT INTO schedule_change_logs (restaurant_id, shift_id, employee_id, change_type, changed_by, after_data, shift_date_after)
+VALUES ('5c100000-0000-0000-0000-000000000003', gen_random_uuid(), '5c200000-0000-0000-0000-00000000000d', 'updated', NULL,
+        jsonb_build_object('start_time', '2030-02-04T12:00:00+00:00'), DATE '1999-01-01');
+SELECT is((SELECT shift_date_after FROM schedule_change_logs
+           WHERE restaurant_id = '5c100000-0000-0000-0000-000000000003' AND after_data->>'start_time' = '2030-02-04T12:00:00+00:00'),
+          DATE '2030-02-04', 'the date trigger ignores a client-sent shift_date_after');
+
+-- A pending pair for a shift deleted while it is a draft is void.
+SET LOCAL role TO authenticated;
+UPDATE shifts SET start_time = start_time + interval '1 hour' WHERE id = '5c300000-0000-0000-0000-000000000003';
+SELECT ok(EXISTS (SELECT 1 FROM get_schedule_pending_notifications('5c100000-0000-0000-0000-000000000001', NULL, NULL)
+  WHERE shift_id = '5c300000-0000-0000-0000-000000000003' AND change_type = 'updated'),
+  'an edit of a published shift is pending');
+SET LOCAL role TO postgres;
+SELECT unpublish_schedule('5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg), 'test');
+DELETE FROM shifts WHERE id = '5c300000-0000-0000-0000-000000000003';
+SET LOCAL role TO authenticated;
+SELECT ok(NOT EXISTS (SELECT 1 FROM get_schedule_pending_notifications('5c100000-0000-0000-0000-000000000001', NULL, NULL)
+  WHERE shift_id = '5c300000-0000-0000-0000-000000000003'),
+  'after unpublish and a draft delete, the old pair is void');
+
 
 SELECT * FROM finish();
 ROLLBACK;

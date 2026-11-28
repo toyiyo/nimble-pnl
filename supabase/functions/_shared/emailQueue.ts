@@ -38,7 +38,7 @@ const BASE_BACKOFF_MS = 1000;
  * is several times the largest roster in production today, so it truncates
  * nothing that is currently working.
  */
-const DEFAULT_BUDGET_MS = 90_000;
+export const DEFAULT_BUDGET_MS = 90_000;
 
 /** Recorded as the error for recipients the budget never reached. */
 export const BUDGET_EXHAUSTED_ERROR = 'send budget exhausted';

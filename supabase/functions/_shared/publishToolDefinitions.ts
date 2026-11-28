@@ -8,8 +8,11 @@
  */
 import type { ToolDefinition } from './tools-registry.ts';
 
-/** Owner and manager only (canUseTool). publish_week is a write tool. */
+/** Owner and manager only (canUseTool). */
 export const PUBLISH_TOOL_NAMES = ['publish_week', 'get_week_change_log', 'get_pending_notifications'] as const;
+
+/** The tools of this set that change data (WRITE_TOOLS, WRITE_TOOL_NAMES). */
+export const PUBLISH_WRITE_TOOL_NAMES = ['publish_week'] as const;
 
 const WEEK_START = {
   type: 'string',
@@ -55,7 +58,7 @@ export const PUBLISH_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: 'get_pending_notifications',
     description:
       'Changes to published shifts that did not send a notification yet, one row per employee and change, ' +
-      'with a state: pending, failed, in_doubt, or sending. Without week_start, it covers today and the next 8 weeks.',
+      'with a state: pending, failed, retrying, in_doubt, or sending. Without week_start, it covers today and the next 8 weeks.',
     parameters: {
       type: 'object',
       properties: {

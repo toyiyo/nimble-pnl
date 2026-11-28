@@ -97,7 +97,8 @@ employee.
 | `employee_id uuid null` | FK `employees` ON DELETE SET NULL, the same rule as `schedule_change_logs.employee_id` (`20251123000000_schedule_publishing.sql:27`). |
 | `source text` | `publish` or `shift_change`. |
 | `publication_id uuid null` | FK `schedule_publications` ON DELETE SET NULL. |
-| `status text` | `claimed`, `sent`, `failed`. |
+| `status text` | `claimed`, `sent`, `skipped` (the changes cancel out), `failed`. |
+| `uncertain boolean` | `true` for a failure with no provider answer (a timeout). |
 | `channels text[]` | The channels that went out. |
 | `claimed_at`, `sent_at`, `attempts`, `last_error` | |
 
@@ -155,8 +156,9 @@ The template is `supabase/migrations/20260802120000_schedule_retractions.sql:81-
   NEW.is_published = true` (the publish flip).
 - `updated` branch: log only when a column that the employee sees changes.
   The columns are `start_time`, `end_time`, `employee_id`, `position`,
-  `break_duration`, and `status`. The plan checks this list against the
-  `shifts` table. A no-op Sling re-sync then writes no row.
+  `break_duration`, `notes`, and a move to or from `status = 'cancelled'`.
+  Other status moves (for example a clock-in) are not schedule changes. A
+  no-op Sling re-sync then writes no row.
 - Keep `deleted` and `unpublished` as they are.
 
 **`changed_by` becomes nullable.** Null means a service-role write. Today
@@ -169,14 +171,18 @@ today. With the column-compare rule, a real Sling change gets a row with
 change to `string | null`. The filter `.eq('changed_by', user.id)` in
 `src/hooks/usePublishedShiftGuard.tsx:176` stays correct.
 
-**Recipients of a change.** `before_data.employee_id` for the old date, and
-`after_data.employee_id` for the new date. This is the rule of
-`deriveShiftChangeRecipients`
-(`supabase/functions/_shared/shiftChangedNotification.ts:68-87`). An open
-shift has no recipient and is never pending.
+**Recipients of a change** (`schedule_change_recipients`):
+
+- the before employee, on the before date, for a `deleted` row and for a
+  reassignment, when the employee could see the shift;
+- the after employee, on the after date, for a `published` or `updated`
+  row, while the shift still exists and is published. A pair for a shift
+  that was later deleted as a draft, or unpublished, is void.
+- active employees only. An open shift has no recipient.
 
 **Pending pair.** A tracked row with `change_type IN ('published',
-'updated', 'deleted')`, a recipient, and no link row with `status = 'sent'`.
+'updated', 'deleted')`, a recipient, and no link row with `status` `sent`
+or `skipped`.
 The rule uses the change type, not the publish state of the week, so a
 per-shift `unpublished` row never becomes pending after a republish.
 
@@ -184,10 +190,10 @@ per-shift `unpublished` row never becomes pending after a republish.
 
 | Function | Security | Purpose |
 |---|---|---|
-| `get_schedule_pending_notifications(restaurant, from_date?, to_date?)` | definer, explicit check | Pending pairs. State `pending`, `failed`, or `in_doubt`. |
-| `get_schedule_week_change_log(restaurant, from_date, to_date)` | definer, explicit check | Change rows of the range, actor name, and the notifications for each. |
-| `claim_schedule_notifications(restaurant, from_date, to_date, source, publication_id, change_log_id?)` | definer, service role | Locks with `pg_advisory_xact_lock(hashtext(restaurant_id::text), from_date - DATE '2000-01-01')`. Takes back eligible rows. Makes new rows for free pairs. Returns rows and their changes. |
-| `mark_schedule_notification(id, status, channels, error)` | definer, service role | Writes `sent` or `failed`. |
+| `get_schedule_pending_notifications(restaurant, from_date?, to_date?)` | definer, explicit check | Pending pairs. State `pending`, `sending`, `retrying`, `failed`, or `in_doubt`. |
+| `get_schedule_week_change_log(restaurant, from_date, to_date)` | definer, explicit check | Change rows of the range, the actor's profile name (only for a member of the restaurant; no email), the notifications, and the employees still pending. |
+| `claim_schedule_notifications(restaurant, from_date, to_date, source, publication_id, change_log_id?)` | definer, service role | Checks that the publication belongs to the restaurant. Locks with `pg_advisory_xact_lock(hashtext('schedule_notifications'), hashtext(restaurant_id::text))`. Takes back eligible rows. Makes new rows for free pairs. Returns rows and their changes. |
+| `mark_schedule_notification(id, status, channels, error, uncertain)` | definer, service role | Writes `sent`, `skipped`, `failed`, or `deferred` (stored as `failed`; the attempt is given back). |
 
 The two read functions start with
 `IF NOT user_has_capability(p_restaurant_id, 'view:scheduling') THEN RAISE`.
@@ -200,12 +206,14 @@ so a staff caller sees every change as pending. All four functions get
 
 **Reclaim rules.**
 
-- A `failed` row: the provider rejected it, so nothing arrived. The next
-  claim takes it back, with the same id and the same change set.
-- A `claimed` row with `claimed_at` older than 10 minutes and newer than
-  60 minutes: the next claim takes it back.
-- A `claimed` row older than 60 minutes: never sent again automatically.
-  The pending tool shows it as `in_doubt`. The manager decides.
+- A `failed` row that the provider rejected: nothing arrived. The next
+  claim takes it back, with the same id and the same change set, up to 5
+  attempts. A budget stop (`deferred`) does not use an attempt.
+- A `failed` row with `uncertain = true`, or a `claimed` row with
+  `claimed_at` older than 10 minutes: the next claim takes it back only
+  while the row is less than 60 minutes old.
+- Older uncertain or claimed rows: never sent again automatically. The
+  pending tool shows them as `in_doubt`. The manager decides.
 - Why these numbers. The session network blocks `supabase.com` and
   `resend.com`, so the plan cannot quote the docs. The window is set so that
   it is safe with a large margin on the limits we expect. The edge function
@@ -257,9 +265,10 @@ preview lists them first. See "Decision for the user" below.
   - `confirmed: true`: call `publish_schedule` with the user client (same
     RPC as the UI). Then start `notify-schedule-published` with the user
     JWT (same function as the UI), unless `notify: false`.
+  - The confirm counts the drafts (no full preview), so it answers fast.
   - The MCP forward timeout is 25 s (`supabase/functions/mcp/index.ts:26`).
-    `sendPaced` can run 90 s (`supabase/functions/_shared/emailQueue.ts:41`).
-    So the tool waits at most 15 s for the notify result. If the result is
+    A large send can run 90 s. So the tool waits at most 15 s for the notify
+    result, and less when the 18 s answer deadline is near. If the result is
     not back, the tool returns `notifications: "sending"`. The callee is a
     separate function call, so it keeps on. When `EdgeRuntime.waitUntil`
     exists, the tool also passes the pending promise to it. The
@@ -318,7 +327,7 @@ Invariants:
 Result (`.claude/skills/run-tla/tlc.sh all`):
 
 ```text
-OK    PublishNotifications: pass (expected pass; 102141 distinct states found)
+OK    PublishNotifications: pass (expected pass; 211581 distinct states found)
 OK    PublishNotifications_ClientLog: violation (expected violation)      -> LogExactlyOnce
 OK    PublishNotifications_NoIdemKey: violation (expected violation)      -> NoDuplicateDelivery
 OK    PublishNotifications_NoUniqueClaim: violation (expected violation)  -> NoDuplicateDelivery
@@ -349,11 +358,30 @@ first invariant.
   `updated` row, and the trigger writes one more for the same UPDATE. This
   exists today. The email builder groups lines by shift id, so the employee
   sees one line.
-- **Preview drift.** The confirm does not lock the preview. It returns the
-  real recipients and flags a difference.
+- **Preview drift.** The confirm does not lock the preview. The tool has no
+  state, so it cannot compare with the earlier preview call. It returns the
+  real recipients.
 - **Retractions.** `unpublished` rows show in the change log. Their
   notification state comes from `schedule_retractions.notified_at`. They are
   not in the pending tool, because the week is no longer published.
+
+## Phase 7 review changes (2026-11-28)
+
+- The recipient function runs a separate statement for an id list and for a
+  date range, so each gets an index plan. The change log calls it once per
+  week, not once per row. Partial indexes `WHERE tracked` keep old rows out.
+- The backfill rewrites no table: `tracked` is added with `DEFAULT false`,
+  then the default becomes `true`. Dates are filled only for the last
+  90 days, with one join to `restaurants`.
+- The date trigger always derives the dates. A client value is ignored.
+- A load failure after the claim gives the rows back (`deferred`).
+- Email pacing counts from the start of the last email, and a Resend 429 is
+  retried (`sendPaced`). The push step checks the budget first. Change ids
+  load in chunks of 100.
+- The email thread header comes from the row's first shift date (Monday of
+  that week), so a retry sends the same body under the same key.
+- TLA+: a `SendTimeout` step (delivered, recorded as an uncertain failure)
+  is in the model. All invariants still hold.
 
 ## Decisions (approved by the user, 2026-11-28)
 

@@ -4,6 +4,9 @@ import {
   summarizeLines,
   deliverClaimed,
   claimNotifications,
+  summarizeOutcomes,
+  buildNotifyResponse,
+  describeShift,
   type DeliveryChange,
   type DeliveryEmployee,
   type DeliverDeps,
@@ -125,6 +128,32 @@ describe('buildChangeLines', () => {
     expect(lines).toEqual([]);
   });
 
+  it('says "Updated" when the window and position stay the same (for example, a notes change)', () => {
+    const lines = buildChangeLines(
+      [change({
+        change_type: 'updated',
+        before_data: shift(ANA, '2030-01-07T16:00:00Z', '2030-01-08T00:00:00Z', { notes: 'a' }),
+        after_data: shift(ANA, '2030-01-07T16:00:00Z', '2030-01-08T00:00:00Z', { notes: 'b' }),
+      })],
+      ANA,
+      TZ,
+    );
+    expect(lines[0].text).toBe('Updated: Mon, Jan 7, 10:00 AM – 6:00 PM (Server)');
+  });
+
+  it('describes a cancelled shift as removed', () => {
+    const lines = buildChangeLines(
+      [change({
+        change_type: 'updated',
+        before_data: shift(ANA, '2030-01-07T16:00:00Z', '2030-01-08T00:00:00Z'),
+        after_data: shift(ANA, '2030-01-07T16:00:00Z', '2030-01-08T00:00:00Z', { status: 'cancelled' }),
+      })],
+      ANA,
+      TZ,
+    );
+    expect(lines[0].kind).toBe('removed');
+  });
+
   it('sorts lines by shift start', () => {
     const lines = buildChangeLines(
       [
@@ -167,8 +196,8 @@ function makeDeps(over: Partial<DeliverDeps> = {}): DeliverDeps {
     timeZone: TZ,
     loadChanges: vi.fn(async (ids: string[]) => changes.filter((c) => ids.includes(c.id))),
     loadEmployees: vi.fn(async (ids: string[]) => employees.filter((e) => ids.includes(e.id))),
-    sendEmail: vi.fn(async () => true),
-    sendPush: vi.fn(async () => true),
+    sendEmail: vi.fn(async () => 'sent' as const),
+    sendPush: vi.fn(async () => 'sent' as const),
     mark: vi.fn(async () => undefined),
     sleep: vi.fn(async () => undefined),
     now: () => 0,
@@ -191,7 +220,7 @@ describe('deliverClaimed', () => {
     expect(deps.sendEmail).toHaveBeenCalledTimes(1);
     expect(vi.mocked(deps.sendEmail).mock.calls[0][2]).toBe('n1'); // idempotency key = row id
     expect(vi.mocked(deps.sendPush).mock.calls[0][2]).toBe('n1'); // push tag = row id
-    expect(deps.mark).toHaveBeenCalledWith('n1', 'sent', ['email', 'push'], null);
+    expect(deps.mark).toHaveBeenCalledWith('n1', 'sent', ['email', 'push'], null, false);
     expect(out[0]).toMatchObject({ notificationId: 'n1', employeeName: 'Ana', status: 'sent', channels: ['email', 'push'] });
   });
 
@@ -200,14 +229,14 @@ describe('deliverClaimed', () => {
     const out = await deliverClaimed([claim('n2', BEN, ['c-ben'])], deps);
 
     expect(deps.sendEmail).not.toHaveBeenCalled();
-    expect(deps.mark).toHaveBeenCalledWith('n2', 'failed', [], 'no channel reached the employee');
+    expect(deps.mark).toHaveBeenCalledWith('n2', 'failed', [], 'no channel reached the employee', false);
     expect(out[0].status).toBe('failed');
   });
 
   it('marks sent with one channel when the other fails', async () => {
-    const deps = makeDeps({ sendEmail: vi.fn(async () => false) });
+    const deps = makeDeps({ sendEmail: vi.fn(async () => 'failed' as const) });
     await deliverClaimed([claim('n1', ANA, ['c-ana'])], deps);
-    expect(deps.mark).toHaveBeenCalledWith('n1', 'sent', ['push'], null);
+    expect(deps.mark).toHaveBeenCalledWith('n1', 'sent', ['push'], null, false);
   });
 
   it('records the mark only after the send (TLA+ RecordAfter)', async () => {
@@ -215,7 +244,7 @@ describe('deliverClaimed', () => {
     const deps = makeDeps({
       sendEmail: vi.fn(async () => {
         order.push('send');
-        return true;
+        return 'sent' as const;
       }),
       sendPush: null,
       mark: vi.fn(async () => {
@@ -226,7 +255,7 @@ describe('deliverClaimed', () => {
     expect(order).toEqual(['send', 'mark']);
   });
 
-  it('marks failed when a send throws, and goes on with the next row', async () => {
+  it('marks a thrown send as an uncertain failure, and goes on with the next row', async () => {
     const deps = makeDeps({
       sendEmail: vi.fn(async () => {
         throw new Error('boom');
@@ -237,10 +266,11 @@ describe('deliverClaimed', () => {
     });
     const out = await deliverClaimed([claim('n1', ANA, ['c-ana']), claim('n2', BEN, ['c-ben'])], deps);
     expect(out.map((o) => o.status)).toEqual(['failed', 'failed']);
+    expect(deps.mark).toHaveBeenCalledWith('n1', 'failed', [], 'boom', true);
     expect(deps.mark).toHaveBeenCalledTimes(2);
   });
 
-  it('marks a row with no visible change as sent with no channel', async () => {
+  it('marks a row with no visible change as skipped, with no send', async () => {
     const deps = makeDeps({
       loadChanges: vi.fn(async () => [
         change({ id: 'x1', after_data: shift(ANA, '2030-01-07T16:00:00Z', '2030-01-08T00:00:00Z') }),
@@ -249,27 +279,87 @@ describe('deliverClaimed', () => {
     });
     await deliverClaimed([claim('n1', ANA, ['x1', 'x2'])], deps);
     expect(deps.sendEmail).not.toHaveBeenCalled();
-    expect(deps.mark).toHaveBeenCalledWith('n1', 'sent', [], 'no visible change');
+    expect(deps.mark).toHaveBeenCalledWith('n1', 'skipped', [], 'no visible change', false);
   });
 
-  it('marks the rest failed when the time budget runs out, without a send', async () => {
+  it('defers the rest when the time budget runs out, without a send', async () => {
     let t = 0;
-    const deps = makeDeps({ now: () => t, budgetMs: 1000, sendEmail: vi.fn(async () => { t += 2000; return true; }) });
+    const deps = makeDeps({ now: () => t, budgetMs: 1000, sendEmail: vi.fn(async () => { t += 2000; return 'sent' as const; }) });
     const out = await deliverClaimed([claim('n1', ANA, ['c-ana']), claim('n3', ANA, ['c-ana'])], deps);
-    expect(out.map((o) => o.status)).toEqual(['sent', 'failed']);
-    expect(deps.mark).toHaveBeenLastCalledWith('n3', 'failed', [], 'send budget exhausted');
+    expect(out.map((o) => o.status)).toEqual(['sent', 'deferred']);
+    expect(deps.mark).toHaveBeenLastCalledWith('n3', 'deferred', [], 'send budget exhausted', false);
   });
 
-  it('paces email sends', async () => {
-    const deps = makeDeps({ intervalMs: 500 });
+  it('skips the push when the email used up the budget', async () => {
+    let t = 0;
+    const deps = makeDeps({ now: () => t, budgetMs: 1000, sendEmail: vi.fn(async () => { t += 2000; return 'sent' as const; }) });
+    await deliverClaimed([claim('n1', ANA, ['c-ana'])], deps);
+    expect(deps.sendPush).not.toHaveBeenCalled();
+    expect(deps.mark).toHaveBeenCalledWith('n1', 'sent', ['email'], null, false);
+  });
+
+  it('marks a timed-out email as an uncertain failure', async () => {
+    const deps = makeDeps({ sendEmail: vi.fn(async () => 'uncertain' as const), sendPush: null });
+    await deliverClaimed([claim('n1', ANA, ['c-ana'])], deps);
+    expect(deps.mark).toHaveBeenCalledWith('n1', 'failed', [], 'no channel reached the employee', true);
+  });
+
+  it('gives every row back when a load fails, then throws', async () => {
+    const deps = makeDeps({ loadChanges: vi.fn(async () => { throw new Error('414'); }) });
+    await expect(deliverClaimed([claim('n1', ANA, ['c-ana']), claim('n2', BEN, ['c-ben'])], deps)).rejects.toThrow('414');
+    expect(deps.sendEmail).not.toHaveBeenCalled();
+    expect(deps.mark).toHaveBeenCalledWith('n1', 'deferred', [], 'load failed: 414', false);
+    expect(deps.mark).toHaveBeenCalledWith('n2', 'deferred', [], 'load failed: 414', false);
+  });
+
+  it('paces email sends from the start of the last email', async () => {
+    let t = 0;
+    const deps = makeDeps({ intervalMs: 500, now: () => t, sendEmail: vi.fn(async () => { t += 200; return 'sent' as const; }) });
     await deliverClaimed([claim('n1', ANA, ['c-ana']), claim('n3', ANA, ['c-ana'])], deps);
-    expect(deps.sleep).toHaveBeenCalledWith(500);
+    expect(deps.sleep).toHaveBeenCalledWith(300);
+  });
+
+  it('does not sleep when the last email took longer than the interval', async () => {
+    let t = 0;
+    const deps = makeDeps({ intervalMs: 500, now: () => t, sendEmail: vi.fn(async () => { t += 900; return 'sent' as const; }) });
+    await deliverClaimed([claim('n1', ANA, ['c-ana']), claim('n3', ANA, ['c-ana'])], deps);
+    expect(deps.sleep).not.toHaveBeenCalled();
   });
 
   it('does nothing and loads nothing for an empty claim list', async () => {
     const deps = makeDeps();
     expect(await deliverClaimed([], deps)).toEqual([]);
     expect(deps.loadChanges).not.toHaveBeenCalled();
+  });
+});
+
+describe('summarizeOutcomes and buildNotifyResponse', () => {
+  const outcome = (status: 'sent' | 'skipped' | 'failed' | 'deferred') => ({
+    notificationId: `n-${status}`, employeeId: 'e', employeeName: 'E', status, channels: [], lines: [], error: null,
+  });
+
+  it('counts each status and answers 200 when nobody was missed', () => {
+    expect(summarizeOutcomes([outcome('sent'), outcome('skipped')])).toEqual({ sent: 1, skipped: 1, failed: 0, deferred: 0, httpStatus: 200 });
+  });
+
+  it('answers 502 when a row failed or was deferred', () => {
+    expect(summarizeOutcomes([outcome('sent'), outcome('deferred')]).httpStatus).toBe(502);
+    expect(summarizeOutcomes([outcome('failed')]).httpStatus).toBe(502);
+  });
+
+  it('reports failed + deferred as failed, and skipped apart from sent', () => {
+    const body = buildNotifyResponse([outcome('sent'), outcome('skipped'), outcome('failed'), outcome('deferred')], 2);
+    expect(body).toMatchObject({ success: false, sent: 1, skipped: 1, failed: 2, deferred: 1, pushSent: 2, totalEmployees: 4 });
+    expect(body.recipients.map((r) => r.status)).toEqual(['sent', 'skipped', 'failed', 'deferred']);
+  });
+});
+
+describe('describeShift', () => {
+  it('names the window and the position', () => {
+    expect(describeShift(shift(ANA, '2030-01-07T16:00:00Z', '2030-01-08T00:00:00Z'), TZ)).toBe('Mon, Jan 7, 10:00 AM – 6:00 PM (Server)');
+  });
+  it('returns null for no snapshot', () => {
+    expect(describeShift(null, TZ)).toBeNull();
   });
 });
 
@@ -293,6 +383,18 @@ describe('claimNotifications', () => {
       p_change_log_id: null,
     });
     expect(out).toEqual(rows);
+  });
+
+  it('logs when the mark finds the row no longer claimed', async () => {
+    const { markNotification } = await import('../../supabase/functions/_shared/scheduleNotificationDelivery');
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const rpc = vi.fn(async () => ({ data: false, error: null }));
+    await markNotification({ rpc }, 'n1', 'sent', ['email'], null, false);
+    expect(rpc).toHaveBeenCalledWith('mark_schedule_notification', {
+      p_id: 'n1', p_status: 'sent', p_channels: ['email'], p_error: null, p_uncertain: false,
+    });
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('no longer claimed'));
+    err.mockRestore();
   });
 
   it('throws on an RPC error', async () => {

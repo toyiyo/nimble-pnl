@@ -8,12 +8,14 @@
 --   IdemKey     -> a taken-back row keeps its id and its change set.
 --   RecordAfter -> mark_schedule_notification runs after the provider answers.
 --
--- Reclaim rules:
---   * a 'failed' row (the provider rejected it): up to 5 attempts;
---   * a 'claimed' row older than 10 minutes (no live owner) and created less
---     than 60 minutes ago (inside the provider idempotency window).
--- A 'claimed' row created more than 60 minutes ago is never sent again by
--- this function. get_schedule_pending_notifications shows it as in_doubt.
+-- Reclaim rules (a row that holds a pair in scope):
+--   * 'failed', provider rejected it (uncertain = false): up to 5 attempts.
+--     Nothing arrived, so a resend is safe at any time.
+--   * 'failed' with uncertain = true (the answer did not arrive), or
+--     'claimed' older than 10 minutes (no live owner): only while the row is
+--     less than 60 minutes old, inside the provider idempotency window.
+-- An older uncertain or claimed row is never sent again by this function.
+-- get_schedule_pending_notifications shows it as in_doubt.
 
 CREATE OR REPLACE FUNCTION public.claim_schedule_notifications(
   p_restaurant_id UUID,
@@ -32,21 +34,22 @@ DECLARE
   v_row RECORD;
   v_id UUID;
   v_links INTEGER;
+  v_ids UUID[] := CASE WHEN p_change_log_id IS NULL THEN NULL ELSE ARRAY[p_change_log_id] END;
 BEGIN
   IF p_source NOT IN ('publish', 'shift_change') THEN
     RAISE EXCEPTION 'Invalid source %', p_source USING ERRCODE = 'invalid_parameter_value';
   END IF;
 
+  IF p_publication_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.schedule_publications sp
+    WHERE sp.id = p_publication_id AND sp.restaurant_id = p_restaurant_id
+  ) THEN
+    RAISE EXCEPTION 'Publication % does not belong to restaurant %', p_publication_id, p_restaurant_id
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
   -- One claimer per restaurant at a time.
   PERFORM pg_advisory_xact_lock(hashtext('schedule_notifications'), hashtext(p_restaurant_id::text));
-
-  CREATE TEMP TABLE IF NOT EXISTS pg_temp.claim_scope (
-    change_log_id UUID, employee_id UUID
-  ) ON COMMIT DROP;
-  TRUNCATE pg_temp.claim_scope;
-  INSERT INTO pg_temp.claim_scope
-  SELECT r.change_log_id, r.employee_id
-  FROM public.schedule_change_recipients(p_restaurant_id, p_from, p_to, p_change_log_id) r;
 
   -- 1. Take back eligible rows that hold a pair in scope. Same id, same set.
   FOR v_row IN
@@ -54,17 +57,20 @@ BEGIN
     SET status = 'claimed',
         claimed_at = now(),
         attempts = n.attempts + 1,
+        uncertain = false,
         last_error = NULL
     WHERE n.restaurant_id = p_restaurant_id
       AND (
-        (n.status = 'failed' AND n.attempts < 5)
+        (n.status = 'failed' AND NOT n.uncertain AND n.attempts < 5)
+        OR (n.status = 'failed' AND n.uncertain AND n.created_at >= now() - interval '60 minutes')
         OR (n.status = 'claimed'
             AND n.claimed_at < now() - interval '10 minutes'
             AND n.created_at >= now() - interval '60 minutes')
       )
       AND EXISTS (
-        SELECT 1 FROM public.schedule_notification_changes c
-        JOIN pg_temp.claim_scope s
+        SELECT 1
+        FROM public.schedule_notification_changes c
+        JOIN public.schedule_change_recipients(p_restaurant_id, p_from, p_to, v_ids) s
           ON s.change_log_id = c.change_log_id AND s.employee_id = c.employee_id
         WHERE c.notification_id = n.id
       )
@@ -81,7 +87,7 @@ BEGIN
   -- 2. New rows for free pairs, one row per employee.
   FOR v_row IN
     SELECT s.employee_id AS emp, array_agg(s.change_log_id ORDER BY s.change_log_id) AS ids
-    FROM pg_temp.claim_scope s
+    FROM public.schedule_change_recipients(p_restaurant_id, p_from, p_to, v_ids) s
     WHERE NOT EXISTS (
       SELECT 1 FROM public.schedule_notification_changes c
       WHERE c.change_log_id = s.change_log_id AND c.employee_id = s.employee_id
@@ -116,11 +122,18 @@ REVOKE EXECUTE ON FUNCTION public.claim_schedule_notifications(UUID, DATE, DATE,
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_schedule_notifications(UUID, DATE, DATE, TEXT, UUID, UUID) TO service_role;
 
+-- p_status:
+--   sent     - a channel went out;
+--   skipped  - the changes cancel out, so nothing to tell;
+--   failed   - no channel went out (p_uncertain = true for a timeout);
+--   deferred - not tried (the send budget ran out). Stored as 'failed' and
+--              the attempt is given back, so the next claim retries it.
 CREATE OR REPLACE FUNCTION public.mark_schedule_notification(
   p_id UUID,
   p_status TEXT,
   p_channels TEXT[] DEFAULT '{}',
-  p_error TEXT DEFAULT NULL
+  p_error TEXT DEFAULT NULL,
+  p_uncertain BOOLEAN DEFAULT false
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -128,12 +141,14 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
-  IF p_status NOT IN ('sent', 'failed') THEN
+  IF p_status NOT IN ('sent', 'skipped', 'failed', 'deferred') THEN
     RAISE EXCEPTION 'Invalid status %', p_status USING ERRCODE = 'invalid_parameter_value';
   END IF;
 
   UPDATE public.schedule_notifications
-  SET status = p_status,
+  SET status = CASE WHEN p_status = 'deferred' THEN 'failed' ELSE p_status END,
+      uncertain = (p_status = 'failed' AND COALESCE(p_uncertain, false)),
+      attempts = CASE WHEN p_status = 'deferred' THEN GREATEST(attempts - 1, 0) ELSE attempts END,
       channels = COALESCE(p_channels, '{}'),
       last_error = LEFT(p_error, 500),
       sent_at = CASE WHEN p_status = 'sent' THEN now() ELSE NULL END
@@ -143,6 +158,6 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.mark_schedule_notification(UUID, TEXT, TEXT[], TEXT)
+REVOKE EXECUTE ON FUNCTION public.mark_schedule_notification(UUID, TEXT, TEXT[], TEXT, BOOLEAN)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.mark_schedule_notification(UUID, TEXT, TEXT[], TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.mark_schedule_notification(UUID, TEXT, TEXT[], TEXT, BOOLEAN) TO service_role;

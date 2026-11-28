@@ -76,7 +76,7 @@ function deps(fake: ReturnType<typeof fakeSupabase>, over: Partial<PublishToolDe
 
 const baseTables = () => ({
   shifts: { data: [draftShift('d1', BEN, '2030-01-08T15:00:00Z', '2030-01-08T23:00:00Z'), draftShift('d2', null, '2030-01-09T15:00:00Z', '2030-01-09T23:00:00Z')], error: null },
-  employees: { data: [{ id: ANA, name: 'Ana' }, { id: BEN, name: 'Ben' }], error: null },
+  employees: { data: [{ id: ANA, name: 'Ana', status: 'active' }, { id: BEN, name: 'Ben', status: 'active' }], error: null },
 });
 
 describe('localDateTime', () => {
@@ -198,21 +198,45 @@ describe('runPublishWeek', () => {
       publication_id: 'pub-1',
       notifications: 'done',
       recipients: [{ employee_id: BEN, employee_name: 'Ben', status: 'sent', channels: ['email'], changes: ['New shift: x'] }],
-      differs_from_preview: false,
     });
+    // The confirm counts drafts and does not re-read the pending pairs.
+    expect(fake.rpc).not.toHaveBeenCalledWith('get_schedule_pending_notifications', expect.anything());
   });
 
-  it('flags a confirm whose recipients differ from the preview', async () => {
-    const fake = fakeSupabase(baseTables(), {
-      get_schedule_pending_notifications: { data: [pendingRow({})], error: null },
-      publish_schedule: { data: 'pub-1', error: null },
+  it('reports a notify call that rejects after the publish as a notify error', async () => {
+    const fake = fakeSupabase(baseTables(), { publish_schedule: { data: 'pub-1', error: null } });
+    const invokeNotify = vi.fn(async () => {
+      throw new Error('connection reset');
     });
-    const invokeNotify = vi.fn(async () => ({
-      status: 200,
-      body: { sent: 1, failed: 0, recipients: [{ employeeId: BEN, employeeName: 'Ben', status: 'sent', channels: ['push'], changes: [] }] },
-    }));
     const out = await runPublishWeek({ week_start: '2030-01-07', confirmed: true }, R, deps(fake, { invokeNotify }));
-    expect(out.data.differs_from_preview).toBe(true);
+    expect(out.ok).toBe(true);
+    expect(out.data.publication_id).toBe('pub-1');
+    expect(out.data.notifications).toBe('error');
+    expect(out.data.message).toContain('connection reset');
+  });
+
+  it('shrinks the notify wait to answer before answerBy', async () => {
+    let t = 1_000_000;
+    const fake = fakeSupabase(baseTables(), { publish_schedule: { data: 'pub-1', error: null } });
+    const invokeNotify = vi.fn(() => new Promise<never>(() => {}));
+    const started = Date.now();
+    const out = await runPublishWeek(
+      { week_start: '2030-01-07', confirmed: true },
+      R,
+      deps(fake, { invokeNotify, notifyWaitMs: 60_000, answerBy: t + 1_000, clock: () => t }),
+    );
+    expect(out.data.notifications).toBe('sending');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('counts retrying pairs as recipients and leaves inactive draft employees out', async () => {
+    const tables = baseTables();
+    tables.employees = { data: [{ id: BEN, name: 'Ben', status: 'inactive' }], error: null };
+    const fake = fakeSupabase(tables, {
+      get_schedule_pending_notifications: { data: [pendingRow({ state: 'retrying' })], error: null },
+    });
+    const out = await runPublishWeek({ week_start: '2030-01-07', preview: true }, R, deps(fake));
+    expect(out.data.recipients.map((r: { employee_id: string }) => r.employee_id)).toEqual([ANA]);
   });
 
   it('skips the notify call for a quiet publish', async () => {
@@ -304,7 +328,6 @@ describe('runGetWeekChangeLog', () => {
             changed_at: '2030-01-03T17:00:00Z',
             changed_by: 'user-1',
             changed_by_name: 'Jo Manager',
-            changed_by_email: 'jo@example.com',
             shift_id: 's1',
             employee_id: ANA,
             employee_name: 'Ana',
@@ -324,7 +347,6 @@ describe('runGetWeekChangeLog', () => {
             changed_at: '2030-01-03T18:00:00Z',
             changed_by: null,
             changed_by_name: null,
-            changed_by_email: null,
             shift_id: 's2',
             employee_id: BEN,
             employee_name: 'Ben',
@@ -369,15 +391,14 @@ describe('runGetWeekChangeLog', () => {
     const fake = fakeSupabase({}, {
       get_schedule_week_change_log: {
         data: [{
-          change_log_id: 'c0', change_type: 'updated', changed_at: '2029-12-01T17:00:00Z', changed_by: 'u', changed_by_name: null,
-          changed_by_email: 'a@b.c', shift_id: 's', employee_id: ANA, employee_name: 'Ana', shift_before: null, shift_after: null,
+          change_log_id: 'c0', change_type: 'updated', changed_at: '2029-12-01T17:00:00Z', changed_by: 'u', changed_by_name: null, shift_id: 's', employee_id: ANA, employee_name: 'Ana', shift_before: null, shift_after: null,
           reason: null, tracked: false, notified_at: '2029-12-01T17:01:00Z', notifications: [], pending_employees: [],
         }],
         error: null,
       },
     });
     const out = await runGetWeekChangeLog({ week_start: '2030-01-07' }, R, deps(fake));
-    expect(out.data.changes[0]).toMatchObject({ changed_by: 'a@b.c', tracked: false, legacy_notified_at: '2029-12-01 11:01' });
+    expect(out.data.changes[0]).toMatchObject({ changed_by: 'Unknown user', tracked: false, legacy_notified_at: '2029-12-01 11:01' });
     expect(out.data.changes[0].pending_for).toBeUndefined();
   });
 

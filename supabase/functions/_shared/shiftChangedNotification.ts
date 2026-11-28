@@ -2,7 +2,7 @@
  * Validity check for the "your published shift changed" notification
  * (docs/superpowers/specs/2026-08-15-quiet-publish-live-edit-design.md).
  *
- * The recipients and the message now come from the notification ledger:
+ * The recipients and the message come from the notification ledger:
  * schedule_change_recipients() in SQL and buildChangeLines() in
  * scheduleNotificationDelivery.ts
  * (docs/superpowers/specs/2026-11-28-mcp-publish-notifications-design.md).

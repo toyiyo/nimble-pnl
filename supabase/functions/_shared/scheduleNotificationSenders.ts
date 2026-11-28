@@ -10,9 +10,11 @@
  * Design: docs/superpowers/specs/2026-11-28-mcp-publish-notifications-design.md
  */
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendEmailResult } from './emailQueue.ts';
+import { sendEmailResult, sendPaced } from './emailQueue.ts';
+import { APP_URL, NOTIFICATION_FROM } from './notificationHelpers.ts';
 import { sendWebPushToUser } from './webPushHelper.ts';
 import { scheduleThreadHeaders, shiftBusinessDay } from './scheduleEmailThread.ts';
+import { addDaysToDateStr } from './labor/restaurantClock.ts';
 import { buildScheduleChangeEmail } from './scheduleChangeEmail.ts';
 import {
   markNotification,
@@ -23,8 +25,10 @@ import {
   type RpcClient,
 } from './scheduleNotificationDelivery.ts';
 
-export const SCHEDULE_NOTIFICATION_FROM = 'EasyShiftHQ <notifications@easyshifthq.com>';
-const APP_URL = 'https://app.easyshifthq.com/employee/schedule';
+const SCHEDULE_URL = `${APP_URL}/employee/schedule`;
+
+/** PostgREST sends `.in()` in the URL; 100 UUIDs stay far below URL limits. */
+const ID_CHUNK = 100;
 
 export interface SenderContext {
   serviceClient: SupabaseClient;
@@ -37,92 +41,93 @@ export interface SenderContext {
   onPushSent?: (count: number) => void;
 }
 
+function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/** Monday of the week that holds a YYYY-MM-DD day. */
+function mondayOf(day: string): string {
+  const dow = new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  return addDaysToDateStr(day, -((dow + 6) % 7));
+}
+
 /**
- * Thread the email with the publish emails of the week that holds the shift.
- * Missing data gives no header, never an error.
+ * Thread the email with the other schedule emails of the week. The header
+ * comes from the row's first shift date alone, so a retry of the row sends
+ * the same body under the same Idempotency-Key.
  */
-async function resolveThreadHeaders(
-  ctx: SenderContext,
-  startIso: string,
-): Promise<Record<string, string> | undefined> {
-  const businessDay = shiftBusinessDay(startIso, ctx.timeZone);
-  if (!businessDay) return undefined;
-  const minWeekStart = new Date(`${businessDay}T00:00:00Z`);
-  minWeekStart.setUTCDate(minWeekStart.getUTCDate() - 6);
-
-  const { data: publication, error } = await ctx.serviceClient
-    .from('schedule_publications')
-    .select('week_start_date')
-    .eq('restaurant_id', ctx.restaurantId)
-    .gte('week_start_date', minWeekStart.toISOString().slice(0, 10))
-    .lte('week_start_date', businessDay)
-    .gte('week_end_date', businessDay)
-    .order('published_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error('schedule notification: covering publication lookup failed', error);
-    return undefined;
-  }
-  return publication ? scheduleThreadHeaders(ctx.restaurantId, publication.week_start_date) : undefined;
+function threadHeaders(ctx: SenderContext, startIso: string): Record<string, string> | undefined {
+  const day = shiftBusinessDay(startIso, ctx.timeZone);
+  return day ? scheduleThreadHeaders(ctx.restaurantId, mondayOf(day)) : undefined;
 }
 
 export function makeDeliverDeps(ctx: SenderContext): DeliverDeps {
   const rpcClient = ctx.serviceClient as unknown as RpcClient;
+  const apiKey = ctx.resendApiKey;
 
   return {
     timeZone: ctx.timeZone,
     loadChanges: async (ids) => {
-      const { data, error } = await ctx.serviceClient
-        .from('schedule_change_logs')
-        .select('id, shift_id, change_type, changed_at, before_data, after_data')
-        .eq('restaurant_id', ctx.restaurantId)
-        .in('id', ids);
-      if (error) throw new Error(`Failed to fetch change logs: ${error.message}`);
-      return (data ?? []) as DeliveryChange[];
+      const rows: DeliveryChange[] = [];
+      for (const part of chunks(ids, ID_CHUNK)) {
+        const { data, error } = await ctx.serviceClient
+          .from('schedule_change_logs')
+          .select('id, shift_id, change_type, changed_at, before_data, after_data')
+          .eq('restaurant_id', ctx.restaurantId)
+          .in('id', part);
+        if (error) throw new Error(`Failed to fetch change logs: ${error.message}`);
+        rows.push(...((data ?? []) as DeliveryChange[]));
+      }
+      return rows;
     },
     // A service-role read keeps the column grants: migration 20260806110000
     // revoked SELECT on employees.email from `authenticated`. Each caller
     // checks the user's access before it gets here.
     loadEmployees: async (ids) => {
-      const { data, error } = await ctx.serviceClient
-        .from('employees')
-        .select('id, name, email, user_id')
-        .eq('restaurant_id', ctx.restaurantId)
-        .in('id', ids);
-      if (error) throw new Error(`Failed to fetch employees: ${error.message}`);
-      return (data ?? []) as DeliveryEmployee[];
+      const rows: DeliveryEmployee[] = [];
+      for (const part of chunks(ids, ID_CHUNK)) {
+        const { data, error } = await ctx.serviceClient
+          .from('employees')
+          .select('id, name, email, user_id')
+          .eq('restaurant_id', ctx.restaurantId)
+          .in('id', part);
+        if (error) throw new Error(`Failed to fetch employees: ${error.message}`);
+        rows.push(...((data ?? []) as DeliveryEmployee[]));
+      }
+      return rows;
     },
     sendEmail:
-      ctx.channels.email && ctx.resendApiKey
+      ctx.channels.email && apiKey
         ? async (employee, lines, notificationId) => {
-            if (!employee.email) return false;
+            if (!employee.email) return 'failed';
             const email = buildScheduleChangeEmail({
               employeeName: employee.name ?? 'there',
               restaurantName: ctx.restaurantName,
               lines,
-              appUrl: APP_URL,
+              appUrl: SCHEDULE_URL,
             });
-            const headers = lines[0]?.sortKey ? await resolveThreadHeaders(ctx, lines[0].sortKey) : undefined;
-            const result = await sendEmailResult(
-              ctx.resendApiKey ?? '',
-              SCHEDULE_NOTIFICATION_FROM,
-              employee.email,
-              email.subject,
-              email.html,
-              headers,
-              { idempotencyKey: notificationId },
+            const headers = lines[0]?.sortKey ? threadHeaders(ctx, lines[0].sortKey) : undefined;
+            // sendPaced for its 429 backoff; deliverClaimed owns the pacing.
+            const [result] = await sendPaced(
+              [employee],
+              () =>
+                sendEmailResult(apiKey, NOTIFICATION_FROM, employee.email ?? '', email.subject, email.html, headers, {
+                  idempotencyKey: notificationId,
+                }),
+              { intervalMs: 0, label: `schedule-notification ${notificationId}` },
             );
-            if (!result.ok) {
-              console.error(`schedule notification: email failed for employee ${employee.id} [${result.status}]`, result.error);
-            }
-            return result.ok;
+            if (result.ok) return 'sent';
+            console.error(`schedule notification: email failed for employee ${employee.id} [${result.status}]`, result.error);
+            // Status 0 means no answer from Resend (a timeout or a network
+            // error): the email may have arrived.
+            return result.status === 0 ? 'uncertain' : 'failed';
           }
         : null,
     sendPush: ctx.channels.push
       ? async (employee, lines, notificationId) => {
-          if (!employee.user_id) return false;
+          if (!employee.user_id) return 'failed';
           const summary = summarizeLines(lines);
           const result = await sendWebPushToUser(ctx.serviceClient, employee.user_id, ctx.restaurantId, {
             title: summary.title,
@@ -132,9 +137,10 @@ export function makeDeliverDeps(ctx: SenderContext): DeliverDeps {
             tag: `schedule-notification-${notificationId}`,
           });
           ctx.onPushSent?.(result.sent);
-          return result.sent > 0;
+          return result.sent > 0 ? 'sent' : 'failed';
         }
       : null,
-    mark: (id, status, channels, error) => markNotification(rpcClient, id, status, channels, error),
+    mark: (id, status, channels, error, uncertain) =>
+      markNotification(rpcClient, id, status, channels, error, uncertain),
   };
 }

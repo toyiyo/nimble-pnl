@@ -11,7 +11,8 @@
 --   and an INSERT with is_published = true (the open-shift claim path,
 --   20260721140000_open_shift_claim_authz_guard.sql:316-322, :442-449).
 -- * The `updated` branch logs only when a field that the employee sees
---   changes. Before, every UPDATE of a published shift wrote a row, so a
+--   changes: start_time, end_time, employee_id, position, break_duration,
+--   notes, or a move to or from status 'cancelled'. Before, every UPDATE of a published shift wrote a row, so a
 --   no-op Sling upsert (20260223100100_sling_sync_rpc.sql:65-73) or a clock-in
 --   status change made a false "your shift changed" notification.
 -- * SET search_path on this SECURITY DEFINER function.
@@ -66,9 +67,11 @@ BEGIN
       row_to_json(OLD)::jsonb, row_to_json(NEW)::jsonb
     );
   ELSIF OLD.is_published AND NEW.is_published
-    AND (OLD.start_time, OLD.end_time, OLD.employee_id, OLD.position, OLD.break_duration)
+    AND (OLD.start_time, OLD.end_time, OLD.employee_id, OLD.position, OLD.break_duration,
+         OLD.notes, OLD.status = 'cancelled')
         IS DISTINCT FROM
-        (NEW.start_time, NEW.end_time, NEW.employee_id, NEW.position, NEW.break_duration)
+        (NEW.start_time, NEW.end_time, NEW.employee_id, NEW.position, NEW.break_duration,
+         NEW.notes, NEW.status = 'cancelled')
   THEN
     INSERT INTO public.schedule_change_logs (
       restaurant_id, shift_id, employee_id, change_type, changed_by, before_data, after_data

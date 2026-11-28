@@ -6,11 +6,13 @@
  * This module is pure. It has no Deno imports, so the client and the edge
  * functions can use the same list.
  */
+import { PUBLISH_WRITE_TOOL_NAMES } from './publishToolDefinitions.ts';
+
 export const WRITE_TOOL_NAMES: readonly string[] = Object.freeze([
   'batch_categorize_transactions',
   'batch_categorize_pos_sales',
   'create_categorization_rule',
-  'publish_week',
+  ...PUBLISH_WRITE_TOOL_NAMES,
 ]);
 
 const WRITE_TOOL_SET: ReadonlySet<string> = new Set(WRITE_TOOL_NAMES);

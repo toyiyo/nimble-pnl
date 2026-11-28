@@ -1,8 +1,7 @@
 /**
  * The schedule notification email. Pure, so Vitest covers it.
  *
- * The body lists the employee's own changes (one line per shift), because a
- * publish now notifies only employees with a pending change.
+ * The body lists the employee's own changes, one line per shift.
  * Design: docs/superpowers/specs/2026-11-28-mcp-publish-notifications-design.md
  *
  * The subject and the body depend only on the notification row (its change
@@ -28,17 +27,17 @@ export interface ScheduleEmail {
 const isNewScheduleOnly = (lines: ChangeLine[]): boolean => lines.every((l) => l.kind === 'added');
 
 export function buildScheduleChangeEmail(input: ScheduleEmailInput): ScheduleEmail {
-  const isRepublish = !isNewScheduleOnly(input.lines);
+  const hasUpdates = !isNewScheduleOnly(input.lines);
   return {
-    subject: isRepublish
+    subject: hasUpdates
       ? `Schedule changes at ${input.restaurantName}`
       : `New schedule published at ${input.restaurantName}`,
-    html: buildScheduleEmailHtml({ ...input, isRepublish }),
+    html: buildScheduleEmailHtml({ ...input, hasUpdates }),
   };
 }
 
-function buildScheduleEmailHtml(input: ScheduleEmailInput & { isRepublish: boolean }): string {
-  const { employeeName, restaurantName, isRepublish, appUrl } = input;
+function buildScheduleEmailHtml(input: ScheduleEmailInput & { hasUpdates: boolean }): string {
+  const { employeeName, restaurantName, hasUpdates, appUrl } = input;
   const lines = input.lines.map((l) => l.text);
   const p = 'color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;';
   const changeList = lines.length
@@ -51,9 +50,9 @@ function buildScheduleEmailHtml(input: ScheduleEmailInput & { isRepublish: boole
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
       ${generateHeader()}
       <div style="padding: 40px 32px; background-color: #ffffff;">
-        <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">${isRepublish ? 'Updated Schedule' : 'New Schedule Published'}</h1>
+        <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">${hasUpdates ? 'Updated Schedule' : 'New Schedule Published'}</h1>
         <p style="${p}">Hi <strong style="color: #1f2937;">${escapeHtml(employeeName)}</strong>,</p>
-        <p style="${p}">Your schedule at <strong style="color: #1f2937;">${escapeHtml(restaurantName)}</strong> ${isRepublish ? 'has changes' : 'is published'}:</p>
+        <p style="${p}">Your schedule at <strong style="color: #1f2937;">${escapeHtml(restaurantName)}</strong> ${hasUpdates ? 'has changes' : 'is published'}:</p>
         ${changeList}
         <div style="text-align: center; margin: 32px 0;">
           <a href="${appUrl}" style="background-color: #059669; color: #ffffff !important; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; border: 2px solid #059669;">

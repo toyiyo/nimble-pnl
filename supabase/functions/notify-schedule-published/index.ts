@@ -1,7 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { claimNotifications, deliverClaimed, type RpcClient } from "../_shared/scheduleNotificationDelivery.ts";
+import {
+  buildNotifyResponse,
+  claimNotifications,
+  deliverClaimed,
+  NOTHING_TO_SEND,
+  summarizeOutcomes,
+  type RpcClient,
+} from "../_shared/scheduleNotificationDelivery.ts";
 import { makeDeliverDeps } from "../_shared/scheduleNotificationSenders.ts";
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 import { safeTz } from "../_shared/timezone.ts";
@@ -74,8 +81,7 @@ serve(async (req) => {
       throw new Error("Restaurant not found");
     }
 
-    // Service-role client for the resolver read + push sends (created here so
-    // it's available for the independent email/push gating below).
+    // Service-role client: the claim, the ledger reads, and the sends need it.
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -104,10 +110,10 @@ serve(async (req) => {
     });
 
     if (claims.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, sent: 0, failed: 0, pushSent: 0, totalEmployees: 0, nothingToSend: true, recipients: [] }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
-      );
+      return new Response(JSON.stringify(NOTHING_TO_SEND), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     let pushSentCount = 0;
@@ -126,10 +132,9 @@ serve(async (req) => {
       }),
     );
 
-    const sentCount = outcomes.filter((o) => o.status === "sent").length;
-    const failedCount = outcomes.length - sentCount;
+    const summary = summarizeOutcomes(outcomes);
 
-    if (sentCount > 0) {
+    if (summary.sent > 0) {
       const { error: markError } = await serviceClient
         .from("schedule_publications")
         .update({ notification_sent: true })
@@ -142,32 +147,13 @@ serve(async (req) => {
     }
 
     console.log(
-      `publication ${publicationId}: ${sentCount} notified, ${failedCount} failed, ${pushSentCount} pushes`,
+      `publication ${publicationId}: ${summary.sent} sent, ${summary.skipped} skipped, ${summary.failed} failed, ${summary.deferred} deferred, ${pushSentCount} pushes`,
     );
 
-    const failed = failedCount > 0;
-    return new Response(
-      JSON.stringify({
-        success: !failed,
-        sent: sentCount,
-        failed: failedCount,
-        pushSent: pushSentCount,
-        totalEmployees: outcomes.length,
-        recipients: outcomes.map((o) => ({
-          notificationId: o.notificationId,
-          employeeId: o.employeeId,
-          employeeName: o.employeeName,
-          status: o.status,
-          channels: o.channels,
-          changes: o.lines.map((l) => l.text),
-          error: o.error,
-        })),
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: failed ? 502 : 200,
-      },
-    );
+    return new Response(JSON.stringify(buildNotifyResponse(outcomes, pushSentCount)), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: summary.httpStatus,
+    });
   } catch (error: unknown) {
     console.error("Error in notify-schedule-published:", error);
     return new Response(

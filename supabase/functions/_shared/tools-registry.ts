@@ -1,7 +1,7 @@
-import { PUBLISH_TOOL_DEFINITIONS, PUBLISH_TOOL_NAMES } from './publishToolDefinitions.ts';
 // Tools Registry - Defines available tools for the AI agent
 
 import { PAY_HIDDEN_TOOL_HINT } from './payHidden.ts';
+import { PUBLISH_TOOL_DEFINITIONS, PUBLISH_TOOL_NAMES, PUBLISH_WRITE_TOOL_NAMES } from './publishToolDefinitions.ts';
 
 export interface ToolDefinition {
   name: string;
@@ -947,7 +947,7 @@ export const WRITE_TOOLS: readonly string[] = [
   'batch_categorize_transactions',
   'batch_categorize_pos_sales',
   'create_categorization_rule',
-  'publish_week',
+  ...PUBLISH_WRITE_TOOL_NAMES,
 ];
 
 /**

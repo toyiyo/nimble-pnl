@@ -22,7 +22,7 @@ test.use({ timezoneId: 'America/New_York' });
 
 type WindowHelpers = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  __supabase: any;
+  __supabase: any; // the test-only client that exposeSupabaseHelpers attaches has no types
   __getRestaurantId: () => Promise<string>;
 };
 

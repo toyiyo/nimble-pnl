@@ -74,18 +74,17 @@ describe('<EmployeeSidebar> availability props', () => {
     miniWeekSpy.mockClear();
   });
 
-  it('threads availabilityByDow + timezone + concrete dates to EmployeeMiniWeek', () => {
+  it('threads availabilityByDow + concrete dates to EmployeeMiniWeek', () => {
     const props = baseProps();
     render(<EmployeeSidebar {...props} />);
 
     expect(miniWeekSpy).toHaveBeenCalledTimes(1);
     const call = miniWeekSpy.mock.calls[0][0] as {
       availabilityByDow: Map<number, EffectiveAvailability>;
-      timezone: string;
       dates: Date[];
     };
     expect(call.availabilityByDow).toBe(props.availabilityByEmployee.get('emp-1'));
-    expect(call.timezone).toBe('America/Chicago');
+    expect(call).not.toHaveProperty('timezone');
     expect(call.dates).toHaveLength(7);
     expect(call.dates[0].getFullYear()).toBe(2027);
     expect(call.dates[0].getMonth()).toBe(6); // July, 0-indexed
@@ -135,24 +134,5 @@ describe('<EmployeeSidebar> availability props', () => {
       availabilityByDow: Map<number, EffectiveAvailability>;
     };
     expect(secondCall.availabilityByDow).toBe(newAvailabilityByEmployee.get('emp-1'));
-  });
-
-  it('re-renders the row when the timezone changes', () => {
-    const props = baseProps();
-    const { rerender } = render(<EmployeeSidebar {...props} />);
-    expect(miniWeekSpy).toHaveBeenCalledTimes(1);
-
-    rerender(<EmployeeSidebar {...baseProps({
-      availabilityByEmployee: props.availabilityByEmployee,
-      timezone: 'America/Los_Angeles',
-      weekDays: props.weekDays,
-      shiftsByEmployee: props.shiftsByEmployee,
-      employees: props.employees,
-      shifts: props.shifts,
-    })} />);
-
-    expect(miniWeekSpy).toHaveBeenCalledTimes(2);
-    const secondCall = miniWeekSpy.mock.calls[1][0] as { timezone: string };
-    expect(secondCall.timezone).toBe('America/Los_Angeles');
   });
 });

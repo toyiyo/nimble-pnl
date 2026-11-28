@@ -436,6 +436,43 @@ describe('local-time slots and the RPC rules', () => {
     });
   });
 
+  // The RPC reads carry-over from recurring rows even when the previous day has an exception.
+  describe('previous day exception keeps recurring carry-over', () => {
+    const recurringSlot = avail(true, '18:00:00', '02:00:00').slots[0];
+    const exceptionDay: EffectiveAvailability = {
+      ...avail(true, '18:00:00', '02:00:00', 'exception'),
+      recurringSlots: [recurringSlot],
+    };
+    const saturday = win('09:00:00', '17:00:00');
+
+    it('accepts a shift inside the recurring spill', () => {
+      expect(
+        run(saturday, exceptionDay, undefined, '2026-07-18T00:30:00Z', '2026-07-18T01:30:00Z'),
+      ).toBe(false);
+    });
+
+    it('flags a shift outside the recurring spill', () => {
+      expect(
+        run(saturday, exceptionDay, undefined, '2026-07-18T04:30:00Z', '2026-07-18T05:00:00Z'),
+      ).toBe(true);
+    });
+
+    it('computeEffectiveAvailability keeps the hidden recurring rows on an exception day', () => {
+      const weekStart = new Date(2026, 3, 6);
+      const result = computeEffectiveAvailability(
+        [makeAvailability({ employee_id: 'e', day_of_week: 1, start_time_local: '18:00:00', end_time_local: '02:00:00' })],
+        [makeException({ employee_id: 'e', date: '2026-04-06', is_available: true, start_time: '23:00:00', end_time: '07:00:00' })],
+        weekStart,
+        ['e'],
+        TZ,
+      );
+      const monday = result.get('e')!.get(1)!;
+      expect(monday.type).toBe('exception');
+      expect(monday.recurringSlots).toHaveLength(1);
+      expect(monday.recurringSlots![0].startTime).toBe('18:00:00');
+    });
+  });
+
   it('10:00-22:00 window gives no conflict in July and December', () => {
     const w = win('10:00:00', '22:00:00');
     const chiShift = (s: string, e: string) =>

@@ -100,8 +100,6 @@ function renderDialog() {
   );
 }
 
-const seenByMonth: Record<string, string> = {};
-
 describe('EmployeeDialog — default availability section (create mode)', () => {
   beforeEach(() => {
     createEmployeeMock.mockReset().mockResolvedValue({ id: 'new-emp-1' });
@@ -170,9 +168,12 @@ describe('EmployeeDialog — default availability section (create mode)', () => 
         expect('end_time' in r).toBe(false);
       }
       // Same local times in July and December: no DST shift.
-      seenByMonth[_m] = JSON.stringify(rows);
-      const others = Object.values(seenByMonth);
-      expect(new Set(others).size).toBe(1);
+      // Exact local values in every month: no DST shift.
+      expect(rows).toHaveLength(7);
+      for (const r of rows) {
+        expect(r.start_time_local).toBe('09:00:00');
+        expect(r.end_time_local).toBe('17:00:00');
+      }
     } finally {
       vi.useRealTimers();
     }

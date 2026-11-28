@@ -14,7 +14,17 @@ export interface EffectiveSlot {
 export interface EffectiveAvailability {
   type: 'recurring' | 'exception' | 'not-set';
   slots: EffectiveSlot[];
+  /** Exception days only: the recurring rows the exception hides. Used for overnight carry-over. */
+  recurringSlots?: EffectiveSlot[];
 }
+
+const toRecurringSlots = (rows: EmployeeAvailability[]): EffectiveSlot[] =>
+  rows.map((avail) => ({
+    isAvailable: avail.is_available,
+    startTime: avail.start_time_local ?? null,
+    endTime: avail.end_time_local ?? null,
+    sourceRecord: avail,
+  }));
 
 function getWeekDates(weekStart: Date): Map<string, number> {
   const dates = new Map<string, number>();
@@ -81,6 +91,7 @@ export function computeEffectiveAvailability(
             t ? utcTimeToLocalTime(t, timezone, anchor) : null;
           empMap.set(dow, {
             type: 'exception',
+            recurringSlots: toRecurringSlots(recurringByEmpDay.get(`${empId}:${dow}`) ?? []),
             slots: dayExceptions.map((exc) => ({
               isAvailable: exc.is_available,
               startTime: toLocal(exc.start_time),
@@ -99,12 +110,7 @@ export function computeEffectiveAvailability(
       if (recurring && recurring.length > 0) {
         empMap.set(dow, {
           type: 'recurring',
-          slots: recurring.map((avail) => ({
-            isAvailable: avail.is_available,
-            startTime: avail.start_time_local ?? null,
-            endTime: avail.end_time_local ?? null,
-            sourceRecord: avail,
-          })),
+          slots: toRecurringSlots(recurring),
         });
         continue;
       }
@@ -269,9 +275,13 @@ function overnightPrevSlots(slots: EffectiveSlot[]): EffectiveSlot[] {
 /**
  * Spill slots a day gives to the NEXT day. Only recurring rows carry over.
  * The RPC reads carry-over from `employee_availability` only, never from an exception.
+ * An exception day keeps the recurring rows it hides in `recurringSlots`.
  */
 function spillSlots(day: EffectiveAvailability | undefined): EffectiveSlot[] {
-  return day?.type === 'recurring' ? overnightPrevSlots(day.slots) : [];
+  if (!day) return [];
+  if (day.type === 'recurring') return overnightPrevSlots(day.slots);
+  if (day.type === 'exception') return overnightPrevSlots(day.recurringSlots ?? []);
+  return [];
 }
 
 /** Turn slot groups into [start, end] minute windows on the shift axis. */

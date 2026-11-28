@@ -23,6 +23,7 @@ import {
   buildTimeOff,
   fitToLimit,
   localDate,
+  mondayOfYmd,
   NEEDS_EDIT_SCHEDULING,
   type EmployeeRow,
   type ExceptionRow,
@@ -57,10 +58,7 @@ const SHIFT_COLUMNS =
   "id, employee_id, start_time, end_time, break_duration, position, status, is_published, shift_template_id, " +
   "employee:employees(area, position)";
 
-function mondayOf(ymd: string): string {
-  const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
-  return addDaysToDateStr(ymd, -((dow + 6) % 7));
-}
+const mondayOf = mondayOfYmd;
 
 /** The current restaurant week, Monday to Sunday, in the restaurant time zone. */
 export function restaurantWeek(now: Date, tz: string): Period {
@@ -268,7 +266,7 @@ export async function runGetSchedulingContext(
 
   const ctx = {
     period: { start: period.start, end: period.end, timezone: tz },
-    roster: buildRoster(employees, shifts, new Set(recurring.map((r) => r.employee_id)), period),
+    roster: buildRoster(employees, shifts, new Set(recurring.map((r) => r.employee_id)), period, tz),
     availability: buildAvailability(employees, recurring, exceptions, tz, period),
     conflicts: buildConflictList(shifts, conflictIndex, tz),
     conflicted_shift_count: conflictedShiftCount,

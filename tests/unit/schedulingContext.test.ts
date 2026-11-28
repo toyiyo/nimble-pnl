@@ -71,6 +71,55 @@ describe('buildRoster', () => {
   });
 });
 
+describe('buildRoster weekly_hours', () => {
+  const CHI = 'America/Chicago';
+  // Tuesday 2026-12-01 to Monday 2026-12-14: weeks of 11-30 (partial), 12-07 (full), 12-14 (partial).
+  const p = { start: '2026-12-01', end: '2026-12-14' };
+  const s = (id: string, start: string, end: string, extra: Record<string, unknown> = {}) =>
+    shift(id, 'a', { start_time: start, end_time: end, break_duration: 0, ...extra });
+
+  it('lists every Monday week that touches the period, with 0 hours too', () => {
+    const [r] = buildRoster([emp('a')], [], new Map(), p, CHI);
+    expect(r.weekly_hours.map((w) => [w.week_start, w.scheduled_hours, w.partial_week])).toEqual([
+      ['2026-11-30', 0, true],
+      ['2026-12-07', 0, false],
+      ['2026-12-14', 0, true],
+    ]);
+  });
+
+  it('puts the hours in the week of the local start date', () => {
+    // Sunday 2026-12-13 23:00 CST = Monday 05:00Z. It belongs to the week of 12-07.
+    const [r] = buildRoster([emp('a')], [s('s1', '2026-12-14T05:00:00Z', '2026-12-14T09:00:00Z')], new Map(), p, CHI);
+    expect(r.weekly_hours.find((w) => w.week_start === '2026-12-07')!.scheduled_hours).toBe(4);
+    expect(r.weekly_hours.find((w) => w.week_start === '2026-12-14')!.scheduled_hours).toBe(0);
+  });
+
+  it('follows the scheduled_hours rule: no cancelled shifts, breaks subtracted', () => {
+    const shifts = [
+      s('s1', '2026-12-08T15:00:00Z', '2026-12-08T23:00:00Z', { break_duration: 30 }),
+      s('s2', '2026-12-09T15:00:00Z', '2026-12-09T23:00:00Z', { status: 'cancelled' }),
+    ];
+    const [r] = buildRoster([emp('a')], shifts, new Map(), p, CHI);
+    expect(r.weekly_hours.find((w) => w.week_start === '2026-12-07')!.scheduled_hours).toBe(7.5);
+    expect(r.scheduled_hours).toBe(7.5);
+  });
+
+  it('flags a full week over max_weekly_hours', () => {
+    const days = ['07', '08', '09', '10', '11', '12'];
+    const shifts = days.map((d, i) => s(`s${i}`, `2026-12-${d}T14:00:00Z`, `2026-12-${d}T22:00:00Z`));
+    const [r] = buildRoster([emp('a')], shifts, new Map(), p, CHI);
+    const full = r.weekly_hours.find((w) => w.week_start === '2026-12-07')!;
+    expect(r.max_weekly_hours).toBe(40);
+    expect(full).toMatchObject({ scheduled_hours: 48, over_max_weekly_hours: true });
+  });
+
+  it('gives over_max_weekly_hours null on a partial week, and false on a full week under the cap', () => {
+    const [r] = buildRoster([emp('a')], [s('s1', '2026-12-08T15:00:00Z', '2026-12-08T23:00:00Z')], new Map(), p, CHI);
+    expect(r.weekly_hours.find((w) => w.week_start === '2026-11-30')!.over_max_weekly_hours).toBeNull();
+    expect(r.weekly_hours.find((w) => w.week_start === '2026-12-07')!.over_max_weekly_hours).toBe(false);
+  });
+});
+
 describe('buildAvailability', () => {
   it('lists a recurring row once and keeps period exceptions only', () => {
     const out = buildAvailability(
@@ -436,6 +485,18 @@ describe('fitToLimit', () => {
     expect(text.length).toBeLessThan(20_000);
     expect(out.omitted_sections).toContain('roster (partial)');
     expect((out.roster as unknown[]).length).toBeGreaterThan(0);
+  });
+  it('deletes the weekly hours before it deletes coverage', () => {
+    const p = { start: '2026-10-05', end: '2026-11-04' };
+    const roster = buildRoster(Array.from({ length: 40 }, (_, i) => emp(`e${i}`)), [], new Map(), p);
+    const coverage = { open_spots: [{ template_id: 't1', date: '2026-10-05', capacity: 2, assigned: 2, open: 0 }] };
+    const base = { roster, availability: [], time_off: [], conflicts: [], coverage, publish_state: [] };
+    const withoutWeeks = JSON.stringify({ ...base, roster: roster.map(({ weekly_hours: _w, ...r }) => r) }).length;
+    const out = fitToLimit(base, withoutWeeks + 200);
+    expect(out).toHaveProperty('coverage');
+    expect(out.omitted_sections).toContain('roster.weekly_hours');
+    expect((out.roster as Record<string, unknown>[])[0]).not.toHaveProperty('weekly_hours');
+    expect((out.roster as unknown[]).length).toBe(40);
   });
   it('does not set truncated when nothing is deleted', () => {
     const out = fitToLimit({ roster: [], availability: [], time_off: [], conflicts: [] }, 40_000);

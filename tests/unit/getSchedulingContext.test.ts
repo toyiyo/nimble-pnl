@@ -222,3 +222,19 @@ describe('runGetSchedulingContext coverage with shifts that have no template id'
     expect(shiftCall.select).toContain('employee:employees(area, position)');
   });
 });
+
+describe('runGetSchedulingContext weekly_hours', () => {
+  it('puts a Sunday-night Chicago shift in the restaurant week, not the UTC week', async () => {
+    // Sunday 2026-10-18 21:00 CDT = Monday 02:00Z. The period is 2026-10-12 to 2026-10-18.
+    state.rows = {
+      employees_secure: [{ id: 'a', name: 'Ana', position: 'Server', area: null, status: 'active', is_active: true }],
+      shifts: [
+        { id: 's1', employee_id: 'a', start_time: '2026-10-19T02:00:00Z', end_time: '2026-10-19T05:00:00Z', break_duration: 0, position: 'Server', status: 'scheduled', is_published: false, shift_template_id: null, employee: { area: null, position: 'Server' } },
+      ],
+    };
+    const r = await runGetSchedulingContext({}, 'r1', makeSupabase(), TZ, NOW);
+    expect(r.data.roster[0].weekly_hours).toEqual([
+      { week_start: '2026-10-12', scheduled_hours: 3, partial_week: false, over_max_weekly_hours: false },
+    ]);
+  });
+});

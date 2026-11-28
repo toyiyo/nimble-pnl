@@ -62,10 +62,41 @@ export interface RosterEntry {
   missing_availability: boolean;
   max_weekly_hours: number;
   max_weekly_hours_note: "stored, not enforced";
+  /** Scheduled hours per restaurant week (Monday to Sunday), next to max_weekly_hours. */
+  weekly_hours: WeeklyHours[];
+}
+
+export interface WeeklyHours {
+  /** The Monday of the week, YYYY-MM-DD in the restaurant zone. */
+  week_start: string;
+  scheduled_hours: number;
+  /** True when the period does not hold all 7 days of the week. */
+  partial_week: boolean;
+  /** Null on a partial week: the tool loads only the days of the period. */
+  over_max_weekly_hours: boolean | null;
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The Monday of the week that holds `ymd`. */
+export function mondayOfYmd(ymd: string): string {
+  const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
+  return addDaysYmd(ymd, -((dow + 6) % 7));
+}
+
+/** The Mondays of the weeks that touch the period. */
+function periodWeeks(period: Period): string[] {
+  const weeks: string[] = [];
+  for (let w = mondayOfYmd(period.start); w <= period.end; w = addDaysYmd(w, 7)) weeks.push(w);
+  return weeks;
 }
 
 export function buildRoster(
@@ -73,16 +104,25 @@ export function buildRoster(
   shifts: ShiftRow[],
   recurringByEmployee: { has(id: string): boolean },
   period: Period,
+  tz = "UTC",
 ): RosterEntry[] {
   const hours = new Map<string, number>();
   const counts = new Map<string, number>();
+  // employee_id|week_start -> hours. A shift goes to the week of its local start date.
+  const weekHours = new Map<string, number>();
   for (const s of shifts) {
     if (s.status === "cancelled") continue;
     const ms = new Date(s.end_time).getTime() - new Date(s.start_time).getTime();
     const h = Math.max(0, ms / 3_600_000 - (s.break_duration ?? 0) / 60);
     hours.set(s.employee_id, (hours.get(s.employee_id) ?? 0) + h);
     counts.set(s.employee_id, (counts.get(s.employee_id) ?? 0) + 1);
+    const wk = `${s.employee_id}|${mondayOfYmd(localDate(s.start_time, tz))}`;
+    weekHours.set(wk, (weekHours.get(wk) ?? 0) + h);
   }
+  const weeks = periodWeeks(period).map((w) => ({
+    week_start: w,
+    partial: w < period.start || addDaysYmd(w, 6) > period.end,
+  }));
   return employees
     .filter((e) => e.status === "active")
     .map((e) => {
@@ -103,6 +143,15 @@ export function buildRoster(
         missing_availability: !recurringByEmployee.has(e.id),
         max_weekly_hours: budget.max_weekly_hours,
         max_weekly_hours_note: "stored, not enforced" as const,
+        weekly_hours: weeks.map(({ week_start, partial }) => {
+          const h = round2(weekHours.get(`${e.id}|${week_start}`) ?? 0);
+          return {
+            week_start,
+            scheduled_hours: h,
+            partial_week: partial,
+            over_max_weekly_hours: partial ? null : h > budget.max_weekly_hours,
+          };
+        }),
       };
     });
 }
@@ -502,6 +551,8 @@ export function buildPublishState(
 export const DROPPABLE_SECTIONS = [
   "labor.staffing_suggestions",
   "publish_state",
+  // The weekly hours go before coverage, so they cannot push coverage out.
+  "roster.weekly_hours",
   "coverage",
   "pending",
   // Last resorts. The roster stays, so Claude can still name each employee.
@@ -539,6 +590,15 @@ export function fitToLimit(
     if (name === "labor.staffing_suggestions") {
       if (!out.labor || !("staffing_suggestions" in out.labor)) continue;
       delete out.labor.staffing_suggestions;
+    } else if (name === "roster.weekly_hours") {
+      if (!Array.isArray(out.roster)) continue;
+      const rows = out.roster as Record<string, unknown>[];
+      if (!rows.some((r) => r && typeof r === "object" && "weekly_hours" in r)) continue;
+      out.roster = rows.map((r) => {
+        if (!r || typeof r !== "object" || !("weekly_hours" in r)) return r;
+        const { weekly_hours: _weeks, ...rest } = r;
+        return rest;
+      });
     } else {
       if (!(name in out)) continue;
       delete out[name];

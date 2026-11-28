@@ -626,7 +626,6 @@ export function TimelineShiftPopover({
       <AvailabilityConflictDialog
         open={conflictDialogOpen}
         data={conflictDialogData}
-        timezone={tz}
         onConfirm={handleConfirmConflicts}
         onCancel={handleCancelConflicts}
       />
@@ -876,7 +875,6 @@ function TimelineCreateDialog({
       <AvailabilityConflictDialog
         open={conflictDialogOpen}
         data={conflictDialogData}
-        timezone={tz}
         onConfirm={handleConfirmConflicts}
         onCancel={handleCancelConflicts}
       />

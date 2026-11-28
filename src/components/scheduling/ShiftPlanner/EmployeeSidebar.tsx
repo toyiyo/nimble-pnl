@@ -165,7 +165,6 @@ const DraggableEmployee = memo(
           weekDays={weekDays}
           employeeShifts={employeeShifts}
           availabilityByDow={availabilityByDow}
-          timezone={timezone}
           dates={dates}
         />
       </div>

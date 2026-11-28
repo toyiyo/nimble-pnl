@@ -23,7 +23,7 @@ interface ShiftDialogProps {
   onOpenChange: (open: boolean) => void;
   shift?: Shift & { _editScope?: RecurringActionScope };
   restaurantId: string;
-  timezone?: string; // Restaurant timezone for formatting availability times
+  timezone?: string;
   defaultDate?: Date;
   defaultEmployee?: DefaultEmployee;
   /**

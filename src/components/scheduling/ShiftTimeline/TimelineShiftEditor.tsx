@@ -156,7 +156,7 @@ export function TimelineShiftEditor({
     const conflictMessages = conflicts.map((c) => formatConflictLine(c));
     const warningMessages = localWarnings.map((w) => w.message);
     return [...conflictMessages, ...warningMessages];
-  }, [conflicts, localWarnings, tz]);
+  }, [conflicts, localWarnings]);
 
   const update = (patch: Partial<TimelineShiftEditorValues>) => {
     onChange({ ...values, ...patch });

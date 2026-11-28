@@ -429,7 +429,7 @@ describe('local-time slots and the RPC rules', () => {
       ).toBe(true);
     });
 
-    it('ignores yesterday spill on an available exception day', () => {
+    it('flags a shift in the spill window on an available exception day', () => {
       expect(
         run(exceptionOn, fridayOvernight, undefined, '2026-07-18T00:30:00Z', '2026-07-18T01:30:00Z'),
       ).toBe(true);
@@ -555,5 +555,4 @@ describe('weekAvailabilityChipClasses', () => {
   it('returns null for unset (no chip rendered)', () => {
     expect(weekAvailabilityChipClasses('unset')).toBeNull();
   });
-
 });

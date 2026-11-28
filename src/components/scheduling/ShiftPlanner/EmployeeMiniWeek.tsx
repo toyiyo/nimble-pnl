@@ -13,7 +13,6 @@ interface EmployeeMiniWeekProps {
   weekDays: readonly string[];
   employeeShifts: readonly Shift[];
   availabilityByDow?: Map<number, EffectiveAvailability>;
-  timezone?: string;
   dates?: readonly Date[]; // concrete Date per weekDays entry (DST anchor)
   size?: 'sm' | 'md';
 }

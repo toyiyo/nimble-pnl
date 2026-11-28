@@ -1168,7 +1168,6 @@ export function ShiftPlannerTab({
       <AvailabilityConflictDialog
         open={conflictDialogData !== null}
         data={conflictDialogData}
-        timezone={restaurantTimezone}
         onConfirm={handleConflictConfirm}
         onCancel={handleConflictCancel}
       />

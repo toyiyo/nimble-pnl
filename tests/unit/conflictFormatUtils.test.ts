@@ -137,14 +137,12 @@ describe('formatConflictLine – fallback cases', () => {
 
 // ─── Caller contract verification ─────────────────────────────────────────────
 //
-// Asserts that formatConflictLine is callable with 2 args (conflict, timezone)
+// Asserts that formatConflictLine is callable with 1 arg (conflict),
 // exactly as ShiftDialog.tsx and AvailabilityConflictDialog.tsx call it.
-// The referenceDate parameter must default to today so callers need not change.
-// If the signature ever breaks the 2-arg form this test will fail at compile time.
 //
 
-describe('formatConflictLine – 2-arg caller contract (ShiftDialog / AvailabilityConflictDialog)', () => {
-  it('accepts (conflict, timezone) without referenceDate and returns a non-empty string', () => {
+describe('formatConflictLine – 1-arg caller contract (ShiftDialog / AvailabilityConflictDialog)', () => {
+  it('accepts (conflict) and returns a non-empty string', () => {
     const conflict: ConflictCheck = {
       has_conflict: false,
       conflict_type: 'recurring',

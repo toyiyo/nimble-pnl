@@ -1672,7 +1672,6 @@ const Scheduling = () => {
           <AvailabilityConflictDialog
             open={conflictDialog.open}
             data={conflictDialog.data}
-            timezone={restaurantTimezone}
             onConfirm={conflictDialog.onConfirm}
             onCancel={conflictDialog.onCancel}
           />

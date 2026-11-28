@@ -6878,14 +6878,17 @@ export type Database = {
           cascade_batch_id: string | null
           change_type: string
           changed_at: string
-          changed_by: string
+          changed_by: string | null
           created_at: string | null
           employee_id: string | null
           id: string
           notified_at: string | null
           reason: string | null
           restaurant_id: string
+          shift_date_after: string | null
+          shift_date_before: string | null
           shift_id: string | null
+          tracked: boolean
         }
         Insert: {
           after_data?: Json | null
@@ -6893,14 +6896,17 @@ export type Database = {
           cascade_batch_id?: string | null
           change_type: string
           changed_at?: string
-          changed_by: string
+          changed_by?: string | null
           created_at?: string | null
           employee_id?: string | null
           id?: string
           notified_at?: string | null
           reason?: string | null
           restaurant_id: string
+          shift_date_after?: string | null
+          shift_date_before?: string | null
           shift_id?: string | null
+          tracked?: boolean
         }
         Update: {
           after_data?: Json | null
@@ -6908,14 +6914,17 @@ export type Database = {
           cascade_batch_id?: string | null
           change_type?: string
           changed_at?: string
-          changed_by?: string
+          changed_by?: string | null
           created_at?: string | null
           employee_id?: string | null
           id?: string
           notified_at?: string | null
           reason?: string | null
           restaurant_id?: string
+          shift_date_after?: string | null
+          shift_date_before?: string | null
           shift_id?: string | null
+          tracked?: boolean
         }
         Relationships: [
           {
@@ -6948,6 +6957,165 @@ export type Database = {
           },
           {
             foreignKeyName: "schedule_change_logs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_notification_changes: {
+        Row: {
+          change_log_id: string
+          employee_id: string
+          notification_id: string
+          restaurant_id: string
+        }
+        Insert: {
+          change_log_id: string
+          employee_id: string
+          notification_id: string
+          restaurant_id: string
+        }
+        Update: {
+          change_log_id?: string
+          employee_id?: string
+          notification_id?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_notification_changes_change_log_id_fkey"
+            columns: ["change_log_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_change_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notification_changes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notification_changes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notification_changes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notification_changes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notification_changes_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notification_changes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_notifications: {
+        Row: {
+          attempts: number
+          channels: string[]
+          claimed_at: string
+          created_at: string
+          employee_id: string | null
+          id: string
+          last_error: string | null
+          publication_id: string | null
+          restaurant_id: string
+          sent_at: string | null
+          source: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          channels?: string[]
+          claimed_at?: string
+          created_at?: string
+          employee_id?: string | null
+          id?: string
+          last_error?: string | null
+          publication_id?: string | null
+          restaurant_id: string
+          sent_at?: string | null
+          source: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          channels?: string[]
+          claimed_at?: string
+          created_at?: string
+          employee_id?: string | null
+          id?: string
+          last_error?: string | null
+          publication_id?: string | null
+          restaurant_id?: string
+          sent_at?: string | null
+          source?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_secure"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notifications_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_notifications_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -11272,6 +11440,22 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_schedule_notifications: {
+        Args: {
+          p_change_log_id?: string
+          p_from: string
+          p_publication_id?: string
+          p_restaurant_id: string
+          p_source: string
+          p_to: string
+        }
+        Returns: {
+          change_log_ids: string[]
+          employee_id: string
+          notification_id: string
+          reclaimed: boolean
+        }[]
+      }
       claim_shift_trade_reminder: {
         Args: { p_stage: string; p_trade_id: string }
         Returns: boolean
@@ -12011,6 +12195,43 @@ export type Database = {
         }
         Returns: Json
       }
+      get_schedule_pending_notifications: {
+        Args: { p_from?: string; p_restaurant_id: string; p_to?: string }
+        Returns: {
+          change_log_id: string
+          change_type: string
+          changed_at: string
+          changed_by: string
+          employee_id: string
+          employee_name: string
+          notification_id: string
+          shift_after: Json
+          shift_before: Json
+          shift_date: string
+          shift_id: string
+          state: string
+        }[]
+      }
+      get_schedule_week_change_log: {
+        Args: { p_from: string; p_restaurant_id: string; p_to: string }
+        Returns: {
+          change_log_id: string
+          change_type: string
+          changed_at: string
+          changed_by: string
+          changed_by_email: string
+          changed_by_name: string
+          employee_id: string
+          employee_name: string
+          notifications: Json
+          notified_at: string
+          reason: string
+          shift_after: Json
+          shift_before: Json
+          shift_id: string
+          tracked: boolean
+        }[]
+      }
       get_shift_conflicts: {
         Args: { p_end: string; p_restaurant_id: string; p_start: string }
         Returns: {
@@ -12297,6 +12518,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      mark_schedule_notification: {
+        Args: {
+          p_channels?: string[]
+          p_error?: string
+          p_id: string
+          p_status: string
+        }
+        Returns: boolean
+      }
       mark_stale_pending_outflows: { Args: never; Returns: undefined }
       matches_bank_transaction_rule: {
         Args: { p_rule_id: string; p_transaction: Json }
@@ -12575,6 +12805,24 @@ export type Database = {
         Args: { p_name: string; p_restaurant_id: string; p_shifts: Json }
         Returns: Json
       }
+      schedule_change_recipients: {
+        Args: {
+          p_change_log_id?: string
+          p_from: string
+          p_restaurant_id: string
+          p_to: string
+        }
+        Returns: {
+          change_log_id: string
+          employee_id: string
+          shift_date: string
+        }[]
+      }
+      schedule_restaurant_tz: {
+        Args: { p_restaurant_id: string }
+        Returns: string
+      }
+      schedule_shift_summary: { Args: { p_data: Json }; Returns: Json }
       search_pos_items: {
         Args: { p_limit?: number; p_restaurant_id: string; p_search?: string }
         Returns: {

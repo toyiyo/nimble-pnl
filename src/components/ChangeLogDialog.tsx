@@ -15,7 +15,8 @@ import {
   Edit, 
   Trash2, 
   Lock, 
-  Unlock 
+  Unlock,
+  Send
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ScheduleChangeLog, ChangeType } from '@/types/scheduling';
@@ -37,6 +38,8 @@ const getChangeIcon = (type: ChangeType) => {
   switch (type) {
     case 'created':
       return <Plus className="h-4 w-4" />;
+    case 'published':
+      return <Send className="h-4 w-4" />;
     case 'updated':
       return <Edit className="h-4 w-4" />;
     case 'deleted':
@@ -51,6 +54,7 @@ const getChangeIcon = (type: ChangeType) => {
 const getChangeBadgeVariant = (type: ChangeType): 'default' | 'destructive' | 'outline' => {
   switch (type) {
     case 'created':
+    case 'published':
       return 'default';
     case 'updated':
       return 'outline';
@@ -176,7 +180,7 @@ export const ChangeLogDialog = ({
                             'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400'
                           )}
 
-                        {log.change_type === 'created' &&
+                        {(log.change_type === 'created' || log.change_type === 'published') &&
                           renderShiftSnapshot(
                             log.after_data,
                             'New shift:',

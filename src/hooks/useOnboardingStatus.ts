@@ -29,8 +29,6 @@ export interface OnboardingStatus {
   refetch: () => Promise<unknown>;
 }
 
-type TableName = keyof Database['public']['Tables'];
-
 const onboardingTables = {
   collaborators: 'user_restaurants',
   employees: 'employees',
@@ -46,7 +44,11 @@ const onboardingTables = {
   shift4Connections: 'shift4_connections',
   invitations: 'invitations',
   products: 'products'
-} as const;
+} as const satisfies Record<string, keyof Database['public']['Tables']>;
+
+// Only the tables this hook counts. The union of every table name makes
+// `supabase.from(table)` hit TS2589 (type instantiation is excessively deep).
+type TableName = (typeof onboardingTables)[keyof typeof onboardingTables];
 
 const checkTableCount = async (
   restaurantId: string, 

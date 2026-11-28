@@ -79,6 +79,26 @@ describe('publish notification outcomes', () => {
     expect(lastToast().variant).toBeUndefined();
   });
 
+  it('says no notifications were sent when nobody has an unsent change', async () => {
+    // notify-schedule-published answers 200 nothingToSend for a republish
+    // with no change (design 2026-11-28, TLA+ NoEmptyNotification).
+    mockSupabase.functions.invoke.mockResolvedValue({
+      data: { sent: 0, failed: 0, nothingToSend: true },
+      error: null,
+    });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => usePublishSchedule(), { wrapper: createWrapper() });
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    expect(lastToast()).toEqual({
+      title: 'Schedule Published',
+      description: 'No notifications were sent. Nobody has a change since the last notification.',
+    });
+  });
+
   it('names the shortfall when only some recipients were reached', async () => {
     mockSupabase.functions.invoke.mockResolvedValue(invokeFailure({ sent: 8, failed: 3 }));
     const { weekStart, weekEnd } = makeWeek();

@@ -50,7 +50,10 @@ export type NotificationOutcome =
   | { status: 'failed'; failed: number }
   | { status: 'error' }
   | { status: 'unknown'; message: string }
-  | { status: 'skipped' };
+  | { status: 'skipped' }
+  // The function ran and found no employee with an unsent change, so it sent
+  // nothing. A republish with no change ends here.
+  | { status: 'nothingToSend' };
 
 interface InvokeError {
   context?: { json?: () => Promise<unknown> };
@@ -124,6 +127,9 @@ async function invokeAndInterpret(
     const { data, error } = await supabase.functions.invoke(functionName, { body });
 
     if (!error) {
+      if (data?.nothingToSend === true) {
+        return { status: 'nothingToSend' };
+      }
       const sent = typeof data?.sent === 'number' ? data.sent : 0;
       return { status: 'sent', sent };
     }
@@ -193,6 +199,12 @@ export function notificationToast(
     // tried and fell short.
     case 'skipped':
       return { title, description: skippedDescription ?? 'No notifications were sent.' };
+    // Not a failure: nobody had a change that was not already announced.
+    case 'nothingToSend':
+      return {
+        title,
+        description: 'No notifications were sent. Nobody has a change since the last notification.',
+      };
     case 'partial':
       return {
         title: `${title} — some employees not notified`,

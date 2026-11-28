@@ -228,7 +228,7 @@ export interface NotificationSettings {
   updated_at: string;
 }
 
-export type ChangeType = 'created' | 'updated' | 'deleted' | 'unpublished';
+export type ChangeType = 'created' | 'published' | 'updated' | 'deleted' | 'unpublished';
 
 export interface ScheduleChangeLog {
   id: string;
@@ -236,7 +236,8 @@ export interface ScheduleChangeLog {
   shift_id: string | null;
   employee_id: string | null;
   change_type: ChangeType;
-  changed_by: string;
+  /** Null for a service-role (system) write, for example the Sling sync. */
+  changed_by: string | null;
   changed_at: string;
   reason: string | null;
   before_data: any;

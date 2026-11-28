@@ -38,7 +38,8 @@ Each claim has a citation. The design depends on these facts.
 5. `hasEditSchedulingCapability` exists and fails closed
    (`tools-registry.ts:1206-1221`). `edit:scheduling` is true for owner,
    manager, operations_manager, collaborator_operations_manager, and area
-   grants (`supabase/migrations/20260730140000_user_has_capability_from_areas.sql:146`, `:226`).
+   grants. The current definition is
+   `supabase/migrations/20260806140000_legacy_role_sensitive_flags.sql:130`, `:240`.
 6. A `BEFORE UPDATE` trigger sets `shifts.updated_at = NOW()`
    (`supabase/migrations/20251114100000_create_scheduling_tables.sql:262-279`).
 7. The `log_shift_change` trigger writes a `schedule_change_logs` row in the
@@ -48,23 +49,26 @@ Each claim has a citation. The design depends on these facts.
    (`supabase/migrations/20251123000000_schedule_publishing.sql:96-169`).
 8. `publish_schedule` updates the shift rows (`is_published = true,
    locked = true`), so the trigger of fact 6 changes `updated_at`
-   (`supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql:96-103`).
+   (`supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql:94-103`).
 9. The Scheduling UI notifies a change to a published shift with one call:
    `notify-shift-changed` with body `{ changeLogId }`
    (`src/hooks/usePublishedShiftGuard.tsx:193-195`). The function reads the
    row, checks `edit:scheduling`, claims `notified_at` (zero rows = already
    sent), and derives the recipients from the row only
    (`supabase/functions/notify-shift-changed/index.ts:58`, `:85-95`, `:107-121`,
-   `supabase/functions/_shared/shiftChangedNotification.ts:72-90`).
+   `supabase/functions/_shared/shiftChangedNotification.ts:68-87`).
 10. The function refuses a row older than 10 minutes
-    (`supabase/functions/_shared/shiftChangedNotification.ts:28`).
+    (`supabase/functions/_shared/shiftChangedNotification.ts:25`).
 11. The UI finds its change log row with "latest row for this shift, this
     user, since `startedAt`" (`src/hooks/usePublishedShiftGuard.tsx:173-179`).
 12. The UI single delete passes `skipLegacyNotify: true`, so a draft delete
     sends nothing and a published delete uses only `notify-shift-changed`
     (`src/pages/Scheduling.tsx:862-875`). An update of a draft shift sends
     nothing (the guard runs `notify: false`,
-    `src/hooks/usePublishedShiftGuard.tsx:132-135`).
+    `src/hooks/usePublishedShiftGuard.tsx:132-135`). The UI keys "draft" on
+    `shifts.locked`. The MCP tools key it on `is_published`, as the trigger of
+    fact 7 does. Publish and unpublish change both flags together
+    (`20260729120000_publish_schedule_tz_bucketing.sql:94-103`, `:170-179`).
 13. A new shift from the UI is always a draft (`is_published: false,
     locked: false`) (`src/components/ShiftDialog.tsx:250-251`).
 14. The UI conflict checks are the RPCs `check_timeoff_conflict` and
@@ -83,7 +87,23 @@ Each claim has a citation. The design depends on these facts.
 17. `parseWallClock` converts a restaurant wall clock to UTC, and
     `formatInstant` shows a UTC instant in the restaurant zone
     (`supabase/functions/_shared/labor/restaurantClock.ts:380`, `:138`).
-18. The in-app AI chat gets its tools from the same `getTools`
+18. A shift edit with scope `this` on a recurring shift detaches it: the
+    same UPDATE sets `recurrence_parent_id: null, is_recurring: false,
+    recurrence_pattern: null` (`src/hooks/useShifts.tsx:656-665`).
+19. `shift_trades.offered_shift_id` has `ON DELETE CASCADE`
+    (`supabase/migrations/20260104120000_create_shift_trades.sql:10`).
+    `recurrence_parent_id` is `ON DELETE SET NULL`, so a parent delete
+    updates each child (`supabase/migrations/20260202090000_fix_delete_shift_series.sql:5`).
+20. The connector stops a forward after 25 s (`supabase/functions/mcp/index.ts:26`).
+21. RLS on `shifts` allows INSERT, UPDATE, and DELETE for `edit:scheduling`
+    (`supabase/migrations/20260730150000_rewrite_collaborator_policies.sql:131-152`).
+    Any member can SELECT `schedule_change_logs`
+    (`supabase/migrations/20251123000000_schedule_publishing.sql:74-81`).
+22. `ai-execute-tool` uses the anon key with the caller's JWT
+    (`ai-execute-tool/index.ts:3790-3797`). So `auth.uid()` resolves in the
+    trigger and `changed_by NOT NULL` holds. The writes must not use a
+    service-role client.
+23. The in-app AI chat gets its tools from the same `getTools`
     (`supabase/functions/ai-chat-stream/index.ts:534`). Its confirm guard
     compares all args except `preview` and `confirmed`
     (`src/hooks/useAiChat.tsx:246-248`).
@@ -103,9 +123,18 @@ The confirm:
 2. Runs one statement with the raw `updated_at` from the token:
    `UPDATE shifts SET ... WHERE id = $id AND restaurant_id = $rid AND updated_at = $u RETURNING *`
    (PostgREST: `.update().eq('id').eq('restaurant_id').eq('updated_at', u).select()`).
-   For a delete: `.delete()` with the same filters.
-3. Zero rows back means `STALE_PREVIEW`. The tool sends no notification and
-   tells Claude to call the preview again.
+   For a delete: `.delete().eq('id', id).eq('restaurant_id', rid)
+   .eq('updated_at', u).select('id, employee_id, is_published')`. Without
+   `.select()`, PostgREST returns `data: null` and the tool cannot count rows.
+3. On zero rows, the tool reads the shift again by `id` and `restaurant_id`.
+   No row: `SHIFT_NOT_FOUND`. A different `updated_at`: `STALE_PREVIEW`.
+   The same `updated_at`: `TOOL_PERMISSION_DENIED`. In each case the tool
+   sends no notification.
+4. The confirm checks again that `end > start` and that `employee_id` is an
+   active employee of `restaurant_id`. The employee can change state after
+   the preview. A bad interval gives `INVALID_ARGUMENTS`, not the `23514`
+   error of `valid_shift_time`
+   (`20251114100000_create_scheduling_tables.sql:30`).
 
 The raw string goes back unchanged. A JS `Date` drops microseconds (lesson
 2026-10-06, PR #842).
@@ -125,15 +154,17 @@ caller's JWT, so the function does its own `edit:scheduling` check. There is
 no second notification path.
 
 The tool finds its own change log row exactly. It does not use the UI
-"latest row" lookup (fact 11):
+"latest row" lookup (fact 11). Every lookup filters on `restaurant_id` and
+`shift_id`:
 
-- update: `shift_id = id`, `change_type = 'updated'`, and
-  `after_data.updated_at` equal to the `updated_at` that the write returned.
-- delete: `shift_id = id`, `change_type = 'deleted'`, and
-  `before_data.updated_at` equal to the token `updated_at`.
-
-The compare is on the microsecond value, not on the string. A pure helper
-`sameInstant(a, b)` parses both Postgres forms. A UI edit right after the
+- update: `change_type = 'updated'` and `changed_at` equal to the
+  `updated_at` that the write returned. The trigger default `NOW()` and the
+  BEFORE trigger `NOW()` run in one transaction, so the two values are equal.
+  The filter is a `timestamptz` compare in SQL.
+- delete: `change_type = 'deleted'` and `before_data.updated_at` equal to the
+  token `updated_at`. This compare is in JS on the microsecond value. A pure
+  helper `sameInstant(a, b)` parses each Postgres form (`Z`, `+00:00`,
+  `-06:00`, 0 to 6 fraction digits). A UI edit right after the
 MCP commit makes a second row. The "latest row" lookup then picks the UI
 row, and the MCP change gets no notification. TLC finds this case (section 9).
 
@@ -149,15 +180,35 @@ Rules for the set of notified employees (same as the UI, facts 7, 12, 13):
 
 The preview computes this set with the same rule as
 `deriveShiftChangeRecipients` (fact 9). The confirm result returns
-`notification: { status: 'sent' | 'already_sent' | 'failed' | 'not_requested' | 'none_needed', notified: [...] }`.
+`notification: { status, notified: [...] }`. The map from the
+`notify-shift-changed` answer to `status`
+(`supabase/functions/notify-shift-changed/index.ts:58-298`):
+
+| Answer | `status` |
+|---|---|
+| 200 `{ sent > 0, failed: 0 }` | `sent` |
+| 200 `{ sent > 0, failed > 0 }` | `partial` |
+| 200 `{ sent: 0, alreadyNotified: true }` | `already_sent` |
+| 200 `{ sent: 0, failed: 0 }` | `none_needed` |
+| 502, 403, 404, 409, 500, or a thrown error | `failed` |
+| no call (`notify: false`, or a draft) | `not_requested` or `none_needed` |
+
+`functions.invoke` gives a `FunctionsHttpError` for a non-2xx answer. The
+code reads the status and the body from that error.
 A failed send does not undo the write. The result says that the shift
-changed and the employees were not told, and gives the names.
+changed and the employees were not told, and gives the names. The UI does
+the same with its "notification not sent" toast
+(`src/hooks/usePublishedShiftGuard.tsx:181-188`).
 
 ### D3. Role check per call
 
 Every tool takes `restaurant_id` (the connector requires it, fact 3).
 `ai-execute-tool` gates the four tools on `hasEditSchedulingCapability`
-for that `restaurant_id` (fact 5). Every query filters on `restaurant_id`.
+for that `restaurant_id` (fact 5). The new gate branch comes before the
+role-based `canUseTool` (`ai-execute-tool/index.ts:3830-3848`). `getTools`
+lists the four tools for every connector role, so a custom area role with
+`scheduling: manage` sees them. The dispatcher denies a caller without
+`edit:scheduling` with 403. Every query filters on `restaurant_id`.
 `employee_id` must be an active employee of that restaurant. Nothing reads
 the restaurant that the UI selected.
 
@@ -167,8 +218,8 @@ same data that the write preview shows.
 ### D4. Connector only, not the in-app chat (recommended)
 
 The in-app chat guard compares all args except `preview` and `confirmed`
-(fact 18). A confirm with `preview_token` never matches its preview there.
-Also the chat UI has no view for a shift preview. So `ai-chat-stream` drops
+(fact 23). A confirm with `preview_token` never matches its preview there.
+So `ai-chat-stream` drops
 the four tools with one filter line (`isMcpOnlyTool`). The in-app chat can
 get the tools in a later PR.
 
@@ -179,7 +230,9 @@ get the tools in a later PR.
   through `parseWallClock` with the restaurant zone (fact 17).
 - Output: each time shows as `{ utc, local, tz }`. `local` comes from
   `formatInstant` with the restaurant zone. Never the server zone.
-- `break` is minutes (`shifts.break_duration`).
+- `break` is minutes (`shifts.break_duration`,
+  `20251114100000_create_scheduling_tables.sql:24`).
+- The preview and the confirm check `end > start` after the parse.
 
 ### D6. Conflicts in the preview
 
@@ -191,10 +244,23 @@ For each changed or new shift, the preview gives `conflicts` with
 | `overlap`, `short_rest` | `findShiftWarnings` on the employee shifts of the period, plus neighbors (fact 14) |
 | `time_off` | RPC `check_timeoff_conflict` (fact 14) |
 | `availability` | RPC `check_availability_conflict` (fact 14) |
-| `max_weekly_hours` | the employee's scheduled hours in the restaurant week (Monday to Sunday) after the change, compared with `computeHourBudget` (fact 15) |
+| `max_weekly_hours` | the employee's scheduled hours in the restaurant week (Monday to Sunday, `WEEK_STARTS_ON = 1` in `supabase/functions/_shared/labor/dateConfig.ts:8`) after the change, compared with `computeHourBudget` (fact 15) |
+| `open_trade` | an open or pending `shift_trades` row for the shift. A delete removes it (fact 19). A reassign leaves it on the old holder. |
 
 Conflicts are warnings. They do not block the confirm. The UI also lets a
-manager save with a warning.
+manager save with a warning: `validateShift` returns warnings that "allow
+override" (`src/lib/shiftValidator.ts:4`, `:41-44`, `:82-85`).
+
+`simulate_schedule_change` must finish in the 25 s forward limit (fact 20).
+Rules:
+
+- Read all target shifts with one `.in('id', ids).eq('restaurant_id', rid)`.
+- Read the shifts of the window once, plus neighbors. Run
+  `findShiftWarnings` in memory.
+- Remove duplicate (employee, start, end) sets before the RPCs.
+- Run the RPCs with `Promise.all`, at most 6 at one time.
+- Call `get_hourly_sales_pattern` one time for the whole window.
+- A handler test counts the RPC calls for 20 changes.
 
 ### D7. Labor % change for the day
 
@@ -208,17 +274,33 @@ after the change, and one sales projection (fact 16). Without
 ### D8. `create_shift` duplicate guard
 
 A create has no row to compare. A retry after a timeout can add a second
-shift (fact 4). The confirm refuses a create when a not-cancelled shift with
-the same restaurant, employee, start, and end exists (`DUPLICATE_SHIFT`). The
-token for a create hashes the args only.
+shift (fact 4, fact 20). A read-then-insert check is not enough: a retry can
+read before the first INSERT commits.
+
+So the shift `id` comes from the token. The tool takes the first 16 bytes
+of the token hash and sets the UUID version 4 and variant bits. It inserts
+with that explicit `id`. A replay of the same confirm fails with `23505` on
+the primary key. The tool maps `23505` to `DUPLICATE_SHIFT` and reads the
+row back for the result.
+
+The confirm also refuses a create when a not-cancelled shift with the same
+restaurant, employee, start, and end exists. That check catches a copy from
+another path (`DUPLICATE_SHIFT`). The token for a create hashes the args only.
 
 ### D9. Scope limits for this PR
 
 - One shift for each write call. `simulate_schedule_change` takes at most 20
   changes. It writes nothing.
 - A recurring shift: the tools change only that one shift (scope `this`).
-  The series RPCs are out of scope.
-- `create_shift` makes a non-recurring draft shift with `source = 'manual'`.
+  The series RPCs are out of scope. `update_shift` sends the three detach
+  columns of fact 18 in the CAS UPDATE, as the UI does. Without them, a later
+  series edit writes over the MCP change.
+- `delete_shift` refuses a series parent that has children
+  (`SERIES_PARENT`). The `ON DELETE SET NULL` of fact 19 would update each
+  child and write change log rows that nobody notifies. The manager uses the
+  UI for a series delete.
+- `create_shift` makes a non-recurring draft shift with `source = 'manual'`
+  (the column default, `20260411000000_add_shift_source_column.sql:2`).
 
 ## 4. Tool contracts
 
@@ -274,12 +356,15 @@ No new SQL. No migration. pgTAP: not needed, because there is no new SQL.
 
 `INVALID_ARGUMENTS`, `SHIFT_NOT_FOUND`, `EMPLOYEE_NOT_FOUND`,
 `PREVIEW_REQUIRED` (confirm without a token), `PREVIEW_MISMATCH`,
-`STALE_PREVIEW`, `DUPLICATE_SHIFT`, `TOOL_PERMISSION_DENIED` (403).
+`STALE_PREVIEW`, `DUPLICATE_SHIFT`, `SERIES_PARENT`,
+`TOOL_PERMISSION_DENIED` (403).
 
 ## 7. Tests
 
-- Unit (vitest): token round trip and mismatch; `sameInstant` with
-  `+00:00`, `Z`, and 3 or 6 fraction digits; the recipient table of D2 (each
+- Unit (vitest): token round trip and mismatch; the create `id` from the
+  token is a valid v4 UUID and is the same for the same args; `sameInstant`
+  with `Z`, `+00:00`, `-06:00`, and 0, 3, 5, and 6 fraction digits; the
+  notify status map of D2 (each row); the recipient table of D2 (each
   row); diff in UTC and `America/Chicago`, with a shift that crosses UTC
   midnight (lesson 2026-07-12); a wall clock on a DST day; conflict merge
   with `new`; `max_weekly_hours` for an adult and a minor; labor delta with
@@ -287,7 +372,10 @@ No new SQL. No migration. pgTAP: not needed, because there is no new SQL.
 - Handler tests with a fake Supabase client: confirm with zero CAS rows
   returns `STALE_PREVIEW` and does not invoke `notify-shift-changed`; a
   committed published update invokes it once with the exact row id; a draft
-  update does not invoke it; a cross-restaurant `shift_id` returns
+  update does not invoke it; an update of a recurring shift sends the
+  detach columns; a delete with zero rows and no row left returns
+  `SHIFT_NOT_FOUND`; a create replay with `23505` returns `DUPLICATE_SHIFT`;
+  20 simulated changes make at most the counted RPC calls; a cross-restaurant `shift_id` returns
   `SHIFT_NOT_FOUND`; a user without `edit:scheduling` gets 403.
 - E2E: see section 10.
 
@@ -301,6 +389,21 @@ No new SQL. No migration. pgTAP: not needed, because there is no new SQL.
   lookup.
 - `create_shift` on a published week makes a draft and notifies nobody, as
   the UI does (fact 13). The preview says so.
+
+- An open trade on a deleted shift goes away with the shift (fact 19). The
+  preview lists the trade as a conflict, so the manager sees it first.
+
+## 8.1 Phase 2.5 review
+
+The Supabase design reviewer found no contradicted premise. It asked for
+citations of 6 claims (added). The major items are folded in: the series
+detach (D9), `.select()` on the delete (D1), the create `id` from the token
+(D8), and the batch rules for `simulate_schedule_change` (D6). The minor
+items are folded in: zero-row triage (D1), `restaurant_id` on the lookup and
+`changed_at` for the update lookup (D2), more `sameInstant` cases (section 7),
+the `partial` status (D2), `locked` vs `is_published` (fact 12), new
+citations (facts 5, 8, 9, 10), trades (D6), the series parent (D9), the
+interval check (D1, D5), and the gate order (D3).
 
 ## 9. TLA+ check
 

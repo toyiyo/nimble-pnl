@@ -130,6 +130,28 @@ describe('sendEmailResult', () => {
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
     expect(body).not.toHaveProperty('headers');
   });
+
+  it('sends the idempotency key as the Resend Idempotency-Key HTTP header', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await sendEmailResult('key', 'from@x.com', 'to@x.com', 'Subj', '<p>hi</p>', undefined, {
+      idempotencyKey: 'notif-123',
+    });
+
+    const init = vi.mocked(fetch).mock.calls[0][1];
+    expect((init?.headers as Record<string, string>)['Idempotency-Key']).toBe('notif-123');
+    const body = JSON.parse(init?.body as string);
+    expect(body).not.toHaveProperty('headers');
+  });
+
+  it('sends no Idempotency-Key header when the caller gives no key', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await sendEmailResult('key', 'from@x.com', 'to@x.com', 'Subj', '<p>hi</p>');
+
+    const init = vi.mocked(fetch).mock.calls[0][1];
+    expect(init?.headers as Record<string, string>).not.toHaveProperty('Idempotency-Key');
+  });
 });
 
 describe('sendPaced', () => {

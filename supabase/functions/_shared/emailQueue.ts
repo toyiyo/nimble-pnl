@@ -85,6 +85,15 @@ export interface PacedOptions {
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+export interface SendEmailOptions {
+  /**
+   * Resend `Idempotency-Key` HTTP header. A resend with the same key and the
+   * same body does not deliver a second email. The schedule notifiers pass the
+   * schedule_notifications row id.
+   */
+  idempotencyKey?: string;
+}
+
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -98,6 +107,7 @@ export const sendEmailResult = async (
   subject: string,
   html: string,
   headers?: Record<string, string>,
+  options: SendEmailOptions = {},
 ): Promise<EmailSendResult> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -108,6 +118,7 @@ export const sendEmailResult = async (
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${resendApiKey}`,
+        ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
       },
       body: JSON.stringify({
         from,

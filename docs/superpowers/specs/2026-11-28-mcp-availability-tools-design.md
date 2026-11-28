@@ -75,8 +75,17 @@ token writes nothing.
   `:3830-3848`.
 - `hasEditSchedulingCapability` exists and fails closed
   (`supabase/functions/_shared/tools-registry.ts:1206-1222`).
-- `edit:scheduling` is true for owner and manager
-  (`supabase/migrations/20260129000000_add_subscription_system.sql:324`).
+- `edit:scheduling` is true for `owner`, `manager`, `operations_manager`, and
+  `collaborator_operations_manager`
+  (`supabase/migrations/20260730140000_user_has_capability_from_areas.sql:146`).
+  The `role_id` path can also give it through role areas.
+- `user_has_restaurant_access(p, true)` allows only `owner` and `manager`
+  (`supabase/migrations/20260521222200_create_user_has_restaurant_access_helper.sql:37`).
+  So that check and `edit:scheduling` do not agree.
+- `canUseCapabilityGatedTool` always calls `hasSchedulingOrPayrollCapability`
+  (`supabase/functions/_shared/tools-registry.ts:1236-1246`). The 403 body says
+  `'view:scheduling or view:payroll'` (`supabase/functions/ai-execute-tool/index.ts:3837`).
+  A write tool must not use that gate.
 - The existing write tools do not protect against a stale preview. The confirm
   writes whatever it gets
   (`supabase/functions/ai-execute-tool/index.ts:3486-3510`).
@@ -193,16 +202,29 @@ Arguments: `restaurant_id`, `employee_id`, `date`, then `start` and `end`, or
 `unavailable: true`. Optional `note` (stored in `reason`). Same flags.
 
 Write: delete all exceptions of `(employee_id, date)`, then insert one row.
-The UTC clock comes from the UI writer rule: `fromZonedTime(date + start, tz)`,
-the same as `localTimeToUtcTime` with the exception date. The SQL function
-computes the same value with `((date + start) AT TIME ZONE tz) AT TIME ZONE 'UTC'`.
-A unit test checks that the TS port and `src/lib/availabilityTimeUtils.ts`
-return equal values.
+
+The edge function computes the UTC clocks. The SQL function stores them as it
+gets them. Reason: Postgres and `date-fns-tz` pick different instants for a gap
+time and for an ambiguous time. Postgres gives `2027-11-07 01:30` → `07:30`
+UTC. `date-fns-tz` gives `06:30` UTC (Phase 2.5 review). The UI uses
+`date-fns-tz`, so the MCP writer must use it too.
+
+- Start: `fromZonedTime(date + start, tz)`, the same as `localTimeToUtcTime`
+  with the exception date (`src/lib/availabilityTimeUtils.ts:45-63`).
+- End: the same rule, but anchored to `date + 1` when `end <= start` (an
+  overnight window or a `00:00` end). Without this rule, a 20:00–00:00 window on
+  2027-03-14 stores `06:00`, and the reader returns `01:00`.
+- `unavailable: true` stores `start_time = end_time = NULL`
+  (`supabase/migrations/20260321100000_fix_availability_overnight_constraint.sql:11-14`).
+- A unit test checks that the TS port and `src/lib/availabilityTimeUtils.ts`
+  return equal values.
 
 Input rules:
 
 - A local time that does not exist on that date is rejected (spring change,
-  `02:00` to `02:59`). The message names the gap.
+  `02:00` to `02:59`). The message names the gap. The rule: convert local to
+  UTC and back. If the result is not equal to the input, the time is in the gap.
+  The end time uses its own anchor date for this check.
 - A local time that occurs two times (fall change, `01:00` to `01:59`) is
   accepted. Both instants have the same local clock, so the read returns the
   input. The preview shows a note.
@@ -251,41 +273,54 @@ Confirm:
 
 ## 6. Token and lock (my call)
 
-`preview_token` = `md5` of:
+`preview_token` = `md5` of one `jsonb::text` value that holds:
 
+- `restaurant_id` and `employee_id`,
 - the restaurant timezone,
 - the content of every row of the key, ordered by `id`
-  (`id`, `is_available`, local or UTC times, note),
+  (`id`, `is_available`, local or UTC times, note). The query filters by
+  `restaurant_id`, `employee_id`, and the day or the date.
 - the normalized input of the write (`kind`, `day` or `date`, `available`,
-  `start`, `end`, `note`).
+  local `start` and `end`, the UTC values for an exception, `note`).
 
 One SQL function computes it: `availability_write_token(...)`. The preview
 and the confirm both call it, so the TS code never hashes. A confirm with
 other arguments than the preview gives a different token, so it fails.
 
-Lock in the confirm function, in this order:
+Lock in the confirm function, in this order. Each step is its own statement.
 
-1. `SELECT 1 FROM employees WHERE id = p_employee_id AND restaurant_id = p_restaurant_id FOR UPDATE`.
+1. `SELECT ... FOR UPDATE` on the rows of the key. A UI UPDATE or DELETE waits.
+2. `SELECT 1 FROM employees WHERE id = p_employee_id AND restaurant_id = p_restaurant_id FOR UPDATE`.
    A UI INSERT of a new availability row takes `FOR KEY SHARE` on the
-   employee row through the foreign key. `FOR UPDATE` conflicts with it. So no
-   new row of this employee can appear while the function runs.
-2. `SELECT ... FOR UPDATE` on the rows of the key. A UI UPDATE or DELETE waits.
-3. Compute the token from the locked rows. Under READ COMMITTED, this
-   statement sees every commit before the lock.
+   employee row through the foreign key
+   (`supabase/migrations/20251123100050_create_availability_tables.sql:5`, `:21`).
+   `FOR UPDATE` conflicts with it. An open insert must commit first. After this
+   step, no new row of this employee can appear.
+3. Compute the token in a new statement. Under READ COMMITTED, a new statement
+   gets a new snapshot, so it sees every commit before the locks.
 4. Compare, then delete and insert.
 
-The lock holds for milliseconds. It blocks other edits of the same employee row
-only. `restaurants.timezone` is part of the token, so a time zone change
-between preview and confirm also makes the token stale.
+The order is rows first, employee second. `bulk_set_employee_availability`
+uses the same order: its DELETE takes row locks, then its INSERT takes
+`FOR KEY SHARE` on the employee
+(`supabase/migrations/20261105120200_bulk_set_availability_local_keys.sql:87-114`).
+With the same order, the two functions cannot deadlock. As a second guard, the
+edge function retries the confirm one time on `40P01`.
+
+The lock holds for milliseconds. `FOR UPDATE` on the employee row also blocks,
+for that time, inserts into every table with a foreign key to the employee (for
+example `shifts` and `time_punches`). `restaurants.timezone` is part of the
+token, so a time zone change between preview and confirm also makes the token
+stale.
 
 ## 7. Files
 
 | File | Change |
 |---|---|
 | `supabase/functions/_shared/mcpAvailabilityTools.ts` | New. Tool definitions, input parse, conversions, conflict check, handlers. Pure parts have no Deno imports. |
-| `supabase/functions/_shared/tools-registry.ts` | Register: push the 3 definitions, add the 2 writes to `WRITE_TOOLS`, route the 3 names to the availability role check. |
+| `supabase/functions/_shared/tools-registry.ts` | Register: push the 3 definitions, add the 2 writes to `WRITE_TOOLS`, and filter the tool list by capability (`:929-931`): hide `get_availability` without view access, hide the 2 writes without `edit:scheduling`. |
 | `supabase/functions/_shared/aiWriteTools.ts` | Add the 2 write names to `WRITE_TOOL_NAMES`. |
-| `supabase/functions/ai-execute-tool/index.ts` | 3 `case` lines that call `runAvailabilityTool`. The task asks for registry-only changes, but the dispatcher must route the names. |
+| `supabase/functions/ai-execute-tool/index.ts` | One gate branch before `isCapabilityGatedTool` (`:3830`) that calls `canUseAvailabilityTool`, and 3 `case` lines that call `runAvailabilityTool`. The task asks for registry-only changes, but the dispatcher must gate and route the names. |
 | `supabase/migrations/20261128120000_mcp_availability_writes.sql` | New. `availability_write_token`, `mcp_set_recurring_availability`, `mcp_set_availability_exception`. |
 | `supabase/tests/mcp_availability_writes.test.sql` | New pgTAP tests. |
 | `tests/unit/mcpAvailabilityTools.test.ts` | New unit tests, with DST dates in `America/Chicago`. |
@@ -295,19 +330,22 @@ between preview and confirm also makes the token stale.
 ### 7.1 SQL functions
 
 All are `SECURITY DEFINER`, `SET search_path = public, pg_catalog`, and start
-with `user_has_restaurant_access(p_restaurant_id, true)`. That is the same rule
-as the RLS write policies
-(`supabase/migrations/20251123100050_create_availability_tables.sql:72-89`).
-Each checks that the employee belongs to the restaurant.
+with `user_has_capability(p_restaurant_id, 'edit:scheduling')`. The edge gate
+uses the same capability, so the two gates agree. `SECURITY DEFINER` skips RLS,
+so this check is the gate. Each function checks that the employee belongs to
+the restaurant.
 `REVOKE ... FROM PUBLIC, anon`, `GRANT ... TO authenticated`.
 
 - `availability_write_token(p_restaurant_id, p_employee_id, p_kind, p_day_of_week, p_date, p_is_available, p_start, p_end, p_note) RETURNS text`. `STABLE`.
 - `mcp_set_recurring_availability(p_restaurant_id, p_employee_id, p_day_of_week, p_is_available, p_start_local, p_end_local, p_note, p_token) RETURNS employee_availability`.
-- `mcp_set_availability_exception(p_restaurant_id, p_employee_id, p_date, p_is_available, p_start_local, p_end_local, p_note, p_token) RETURNS availability_exceptions`.
-  It converts local to UTC in SQL and rejects a gap time with SQLSTATE `22007`.
+- `mcp_set_availability_exception(p_restaurant_id, p_employee_id, p_date, p_is_available, p_start_local, p_end_local, p_start_utc, p_end_utc, p_note, p_token) RETURNS availability_exceptions`.
+  It stores the UTC clocks from the edge function. The local values go into the
+  token only.
 
-Errors: `42501` forbidden, `23503` employee not in restaurant, `40001` stale
-token (`STALE_PREVIEW`), `22007` bad time.
+Errors: `42501` forbidden, `23503` employee not in restaurant, `PT409` stale
+token (`STALE_PREVIEW`), `PT422` bad input. The custom codes do not collide
+with `40001`, which retry layers read as a serialization failure, or with
+`22007`, which Postgres raises for malformed input.
 
 ### 7.2 Why the write is in SQL
 
@@ -323,7 +361,9 @@ edge function cannot hold a lock between them.
 | `update_availability` | `edit:scheduling` | `hasEditSchedulingCapability` |
 | `add_availability_exception` | `edit:scheduling` | `hasEditSchedulingCapability` |
 
-The SQL functions check owner or manager again. The gate fails closed.
+The SQL functions check `edit:scheduling` again. Both gates fail closed.
+`collaborator_accountant` has `view:payroll`, so it can read availability. It
+does not have `edit:scheduling`, so it cannot write.
 
 ## 9. TLA+ check
 
@@ -355,27 +395,32 @@ Configs:
 | `AvailabilityWrites_UiReaderFall.cfg` | UI anchor, fall | violation | `RoundTrip` |
 | `AvailabilityWrites_NoGapCheck.cfg` | accept 02:00 on the spring date | violation | `RoundTrip` |
 | `AvailabilityWrites_LatestWins.cfg` | the latest write wins, not the exception | violation | `ExceptionWins` |
+| `AvailabilityWrites_EndSameDay.cfg` | anchor the end to the start date | violation | `RoundTrip` |
 
 Output of `.claude/skills/run-tla/tlc.sh all specs/tla/availability-writes`:
 
 ```text
 OK    AvailabilityWrites: pass (expected pass; 824335 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites.log
+OK    AvailabilityWrites_EndSameDay: violation (expected violation; 1439 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_EndSameDay.log
 OK    AvailabilityWrites_Fall: pass (expected pass; 960217 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_Fall.log
-OK    AvailabilityWrites_LatestWins: violation (expected violation; 1855 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_LatestWins.log
-OK    AvailabilityWrites_NoGapCheck: violation (expected violation; 1289 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_NoGapCheck.log
-OK    AvailabilityWrites_NoToken: violation (expected violation; 2216 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_NoToken.log
-OK    AvailabilityWrites_UiReader: violation (expected violation; 1882 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_UiReader.log
-OK    AvailabilityWrites_UiReaderFall: violation (expected violation; 1872 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_UiReaderFall.log
----- 7/7 configs matched their EXPECT
+OK    AvailabilityWrites_LatestWins: violation (expected violation; 1920 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_LatestWins.log
+OK    AvailabilityWrites_NoGapCheck: violation (expected violation; 1226 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_NoGapCheck.log
+OK    AvailabilityWrites_NoToken: violation (expected violation; 2247 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_NoToken.log
+OK    AvailabilityWrites_UiReader: violation (expected violation; 1707 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_UiReader.log
+OK    AvailabilityWrites_UiReaderFall: violation (expected violation; 1937 distinct states found) log=/tmp/tlc-logs/AvailabilityWrites_UiReaderFall.log
+---- 8/8 configs matched their EXPECT
 ```
 
 The `UiReader` trace: the MCP writes an exception of 20:00 on the change date.
 The stored UTC clock is 01:00. The UI anchor reads 19:00. This is the bug of
 section 3.
 
-Limits of the model: one employee, one hour as the time unit, the start time
-only (the end uses the same rule). The legacy UTC columns are not modeled,
-because no MCP reader uses them.
+The model writes full windows `<<start, end>>`: `<<20, 0>>` (ends at midnight
+on the next date), `<<1, 3>>`, and `<<2, 4>>` (both touch the change hour).
+
+Limits of the model: one employee, one hour as the time unit. The legacy UTC
+columns are not modeled, because no MCP reader uses them. The confirm is one
+step; section 6 gives the lock argument for that.
 
 ## 10. Tests
 
@@ -384,7 +429,10 @@ because no MCP reader uses them.
   - exception local to UTC: equal to `localTimeToUtcTime` for 2027-03-13,
     2027-03-14, 2027-03-15, 2027-11-06, 2027-11-07, 2027-11-08, at 00:30,
     01:30, 03:00, 12:00, 20:00, 23:30.
-  - gap rejection on 2027-03-14 02:30. Ambiguous 2027-11-07 01:30 round trip.
+  - gap rejection on 2027-03-14 02:30, also for an end on the next date.
+    Ambiguous 2027-11-07 01:30 stores `06:30:00` and reads back `01:30`.
+  - end anchor: 2027-03-14 20:00–00:00 stores `01:00:00`–`05:00:00` and reads
+    back `20:00`–`00:00`.
   - canonical reader round trip for every case above.
   - `ui_shows` and `display_mismatch` on 2027-03-14 and 2027-11-07 at 20:00.
   - conflict check: inside, outside, overnight window, midnight end, closed day,
@@ -397,9 +445,10 @@ because no MCP reader uses them.
     columns.
   - the token changes after a UI update, a UI insert, and a time zone change.
   - a stale token raises `40001` and changes no row.
-  - exception write on 2027-03-14 20:00 stores 01:00 UTC.
-  - gap time raises `22007`.
-  - staff and a user of another restaurant get `42501`.
+  - the exception write stores the UTC values that it gets.
+  - an incomplete time pair raises `PT422`.
+  - staff, `collaborator_accountant`, and a user of another restaurant get
+    `42501`. `operations_manager` can write.
   - an employee of another restaurant gives `23503`.
   - the recurring write does not touch exceptions.
 - E2E: justified exception. The tools have no UI. The seam is the MCP endpoint.
@@ -407,6 +456,10 @@ because no MCP reader uses them.
   the SQL seam.
 
 ## 11. Decided trade-offs
+
+- Phase 2.5 review: all critical and major findings are fixed in this
+  document. The tool `canUseAvailabilityTool` changes the dispatcher, which the
+  task did not list. The change is one gate branch and 3 `case` lines.
 
 - The UI reader bug of section 3 stays. `get_availability` shows it. A
   follow-up fixes the readers.

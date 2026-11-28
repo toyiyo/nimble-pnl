@@ -25,7 +25,7 @@ EXTENDS Integers, FiniteSets
 CONSTANTS Dates,          \* e.g. {1, 2, 3}
           DstDate,        \* the date of the time change, e.g. 2
           DstKind,        \* "spring" (02:00 CST -> 03:00 CDT) or "fall" (02:00 CDT -> 01:00 CST)
-          WriteHours,     \* local hours that a writer can send
+          EndNextDay,     \* TRUE = an end <= start is anchored to the next date (design)
           MaxMcp,         \* bound on MCP previews
           MaxUi,          \* bound on UI edits
           UseToken,       \* TRUE = confirm checks the preview token (design)
@@ -33,13 +33,17 @@ CONSTANTS Dates,          \* e.g. {1, 2, 3}
           ReaderMode,     \* "canonical" (design) or "ui" (anchor the UTC clock to the exception date)
           Priority        \* "exception" (design) or "latest"
 
-NoRow   == -1    \* no row
-Unavail == -2    \* is_available = false
+\* Local windows <<start, end>> that a writer can send. <<20, 0>> ends at
+\* midnight on the next date. <<1, 3>> and <<2, 4>> touch the change hour.
+Windows == {<<20, 0>>, <<1, 3>>, <<2, 4>>}
 
-Inputs == WriteHours \cup {Unavail}
+NoRow   == <<-1, -1>>    \* no row (a tuple, so that TLC compares values of one type)
+Unavail == <<-2, -2>>    \* is_available = false
 
-VARIABLES rec,        \* rec[d]: recurring row local hour, Unavail, or NoRow
-          exc,        \* exc[d]: exception UTC clock, Unavail, or NoRow
+Inputs == Windows \cup {Unavail}
+
+VARIABLES rec,        \* rec[d]: recurring local window <<s, e>>, Unavail, or NoRow
+          exc,        \* exc[d]: exception UTC clocks <<s, e>>, Unavail, or NoRow
           lastWriter, \* lastWriter[d] \in {"rec", "exc", "none"}: ghost for Priority = "latest"
           mcp,        \* the MCP session state
           mcpCount, uiCount,
@@ -79,19 +83,26 @@ OffsetAt(abs) == IF abs < ChangeAbs THEN Before ELSE After
 AbsToLocalHour(abs) == (abs + OffsetAt(abs)) % 24
 AbsToLocalDate(abs) == (abs + OffsetAt(abs)) \div 24
 
-\* Exception write: store the UTC clock (TIME column, mod 24).
-ExcEncode(d, h) == IF h = Unavail THEN Unavail ELSE LocalToAbs(d, h) % 24
+\* Exception write: store the UTC clocks (TIME columns, mod 24). The end is
+\* on the next date when end <= start (overnight, or a 00:00 end).
+EndDate(d, w) == IF EndNextDay /\ w[2] <= w[1] THEN d + 1 ELSE d
+ExcEncode(d, w) ==
+  IF w = Unavail THEN Unavail
+  ELSE <<LocalToAbs(d, w[1]) % 24, LocalToAbs(EndDate(d, w), w[2]) % 24>>
 
-\* Exception read, design: pick the UTC date (d-1, d, d+1) whose instant
-\* has the local date d.
+\* Exception read, design: pick the UTC date (d-1, d, d+1) whose start
+\* instant has the local date d. The end is the first instant after the
+\* start with the stored end clock.
 CanonicalRead(d, u) ==
-  LET c == {a \in {(d - 1) * 24 + u, d * 24 + u, (d + 1) * 24 + u} : AbsToLocalDate(a) = d}
-  IN IF c = {} THEN NoRow ELSE AbsToLocalHour(CHOOSE a \in c : TRUE)
+  LET c == {a \in {(d - 1) * 24 + u[1], d * 24 + u[1], (d + 1) * 24 + u[1]} : AbsToLocalDate(a) = d}
+      sa == CHOOSE a \in c : TRUE
+      ea == sa + ((u[2] - u[1] + 24) % 24)
+  IN IF c = {} THEN NoRow ELSE <<AbsToLocalHour(sa), AbsToLocalHour(ea)>>
 
 \* Exception read, counterfactual: the UI and SQL reader anchor the UTC
 \* clock to the exception date (AvailabilityExceptionDialog.tsx:60,
 \* 20261105120100_availability_conflict_local_time.sql:106-109).
-UiRead(d, u) == AbsToLocalHour(d * 24 + u)
+UiRead(d, u) == <<AbsToLocalHour(d * 24 + u[1]), AbsToLocalHour(d * 24 + u[2])>>
 
 ReadExc(d) ==
   IF exc[d] \in {NoRow, Unavail} THEN exc[d]
@@ -128,11 +139,14 @@ Put(k, v) ==
 
 Encode(k, h) == IF k[1] = "rec" THEN h ELSE ExcEncode(k[2], h)
 
+\* The window has a local time that does not exist (the spring gap).
+HasGap(d, w) == w # Unavail /\ (Nonexistent(d, w[1]) \/ Nonexistent(EndDate(d, w), w[2]))
+
 \* mcpAvailabilityTools.ts preview: check the input, read the rows, return
 \* the conflict list and the token. A new preview replaces an old one.
 Preview(k, h) ==
   /\ mcpCount < MaxMcp
-  /\ ~(RejectGap /\ k[1] = "exc" /\ h # Unavail /\ Nonexistent(k[2], h))
+  /\ ~(RejectGap /\ k[1] = "exc" /\ HasGap(k[2], h))
   /\ mcp' = [pc |-> "previewed", key |-> k, input |-> h, snap |-> Stored(k)]
   /\ mcpCount' = mcpCount + 1
   /\ UNCHANGED <<rec, exc, lastWriter, uiCount, lastMcp, staleCommit>>
@@ -175,7 +189,7 @@ Next ==
   \/ Confirm
   \/ Abandon
   \/ \E k \in Keys, h \in Inputs \cup {NoRow} :
-        /\ ~(k[1] = "exc" /\ h \in WriteHours /\ Nonexistent(k[2], h))   \* the UI form blocks a gap hour
+        /\ ~(k[1] = "exc" /\ h \in Windows /\ HasGap(k[2], h))   \* the UI form blocks a gap hour
         /\ UiWrite(k, h)
   \/ Done
 

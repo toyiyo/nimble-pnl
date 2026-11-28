@@ -76,7 +76,7 @@ WHERE restaurant_id = '<id>'
     `findAreaAwareTemplate` (`src/lib/templateAreaMatch.ts:63-76`).
 - The function returns one key for each shift. So one shift can fill one slot
   only.
-- `buildCoverage` takes a new optional `employeeAreas` map. It counts distinct
+- `buildCoverage` reads the area from `shift.employee.area` (the join below). It counts distinct
   employees for each key, the same as `distinctAssignedCount`
   (`src/lib/shiftFill.ts:27-34`).
 - `runGetSchedulingContext` reads `area` on templates. The template query adds

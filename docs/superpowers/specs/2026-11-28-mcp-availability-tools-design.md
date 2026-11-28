@@ -470,8 +470,8 @@ step; section 6 gives the lock argument for that.
 
 ## 12. Environment blockers
 
-- `npm install` fails in this cloud session. The network blocks
-  `cdn.sheetjs.com`, the source of the `xlsx` package. Vitest cannot run until
-  this host is allowed or the user gives another way.
+- `npm install` failed at first: the network blocked `cdn.sheetjs.com`, the
+  source of the `xlsx` package. A personal environment `nimble-pnl` now allows
+  that host. `npm install` passes.
 - The local Supabase does not run here (`supabase` MCP: `ECONNREFUSED`). pgTAP
   runs in CI only, unless Docker is available.

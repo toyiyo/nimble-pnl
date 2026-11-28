@@ -18,6 +18,7 @@ import { useDeleteAvailability, useDeleteAvailabilityException } from '@/hooks/u
 import { describeAvailabilityDeletion } from '@/lib/scheduling/deletionCopy';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 import { formatHourToTime } from '@/lib/timeUtils';
+import { formatLocalTimeOfDay } from '@/lib/conflictFormatUtils';
 import { parseDateOnly, formatDateOnly } from '@/lib/dateOnly';
 import { SeverityPill } from './SeverityPill';
 
@@ -54,22 +55,28 @@ export interface DeleteAvailabilityDialogProps {
   timezone: string;
 }
 
-/** UTC HH:MM(:SS) -> local "9:00 AM", anchored to `referenceDate` for correct DST offset. */
-function formatLocalTime(utcTime: string, timezone: string, referenceDate: Date): string {
+/** Exception rows store UTC. Convert with the exception date for the correct DST offset. */
+function formatUtcTime(utcTime: string, timezone: string, referenceDate: Date): string {
   const local = utcTimeToLocalTime(utcTime, timezone, referenceDate);
   const [h, m] = local.split(':').map(Number);
   return formatHourToTime(h + m / 60);
 }
 
 function timeLabelFor(
-  row: { start_time?: string; end_time?: string },
+  target: AvailabilityDeletionTarget,
   timezone: string,
   referenceDate: Date,
 ): string {
+  if (target.kind === 'availability') {
+    const { start_time_local: start, end_time_local: end } = target.row;
+    if (!start || !end) return 'all day';
+    return `${formatLocalTimeOfDay(start)} – ${formatLocalTimeOfDay(end)}`;
+  }
+  const row = target.row;
   if (!row.start_time || !row.end_time) {
     return 'all day';
   }
-  return `${formatLocalTime(row.start_time, timezone, referenceDate)} – ${formatLocalTime(row.end_time, timezone, referenceDate)}`;
+  return `${formatUtcTime(row.start_time, timezone, referenceDate)} – ${formatUtcTime(row.end_time, timezone, referenceDate)}`;
 }
 
 /**
@@ -115,7 +122,7 @@ export function DeleteAvailabilityDialog({
 
   const { row, personName } = target;
   const { whenLabel, referenceDate } = whenLabelFor(target);
-  const timeLabel = timeLabelFor(row, timezone, referenceDate);
+  const timeLabel = timeLabelFor(target, timezone, referenceDate);
 
   const copy = describeAvailabilityDeletion({
     isAvailable: row.is_available,

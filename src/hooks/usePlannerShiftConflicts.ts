@@ -90,7 +90,6 @@ function availabilityConflict(
     new Date(shift.start_time),
     new Date(shift.end_time),
     tz,
-    localDate,
     next,
   );
   if (!outside) return null;
@@ -101,8 +100,8 @@ function availabilityConflict(
     has_conflict: true,
     conflict_type: today.type === 'exception' ? 'exception' : 'recurring',
     message: `Shift on ${startDate} is outside availability`,
-    available_start: firstWindow?.startTime ?? undefined,
-    available_end: firstWindow?.endTime ?? undefined,
+    available_start_local: firstWindow?.startTime ?? null,
+    available_end_local: firstWindow?.endTime ?? null,
   };
 }
 
@@ -138,7 +137,7 @@ export function buildShiftConflictIndex(
     if (conflicts.length > 0) {
       index.set(
         shift.id,
-        conflicts.map((conflict) => formatConflictLine(conflict, timezone)),
+        conflicts.map((conflict) => formatConflictLine(conflict)),
       );
     }
   }

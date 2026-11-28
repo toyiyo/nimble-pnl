@@ -259,8 +259,9 @@ export function ShiftPlannerTab({
         exceptions,
         weekStart,
         employees.map((e) => e.id),
+        restaurantTimezone,
       ),
-    [availability, exceptions, weekStart, employees],
+    [availability, exceptions, weekStart, employees, restaurantTimezone],
   );
 
   // Read-time conflict index (time-off + availability) for the persistent
@@ -1167,7 +1168,6 @@ export function ShiftPlannerTab({
       <AvailabilityConflictDialog
         open={conflictDialogData !== null}
         data={conflictDialogData}
-        timezone={restaurantTimezone}
         onConfirm={handleConflictConfirm}
         onCancel={handleConflictCancel}
       />

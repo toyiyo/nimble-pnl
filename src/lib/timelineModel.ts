@@ -137,7 +137,7 @@ function assignRows(
     const prev = dowMap?.get(prevDow);
     const next = dowMap?.get(nextDow);
     const outsideAvailability = today
-      ? shiftOutsideAvailability(today, prev, new Date(s.start_time), new Date(s.end_time), tz, localDate, next)
+      ? shiftOutsideAvailability(today, prev, new Date(s.start_time), new Date(s.end_time), tz, next)
       : false;
 
     return {

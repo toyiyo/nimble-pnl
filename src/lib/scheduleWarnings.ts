@@ -101,7 +101,8 @@ export function computeScheduleWarnings(
       if (hasOverlap) break;
       for (const tmpl of matchingTemplates) {
         if (!tmpl.days.includes(avail.day_of_week)) continue;
-        if (timeRangesOverlap(avail.start_time, avail.end_time, tmpl.start_time, tmpl.end_time)) {
+        if (!avail.start_time_local || !avail.end_time_local) continue;
+        if (timeRangesOverlap(avail.start_time_local, avail.end_time_local, tmpl.start_time, tmpl.end_time)) {
           hasOverlap = true;
           break;
         }

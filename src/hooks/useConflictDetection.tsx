@@ -23,6 +23,8 @@ interface AvailabilityConflictResponse {
   message: string;
   available_start: string | null;
   available_end: string | null;
+  available_start_local?: string | null; // restaurant local TIME
+  available_end_local?: string | null; // restaurant local TIME
 }
 
 /**
@@ -78,6 +80,8 @@ async function fetchConflicts(
         message: conflict.message,
         available_start: conflict.available_start ?? undefined,
         available_end: conflict.available_end ?? undefined,
+        available_start_local: conflict.available_start_local ?? null,
+        available_end_local: conflict.available_end_local ?? null,
       });
     }
   }

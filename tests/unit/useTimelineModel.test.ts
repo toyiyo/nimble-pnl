@@ -248,7 +248,7 @@ describe('outsideAvailability marker (Task 7)', () => {
   // covers the 10-13 CT test shift below.
   const recurringOnWideWindow: EffectiveAvailability = {
     type: 'recurring',
-    slots: [{ isAvailable: true, startTime: '14:00:00', endTime: '19:00:00', sourceRecord: {} as never }],
+    slots: [{ isAvailable: true, startTime: '08:00:00', endTime: '20:00:00', sourceRecord: {} as never }],
   };
 
   it('flags a bar outsideAvailability=true when the employee is recurring-unavailable that day', () => {

@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { utcTimeToLocalTime, localTimeToUtcTime } from '@/lib/availabilityTimeUtils';
-import { safeTz } from '@/lib/restaurantClock';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -56,16 +53,13 @@ export const AvailabilityDialog = ({
   const createAvailability = useCreateAvailability();
   const updateAvailability = useUpdateAvailability();
 
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
-
   useEffect(() => {
     if (availability) {
       setEmployeeId(availability.employee_id);
       setDayOfWeek(availability.day_of_week);
       setIsAvailable(availability.is_available);
-      setStartTime(utcTimeToLocalTime(availability.start_time, restaurantTimezone));
-      setEndTime(utcTimeToLocalTime(availability.end_time, restaurantTimezone));
+      setStartTime((availability.start_time_local ?? '09:00').slice(0, 5));
+      setEndTime((availability.end_time_local ?? '17:00').slice(0, 5));
       setNotes(availability.notes || '');
     } else {
       setEmployeeId(defaultEmployeeId || '');
@@ -75,7 +69,7 @@ export const AvailabilityDialog = ({
       setEndTime('17:00');
       setNotes('');
     }
-  }, [availability, open, defaultEmployeeId, defaultDayOfWeek, restaurantTimezone]);
+  }, [availability, open, defaultEmployeeId, defaultDayOfWeek]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,8 +80,8 @@ export const AvailabilityDialog = ({
       employee_id: employeeId,
       day_of_week: dayOfWeek,
       is_available: isAvailable,
-      start_time: localTimeToUtcTime(startTime, restaurantTimezone),
-      end_time: localTimeToUtcTime(endTime, restaurantTimezone),
+      start_time_local: startTime,
+      end_time_local: endTime,
       notes: notes || undefined,
     };
 

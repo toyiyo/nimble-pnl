@@ -1154,7 +1154,6 @@ export function ShiftTimelineTab({
       <AvailabilityConflictDialog
         open={dragConflict !== null}
         data={dragConflictData}
-        timezone={tz}
         onConfirm={handleDragConflictConfirm}
         onCancel={handleDragConflictCancel}
       />

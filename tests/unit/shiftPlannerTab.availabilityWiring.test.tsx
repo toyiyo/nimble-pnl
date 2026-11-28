@@ -86,11 +86,12 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
   };
 });
 
-// Monday (day_of_week = 1) recurring availability, stored UTC-clock 18:00–02:00.
+// Monday (day_of_week = 1) recurring availability, local 18:00–02:00.
 const FIXTURE_AVAILABILITY = [
   {
     id: 'a1', restaurant_id: 'r1', employee_id: 'e1', day_of_week: 1,
     is_available: true, start_time: '18:00:00', end_time: '02:00:00',
+    start_time_local: '18:00:00', end_time_local: '02:00:00',
     created_at: '', updated_at: '',
   },
 ];

@@ -32,6 +32,8 @@ const availableRow = {
   day_of_week: 3, // Wednesday
   start_time: '14:00:00',
   end_time: '22:00:00',
+  start_time_local: '10:00:00',
+  end_time_local: '18:00:00',
   is_available: true,
   created_at: '',
   updated_at: '',
@@ -50,6 +52,8 @@ const exceptionRow = {
   date: '2026-07-24',
   start_time: '18:00:00',
   end_time: '22:00:00',
+  start_time_local: null,
+  end_time_local: null,
   is_available: true,
   created_at: '',
   updated_at: '',
@@ -98,14 +102,13 @@ describe('DeleteAvailabilityDialog', () => {
     expect(confirmButton).toBeEnabled();
   });
 
-  it('shows TZ-aware local time for a recurring window, anchored to today', () => {
-    renderDialog({ kind: 'availability', row: availableRow, personName: 'Jamie Chen' });
-
-    const expectedStart = expectedLocalTime('14:00:00', TIMEZONE, new Date());
-    const expectedEnd = expectedLocalTime('22:00:00', TIMEZONE, new Date());
-    expect(
-      screen.getByText(new RegExp(`${expectedStart}.*${expectedEnd}`)),
-    ).toBeInTheDocument();
+  it('shows the local window of a recurring row with no conversion', () => {
+    renderDialog({
+      kind: 'availability',
+      row: { ...availableRow, start_time: '16:00:00', start_time_local: '10:00:00', end_time_local: '22:00:00' },
+      personName: 'Jamie Chen',
+    });
+    expect(screen.getByText(/10:00 AM – 10:00 PM/)).toBeInTheDocument();
     expect(screen.getByText(/Wednesday/)).toBeInTheDocument();
   });
 

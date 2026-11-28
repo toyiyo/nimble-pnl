@@ -179,6 +179,15 @@ test.describe('Impact-Aware Deletion', () => {
       throw new Error('Could not find Casey Morgan employee ID');
     }
 
+    // Pin the restaurant time zone so the local-time seed is a fixed quantity.
+    await page.evaluate(async (restId: string) => {
+      const { error } = await (window as any).__supabase
+        .from('restaurants')
+        .update({ timezone: 'America/Chicago' })
+        .eq('id', restId);
+      if (error) throw new Error(`timezone update failed: ${error.message}`);
+    }, restaurantId);
+
     // Seed a recurring "blackout" (is_available:false) row on today's weekday
     // so it always falls inside the grid's default (current-week) view.
     const todayDow = new Date().getDay();
@@ -189,8 +198,8 @@ test.describe('Impact-Aware Deletion', () => {
           {
             employee_id: caseyId,
             day_of_week: todayDow,
-            start_time: '09:00:00',
-            end_time: '17:00:00',
+            start_time_local: '09:00:00',
+            end_time_local: '17:00:00',
             is_available: false,
           },
         ],

@@ -98,27 +98,25 @@ describe('BulkSetAvailabilitySheet', () => {
     expect(document.getElementById('employee-avail-day-0')).toBeNull();
   });
 
-  it('converts the local-time grid to UTC before submitting (non-UTC restaurant)', () => {
-    // Regression for the 2026-05-21 production bug: the sheet was saving
-    // restaurant-local times directly into employee_availability, which all
-    // readers treat as UTC. For a Chicago restaurant that means a 10:00–22:30
-    // local intent displayed back as 05:00–17:30. The submit path must convert
-    // local → UTC first so the round-trip is correct.
-    renderSheet({ ...baseProps, restaurantTimezone: 'America/Chicago' });
-    fireEvent.click(screen.getByRole('button', { name: /apply to 2 employees/i }));
-
-    expect(mutateMock).toHaveBeenCalledTimes(1);
-    const args = mutateMock.mock.calls[0][0];
-    const monday = args.availability.find(
-      (a: { day_of_week: number }) => a.day_of_week === 1,
-    );
-    // 10:00 Chicago local should NOT round-trip to UTC as 10:00; it must shift.
-    expect(monday.start_time).not.toBe('10:00:00');
-    expect(monday.start_time).not.toBe('10:00');
-    // closed-day rows must still pass through unchanged
-    const sunday = args.availability.find(
-      (a: { day_of_week: number }) => a.day_of_week === 0,
-    );
-    expect(sunday.is_available).toBe(false);
+  it.each([
+    ['July', new Date(2026, 6, 15)],
+    ['December', new Date(2026, 11, 16)],
+  ])('submits the local grid unchanged in %s', (_m, now) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
+    try {
+      renderSheet({ ...baseProps, restaurantTimezone: 'America/Chicago' });
+      fireEvent.click(screen.getByRole('button', { name: /apply to 2 employees/i }));
+      const args = mutateMock.mock.calls[0][0];
+      const monday = args.availability.find((a: { day_of_week: number }) => a.day_of_week === 1);
+      expect(monday.start_time_local).toBe('10:00:00');
+      expect(monday.end_time_local).toBe('22:00:00');
+      expect('start_time' in monday).toBe(false);
+      const sunday = args.availability.find((a: { day_of_week: number }) => a.day_of_week === 0);
+      expect(sunday.is_available).toBe(false);
+      expect(sunday.start_time_local).toBe('09:00:00');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

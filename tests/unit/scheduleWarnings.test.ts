@@ -52,6 +52,10 @@ function makeAvailability(
     day_of_week: dayOfWeek,
     start_time: overrides.start_time ?? '06:00:00',
     end_time: overrides.end_time ?? '22:00:00',
+    start_time_local:
+      'start_time_local' in overrides ? overrides.start_time_local! : (overrides.start_time ?? '06:00:00'),
+    end_time_local:
+      'end_time_local' in overrides ? overrides.end_time_local! : (overrides.end_time ?? '22:00:00'),
     is_available: overrides.is_available ?? true,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
@@ -158,6 +162,8 @@ describe('computeScheduleWarnings', () => {
       ...a,
       start_time: '18:00:00',
       end_time: '22:00:00',
+      start_time_local: '18:00:00',
+      end_time_local: '22:00:00',
     }));
 
     const warnings = computeScheduleWarnings([emp], templates, availability);
@@ -221,6 +227,8 @@ describe('computeScheduleWarnings', () => {
         ...a,
         start_time: '23:00:00',
         end_time: '23:59:00',
+        start_time_local: '23:00:00',
+        end_time_local: '23:59:00',
       })),
     ];
 
@@ -252,5 +260,32 @@ describe('computeScheduleWarnings', () => {
     const warnings = computeScheduleWarnings([emp], templates, availability);
 
     expect(warnings.find((w) => w.type === 'position_mismatch')).toBeDefined();
+  });
+});
+
+describe('computeScheduleWarnings local-time availability', () => {
+  it('compares the local columns, not the legacy UTC columns', () => {
+    const emp = makeEmployee({ position: 'Server' });
+    const templates = [makeTemplate({ position: 'Server', start_time: '11:00:00', end_time: '15:00:00', days: [1] })];
+    const availability = [
+      makeAvailability(emp.id, 1, {
+        start_time: '15:00:00',
+        end_time: '03:00:00',
+        start_time_local: '10:00:00',
+        end_time_local: '22:00:00',
+      }),
+    ];
+    const warnings = computeScheduleWarnings([emp], templates, availability);
+    expect(warnings.find((w) => w.type === 'no_time_overlap')).toBeUndefined();
+  });
+
+  it('skips a row with null local values', () => {
+    const emp = makeEmployee({ position: 'Server' });
+    const templates = [makeTemplate({ position: 'Server', start_time: '11:00:00', end_time: '15:00:00', days: [1] })];
+    const availability = [
+      makeAvailability(emp.id, 1, { start_time: '11:00:00', end_time: '15:00:00', start_time_local: null, end_time_local: null }),
+    ];
+    const warnings = computeScheduleWarnings([emp], templates, availability);
+    expect(warnings.find((w) => w.type === 'no_time_overlap')).toBeDefined();
   });
 });

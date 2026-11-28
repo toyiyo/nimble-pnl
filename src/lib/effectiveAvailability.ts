@@ -1,7 +1,7 @@
 import { toZonedTime } from 'date-fns-tz';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
-import { formatUTCTimeToLocal } from '@/lib/conflictFormatUtils';
+import { formatLocalTimeOfDay } from '@/lib/conflictFormatUtils';
 
 export interface EffectiveSlot {
   isAvailable: boolean;
@@ -14,7 +14,17 @@ export interface EffectiveSlot {
 export interface EffectiveAvailability {
   type: 'recurring' | 'exception' | 'not-set';
   slots: EffectiveSlot[];
+  /** Exception days only: the recurring rows the exception hides. Used for overnight carry-over. */
+  recurringSlots?: EffectiveSlot[];
 }
+
+const toRecurringSlots = (rows: EmployeeAvailability[]): EffectiveSlot[] =>
+  rows.map((avail) => ({
+    isAvailable: avail.is_available,
+    startTime: avail.start_time_local ?? null,
+    endTime: avail.end_time_local ?? null,
+    sourceRecord: avail,
+  }));
 
 function getWeekDates(weekStart: Date): Map<string, number> {
   const dates = new Map<string, number>();
@@ -32,6 +42,7 @@ export function computeEffectiveAvailability(
   exceptions: AvailabilityException[],
   weekStart: Date,
   employeeIds: string[],
+  timezone: string,
 ): Map<string, Map<number, EffectiveAvailability>> {
   const weekDates = getWeekDates(weekStart);
   const result = new Map<string, Map<number, EffectiveAvailability>>();
@@ -72,12 +83,19 @@ export function computeEffectiveAvailability(
         const excKey = `${empId}:${dateStr}`;
         const dayExceptions = exceptionsByEmpDate.get(excKey);
         if (dayExceptions && dayExceptions.length > 0) {
+          // Exception times are stored as UTC clock values. Convert them with the
+          // exception date as the DST anchor (same formula as the RPC).
+          const [ey, em, ed] = dateStr.split('-').map(Number);
+          const anchor = new Date(ey, em - 1, ed);
+          const toLocal = (t: string | null | undefined) =>
+            t ? utcTimeToLocalTime(t, timezone, anchor) : null;
           empMap.set(dow, {
             type: 'exception',
+            recurringSlots: toRecurringSlots(recurringByEmpDay.get(`${empId}:${dow}`) ?? []),
             slots: dayExceptions.map((exc) => ({
               isAvailable: exc.is_available,
-              startTime: exc.start_time ?? null,
-              endTime: exc.end_time ?? null,
+              startTime: toLocal(exc.start_time),
+              endTime: toLocal(exc.end_time),
               reason: exc.reason || undefined,
               sourceRecord: exc,
             })),
@@ -92,12 +110,7 @@ export function computeEffectiveAvailability(
       if (recurring && recurring.length > 0) {
         empMap.set(dow, {
           type: 'recurring',
-          slots: recurring.map((avail) => ({
-            isAvailable: avail.is_available,
-            startTime: avail.start_time ?? null,
-            endTime: avail.end_time ?? null,
-            sourceRecord: avail,
-          })),
+          slots: toRecurringSlots(recurring),
         });
         continue;
       }
@@ -216,55 +229,98 @@ export function availabilityColorClasses(effective: EffectiveAvailability): Avai
 }
 
 /**
- * Localized one-line label for an EffectiveAvailability cell. Joins every
- * available slot (not just `slots[0]`) with ' + ', matching
- * TeamAvailabilityGrid's split-shift display convention — otherwise an
- * employee with two available windows on the same day loses the second
- * window in this label's consumers (EmployeeMiniWeek's tooltip/aria-label).
+ * One-line label for an EffectiveAvailability cell. Slot times are already
+ * restaurant-local, so no timezone or date is needed. Joins every available
+ * slot (not just `slots[0]`) with ' + ' to match TeamAvailabilityGrid's
+ * split-shift convention.
  */
-export function availabilityLabel(effective: EffectiveAvailability, timezone: string, date: Date): string {
+export function availabilityLabel(effective: EffectiveAvailability): string {
   if (effective.type === 'not-set') return 'No availability set';
   const slot = effective.slots[0];
   if (!slot?.isAvailable) return 'Unavailable';
   const ranges = effective.slots
     .filter((s) => s.isAvailable && s.startTime && s.endTime)
-    .map((s) => `${formatUTCTimeToLocal(s.startTime!, timezone, date)} – ${formatUTCTimeToLocal(s.endTime!, timezone, date)}`);
+    .map((s) => `${formatLocalTimeOfDay(s.startTime!)} – ${formatLocalTimeOfDay(s.endTime!)}`);
   if (ranges.length === 0) return 'Available';
   return `Available ${ranges.join(' + ')}`;
 }
 
+const MINUTES_PER_DAY = 1440;
+
+const toMin = (t: string): number => {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+};
+
+/** Slots of one local day, placed on the shift axis by `offsetMin` from the shift's first day. */
+interface SlotGroup {
+  slots: EffectiveSlot[];
+  offsetMin: number;
+}
+
+type Window = readonly [start: number, end: number];
+
 /**
- * Slots from a previous local day whose converted window is locally
- * overnight (end <= start), i.e. windows that spill into today's early hours.
+ * Slots from a previous local day that spill into the next day's early hours:
+ * local end <= start and the end is not 00:00 (a 00:00 end is a day-end, not a spill).
  */
-function overnightPrevSlots(
-  slots: EffectiveSlot[],
-  timezone: string,
-  date: Date,
-): EffectiveSlot[] {
+function overnightPrevSlots(slots: EffectiveSlot[]): EffectiveSlot[] {
   return slots.filter((s) => {
     if (!s.isAvailable || !s.startTime || !s.endTime) return false;
-    const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, date).split(':').map(Number);
-    const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, date).split(':').map(Number);
-    return eh * 60 + em <= sh * 60 + sm;
+    const e = toMin(s.endTime);
+    return e !== 0 && e <= toMin(s.startTime);
   });
 }
 
 /**
+ * Spill slots a day gives to the NEXT day. Only recurring rows carry over.
+ * The RPC reads carry-over from `employee_availability` only, never from an exception.
+ * An exception day keeps the recurring rows it hides in `recurringSlots`.
+ */
+function spillSlots(day: EffectiveAvailability | undefined): EffectiveSlot[] {
+  if (!day) return [];
+  if (day.type === 'recurring') return overnightPrevSlots(day.slots);
+  if (day.type === 'exception') return overnightPrevSlots(day.recurringSlots ?? []);
+  return [];
+}
+
+/** Turn slot groups into [start, end] minute windows on the shift axis. */
+function buildWindows(groups: SlotGroup[]): Window[] {
+  const windows: Window[] = [];
+  for (const { slots, offsetMin } of groups) {
+    for (const s of slots) {
+      if (!s.isAvailable || !s.startTime || !s.endTime) continue;
+      const ws = toMin(s.startTime) + offsetMin;
+      let we = toMin(s.endTime) + offsetMin;
+      if (we <= ws) we += MINUTES_PER_DAY; // overnight local window (00:00 end gives 1440)
+      windows.push([ws, we]);
+    }
+  }
+  return windows;
+}
+
+/**
+ * True when the part [a, b] is not covered by any window. With no window at all,
+ * the part is outside only when the day is marked off (no data means unknown).
+ */
+function partOutside(a: number, b: number, windows: Window[], dayIsOff: boolean): boolean {
+  if (windows.some(([ws, we]) => a >= ws && b <= we)) return false;
+  return windows.length > 0 || dayIsOff;
+}
+
+function isDayOff(day: EffectiveAvailability | undefined): boolean {
+  const slot = day?.slots[0];
+  return !!slot && !slot.isAvailable;
+}
+
+/**
  * True when [shiftStart, shiftEnd] (instants) falls outside the employee's
- * available window(s) for the given local day. Client-side mirror of the
- * `check_availability_conflict` RPC's local-frame logic: trust the stored
- * day_of_week, convert only time-of-day, and treat a local end <= start as
- * overnight. `prevDay` is the previous local day's EffectiveAvailability
- * (needed so an overnight window from yesterday can cover today's early
- * hours). `nextDay` is the NEXT local day's EffectiveAvailability — needed
- * so a hard-unavailable exception/recurring-off on the day the shift's tail
- * spills into can't be papered over by today's window alone (Codex finding:
- * without this, a Fri 22:00–Sat 01:00 shift inside Friday's 18:00–02:00
- * recurring window read as no-conflict here even when Saturday itself has an
- * unavailable exception, contradicting the RPC's per-local-date walk, which
- * checks Saturday's own data for the portion of the shift that falls on
- * Saturday).
+ * available window(s). Client-side mirror of the `check_availability_conflict`
+ * RPC: slot times are restaurant-local; `timezone` converts only the shift
+ * instants. The shift is split by local date and each part is checked alone.
+ * A part that ends exactly at 00:00 has no next-day part.
+ * `prevDay` and `nextDay` are the neighbour local days' availability.
+ * A day with an exception ignores carry-over from the day before, as the RPC does.
  */
 export function shiftOutsideAvailability(
   today: EffectiveAvailability,
@@ -272,16 +328,8 @@ export function shiftOutsideAvailability(
   shiftStart: Date,
   shiftEnd: Date,
   timezone: string,
-  date: Date,
   nextDay?: EffectiveAvailability,
 ): boolean {
-  // `today.slots` is empty for 'not-set', so this only fires for an actual
-  // recurring-off / unavailable-exception row. Do NOT early-return for
-  // 'not-set' here — the RPC (3c) still checks the previous local day's
-  // overnight windows even when today has no exception/recurring row at all.
-  const slot = today.slots[0];
-  if (slot && !slot.isAvailable) return true; // recurring off / unavailable exception
-
   // Convert the shift INSTANTS to restaurant-local wall clock (NOT host TZ — lesson 2026-05-10).
   const zStart = toZonedTime(shiftStart, timezone);
   const zEnd = toZonedTime(shiftEnd, timezone);
@@ -291,41 +339,23 @@ export function shiftOutsideAvailability(
       new Date(zStart.getFullYear(), zStart.getMonth(), zStart.getDate()).getTime()) /
       86_400_000,
   );
-  const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * 1440;
+  const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * MINUTES_PER_DAY;
 
-  // The shift's tail falls on the NEXT local day — that day's own hard-off
-  // row (recurring-unavailable or unavailable exception) governs that
-  // portion regardless of what today's window covers (RPC's per-date walk
-  // counterpart to block 3c, but forward instead of backward).
-  if (dayDelta > 0 && nextDay) {
-    const nextSlot = nextDay.slots[0];
-    if (nextSlot && !nextSlot.isAvailable) return true;
+  const part1 = buildWindows([
+    { slots: today.slots, offsetMin: 0 },
+    {
+      slots: today.type === 'exception' ? [] : spillSlots(prevDay),
+      offsetMin: -MINUTES_PER_DAY,
+    },
+  ]);
+  if (partOutside(startMin, Math.min(endMin, MINUTES_PER_DAY), part1, isDayOff(today))) return true;
+
+  if (endMin > MINUTES_PER_DAY) {
+    const part2 = buildWindows([
+      { slots: nextDay ? nextDay.slots : [], offsetMin: MINUTES_PER_DAY },
+      { slots: nextDay?.type === 'exception' ? [] : spillSlots(today), offsetMin: 0 },
+    ]);
+    if (partOutside(MINUTES_PER_DAY, endMin, part2, isDayOff(nextDay))) return true;
   }
-
-  // Previous LOCAL calendar date, used (like the RPC's v_prev_date) as the
-  // DST-offset anchor for converting prevDay's stored UTC-clock times — using
-  // today's date here would pick the wrong UTC offset on a DST-transition day.
-  const prevDate = new Date(date);
-  prevDate.setDate(prevDate.getDate() - 1);
-  const nextDate = new Date(date);
-  nextDate.setDate(nextDate.getDate() + 1);
-
-  const windows: Array<[number, number]> = [];
-  const pushWindow = (slots: EffectiveSlot[], offsetMin: number, refDate: Date) => {
-    for (const s of slots) {
-      if (!s.isAvailable || !s.startTime || !s.endTime) continue;
-      const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, refDate).split(':').map(Number);
-      const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, refDate).split(':').map(Number);
-      const ws = sh * 60 + sm + offsetMin;
-      let we = eh * 60 + em + offsetMin;
-      if (we <= ws) we += 1440; // overnight local window
-      windows.push([ws, we]);
-    }
-  };
-  pushWindow(today.slots, 0, date);
-  if (prevDay) pushWindow(overnightPrevSlots(prevDay.slots, timezone, prevDate), -1440, prevDate);
-  if (dayDelta > 0 && nextDay) pushWindow(nextDay.slots, 1440, nextDate);
-
-  if (windows.length === 0) return false; // available-all-day / unknown
-  return !windows.some(([ws, we]) => startMin >= ws && endMin <= we);
+  return false;
 }

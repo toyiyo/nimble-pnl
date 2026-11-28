@@ -148,6 +148,37 @@ describe('EmployeeDialog — default availability section (create mode)', () => 
     expect(bulkMutateMock.mock.calls[0][0].availability).toHaveLength(7);
   });
 
+  it.each([
+    ['July', new Date(2026, 6, 15)],
+    ['December', new Date(2026, 11, 16)],
+  ])('sends the grid as local windows with no conversion in %s', async (_m, now) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
+    try {
+      renderDialog();
+      await userEvent.type(screen.getByLabelText(/name/i), 'New Hire');
+      await userEvent.type(screen.getByLabelText(/hourly rate/i), '15');
+      await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+      await waitFor(() => expect(bulkMutateMock).toHaveBeenCalled());
+      const rows = bulkMutateMock.mock.calls[0][0].availability;
+      for (const r of rows) {
+        expect(r.start_time_local).toMatch(/^\d{2}:\d{2}/);
+        expect(r.end_time_local).toMatch(/^\d{2}:\d{2}/);
+        expect('start_time' in r).toBe(false);
+        expect('end_time' in r).toBe(false);
+      }
+      // Same local times in July and December: no DST shift.
+      // Exact local values in every month: no DST shift.
+      expect(rows).toHaveLength(7);
+      for (const r of rows) {
+        expect(r.start_time_local).toBe('09:00:00');
+        expect(r.end_time_local).toBe('17:00:00');
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('with "Set later", does NOT call bulk RPC after insert', async () => {
     renderDialog();
     await userEvent.click(screen.getByRole('radio', { name: /set later/i }));

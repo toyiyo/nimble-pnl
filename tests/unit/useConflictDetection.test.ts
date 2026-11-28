@@ -71,6 +71,8 @@ const mockOneConflictFromEachRpc = () => {
           message: 'Outside recurring availability',
           available_start: '09:00:00',
           available_end: '17:00:00',
+          available_start_local: '10:00:00',
+          available_end_local: '22:00:00',
         },
       ],
       error: null,
@@ -94,6 +96,8 @@ const EXPECTED_MERGED_CONFLICTS = [
     message: 'Outside recurring availability',
     available_start: '09:00:00',
     available_end: '17:00:00',
+    available_start_local: '10:00:00',
+    available_end_local: '22:00:00',
   },
 ];
 

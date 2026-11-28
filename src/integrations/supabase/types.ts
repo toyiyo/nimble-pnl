@@ -2465,36 +2465,42 @@ export type Database = {
           created_at: string | null
           day_of_week: number
           employee_id: string
-          end_time: string
+          end_time: string | null
+          end_time_local: string | null
           id: string
           is_available: boolean
           notes: string | null
           restaurant_id: string
-          start_time: string
+          start_time: string | null
+          start_time_local: string | null
           updated_at: string | null
         }
         Insert: {
           created_at?: string | null
           day_of_week: number
           employee_id: string
-          end_time: string
+          end_time?: string | null
+          end_time_local?: string | null
           id?: string
           is_available?: boolean
           notes?: string | null
           restaurant_id: string
-          start_time: string
+          start_time?: string | null
+          start_time_local?: string | null
           updated_at?: string | null
         }
         Update: {
           created_at?: string | null
           day_of_week?: number
           employee_id?: string
-          end_time?: string
+          end_time?: string | null
+          end_time_local?: string | null
           id?: string
           is_available?: boolean
           notes?: string | null
           restaurant_id?: string
-          start_time?: string
+          start_time?: string | null
+          start_time_local?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -11155,7 +11161,9 @@ export type Database = {
         }
         Returns: {
           available_end: string
+          available_end_local: string
           available_start: string
+          available_start_local: string
           conflict_type: string
           has_conflict: boolean
           message: string

@@ -14,10 +14,11 @@ import { AvailabilityDialog } from '../../src/components/AvailabilityDialog';
 import type { EmployeeAvailability } from '../../src/types/scheduling';
 
 const mockPending = vi.hoisted(() => ({ create: false, update: false }));
+const mockUpdate = vi.hoisted(() => ({ mutate: (() => undefined) as (...a: unknown[]) => void }));
 
 vi.mock('@/hooks/useAvailability', () => ({
   useCreateAvailability: () => ({ mutate: vi.fn(), isPending: mockPending.create }),
-  useUpdateAvailability: () => ({ mutate: vi.fn(), isPending: mockPending.update }),
+  useUpdateAvailability: () => ({ mutate: mockUpdate.mutate, isPending: mockPending.update }),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
@@ -25,6 +26,8 @@ vi.mock('@/contexts/RestaurantContext', () => ({
     selectedRestaurant: { restaurant: { id: 'r1', timezone: 'UTC' } },
   }),
 }));
+
+vi.mock('../../src/components/scheduling/EmployeeSelector', () => ({ EmployeeSelector: () => null }));
 
 // EmployeeSelector queries supabase — stub it out.
 vi.mock('@/integrations/supabase/client', () => {
@@ -54,6 +57,8 @@ const existingAvailability: EmployeeAvailability = {
   day_of_week: 1,
   start_time: '09:00:00',
   end_time: '17:00:00',
+  start_time_local: '09:00:00',
+  end_time_local: '17:00:00',
   is_available: true,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -144,5 +149,34 @@ describe('AvailabilityDialog — Remove button (T7)', () => {
       />,
     );
     expect(screen.getByRole('button', { name: /remove/i })).toBeDisabled();
+  });
+});
+
+describe('AvailabilityDialog — local-time columns', () => {
+  it('loads the form from the _local fields and saves them back with no start_time key', async () => {
+    const user = userEvent.setup();
+    const mutate = vi.fn();
+    mockPending.update = false;
+    mockPending.create = false;
+    mockUpdate.mutate = mutate;
+    const row = {
+      ...existingAvailability,
+      start_time: '15:00:00',
+      end_time: '23:00:00',
+      start_time_local: '10:00:00',
+      end_time_local: '18:00:00',
+    };
+    renderWithClient(
+      <AvailabilityDialog open onOpenChange={vi.fn()} restaurantId="r1" availability={row} />,
+    );
+    const start = screen.getByLabelText(/start time/i) as HTMLInputElement;
+    expect(start.value).toBe('10:00');
+    await user.click(screen.getByRole('button', { name: /^(update|save)/i }));
+    expect(mutate).toHaveBeenCalled();
+    const sent = mutate.mock.calls[0][0];
+    expect(sent.start_time_local).toBe('10:00');
+    expect(sent.end_time_local).toBe('18:00');
+    expect('start_time' in sent).toBe(false);
+    mockUpdate.mutate = () => undefined;
   });
 });

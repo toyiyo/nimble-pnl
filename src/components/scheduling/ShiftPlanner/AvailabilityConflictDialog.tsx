@@ -14,7 +14,6 @@ export interface ConflictDialogData {
 interface AvailabilityConflictDialogProps {
   open: boolean;
   data: ConflictDialogData | null;
-  timezone: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -22,7 +21,6 @@ interface AvailabilityConflictDialogProps {
 export function AvailabilityConflictDialog({
   open,
   data,
-  timezone,
   onConfirm,
   onCancel,
 }: Readonly<AvailabilityConflictDialogProps>) {
@@ -30,7 +28,7 @@ export function AvailabilityConflictDialog({
 
   const allIssues: string[] = [
     ...data.warnings.map((w) => w.message),
-    ...data.conflicts.map((c) => formatConflictLine(c, timezone)),
+    ...data.conflicts.map((c) => formatConflictLine(c)),
   ];
 
   return (

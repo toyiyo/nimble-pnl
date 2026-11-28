@@ -547,9 +547,9 @@ const Scheduling = () => {
 
   const effectiveAvailabilityByEmployee = useMemo(() => {
     const employeeIds = visibleEmployeeIdsKey ? visibleEmployeeIdsKey.split(',') : [];
-    return computeEffectiveAvailability(employeeAvailability, availabilityExceptions, currentWeekStart, employeeIds);
+    return computeEffectiveAvailability(employeeAvailability, availabilityExceptions, currentWeekStart, employeeIds, restaurantTimezone);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleEmployeeIdsKey/weekStartKey are the stable proxies for employeeIds/currentWeekStart
-  }, [employeeAvailability, availabilityExceptions, visibleEmployeeIdsKey, weekStartKey]);
+  }, [employeeAvailability, availabilityExceptions, visibleEmployeeIdsKey, weekStartKey, restaurantTimezone]);
 
   // Per-employee weekly availability status (time_off > limited > available >
   // unset), combining the already-loaded time-off context with the
@@ -1672,7 +1672,6 @@ const Scheduling = () => {
           <AvailabilityConflictDialog
             open={conflictDialog.open}
             data={conflictDialog.data}
-            timezone={restaurantTimezone}
             onConfirm={conflictDialog.onConfirm}
             onCancel={conflictDialog.onCancel}
           />

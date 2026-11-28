@@ -52,6 +52,8 @@ Claude ──(1) POST /functions/v1/mcp, no token──────────�
 | `get_pending_outflows`, `get_operating_costs`, `get_monthly_trends`, `get_expense_health`, `get_break_even_progress` | read | Manager or owner. |
 | `list_categories` | read | Manager or owner. The chart of accounts: id, account code, name, and type. |
 | `batch_categorize_transactions`, `batch_categorize_pos_sales`, `create_categorization_rule` | **write** | Manager or owner. Marked destructive, so Claude asks before it calls them. `category_id` takes the category id, the account code (such as `4000`), or the exact account name when only one active account has it. An inactive category is refused. |
+| `get_week_change_log`, `get_pending_notifications` | read | Manager or owner, with `view:scheduling`. Each change to a week, who made it (app, Claude, or "System"), when, and who got a notification. Times are restaurant-local, with a `tz` field. Pending lists the (change, employee) pairs with no sent notification: `pending`, `failed`, `in_doubt`, or `sending`. |
+| `publish_week` | **write** | Manager or owner. `preview: true` lists each employee who gets a notification and the shifts in it. `confirmed: true` calls `publish_schedule` and `notify-schedule-published`, the same path as the UI. It notifies only employees with a change that has no notification yet, so a second publish with no change sends nothing. Design: `docs/superpowers/specs/2026-11-28-mcp-publish-notifications-design.md`. |
 
 Every tool except `list_restaurants` takes `restaurant_id`. A user with one
 restaurant can omit it.

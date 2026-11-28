@@ -146,7 +146,7 @@ export interface McpTool {
 const RESTAURANT_ID_PROPERTY = {
   type: 'string',
   description:
-    'The restaurant id from list_restaurants. You can omit it when the user has only one restaurant.',
+    'The restaurant id from list_restaurants. Required for every tool except list_restaurants.',
 };
 
 const LIST_RESTAURANTS_TOOL: McpTool = {
@@ -173,7 +173,8 @@ function toMcpTool(tool: ToolDefinition): McpTool {
     inputSchema: {
       type: 'object',
       properties: { restaurant_id: RESTAURANT_ID_PROPERTY, ...tool.parameters.properties },
-      ...(tool.parameters.required ? { required: tool.parameters.required } : {}),
+      // Every data tool takes restaurant_id. No call falls back to a restaurant that the caller did not name.
+      required: [...new Set(['restaurant_id', ...(tool.parameters.required ?? [])])],
     },
     annotations: write
       ? { title, readOnlyHint: false, destructiveHint: true, openWorldHint: false }
@@ -315,17 +316,14 @@ async function callTool(
   if (requestedId !== undefined && requestedId !== null && (typeof requestedId !== 'string' || requestedId.length === 0)) {
     return toolText('restaurant_id must be a string id from list_restaurants.', true);
   }
-  let restaurantId: string;
-  if (typeof requestedId === 'string') {
-    restaurantId = requestedId;
-  } else if (memberships.length === 1) {
-    restaurantId = memberships[0].restaurant_id;
-  } else {
+  // No fallback, also for a user with one restaurant: the caller must name the restaurant.
+  if (typeof requestedId !== 'string') {
     return toolText(
-      'restaurant_id is required because you can access more than one restaurant. Call list_restaurants to get the ids.',
+      'restaurant_id is required for every tool except list_restaurants. Call list_restaurants to get the ids.',
       true,
     );
   }
+  const restaurantId = requestedId;
 
   if (!memberships.some((m) => m.restaurant_id === restaurantId)) {
     return toolText(

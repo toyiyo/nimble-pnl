@@ -63,6 +63,35 @@ describe('buildMcpTools', () => {
     }
   });
 
+  it('requires restaurant_id in every data tool schema', () => {
+    for (const tool of buildMcpTools(['owner'])) {
+      if (tool.name === 'list_restaurants') continue;
+      expect(tool.inputSchema.required?.[0]).toBe('restaurant_id');
+    }
+  });
+
+  it('keeps the own required fields of a tool, with restaurant_id first and no duplicates', () => {
+    const withOwn = buildMcpTools(['owner']).filter((t) => (t.inputSchema.required?.length ?? 0) > 1);
+    expect(withOwn.length).toBeGreaterThan(0);
+    for (const tool of withOwn) {
+      const req = tool.inputSchema.required!;
+      expect(req[0]).toBe('restaurant_id');
+      expect(new Set(req).size).toBe(req.length);
+    }
+  });
+
+  it('does not require any field for list_restaurants', () => {
+    const list = buildMcpTools(['owner']).find((t) => t.name === 'list_restaurants')!;
+    expect(list.inputSchema.required).toBeUndefined();
+  });
+
+  it('does not tell Claude that restaurant_id can be omitted', () => {
+    for (const tool of buildMcpTools(['owner'])) {
+      const prop = (tool.inputSchema.properties as Record<string, { description?: string }>).restaurant_id;
+      if (prop) expect(prop.description).not.toMatch(/omit/i);
+    }
+  });
+
   it('returns the union of tools for several roles with no duplicates', () => {
     const chef = buildMcpTools(['chef']).map((t) => t.name);
     const both = buildMcpTools(['chef', 'manager']).map((t) => t.name);
@@ -381,7 +410,7 @@ describe('tools/call', () => {
 
   it('does not default to a staff membership', async () => {
     const deps = makeDeps({ listMemberships: vi.fn(async () => [STAFF_R3]) });
-    const result = await call(deps, 'get_kpis', { period: 'week' });
+    const result = await call(deps, 'get_kpis', { restaurant_id: 'r-1', period: 'week' });
     expect(result.isError).toBe(true);
     expect(deps.executeTool).not.toHaveBeenCalled();
   });
@@ -389,7 +418,7 @@ describe('tools/call', () => {
   it('returns HTTP 401 with WWW-Authenticate when the forward returns 401', async () => {
     const deps = makeDeps({ executeTool: vi.fn(async () => ({ status: 401, body: { message: 'Invalid JWT' } })) });
     const res = await handleMcpRequest(
-      rpc({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_kpis', arguments: { period: 'week' } } }),
+      rpc({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_kpis', arguments: { restaurant_id: 'r-1', period: 'week' } } }),
       deps,
     );
     expect(res.status).toBe(401);
@@ -400,7 +429,7 @@ describe('tools/call', () => {
     const deps = makeDeps({
       executeTool: vi.fn(async () => ({ status: 500, body: { ok: false, error: { code: 'TOOL_EXECUTION_ERROR', message: 'Access denied to this restaurant' } } })),
     });
-    const result = await call(deps, 'get_kpis', { period: 'week' });
+    const result = await call(deps, 'get_kpis', { restaurant_id: 'r-1', period: 'week' });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toBe('Access denied to this restaurant');
   });
@@ -408,7 +437,7 @@ describe('tools/call', () => {
   it('cuts a large result to MAX_TOOL_TEXT_CHARS, with the marker inside the limit', async () => {
     const big = 'x'.repeat(MAX_TOOL_TEXT_CHARS * 2);
     const deps = makeDeps({ executeTool: vi.fn(async () => ({ status: 200, body: { ok: true, data: big } })) });
-    const result = await call(deps, 'get_kpis', { period: 'week' });
+    const result = await call(deps, 'get_kpis', { restaurant_id: 'r-1', period: 'week' });
     expect(result.isError).toBe(false);
     expect(result.content[0].text.length).toBeLessThanOrEqual(MAX_TOOL_TEXT_CHARS);
     expect(result.content[0].text).toMatch(/truncated/);
@@ -427,15 +456,19 @@ describe('tools/call', () => {
     expect(JSON.parse(result.content[0].text)).toEqual({ revenue: 100 });
   });
 
-  it('uses the only restaurant when restaurant_id is missing', async () => {
-    const deps = makeDeps();
-    await call(deps, 'get_sales_summary', { period: 'today' });
-    expect(deps.executeTool).toHaveBeenCalledWith(TOKEN, {
-      tool_name: 'get_sales_summary',
-      arguments: { period: 'today' },
-      restaurant_id: 'r-1',
-    });
-  });
+  // Every data tool takes restaurant_id. No call falls back to a restaurant
+  // that the caller did not name, also when the user has one restaurant.
+  it.each(['get_sales_summary', 'get_scheduling_context', 'get_schedule_overview'])(
+    'returns a tool error when restaurant_id is missing for %s and the user has one restaurant',
+    async (tool) => {
+      const deps = makeDeps();
+      const result = await call(deps, tool, { period: 'today' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/restaurant_id is required/);
+      expect(result.content[0].text).toMatch(/list_restaurants/);
+      expect(deps.executeTool).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns a tool error when restaurant_id is missing and the user has several restaurants', async () => {
     const deps = makeDeps({ listMemberships: vi.fn(async () => [OWNER_R1, CHEF_R2]) });
@@ -459,21 +492,21 @@ describe('tools/call', () => {
         body: { ok: false, error: { code: 'TOOL_PERMISSION_DENIED', message: "You don't have permission to use get_payroll_summary." } },
       })),
     });
-    const result = await call(deps, 'get_payroll_summary', { period: 'current' });
+    const result = await call(deps, 'get_payroll_summary', { restaurant_id: 'r-1', period: 'current' });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("You don't have permission");
   });
 
   it('returns a tool error when the forward throws', async () => {
     const deps = makeDeps({ executeTool: vi.fn(async () => { throw new Error('network'); }) });
-    const result = await call(deps, 'get_kpis', { period: 'week' });
+    const result = await call(deps, 'get_kpis', { restaurant_id: 'r-1', period: 'week' });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/try again later/i);
   });
 
   it('tells Claude not to retry blindly when a write tool forward fails', async () => {
     const deps = makeDeps({ executeTool: vi.fn(async () => { throw new Error('timeout'); }) });
-    const result = await call(deps, 'create_categorization_rule', { rule_name: 'x' });
+    const result = await call(deps, 'create_categorization_rule', { restaurant_id: 'r-1', rule_name: 'x' });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/read the current data before/i);
     expect(result.content[0].text).not.toMatch(/try again later/i);
@@ -484,7 +517,7 @@ describe('tools/call', () => {
       executeTool: vi.fn(async () => ({ status: 500, body: { ok: false, error: { code: 'TOOL_EXECUTION_ERROR', message: 'Unauthorized' } } })),
     });
     const res = await handleMcpRequest(
-      rpc({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_kpis', arguments: { period: 'week' } } }),
+      rpc({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_kpis', arguments: { restaurant_id: 'r-1', period: 'week' } } }),
       deps,
     );
     expect(res.status).toBe(401);

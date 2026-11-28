@@ -53,8 +53,38 @@ Claude ──(1) POST /functions/v1/mcp, no token──────────�
 | `list_categories` | read | Manager or owner. The chart of accounts: id, account code, name, and type. |
 | `batch_categorize_transactions`, `batch_categorize_pos_sales`, `create_categorization_rule` | **write** | Manager or owner. Marked destructive, so Claude asks before it calls them. `category_id` takes the category id, the account code (such as `4000`), or the exact account name when only one active account has it. An inactive category is refused. |
 
-Every tool except `list_restaurants` takes `restaurant_id`. A user with one
-restaurant can omit it.
+Every tool except `list_restaurants` requires `restaurant_id`. The schema lists
+it in `required`. A call without it fails, also for a user with one restaurant.
+No call falls back to a restaurant that the caller did not name.
+
+### Scheduling read fields
+
+These fields are on the shift rows of `get_schedule_overview`
+(`shifts_by_date`), `get_scheduling_context` (`conflicts`), and
+`get_time_punches` (`shifts`). The UTC `start_time` and `end_time` stay.
+
+- `start_time_local`, `end_time_local`: the wall clock in the restaurant zone,
+  with the offset of that instant, for example `2026-12-05T17:00:00-06:00`.
+- `tz`: the IANA zone, for example `America/Chicago`.
+- `position_mismatch` (not on `get_time_punches`): `true` when the shift
+  position and the employee position are both set and differ. Case and outer
+  spaces do not count. On a mismatch the row also has `shift_position` and
+  `employee_position`.
+
+`get_scheduling_context` also gives these values:
+
+- `coverage.open_spots[].assigned` counts distinct employees per template and
+  local date. It uses the planner grid rule
+  (`supabase/functions/_shared/templateShiftMatch.ts`). A shift with
+  `shift_template_id` counts for that template. A shift without it (for
+  example from "apply week template" or "copy week") counts for the active
+  template with the same local start and end time, shift position, day of
+  week, and a compatible area. `tests/unit/coverageParity.test.ts` keeps the
+  MCP and the grid the same.
+- `roster[].weekly_hours[]`: `week_start` (Monday, restaurant zone),
+  `scheduled_hours`, `partial_week`, and `over_max_weekly_hours`. The last one
+  is `null` on a partial week. When the result is too large, these lists go
+  before `coverage`.
 
 The connector does not offer `navigate` (UI only) or `get_ai_insights` (it runs
 a paid LLM loop with no time limit; Claude does the same analysis from the data

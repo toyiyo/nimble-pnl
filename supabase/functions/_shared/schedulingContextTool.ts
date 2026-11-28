@@ -24,6 +24,7 @@ import {
   fitToLimit,
   localDate,
   mondayOfYmd,
+  periodWeeks,
   NEEDS_EDIT_SCHEDULING,
   type EmployeeRow,
   type ExceptionRow,
@@ -58,11 +59,9 @@ const SHIFT_COLUMNS =
   "id, employee_id, start_time, end_time, break_duration, position, status, is_published, shift_template_id, " +
   "employee:employees(area, position)";
 
-const mondayOf = mondayOfYmd;
-
 /** The current restaurant week, Monday to Sunday, in the restaurant time zone. */
 export function restaurantWeek(now: Date, tz: string): Period {
-  const start = mondayOf(ymdInTimeZone(now, tz));
+  const start = mondayOfYmd(ymdInTimeZone(now, tz));
   return { start, end: addDaysToDateStr(start, 6) };
 }
 
@@ -100,12 +99,6 @@ function resolvePeriod(
   ) + 1;
   if (days > MAX_DAYS) return { error: `The period must be ${MAX_DAYS} days or less.` };
   return { start, end };
-}
-
-function weeksIn(period: Period): string[] {
-  const weeks: string[] = [];
-  for (let w = mondayOf(period.start); w <= period.end; w = addDaysToDateStr(w, 7)) weeks.push(w);
-  return weeks;
 }
 
 function must<T>(res: { data: T | null; error: { message: string } | null }, label: string): T {
@@ -152,7 +145,7 @@ export async function runGetSchedulingContext(
   const bounds = restaurantDayBounds(period.start, period.end, tz);
   const startIso = bounds.start.toISOString();
   const endIso = bounds.end.toISOString();
-  const weeks = weeksIn(period);
+  const weeks = periodWeeks(period);
 
   const [payRates, posSales, canEdit] = await Promise.all([
     hasPayRatesCapability(restaurantId, supabase),
@@ -245,7 +238,7 @@ export async function runGetSchedulingContext(
   const liveByWeek = new Map<string, ShiftRow[]>();
   for (const s of shifts) {
     if (s.status === "cancelled") continue;
-    const w = mondayOf(localDate(s.start_time, tz));
+    const w = mondayOfYmd(localDate(s.start_time, tz));
     const list = liveByWeek.get(w);
     if (list) list.push(s);
     else liveByWeek.set(w, [s]);

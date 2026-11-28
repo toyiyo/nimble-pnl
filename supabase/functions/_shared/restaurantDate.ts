@@ -49,7 +49,9 @@ export function ymdInTimeZone(instant: Date, timeZone: string): string {
   return `${w.getUTCFullYear()}-${m}-${d}`;
 }
 
-const pad2 = (n: number) => String(n).padStart(2, '0');
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
 
 /**
  * The ISO 8601 wall clock of `instant` in `timeZone`, with the offset of that

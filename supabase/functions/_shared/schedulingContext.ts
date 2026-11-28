@@ -6,6 +6,7 @@ import {
   type RawExceptionAvail,
   type RawRecurringAvail,
 } from "./availability-tz.ts";
+import { addDaysToDateStr } from "./labor/restaurantClock.ts";
 import { computeHourBudget } from "./schedule-prompt-builder.ts";
 import type { ShiftConflict } from "./shiftConflictFlags.ts";
 import { localTimeFields, positionFields, slotKeyForShift, type PositionFields } from "./templateShiftMatch.ts";
@@ -80,22 +81,16 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function addDaysYmd(ymd: string, days: number): string {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 /** The Monday of the week that holds `ymd`. */
 export function mondayOfYmd(ymd: string): string {
   const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
-  return addDaysYmd(ymd, -((dow + 6) % 7));
+  return addDaysToDateStr(ymd, -((dow + 6) % 7));
 }
 
 /** The Mondays of the weeks that touch the period. */
-function periodWeeks(period: Period): string[] {
+export function periodWeeks(period: Period): string[] {
   const weeks: string[] = [];
-  for (let w = mondayOfYmd(period.start); w <= period.end; w = addDaysYmd(w, 7)) weeks.push(w);
+  for (let w = mondayOfYmd(period.start); w <= period.end; w = addDaysToDateStr(w, 7)) weeks.push(w);
   return weeks;
 }
 
@@ -121,7 +116,7 @@ export function buildRoster(
   }
   const weeks = periodWeeks(period).map((w) => ({
     week_start: w,
-    partial: w < period.start || addDaysYmd(w, 6) > period.end,
+    partial: w < period.start || addDaysToDateStr(w, 6) > period.end,
   }));
   return employees
     .filter((e) => e.status === "active")

@@ -198,3 +198,27 @@ describe('registry and dispatcher wiring', () => {
     expect(src).toMatch(/runGetSchedulingContext\(args, restaurant_id, supabase, restaurantTimeZone, restaurantNow\)/);
   });
 });
+
+describe('runGetSchedulingContext coverage with shifts that have no template id', () => {
+  it('counts the legacy shifts, reads template areas and joins the employee', async () => {
+    // Monday 2026-10-12, 17:00-23:00 CDT = 22:00Z to 04:00Z.
+    state.rows = {
+      shift_templates: [
+        { id: 't1', name: 'Dinner', days: [1], start_time: '17:00:00', end_time: '23:00:00', capacity: 2, position: 'Server', area: 'Bar', is_active: true },
+      ],
+      shifts: [
+        { id: 's1', employee_id: 'a', start_time: '2026-10-12T22:00:00Z', end_time: '2026-10-13T04:00:00Z', break_duration: 0, position: 'Server', status: 'scheduled', is_published: false, shift_template_id: null, employee: { area: 'Bar', position: 'Server' } },
+        { id: 's2', employee_id: 'b', start_time: '2026-10-12T22:00:00Z', end_time: '2026-10-13T04:00:00Z', break_duration: 0, position: 'Server', status: 'scheduled', is_published: false, shift_template_id: null, employee: { area: null, position: 'Server' } },
+      ],
+    };
+    const r = await runGetSchedulingContext({}, 'r1', makeSupabase(), TZ, NOW);
+    expect(r.ok).toBe(true);
+    expect(r.data.coverage.open_spots).toEqual([
+      { template_id: 't1', date: '2026-10-12', capacity: 2, assigned: 2, open: 0 },
+    ]);
+    const tplCall = state.fromCalls.find((c) => c.table === 'shift_templates')!;
+    expect(tplCall.select).toContain('area');
+    const shiftCall = state.fromCalls.find((c) => c.table === 'shifts' && c.select.includes('shift_template_id'))!;
+    expect(shiftCall.select).toContain('employee:employees(area, position)');
+  });
+});

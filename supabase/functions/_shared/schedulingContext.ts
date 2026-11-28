@@ -8,6 +8,7 @@ import {
 } from "./availability-tz.ts";
 import { computeHourBudget } from "./schedule-prompt-builder.ts";
 import type { ShiftConflict } from "./shiftConflictFlags.ts";
+import { slotKeyForShift } from "./templateShiftMatch.ts";
 
 export interface Hidden {
   hidden: true;
@@ -45,6 +46,8 @@ export interface ShiftRow {
   position?: string | null;
   shift_template_id?: string | null;
   is_published?: boolean | null;
+  /** The employee join on the shift query. It also holds inactive employees. */
+  employee?: { area?: string | null; position?: string | null } | null;
 }
 
 export interface RosterEntry {
@@ -338,6 +341,7 @@ export interface TemplateRow {
   end_time: string;
   capacity: number;
   position?: string | null;
+  area?: string | null;
   is_active: boolean;
 }
 export interface StaffingSettingsRow {
@@ -404,10 +408,13 @@ export function buildCoverage(
 ): Coverage {
   const active = templates.filter((t) => t.is_active);
   const dates = datesBetween(period.start, period.end);
+  // The planner UI rule (templateShiftMatch.ts): a linked shift uses its template,
+  // a shift with no template id matches on local time, position, day and area.
+  // Each shift gets one key, so one shift fills one slot only.
   const assigned = new Map<string, Set<string>>();
   for (const s of shifts) {
-    if (s.status === "cancelled" || !s.shift_template_id) continue;
-    const key = `${s.shift_template_id}|${localDate(s.start_time, tz)}`;
+    const key = slotKeyForShift(s, templates, s.employee?.area ?? null, tz);
+    if (!key) continue;
     if (!assigned.has(key)) assigned.set(key, new Set());
     assigned.get(key)!.add(s.employee_id);
   }

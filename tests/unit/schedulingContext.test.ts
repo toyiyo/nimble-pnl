@@ -243,6 +243,68 @@ describe('buildCoverage', () => {
   });
 });
 
+describe('buildCoverage with shifts that have no template id', () => {
+  // A December week in Chicago made by "apply week template": no shift_template_id.
+  // 2026-12-07 is a Monday. 17:00-23:00 CST = 23:00Z-05:00Z next day.
+  const CHI = 'America/Chicago';
+  const week = { start: '2026-12-07', end: '2026-12-13' };
+  const dinner = {
+    id: 'dinner', name: 'Dinner', days: [1, 2, 3, 4, 5], start_time: '17:00:00', end_time: '23:00:00',
+    capacity: 2, position: 'Server', area: null, is_active: true,
+  };
+  const legacy = (id: string, emp: string, day: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    employee_id: emp,
+    start_time: `${day}T23:00:00Z`,
+    end_time: `${addDay(day)}T05:00:00Z`,
+    break_duration: 0,
+    status: 'scheduled',
+    position: 'Server',
+    shift_template_id: null,
+    ...extra,
+  });
+  function addDay(d: string): string {
+    const x = new Date(`${d}T00:00:00Z`);
+    x.setUTCDate(x.getUTCDate() + 1);
+    return x.toISOString().slice(0, 10);
+  }
+  const days = ['2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10', '2026-12-11'];
+  const full = days.flatMap((d, i) => [legacy(`a${i}`, 'a', d), legacy(`b${i}`, 'b', d)]);
+
+  it('counts legacy shifts that match on local time, position and day', () => {
+    const c = buildCoverage([dinner], full, null, {}, week, CHI);
+    expect(c.open_spots).toHaveLength(5);
+    for (const o of c.open_spots) expect(o).toMatchObject({ capacity: 2, assigned: 2, open: 0 });
+    expect(c.total_open_spots).toBe(0);
+  });
+
+  it('counts one employee once in a slot', () => {
+    const twice = [legacy('x1', 'a', '2026-12-07'), legacy('x2', 'a', '2026-12-07')];
+    const c = buildCoverage([dinner], twice, null, {}, week, CHI);
+    expect(c.open_spots.find((o) => o.date === '2026-12-07')).toMatchObject({ assigned: 1, open: 1 });
+  });
+
+  it('uses the area from the employee join, also for an employee not in the roster', () => {
+    const bar = { ...dinner, id: 'bar', area: 'Bar' };
+    const patio = { ...dinner, id: 'patio', area: 'Patio' };
+    const s = [legacy('p1', 'gone', '2026-12-07', { employee: { area: 'Patio', position: 'Server' } })];
+    const c = buildCoverage([bar, patio], s, null, {}, week, CHI);
+    const mon = (id: string) => c.open_spots.find((o) => o.template_id === id && o.date === '2026-12-07')!;
+    expect(mon('patio').assigned).toBe(1);
+    expect(mon('bar').assigned).toBe(0);
+  });
+
+  it('fills one slot at most with each shift, and open is capacity minus assigned', () => {
+    const twin = { ...dinner, id: 'twin' };
+    const c = buildCoverage([dinner, twin], full, null, {}, week, CHI);
+    const assignedSum = c.open_spots.reduce((n, o) => n + o.assigned, 0);
+    expect(assignedSum).toBeLessThanOrEqual(full.length);
+    expect(assignedSum).toBe(full.length);
+    for (const o of c.open_spots) expect(o.open).toBe(Math.max(0, o.capacity - o.assigned));
+    expect(c.open_spots.filter((o) => o.template_id === 'twin').every((o) => o.assigned === 0)).toBe(true);
+  });
+});
+
 describe('buildPending', () => {
   it('keeps hidden markers and labels the time-off scope', () => {
     const hidden = { hidden: true as const, reason: 'needs edit:scheduling' };

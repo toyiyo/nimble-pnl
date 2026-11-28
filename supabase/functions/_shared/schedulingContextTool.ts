@@ -51,8 +51,11 @@ const SHIFT_PAGE = 1000;
 const SHIFT_PAGE_MAX = 10;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
+// The employee join gives the area for the coverage match and the position for
+// position_mismatch. It also holds inactive employees, the same as the planner UI.
 const SHIFT_COLUMNS =
-  "id, employee_id, start_time, end_time, break_duration, position, status, is_published, shift_template_id";
+  "id, employee_id, start_time, end_time, break_duration, position, status, is_published, shift_template_id, " +
+  "employee:employees(area, position)";
 
 function mondayOf(ymd: string): string {
   const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
@@ -199,8 +202,9 @@ export async function runGetSchedulingContext(
       .in("status", ["approved", "pending"]).limit(CAPS.time_off),
     table("time_off_requests", "employee_id, start_date, end_date, status, reason")
       .eq("status", "pending").limit(CAPS.pending_time_off),
-    table("shift_templates", "id, name, days, start_time, end_time, capacity, position, is_active")
-      .eq("is_active", true),
+    // A fixed order: the coverage match gives a tie to the first template.
+    table("shift_templates", "id, name, days, start_time, end_time, capacity, position, area, is_active")
+      .eq("is_active", true).order("start_time", { ascending: true }).order("id", { ascending: true }),
     settingsP,
     table("schedule_publications", "week_start_date, published_at").in("week_start_date", weeks),
     canEdit

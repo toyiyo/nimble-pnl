@@ -183,8 +183,10 @@ export interface EmployeeAvailability {
   restaurant_id: string;
   employee_id: string;
   day_of_week: number; // 0 = Sunday, 6 = Saturday
-  start_time: string; // TIME format (HH:MM:SS)
-  end_time: string; // TIME format (HH:MM:SS)
+  start_time: string; // legacy UTC; use the _local fields
+  end_time: string; // legacy UTC; use the _local fields
+  start_time_local: string | null; // TIME format (HH:MM:SS), restaurant local time
+  end_time_local: string | null; // TIME format (HH:MM:SS), restaurant local time
   is_available: boolean;
   notes?: string;
   created_at: string;
@@ -212,8 +214,10 @@ export interface ConflictCheck {
   start_date?: string;
   end_date?: string;
   status?: string;
-  available_start?: string; // TIME format (HH:MM:SS), stored as UTC in database
-  available_end?: string;   // TIME format (HH:MM:SS), stored as UTC in database
+  available_start?: string; // legacy UTC; use the _local fields
+  available_end?: string; // legacy UTC; use the _local fields
+  available_start_local?: string | null; // TIME format (HH:MM:SS), restaurant local time
+  available_end_local?: string | null; // TIME format (HH:MM:SS), restaurant local time
 }
 
 export interface NotificationSettings {

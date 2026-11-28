@@ -18,6 +18,8 @@ const makeAvailability = (
   restaurant_id: 'rest-1',
   start_time: '09:00:00',
   end_time: '17:00:00',
+  start_time_local: '09:00:00',
+  end_time_local: '17:00:00',
   is_available: true,
   notes: '',
   created_at: '2026-01-01T00:00:00Z',
@@ -37,20 +39,22 @@ const makeException = (
   ...overrides,
 });
 
+const TZ = 'America/Chicago';
+
 describe('computeEffectiveAvailability', () => {
   // Week of Apr 6 (Mon) to Apr 12 (Sun), 2026
   const weekStart = new Date(2026, 3, 6); // Mon Apr 6
   const employeeIds = ['emp-1'];
 
   it('returns not-set when employee has no availability or exceptions', () => {
-    const result = computeEffectiveAvailability([], [], weekStart, employeeIds);
+    const result = computeEffectiveAvailability([], [], weekStart, employeeIds, TZ);
     const monday = result.get('emp-1')?.get(1); // day_of_week 1 = Monday
     expect(monday).toEqual({ type: 'not-set', slots: [] });
   });
 
   it('returns recurring availability when no exception exists', () => {
     const avail = [makeAvailability({ employee_id: 'emp-1', day_of_week: 1 })];
-    const result = computeEffectiveAvailability(avail, [], weekStart, employeeIds);
+    const result = computeEffectiveAvailability(avail, [], weekStart, employeeIds, TZ);
     const monday = result.get('emp-1')?.get(1);
     expect(monday?.type).toBe('recurring');
     expect(monday?.slots).toHaveLength(1);
@@ -69,7 +73,7 @@ describe('computeEffectiveAvailability', () => {
         reason: 'Doctor appt',
       }),
     ];
-    const result = computeEffectiveAvailability(avail, exceptions, weekStart, employeeIds);
+    const result = computeEffectiveAvailability(avail, exceptions, weekStart, employeeIds, TZ);
     const monday = result.get('emp-1')?.get(1);
     expect(monday?.type).toBe('exception');
     expect(monday?.slots).toHaveLength(1);
@@ -82,7 +86,7 @@ describe('computeEffectiveAvailability', () => {
       makeAvailability({ employee_id: 'emp-1', day_of_week: 1, start_time: '09:00:00', end_time: '12:00:00' }),
       makeAvailability({ employee_id: 'emp-1', day_of_week: 1, start_time: '16:00:00', end_time: '22:00:00' }),
     ];
-    const result = computeEffectiveAvailability(avail, [], weekStart, employeeIds);
+    const result = computeEffectiveAvailability(avail, [], weekStart, employeeIds, TZ);
     const monday = result.get('emp-1')?.get(1);
     expect(monday?.type).toBe('recurring');
     expect(monday?.slots).toHaveLength(2);
@@ -97,14 +101,14 @@ describe('computeEffectiveAvailability', () => {
         is_available: false,
       }),
     ];
-    const result = computeEffectiveAvailability(avail, exceptions, weekStart, employeeIds);
+    const result = computeEffectiveAvailability(avail, exceptions, weekStart, employeeIds, TZ);
     const monday = result.get('emp-1')?.get(1);
     expect(monday?.type).toBe('recurring');
   });
 
   it('recurring unavailable (is_available=false) returns unavailable slot', () => {
     const avail = [makeAvailability({ employee_id: 'emp-1', day_of_week: 0, is_available: false })];
-    const result = computeEffectiveAvailability(avail, [], weekStart, employeeIds);
+    const result = computeEffectiveAvailability(avail, [], weekStart, employeeIds, TZ);
     const sunday = result.get('emp-1')?.get(0);
     expect(sunday?.type).toBe('recurring');
     expect(sunday?.slots[0].isAvailable).toBe(false);
@@ -112,10 +116,10 @@ describe('computeEffectiveAvailability', () => {
 
   it('multiple employees are handled independently', () => {
     const avail = [
-      makeAvailability({ employee_id: 'emp-1', day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00' }),
-      makeAvailability({ employee_id: 'emp-2', day_of_week: 1, start_time: '06:00:00', end_time: '14:00:00' }),
+      makeAvailability({ employee_id: 'emp-1', day_of_week: 1, start_time_local: '09:00:00', end_time_local: '17:00:00' }),
+      makeAvailability({ employee_id: 'emp-2', day_of_week: 1, start_time_local: '06:00:00', end_time_local: '14:00:00' }),
     ];
-    const result = computeEffectiveAvailability(avail, [], weekStart, ['emp-1', 'emp-2']);
+    const result = computeEffectiveAvailability(avail, [], weekStart, ['emp-1', 'emp-2'], TZ);
     expect(result.get('emp-1')?.get(1)?.slots[0].startTime).toBe('09:00:00');
     expect(result.get('emp-2')?.get(1)?.slots[0].startTime).toBe('06:00:00');
   });
@@ -144,22 +148,17 @@ describe('availabilityColorClasses', () => {
 });
 
 describe('availabilityLabel', () => {
-  it('formats an available window in restaurant-local time', () => {
-    // 18:00 UTC in America/New_York (EDT) is 2:00 PM on 2027-07-13.
-    const label = availabilityLabel(
-      avail(true, '18:00:00', '02:30:00'),
-      'America/New_York',
-      new Date(2027, 6, 13),
-    );
-    expect(label).toMatch(/Available 2:00 PM/);
+  it('formats an available window from local slot times', () => {
+    expect(availabilityLabel(avail(true, '10:00:00', '22:00:00'))).toBe('Available 10:00 AM – 10:00 PM');
+  });
+  it('gives Available when the window is null', () => {
+    expect(availabilityLabel(avail(true, null, null))).toBe('Available');
   });
   it('labels unavailable and not-set', () => {
-    expect(availabilityLabel(avail(false, null, null, 'recurring'), 'UTC', new Date(2027, 6, 13))).toBe(
+    expect(availabilityLabel(avail(false, null, null, 'recurring'))).toBe(
       'Unavailable',
     );
-    expect(
-      availabilityLabel(avail(false, null, null, 'not-set'), 'UTC', new Date(2027, 6, 13)),
-    ).toBe('No availability set');
+    expect(availabilityLabel(avail(false, null, null, 'not-set'))).toBe('No availability set');
   });
 
   // CodeRabbit finding: split-shift (multi-slot) availability lost the
@@ -174,14 +173,14 @@ describe('availabilityLabel', () => {
         { isAvailable: true, startTime: '20:00:00', endTime: '23:00:00', sourceRecord: {} as never },
       ],
     };
-    const label = availabilityLabel(splitDay, 'UTC', new Date(2027, 6, 13));
+    const label = availabilityLabel(splitDay);
     expect(label).toBe('Available 1:00 PM – 4:00 PM + 8:00 PM – 11:00 PM');
   });
 });
 
 describe('shiftOutsideAvailability (TZ-portable)', () => {
-  // Employee available 2:00 PM-10:30 PM local (stored UTC-clock, derived below).
-  const nyAvail = avail(true, '18:00:00', '02:30:00'); // EDT: 2:00 PM - 10:30 PM
+  // Employee available 2:00 PM-10:30 PM local (slot times are already local).
+  const nyAvail = avail(true, '14:00:00', '22:30:00');
   it('is false when the shift is within the window', () => {
     expect(
       shiftOutsideAvailability(
@@ -213,8 +212,8 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
   // a same-day match/off row.
   describe('previous-day overnight window on an otherwise not-set day', () => {
     const notSetToday = avail(false, null, null, 'not-set');
-    // Friday 6:00 PM - 2:00 AM EDT recurring window (stored UTC-clock 22:00-06:00).
-    const fridayOvernight = avail(true, '22:00:00', '06:00:00');
+    // Friday 6:00 PM - 2:00 AM local recurring window.
+    const fridayOvernight = avail(true, '18:00:00', '02:00:00');
 
     it('is false (not flagged) when the shift falls inside the carried-over window', () => {
       expect(
@@ -256,29 +255,19 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
     });
   });
 
-  // Sound-logic finding: the previous local day's stored UTC-clock times must
-  // be anchored to YESTERDAY's date (like the RPC's v_prev_date), not
-  // today's — otherwise a DST-transition day picks the wrong UTC offset.
-  // America/New_York springs forward on Sun Mar 12, 2028 (2:00 AM -> 3:00 AM).
-  it('anchors the previous day\'s overnight window to yesterday\'s date across a spring-forward transition', () => {
+  // Slot times are local, so a DST-transition day needs no offset anchor.
+  // Saturday local 6:00 PM - 3:00 AM spills into Sunday Mar 12, 2028 (spring-forward).
+  it('reads the previous day overnight window as local across a spring-forward day', () => {
     const notSetToday = avail(false, null, null, 'not-set');
-    // Saturday Mar 11 (EST, UTC-5) recurring window, stored UTC-clock 23:00-08:00.
-    // Anchored correctly (to Sat, EST): local 6:00 PM Sat - 3:00 AM Sun.
-    // Anchored incorrectly (to Sun, which is EDT for these UTC instants):
-    // local 7:00 PM Sat - 4:00 AM Sun — a full hour later at both ends.
-    const saturdayOvernight = avail(true, '23:00:00', '08:00:00');
-
-    // Sunday 3:15-3:30 AM EDT: inside the WRONG (today-anchored) window
-    // (ends 4:00 AM) but outside the CORRECT (yesterday-anchored) window
-    // (ends 3:00 AM) — so this shift must be flagged (true).
+    const saturdayOvernight = avail(true, '18:00:00', '03:00:00');
     expect(
       shiftOutsideAvailability(
         notSetToday,
         saturdayOvernight,
-        new Date('2028-03-12T07:15:00Z'), // 3:15 AM EDT Sunday
-        new Date('2028-03-12T07:30:00Z'), // 3:30 AM EDT Sunday
+        new Date('2028-03-12T07:15:00Z'), // 3:15 AM EDT Sunday, past the 3:00 AM end
+        new Date('2028-03-12T07:30:00Z'),
         'America/New_York',
-        new Date(2028, 2, 12), // Sunday Mar 12
+        new Date(2028, 2, 12),
       ),
     ).toBe(true);
   });
@@ -289,8 +278,8 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
   // exception, mirroring the RPC's per-local-date walk (block 3c's forward
   // counterpart).
   describe('next-day override on a shift crossing midnight forward', () => {
-    // Friday recurring window: 6:00 PM - 2:00 AM UTC (stored as one overnight row).
-    const fridayOvernight = avail(true, '18:00:00', '02:00:00');
+    // Friday recurring window 6:00 PM - 00:00. A 00:00 end is a day end, not a spill.
+    const fridayOvernight = avail(true, '18:00:00', '00:00:00');
     const saturdayUnavailableException = avail(false, null, null, 'exception');
 
     it('is true when the shift tail falls on a next-day hard-unavailable exception, even though Friday\'s window alone would cover it', () => {
@@ -334,6 +323,109 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
         ),
       ).toBe(false);
     });
+  });
+});
+
+describe('local-time slots and the RPC rules', () => {
+  const wk = new Date(2026, 6, 13); // Mon 2026-07-13
+  const chi = 'America/Chicago';
+  const win = (s: string, e: string): EffectiveAvailability => avail(true, s, e);
+  const off = avail(false, null, null);
+  const notSet = avail(false, null, null, 'not-set');
+  const noop = new Date(2026, 6, 13);
+  const run = (
+    today: EffectiveAvailability,
+    prev: EffectiveAvailability | undefined,
+    next: EffectiveAvailability | undefined,
+    startUtc: string,
+    endUtc: string,
+  ) => shiftOutsideAvailability(today, prev, new Date(startUtc), new Date(endUtc), 'UTC', noop, next);
+
+  it('recurring slot uses the local columns', () => {
+    for (const week of [wk, new Date(2026, 11, 14)]) {
+      const rows = [
+        makeAvailability({
+          employee_id: 'e', day_of_week: 1,
+          start_time: '15:00:00', end_time: '03:00:00',
+          start_time_local: '10:00:00', end_time_local: '22:00:00',
+        }),
+      ];
+      const slot = computeEffectiveAvailability(rows, [], week, ['e'], chi).get('e')!.get(1)!.slots[0];
+      expect(slot.startTime).toBe('10:00:00');
+      expect(slot.endTime).toBe('22:00:00');
+    }
+  });
+
+  it('available recurring row with null local columns has no window', () => {
+    const rows = [
+      makeAvailability({
+        employee_id: 'e', day_of_week: 1,
+        start_time_local: null, end_time_local: null,
+      }),
+    ];
+    const eff = computeEffectiveAvailability(rows, [], wk, ['e'], chi).get('e')!.get(1)!;
+    expect(eff.slots[0].isAvailable).toBe(true);
+    expect(eff.slots[0].startTime).toBeNull();
+    expect(eff.slots[0].endTime).toBeNull();
+    expect(availabilityLabel(eff)).toBe('Available');
+  });
+
+  it('exception slot converts with the exception date as anchor', () => {
+    const cases: Array<[string, string, Date]> = [
+      ['2026-03-08', '15:00:00', new Date(2026, 2, 2)], // CDT after spring-forward
+      ['2026-03-07', '16:00:00', new Date(2026, 2, 2)], // CST the day before
+    ];
+    for (const [date, t, week] of cases) {
+      const exc = [makeException({ employee_id: 'e', date, is_available: true, start_time: t, end_time: '23:00:00' })];
+      const dow = new Date(date + 'T12:00:00').getDay();
+      const slot = computeEffectiveAvailability([], exc, week, ['e'], chi).get('e')!.get(dow)!.slots[0];
+      expect(slot.startTime).toBe('10:00');
+    }
+  });
+
+  it('exception reader matches the RPC formula', () => {
+    // F1: the RPC converts the exception UTC clock with the exception date as anchor.
+    // This pins that agreement. See the F1 follow-up in the PR 2 plan.
+    const exc = [makeException({ employee_id: 'e', date: '2026-03-08', is_available: true, start_time: '03:00:00', end_time: '12:00:00' })];
+    const slot = computeEffectiveAvailability([], exc, new Date(2026, 2, 2), ['e'], chi).get('e')!.get(0)!.slots[0];
+    expect(slot.startTime).toBe('21:00');
+  });
+
+  it('midnight end is not an overnight spill', () => {
+    const mon = win('18:00:00', '00:00:00');
+    const tue = win('08:00:00', '12:00:00');
+    expect(run(tue, mon, undefined, '2026-07-14T00:30:00Z', '2026-07-14T02:00:00Z')).toBe(true);
+    expect(run(mon, undefined, tue, '2026-07-13T18:00:00Z', '2026-07-13T23:59:00Z')).toBe(false);
+  });
+
+  it('shift that ends at 00:00 ignores the next day', () => {
+    expect(run(win('12:00:00', '00:00:00'), undefined, off, '2026-07-13T12:00:00Z', '2026-07-14T00:00:00Z')).toBe(false);
+    expect(
+      run(win('18:00:00', '00:00:00'), undefined, win('08:00:00', '12:00:00'), '2026-07-13T18:00:00Z', '2026-07-14T00:00:00Z'),
+    ).toBe(false);
+  });
+
+  it('each local date part is checked on its own', () => {
+    const mon = win('18:00:00', '00:00:00');
+    const s = '2026-07-13T22:00:00Z';
+    const e = '2026-07-14T02:00:00Z';
+    expect(run(mon, undefined, win('00:00:00', '06:00:00'), s, e)).toBe(false);
+    expect(run(mon, undefined, notSet, s, e)).toBe(false);
+    expect(run(mon, undefined, win('03:00:00', '06:00:00'), s, e)).toBe(true);
+  });
+
+  it('today off but yesterday spills', () => {
+    const sun = win('20:00:00', '04:00:00');
+    expect(run(off, sun, undefined, '2026-07-13T01:00:00Z', '2026-07-13T03:00:00Z')).toBe(false);
+    expect(run(off, sun, undefined, '2026-07-13T03:00:00Z', '2026-07-13T05:00:00Z')).toBe(true);
+  });
+
+  it('10:00-22:00 window gives no conflict in July and December', () => {
+    const w = win('10:00:00', '22:00:00');
+    const chiShift = (s: string, e: string) =>
+      shiftOutsideAvailability(w, undefined, new Date(s), new Date(e), chi, new Date(2026, 6, 15));
+    expect(chiShift('2026-07-15T15:00:00Z', '2026-07-16T03:00:00Z')).toBe(false); // CDT
+    expect(chiShift('2026-12-16T16:00:00Z', '2026-12-17T04:00:00Z')).toBe(false); // CST
   });
 });
 

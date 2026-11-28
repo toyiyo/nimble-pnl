@@ -80,7 +80,7 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
         const d = dates[i];
         const eff = d ? availabilityByDow.get(d.getDay()) : undefined;
         const dow = d?.toLocaleDateString('en-US', { weekday: 'short' }) ?? '';
-        return `${dow} ${eff && d ? availabilityLabel(eff, timezone, d) : 'No availability set'}`;
+        return `${dow} ${eff && d ? availabilityLabel(eff) : 'No availability set'}`;
       })
       .join('; ');
   }, [weekDays, dates, timezone, availabilityByDow]);

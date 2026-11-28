@@ -26,6 +26,15 @@ export function formatUTCTimeToLocal(
 }
 
 /**
+ * Format a restaurant-local TIME string (HH:MM or HH:MM:SS) for display.
+ * No timezone conversion. "17:30:00" gives "5:30 PM"; "00:00:00" gives "12:00 AM".
+ */
+export function formatLocalTimeOfDay(localTime: string): string {
+  const [h, m] = localTime.split(':').map(Number);
+  return formatHourToTime(h + m / 60);
+}
+
+/**
  * Extract an ISO date from a message and format it as a short day label
  * (e.g. "Mon, Mar 22").
  *

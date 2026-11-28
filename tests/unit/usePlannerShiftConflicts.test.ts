@@ -71,6 +71,8 @@ function makeAvailability(partial: Partial<EmployeeAvailability>): EmployeeAvail
     day_of_week: 1, // Monday
     start_time: '09:00:00',
     end_time: '17:00:00',
+    start_time_local: '09:00:00',
+    end_time_local: '17:00:00',
     is_available: true,
     created_at: '',
     updated_at: '',
@@ -86,7 +88,7 @@ function availabilityMap(
   exceptions: AvailabilityException[] = [],
   employeeIds: string[] = ['e1'],
 ) {
-  return computeEffectiveAvailability(availability, exceptions, WEEK_START, employeeIds);
+  return computeEffectiveAvailability(availability, exceptions, WEEK_START, employeeIds, TZ);
 }
 
 const EMPTY_AVAILABILITY = new Map<string, Map<number, ReturnType<typeof Object>>>() as ReturnType<

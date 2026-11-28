@@ -1,7 +1,7 @@
 # Design: MCP publish and notification tools
 
 Date: 2026-11-28
-Status: Draft, waiting for user approval
+Status: Draft, Phase 2.5 review folded in, waiting for user approval
 Text standard: STE-aligned (docs/STE100_STYLE.md)
 
 ## Problem
@@ -74,7 +74,14 @@ The week is `week_start` to `week_start + 6` days, in restaurant local time.
 
 1. No record of recipients. "Who got a notification" has no data.
 2. A republish with no change notifies every scheduled employee.
-3. A new shift added to a published week has no change-log row.
+3. Two visible changes have no change-log row. A publish flip has none.
+   An open-shift claim INSERTs a shift with `is_published = true`
+   (`supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql:316-322`,
+   `:442-449`), and the trigger has no INSERT branch.
+4. The `updated` branch logs every UPDATE of a published shift and does not
+   compare columns (`supabase/migrations/20251123000000_schedule_publishing.sql:117-155`).
+   The Sling sync upserts with `updated_at = NOW()` on each match
+   (`supabase/migrations/20260223100100_sling_sync_rpc.sql:65-73`).
 
 ## Design
 
@@ -85,85 +92,157 @@ employee.
 
 | Column | Note |
 |---|---|
-| `id uuid pk` | Also the provider idempotency key. |
-| `restaurant_id uuid not null` | FK `restaurants`, RLS. |
-| `employee_id uuid not null` | FK `employees`. |
-| `week_start date not null` | Local week. |
+| `id uuid pk` | Also the provider idempotency key and the push `tag`. |
+| `restaurant_id uuid not null` | FK `restaurants` ON DELETE CASCADE, RLS. |
+| `employee_id uuid null` | FK `employees` ON DELETE SET NULL, the same rule as `schedule_change_logs.employee_id` (`20251123000000_schedule_publishing.sql:27`). |
 | `source text` | `publish` or `shift_change`. |
-| `publication_id uuid null` | FK `schedule_publications`. |
+| `publication_id uuid null` | FK `schedule_publications` ON DELETE SET NULL. |
 | `status text` | `claimed`, `sent`, `failed`. |
-| `channels text[]` | `email`, `push` that went out. |
+| `channels text[]` | The channels that went out. |
 | `claimed_at`, `sent_at`, `attempts`, `last_error` | |
+
+`status = 'sent'` when one channel or more went out. `channels` names
+them. A failed channel next to a sent one gets no retry.
 
 **Table `schedule_notification_changes`**: the changes in each message.
 
 | Column | Note |
 |---|---|
-| `notification_id uuid` | FK `schedule_notifications` on delete cascade. |
-| `change_log_id uuid` | FK `schedule_change_logs`. |
-| `employee_id uuid` | Copy of the recipient. |
-| `restaurant_id uuid` | RLS. |
+| `notification_id uuid` | FK ON DELETE CASCADE. Index. |
+| `change_log_id uuid` | FK `schedule_change_logs` ON DELETE CASCADE. |
+| `employee_id uuid` | The recipient. |
+| `restaurant_id uuid` | FK ON DELETE CASCADE, RLS. |
 | `UNIQUE (change_log_id, employee_id)` | One message per change and employee. |
 
-RLS on both tables: SELECT for a member with `view:scheduling`. No
-INSERT/UPDATE/DELETE policy. Only the SECURITY DEFINER functions below
-write, and only the service role can execute them.
+The change set of a row is fixed at the first claim. A later claim never
+adds a pair to an existing row. New pairs go to a new row with a new id. So
+one id always sends the same body, and Resend accepts the retry.
 
-**Trigger `log_shift_change` (re-declared in full):**
+**Grants and RLS.** `REVOKE ALL ... FROM PUBLIC, anon, authenticated` on
+both tables, then `GRANT SELECT TO authenticated`. The SELECT policy is
+`user_has_capability(restaurant_id, 'view:scheduling')`. No write policy.
+The template is `supabase/migrations/20260802120000_schedule_retractions.sql:81-83`.
 
-- Add a `published` branch: `OLD.is_published = false AND
-  NEW.is_published = true`. One row for each shift that `publish_schedule`
-  flips. This logs the first publish, and each new shift at a republish.
-- Keep the `updated`, `deleted`, and `unpublished` branches as they are.
-- Add `week_start date` to `schedule_change_logs`. The trigger fills it from
-  the restaurant time zone and the shift `start_time`.
-- Make `changed_by` nullable. Null means a system write (service role). A
-  `NOT NULL` column with the new branch would make a service-role publish
-  fail.
+**New columns on `schedule_change_logs`:**
 
-A draft shift that is not visible gets no row. When the next publish flips
-it, it gets a `published` row. A draft that the manager deletes before
-the publish never gets a row. Employees did not see it.
+- `shift_date_before date`, `shift_date_after date`: the restaurant local
+  date of `before_data.start_time` and `after_data.start_time`. A
+  `BEFORE INSERT` trigger on `schedule_change_logs` fills them. So every
+  writer gets them: `log_shift_change`, `unpublish_schedule`
+  (`20260802120000_schedule_retractions.sql:201-211`), the template cascade
+  (`20260805160000_template_cascade_undo_restores_template.sql:260-267`),
+  and the cascade undo (`20260804130000_template_hours_cascade.sql:442-444`).
+  A date, not a week, so the tools work for any week start day. A shift that
+  moves across a week boundary belongs to both weeks.
+- `tracked boolean not null default true`. The migration sets `false` on
+  every existing row. Only tracked rows can be pending. Old rows show in the
+  change log with `notified_at` only. So the first publish after deploy does
+  not email old changes.
+- Time zone rule: the same as `publish_schedule`, `UTC` when the zone is
+  null, empty, or invalid
+  (`20260729120000_publish_schedule_tz_bucketing.sql:76-91`). That function
+  decides which shifts a week owns.
+- Index `(restaurant_id, shift_date_after)` and
+  `(restaurant_id, shift_date_before)`.
+
+**Trigger `log_shift_change`** (re-declared in full; only
+`20251123000000_schedule_publishing.sql:96-169` defines it):
+
+- Add `SET search_path = public, pg_temp`.
+- Change the trigger to `AFTER INSERT OR UPDATE OR DELETE`.
+- New `published` branch for INSERT with `NEW.is_published = true`
+  (open-shift claims), and for UPDATE with `OLD.is_published = false AND
+  NEW.is_published = true` (the publish flip).
+- `updated` branch: log only when a column that the employee sees changes.
+  The columns are `start_time`, `end_time`, `employee_id`, `position`,
+  `break_duration`, and `status`. The plan checks this list against the
+  `shifts` table. A no-op Sling re-sync then writes no row.
+- Keep `deleted` and `unpublished` as they are.
+
+**`changed_by` becomes nullable.** Null means a service-role write. Today
+the Sling sync is SECURITY DEFINER and called with the service role
+(`supabase/functions/sling-bulk-sync/index.ts:214`), so `auth.uid()` is null
+there. A Sling update of a published shift fails the `NOT NULL` check
+today. With the column-compare rule, a real Sling change gets a row with
+`changed_by = null`. The tool shows it as "System (Sling sync)".
+`src/types/scheduling.ts:239` and `src/integrations/supabase/types.ts:6881`
+change to `string | null`. The filter `.eq('changed_by', user.id)` in
+`src/hooks/usePublishedShiftGuard.tsx:176` stays correct.
+
+**Recipients of a change.** `before_data.employee_id` for the old date, and
+`after_data.employee_id` for the new date. This is the rule of
+`deriveShiftChangeRecipients`
+(`supabase/functions/_shared/shiftChangedNotification.ts:68-87`). An open
+shift has no recipient and is never pending.
+
+**Pending pair.** A tracked row with `change_type IN ('published',
+'updated', 'deleted')`, a recipient, and no link row with `status = 'sent'`.
+The rule uses the change type, not the publish state of the week, so a
+per-shift `unpublished` row never becomes pending after a republish.
 
 **SQL functions** (all take `restaurant_id`):
 
 | Function | Security | Purpose |
 |---|---|---|
-| `get_schedule_pending_notifications(restaurant, week_start?, week_end?)` | invoker, RLS | (change, recipient) pairs with no `sent` link. State `pending`, `failed`, or `in_doubt` (claimed, owner lease expired). |
-| `get_schedule_week_change_log(restaurant, week_start, week_end)` | invoker, RLS | Change rows of the week with actor name and the notifications for each. |
-| `claim_schedule_notifications(restaurant, week_start, week_end, source, publication_id, change_log_id?)` | definer, service role | Takes `pg_advisory_xact_lock` on (restaurant, week). Makes one row for each employee with free pairs. Takes back `failed` rows and `claimed` rows older than the lease. Returns rows and their changes. |
+| `get_schedule_pending_notifications(restaurant, from_date?, to_date?)` | definer, explicit check | Pending pairs. State `pending`, `failed`, or `in_doubt`. |
+| `get_schedule_week_change_log(restaurant, from_date, to_date)` | definer, explicit check | Change rows of the range, actor name, and the notifications for each. |
+| `claim_schedule_notifications(restaurant, from_date, to_date, source, publication_id, change_log_id?)` | definer, service role | Locks with `pg_advisory_xact_lock(hashtext(restaurant_id::text), from_date - DATE '2000-01-01')`. Takes back eligible rows. Makes new rows for free pairs. Returns rows and their changes. |
 | `mark_schedule_notification(id, status, channels, error)` | definer, service role | Writes `sent` or `failed`. |
 
-The lease is 10 minutes. The edge function wall-clock limit is shorter, so
-an expired claim has no live owner.
+The two read functions start with
+`IF NOT user_has_capability(p_restaurant_id, 'view:scheduling') THEN RAISE`.
+SECURITY INVOKER with RLS gives a wrong answer: the existing
+`schedule_change_logs` policy admits any member
+(`20251123000000_schedule_publishing.sql:74-82`), but the new tables do not,
+so a staff caller sees every change as pending. All four functions get
+`REVOKE EXECUTE ... FROM PUBLIC, anon`. The two writers also revoke
+`authenticated`.
 
-Recipients of a change: `before_data.employee_id` and
-`after_data.employee_id` (the same rule as
-`deriveShiftChangeRecipients`). An open shift has no recipient and never
-shows as pending.
+**Reclaim rules.**
+
+- A `failed` row: the provider rejected it, so nothing arrived. The next
+  claim takes it back, with the same id and the same change set.
+- A `claimed` row with `claimed_at` older than 10 minutes and newer than
+  23 hours: the next claim takes it back. The Supabase edge function
+  wall-clock limit is 400 s on the paid plan (Supabase docs, "Edge Function
+  limits"), so a 10-minute claim has no live owner. Resend keeps an
+  `Idempotency-Key` for 24 hours (Resend docs, "Idempotency keys"), so a
+  resend inside 23 hours cannot deliver a copy.
+- A `claimed` row older than 23 hours: never sent again automatically. The
+  pending tool shows it as `in_doubt`. The manager decides.
+- No cron. A later publish, a later shift-change notify, or a retry runs
+  the claim.
+
+The plan checks both platform numbers against the live docs before the
+code.
 
 ### 2. Notifiers (same code path for UI and MCP)
 
 **`notify-schedule-published`** (changed):
 
-1. Auth and role check stay as they are.
-2. Call `claim_schedule_notifications(source = 'publish')`.
-3. For each claimed row, send to that employee only. The email lists the
-   employee's changes. Send email with `Idempotency-Key: <row id>`.
-4. Call `mark_schedule_notification` with the result.
-5. Keep `schedule_publications.notification_sent` as it is.
+1. Auth and the owner/manager check stay as they are
+   (`supabase/functions/notify-schedule-published/index.ts:66`).
+2. Call `claim_schedule_notifications(source = 'publish')` for the week.
+3. Zero rows claimed: answer 200 with `{ sent: 0, nothingToSend: true }`.
+   Today the function answers 502 when nobody was reached (`:382-395`).
+4. For each claimed row, send to that employee only. The email lists the
+   employee's changes, one line per shift. Send email with
+   `Idempotency-Key: <row id>`. Send push with `tag: <row id>`.
+5. Call `mark_schedule_notification` with the result.
+6. Keep `schedule_publications.notification_sent` as it is.
 
-Effect: a republish with no change sends nothing. A republish after an edit
-sends to the employees with a change only. **This changes UI behavior.**
-The UI shares this function.
-
-**`notify-shift-changed`** (changed): keep the `notified_at` latch. Then call
-`claim_schedule_notifications(source = 'shift_change', change_log_id)`.
-Send only to the claimed rows, then mark them. A change that a publish
-notifier already sent is skipped.
+**`notify-shift-changed`** (changed): the per-employee claim becomes the
+only latch. The `notified_at` claim moves after the send, as a record only.
+Today a latch set after a partial send blocks a retry of the missed
+recipient (`supabase/functions/notify-shift-changed/index.ts:117-121`,
+`:277-298`). Zero rows claimed answers 200 with `alreadyNotified: true`.
 
 **`sendEmailResult`** (`supabase/functions/_shared/emailQueue.ts:94`) gets an
 optional `idempotencyKey` argument for the Resend HTTP header.
+
+**Quiet paths.** An edit with "Notify" off, and a `notify: false` publish,
+leave the pairs pending. The next publish with notify on sends them, and the
+preview lists them first. See "Decision for the user" below.
 
 ### 3. MCP tools (new file `supabase/functions/_shared/mcpPublishTools.ts`)
 
@@ -173,35 +252,47 @@ optional `idempotencyKey` argument for the Resend HTTP header.
     message, with the shifts in the message (local times, `tz`). Return the
     count of shifts that the publish will lock.
   - `confirmed: true`: call `publish_schedule` with the user client (same
-    RPC as the UI). Then invoke `notify-schedule-published` with the user
-    JWT (same function as the UI), unless `notify: false`. Return the
-    publication id and the real recipients.
-  - The confirm returns the real result. When it differs from the
-    preview (a change arrived between the two calls), the result says so.
+    RPC as the UI). Then start `notify-schedule-published` with the user
+    JWT (same function as the UI), unless `notify: false`.
+  - The MCP forward timeout is 25 s (`supabase/functions/mcp/index.ts:26`).
+    `sendPaced` can run 90 s (`supabase/functions/_shared/emailQueue.ts:41`).
+    So the tool waits at most 15 s for the notify result. If the result is
+    not back, the tool keeps the request alive with
+    `EdgeRuntime.waitUntil` and returns `notifications: "sending"`. The
+    result tells the model to call `get_pending_notifications` later. A
+    second `confirmed` call is safe: the publish flips nothing, and the
+    claim finds nothing free.
+  - When the real recipients differ from the preview, the result says so.
 - `runGetWeekChangeLog`: call `get_schedule_week_change_log`. Each entry:
-  change type, shift summary before and after, `changed_by` name,
+  change type, shift summary before and after, actor name (or "System"),
   `changed_at` local, and the notifications (employee, status, `sent_at`
   local, channels). The top level has `tz`.
 - `runGetPendingNotifications`: call `get_schedule_pending_notifications`.
-  With no `week_start`, return all published weeks from today on.
+  With no `week_start`, the range is today to today + 56 days.
 
 Registration: `tools-registry.ts` gets the three definitions, the
 manager/owner list, and `publish_week` in `WRITE_TOOLS`. `ai-execute-tool`
 gets three `case` lines that call the new file. The change log records
-changes from the UI and from the MCP, because the trigger runs for every
-shift write.
+changes from the UI and from the MCP, because both write `shifts` and the
+trigger now runs on INSERT, UPDATE, and DELETE.
+
+**UI follow-on.** `ChangeLogDialog` (`src/components/ChangeLogDialog.tsx:36-64`)
+gets the new `published` rows. Add `'published'` to `ChangeType`
+(`src/types/scheduling.ts:231`) with the label "Published".
 
 ### 4. Tests
 
 - Unit (`tests/unit/mcpPublishTools.test.ts`): preview grouping, confirm
-  path calls the RPC then the function, `notify: false`, local-time
-  formatting, error paths.
-- pgTAP (`supabase/tests/schedule_notifications.sql`): trigger `published`
-  branch, `week_start`, RLS isolation between two restaurants, claim
-  uniqueness, second claim with no change returns zero rows, lease reclaim,
-  pending states.
-- E2E: the UI publish flow must still work. Extend the existing publish spec:
-  a republish with no change shows "no notifications" in the toast.
+  path calls the RPC then the function, `notify: false`, the 15 s wait,
+  local-time formatting, error paths.
+- pgTAP (`supabase/tests/schedule_notifications.sql`): the `published`
+  branch on INSERT and on the flip, the column-compare rule (a no-op update
+  writes no row), the date columns from every writer, `tracked = false` on
+  old rows, RLS isolation between two restaurants, the capability check,
+  claim uniqueness, a second claim with no change returns zero rows, the
+  reclaim windows, the pending states, grants.
+- E2E: extend the publish spec. A republish with no change shows "No
+  notifications were sent." in the toast.
 
 ## TLA+ check
 
@@ -240,15 +331,33 @@ first invariant.
 
 - **In doubt state.** A crash after the provider accepts and before the
   record step leaves the row `claimed`. The pending tool shows it as
-  `in_doubt`. After the lease, the next notifier run sends it again with
-  the same key, and the provider drops the copy.
+  `in_doubt`. Inside 23 hours, the next claim sends it again with the same
+  key, and Resend drops the copy. After 23 hours, nothing sends it again.
 - **Push has no provider key.** Web push uses `tag = <row id>`. The browser
   replaces a notification with the same tag, so the employee sees one.
+- **Role checks differ.** `publish_schedule` admits any member
+  (`20260729120000_publish_schedule_tz_bucketing.sql:68`).
+  `notify-schedule-published` admits owner and manager only (`:66`).
+  `notify-shift-changed` uses `edit:scheduling`
+  (`supabase/functions/notify-shift-changed/index.ts:87-90`). This design
+  does not align them. The MCP tools admit owner and manager only.
+- **Double rows from the template cascade.** The cascade writes its own
+  `updated` row, and the trigger writes one more for the same UPDATE. This
+  exists today. The email builder groups lines by shift id, so the employee
+  sees one line.
 - **Preview drift.** The confirm does not lock the preview. It returns the
   real recipients and flags a difference.
 - **Retractions.** `unpublished` rows show in the change log. Their
   notification state comes from `schedule_retractions.notified_at`. They are
   not in the pending tool, because the week is no longer published.
+
+## Decision for the user
+
+1. The UI shares `notify-schedule-published`. After this change, a UI
+   republish notifies only the employees with a pending change.
+2. Quiet changes stay pending. The next publish with notify on sends them.
+   The other option is a `suppressed` state that a quiet path writes, so a
+   quiet change never sends.
 
 ## Out of scope
 

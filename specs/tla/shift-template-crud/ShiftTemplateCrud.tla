@@ -13,10 +13,13 @@
 (*     (apply suggested shifts, claim approval), adds pending open-shift   *)
 (*     claims on "t1", and takes the slot of a row in New (a UI create).   *)
 (*                                                                         *)
-(* Planned design (all three flags TRUE):                                  *)
+(* Planned design (all four flags TRUE):                                   *)
 (*   StaleCheck  - the confirm RPC locks the template rows FOR UPDATE and  *)
-(*                 compares updated_at, the pending-claim count and the    *)
-(*                 linked-shift count with the preview fingerprint.        *)
+(*                 compares the preview fingerprint. For update: only      *)
+(*                 updated_at. For hard delete: updated_at, the ids of the *)
+(*                 linked shifts, and the ids and status of all claims.    *)
+(*   IdFingerprint - the fingerprint holds row ids (a hash in SQL). FALSE  *)
+(*                 is the count-only fingerprint, open to an A-B-A change. *)
 (*   AtomicBatch - the confirm RPC writes every row of the batch in one    *)
 (*                 transaction. One bad row rolls back all rows.           *)
 (*   FkGuard     - shifts.shift_template_id (ON DELETE SET NULL) and       *)
@@ -32,6 +35,7 @@ CONSTANTS New,          \* rows of the MCP batch create, e.g. {"n1", "n2"}
           Claims,       \* open-shift claims the UI can add on t1, e.g. {"c1"}
           MaxEdits,     \* bound on UI edits of t1
           StaleCheck,   \* TRUE in the planned design
+          IdFingerprint, \* TRUE in the planned design
           AtomicBatch,  \* TRUE in the planned design
           FkGuard       \* TRUE in the planned design (real schema)
 
@@ -42,7 +46,7 @@ VARIABLES t1Exists,     \* shift_templates row t1 exists
           created,      \* the rows of New that exist
           slotTaken,    \* rows of New whose active slot a UI create took
           shiftTpl,     \* shiftTpl[s] \in {"t1", NONE}
-          claimOn,      \* the claims that exist (all reference t1)
+          claimSt,      \* claimSt[c] \in {"none", "pending", "approved"} (all on t1)
           mcpPc,        \* "idle", "previewed", "writing", "done", "failed"
           mcpOp,        \* "create", "update", "delete", or NONE
           snap,         \* preview fingerprint of t1
@@ -51,25 +55,33 @@ VARIABLES t1Exists,     \* shift_templates row t1 exists
           edits,        \* number of UI edits so far
           staleCommit   \* TRUE when a confirm wrote over a changed fingerprint
 
-vars == <<t1Exists, t1Ver, created, slotTaken, shiftTpl, claimOn, mcpPc,
+vars == <<t1Exists, t1Ver, created, slotTaken, shiftTpl, claimSt, mcpPc,
           mcpOp, snap, writeQueue, uiPc, edits, staleCommit>>
 
 LinkedShifts == {s \in Shifts : shiftTpl[s] = "t1"}
+LiveClaims == {c \in Claims : claimSt[c] # "none"}
 
-\* The fingerprint that the preview shows and the confirm checks.
-Fingerprint == [exists |-> t1Exists, ver |-> t1Ver,
-                claims |-> Cardinality(claimOn),
-                shifts |-> Cardinality(LinkedShifts)]
+\* The true state that a confirm of op acts on. Update touches only the
+\* template row. Hard delete also changes every linked shift and claim.
+Truth(op) == IF op = "update"
+             THEN [exists |-> t1Exists, ver |-> t1Ver, shifts |-> {}, claims |-> claimSt]
+             ELSE [exists |-> t1Exists, ver |-> t1Ver, shifts |-> LinkedShifts, claims |-> claimSt]
+
+\* What the RPC compares. The count-only variant loses the row identity.
+Checked(fp) == IF IdFingerprint THEN fp
+               ELSE [exists |-> fp.exists, ver |-> fp.ver,
+                     shifts |-> Cardinality(fp.shifts),
+                     claims |-> Cardinality({c \in Claims : fp.claims[c] # "none"})]
 
 Init == /\ t1Exists = TRUE
         /\ t1Ver = 0
         /\ created = {}
         /\ slotTaken = {}
         /\ shiftTpl = [s \in Shifts |-> NONE]
-        /\ claimOn = {}
+        /\ claimSt = [c \in Claims |-> "none"]
         /\ mcpPc = "idle"
         /\ mcpOp = NONE
-        /\ snap = Fingerprint
+        /\ snap = Truth("delete")
         /\ writeQueue = {}
         /\ uiPc = [s \in Shifts |-> "idle"]
         /\ edits = 0
@@ -83,30 +95,30 @@ Init == /\ t1Exists = TRUE
 Preview(op) == /\ mcpPc = "idle"
                /\ op = "create" \/ t1Exists
                /\ mcpOp' = op
-               /\ snap' = Fingerprint
+               /\ snap' = Truth(op)
                /\ mcpPc' = "previewed"
                /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, shiftTpl,
-                              claimOn, writeQueue, uiPc, edits, staleCommit>>
+                              claimSt, writeQueue, uiPc, edits, staleCommit>>
 
 \* confirmed:true for update or delete. One RPC transaction.
 \* StaleCheck: SELECT ... FOR UPDATE on t1, then compare with the fingerprint.
 ConfirmT1 == /\ mcpPc = "previewed"
              /\ mcpOp \in {"update", "delete"}
-             /\ LET ok == t1Exists /\ (~StaleCheck \/ Fingerprint = snap)
+             /\ LET ok == t1Exists /\ (~StaleCheck \/ Checked(Truth(mcpOp)) = Checked(snap))
                 IN IF ok
-                   THEN /\ staleCommit' = (staleCommit \/ Fingerprint # snap)
+                   THEN /\ staleCommit' = (staleCommit \/ Truth(mcpOp) # snap)
                         /\ mcpPc' = "done"
                         /\ IF mcpOp = "update"
                            THEN /\ t1Ver' = t1Ver + 1
-                                /\ UNCHANGED <<t1Exists, shiftTpl, claimOn>>
+                                /\ UNCHANGED <<t1Exists, shiftTpl, claimSt>>
                            \* DELETE: the FK actions run in the same statement.
                            ELSE /\ t1Exists' = FALSE
                                 /\ shiftTpl' = [s \in Shifts |->
                                        IF shiftTpl[s] = "t1" THEN NONE ELSE shiftTpl[s]]
-                                /\ claimOn' = {}
+                                /\ claimSt' = [c \in Claims |-> "none"]
                                 /\ UNCHANGED t1Ver
                    ELSE /\ mcpPc' = "failed"   \* STALE_PREVIEW or NOT_FOUND
-                        /\ UNCHANGED <<t1Exists, t1Ver, shiftTpl, claimOn, staleCommit>>
+                        /\ UNCHANGED <<t1Exists, t1Ver, shiftTpl, claimSt, staleCommit>>
              /\ UNCHANGED <<created, slotTaken, mcpOp, snap, writeQueue, uiPc, edits>>
 
 \* confirmed:true for the batch create, planned design: one transaction.
@@ -121,7 +133,7 @@ ConfirmCreateAtomic ==
             /\ mcpPc' = "done"
        ELSE /\ UNCHANGED created
             /\ mcpPc' = "failed"
-    /\ UNCHANGED <<t1Exists, t1Ver, slotTaken, shiftTpl, claimOn, mcpOp, snap,
+    /\ UNCHANGED <<t1Exists, t1Ver, slotTaken, shiftTpl, claimSt, mcpOp, snap,
                    writeQueue, uiPc, edits, staleCommit>>
 
 \* Counterfactual: one INSERT per row, each in its own request.
@@ -131,7 +143,7 @@ StartCreateLoop ==
     /\ mcpOp = "create"
     /\ writeQueue' = New
     /\ mcpPc' = "writing"
-    /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, shiftTpl, claimOn,
+    /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, shiftTpl, claimSt,
                    mcpOp, snap, uiPc, edits, staleCommit>>
 
 CreateOne(n) ==
@@ -143,7 +155,7 @@ CreateOne(n) ==
        ELSE /\ created' = created \cup {n}
             /\ writeQueue' = writeQueue \ {n}
             /\ mcpPc' = IF writeQueue \ {n} = {} THEN "done" ELSE "writing"
-    /\ UNCHANGED <<t1Exists, t1Ver, slotTaken, shiftTpl, claimOn, mcpOp, snap,
+    /\ UNCHANGED <<t1Exists, t1Ver, slotTaken, shiftTpl, claimSt, mcpOp, snap,
                    uiPc, edits, staleCommit>>
 
 (* ---------------- Planner UI ---------------- *)
@@ -153,7 +165,7 @@ UiEdit == /\ t1Exists
           /\ edits < MaxEdits
           /\ t1Ver' = t1Ver + 1
           /\ edits' = edits + 1
-          /\ UNCHANGED <<t1Exists, created, slotTaken, shiftTpl, claimOn, mcpPc,
+          /\ UNCHANGED <<t1Exists, created, slotTaken, shiftTpl, claimSt, mcpPc,
                          mcpOp, snap, writeQueue, uiPc, staleCommit>>
 
 \* deleteMutation: DELETE FROM shift_templates; FK actions in the same statement.
@@ -161,7 +173,7 @@ UiDelete == /\ t1Exists
             /\ t1Exists' = FALSE
             /\ shiftTpl' = [s \in Shifts |->
                    IF shiftTpl[s] = "t1" THEN NONE ELSE shiftTpl[s]]
-            /\ claimOn' = {}
+            /\ claimSt' = [c \in Claims |-> "none"]
             /\ UNCHANGED <<t1Ver, created, slotTaken, mcpPc, mcpOp, snap,
                            writeQueue, uiPc, edits, staleCommit>>
 
@@ -169,18 +181,16 @@ UiDelete == /\ t1Exists
 UiTakeSlot(n) == /\ n \notin slotTaken
                  /\ n \notin created
                  /\ slotTaken' = slotTaken \cup {n}
-                 /\ UNCHANGED <<t1Exists, t1Ver, created, shiftTpl, claimOn, mcpPc,
+                 /\ UNCHANGED <<t1Exists, t1Ver, created, shiftTpl, claimSt, mcpPc,
                                 mcpOp, snap, writeQueue, uiPc, edits, staleCommit>>
 
 \* FK insert: the reference check and the write are one statement.
 UiLinkShift(s) == /\ FkGuard
                   /\ shiftTpl[s] = NONE
-                  /\ uiPc[s] = "idle"
                   /\ t1Exists
                   /\ shiftTpl' = [shiftTpl EXCEPT ![s] = "t1"]
-                  /\ uiPc' = [uiPc EXCEPT ![s] = "done"]
-                  /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, claimOn, mcpPc,
-                                 mcpOp, snap, writeQueue, edits, staleCommit>>
+                  /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, claimSt, mcpPc,
+                                 mcpOp, snap, writeQueue, uiPc, edits, staleCommit>>
 
 \* Counterfactual without the FK: read the template, then write the shift.
 UiReadTpl(s) == /\ ~FkGuard
@@ -188,22 +198,35 @@ UiReadTpl(s) == /\ ~FkGuard
                 /\ shiftTpl[s] = NONE
                 /\ t1Exists
                 /\ uiPc' = [uiPc EXCEPT ![s] = "read"]
-                /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, shiftTpl, claimOn,
+                /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, shiftTpl, claimSt,
                                mcpPc, mcpOp, snap, writeQueue, edits, staleCommit>>
 
 UiWriteShift(s) == /\ ~FkGuard
                    /\ uiPc[s] = "read"
                    /\ shiftTpl' = [shiftTpl EXCEPT ![s] = "t1"]
                    /\ uiPc' = [uiPc EXCEPT ![s] = "done"]
-                   /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, claimOn, mcpPc,
+                   /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, claimSt, mcpPc,
                                   mcpOp, snap, writeQueue, edits, staleCommit>>
 
 \* claim_open_shift: INSERT into open_shift_claims (FK to shift_templates).
-UiAddClaim(c) == /\ c \notin claimOn
+UiAddClaim(c) == /\ claimSt[c] = "none"
                  /\ t1Exists
-                 /\ claimOn' = claimOn \cup {c}
+                 /\ claimSt' = [claimSt EXCEPT ![c] = "pending"]
                  /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, shiftTpl, mcpPc,
                                 mcpOp, snap, writeQueue, uiPc, edits, staleCommit>>
+
+\* approve_open_shift_claim: a status change, no FK write on the template.
+UiApproveClaim(c) == /\ claimSt[c] = "pending"
+                     /\ claimSt' = [claimSt EXCEPT ![c] = "approved"]
+                     /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, shiftTpl, mcpPc,
+                                    mcpOp, snap, writeQueue, uiPc, edits, staleCommit>>
+
+\* A manager moves a shift off the template, or deletes the shift.
+\* With UiLinkShift on another shift, the count stays the same (A-B-A).
+UiUnlinkShift(s) == /\ shiftTpl[s] = "t1"
+                    /\ shiftTpl' = [shiftTpl EXCEPT ![s] = NONE]
+                    /\ UNCHANGED <<t1Exists, t1Ver, created, slotTaken, claimSt, mcpPc,
+                                   mcpOp, snap, writeQueue, uiPc, edits, staleCommit>>
 
 Next == \/ \E op \in {"create", "update", "delete"} : Preview(op)
         \/ ConfirmT1
@@ -214,7 +237,8 @@ Next == \/ \E op \in {"create", "update", "delete"} : Preview(op)
         \/ UiDelete
         \/ \E n \in New : UiTakeSlot(n)
         \/ \E s \in Shifts : UiLinkShift(s) \/ UiReadTpl(s) \/ UiWriteShift(s)
-        \/ \E c \in Claims : UiAddClaim(c)
+        \/ \E c \in Claims : UiAddClaim(c) \/ UiApproveClaim(c)
+        \/ \E s \in Shifts : UiUnlinkShift(s)
 
 Spec == Init /\ [][Next]_vars
 
@@ -225,7 +249,7 @@ TypeOK == /\ t1Exists \in BOOLEAN
           /\ created \subseteq New
           /\ slotTaken \subseteq New
           /\ shiftTpl \in [Shifts -> {"t1", NONE}]
-          /\ claimOn \subseteq Claims
+          /\ claimSt \in [Claims -> {"none", "pending", "approved"}]
           /\ mcpPc \in {"idle", "previewed", "writing", "done", "failed"}
           /\ mcpOp \in {"create", "update", "delete", NONE}
           /\ uiPc \in [Shifts -> {"idle", "read", "done"}]
@@ -239,5 +263,5 @@ BatchAllOrNothing == mcpPc \in {"done", "failed"} => created \in {{}, New}
 
 \* No shift or coverage claim points to a missing template.
 NoDanglingRef == /\ \A s \in Shifts : shiftTpl[s] = "t1" => t1Exists
-                 /\ claimOn # {} => t1Exists
+                 /\ LiveClaims # {} => t1Exists
 =============================================================================

@@ -15,9 +15,14 @@ Stage explicit paths only.
    linked shifts; hard delete sets `shifts.shift_template_id` to NULL and
    deletes claims; no `edit:scheduling` gives `42501`; a template of another
    restaurant gives `P0002`; more than 50 rows gives `22023`.
+   Also: a slot swap in one update batch gives `23505`; a new linked shift
+   gives `PT409` for delete and no error for hide; an unlink plus a new link
+   gives `PT409` for delete; a claim status change gives `PT409` for delete;
+   hard delete deletes claims in every status.
 2. Write `supabase/migrations/20261128120000_mcp_shift_template_rpcs.sql` with
-   `mcp_create_shift_templates`, `mcp_update_shift_templates`,
-   `mcp_delete_shift_templates`.
+   `mcp_shift_template_impact`, `mcp_create_shift_templates`,
+   `mcp_update_shift_templates`, `mcp_delete_shift_templates`, and the 2
+   indexes.
 3. Run `npm run test:db`.
 
 ## Task 2: Field rules (pure)
@@ -25,13 +30,15 @@ Stage explicit paths only.
 1. Tests: name and position trim and length; area empty gives null; days
    from names and numbers, sort, dedupe, reject 7 and `"xyz"`; `HH:MM` parse;
    start equal to end rejected; overnight flag; break `>= 0`; staff `>= 1`;
-   in-batch slot duplicates; max 50 rows.
+   in-batch slot check in batch order (swap rejected); exact sorted `days`
+   compare; max 50 rows.
 2. Code: `normalizeTemplateInput()`, `mergeTemplatePatch()`, `slotKey()` in
    `supabase/functions/_shared/mcpShiftTemplateTools.ts`.
 
 ## Task 3: Preview token
 
-1. Tests: canonical args hash ignores key order and the flag fields;
+1. Tests: the hash uses normalized rows (`["mon"]` equals `[1]`);
+   `exp` and `user_id` give `PREVIEW_EXPIRED`;
    encode/decode round trip; a bad token gives `PREVIEW_REQUIRED`; changed
    args give `PREVIEW_MISMATCH`; a token for another tool is rejected.
 2. Code: `canonicalArgsHash()`, `encodePreviewToken()`, `decodePreviewToken()`.
@@ -47,13 +54,14 @@ Stage explicit paths only.
 
 1. Tests (mock client): capability denial before any read; list output with
    `tz`; confirm without `preview_token` gives `PREVIEW_REQUIRED`; SQLSTATE map
-   (`PT409`, `23505`, `P0002`, `22023`, `42501`); confirm passes the
+   by `error.code` (`PT409`, `23505`, `P0002`, `22023`, `42501`, `40P01`,
+   `55P03`); one impact RPC call per batch; confirm passes the
    fingerprint to the RPC.
 2. Code: `runShiftTemplateTool(name, args, restaurantId, supabase, tz)`.
 
 ## Task 6: Register the tools
 
-1. Tests: `getTools` has the 4 tools; `WRITE_TOOLS` and `WRITE_TOOL_NAMES`
+1. Tests: `getTools` has the 4 tools for owner and manager, not for staff and kiosk; `WRITE_TOOLS` and `WRITE_TOOL_NAMES`
    have the 3 write tools; `buildMcpTools` marks them destructive;
    `missingRequiredArgs` works for them; dispatcher source routes them.
 2. Code: `supabase/functions/_shared/shiftTemplateToolDefs.ts`; edits in

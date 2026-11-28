@@ -25,11 +25,21 @@
 
 ## Review Focus
 
-1. A window that ends at midnight (local `00:00:00`, entered as 24:00 or 00:00). The grid shows "6:00 PM – 12:00 AM". The window is not an overnight spill into the next day. A shift of 18:00 to 23:59 gives no conflict. → Task 2 and Task 3 tests.
-2. An exception slot on a time-change day (2026-03-08 and 2026-11-01 in America/Chicago). It shows the time that the manager entered on that date. → Task 2 test.
+1. A window that ends at midnight (local `00:00:00`, entered as 24:00 or 00:00). The grid shows "6:00 PM – 12:00 AM". The window is not an overnight spill into the next day. A shift of 18:00 to 23:59 gives no conflict. A shift of 18:00 to 00:00 also gives no conflict, also when the next day is off. → Task 2 and Task 3 tests.
+2. An exception slot on a time-change day (2026-03-08 and 2026-11-01 in America/Chicago). Morning times show the time that the manager entered. Evening times do not (see "Model check" F1). The UI must show the same window as `check_availability_conflict`. → Task 2 test.
 3. A stale row with `is_available = true` and null local columns. No reader throws, and the grid shows the row as available with no time range. → Task 2 test.
 4. The process time zone differs from the restaurant time zone (CI runs in UTC). Run the full suite under `TZ=UTC` and `TZ=Asia/Tokyo`. → Task 7.
 5. A bulk save of an incomplete pair. The RPC raises `not_null_violation`, and the user sees a clear message. → Task 4 test.
+
+## Model check (TLA+, 2026-11-28)
+
+TLC checked four models of this plan: `TzClock`, `ExceptionTime`, `RecurringConflict` and `Rollout`. The specs are in the session scratchpad. A real date-fns-tz run on America/Chicago gives the same failing hours as TLC.
+
+- **F1 — exception round trip, pre-existing, out of scope.** On a time-change day, an exception time that passes midnight UTC shows 1 hour off. 2026-03-08: 19:00–23:00 show 1 hour early. 2026-11-01: 18:00–23:00 show 1 hour late. The SQL reader uses the same formula, so the UI and the RPC agree (TLC: `UiMatchesSql` holds). A frontend-only reader fix makes the UI disagree with the RPC. TLC also shows that a "same local date" reader fix still fails at 23:00 on 2026-11-01. The correct fix is local columns for `availability_exceptions`, with the same expand/contract steps. Do that in a follow-up PR. In this PR, do not change the exception conversion.
+- **F2 — midnight shift end, fix in Task 2.** `shiftOutsideAvailability` sets `dayDelta = 1` when a shift ends at exactly 00:00 next day. Then a next-day "off" row or a next-day window changes the result. The RPC does not walk the next date in this case. Example: today window 00:00–00:00, shift 12:00–00:00, next day off. The UI shows a conflict. The RPC shows none.
+- **F3 — split across midnight, fix in Task 2.** The UI needs one window that holds the full shift. The RPC checks each local date part on its own. Example: Monday 18:00–00:00, Tuesday 00:00–06:00, shift Monday 22:00–02:00. The UI shows a conflict. The RPC shows none. The same occurs when the next day has no rows.
+- **F4 — today off, yesterday spills, fix in Task 2.** The UI returns `true` at once when today is off. The RPC accepts the shift when yesterday's overnight window holds it.
+- **F5 — rollout, accepted.** An old cached client on a time-change day writes hours 00:00–01:59 with the wrong offset, and reads evening rows 1 hour off. No time change falls between this PR and the contract PR (next change 2027-03-14, contract before 2027-03-07). No action.
 
 ---
 
@@ -69,6 +79,10 @@
   - `available recurring row with null local columns has no window`: slot `isAvailable true`, `startTime null`, `endTime null`. `availabilityLabel` gives `'Available'`.
   - `exception slot converts with the exception date as anchor`: America/Chicago, exception `date '2026-03-08'`, `start_time '15:00:00'` gives `'10:00'`. Exception `date '2026-03-07'`, `start_time '16:00:00'` gives `'10:00'`.
   - `midnight end is not an overnight spill`: Monday local `18:00:00`–`00:00:00`. `shiftOutsideAvailability` for Tuesday 00:30–02:00 gives `true`. Monday 18:00–23:59 gives `false`.
+  - `shift that ends at 00:00 ignores the next day` (F2): Monday `12:00:00`–`00:00:00`, Tuesday recurring off. Monday 12:00–00:00 gives `false`. Monday window `18:00:00`–`00:00:00`, Tuesday window `08:00:00`–`12:00:00`, shift Monday 18:00–00:00 gives `false`.
+  - `each local date part is checked on its own` (F3): Monday `18:00:00`–`00:00:00`, Tuesday `00:00:00`–`06:00:00`, shift Monday 22:00–02:00 gives `false`. Monday `18:00:00`–`00:00:00`, Tuesday no rows, same shift gives `false`. Monday `18:00:00`–`00:00:00`, Tuesday `03:00:00`–`06:00:00`, same shift gives `true`.
+  - `today off but yesterday spills` (F4): Sunday `20:00:00`–`04:00:00`, Monday recurring off, shift Monday 01:00–03:00 gives `false`. Shift Monday 03:00–05:00 gives `true`.
+  - `exception reader matches the RPC formula` (F1): America/Chicago, exception `date '2026-03-08'`, `start_time '03:00:00'` gives `'21:00'`. This pins the RPC agreement. Add a comment that links the F1 follow-up.
   - `10:00–22:00 window gives no conflict in July and December`: shift 10:00–22:00 Chicago on 2026-07-15 and on 2026-12-16 gives `false` for both.
   - `availabilityLabel` with local slots `10:00:00`/`22:00:00` gives `'Available 10:00 AM – 10:00 PM'`.
 - [ ] **Step 2:** Run `npx vitest run tests/unit/effectiveAvailability.test.ts`. Expected: FAIL.
@@ -77,6 +91,12 @@
   - Exception slots: if the time is set, use `utcTimeToLocalTime(t, timezone, anchor)`. `anchor` is `new Date(y, m - 1, d)` from `exc.date`.
   - `overnightPrevSlots(slots)`: keep slots where `end <= start` and `end` is not `00:00`. Do no conversion.
   - `pushWindow(slots, offsetMin)`: parse the slot times with no conversion. Keep `if (we <= ws) we += 1440`.
+  - `shiftOutsideAvailability` checks each local date part like the RPC (F2–F4). The signature stays the same. Use this rule:
+    - `spansNextDay = endMin > 1440`. A shift that ends at exactly 00:00 has one part only.
+    - Part 1 is `[startMin, min(endMin, 1440)]` against today's windows plus yesterday's spill windows.
+    - Part 2 (only if `spansNextDay`) is `[1440, endMin]` against next-day windows (+1440) plus today's spill windows.
+    - For each part: a window holds the part → OK. Else, if the part has windows → conflict. Else, the day is off → conflict. Else → OK.
+    - Delete the early `return true` for today off. The per-part rule covers it.
   - `availabilityLabel` uses `formatLocalTimeOfDay`.
   - `TeamAvailabilityGrid` deletes `localizeTime` and passes the timezone to `computeEffectiveAvailability`.
   - `ShiftPlannerTab` and `Scheduling.tsx` pass `restaurantTimezone`.

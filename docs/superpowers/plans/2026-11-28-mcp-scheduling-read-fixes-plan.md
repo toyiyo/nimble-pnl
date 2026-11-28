@@ -32,12 +32,15 @@ Steps:
    - a different area does not match; a null area on either side matches;
    - a 17:00 local Chicago shift (23:00Z) keys to the local date;
    - a DST week (2026-03-08, 2026-11-01) keeps the local time match.
-2. Test `localIso(iso, tz)` gives `2026-12-05T17:00:00-06:00` for
-   `2026-12-05T23:00:00Z` in `America/Chicago`, and `-05:00` in July.
+2. Test `localIso(iso, tz)` in `tests/unit/restaurantDate.test.ts` (or a new
+   `tests/unit/localIso.test.ts`): `2026-12-05T23:00:00Z` in `America/Chicago`
+   gives `2026-12-05T17:00:00-06:00`. Test both sides of the DST changes on
+   2026-11-01 and 2027-03-14. Put `localIso` in
+   `supabase/functions/_shared/restaurantDate.ts`.
 3. Test `positionMismatch(shiftPos, employeePos)`: case and outer spaces do not
    count; null or empty on either side gives `false`.
-4. Write the module. Use `date-fns-tz` (`toZonedTime`, `formatInTimeZone`).
-   No Deno imports.
+4. Write the module. Use `formatInTimeZone`. No Deno imports. The legacy
+   match uses `shift.position`, not the employee position.
 
 ## Task 2: coverage uses the matcher (problem 1)
 
@@ -61,7 +64,10 @@ Steps:
 5. Change `buildCoverage` to take an optional `employeeAreas: Map<string,
    string | null>` and to use `slotKeyForShift`.
 6. Change the template query to select `area` and to order by `start_time`,
-   then `id`. Pass the employee areas from the employee rows.
+   then `id`. Add `employee:employees(area, position)` to `SHIFT_COLUMNS`.
+   Build the area map from that join, so inactive employees keep their area.
+7. Test: an unlinked shift of an employee who is not in the roster keeps the
+   area from the join.
 
 ## Task 3: local time and position flags on shift rows (problems 2 and 3)
 
@@ -75,8 +81,8 @@ Files:
 
 Steps:
 1. Tests: overview rows have `start_time_local`, `end_time_local`, `tz`,
-   `shift_position`, `employee_position`, `position_mismatch`. The `position`
-   field does not change.
+   `position_mismatch`. On a mismatch, rows also have `shift_position` and
+   `employee_position`. The `position` field does not change.
 2. Tests: conflict entries have the same new fields. The employee position
    comes from a map that the caller passes.
 3. Tests: time punch rows have `start_time_local`, `end_time_local`, `tz`.
@@ -95,7 +101,10 @@ Steps:
    true`; the hours go to the week of the local start date (a Sunday 23:30
    Chicago shift goes to that Sunday's week); cancelled shifts and breaks
    follow the `scheduled_hours` rule; `over_max_weekly_hours` is `true` above
-   `max_weekly_hours`.
+   `max_weekly_hours`, and `null` on a partial week.
+2a. Test: when the result is too large, `fitToLimit` deletes
+   `roster[].weekly_hours` before it deletes `coverage`. Add
+   `roster.weekly_hours` after `publish_state` in `DROPPABLE_SECTIONS`.
 2. Add an optional `tz` argument to `buildRoster` (default `UTC`), so the
    current callers do not break.
 3. Write the code. `scheduled_hours` does not change.
@@ -114,7 +123,7 @@ Steps:
    missing" to expect the error. The error tells Claude to call
    `list_restaurants`.
 3. Test: a tool with its own `required` list keeps it, with `restaurant_id`
-   first.
+   first and no duplicates.
 4. Write the code. Change the property description and the server instructions
    text where they say that `restaurant_id` can be omitted.
 

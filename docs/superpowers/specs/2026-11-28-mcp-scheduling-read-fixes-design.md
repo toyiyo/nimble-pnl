@@ -69,7 +69,8 @@ WHERE restaurant_id = '<id>'
     list. Else `null`. A linked shift never falls back to the time match. This
     is the UI rule (`src/hooks/useShiftPlanner.ts:170-178`).
   - `shift_template_id` null: filter active templates on exact local
-    `HH:MM:SS` start and end, position, day of week of the local start, and
+    `HH:MM:SS` start and end, `shift.position` (not the employee position,
+    `src/hooks/useShiftPlanner.ts:191`), day of week of the local start, and
     area. A null area on either side matches. Prefer the template with the same
     area as the employee. Else take the first candidate in input order. This is
     `findAreaAwareTemplate` (`src/lib/templateAreaMatch.ts:63-76`).
@@ -77,16 +78,23 @@ WHERE restaurant_id = '<id>'
   only.
 - `buildCoverage` takes a new optional `employeeAreas` map. It counts distinct
   employees for each key, the same as `distinctAssignedCount`
-  (`src/lib/shiftFill.ts`).
-- `runGetSchedulingContext` reads `area` on templates and passes the employee
-  areas from the roster rows.
+  (`src/lib/shiftFill.ts:27-34`).
+- `runGetSchedulingContext` reads `area` on templates. The template query adds
+  `.order("start_time").order("id")`. Today it has no order
+  (`supabase/functions/_shared/schedulingContextTool.ts:202-203`).
+- The employee area comes from a join on the shift query:
+  `employee:employees(area, position)`. The roster rows are not enough: they
+  hold active employees only (`supabase/functions/_shared/schedulingContextTool.ts:189-190`).
+  The UI reads the area from the same join (`src/hooks/useShiftPlanner.ts:193`).
+  The `employees` table grants `area` and `position` to `authenticated`
+  (`supabase/migrations/20260806110000_employee_column_gating.sql:128-136`).
 - A parity test runs `buildTemplateGridData` (UI) and `buildCoverage` (MCP) on
   the same rows. The counts must be equal. If the rules drift, the test fails.
 
 The fallback must not see inactive templates. The MCP loads active templates
 only (`supabase/functions/_shared/schedulingContextTool.ts:202-203`). A shift
 linked to an inactive template is not in any MCP slot. The UI shows it under a
-hidden lane, and the MCP does not list hidden lanes. So the counts agree for
+hidden lane (`src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx:440-446`), and the MCP does not list hidden lanes. So the counts agree for
 every listed slot.
 
 ### 2. Local time
@@ -103,25 +111,33 @@ Rows that get the fields:
   (`supabase/functions/_shared/scheduleOverview.ts:43-56`).
 - `get_scheduling_context`: each entry in `conflicts`
   (`supabase/functions/_shared/schedulingContext.ts:280-302`).
-- `get_time_punches`: each row in `shifts`
-  (`supabase/functions/_shared/timePunchShifts.ts:20-30`).
+- `get_time_punches`: each work-period row in `shifts`
+  (`supabase/functions/_shared/timePunchShifts.ts:21-31`).
 
-A shared helper `localIso(iso, tz)` in `templateShiftMatch.ts` makes the value.
+A shared helper `localIso(iso, tz)` in
+`supabase/functions/_shared/restaurantDate.ts` makes the value, next to
+`ymdInTimeZone`. It uses `formatInTimeZone(..., "yyyy-MM-dd'T'HH:mm:ssXXX")`,
+so the offset is correct for each instant. Tests cover the DST changes on
+2026-11-01 and 2027-03-14.
 
 ### 3. Position mismatch
 
-Add `shift_position`, `employee_position`, and `position_mismatch` to:
+Add `position_mismatch` to each shift row. When it is `true`, the row also has
+`shift_position` and `employee_position`. The two values appear only on a
+mismatch, to keep the rows small. Rows:
 
 - `get_schedule_overview` rows. The current `position` field falls back to the
   employee position (`supabase/functions/_shared/scheduleOverview.ts:51`). That
   fallback hides the mismatch. The field stays the same for current callers.
 - `get_scheduling_context` conflict entries. The employee position comes from
-  the roster rows.
+  the `employee:employees(area, position)` join on the shift query.
 
 The compare ignores case and outer spaces. When one side is null or empty,
 `position_mismatch` is `false`.
 
-`get_time_punches` rows have no shift position. They do not get the flag.
+`get_time_punches` rows have one `position`, and it is the employee position
+(`supabase/functions/_shared/timePunchShifts.ts:87`). A work period has no
+shift position, so these rows do not get the flag.
 
 ### 4. Hours per week
 
@@ -139,6 +155,14 @@ Add `weekly_hours` to each roster entry, next to `max_weekly_hours`:
 - The list has one entry for each week that touches the period, also with 0
   hours.
 - `partial_week` is `true` when the period does not hold all 7 days of the week.
+- `over_max_weekly_hours` is `null` when `partial_week` is `true`. The tool
+  loads the shifts of the period only
+  (`supabase/functions/_shared/schedulingContextTool.ts:126`), so a partial
+  week can hide hours from the other days.
+- Size: `fitToLimit` deletes `roster[].weekly_hours` before it deletes
+  `coverage`. The new step `roster.weekly_hours` goes after `publish_state` in
+  `DROPPABLE_SECTIONS` (`supabase/functions/_shared/schedulingContext.ts:489-497`).
+  So the new data cannot push the coverage fix out of the result.
 - The hours rule is the same as `scheduled_hours`: cancelled shifts do not
   count, and the break is subtracted
   (`supabase/functions/_shared/schedulingContext.ts:76-82`).
@@ -156,14 +180,16 @@ restaurant of the user (`supabase/functions/_shared/mcpHandler.ts:321-322`).
 The user chose option 1: `restaurant_id` is required for every MCP data tool.
 
 - `toMcpTool` puts `restaurant_id` in `required` for each data tool
-  (`supabase/functions/_shared/mcpHandler.ts:166-182`).
+  (`supabase/functions/_shared/mcpHandler.ts:166-182`). The rule is
+  `[...new Set(['restaurant_id', ...(tool.parameters.required ?? [])])]`.
 - `callTool` refuses a call without `restaurant_id`, also when the user has one
   restaurant. The error tells Claude to call `list_restaurants`.
 - `list_restaurants` does not change.
 - The property description no longer says that it can be omitted
   (`supabase/functions/_shared/mcpHandler.ts:146-150`).
 - New tools from the other sessions get the rule with no change, because
-  `toMcpTool` handles every tool in the catalog.
+  `buildMcpTools` calls `toMcpTool` for every tool in the catalog
+  (`supabase/functions/_shared/mcpHandler.ts:190-198`).
 
 ## TLA+
 
@@ -181,7 +207,7 @@ test checks that no shift fills two slots and that `open = capacity - assigned`.
 | 2 | `tests/unit/scheduleOverview.test.ts`, `schedulingContext.test.ts`, `timePunchShifts.test.ts` | Rows have `start_time_local`, `end_time_local`, `tz`, in `America/Chicago`. |
 | 3 | `tests/unit/scheduleOverview.test.ts`, `schedulingContext.test.ts` | `position_mismatch` is `true` with both values. |
 | 4 | `tests/unit/schedulingContext.test.ts` | `weekly_hours` per Monday week, `partial_week`, `over_max_weekly_hours`. |
-| 5 | `tests/unit/mcpHandler.test.ts` | The schema requires `restaurant_id`. A call without it fails, also with one restaurant. |
+| 5 | `tests/unit/mcpHandler.test.ts` | The schema requires `restaurant_id`. A call without it fails, also with one restaurant. This replaces the test "uses the only restaurant when restaurant_id is missing" (`tests/unit/mcpHandler.test.ts:430`). |
 
 ## Compatibility
 
@@ -190,12 +216,22 @@ All current fields stay. All changes add fields, except one: a call without
 
 ## Decided trade-offs
 
-- A legacy shift with two equal candidates (same time, position and area) goes
-  to the first template in input order. This copies the UI. The UI loads
+- A legacy shift with two candidates goes through `findAreaAwareTemplate`:
+  the same-area template wins, else the first candidate in input order. This
+  copies the UI (`src/lib/templateAreaMatch.ts:25-31`). The MCP input order is
+  `start_time`, then `id`, so the MCP result is deterministic. The UI loads
   templates with `.order('start_time')` only (`src/hooks/useShiftTemplates.tsx:133`),
-  so its order for two equal candidates is not fixed. The MCP query orders by
-  `start_time`, then `id`. The SQL helper also orders by `st.id` in that case
-  (`supabase/migrations/20260720120000_shift_fill_by_assignment.sql:127`).
-  So the MCP agrees with the SQL, and the MCP result is deterministic.
+  so its order for two candidates with the same start time is not fixed.
+- The SQL helper differs in one case. For an employee with no area, it prefers
+  a template with no area
+  (`supabase/migrations/20260720120000_shift_fill_by_assignment.sql:127-132`).
+  The task asks for the UI rule, so the MCP follows the UI in that case.
+- `get_schedule_overview` rows get about 90 more characters each. That tool has
+  no hard size rule after `compactConflictsToFit`
+  (`supabase/functions/_shared/shiftConflictFlags.ts:122-136`), and `capText`
+  then cuts the text (`supabase/functions/_shared/mcpHandler.ts:276-279`).
+  This limit exists before this change, for a month of a busy restaurant. A
+  separate task fixes it. This change keeps the new fields small: the two
+  position values appear only on a mismatch.
 - The write paths that do not stamp `shift_template_id` do not change here.
   The week templates session owns those writers.

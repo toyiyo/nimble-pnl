@@ -42,7 +42,7 @@ import { deriveDefaultAvailability } from '@/lib/availabilityDefaults';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useBulkSetAvailability } from '@/hooks/useBulkSetAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
+import { toAvailabilityWindows } from '@/lib/availabilityTimeUtils';
 import { isActiveForStatus } from '@/utils/employeeFilters';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
 import { EmployeeAppAccessRow } from '@/components/employees/EmployeeAppAccessRow';
@@ -486,7 +486,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
           await bulkSetAvailability.mutateAsync({
             restaurantId,
             employeeIds: [newEmployee.id],
-            availability: convertAvailabilityWindowsToUtc(availabilityGrid, restaurantTimezone),
+            availability: toAvailabilityWindows(availabilityGrid),
           });
         } catch {
           toast({

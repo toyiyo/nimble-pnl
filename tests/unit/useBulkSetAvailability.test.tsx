@@ -37,7 +37,7 @@ describe('useBulkSetAvailability', () => {
       restaurantId: 'r1',
       employeeIds: ['e1', 'e2'],
       availability: [
-        { day_of_week: 1, start_time: '10:00:00', end_time: '22:00:00', is_available: true },
+        { day_of_week: 1, start_time_local: '10:00:00', end_time_local: '22:00:00', is_available: true },
       ],
     });
 
@@ -45,7 +45,7 @@ describe('useBulkSetAvailability', () => {
       p_restaurant_id: 'r1',
       p_employee_ids: ['e1', 'e2'],
       p_availability: [
-        { day_of_week: 1, start_time: '10:00:00', end_time: '22:00:00', is_available: true },
+        { day_of_week: 1, start_time_local: '10:00:00', end_time_local: '22:00:00', is_available: true },
       ],
     });
     expect(toastMock).toHaveBeenCalled();
@@ -64,7 +64,7 @@ describe('useBulkSetAvailability', () => {
       restaurantId: 'r1',
       employeeIds: ['e1'],
       availability: [
-        { day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_available: true },
+        { day_of_week: 1, start_time_local: '09:00:00', end_time_local: '17:00:00', is_available: true },
       ],
     });
     expect(toastMock).not.toHaveBeenCalled();
@@ -79,13 +79,82 @@ describe('useBulkSetAvailability', () => {
         restaurantId: 'r1',
         employeeIds: ['e1'],
         availability: [
-          { day_of_week: 1, start_time: '10:00:00', end_time: '22:00:00', is_available: true },
+          { day_of_week: 1, start_time_local: '10:00:00', end_time_local: '22:00:00', is_available: true },
         ],
       }),
     ).rejects.toThrow();
 
     await waitFor(() =>
       expect(toastMock.mock.calls.some((c) => c[0].variant === 'destructive')).toBe(true),
+    );
+  });
+
+  it('sends start_time_local and no start_time key', async () => {
+    rpcMock.mockResolvedValue({ data: [{ employees_updated: 1, rows_inserted: 7 }], error: null });
+    const { result } = renderHook(() => useBulkSetAvailability(), { wrapper });
+    await result.current.mutateAsync({
+      restaurantId: 'r1',
+      employeeIds: ['e1'],
+      availability: [
+        { day_of_week: 1, start_time_local: '10:00', end_time_local: '22:00', is_available: true },
+      ],
+    });
+    const sent = rpcMock.mock.calls[0][1].p_availability[0];
+    expect(sent.start_time_local).toBe('10:00');
+    expect('start_time' in sent).toBe(false);
+  });
+
+  it('maps a not-null violation on start_time_local to a friendly message', async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'null value in column "start_time_local" violates not-null constraint',
+        code: '23502',
+      },
+    });
+    const { result } = renderHook(() => useBulkSetAvailability(), { wrapper });
+    await expect(
+      result.current.mutateAsync({
+        restaurantId: 'r1',
+        employeeIds: ['e1'],
+        availability: [
+          { day_of_week: 1, start_time_local: '10:00', end_time_local: '22:00', is_available: true },
+        ],
+      }),
+    ).rejects.toThrow();
+    await waitFor(() =>
+      expect(
+        toastMock.mock.calls.some(
+          (c) => c[0].description === 'Each available day needs a start time and an end time.',
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it('maps the trigger error for an incomplete time pair to the same message', async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'employee_availability needs a complete pair of start and end times',
+        code: '23502',
+      },
+    });
+    const { result } = renderHook(() => useBulkSetAvailability(), { wrapper });
+    await expect(
+      result.current.mutateAsync({
+        restaurantId: 'r1',
+        employeeIds: ['e1'],
+        availability: [
+          { day_of_week: 1, start_time_local: '10:00', end_time_local: '22:00', is_available: true },
+        ],
+      }),
+    ).rejects.toThrow();
+    await waitFor(() =>
+      expect(
+        toastMock.mock.calls.some(
+          (c) => c[0].description === 'Each available day needs a start time and an end time.',
+        ),
+      ).toBe(true),
     );
   });
 });

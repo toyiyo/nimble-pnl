@@ -4,8 +4,8 @@ import { useToast } from '@/hooks/use-toast';
 
 export type AvailabilityWindow = {
   day_of_week: number;
-  start_time: string;
-  end_time: string;
+  start_time_local: string;
+  end_time_local: string;
   is_available: boolean;
 };
 
@@ -26,10 +26,18 @@ const ERROR_MESSAGES: Record<string, string> = {
     "One or more employees aren't in this restaurant. Refresh and try again.",
   invalid_day_of_week: 'Invalid day. Please re-open the dialog and try again.',
   is_available_required: 'Availability data is incomplete.',
+  not_null_violation: 'Each available day needs a start time and an end time.',
 };
 
 function friendlyMessage(supabaseError: { message?: string } | null): string {
   if (!supabaseError?.message) return "Couldn't save availability. Try again.";
+  if (
+    supabaseError.message.toLowerCase().includes('violates not-null constraint') ||
+    supabaseError.message.toLowerCase().includes('needs a complete pair of start and end times') ||
+    supabaseError.message.toLowerCase().includes('not_null_violation')
+  ) {
+    return ERROR_MESSAGES.not_null_violation;
+  }
   for (const key of Object.keys(ERROR_MESSAGES)) {
     if (supabaseError.message.toLowerCase().includes(key)) {
       return ERROR_MESSAGES[key];

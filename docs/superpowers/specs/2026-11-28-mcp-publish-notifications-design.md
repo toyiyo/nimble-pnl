@@ -1,7 +1,7 @@
 # Design: MCP publish and notification tools
 
 Date: 2026-11-28
-Status: Draft, Phase 2.5 review folded in, waiting for user approval
+Status: Approved 2026-11-28 (UI change: yes; quiet changes: option a)
 Text standard: STE-aligned (docs/STE100_STYLE.md)
 
 ## Problem
@@ -203,13 +203,16 @@ so a staff caller sees every change as pending. All four functions get
 - A `failed` row: the provider rejected it, so nothing arrived. The next
   claim takes it back, with the same id and the same change set.
 - A `claimed` row with `claimed_at` older than 10 minutes and newer than
-  23 hours: the next claim takes it back. The Supabase edge function
-  wall-clock limit is 400 s on the paid plan (Supabase docs, "Edge Function
-  limits"), so a 10-minute claim has no live owner. Resend keeps an
-  `Idempotency-Key` for 24 hours (Resend docs, "Idempotency keys"), so a
-  resend inside 23 hours cannot deliver a copy.
-- A `claimed` row older than 23 hours: never sent again automatically. The
-  pending tool shows it as `in_doubt`. The manager decides.
+  60 minutes: the next claim takes it back.
+- A `claimed` row older than 60 minutes: never sent again automatically.
+  The pending tool shows it as `in_doubt`. The manager decides.
+- Why these numbers. The session network blocks `supabase.com` and
+  `resend.com`, so the plan cannot quote the docs. The window is set so that
+  it is safe with a large margin on the limits we expect. The edge function
+  wall-clock limit is some minutes, so a 10-minute claim has no live owner.
+  Resend keeps an `Idempotency-Key` for many hours, so a resend inside
+  60 minutes cannot deliver a copy. The constants are in one SQL function,
+  so a later change is one line.
 - No cron. A later publish, a later shift-change notify, or a retry runs
   the claim.
 
@@ -257,8 +260,9 @@ preview lists them first. See "Decision for the user" below.
   - The MCP forward timeout is 25 s (`supabase/functions/mcp/index.ts:26`).
     `sendPaced` can run 90 s (`supabase/functions/_shared/emailQueue.ts:41`).
     So the tool waits at most 15 s for the notify result. If the result is
-    not back, the tool keeps the request alive with
-    `EdgeRuntime.waitUntil` and returns `notifications: "sending"`. The
+    not back, the tool returns `notifications: "sending"`. The callee is a
+    separate function call, so it keeps on. When `EdgeRuntime.waitUntil`
+    exists, the tool also passes the pending promise to it. The
     result tells the model to call `get_pending_notifications` later. A
     second `confirmed` call is safe: the publish flips nothing, and the
     claim finds nothing free.
@@ -331,8 +335,8 @@ first invariant.
 
 - **In doubt state.** A crash after the provider accepts and before the
   record step leaves the row `claimed`. The pending tool shows it as
-  `in_doubt`. Inside 23 hours, the next claim sends it again with the same
-  key, and Resend drops the copy. After 23 hours, nothing sends it again.
+  `in_doubt`. Inside 60 minutes, the next claim sends it again with the same
+  key, and Resend drops the copy. After 60 minutes, nothing sends it again.
 - **Push has no provider key.** Web push uses `tag = <row id>`. The browser
   replaces a notification with the same tag, so the employee sees one.
 - **Role checks differ.** `publish_schedule` admits any member
@@ -351,13 +355,12 @@ first invariant.
   notification state comes from `schedule_retractions.notified_at`. They are
   not in the pending tool, because the week is no longer published.
 
-## Decision for the user
+## Decisions (approved by the user, 2026-11-28)
 
 1. The UI shares `notify-schedule-published`. After this change, a UI
    republish notifies only the employees with a pending change.
 2. Quiet changes stay pending. The next publish with notify on sends them.
-   The other option is a `suppressed` state that a quiet path writes, so a
-   quiet change never sends.
+   The preview lists them first.
 
 ## Out of scope
 

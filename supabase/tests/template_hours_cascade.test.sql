@@ -438,7 +438,10 @@ SELECT is(
 SELECT is(
   (SELECT COUNT(*)::int FROM schedule_change_logs
     WHERE shift_id = '11000000-0000-0000-0000-0000000000a5'
-      AND cascade_batch_id IS NULL),
+      AND cascade_batch_id IS NULL
+      -- The fixture INSERTs a5 as published, so the trigger also writes one
+      -- untagged 'published' row (20261128120200_log_shift_change_published.sql).
+      AND change_type = 'updated'),
   1,
   'log_shift_change writes one additional UNTAGGED row for the published shift'
 );

@@ -49,6 +49,30 @@ export function ymdInTimeZone(instant: Date, timeZone: string): string {
   return `${w.getUTCFullYear()}-${m}-${d}`;
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The ISO 8601 wall clock of `instant` in `timeZone`, with the offset of that
+ * instant. Example: '2026-12-05T23:00:00Z' in America/Chicago gives
+ * '2026-12-05T17:00:00-06:00'. The offset follows DST for each instant.
+ */
+export function localIso(instant: string | Date, timeZone: string): string {
+  const at = new Date(instant);
+  const tz = safeTz(timeZone);
+  const offsetMin = Math.round(tzOffsetMs(at, tz) / 60_000);
+  const w = new Date(at.getTime() + offsetMin * 60_000);
+  const sign = offsetMin < 0 ? '-' : '+';
+  const abs = Math.abs(offsetMin);
+  return `${w.getUTCFullYear()}-${pad2(w.getUTCMonth() + 1)}-${pad2(w.getUTCDate())}` +
+    `T${pad2(w.getUTCHours())}:${pad2(w.getUTCMinutes())}:${pad2(w.getUTCSeconds())}` +
+    `${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+}
+
+/** The local 'HH:MM:SS' time of `instant` in `timeZone`. */
+export function localHms(instant: string | Date, timeZone: string): string {
+  return localIso(instant, timeZone).slice(11, 19);
+}
+
 /**
  * Move a local-field Date by `days` days. A fractional part moves the time of
  * day too (1.5 = 1 day and 12 hours).

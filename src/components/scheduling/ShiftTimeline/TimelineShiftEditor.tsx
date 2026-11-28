@@ -153,7 +153,7 @@ export function TimelineShiftEditor({
   }, [values.employeeId, minutes, dateStr, tz, existingShifts, shift?.id]);
 
   const advisoryMessages = useMemo(() => {
-    const conflictMessages = conflicts.map((c) => formatConflictLine(c, tz));
+    const conflictMessages = conflicts.map((c) => formatConflictLine(c));
     const warningMessages = localWarnings.map((w) => w.message);
     return [...conflictMessages, ...warningMessages];
   }, [conflicts, localWarnings, tz]);

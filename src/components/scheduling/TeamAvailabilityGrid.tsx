@@ -223,7 +223,6 @@ const AvailabilityCell = memo(function AvailabilityCell({
   let ariaLabel = 'No availability set — click to add';
   const { bg: bgClass, text: textClass } = availabilityColorClasses(effective);
 
-
   // Build display for all slots (handles split shifts)
   const availableSlots = effective.slots.filter((s) => s.isAvailable);
   const slotsForDisplay = availableSlots.length > 0 ? availableSlots : effective.slots;

@@ -18,7 +18,7 @@ describe('formatConflictLine – time-off passthrough', () => {
       conflict_type: 'time-off',
       message: 'Employee has approved time-off on 2026-06-23',
     };
-    expect(formatConflictLine(conflict, 'America/Chicago')).toBe(
+    expect(formatConflictLine(conflict)).toBe(
       'Employee has approved time-off on 2026-06-23',
     );
   });
@@ -28,7 +28,7 @@ describe('formatConflictLine – time-off passthrough', () => {
       has_conflict: true,
       conflict_type: 'time-off',
     };
-    expect(formatConflictLine(conflict, 'America/Chicago')).toBe('Time-off conflict');
+    expect(formatConflictLine(conflict)).toBe('Time-off conflict');
   });
 });
 
@@ -41,7 +41,7 @@ describe('formatConflictLine – availability conflict with local window', () =>
       available_start_local: '10:00:00',
       available_end_local: '22:00:00',
     };
-    expect(formatConflictLine(conflict, 'America/Chicago')).toBe(
+    expect(formatConflictLine(conflict)).toBe(
       'Shift on Wed, Dec 16 is outside availability (available 10:00 AM – 10:00 PM)',
     );
   });
@@ -54,7 +54,7 @@ describe('formatConflictLine – availability conflict with local window', () =>
       available_start_local: '17:00:00',
       available_end_local: '00:00:00',
     };
-    expect(formatConflictLine(conflict, 'America/Chicago', new Date(2026, 0, 5))).toContain(
+    expect(formatConflictLine(conflict)).toContain(
       'available 5:00 PM – 12:00 AM',
     );
   });
@@ -67,7 +67,7 @@ describe('formatConflictLine – availability conflict with local window', () =>
       available_start_local: '09:30:00',
       available_end_local: '17:00:00',
     };
-    expect(formatConflictLine(conflict, 'America/Chicago')).toBe(
+    expect(formatConflictLine(conflict)).toBe(
       'Outside availability window (available 9:30 AM – 5:00 PM)',
     );
   });
@@ -82,7 +82,7 @@ describe('formatConflictLine – availability conflict with local window', () =>
       available_start_local: null,
       available_end_local: null,
     };
-    const line = formatConflictLine(conflict, 'America/Chicago');
+    const line = formatConflictLine(conflict);
     expect(line).not.toContain('10:00 AM');
     expect(line).not.toContain('available ');
     expect(line).toContain('Wed, Dec 16');
@@ -96,7 +96,7 @@ describe('formatConflictLine – availability conflict with local window', () =>
       available_start: '16:00:00',
       available_end: '04:00:00',
     };
-    expect(formatConflictLine(conflict, 'America/Chicago')).not.toContain('10:00 AM');
+    expect(formatConflictLine(conflict)).not.toContain('10:00 AM');
   });
 });
 
@@ -107,7 +107,7 @@ describe('formatConflictLine – fallback cases', () => {
       conflict_type: 'recurring',
       message: 'No availability set for this day',
     };
-    const result = formatConflictLine(conflict, 'America/Chicago');
+    const result = formatConflictLine(conflict);
     expect(result).toBe('No availability set for this day');
   });
 
@@ -115,7 +115,7 @@ describe('formatConflictLine – fallback cases', () => {
     const conflict: ConflictCheck = {
       has_conflict: true,
     };
-    expect(formatConflictLine(conflict, 'America/Chicago')).toBe('Scheduling conflict');
+    expect(formatConflictLine(conflict)).toBe('Scheduling conflict');
   });
 
   it('does not throw on a regex-matching but calendar-invalid date', () => {
@@ -129,7 +129,7 @@ describe('formatConflictLine – fallback cases', () => {
     };
     let result = '';
     expect(() => {
-      result = formatConflictLine(conflict, 'America/Chicago');
+      result = formatConflictLine(conflict);
     }).not.toThrow();
     expect(result).toContain('2026-02-31');
   });
@@ -150,7 +150,7 @@ describe('formatConflictLine – 2-arg caller contract (ShiftDialog / Availabili
       conflict_type: 'recurring',
       message: 'No availability set for this day',
     };
-    const result = formatConflictLine(conflict, 'America/Chicago');
+    const result = formatConflictLine(conflict);
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
   });
@@ -161,7 +161,7 @@ describe('formatConflictLine – 2-arg caller contract (ShiftDialog / Availabili
       conflict_type: 'recurring',
       message: 'Employee is not available on this day of the week',
     };
-    expect(formatConflictLine(conflict, 'America/New_York')).toBe(
+    expect(formatConflictLine(conflict)).toBe(
       'Employee is not available on this day of the week',
     );
   });

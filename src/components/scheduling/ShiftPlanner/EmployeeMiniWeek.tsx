@@ -52,7 +52,6 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
   weekDays,
   employeeShifts,
   availabilityByDow,
-  timezone,
   dates,
   size = 'sm',
 }: Readonly<EmployeeMiniWeekProps>) {
@@ -71,7 +70,7 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
   const trackHeight = size === 'md' ? 32 : 28;
 
   const weekSummary = useMemo(() => {
-    if (!dates || !timezone || !availabilityByDow) return undefined;
+    if (!dates || !availabilityByDow) return undefined;
     return weekDays
       .map((day, i) => {
         // Optional-chained the same way the grid render below (`dates?.[i]?.getDay()`)
@@ -83,7 +82,7 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
         return `${dow} ${eff && d ? availabilityLabel(eff) : 'No availability set'}`;
       })
       .join('; ');
-  }, [weekDays, dates, timezone, availabilityByDow]);
+  }, [weekDays, dates, availabilityByDow]);
 
   const grid = (
     <div

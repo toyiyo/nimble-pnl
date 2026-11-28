@@ -90,7 +90,6 @@ function availabilityConflict(
     new Date(shift.start_time),
     new Date(shift.end_time),
     tz,
-    localDate,
     next,
   );
   if (!outside) return null;
@@ -138,7 +137,7 @@ export function buildShiftConflictIndex(
     if (conflicts.length > 0) {
       index.set(
         shift.id,
-        conflicts.map((conflict) => formatConflictLine(conflict, timezone)),
+        conflicts.map((conflict) => formatConflictLine(conflict)),
       );
     }
   }

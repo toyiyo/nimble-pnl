@@ -443,7 +443,7 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
                   return (
                     <div key={conflictKey} className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
                       <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-                      <p className="text-[13px] text-foreground">{formatConflictLine(conflict, timezone)}</p>
+                      <p className="text-[13px] text-foreground">{formatConflictLine(conflict)}</p>
                     </div>
                   );
                 })}

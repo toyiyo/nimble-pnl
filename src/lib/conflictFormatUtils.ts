@@ -36,11 +36,7 @@ function extractDayLabel(message: string | undefined): string | null {
   }
 }
 
-export function formatConflictLine(
-  conflict: ConflictCheck,
-  _timezone?: string,
-  _referenceDate?: Date,
-): string {
+export function formatConflictLine(conflict: ConflictCheck): string {
   if (conflict.conflict_type === 'time-off') {
     return conflict.message || 'Time-off conflict';
   }

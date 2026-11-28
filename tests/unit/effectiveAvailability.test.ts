@@ -189,7 +189,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
         new Date('2027-07-13T21:00:00Z'),
         new Date('2027-07-14T01:00:00Z'),
         'America/New_York',
-        new Date(2027, 6, 13),
       ),
     ).toBe(false); // 5-9 PM EDT
   });
@@ -201,7 +200,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
         new Date('2027-07-13T15:00:00Z'),
         new Date('2027-07-13T17:00:00Z'),
         'America/New_York',
-        new Date(2027, 6, 13),
       ),
     ).toBe(true); // 11 AM-1 PM EDT
   });
@@ -223,7 +221,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
           new Date('2027-07-17T05:00:00Z'), // 1:00 AM EDT Saturday
           new Date('2027-07-17T05:30:00Z'), // 1:30 AM EDT Saturday
           'America/New_York',
-          new Date(2027, 6, 17), // Saturday
         ),
       ).toBe(false);
     });
@@ -236,7 +233,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
           new Date('2027-07-17T07:00:00Z'), // 3:00 AM EDT Saturday — past the 2:00 AM window end
           new Date('2027-07-17T08:00:00Z'),
           'America/New_York',
-          new Date(2027, 6, 17),
         ),
       ).toBe(true);
     });
@@ -249,7 +245,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
           new Date('2027-07-17T15:00:00Z'),
           new Date('2027-07-17T16:00:00Z'),
           'America/New_York',
-          new Date(2027, 6, 17),
         ),
       ).toBe(false);
     });
@@ -267,7 +262,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
         new Date('2028-03-12T07:15:00Z'), // 3:15 AM EDT Sunday, past the 3:00 AM end
         new Date('2028-03-12T07:30:00Z'),
         'America/New_York',
-        new Date(2028, 2, 12),
       ),
     ).toBe(true);
   });
@@ -290,7 +284,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
           new Date('2027-07-16T22:00:00Z'), // Fri 10:00 PM UTC
           new Date('2027-07-17T01:00:00Z'), // Sat 1:00 AM UTC
           'UTC',
-          new Date(2027, 6, 16), // Friday
           saturdayUnavailableException,
         ),
       ).toBe(true);
@@ -304,7 +297,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
           new Date('2027-07-16T19:00:00Z'), // Fri 7:00 PM UTC
           new Date('2027-07-16T20:00:00Z'), // Fri 8:00 PM UTC
           'UTC',
-          new Date(2027, 6, 16),
         ),
       ).toBe(false);
     });
@@ -318,7 +310,6 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
           new Date('2027-07-16T22:00:00Z'), // Fri 10:00 PM UTC
           new Date('2027-07-17T01:00:00Z'), // Sat 1:00 AM UTC
           'UTC',
-          new Date(2027, 6, 16),
           saturdayAvailable,
         ),
       ).toBe(false);
@@ -332,14 +323,13 @@ describe('local-time slots and the RPC rules', () => {
   const win = (s: string, e: string): EffectiveAvailability => avail(true, s, e);
   const off = avail(false, null, null);
   const notSet = avail(false, null, null, 'not-set');
-  const noop = new Date(2026, 6, 13);
   const run = (
     today: EffectiveAvailability,
     prev: EffectiveAvailability | undefined,
     next: EffectiveAvailability | undefined,
     startUtc: string,
     endUtc: string,
-  ) => shiftOutsideAvailability(today, prev, new Date(startUtc), new Date(endUtc), 'UTC', noop, next);
+  ) => shiftOutsideAvailability(today, prev, new Date(startUtc), new Date(endUtc), 'UTC', next);
 
   it('recurring slot uses the local columns', () => {
     for (const week of [wk, new Date(2026, 11, 14)]) {
@@ -420,10 +410,36 @@ describe('local-time slots and the RPC rules', () => {
     expect(run(off, sun, undefined, '2026-07-13T03:00:00Z', '2026-07-13T05:00:00Z')).toBe(true);
   });
 
+  // RPC block 3a: an exception decides the day alone. Carry-over is ignored.
+  describe('exception days ignore overnight carry-over', () => {
+    const exceptionOff = avail(false, null, null, 'exception');
+    const exceptionOn = avail(true, '08:00:00', '12:00:00', 'exception');
+    const fridayOvernight = avail(true, '18:00:00', '02:00:00');
+
+    it('flags a shift tail on a next-day unavailable exception when today spills over', () => {
+      // Fri 22:00 to Sat 01:00 UTC. Friday 18:00-02:00 covers it, Saturday exception says off.
+      expect(
+        run(fridayOvernight, undefined, exceptionOff, '2026-07-17T22:00:00Z', '2026-07-18T01:00:00Z'),
+      ).toBe(true);
+    });
+
+    it('flags a shift on an unavailable exception day when yesterday spills over', () => {
+      expect(
+        run(exceptionOff, fridayOvernight, undefined, '2026-07-18T00:30:00Z', '2026-07-18T01:30:00Z'),
+      ).toBe(true);
+    });
+
+    it('ignores yesterday spill on an available exception day', () => {
+      expect(
+        run(exceptionOn, fridayOvernight, undefined, '2026-07-18T00:30:00Z', '2026-07-18T01:30:00Z'),
+      ).toBe(true);
+    });
+  });
+
   it('10:00-22:00 window gives no conflict in July and December', () => {
     const w = win('10:00:00', '22:00:00');
     const chiShift = (s: string, e: string) =>
-      shiftOutsideAvailability(w, undefined, new Date(s), new Date(e), chi, new Date(2026, 6, 15));
+      shiftOutsideAvailability(w, undefined, new Date(s), new Date(e), chi);
     expect(chiShift('2026-07-15T15:00:00Z', '2026-07-16T03:00:00Z')).toBe(false); // CDT
     expect(chiShift('2026-12-16T16:00:00Z', '2026-12-17T04:00:00Z')).toBe(false); // CST
   });
@@ -539,4 +555,5 @@ describe('weekAvailabilityChipClasses', () => {
   it('returns null for unset (no chip rendered)', () => {
     expect(weekAvailabilityChipClasses('unset')).toBeNull();
   });
+
 });

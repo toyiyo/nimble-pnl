@@ -239,10 +239,20 @@ export function availabilityLabel(effective: EffectiveAvailability): string {
   return `Available ${ranges.join(' + ')}`;
 }
 
+const MINUTES_PER_DAY = 1440;
+
 const toMin = (t: string): number => {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 };
+
+/** Slots of one local day, placed on the shift axis by `offsetMin` from the shift's first day. */
+interface SlotGroup {
+  slots: EffectiveSlot[];
+  offsetMin: number;
+}
+
+type Window = readonly [start: number, end: number];
 
 /**
  * Slots from a previous local day that spill into the next day's early hours:
@@ -257,13 +267,50 @@ function overnightPrevSlots(slots: EffectiveSlot[]): EffectiveSlot[] {
 }
 
 /**
+ * Spill slots a day gives to the NEXT day. Only recurring rows carry over.
+ * The RPC reads carry-over from `employee_availability` only, never from an exception.
+ */
+function spillSlots(day: EffectiveAvailability | undefined): EffectiveSlot[] {
+  return day?.type === 'recurring' ? overnightPrevSlots(day.slots) : [];
+}
+
+/** Turn slot groups into [start, end] minute windows on the shift axis. */
+function buildWindows(groups: SlotGroup[]): Window[] {
+  const windows: Window[] = [];
+  for (const { slots, offsetMin } of groups) {
+    for (const s of slots) {
+      if (!s.isAvailable || !s.startTime || !s.endTime) continue;
+      const ws = toMin(s.startTime) + offsetMin;
+      let we = toMin(s.endTime) + offsetMin;
+      if (we <= ws) we += MINUTES_PER_DAY; // overnight local window (00:00 end gives 1440)
+      windows.push([ws, we]);
+    }
+  }
+  return windows;
+}
+
+/**
+ * True when the part [a, b] is not covered by any window. With no window at all,
+ * the part is outside only when the day is marked off (no data means unknown).
+ */
+function partOutside(a: number, b: number, windows: Window[], dayIsOff: boolean): boolean {
+  if (windows.some(([ws, we]) => a >= ws && b <= we)) return false;
+  return windows.length > 0 || dayIsOff;
+}
+
+function isDayOff(day: EffectiveAvailability | undefined): boolean {
+  const slot = day?.slots[0];
+  return !!slot && !slot.isAvailable;
+}
+
+/**
  * True when [shiftStart, shiftEnd] (instants) falls outside the employee's
  * available window(s). Client-side mirror of the `check_availability_conflict`
  * RPC: slot times are restaurant-local; `timezone` converts only the shift
  * instants. The shift is split by local date and each part is checked alone.
  * A part that ends exactly at 00:00 has no next-day part.
  * `prevDay` and `nextDay` are the neighbour local days' availability.
- * `_date` is kept for call-site compatibility and is not used.
+ * A day with an exception ignores carry-over from the day before, as the RPC does.
  */
 export function shiftOutsideAvailability(
   today: EffectiveAvailability,
@@ -271,7 +318,6 @@ export function shiftOutsideAvailability(
   shiftStart: Date,
   shiftEnd: Date,
   timezone: string,
-  _date: Date,
   nextDay?: EffectiveAvailability,
 ): boolean {
   // Convert the shift INSTANTS to restaurant-local wall clock (NOT host TZ — lesson 2026-05-10).
@@ -283,52 +329,23 @@ export function shiftOutsideAvailability(
       new Date(zStart.getFullYear(), zStart.getMonth(), zStart.getDate()).getTime()) /
       86_400_000,
   );
-  const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * 1440;
-
-  const buildWindows = (groups: Array<[EffectiveSlot[], number]>): Array<[number, number]> => {
-    const windows: Array<[number, number]> = [];
-    for (const [slots, offsetMin] of groups) {
-      for (const s of slots) {
-        if (!s.isAvailable || !s.startTime || !s.endTime) continue;
-        const ws = toMin(s.startTime) + offsetMin;
-        let we = toMin(s.endTime) + offsetMin;
-        if (we <= ws) we += 1440; // overnight local window (00:00 end gives 1440)
-        windows.push([ws, we]);
-      }
-    }
-    return windows;
-  };
-
-  const partOutside = (
-    a: number,
-    b: number,
-    windows: Array<[number, number]>,
-    dayIsOff: boolean,
-  ): boolean => {
-    if (windows.some(([ws, we]) => a >= ws && b <= we)) return false;
-    if (windows.length > 0) return true;
-    return dayIsOff;
-  };
-
-  const spansNextDay = endMin > 1440;
-  const isOff = (d: EffectiveAvailability | undefined) => {
-    const slot = d?.slots[0];
-    return !!slot && !slot.isAvailable;
-  };
-  const todaySpill = overnightPrevSlots(today.slots);
+  const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * MINUTES_PER_DAY;
 
   const part1 = buildWindows([
-    [today.slots, 0],
-    [prevDay ? overnightPrevSlots(prevDay.slots) : [], -1440],
+    { slots: today.slots, offsetMin: 0 },
+    {
+      slots: today.type === 'exception' ? [] : spillSlots(prevDay),
+      offsetMin: -MINUTES_PER_DAY,
+    },
   ]);
-  if (partOutside(startMin, Math.min(endMin, 1440), part1, isOff(today))) return true;
+  if (partOutside(startMin, Math.min(endMin, MINUTES_PER_DAY), part1, isDayOff(today))) return true;
 
-  if (spansNextDay) {
+  if (endMin > MINUTES_PER_DAY) {
     const part2 = buildWindows([
-      [nextDay ? nextDay.slots : [], 1440],
-      [todaySpill, 0],
+      { slots: nextDay ? nextDay.slots : [], offsetMin: MINUTES_PER_DAY },
+      { slots: nextDay?.type === 'exception' ? [] : spillSlots(today), offsetMin: 0 },
     ]);
-    if (partOutside(1440, endMin, part2, isOff(nextDay))) return true;
+    if (partOutside(MINUTES_PER_DAY, endMin, part2, isDayOff(nextDay))) return true;
   }
   return false;
 }

@@ -30,7 +30,7 @@ export function AvailabilityConflictDialog({
 
   const allIssues: string[] = [
     ...data.warnings.map((w) => w.message),
-    ...data.conflicts.map((c) => formatConflictLine(c, timezone)),
+    ...data.conflicts.map((c) => formatConflictLine(c)),
   ];
 
   return (

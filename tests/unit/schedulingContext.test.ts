@@ -329,7 +329,12 @@ describe('buildConflictList', () => {
     ]);
     const out = buildConflictList([shift('s1', 'a')], idx, 'UTC');
     expect(out).toEqual([
-      { shift_id: 's1', employee_id: 'a', date: '2026-10-05', type: 'time_off', rule: 'grid', source: 'request', status: 'approved', message: 'off' },
+      {
+        shift_id: 's1', employee_id: 'a', date: '2026-10-05',
+        start_time_local: '2026-10-05T16:00:00+00:00', end_time_local: '2026-10-06T00:00:00+00:00', tz: 'UTC',
+        type: 'time_off', rule: 'grid', source: 'request', status: 'approved', message: 'off',
+        position_mismatch: false,
+      },
     ]);
   });
 
@@ -342,6 +347,38 @@ describe('buildConflictList', () => {
     const [e] = buildConflictList([shift('s1', 'a')], idx, 'UTC');
     expect(e.rule).toBe('editor');
     expect(e).not.toHaveProperty('source');
+  });
+});
+
+describe('buildConflictList local time and position flags', () => {
+  const idx = new Map([['s1', [{ type: 'overlap' as const, rule: 'editor' as const, message: 'overlap' }]]]);
+  const s = shift('s1', 'a', {
+    start_time: '2026-12-05T23:00:00Z',
+    end_time: '2026-12-06T05:00:00Z',
+    position: 'Bartender',
+    employee: { area: null, position: 'Server' },
+  });
+
+  it('adds the local times and the tz', () => {
+    const [e] = buildConflictList([s], idx, 'America/Chicago');
+    expect(e).toMatchObject({
+      date: '2026-12-05',
+      start_time_local: '2026-12-05T17:00:00-06:00',
+      end_time_local: '2026-12-05T23:00:00-06:00',
+      tz: 'America/Chicago',
+    });
+  });
+
+  it('flags a position mismatch with both values', () => {
+    const [e] = buildConflictList([s], idx, 'America/Chicago');
+    expect(e).toMatchObject({ position_mismatch: true, shift_position: 'Bartender', employee_position: 'Server' });
+  });
+
+  it('gives position_mismatch false and no values when the positions agree', () => {
+    const same = { ...s, position: 'server' };
+    const [e] = buildConflictList([same], idx, 'America/Chicago');
+    expect(e.position_mismatch).toBe(false);
+    expect(e).not.toHaveProperty('employee_position');
   });
 });
 

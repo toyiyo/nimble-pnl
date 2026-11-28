@@ -7,7 +7,7 @@
 //   - src/lib/templateAreaMatch.ts findAreaAwareTemplate (time, position, day,
 //     area; a same-area template wins)
 // tests/unit/coverageParity.test.ts fails if the two rules drift apart.
-import { localHms, ymdInTimeZone } from "./restaurantDate.ts";
+import { localHms, localIso, ymdInTimeZone } from "./restaurantDate.ts";
 
 export interface MatchShift {
   employee_id: string;
@@ -77,6 +77,32 @@ export function slotKeyForShift(
 
 function norm(p: string | null | undefined): string {
   return (p ?? "").trim().toLowerCase();
+}
+
+/** The local wall-clock times of a shift and its IANA zone. The UTC times stay as they are. */
+export function localTimeFields(startIso: string, endIso: string, tz: string): {
+  start_time_local: string;
+  end_time_local: string;
+  tz: string;
+} {
+  return { start_time_local: localIso(startIso, tz), end_time_local: localIso(endIso, tz), tz };
+}
+
+export type PositionFields =
+  | { position_mismatch: false }
+  | { position_mismatch: true; shift_position: string; employee_position: string };
+
+/**
+ * position_mismatch for a shift row. The two values appear only on a mismatch,
+ * so the rows stay small.
+ */
+export function positionFields(
+  shiftPosition: string | null | undefined,
+  employeePosition: string | null | undefined,
+): PositionFields {
+  return positionMismatch(shiftPosition, employeePosition)
+    ? { position_mismatch: true, shift_position: shiftPosition!, employee_position: employeePosition! }
+    : { position_mismatch: false };
 }
 
 /**

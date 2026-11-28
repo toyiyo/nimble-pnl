@@ -8,7 +8,7 @@ import {
 } from "./availability-tz.ts";
 import { computeHourBudget } from "./schedule-prompt-builder.ts";
 import type { ShiftConflict } from "./shiftConflictFlags.ts";
-import { slotKeyForShift } from "./templateShiftMatch.ts";
+import { localTimeFields, positionFields, slotKeyForShift, type PositionFields } from "./templateShiftMatch.ts";
 
 export interface Hidden {
   hidden: true;
@@ -251,16 +251,20 @@ export function buildAvailability(
   });
 }
 
-export interface ConflictListEntry {
+export type ConflictListEntry = {
   shift_id: string;
   employee_id: string;
   date: string;
+  /** Wall clock in the restaurant zone, with the offset. */
+  start_time_local: string;
+  end_time_local: string;
+  tz: string;
   type: ShiftConflict["type"];
   rule: ShiftConflict["rule"];
   source?: string;
   status?: string;
   message: string;
-}
+} & PositionFields;
 
 // The cache lives for one isolate. It clears when full, so memory stays bounded.
 const LOCAL_DATE_CACHE_MAX = 10_000;
@@ -281,7 +285,7 @@ export function localDate(iso: string, tz: string): string {
 }
 
 export function buildConflictList(
-  shifts: Pick<ShiftRow, "id" | "employee_id" | "start_time">[],
+  shifts: Pick<ShiftRow, "id" | "employee_id" | "start_time" | "end_time" | "position" | "employee">[],
   index: Map<string, ShiftConflict[]>,
   tz: string,
 ): ConflictListEntry[] {
@@ -292,9 +296,11 @@ export function buildConflictList(
         shift_id: s.id,
         employee_id: s.employee_id,
         date: localDate(s.start_time, tz),
+        ...localTimeFields(s.start_time, s.end_time, tz),
         type: c.type,
         rule: c.rule,
         message: c.message,
+        ...positionFields(s.position, s.employee?.position),
       };
       if (c.source) e.source = c.source;
       if (c.status) e.status = c.status;

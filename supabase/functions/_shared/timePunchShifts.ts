@@ -17,6 +17,7 @@
 
 import { Employee, CompensationType, TimePunch, parseWorkPeriods, getEmployeeSnapshotForDate } from './laborCalculations.ts';
 import { ymdInTimeZone } from './restaurantDate.ts';
+import { localTimeFields } from './templateShiftMatch.ts';
 
 export interface TimePunchShift {
   employee_id: string;
@@ -25,6 +26,10 @@ export interface TimePunchShift {
   compensation_type: CompensationType;
   start_time: string;
   end_time: string;
+  /** Wall clock in the restaurant zone, with the offset. */
+  start_time_local: string;
+  end_time_local: string;
+  tz: string;
   hours: number;
   cost_cents: number | null;
   date: string;
@@ -88,6 +93,7 @@ export function buildTimePunchShifts(
         compensation_type: snapshot.compensation_type,
         start_time: period.startTime.toISOString(),
         end_time: period.endTime.toISOString(),
+        ...localTimeFields(period.startTime.toISOString(), period.endTime.toISOString(), timeZone),
         hours: Number(period.hours.toFixed(4)),
         cost_cents,
         date: day,

@@ -10,6 +10,7 @@
  */
 
 import { addDays, calculateDateRange, restaurantWallClock, ymdInTimeZone, toLocalYMD, PeriodType } from './restaurantDate.ts';
+import { localTimeFields, positionFields, type PositionFields } from './templateShiftMatch.ts';
 
 export interface ScheduleShiftInput {
   id: string;
@@ -21,15 +22,20 @@ export interface ScheduleShiftInput {
   conflicts?: unknown[];
 }
 
-export interface ScheduleShiftRow {
+export type ScheduleShiftRow = {
   id: string;
   employee_name: string;
+  /** The shift position, else the employee position. Kept for current callers. */
   position: string | null;
   start_time: string;
   end_time: string;
+  /** Wall clock in the restaurant zone, with the offset. */
+  start_time_local: string;
+  end_time_local: string;
+  tz: string;
   status: string;
   conflicts?: unknown[];
-}
+} & PositionFields;
 
 /**
  * Group shifts by their restaurant calendar day in `timeZone`. Keeps each
@@ -51,7 +57,9 @@ export function groupShiftsByRestaurantDay(
       position: shift.position || shift.employee?.position || null,
       start_time: shift.start_time,
       end_time: shift.end_time,
+      ...localTimeFields(shift.start_time, shift.end_time, timeZone),
       status: shift.status,
+      ...positionFields(shift.position, shift.employee?.position),
       ...(shift.conflicts ? { conflicts: shift.conflicts } : {}),
     });
   }

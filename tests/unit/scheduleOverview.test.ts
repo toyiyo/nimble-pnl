@@ -76,7 +76,11 @@ describe('groupShiftsByRestaurantDay', () => {
         position: 'Server',
         start_time: '2026-09-26T02:00:00Z',
         end_time: '2026-09-26T06:00:00Z',
+        start_time_local: '2026-09-25T21:00:00-05:00',
+        end_time_local: '2026-09-26T01:00:00-05:00',
+        tz: 'America/Chicago',
         status: 'published',
+        position_mismatch: false,
       },
       {
         id: 's4',
@@ -84,7 +88,11 @@ describe('groupShiftsByRestaurantDay', () => {
         position: 'Host',
         start_time: '2026-09-26T04:00:00Z',
         end_time: '2026-09-26T08:00:00Z',
+        start_time_local: '2026-09-25T23:00:00-05:00',
+        end_time_local: '2026-09-26T03:00:00-05:00',
+        tz: 'America/Chicago',
         status: 'draft',
+        position_mismatch: false,
       },
     ]);
   });
@@ -203,5 +211,51 @@ describe('scheduledCostInputs', () => {
     expect(breakdown.hourly.hours).toBeCloseTo(4, 6);
     expect(breakdown.hourly.cost).toBeCloseTo(60, 6);
     expect(breakdown.salary.daysScheduled).toBe(8);
+  });
+});
+
+describe('groupShiftsByRestaurantDay local time and position flags', () => {
+  const base = {
+    id: 's1',
+    start_time: '2026-12-05T23:00:00Z',
+    end_time: '2026-12-06T05:00:00Z',
+    status: 'scheduled',
+  };
+
+  it('adds the local times and the tz to each row, and keeps the UTC times', () => {
+    const byDate = groupShiftsByRestaurantDay(
+      [{ ...base, position: 'Server', employee: { name: 'Ana', position: 'Server' } }],
+      'America/Chicago',
+    );
+    expect(byDate['2026-12-05'][0]).toMatchObject({
+      start_time: '2026-12-05T23:00:00Z',
+      end_time: '2026-12-06T05:00:00Z',
+      start_time_local: '2026-12-05T17:00:00-06:00',
+      end_time_local: '2026-12-05T23:00:00-06:00',
+      tz: 'America/Chicago',
+      position_mismatch: false,
+    });
+    expect(byDate['2026-12-05'][0]).not.toHaveProperty('shift_position');
+  });
+
+  it('flags a shift position that differs from the employee position, with both values', () => {
+    const byDate = groupShiftsByRestaurantDay(
+      [{ ...base, position: 'Bartender', employee: { name: 'Ana', position: 'Server' } }],
+      'America/Chicago',
+    );
+    expect(byDate['2026-12-05'][0]).toMatchObject({
+      position: 'Bartender',
+      position_mismatch: true,
+      shift_position: 'Bartender',
+      employee_position: 'Server',
+    });
+  });
+
+  it('does not flag a shift with no position, and keeps the employee position fallback', () => {
+    const byDate = groupShiftsByRestaurantDay(
+      [{ ...base, position: null, employee: { name: 'Ana', position: 'Server' } }],
+      'America/Chicago',
+    );
+    expect(byDate['2026-12-05'][0]).toMatchObject({ position: 'Server', position_mismatch: false });
   });
 });

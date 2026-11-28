@@ -198,9 +198,29 @@ describe('buildTimePunchShifts', () => {
       compensation_type: 'hourly',
       start_time: '2026-09-26T02:00:00.000Z',
       end_time: '2026-09-26T08:00:00.000Z',
+      start_time_local: '2026-09-25T21:00:00-05:00',
+      end_time_local: '2026-09-26T03:00:00-05:00',
+      tz: 'America/Chicago',
       hours: 6,
       cost_cents: 9000,
       date: '2026-09-25',
+    });
+  });
+});
+
+describe('buildTimePunchShifts local time', () => {
+  it('adds the local times and the tz to each row', () => {
+    const punches = [
+      punch('p1', 'e1', '2026-12-05T23:00:00Z', 'clock_in'),
+      punch('p2', 'e1', '2026-12-06T05:00:00Z', 'clock_out'),
+    ];
+    const bounds = restaurantDayBounds('2026-12-05', '2026-12-05', TZ);
+    const [row] = buildTimePunchShifts([hourlyEmployee()], punches, bounds, TZ, 0);
+    expect(row).toMatchObject({
+      start_time: '2026-12-05T23:00:00.000Z',
+      start_time_local: '2026-12-05T17:00:00-06:00',
+      end_time_local: '2026-12-05T23:00:00-06:00',
+      tz: TZ,
     });
   });
 });

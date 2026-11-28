@@ -11,29 +11,39 @@ design does not name. Commit each task with explicit paths only.
 
 1. Write `supabase/tests/get_slot_conflicts.test.sql` (design §5.1).
    Cases: approved time off, pending time off, recurring unavailable day,
-   slot outside the availability window, no conflict, inactive employee
-   skipped, other restaurant skipped, bad window returns 0 rows, `anon` has
-   no EXECUTE.
+   slot outside the availability window, no conflict (empty array),
+   `has_recurring_availability` true and false, inactive employee skipped,
+   other restaurant skipped, `p_end <= p_start` raises, a 26 h window
+   raises, `anon` has no EXECUTE.
 2. Run `npm run test:db`. Expect a failure.
 3. Write `supabase/migrations/20261128120000_get_slot_conflicts.sql`.
 4. Run `npm run db:reset` and `npm run test:db`. Expect a pass.
+5. Seed 500 employees on the local database and run
+   `EXPLAIN (ANALYZE, BUFFERS)` for an overnight slot. Write the time in
+   `progress.md` for the PR body. If local Supabase cannot run, write that.
 
 ## Task 2. Pure helpers: slot warnings, week hours, streak
 
+0. Export `paidShiftHours(s)` from `schedulingContext.ts` and call it in
+   `buildRoster`. Add a unit test. `tests/unit/getSchedulingContext.test.ts`
+   must stay green.
+
 1. Write `tests/unit/findCoverage.test.ts` for `slotWarnings`,
    `weekHours` and `consecutiveDays` (design §5.3).
-   Include: short rest before and after the slot, overlap, overnight slot
-   against a next-day morning shift, cancelled shifts skipped, breaks
-   subtracted, streak gap, streak across the week edge.
+   Include: short rest before and after the slot, overlap (one reason, not
+   two), overnight slot against a next-day morning shift, cancelled shifts
+   skipped, breaks subtracted, streak gap, streak across the week edge.
 2. Write `supabase/functions/_shared/findCoverage.ts`. Import
-   `findShiftWarnings` and `MIN_REST_HOURS` from `shiftWarnings.ts`. No
-   Deno globals, no I/O.
+   `findShiftWarnings` and `MIN_REST_HOURS` from `shiftWarnings.ts`,
+   `longestConsecutiveRun` from `schedule-validator.ts`, and
+   `paidShiftHours` from `schedulingContext.ts`. No Deno globals, no I/O.
 
 ## Task 3. `rankCoverage`: rules and rank order
 
 1. Add tests: each HARD reason (`overlap`, `time_off_approved`,
    `availability`), more than one reason, each SOFT flag
-   (`short_rest`, `time_off_pending`, `over_hour_cap`), each rank key in
+   (`short_rest`, `time_off_pending`, `over_hour_cap`,
+   `over_consecutive_days`), each rank key in
    design §4.3, one mixed list, local times and `tz` in the output.
 2. Write `rankCoverage` in `findCoverage.ts`. Use `computeHourBudget`
    for `max_weekly_hours`.
@@ -41,9 +51,10 @@ design does not name. Commit each task with explicit paths only.
 ## Task 4. Loader `mcpFindCoverageTool.ts`
 
 1. Write `tests/unit/mcpFindCoverageTool.test.ts` with a mock client.
-   Cases: bad `date`, bad `start`, bad `end`, bad `limit`, overnight slot
-   instants, DST day, RPC error, query error, data limits at cap, text-size
-   trimming.
+   Cases: bad `date`, `24:00`, `25:00`, `end == start`, bad `limit`,
+   overnight slot instants, fall-back DST night (9 h), spring-forward start,
+   RPC error, RPC at 1000 rows, near shifts at 1000 rows (error), wide
+   shifts at the page cap (`data_limits`), text-size trim.
 2. Write `supabase/functions/_shared/mcpFindCoverageTool.ts` (design §5.2).
 
 ## Task 5. Register the tool

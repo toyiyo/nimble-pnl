@@ -31,17 +31,6 @@ function getTimezoneOffsetString(): string {
   return `${sign}${hours}:${minutes}`;
 }
 
-/**
- * Convert a local time on a specific date to a UTC HH:MM:SS string.
- * Using a specific date ensures DST is accounted for correctly.
- */
-function localTimeToUTCOnDate(localTime: string, date: Date): string {
-  const [h, m] = localTime.split(':').map(Number);
-  const d = new Date(date);
-  d.setHours(h, m, 0, 0);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:00`;
-}
-
 /** Milliseconds `tz` is ahead of UTC at `instant`. */
 function zoneOffsetMs(instant: Date, tz: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -74,12 +63,6 @@ function zonedWallClockToInstant(dateStr: string, timeHHMM: string, tz: string):
   let instant = naiveUtc;
   for (let i = 0; i < 2; i++) instant = naiveUtc - zoneOffsetMs(new Date(instant), tz);
   return new Date(instant);
-}
-
-/** A restaurant-local time-of-day, as the UTC "HH:MM:00" an availability row stores. */
-function zonedTimeToUTCTimeOfDay(dateStr: string, timeHHMM: string, tz: string): string {
-  const d = zonedWallClockToInstant(dateStr, timeHHMM, tz);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:00`;
 }
 
 /** Pins `restaurants.timezone` so the zone under test is a fixed quantity, not a DB default. */
@@ -372,14 +355,15 @@ test.describe('Scheduling Conflict Enhancements', () => {
 
     // Seed availability: Alice available 9 AM - 5 PM local time on Monday
     // Use the actual Monday date for DST-correct UTC conversion
+    await setRestaurantTimezone(page, restaurantId, 'America/Chicago');
     await page.evaluate(
       ({ rows, restId }: any) => (window as any).__insertAvailability(rows, restId),
       {
         rows: [{
           employee_id: alice.id,
           day_of_week: dow,
-          start_time: localTimeToUTCOnDate('09:00', monday),
-          end_time: localTimeToUTCOnDate('17:00', monday),
+          start_time_local: '09:00:00',
+          end_time_local: '17:00:00',
           is_available: true,
         }],
         restId: restaurantId,
@@ -456,14 +440,15 @@ test.describe('Scheduling Conflict Enhancements', () => {
     const dow = monday.getDay();
 
     // Alice available 9 AM - 1 PM local on Monday (short window)
+    await setRestaurantTimezone(page, restaurantId, 'America/Chicago');
     await page.evaluate(
       ({ rows, restId }: any) => (window as any).__insertAvailability(rows, restId),
       {
         rows: [{
           employee_id: alice.id,
           day_of_week: dow,
-          start_time: localTimeToUTCOnDate('09:00', monday),
-          end_time: localTimeToUTCOnDate('13:00', monday),
+          start_time_local: '09:00:00',
+          end_time_local: '13:00:00',
           is_available: true,
         }],
         restId: restaurantId,
@@ -500,11 +485,12 @@ test.describe('Scheduling Conflict Enhancements', () => {
     const availabilityRows = [0, 1, 2, 3, 4, 5, 6].map(dow => ({
       employee_id: alice.id,
       day_of_week: dow,
-      start_time: localTimeToUTCOnDate('17:00', monday),
-      end_time: localTimeToUTCOnDate('22:00', monday),
+      start_time_local: '17:00:00',
+      end_time_local: '22:00:00',
       is_available: true,
     }));
 
+    await setRestaurantTimezone(page, restaurantId, 'America/Chicago');
     await page.evaluate(
       ({ rows, restId }: any) => (window as any).__insertAvailability(rows, restId),
       { rows: availabilityRows, restId: restaurantId },
@@ -538,14 +524,15 @@ test.describe('Scheduling Conflict Enhancements', () => {
     const dow = monday.getDay();
 
     // Alice only available 5 PM - 10 PM on Monday
+    await setRestaurantTimezone(page, restaurantId, 'America/Chicago');
     await page.evaluate(
       ({ rows, restId }: any) => (window as any).__insertAvailability(rows, restId),
       {
         rows: [{
           employee_id: alice.id,
           day_of_week: dow,
-          start_time: localTimeToUTCOnDate('17:00', monday),
-          end_time: localTimeToUTCOnDate('22:00', monday),
+          start_time_local: '17:00:00',
+          end_time_local: '22:00:00',
           is_available: true,
         }],
         restId: restaurantId,
@@ -617,8 +604,8 @@ test.describe('Scheduling Conflict Enhancements', () => {
         rows: [{
           employee_id: alice.id,
           day_of_week: dow,
-          start_time: zonedTimeToUTCTimeOfDay(monStr, '08:00', RESTAURANT_TZ),
-          end_time: zonedTimeToUTCTimeOfDay(monStr, '23:00', RESTAURANT_TZ),
+          start_time_local: '08:00:00',
+          end_time_local: '23:00:00',
           is_available: true,
         }],
         restId: restaurantId,

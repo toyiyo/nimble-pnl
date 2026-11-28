@@ -233,7 +233,11 @@ export async function exposeSupabaseHelpers(page: Page) {
     (window as any).__insertAvailability = async (rows: any[], restaurantId: string) => {
       const { data, error } = await supabase
         .from('employee_availability')
-        .insert(rows.map(r => ({ ...r, restaurant_id: restaurantId })))
+        .insert(rows.map(r => {
+          // Rows carry start_time_local/end_time_local. Drop the legacy UTC columns.
+          const { start_time: _s, end_time: _e, ...rest } = r;
+          return { ...rest, restaurant_id: restaurantId };
+        }))
         .select();
       if (error) throw new Error(error.message);
       return data;

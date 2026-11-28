@@ -77,6 +77,40 @@ OK    ToastRollupWatermark_NoLastSync: violation (expected violation; 151 distin
   the model. Do not change the invariant to make the check pass.
 - **Error (exit 75+):** a parse or config error. Run `tlc.sh parse`.
 
+## CI check
+
+The workflow `.github/workflows/tla-model-check.yml` runs `tlc.sh all specs/tla`
+on each PR to `main` or `develop`. It runs only when a file under
+`specs/tla/**`, `.claude/skills/run-tla/**`, or the workflow file changes.
+The job name is `TLC model check`.
+
+To add a spec that CI checks:
+
+1. Put the files in `specs/tla/<topic>/`. CI finds each `*.cfg` there. You do
+   not change the workflow.
+2. Name the module `<Module>.tla` with no `_` in the name.
+3. Name the design config `<Module>.cfg`. TLC must pass it.
+4. Name each counterfactual config `<Module>_<Variant>.cfg`. Put
+   `\* EXPECT: violation. <reason>` on the first line. TLC must fail it.
+5. Run `.claude/skills/run-tla/tlc.sh all specs/tla` before you push. Each
+   line must start with `OK`.
+6. Keep each model small. The job stops after 15 minutes for all specs.
+
+To read a failed job:
+
+- The job summary shows one `OK` or `FAIL` line for each config.
+- The step "Show the TLC log of each failed config" prints the full TLC log
+  of each `FAIL` config in a log group.
+- The artifact `tlc-logs` holds the logs of all configs for 7 days.
+
+The CI cache holds `tla2tools.jar`. The cache key is the hash of `tlc.sh`. If you
+change `TLA_VERSION`, also change `TLA_SHA256` in `tlc.sh`. The SHA-256 check
+runs on each job, also on a cache hit.
+
+Note: the path filter skips the job on a PR that does not change these paths.
+If you make `TLC model check` a required check, that PR waits for it. Remove
+the path filter before you make it required.
+
 ## Gotchas
 
 - **False counterexamples from a coarse clock.** The first version of the

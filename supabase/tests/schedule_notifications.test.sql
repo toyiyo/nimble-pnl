@@ -17,7 +17,7 @@
 
 BEGIN;
 
-SELECT plan(62);
+SELECT plan(63);
 
 SET LOCAL role TO postgres;
 
@@ -285,6 +285,10 @@ SELECT is((SELECT notifications->0->>'status' FROM get_schedule_week_change_log(
   '5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg))
   WHERE shift_id = '5c300000-0000-0000-0000-000000000002'), 'sent',
   'that notification is sent');
+SELECT is((SELECT jsonb_array_length(pending_employees) FROM get_schedule_week_change_log(
+  '5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg))
+  WHERE change_type = 'updated'), 2,
+  'the change log lists both reassignment recipients as pending (no sent row yet)');
 SELECT is((SELECT changed_by_email FROM get_schedule_week_change_log(
   '5c100000-0000-0000-0000-000000000001', (SELECT ws FROM cfg), (SELECT ws + 6 FROM cfg))
   WHERE change_type = 'updated'), 'sn-owner@example.com',

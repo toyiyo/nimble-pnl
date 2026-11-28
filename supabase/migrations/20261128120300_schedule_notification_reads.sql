@@ -169,7 +169,8 @@ RETURNS TABLE (
   reason TEXT,
   tracked BOOLEAN,
   notified_at TIMESTAMPTZ,
-  notifications JSONB
+  notifications JSONB,
+  pending_employees JSONB
 )
 LANGUAGE plpgsql
 STABLE
@@ -212,6 +213,19 @@ BEGIN
            JOIN public.schedule_notifications n ON n.id = c.notification_id
            LEFT JOIN public.employees ce ON ce.id = c.employee_id
            WHERE c.change_log_id = l.id
+         ), '[]'::jsonb),
+         -- The same rule as get_schedule_pending_notifications.
+         COALESCE((
+           SELECT jsonb_agg(jsonb_build_object('employee_id', r.employee_id, 'employee_name', re.name)
+                            ORDER BY re.name)
+           FROM public.schedule_change_recipients(p_restaurant_id, NULL, NULL, l.id) r
+           JOIN public.employees re ON re.id = r.employee_id
+           WHERE NOT EXISTS (
+             SELECT 1
+             FROM public.schedule_notification_changes c
+             JOIN public.schedule_notifications n ON n.id = c.notification_id
+             WHERE c.change_log_id = l.id AND c.employee_id = r.employee_id AND n.status = 'sent'
+           )
          ), '[]'::jsonb)
   FROM public.schedule_change_logs l
   LEFT JOIN public.employees e ON e.id = l.employee_id

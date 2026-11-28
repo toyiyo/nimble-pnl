@@ -41,21 +41,25 @@ describe('notify-schedule-published reads the roster as service_role', () => {
     );
   });
 
-  it('reads the active-employee roster with serviceClient', () => {
+  it('hands the service-role client to the delivery factory', () => {
+    // The roster read moved into makeDeliverDeps (scheduleNotificationSenders.ts).
     // The authorization gate here is an explicit owner/manager role check on
-    // `user_restaurants` (independent of this read). A service-role read here
-    // bypasses no gate.
-    expect(source).toContain(
-      'const { data: employees, error: empError } = await serviceClient\n      .from("employees")'
-    );
+    // `user_restaurants` (independent of this read).
+    expect(source).toMatch(/makeDeliverDeps\(\{\s*serviceClient,/);
   });
 
   it('does NOT read the roster with the JWT-scoped client', () => {
     // The regression: this exact read ran as `authenticated`, named `email`, and
     // raised 42501.
-    expect(source).not.toContain(
-      'const { data: employees, error: empError } = await supabase\n      .from("employees")'
-    );
+    expect(source).not.toMatch(/await supabase\s*\.from\("employees"\)/);
+  });
+});
+
+describe('the schedule notification senders read employees as service_role', () => {
+  const source = readSource('supabase/functions/_shared/scheduleNotificationSenders.ts');
+
+  it('reads employees (with email) through ctx.serviceClient', () => {
+    expect(source).toMatch(/await ctx\.serviceClient\s*\.from\('employees'\)\s*\.select\('id, name, email, user_id'\)/);
   });
 });
 

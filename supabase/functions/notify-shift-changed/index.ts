@@ -14,34 +14,16 @@ import {
   corsHeaders,
   errorResponse,
   handleCorsPreflightRequest,
-  NOTIFICATION_FROM,
-  sendEmailResult,
 } from "../_shared/notificationHelpers.ts";
-import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
-import { escapeHtml } from "../_shared/emailTemplates.ts";
 import { safeTz } from "../_shared/timezone.ts";
-import { scheduleThreadHeaders, shiftBusinessDay } from "../_shared/scheduleEmailThread.ts";
-import {
-  checkShiftChangeValidity,
-  deriveShiftChangeRecipients,
-  buildShiftChangeMessage,
-  type ShiftChangeLogRow,
-} from "../_shared/shiftChangedNotification.ts";
+import { checkShiftChangeValidity, type ShiftChangeLogRow } from "../_shared/shiftChangedNotification.ts";
+import { claimNotifications, deliverClaimed, type RpcClient } from "../_shared/scheduleNotificationDelivery.ts";
+import { makeDeliverDeps } from "../_shared/scheduleNotificationSenders.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 
-/** Where both the email link and the push point. */
-const SCHEDULE_PATH = "/employee/schedule";
-
 interface NotifyShiftChangedPayload {
   changeLogId: string;
-}
-
-interface RecipientEmployee {
-  id: string;
-  name: string | null;
-  email: string | null;
-  user_id: string | null;
 }
 
 serve(async (req) => {
@@ -101,205 +83,73 @@ serve(async (req) => {
       return errorResponse(`Change log is not a valid notify target: ${validity.reason}`, 409);
     }
 
-    // Step 5: claim the notified_at latch. Zero rows back means another
-    // call already sent this — a double-click or client retry cannot send
-    // twice.
-    const { data: claimed, error: claimError } = await serviceClient
-      .from("schedule_change_logs")
-      .update({ notified_at: new Date().toISOString() })
-      .eq("id", changeLogId)
-      .is("notified_at", null)
-      .select("id");
+    // Step 5: claim (change, employee) pairs. This is the only latch: the
+    // UNIQUE (change_log_id, employee_id) link means a double-click, a client
+    // retry, or a publish notifier that already took the pair cannot send it
+    // twice (TLA+ NoDuplicateDelivery). A recipient that a partial send missed
+    // keeps a 'failed' row, and a retry takes it back.
+    // Design: docs/superpowers/specs/2026-11-28-mcp-publish-notifications-design.md
+    const rpcClient = serviceClient as unknown as RpcClient;
+    const claims = await claimNotifications(rpcClient, {
+      restaurantId: row.restaurant_id,
+      from: null,
+      to: null,
+      source: "shift_change",
+      changeLogId,
+    });
 
-    if (claimError) {
-      throw new Error(`Failed to claim change log: ${claimError.message}`);
-    }
-    if (!claimed?.length) {
-      return new Response(JSON.stringify({ sent: 0, alreadyNotified: true }), {
+    if (claims.length === 0) {
+      // Already sent, or an open shift with nobody to tell.
+      return new Response(JSON.stringify({ sent: 0, failed: 0, alreadyNotified: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
     }
 
-    // The claim above is a lock. From here on, a failure must release it,
-    // or a real change log can never be retried and its notification is
-    // lost for good. `release` clears `notified_at` back to null; only a
-    // send that reaches at least one recipient leaves the claim in place.
-    const release = async () => {
-      const { error } = await serviceClient
+    const { data: restaurant, error: restError } = await serviceClient
+      .from("restaurants")
+      .select("name, timezone")
+      .eq("id", row.restaurant_id)
+      .maybeSingle();
+    if (restError) {
+      throw new Error(`Failed to fetch restaurant: ${restError.message}`);
+    }
+
+    // Steps 6-8: derive the message from the claimed rows alone, then send.
+    // safeTz guards an invalid stored value, not just an empty one.
+    const outcomes = await deliverClaimed(
+      claims,
+      makeDeliverDeps({
+        serviceClient,
+        restaurantId: row.restaurant_id,
+        restaurantName: restaurant?.name ?? "EasyShiftHQ",
+        timeZone: safeTz(restaurant?.timezone),
+        resendApiKey: RESEND_API_KEY,
+        channels: { email: true, push: true },
+      }),
+    );
+
+    const sent = outcomes.filter((o) => o.status === "sent").length;
+    const failed = outcomes.length - sent;
+
+    // notified_at is a record now, not the latch: the first send that reached
+    // somebody stamps it.
+    if (sent > 0) {
+      const { error: stampError } = await serviceClient
         .from("schedule_change_logs")
-        .update({ notified_at: null })
-        .eq("id", changeLogId);
-      if (error) {
-        console.error(`Failed to release change log ${changeLogId}:`, error);
+        .update({ notified_at: new Date().toISOString() })
+        .eq("id", changeLogId)
+        .is("notified_at", null);
+      if (stampError) {
+        console.error(`notify-shift-changed: failed to stamp notified_at on ${changeLogId}`, stampError);
       }
-    };
-
-    try {
-      // Steps 6-7: derive everything else from the row alone, not the request.
-      const recipients = deriveShiftChangeRecipients(row as ShiftChangeLogRow);
-      if (recipients.length === 0) {
-        // An open shift (both sides null) — nothing to tell anyone. Not a
-        // failure, so the claim stands; a retry would find the same result.
-        return new Response(JSON.stringify({ sent: 0, failed: 0 }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        });
-      }
-
-      const employeeIds = recipients.map((r) => r.employeeId);
-      const [{ data: employees, error: empError }, { data: restaurant, error: restError }] =
-        await Promise.all([
-          serviceClient
-            .from("employees")
-            .select("id, name, email, user_id")
-            .eq("restaurant_id", row.restaurant_id)
-            .in("id", employeeIds),
-          serviceClient
-            .from("restaurants")
-            .select("name, timezone")
-            .eq("id", row.restaurant_id)
-            .maybeSingle(),
-        ]);
-
-      if (empError) {
-        throw new Error(`Failed to fetch employees: ${empError.message}`);
-      }
-      if (restError) {
-        throw new Error(`Failed to fetch restaurant: ${restError.message}`);
-      }
-
-      // safeTz guards an invalid stored value, not just an empty one — a bad
-      // IANA string here used to throw inside buildShiftChangeMessage and
-      // kill the whole invocation (design doc, "Timezone safety").
-      const timezone = safeTz(restaurant?.timezone);
-      const restaurantName = restaurant?.name ?? "EasyShiftHQ";
-      const employeeById = new Map(
-        ((employees ?? []) as RecipientEmployee[]).map((e) => [e.id, e]),
-      );
-
-      // Thread this email into the same conversation as the publish/unpublish
-      // emails for its week. The change log has no week column, so resolve
-      // the shift's business day, then find the publication that covers it.
-      // A missing business day or a missing publication both mean no header
-      // — never throw for either (design doc, "Gap 2 — Thread schedule
-      // email"). Resolved per recipient, not once per row: a reassignment
-      // across a week boundary sends a "removed" email to the old employee
-      // and an "assigned" email to the new one, and each belongs in the
-      // thread for its own week — "removed" uses before_data's business
-      // day, "assigned"/"updated" use after_data's (falling back to
-      // before_data when after_data carries no start_time).
-      const resolveEmailThreadHeaders = async (
-        startTime: string | null | undefined,
-      ): Promise<Record<string, string> | undefined> => {
-        const businessDay = shiftBusinessDay(startTime, timezone);
-        if (!businessDay) {
-          return undefined;
-        }
-        const minWeekStart = new Date(`${businessDay}T00:00:00Z`);
-        minWeekStart.setUTCDate(minWeekStart.getUTCDate() - 6);
-        const minWeekStartStr = minWeekStart.toISOString().slice(0, 10);
-
-        const { data: publication, error: pubError } = await serviceClient
-          .from("schedule_publications")
-          .select("week_start_date")
-          .eq("restaurant_id", row.restaurant_id)
-          .gte("week_start_date", minWeekStartStr)
-          .lte("week_start_date", businessDay)
-          .gte("week_end_date", businessDay)
-          .order("published_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (pubError) {
-          console.error("notify-shift-changed: covering publication lookup failed", pubError);
-          return undefined;
-        }
-        return publication
-          ? scheduleThreadHeaders(row.restaurant_id, publication.week_start_date)
-          : undefined;
-      };
-
-      let sent = 0;
-      let failed = 0;
-
-      // Step 8: send one email + push per recipient with the concrete change.
-      for (const recipient of recipients) {
-        const employee = employeeById.get(recipient.employeeId);
-        if (!employee) {
-          failed++;
-          continue;
-        }
-
-        const message = buildShiftChangeMessage(recipient, row as ShiftChangeLogRow, timezone);
-        const beforeStartTime = (row.before_data as Record<string, unknown> | null)?.start_time as
-          | string
-          | undefined;
-        const afterStartTime = (row.after_data as Record<string, unknown> | null)?.start_time as
-          | string
-          | undefined;
-        const recipientStartTime =
-          recipient.role === "removed" ? beforeStartTime : afterStartTime ?? beforeStartTime;
-        const emailThreadHeaders = await resolveEmailThreadHeaders(recipientStartTime);
-        let recipientReached = false;
-
-        if (employee.email && RESEND_API_KEY) {
-          const emailResult = await sendEmailResult(
-            RESEND_API_KEY,
-            NOTIFICATION_FROM,
-            employee.email,
-            `${message.title} - ${restaurantName}`,
-            `<p>Hi ${escapeHtml(employee.name ?? "there")},</p><p>${escapeHtml(message.body)}</p>`,
-            emailThreadHeaders,
-          );
-          if (emailResult.ok) {
-            recipientReached = true;
-          } else {
-            console.error(
-              `notify-shift-changed: email failed for employee ${employee.id}`,
-              emailResult.error,
-            );
-          }
-        }
-
-        if (employee.user_id) {
-          const push = await sendWebPushToUser(serviceClient, employee.user_id, row.restaurant_id, {
-            title: message.title,
-            body: message.body,
-            url: SCHEDULE_PATH,
-            tag: `shift-changed-${row.shift_id}-${employee.id}`,
-          });
-          if (push.sent > 0) {
-            recipientReached = true;
-          }
-        }
-
-        if (recipientReached) {
-          sent++;
-        } else {
-          failed++;
-        }
-      }
-
-      // Reached nobody: release the claim so a retry can try again, and
-      // signal the caller this attempt did not actually deliver anything.
-      if (sent === 0) {
-        await release();
-        return new Response(JSON.stringify({ sent, failed }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 502,
-        });
-      }
-
-      // Step 9.
-      return new Response(JSON.stringify({ sent, failed }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    } catch (error) {
-      await release();
-      throw error;
     }
+
+    // Step 9. Reached nobody: 502, and the failed rows stay pending.
+    return new Response(JSON.stringify({ sent, failed }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: sent === 0 && failed > 0 ? 502 : 200,
+    });
   } catch (error: unknown) {
     console.error("Error in notify-shift-changed:", error);
     const message = error instanceof Error ? error.message : "An error occurred";

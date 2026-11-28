@@ -25,6 +25,7 @@ import {
 import { format } from 'date-fns';
 import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { formatLocalTimeOfDay } from '@/lib/conflictFormatUtils';
 import { safeTz } from '@/lib/restaurantClock';
 import { TimeOffRequest, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
@@ -288,7 +289,7 @@ const EmployeePortal = () => {
                     Available
                   </Badge>
                   <span className="text-sm text-muted-foreground">
-                    {formatTimeInRestaurantTz(avail.start_time)} - {formatTimeInRestaurantTz(avail.end_time)}
+                    {avail.start_time_local ? formatLocalTimeOfDay(avail.start_time_local) : ''} - {avail.end_time_local ? formatLocalTimeOfDay(avail.end_time_local) : ''}
                   </span>
                 </div>
               ) : (

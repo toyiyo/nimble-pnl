@@ -37,7 +37,7 @@ test.describe('Team Availability Grid', () => {
       ({ rows, restId }) => (window as any).__insertAvailability(rows, restId),
       {
         rows: [
-          { employee_id: aliceId, day_of_week: 1, start_time: '14:00:00', end_time: '22:00:00', is_available: true },
+          { employee_id: aliceId, day_of_week: 1, start_time_local: '14:00:00', end_time_local: '22:00:00', is_available: true },
         ],
         restId: restaurantId,
       },
@@ -154,7 +154,7 @@ test.describe('Team Availability Grid', () => {
       ({ rows, restId }) => (window as any).__insertAvailability(rows, restId),
       {
         rows: [
-          { employee_id: davidId, day_of_week: 1, start_time: '14:00:00', end_time: '22:00:00', is_available: true },
+          { employee_id: davidId, day_of_week: 1, start_time_local: '14:00:00', end_time_local: '22:00:00', is_available: true },
         ],
         restId: restaurantId,
       },
@@ -169,10 +169,9 @@ test.describe('Team Availability Grid', () => {
     // 3. Assert employee name is visible
     await expect(page.getByText('David Lee').first()).toBeVisible({ timeout: 10000 });
 
-    // 4. David should NOT show "No availability set" — he has Monday availability
-    // Instead of checking exact times (which depend on restaurant timezone),
-    // verify that David's row has at least one green "Available" cell
-    const availCells = page.getByRole('button', { name: /available/i });
+    // 4. The grid shows the stored local wall-clock window. The restaurant
+    // time zone and the week date do not change it.
+    const availCells = page.getByRole('button', { name: 'Available 2p–10p' });
     await expect(availCells.first()).toBeVisible({ timeout: 5000 });
   });
 

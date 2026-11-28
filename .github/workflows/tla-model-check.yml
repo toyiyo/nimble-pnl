@@ -1,0 +1,97 @@
+name: TLA+ Model Check
+
+# Runs every TLA+ model check under specs/tla/ with the TLC model checker.
+# The driver is .claude/skills/run-tla/tlc.sh. A .cfg whose first line has
+# "EXPECT: violation" must fail TLC; the driver checks that.
+# How to add a spec: see the "CI check" section of .claude/skills/run-tla/SKILL.md.
+# Design: docs/superpowers/specs/2026-11-28-tla-ci-design.md
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'specs/tla/**'
+      - '.claude/skills/run-tla/**'
+      - '.github/workflows/tla-model-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'specs/tla/**'
+      - '.claude/skills/run-tla/**'
+      - '.github/workflows/tla-model-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tla-model-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tlc:
+    name: TLC model check
+    runs-on: ubuntu-latest
+    # All 9 configs run in less than 1 minute. The cap stops a model with
+    # bounds that are too big. TLC has no time limit of its own.
+    timeout-minutes: 15
+    env:
+      TLC_LOG_DIR: ${{ runner.temp }}/tlc-logs
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # tlc.sh holds the jar version and its SHA-256, so its hash is the key.
+      # `tlc.sh install` checks the SHA-256 again on a cache hit.
+      - name: Cache tla2tools.jar
+        uses: actions/cache@v4
+        with:
+          # The default TLA_TOOLS_DIR of tlc.sh.
+          path: ~/.cache/tla
+          key: tla2tools-${{ hashFiles('.claude/skills/run-tla/tlc.sh') }}
+
+      - name: Install tla2tools.jar (SHA-256 check)
+        run: .claude/skills/run-tla/tlc.sh install
+
+      - name: Run every model check
+        id: tlc
+        run: |
+          set -o pipefail
+          .claude/skills/run-tla/tlc.sh all specs/tla | tee "$RUNNER_TEMP/tlc-summary.txt"
+
+      - name: Write the job summary
+        if: always() && steps.tlc.outcome != 'skipped'
+        run: |
+          {
+            echo '### TLA+ model checks'
+            echo '```text'
+            grep -E '^(OK|FAIL) |^----|^tlc.sh:' "$RUNNER_TEMP/tlc-summary.txt" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The driver prints only the first 200 lines of a trace. Print the full
+      # TLC log of each config that did not match its EXPECT.
+      - name: Show the TLC log of each failed config
+        if: failure() && steps.tlc.outcome == 'failure'
+        run: |
+          grep '^FAIL ' "$RUNNER_TEMP/tlc-summary.txt" | sed -n 's/.* log=//p' | while IFS= read -r log; do
+            echo "::group::$(basename "$log")"
+            cat "$log"
+            echo "::endgroup::"
+            echo "::error title=TLC::$(grep -m1 "log=$log" "$RUNNER_TEMP/tlc-summary.txt")"
+          done
+
+      - name: Upload the TLC logs
+        if: failure() && steps.tlc.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tlc-logs
+          path: ${{ env.TLC_LOG_DIR }}
+          retention-days: 7

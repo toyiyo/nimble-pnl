@@ -191,9 +191,11 @@ All current fields stay. All changes add fields, except one: a call without
 ## Decided trade-offs
 
 - A legacy shift with two equal candidates (same time, position and area) goes
-  to the first template in input order. This copies the UI. The SQL helper
-  orders by `st.id` in that case
+  to the first template in input order. This copies the UI. The UI loads
+  templates with `.order('start_time')` only (`src/hooks/useShiftTemplates.tsx:133`),
+  so its order for two equal candidates is not fixed. The MCP query orders by
+  `start_time`, then `id`. The SQL helper also orders by `st.id` in that case
   (`supabase/migrations/20260720120000_shift_fill_by_assignment.sql:127`).
-  The task asks for the UI rule, so the MCP follows the UI.
+  So the MCP agrees with the SQL, and the MCP result is deterministic.
 - The write paths that do not stamp `shift_template_id` do not change here.
   The week templates session owns those writers.

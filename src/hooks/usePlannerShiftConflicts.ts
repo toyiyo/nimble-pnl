@@ -101,8 +101,8 @@ function availabilityConflict(
     has_conflict: true,
     conflict_type: today.type === 'exception' ? 'exception' : 'recurring',
     message: `Shift on ${startDate} is outside availability`,
-    available_start: firstWindow?.startTime ?? undefined,
-    available_end: firstWindow?.endTime ?? undefined,
+    available_start_local: firstWindow?.startTime ?? null,
+    available_end_local: firstWindow?.endTime ?? null,
   };
 }
 

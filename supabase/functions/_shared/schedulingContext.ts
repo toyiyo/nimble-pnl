@@ -96,6 +96,17 @@ export function periodWeeks(period: Period): string[] {
   return weeks;
 }
 
+/**
+ * over_max_weekly_hours for one week. Null when the data cannot tell: a partial
+ * week, or a cut shift list under the cap. More shifts can only add hours, so a
+ * cut list still shows a known overage.
+ */
+function overMax(hours: number, cap: number, partialWeek: boolean, shiftsTruncated: boolean): boolean | null {
+  if (partialWeek) return null;
+  if (hours > cap) return true;
+  return shiftsTruncated ? null : false;
+}
+
 export function buildRoster(
   employees: EmployeeRow[],
   shifts: ShiftRow[],
@@ -150,7 +161,7 @@ export function buildRoster(
             week_start,
             scheduled_hours: h,
             partial_week: partial,
-            over_max_weekly_hours: partial || opts.shiftsTruncated ? null : h > cap,
+            over_max_weekly_hours: overMax(h, cap, partial, opts.shiftsTruncated === true),
           };
         }),
       };

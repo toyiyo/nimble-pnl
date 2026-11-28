@@ -47,6 +47,10 @@ describe('slotKeyForShift', () => {
     expect(slotKeyForShift(shift(), [tpl('t1')], null, CHI)).toBe('t1|2026-12-05');
   });
 
+  it('does not match a legacy shift with no position', () => {
+    expect(slotKeyForShift(shift({ position: null }), [tpl('t1', { position: null })], null, CHI)).toBeNull();
+  });
+
   it('does not match a legacy shift with another position', () => {
     expect(slotKeyForShift(shift({ position: 'Cook' }), [tpl('t1')], null, CHI)).toBeNull();
   });

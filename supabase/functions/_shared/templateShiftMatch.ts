@@ -50,14 +50,19 @@ export function slotKeyForShift(
       ? `${shift.shift_template_id}|${date}`
       : null;
   }
+  // shift_templates.position is NOT NULL, so a shift with no position matches no template.
+  const position = shift.position;
+  if (!position) return null;
   const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
   // The cheap filters first. Most shifts then need no time format.
-  const pool = templates.filter((t) => t.is_active && t.position === shift.position && t.days.includes(dow));
+  const pool = templates.filter((t): t is MatchTemplate & MatchableTemplate =>
+    t.is_active && t.position === position && t.days.includes(dow)
+  );
   if (pool.length === 0) return null;
-  const match = findAreaAwareTemplate(pool as (MatchTemplate & MatchableTemplate)[], {
+  const match = findAreaAwareTemplate(pool, {
     shiftStart: localHms(shift.start_time, tz),
     shiftEnd: localHms(shift.end_time, tz),
-    position: shift.position ?? "",
+    position,
     dayOfWeek: dow,
     employeeArea: employeeArea ?? null,
   });

@@ -129,6 +129,13 @@ describe('buildRoster weekly_hours', () => {
     expect(r.weekly_hours.every((w) => w.over_max_weekly_hours === null)).toBe(true);
   });
 
+  it('keeps over_max_weekly_hours true on a cut list when the known hours are already over', () => {
+    const days = ['07', '08', '09', '10', '11', '12'];
+    const shifts = days.map((d, i) => s(`s${i}`, `2026-12-${d}T14:00:00Z`, `2026-12-${d}T22:00:00Z`));
+    const [r] = buildRoster([emp('a')], shifts, new Map(), p, CHI, { shiftsTruncated: true });
+    expect(r.weekly_hours.find((w) => w.week_start === '2026-12-07')!.over_max_weekly_hours).toBe(true);
+  });
+
   it('gives over_max_weekly_hours null on a partial week, and false on a full week under the cap', () => {
     const [r] = buildRoster([emp('a')], [s('s1', '2026-12-08T15:00:00Z', '2026-12-08T23:00:00Z')], new Map(), p, CHI);
     expect(r.weekly_hours.find((w) => w.week_start === '2026-11-30')!.over_max_weekly_hours).toBeNull();

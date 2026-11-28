@@ -35,8 +35,6 @@ jobs:
     # All 9 configs run in less than 1 minute. The cap stops a model with
     # bounds that are too big. TLC has no time limit of its own.
     timeout-minutes: 15
-    env:
-      TLC_LOG_DIR: ${{ runner.temp }}/tlc-logs
 
     steps:
       - name: Checkout code
@@ -57,8 +55,12 @@ jobs:
           path: ~/.cache/tla
           key: tla2tools-${{ hashFiles('.claude/skills/run-tla/tlc.sh') }}
 
+      # The `runner` context is not available in job-level `env`, so set the
+      # log dir here for all later steps.
       - name: Install tla2tools.jar (SHA-256 check)
-        run: .claude/skills/run-tla/tlc.sh install
+        run: |
+          echo "TLC_LOG_DIR=$RUNNER_TEMP/tlc-logs" >> "$GITHUB_ENV"
+          .claude/skills/run-tla/tlc.sh install
 
       - name: Run every model check
         id: tlc
@@ -93,5 +95,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tlc-logs
-          path: ${{ env.TLC_LOG_DIR }}
+          path: ${{ runner.temp }}/tlc-logs
           retention-days: 7

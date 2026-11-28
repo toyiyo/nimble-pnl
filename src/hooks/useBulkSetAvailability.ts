@@ -29,21 +29,21 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_null_violation: 'Each available day needs a start time and an end time.',
 };
 
+const NOT_NULL_PATTERNS = [
+  'violates not-null constraint',
+  'needs a complete pair of start and end times',
+  'not_null_violation',
+];
+
 function friendlyMessage(supabaseError: { message?: string } | null): string {
-  if (!supabaseError?.message) return "Couldn't save availability. Try again.";
-  if (
-    supabaseError.message.toLowerCase().includes('violates not-null constraint') ||
-    supabaseError.message.toLowerCase().includes('needs a complete pair of start and end times') ||
-    supabaseError.message.toLowerCase().includes('not_null_violation')
-  ) {
+  const fallback = "Couldn't save availability. Try again.";
+  const message = supabaseError?.message?.toLowerCase();
+  if (!message) return fallback;
+  if (NOT_NULL_PATTERNS.some((pattern) => message.includes(pattern))) {
     return ERROR_MESSAGES.not_null_violation;
   }
-  for (const key of Object.keys(ERROR_MESSAGES)) {
-    if (supabaseError.message.toLowerCase().includes(key)) {
-      return ERROR_MESSAGES[key];
-    }
-  }
-  return "Couldn't save availability. Try again.";
+  const key = Object.keys(ERROR_MESSAGES).find((k) => message.includes(k));
+  return key ? ERROR_MESSAGES[key] : fallback;
 }
 
 export function useBulkSetAvailability(options?: { silent?: boolean }) {

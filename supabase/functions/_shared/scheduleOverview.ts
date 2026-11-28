@@ -9,8 +9,8 @@
  * lands on the day staff mean.
  */
 
-import { addDays, calculateDateRange, restaurantWallClock, ymdInTimeZone, toLocalYMD, PeriodType } from './restaurantDate.ts';
-import { localTimeFields, positionFields, type PositionFields } from './templateShiftMatch.ts';
+import { addDays, calculateDateRange, localTimeFields, restaurantWallClock, ymdInTimeZone, toLocalYMD, PeriodType } from './restaurantDate.ts';
+import { positionFields, type PositionFields } from './shiftRowFields.ts';
 
 export interface ScheduleShiftInput {
   id: string;
@@ -25,7 +25,7 @@ export interface ScheduleShiftInput {
 export type ScheduleShiftRow = {
   id: string;
   employee_name: string;
-  /** The shift position, else the employee position. Kept for current callers. */
+  /** The shift position, else the employee position. */
   position: string | null;
   start_time: string;
   end_time: string;

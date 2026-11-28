@@ -1,13 +1,14 @@
 // The rule that puts a shift in a template slot (template + local date).
 // Pure, with no Deno imports, so Vitest can import this file.
 //
-// This copies the planner UI rule, so the MCP coverage agrees with the grid:
-//   - src/hooks/useShiftPlanner.ts buildTemplateGridData (linked branch first,
-//     then the time match on active templates only)
-//   - src/lib/templateAreaMatch.ts findAreaAwareTemplate (time, position, day,
-//     area; a same-area template wins)
+// This follows the planner UI rule, so the MCP coverage agrees with the grid:
+//   - src/hooks/useShiftPlanner.ts buildTemplateGridData: the linked branch
+//     first, then the time match on active templates only;
+//   - findAreaAwareTemplate (templateAreaMatch.ts, shared with the UI): time,
+//     position, day and area, and a same-area template wins.
 // tests/unit/coverageParity.test.ts fails if the two rules drift apart.
-import { localHms, localIso, ymdInTimeZone } from "./restaurantDate.ts";
+import { localHms, ymdInTimeZone } from "./restaurantDate.ts";
+import { findAreaAwareTemplate, type MatchableTemplate } from "./templateAreaMatch.ts";
 
 export interface MatchShift {
   employee_id: string;
@@ -26,15 +27,6 @@ export interface MatchTemplate {
   position?: string | null;
   area?: string | null;
   is_active: boolean;
-}
-
-/** Postgres gives 'HH:MM:SS'. Accept 'HH:MM' too. */
-function hms(t: string): string {
-  return t.length === 5 ? `${t}:00` : t;
-}
-
-function areaCompatible(templateArea: string | null | undefined, employeeArea: string | null | undefined): boolean {
-  return !templateArea || !employeeArea || templateArea === employeeArea;
 }
 
 /**
@@ -58,62 +50,16 @@ export function slotKeyForShift(
       ? `${shift.shift_template_id}|${date}`
       : null;
   }
-  const start = localHms(shift.start_time, tz);
-  const end = localHms(shift.end_time, tz);
   const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
-  const candidates = templates.filter((t) =>
-    t.is_active &&
-    hms(t.start_time) === start &&
-    hms(t.end_time) === end &&
-    t.position === shift.position &&
-    t.days.includes(dow) &&
-    areaCompatible(t.area, employeeArea)
-  );
-  const match = employeeArea
-    ? candidates.find((t) => t.area === employeeArea) ?? candidates[0]
-    : candidates[0];
+  // The cheap filters first. Most shifts then need no time format.
+  const pool = templates.filter((t) => t.is_active && t.position === shift.position && t.days.includes(dow));
+  if (pool.length === 0) return null;
+  const match = findAreaAwareTemplate(pool as (MatchTemplate & MatchableTemplate)[], {
+    shiftStart: localHms(shift.start_time, tz),
+    shiftEnd: localHms(shift.end_time, tz),
+    position: shift.position ?? "",
+    dayOfWeek: dow,
+    employeeArea: employeeArea ?? null,
+  });
   return match ? `${match.id}|${date}` : null;
-}
-
-function norm(p: string | null | undefined): string {
-  return (p ?? "").trim().toLowerCase();
-}
-
-/** The local wall-clock times of a shift and its IANA zone. The UTC times stay as they are. */
-export function localTimeFields(startIso: string, endIso: string, tz: string): {
-  start_time_local: string;
-  end_time_local: string;
-  tz: string;
-} {
-  return { start_time_local: localIso(startIso, tz), end_time_local: localIso(endIso, tz), tz };
-}
-
-export type PositionFields =
-  | { position_mismatch: false }
-  | { position_mismatch: true; shift_position: string; employee_position: string };
-
-/**
- * position_mismatch for a shift row. The two values appear only on a mismatch,
- * so the rows stay small.
- */
-export function positionFields(
-  shiftPosition: string | null | undefined,
-  employeePosition: string | null | undefined,
-): PositionFields {
-  return positionMismatch(shiftPosition, employeePosition)
-    ? { position_mismatch: true, shift_position: shiftPosition!, employee_position: employeePosition! }
-    : { position_mismatch: false };
-}
-
-/**
- * True when the shift position and the employee position are both set and
- * differ. Case and outer spaces do not count.
- */
-export function positionMismatch(
-  shiftPosition: string | null | undefined,
-  employeePosition: string | null | undefined,
-): boolean {
-  const a = norm(shiftPosition);
-  const b = norm(employeePosition);
-  return a !== "" && b !== "" && a !== b;
 }

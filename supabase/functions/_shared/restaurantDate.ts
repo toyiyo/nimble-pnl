@@ -70,6 +70,19 @@ export function localIso(instant: string | Date, timeZone: string): string {
     `${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
 }
 
+/**
+ * The local wall-clock times of a shift and its IANA zone. `tz` is the zone
+ * that the times use, so an invalid zone shows the fallback zone.
+ */
+export function localTimeFields(startIso: string, endIso: string, timeZone: string): {
+  start_time_local: string;
+  end_time_local: string;
+  tz: string;
+} {
+  const tz = safeTz(timeZone);
+  return { start_time_local: localIso(startIso, tz), end_time_local: localIso(endIso, tz), tz };
+}
+
 /** The local 'HH:MM:SS' time of `instant` in `timeZone`. */
 export function localHms(instant: string | Date, timeZone: string): string {
   return localIso(instant, timeZone).slice(11, 19);

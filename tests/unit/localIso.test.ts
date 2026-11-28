@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { localIso, localHms } from '../../supabase/functions/_shared/restaurantDate';
+import { localIso, localHms, localTimeFields } from '../../supabase/functions/_shared/restaurantDate';
 
 const CHI = 'America/Chicago';
 
@@ -36,5 +36,19 @@ describe('localHms', () => {
   it('gives the local HH:MM:SS in the zone', () => {
     expect(localHms('2026-12-05T23:00:00Z', CHI)).toBe('17:00:00');
     expect(localHms('2026-07-05T22:00:00Z', CHI)).toBe('17:00:00');
+  });
+});
+
+describe('localTimeFields', () => {
+  it('gives both local times and the zone', () => {
+    expect(localTimeFields('2026-12-05T23:00:00Z', '2026-12-06T05:00:00Z', CHI)).toEqual({
+      start_time_local: '2026-12-05T17:00:00-06:00',
+      end_time_local: '2026-12-05T23:00:00-06:00',
+      tz: CHI,
+    });
+  });
+
+  it('shows the fallback zone, not the invalid input, so the label agrees with the offset', () => {
+    expect(localTimeFields('2026-12-05T23:00:00Z', '2026-12-06T05:00:00Z', 'Bad/Zone').tz).toBe(CHI);
   });
 });

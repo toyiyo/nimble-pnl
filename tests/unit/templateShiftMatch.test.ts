@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   slotKeyForShift,
-  positionMismatch,
   type MatchShift,
   type MatchTemplate,
 } from '../../supabase/functions/_shared/templateShiftMatch';
@@ -98,21 +97,5 @@ describe('slotKeyForShift', () => {
     const s = shift({ start_time: '2027-03-14T14:00:00Z', end_time: '2027-03-14T20:00:00Z' });
     expect(slotKeyForShift(s, [tpl('t1', { start_time: '09:00:00', end_time: '15:00:00' })], null, CHI))
       .toBe('t1|2027-03-14');
-  });
-});
-
-describe('positionMismatch', () => {
-  it('is true when the two positions differ', () => {
-    expect(positionMismatch('Server', 'Cook')).toBe(true);
-  });
-
-  it('ignores case and outer spaces', () => {
-    expect(positionMismatch(' server ', 'Server')).toBe(false);
-  });
-
-  it('is false when one side is null or empty', () => {
-    expect(positionMismatch(null, 'Cook')).toBe(false);
-    expect(positionMismatch('Cook', undefined)).toBe(false);
-    expect(positionMismatch('  ', 'Cook')).toBe(false);
   });
 });

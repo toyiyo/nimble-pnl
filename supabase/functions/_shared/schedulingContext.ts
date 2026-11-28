@@ -9,7 +9,9 @@ import {
 import { addDaysToDateStr } from "./labor/restaurantClock.ts";
 import { computeHourBudget } from "./schedule-prompt-builder.ts";
 import type { ShiftConflict } from "./shiftConflictFlags.ts";
-import { localTimeFields, positionFields, slotKeyForShift, type PositionFields } from "./templateShiftMatch.ts";
+import { localTimeFields } from "./restaurantDate.ts";
+import { positionFields, type PositionFields } from "./shiftRowFields.ts";
+import { slotKeyForShift } from "./templateShiftMatch.ts";
 
 export interface Hidden {
   hidden: true;

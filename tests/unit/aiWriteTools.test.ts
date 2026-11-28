@@ -27,11 +27,12 @@ describe('aiWriteTools', () => {
     }
   });
 
-  it('holds the three write tools', () => {
+  it('holds the four write tools', () => {
     expect([...WRITE_TOOL_NAMES].sort()).toEqual([
       'batch_categorize_pos_sales',
       'batch_categorize_transactions',
       'create_categorization_rule',
+      'publish_week',
     ]);
   });
 

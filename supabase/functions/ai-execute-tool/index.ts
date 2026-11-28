@@ -15,6 +15,7 @@ import {
 import { scheduleOverviewDays, groupShiftsByRestaurantDay, scheduledCostInputs } from '../_shared/scheduleOverview.ts';
 import { MAX_TOOL_TEXT_CHARS } from '../_shared/mcpHandler.ts';
 import { runGetSchedulingContext } from '../_shared/schedulingContextTool.ts';
+import { runPublishWeek, runGetWeekChangeLog, runGetPendingNotifications, type PublishToolDeps } from '../_shared/mcpPublishTools.ts';
 import { findShiftWarnings } from '../_shared/shiftWarnings.ts';
 import {
   buildConflictIndex, attachConflicts, compactConflictsToFit, loadNeighborShifts, loadShiftConflicts, withNeighbors,
@@ -3773,6 +3774,41 @@ function toolErrorResponse(status: number, error: Record<string, unknown>): Resp
   });
 }
 
+/**
+ * Deps for the publish and notification tools (mcpPublishTools.ts). The
+ * notify call forwards the caller's JWT, so notify-schedule-published runs
+ * its own owner/manager check: the same path as the UI publish.
+ */
+function publishToolDeps(supabase: any, authHeader: string, tz: string): PublishToolDeps {
+  const url = `${(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '')}/functions/v1/notify-schedule-published`;
+  const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+  return {
+    supabase,
+    tz,
+    now: new Date(),
+    invokeNotify: async (body) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: authHeader,
+          apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      let parsed: unknown = null;
+      try {
+        parsed = text ? JSON.parse(text) : null;
+      } catch {
+        parsed = { error: 'The notification service returned a body that is not JSON.' };
+      }
+      return { status: res.status, body: parsed };
+    },
+    waitUntil: edgeRuntime ? (p) => edgeRuntime.waitUntil(p) : undefined,
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -3960,6 +3996,15 @@ serve(async (req) => {
         break;
       case 'create_categorization_rule':
         result = await executeCreateCategorizationRule(args, restaurant_id, supabase);
+        break;
+      case 'publish_week':
+        result = await runPublishWeek(args, restaurant_id, publishToolDeps(supabase, authHeader, restaurantTimeZone));
+        break;
+      case 'get_week_change_log':
+        result = await runGetWeekChangeLog(args, restaurant_id, publishToolDeps(supabase, authHeader, restaurantTimeZone));
+        break;
+      case 'get_pending_notifications':
+        result = await runGetPendingNotifications(args, restaurant_id, publishToolDeps(supabase, authHeader, restaurantTimeZone));
         break;
       default:
         throw new Error(`Unknown tool: ${tool_name}`);

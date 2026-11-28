@@ -1,3 +1,4 @@
+import { PUBLISH_TOOL_DEFINITIONS, PUBLISH_TOOL_NAMES } from './publishToolDefinitions.ts';
 // Tools Registry - Defines available tools for the AI agent
 
 import { PAY_HIDDEN_TOOL_HINT } from './payHidden.ts';
@@ -897,7 +898,8 @@ export function getTools(
           },
           required: ['rule_name', 'pattern_type', 'pattern_value', 'category_id']
         }
-      }
+      },
+      ...PUBLISH_TOOL_DEFINITIONS
     );
   }
 
@@ -945,6 +947,7 @@ export const WRITE_TOOLS: readonly string[] = [
   'batch_categorize_transactions',
   'batch_categorize_pos_sales',
   'create_categorization_rule',
+  'publish_week',
 ];
 
 /**
@@ -1000,7 +1003,8 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'list_categories',                  // Chart of accounts lookup - manager+
     'batch_categorize_transactions',    // Action: categorize bank txns - manager+
     'batch_categorize_pos_sales',       // Action: categorize POS sales - manager+
-    'create_categorization_rule'        // Action: create rules - manager+
+    'create_categorization_rule',       // Action: create rules - manager+
+    ...PUBLISH_TOOL_NAMES               // Publish and notification tools - manager+
   ];
 
   if (managerOwnerTools.includes(toolName)) {

@@ -10,6 +10,7 @@ export const WRITE_TOOL_NAMES: readonly string[] = Object.freeze([
   'batch_categorize_transactions',
   'batch_categorize_pos_sales',
   'create_categorization_rule',
+  'publish_week',
 ]);
 
 const WRITE_TOOL_SET: ReadonlySet<string> = new Set(WRITE_TOOL_NAMES);

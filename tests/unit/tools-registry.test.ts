@@ -614,3 +614,36 @@ describe('tools-registry: list_categories', () => {
     },
   );
 });
+
+describe('tools-registry: publish and notification tools', () => {
+  const names = ['publish_week', 'get_week_change_log', 'get_pending_notifications'];
+
+  it.each(names)('lists %s for owner and manager, not for staff or chef', (name) => {
+    expect(getTools('r1', 'owner').some((t) => t.name === name)).toBe(true);
+    expect(getTools('r1', 'manager').some((t) => t.name === name)).toBe(true);
+    expect(getTools('r1', 'staff').some((t) => t.name === name)).toBe(false);
+    expect(getTools('r1', 'chef').some((t) => t.name === name)).toBe(false);
+  });
+
+  it.each(names)('gates %s on manager', (name) => {
+    expect(requiredRoleFor(name)).toBe('manager');
+    expect(canUseTool(name, 'staff')).toBe(false);
+    expect(canUseTool(name, 'collaborator_operations_manager')).toBe(false);
+  });
+
+  it('marks publish_week, and only publish_week, as a write tool', () => {
+    expect(WRITE_TOOLS).toContain('publish_week');
+    expect(WRITE_TOOLS).not.toContain('get_week_change_log');
+    expect(WRITE_TOOLS).not.toContain('get_pending_notifications');
+  });
+
+  it('requires week_start for publish_week and get_week_change_log only', () => {
+    expect(missingRequiredArgs('publish_week', {})).toEqual(['week_start']);
+    expect(missingRequiredArgs('get_week_change_log', {})).toEqual(['week_start']);
+    expect(missingRequiredArgs('get_pending_notifications', {})).toEqual([]);
+  });
+
+  it('rejects a non-boolean confirmed flag for publish_week', () => {
+    expect(nonBooleanFlagArgs({ week_start: '2030-01-07', confirmed: 'true' })).toEqual(['confirmed']);
+  });
+});
